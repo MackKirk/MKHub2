@@ -18,7 +18,14 @@ from ..schemas.auth import (
     TokenResponse,
     MeResponse,
 )
-from .security import get_password_hash, verify_password, create_access_token, create_refresh_token, get_current_user
+from .security import (
+    get_password_hash,
+    verify_password,
+    create_access_token,
+    create_refresh_token,
+    get_current_user,
+    require_roles,
+)
 from ..logging import structlog
 import smtplib
 from email.message import EmailMessage
@@ -108,6 +115,43 @@ def invite_validate(token: str, db: Session = Depends(get_db)):
     if inv.accepted_at is not None or (expires_at and expires_at < now_utc):
         raise HTTPException(status_code=400, detail="Invalid or expired invite")
     return {"email_personal": inv.email_personal, "suggested_username": inv.suggested_username}
+
+
+# Admin utilities for testing/resetting
+@router.delete("/admin/users/by-email")
+def admin_delete_user_by_email(
+    email: str,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_roles("admin")),
+):
+    u = db.query(User).filter(User.email_personal == email).first()
+    if not u:
+        return {"deleted": False}
+    db.delete(u)
+    db.commit()
+    return {"deleted": True}
+
+
+@router.delete("/admin/invites/by-email")
+def admin_delete_invites_by_email(
+    email: str,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_roles("admin")),
+):
+    count = db.query(Invite).filter(Invite.email_personal == email).delete()
+    db.commit()
+    return {"deleted": int(count)}
+
+
+@router.delete("/admin/invites/by-token")
+def admin_delete_invite_by_token(
+    token: str,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_roles("admin")),
+):
+    count = db.query(Invite).filter(Invite.token == token).delete()
+    db.commit()
+    return {"deleted": int(count)}
 
 
 @router.post("/register", response_model=TokenResponse)
