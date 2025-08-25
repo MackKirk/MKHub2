@@ -1,13 +1,15 @@
 import uuid
 import logging
 import structlog
+import os
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
 
 
 def setup_logging() -> None:
-    logging.basicConfig(format="%(message)s", level=logging.INFO)
+    level = os.getenv("LOG_LEVEL", "INFO").upper()
+    logging.basicConfig(format="%(message)s", level=getattr(logging, level, logging.INFO))
     structlog.configure(
         processors=[
             structlog.processors.add_log_level,

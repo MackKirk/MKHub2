@@ -12,6 +12,18 @@ services:
         value: "true"
       - key: DATABASE_URL
         value: "sqlite:////opt/render/project/src/var/prod.db"
+      - key: PUBLIC_BASE_URL
+        value: "https://mkhub2.onrender.com"
+      - key: MAIL_FROM
+        value: "noreply@mackkirk.com"
+      - key: SMTP_HOST
+        value: "smtp.sendgrid.net"
+      - key: SMTP_PORT
+        value: "587"
+      - key: SMTP_USERNAME
+        value: "apikey"
+      - key: SMTP_PASSWORD
+        sync: false
     disk:
       name: data
       mountPath: /opt/render/project/src/var

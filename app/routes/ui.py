@@ -32,6 +32,7 @@ def ui_root() -> HTMLResponse:
       me: async (token) => fetch('/auth/me', { headers: { 'Authorization': 'Bearer ' + token } }).then(r => r.json()),
       invite: async (email, token) => fetch('/auth/invite', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token }, body: JSON.stringify({ email_personal: email }) }).then(async r => { const txt = await r.text(); try { return JSON.parse(txt); } catch { return { error: txt || ('HTTP ' + r.status) }; }}),
       register: async (invite_token, password) => fetch('/auth/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ invite_token, password }) }).then(async r => { const txt = await r.text(); try { return JSON.parse(txt); } catch { return { error: txt || ('HTTP ' + r.status) }; }}),
+      validateInvite: async (token) => fetch('/auth/invite/' + encodeURIComponent(token)).then(r => r.json())
     };
 
     function set(id, txt) { document.getElementById(id).textContent = txt; }
@@ -150,6 +151,45 @@ def ui_root() -> HTMLResponse:
 </body>
 </html>
     """
+    return HTMLResponse(content=html)
+
+
+@router.get("/ui/login", response_class=HTMLResponse)
+def ui_login() -> HTMLResponse:
+    html = """
+<!doctype html>
+<meta charset='utf-8'>
+<title>Login</title>
+<form onsubmit="login(event)">
+  <input id="id" placeholder="username or email" required />
+  <input id="pw" type="password" placeholder="password" required />
+  <button>Login</button>
+</form>
+<pre id="out"></pre>
+<script>
+async function login(ev){ev.preventDefault(); const r = await fetch('/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({identifier:document.getElementById('id').value,password:document.getElementById('pw').value})}); const j = await r.json(); if(j.access_token){ localStorage.setItem('user_token', j.access_token); location.href='/ui'; } else { document.getElementById('out').textContent=JSON.stringify(j,null,2); }}
+</script>
+"""
+    return HTMLResponse(content=html)
+
+
+@router.get("/ui/register", response_class=HTMLResponse)
+def ui_register(token: str | None = None) -> HTMLResponse:
+    html = f"""
+<!doctype html>
+<meta charset='utf-8'>
+<title>Register</title>
+<h2>Accept Invite</h2>
+<form onsubmit="reg(event)">
+  <input id="token" placeholder="invite token" value="{token or ''}" required />
+  <input id="pw" type="password" placeholder="new password" required />
+  <button>Register</button>
+</form>
+<div id="msg"></div>
+<script>
+async function reg(ev){ev.preventDefault(); const t=document.getElementById('token').value; const pw=document.getElementById('pw').value; const r = await fetch('/auth/register', {{method:'POST', headers:{{'Content-Type':'application/json'}}, body: JSON.stringify({{invite_token:t, password:pw}})}}); const txt = await r.text(); try {{ const j = JSON.parse(txt); if(j.access_token){{ localStorage.setItem('user_token', j.access_token); location.href='/ui'; }} else {{ document.getElementById('msg').textContent = JSON.stringify(j); }} }} catch(e) {{ document.getElementById('msg').textContent = txt; }} }
+</script>
+"""
     return HTMLResponse(content=html)
 
 

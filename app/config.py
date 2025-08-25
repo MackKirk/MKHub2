@@ -43,6 +43,15 @@ class Settings(BaseSettings):
     bamboohr_subdomain: Optional[str] = Field(default=None, alias="BAMBOOHR_SUBDOMAIN")
     bamboohr_api_key: Optional[str] = Field(default=None, alias="BAMBOOHR_API_KEY")
 
+    # Mail / Public
+    public_base_url: str = Field(default="http://localhost:8000", alias="PUBLIC_BASE_URL")
+    smtp_host: Optional[str] = Field(default=None, alias="SMTP_HOST")
+    smtp_port: int = Field(default=587, alias="SMTP_PORT")
+    smtp_username: Optional[str] = Field(default=None, alias="SMTP_USERNAME")
+    smtp_password: Optional[str] = Field(default=None, alias="SMTP_PASSWORD")
+    smtp_tls: bool = Field(default=True, alias="SMTP_TLS")
+    mail_from: Optional[str] = Field(default=None, alias="MAIL_FROM")
+
     # Feature flags
     feature_flags_json: str = Field(default="{}", alias="FEATURE_FLAGS")
 

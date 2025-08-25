@@ -19,6 +19,9 @@ from ..schemas.auth import (
     MeResponse,
 )
 from .security import get_password_hash, verify_password, create_access_token, create_refresh_token, get_current_user
+from ..logging import structlog
+import smtplib
+from email.message import EmailMessage
 
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -68,7 +71,43 @@ def invite_user(req: InviteRequest, db: Session = Depends(get_db), admin: User =
     )
     db.add(inv)
     db.commit()
+    # Email if SMTP is configured
+    try:
+        if settings.smtp_host and settings.mail_from and settings.public_base_url:
+            msg = EmailMessage()
+            msg["Subject"] = f"You're invited to {settings.app_name}"
+            msg["From"] = settings.mail_from
+            msg["To"] = req.email_personal
+            link = f"{settings.public_base_url}/ui/register?token={token}"
+            msg.set_content(f"Click to register: {link}")
+            if settings.smtp_tls:
+                with smtplib.SMTP(settings.smtp_host, settings.smtp_port) as s:
+                    s.starttls()
+                    if settings.smtp_username and settings.smtp_password:
+                        s.login(settings.smtp_username, settings.smtp_password)
+                    s.send_message(msg)
+            else:
+                with smtplib.SMTP(settings.smtp_host, settings.smtp_port) as s:
+                    if settings.smtp_username and settings.smtp_password:
+                        s.login(settings.smtp_username, settings.smtp_password)
+                    s.send_message(msg)
+    except Exception as e:
+        structlog.get_logger().warning("invite_email_failed", error=str(e))
     return {"invite_token": token}
+
+
+@router.get("/invite/{token}")
+def invite_validate(token: str, db: Session = Depends(get_db)):
+    inv: Optional[Invite] = db.query(Invite).filter(Invite.token == token).first()
+    if not inv:
+        raise HTTPException(status_code=404, detail="Invalid invite")
+    now_utc = datetime.now(timezone.utc)
+    expires_at = inv.expires_at
+    if expires_at and expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    if inv.accepted_at is not None or (expires_at and expires_at < now_utc):
+        raise HTTPException(status_code=400, detail="Invalid or expired invite")
+    return {"email_personal": inv.email_personal, "suggested_username": inv.suggested_username}
 
 
 @router.post("/register", response_model=TokenResponse)
