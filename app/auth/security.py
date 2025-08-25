@@ -64,8 +64,12 @@ def get_current_user(
     if creds is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
     payload = decode_token(creds.credentials)
-    user_id = payload.get("sub")
-    user = db.query(User).filter(User.id == user_id).first()
+    user_id_raw = payload.get("sub")
+    try:
+        user_uuid = uuid.UUID(str(user_id_raw))
+    except Exception:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid subject")
+    user = db.query(User).filter(User.id == user_uuid).first()
     if user is None or not user.is_active:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not active")
     return user

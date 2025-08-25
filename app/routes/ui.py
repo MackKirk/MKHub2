@@ -30,7 +30,7 @@ def ui_root() -> HTMLResponse:
     const api = {
       login: async (identifier, password) => fetch('/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ identifier, password }) }).then(r => r.json()),
       me: async (token) => fetch('/auth/me', { headers: { 'Authorization': 'Bearer ' + token } }).then(r => r.json()),
-      invite: async (email, token) => fetch('/auth/invite', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token }, body: JSON.stringify({ email_personal: email }) }).then(r => r.json()),
+      invite: async (email, token) => fetch('/auth/invite', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token }, body: JSON.stringify({ email_personal: email }) }).then(async r => { const txt = await r.text(); try { return JSON.parse(txt); } catch { return { error: txt || ('HTTP ' + r.status) }; }}),
       register: async (invite_token, password) => fetch('/auth/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ invite_token, password }) }).then(r => r.json()),
     };
 
@@ -67,7 +67,7 @@ def ui_root() -> HTMLResponse:
           set('inviteMsg', 'Invite created'); setClass('inviteMsg', 'ok');
           show('registerCard');
         } else {
-          set('inviteMsg', JSON.stringify(res)); setClass('inviteMsg', 'err');
+          set('inviteMsg', typeof res === 'object' ? JSON.stringify(res) : String(res)); setClass('inviteMsg', 'err');
         }
       } catch (e) { set('inviteMsg', String(e)); setClass('inviteMsg', 'err'); }
     }
