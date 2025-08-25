@@ -1,0 +1,162 @@
+import uuid
+from datetime import datetime, timedelta, timezone
+from typing import Optional
+
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.orm import Session
+from slugify import slugify
+
+from ..db import get_db
+from ..config import settings
+from ..models.models import User, Role, Invite, UsernameReservation
+from ..schemas.auth import (
+    UsernameSuggestRequest,
+    UsernameSuggestResponse,
+    InviteRequest,
+    RegisterRequest,
+    LoginRequest,
+    TokenResponse,
+    MeResponse,
+)
+from .security import get_password_hash, verify_password, create_access_token, create_refresh_token, get_current_user
+
+
+router = APIRouter(prefix="/auth", tags=["auth"])
+
+
+def compute_username(first_name: str, last_name: str, suffix: Optional[int] = None) -> str:
+    last = slugify(last_name, lowercase=True, separator="", regex_pattern=r"[^A-Za-z0-9]")
+    first_initial = slugify(first_name[:1], lowercase=True, separator="", regex_pattern=r"[^A-Za-z0-9]")
+    base = f"{last}{first_initial}"
+    return f"{base}{suffix}" if suffix else base
+
+
+def find_available_username(db: Session, first_name: str, last_name: str) -> str:
+    candidate = compute_username(first_name, last_name)
+    i = 0
+    while True:
+        name = f"{candidate}{i}" if i > 0 else candidate
+        exists = db.query(User).filter(User.username == name).first() or db.query(UsernameReservation).filter(UsernameReservation.username == name).first()
+        if not exists:
+            return name
+        i += 1
+
+
+@router.post("/username/suggest", response_model=UsernameSuggestResponse)
+def username_suggest(req: UsernameSuggestRequest, reserve: bool = False, db: Session = Depends(get_db)):
+    name = find_available_username(db, req.first_name, req.last_name)
+    if reserve:
+        expires = datetime.now(timezone.utc) + timedelta(minutes=15)
+        db.add(UsernameReservation(username=name, email_personal="reserved@local", expires_at=expires))
+        db.commit()
+    return UsernameSuggestResponse(suggested=name, available=True)
+
+
+@router.post("/invite")
+def invite_user(req: InviteRequest, db: Session = Depends(get_db), admin: User = Depends(get_current_user)):
+    # Basic check: require at least one role named 'admin'
+    if not any(r.name == "admin" for r in admin.roles):
+        raise HTTPException(status_code=403, detail="Admin required")
+    token = str(uuid.uuid4())
+    suggested = find_available_username(db, req.email_personal.split("@")[0], "user")
+    inv = Invite(
+        email_personal=req.email_personal,
+        token=token,
+        suggested_username=suggested,
+        created_by=admin.id,
+        expires_at=datetime.now(timezone.utc) + timedelta(days=7),
+    )
+    db.add(inv)
+    db.commit()
+    return {"invite_token": token}
+
+
+@router.post("/register", response_model=TokenResponse)
+def register(req: RegisterRequest, db: Session = Depends(get_db)):
+    inv: Optional[Invite] = db.query(Invite).filter(Invite.token == req.invite_token).first()
+    if not inv or inv.accepted_at is not None or inv.expires_at < datetime.now(timezone.utc):
+        raise HTTPException(status_code=400, detail="Invalid or expired invite")
+    username = inv.suggested_username or slugify(inv.email_personal.split("@")[0])
+    # ensure unique
+    if db.query(User).filter(User.username == username).first():
+        # find next available
+        base = username
+        i = 1
+        while db.query(User).filter(User.username == f"{base}{i}").first():
+            i += 1
+        username = f"{base}{i}"
+
+    user = User(
+        username=username,
+        email_personal=inv.email_personal,
+        password_hash=get_password_hash(req.password),
+        is_active=True,
+    )
+    db.add(user)
+    inv.accepted_at = datetime.now(timezone.utc)
+    db.commit()
+
+    access = create_access_token(str(user.id), roles=[r.name for r in user.roles])
+    refresh = create_refresh_token(str(user.id))
+    return TokenResponse(access_token=access, refresh_token=refresh)
+
+
+@router.post("/login", response_model=TokenResponse)
+def login(req: LoginRequest, db: Session = Depends(get_db)):
+    q = db.query(User).filter(
+        (User.username == req.identifier)
+        | (User.email_personal == req.identifier)
+        | (User.email_corporate == req.identifier)
+    )
+    user = q.first()
+    if not user or not verify_password(req.password, user.password_hash):
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+    access = create_access_token(str(user.id), roles=[r.name for r in user.roles])
+    refresh = create_refresh_token(str(user.id))
+    user.last_login_at = datetime.now(timezone.utc)
+    db.commit()
+    return TokenResponse(access_token=access, refresh_token=refresh)
+
+
+@router.post("/refresh", response_model=TokenResponse)
+def refresh(token: str):
+    # Trust refresh token signature and type; for simplicity we do not persist/rotate here initially
+    from .security import decode_token
+
+    payload = decode_token(token)
+    if payload.get("type") != "refresh":
+        raise HTTPException(status_code=400, detail="Invalid refresh token")
+    user_id = payload["sub"]
+    access = create_access_token(user_id)
+    refresh = create_refresh_token(user_id)
+    return TokenResponse(access_token=access, refresh_token=refresh)
+
+
+@router.get("/me", response_model=MeResponse)
+def me(user: User = Depends(get_current_user)):
+    return MeResponse(
+        id=str(user.id),
+        username=user.username,
+        email_personal=user.email_personal,
+        email_corporate=user.email_corporate,
+        roles=[r.name for r in user.roles],
+        permissions=[],
+    )
+
+
+@router.post("/link-corporate")
+def link_corporate(email_corporate: str, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    user.email_corporate = email_corporate
+    db.commit()
+    return {"status": "linked"}
+
+
+@router.post("/outlook/connect")
+def outlook_connect(user: User = Depends(get_current_user)):
+    return {"status": "not_implemented", "detail": "Delegated Graph connect will be added"}
+
+
+@router.delete("/outlook/connect")
+def outlook_disconnect(user: User = Depends(get_current_user)):
+    return {"status": "not_implemented"}
+

@@ -1,0 +1,249 @@
+import uuid
+from datetime import datetime
+from typing import Optional
+
+from sqlalchemy import (
+    Column,
+    String,
+    DateTime,
+    Boolean,
+    ForeignKey,
+    Table,
+    Integer,
+    JSON,
+    UniqueConstraint,
+    BigInteger,
+)
+from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.orm import relationship, Mapped, mapped_column
+
+from ..db import Base
+
+
+def uuid_pk() -> Mapped[uuid.UUID]:
+    return mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+
+
+# Association table for many-to-many User<->Role
+user_roles = Table(
+    "user_roles",
+    Base.metadata,
+    Column("user_id", UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True),
+    Column("role_id", UUID(as_uuid=True), ForeignKey("roles.id", ondelete="CASCADE"), primary_key=True),
+    UniqueConstraint("user_id", "role_id", name="uq_user_role"),
+)
+
+
+class Role(Base):
+    __tablename__ = "roles"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    name: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(String(255))
+    permissions: Mapped[Optional[dict]] = mapped_column(JSON, default=dict)
+
+    users = relationship("User", secondary=user_roles, back_populates="roles")
+
+
+class User(Base):
+    __tablename__ = "users"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    username: Mapped[str] = mapped_column(String(100), unique=True, nullable=False, index=True)
+    email_personal: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)
+    email_corporate: Mapped[Optional[str]] = mapped_column(String(255), unique=True)
+    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    last_login_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    permissions_override: Mapped[Optional[dict]] = mapped_column(JSON)
+
+    roles = relationship("Role", secondary=user_roles, back_populates="users")
+
+
+class UsernameReservation(Base):
+    __tablename__ = "username_reservations"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    username: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
+    email_personal: Mapped[str] = mapped_column(String(255), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class Invite(Base):
+    __tablename__ = "invites"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    email_personal: Mapped[str] = mapped_column(String(255), nullable=False)
+    token: Mapped[str] = mapped_column(String(128), unique=True, nullable=False, index=True)
+    suggested_username: Mapped[Optional[str]] = mapped_column(String(100))
+    created_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    accepted_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+
+
+class RefreshToken(Base):
+    __tablename__ = "refresh_tokens"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"))
+    jti: Mapped[str] = mapped_column(String(128), unique=True, nullable=False, index=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class FileObject(Base):
+    __tablename__ = "file_objects"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    provider: Mapped[str] = mapped_column(String(50), nullable=False)
+    container: Mapped[str] = mapped_column(String(255), nullable=False)
+    key: Mapped[str] = mapped_column(String(1024), nullable=False, index=True)
+    size_bytes: Mapped[Optional[int]] = mapped_column(BigInteger)
+    content_type: Mapped[Optional[str]] = mapped_column(String(255))
+    checksum_sha256: Mapped[Optional[str]] = mapped_column(String(128))
+    version: Mapped[Optional[str]] = mapped_column(String(64))
+
+    project_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
+    client_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
+    employee_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
+    category_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
+
+    source_ref: Mapped[Optional[str]] = mapped_column(String(255))
+
+    created_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    tags: Mapped[Optional[dict]] = mapped_column(JSON)
+
+
+class Project(Base):
+    __tablename__ = "projects"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    code: Mapped[str] = mapped_column(String(50), unique=True, index=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    slug: Mapped[Optional[str]] = mapped_column(String(255), index=True)
+    client_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
+    address_city: Mapped[Optional[str]] = mapped_column(String(100))
+    address_province: Mapped[Optional[str]] = mapped_column(String(100))
+    address_country: Mapped[Optional[str]] = mapped_column(String(100))
+    division_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
+    status_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
+    estimator_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
+    onsite_lead_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
+    date_start: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    date_eta: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    date_end: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    cost_estimated: Mapped[Optional[int]] = mapped_column(BigInteger)
+    cost_actual: Mapped[Optional[int]] = mapped_column(BigInteger)
+    service_value: Mapped[Optional[int]] = mapped_column(BigInteger)
+    description: Mapped[Optional[str]] = mapped_column(String(2000))
+    notes: Mapped[Optional[str]] = mapped_column(String(2000))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+
+
+class ProjectUpdate(Base):
+    __tablename__ = "project_updates"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    project_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"))
+    timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    text: Mapped[Optional[str]] = mapped_column(String(2000))
+    images: Mapped[Optional[dict]] = mapped_column(JSON)  # list of FileObject ids
+
+
+class ProjectReport(Base):
+    __tablename__ = "project_reports"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    project_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"))
+    category_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
+    division_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
+    description: Mapped[Optional[str]] = mapped_column(String(2000))
+    images: Mapped[Optional[dict]] = mapped_column(JSON)
+    status: Mapped[Optional[str]] = mapped_column(String(100))
+
+
+class Client(Base):
+    __tablename__ = "clients"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    address: Mapped[Optional[str]] = mapped_column(String(255))
+    city: Mapped[Optional[str]] = mapped_column(String(100))
+    province: Mapped[Optional[str]] = mapped_column(String(100))
+    country: Mapped[Optional[str]] = mapped_column(String(100))
+    type_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
+    status_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
+    payment_terms_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
+    billing_email: Mapped[Optional[str]] = mapped_column(String(255))
+    po_required: Mapped[bool] = mapped_column(Boolean, default=False)
+    tax_number: Mapped[Optional[str]] = mapped_column(String(100))
+    dataforma_id: Mapped[Optional[str]] = mapped_column(String(100), unique=True)
+
+
+class ClientContact(Base):
+    __tablename__ = "client_contacts"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    client_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("clients.id", ondelete="CASCADE"))
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    email: Mapped[Optional[str]] = mapped_column(String(255))
+    phone: Mapped[Optional[str]] = mapped_column(String(100))
+    is_primary: Mapped[bool] = mapped_column(Boolean, default=False)
+    sort_index: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class Employee(Base):
+    __tablename__ = "employees"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    job_title: Mapped[Optional[str]] = mapped_column(String(255))
+    department: Mapped[Optional[str]] = mapped_column(String(255))
+    email_corporate: Mapped[Optional[str]] = mapped_column(String(255), unique=True)
+    bamboohr_id: Mapped[Optional[str]] = mapped_column(String(100), unique=True)
+    phone: Mapped[Optional[str]] = mapped_column(String(100))
+    manager_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
+
+
+class CalendarSource(Base):
+    __tablename__ = "calendar_sources"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    type: Mapped[str] = mapped_column(String(50))  # personal|shared|org
+    account: Mapped[Optional[str]] = mapped_column(String(255))
+    permissions: Mapped[Optional[str]] = mapped_column(String(50))  # delegated|application
+
+
+class CalendarEvent(Base):
+    __tablename__ = "calendar_events"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    source_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("calendar_sources.id", ondelete="CASCADE"))
+    owner_email: Mapped[Optional[str]] = mapped_column(String(255))
+    subject: Mapped[Optional[str]] = mapped_column(String(500))
+    start: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    end: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    is_private: Mapped[bool] = mapped_column(Boolean, default=False)
+    attendee_status: Mapped[Optional[str]] = mapped_column(String(50))
+    last_synced_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+
+
+class SettingList(Base):
+    __tablename__ = "setting_lists"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    name: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
+
+
+class SettingItem(Base):
+    __tablename__ = "setting_items"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    list_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("setting_lists.id", ondelete="CASCADE"))
+    label: Mapped[str] = mapped_column(String(255), nullable=False)
+    value: Mapped[Optional[str]] = mapped_column(String(255))
+    sort_index: Mapped[int] = mapped_column(Integer, default=0)
+
+

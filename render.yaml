@@ -1,0 +1,25 @@
+services:
+  - type: web
+    name: mk-hub-api
+    env: docker
+    plan: starter
+    autoDeploy: true
+    healthCheckPath: /
+    envVars:
+      - key: JWT_SECRET
+        generateValue: true
+      - key: AUTO_CREATE_DB
+        value: "true"
+      - key: DATABASE_URL
+        value: "sqlite:////opt/render/project/src/var/prod.db"
+    disk:
+      name: data
+      mountPath: /opt/render/project/src/var
+      sizeGB: 1
+      - key: ADMIN_USERNAME
+        value: "admin"
+      - key: ADMIN_EMAIL
+        value: "admin@example.com"
+      - key: ADMIN_PASSWORD
+        generateValue: true
+
