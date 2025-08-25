@@ -46,38 +46,46 @@ class MeResponse(BaseModel):
 
 class EmployeeProfileInput(BaseModel):
     # personal info
-    first_name: Optional[str]
-    last_name: Optional[str]
-    preferred_name: Optional[str]
-    gender: Optional[str]
-    date_of_birth: Optional[str]
-    marital_status: Optional[str]
-    nationality: Optional[str]
-    phone: Optional[str]
-    mobile_phone: Optional[str]
-    address_line1: Optional[str]
-    address_line2: Optional[str]
-    city: Optional[str]
-    province: Optional[str]
-    postal_code: Optional[str]
-    country: Optional[str]
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    preferred_name: Optional[str] = None
+    gender: Optional[str] = None
+    date_of_birth: Optional[str] = None
+    marital_status: Optional[str] = None
+    nationality: Optional[str] = None
+    phone: Optional[str] = None
+    mobile_phone: Optional[str] = None
+    address_line1: Optional[str] = None
+    address_line2: Optional[str] = None
+    city: Optional[str] = None
+    province: Optional[str] = None
+    postal_code: Optional[str] = None
+    country: Optional[str] = None
     # employment
-    hire_date: Optional[str]
-    termination_date: Optional[str]
-    job_title: Optional[str]
-    division: Optional[str]
-    work_email: Optional[EmailStr]
-    work_phone: Optional[str]
-    manager_user_id: Optional[str]
+    hire_date: Optional[str] = None
+    termination_date: Optional[str] = None
+    job_title: Optional[str] = None
+    division: Optional[str] = None
+    work_email: Optional[EmailStr] = None
+    work_phone: Optional[str] = None
+    manager_user_id: Optional[str] = None
     # financial/contract
-    pay_rate: Optional[str]
-    pay_type: Optional[str]
-    employment_type: Optional[str]
+    pay_rate: Optional[str] = None
+    pay_type: Optional[str] = None
+    employment_type: Optional[str] = None
     # legal
-    sin_number: Optional[str]
-    work_permit_status: Optional[str]
-    visa_status: Optional[str]
-    emergency_contact_name: Optional[str]
-    emergency_contact_relationship: Optional[str]
-    emergency_contact_phone: Optional[str]
+    sin_number: Optional[str] = None
+    work_permit_status: Optional[str] = None
+    visa_status: Optional[str] = None
+    emergency_contact_name: Optional[str] = None
+    emergency_contact_relationship: Optional[str] = None
+    emergency_contact_phone: Optional[str] = None
+
+
+class RegisterPayload(BaseModel):
+    invite_token: str
+    password: str = Field(min_length=8)
+    first_name: str
+    last_name: str
+    profile: Optional[EmployeeProfileInput] = None
 

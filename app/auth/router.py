@@ -14,6 +14,7 @@ from ..schemas.auth import (
     UsernameSuggestResponse,
     InviteRequest,
     RegisterRequest,
+    RegisterPayload,
     EmployeeProfileInput,
     LoginRequest,
     TokenResponse,
@@ -156,12 +157,8 @@ def admin_delete_invite_by_token(
 
 
 @router.post("/register", response_model=TokenResponse)
-def register(
-    req: RegisterRequest,
-    profile: Optional[EmployeeProfileInput] = Body(default=None),
-    db: Session = Depends(get_db),
-):
-    inv: Optional[Invite] = db.query(Invite).filter(Invite.token == req.invite_token).first()
+def register(payload: RegisterPayload, db: Session = Depends(get_db)):
+    inv: Optional[Invite] = db.query(Invite).filter(Invite.token == payload.invite_token).first()
     if not inv:
         raise HTTPException(status_code=400, detail="Invalid or expired invite")
     # Handle naive datetimes from SQLite by assuming UTC
@@ -172,8 +169,8 @@ def register(
     if inv.accepted_at is not None or (expires_at and expires_at < now_utc):
         raise HTTPException(status_code=400, detail="Invalid or expired invite")
     # If user provided names, compute username lastName + first initial, else use suggested/email local part
-    if req.first_name and req.last_name:
-        base_username = compute_username(req.first_name, req.last_name)
+    if payload.first_name and payload.last_name:
+        base_username = compute_username(payload.first_name, payload.last_name)
     else:
         base_username = inv.suggested_username or slugify(inv.email_personal.split("@")[0])
     # ensure unique
@@ -188,7 +185,7 @@ def register(
     user = User(
         username=username,
         email_personal=email_personal,
-        password_hash=get_password_hash(req.password),
+        password_hash=get_password_hash(payload.password),
         is_active=True,
     )
     db.add(user)
@@ -198,9 +195,9 @@ def register(
     # Create or update profile with provided details (non-breaking if omitted)
     try:
         from ..models.models import EmployeeProfile
-        if profile:
+        if payload.profile:
             ep = EmployeeProfile(user_id=user.id)
-            for field, value in profile.dict(exclude_unset=True).items():
+            for field, value in payload.profile.dict(exclude_unset=True).items():
                 setattr(ep, field, value)
             db.add(ep)
             db.commit()

@@ -181,7 +181,7 @@ def ui_register() -> HTMLResponse:
 <title>Register</title>
 <h2>Accept Invite</h2>
 <form onsubmit="reg(event)">
-  <input id="token" placeholder="invite token" required />
+  <input id="token" type="hidden" />
   <div class="row">
     <input id="first" placeholder="first name" required />
     <input id="last" placeholder="last name" required />
