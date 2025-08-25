@@ -167,7 +167,7 @@ def ui_login() -> HTMLResponse:
 </form>
 <pre id="out"></pre>
 <script>
-async function login(ev){ev.preventDefault(); const r = await fetch('/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({identifier:document.getElementById('id').value,password:document.getElementById('pw').value})}); const j = await r.json(); if(j.access_token){ localStorage.setItem('user_token', j.access_token); location.href='/ui'; } else { document.getElementById('out').textContent=JSON.stringify(j,null,2); }}
+async function login(ev){ev.preventDefault(); const r = await fetch('/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({identifier:document.getElementById('id').value,password:document.getElementById('pw').value})}); const j = await r.json(); if(j.access_token){ localStorage.setItem('user_token', j.access_token); location.href='/ui/home'; } else { document.getElementById('out').textContent=JSON.stringify(j,null,2); }}
 </script>
 """
     return HTMLResponse(content=html)
@@ -260,3 +260,78 @@ async function reg(ev){
     return HTMLResponse(content=html)
 
 
+@router.get("/ui/home", response_class=HTMLResponse)
+def ui_home() -> HTMLResponse:
+    html = """
+<!doctype html>
+<meta charset='utf-8'>
+<title>Home</title>
+<h2>Home</h2>
+<div id="user"></div>
+<button onclick="gotoProfile()">Set My Information</button>
+<script>
+const token = localStorage.getItem('user_token');
+if(!token){ location.href='/ui/login'; }
+fetch('/auth/me', { headers:{ Authorization:'Bearer '+token } }).then(r=>r.json()).then(u=>{ document.getElementById('user').textContent = 'Hello, ' + (u.username || 'user'); });
+function gotoProfile(){ location.href='/ui/profile'; }
+</script>
+"""
+    return HTMLResponse(content=html)
+
+
+@router.get("/ui/profile", response_class=HTMLResponse)
+def ui_profile() -> HTMLResponse:
+    html = """
+<!doctype html>
+<meta charset='utf-8'>
+<title>My Profile</title>
+<h2>My Profile</h2>
+<form onsubmit="save(event)">
+  <div class=\"row\"> <input id=\"first\" placeholder=\"first name\" /> <input id=\"last\" placeholder=\"last name\" /> </div>
+  <input id=\"preferred\" placeholder=\"preferred name\" />
+  <div class=\"row\"> <input id=\"phone\" placeholder=\"phone\" /> <input id=\"mobile\" placeholder=\"mobile\" /> </div>
+  <div class=\"row\"> <input id=\"dob\" placeholder=\"date of birth YYYY-MM-DD\" /> <input id=\"job\" placeholder=\"job title\" /> </div>
+  <div class=\"row\"> <input id=\"address1\" placeholder=\"address line 1\" /> <input id=\"address2\" placeholder=\"address line 2\" /> </div>
+  <div class=\"row\"> <input id=\"city\" placeholder=\"city\" /> <input id=\"province\" placeholder=\"province\" /> </div>
+  <div class=\"row\"> <input id=\"postal\" placeholder=\"postal code\" /> <input id=\"country\" placeholder=\"country\" /> </div>
+  <button>Save</button> <a href=\"/ui/home\">Back</a>
+</form>
+<pre id=\"msg\"></pre>
+<script>
+const token = localStorage.getItem('user_token');
+if(!token){ location.href='/ui/login'; }
+fetch('/auth/me/profile', { headers:{ Authorization:'Bearer '+token }}).then(r=>r.json()).then(d=>{
+  if(d && d.profile){
+    const p = d.profile;
+    const set=(id,v)=>{const el=document.getElementById(id); if(el) el.value = v || ''};
+    set('first', p.first_name); set('last', p.last_name); set('preferred', p.preferred_name);
+    set('phone', p.phone); set('mobile', p.mobile_phone); set('dob', p.date_of_birth);
+    set('job', p.job_title); set('address1', p.address_line1); set('address2', p.address_line2);
+    set('city', p.city); set('province', p.province); set('postal', p.postal_code); set('country', p.country);
+  }
+});
+
+async function save(ev){
+  ev.preventDefault();
+  const body = {
+    first_name: document.getElementById('first').value || null,
+    last_name: document.getElementById('last').value || null,
+    preferred_name: document.getElementById('preferred').value || null,
+    phone: document.getElementById('phone').value || null,
+    mobile_phone: document.getElementById('mobile').value || null,
+    date_of_birth: document.getElementById('dob').value || null,
+    job_title: document.getElementById('job').value || null,
+    address_line1: document.getElementById('address1').value || null,
+    address_line2: document.getElementById('address2').value || null,
+    city: document.getElementById('city').value || null,
+    province: document.getElementById('province').value || null,
+    postal_code: document.getElementById('postal').value || null,
+    country: document.getElementById('country').value || null,
+  };
+  const r = await fetch('/auth/me/profile', { method:'PUT', headers:{ 'Content-Type':'application/json', Authorization:'Bearer '+token }, body: JSON.stringify(body) });
+  const txt = await r.text();
+  document.getElementById('msg').textContent = txt;
+}
+</script>
+"""
+    return HTMLResponse(content=html)

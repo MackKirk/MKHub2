@@ -298,3 +298,85 @@ def outlook_connect(user: User = Depends(get_current_user)):
 def outlook_disconnect(user: User = Depends(get_current_user)):
     return {"status": "not_implemented"}
 
+
+# Self-profile read/update
+@router.get("/me/profile")
+def my_profile(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    from ..models.models import EmployeeProfile
+
+    ep = db.query(EmployeeProfile).filter(EmployeeProfile.user_id == user.id).first()
+    data = {
+        "user": {
+            "id": str(user.id),
+            "username": user.username,
+            "email": user.email_personal,
+            "is_active": user.is_active,
+            "created_at": user.created_at.isoformat() if user.created_at else None,
+            "last_login_at": user.last_login_at.isoformat() if user.last_login_at else None,
+            "roles": [r.name for r in user.roles],
+        },
+        "profile": None,
+    }
+    if ep:
+        def _dt(x):
+            return x.isoformat() if x else None
+        data["profile"] = {
+            "first_name": ep.first_name,
+            "last_name": ep.last_name,
+            "preferred_name": ep.preferred_name,
+            "gender": ep.gender,
+            "date_of_birth": _dt(ep.date_of_birth),
+            "marital_status": ep.marital_status,
+            "nationality": ep.nationality,
+            "phone": ep.phone,
+            "mobile_phone": ep.mobile_phone,
+            "address_line1": ep.address_line1,
+            "address_line2": ep.address_line2,
+            "city": ep.city,
+            "province": ep.province,
+            "postal_code": ep.postal_code,
+            "country": ep.country,
+            "hire_date": _dt(ep.hire_date),
+            "termination_date": _dt(ep.termination_date),
+            "job_title": ep.job_title,
+            "division": ep.division,
+            "work_email": ep.work_email,
+            "work_phone": ep.work_phone,
+        }
+    return data
+
+
+@router.put("/me/profile")
+def update_my_profile(payload: EmployeeProfileInput, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    from ..models.models import EmployeeProfile
+
+    def _parse_dt(value: Optional[str]) -> Optional[datetime]:
+        if not value:
+            return None
+        for fmt in ("%Y-%m-%d", "%Y%m%d", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M:%S%z"):
+            try:
+                dt = datetime.strptime(value, fmt)
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+                return dt
+            except Exception:
+                continue
+        return None
+
+    ep = db.query(EmployeeProfile).filter(EmployeeProfile.user_id == user.id).first()
+    if not ep:
+        ep = EmployeeProfile(user_id=user.id)
+        db.add(ep)
+
+    data = payload.dict(exclude_unset=True)
+    for k in ("date_of_birth", "hire_date", "termination_date"):
+        if k in data:
+            data[k] = _parse_dt(data.get(k))
+
+    for field, value in data.items():
+        setattr(ep, field, value)
+    ep.updated_at = datetime.now(timezone.utc)
+    ep.updated_by = user.id
+    db.commit()
+    return {"status": "ok"}
+
