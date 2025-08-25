@@ -197,16 +197,42 @@ def register(payload: RegisterPayload, db: Session = Depends(get_db)):
     db.commit()
 
     # Create or update profile with provided details (non-breaking if omitted)
-    try:
-        from ..models.models import EmployeeProfile
-        if payload.profile:
+    from ..models.models import EmployeeProfile
+
+    def _parse_dt(value: Optional[str]) -> Optional[datetime]:
+        if not value:
+            return None
+        for fmt in ("%Y-%m-%d", "%Y%m%d", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M:%S%z"):
+            try:
+                dt = datetime.strptime(value, fmt)
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+                return dt
+            except Exception:
+                continue
+        return None
+
+    if payload.profile:
+        try:
             ep = EmployeeProfile(user_id=user.id)
-            for field, value in payload.profile.dict(exclude_unset=True).items():
+            data = payload.profile.dict(exclude_unset=True)
+            # Convert date-like fields
+            for k in ("date_of_birth", "hire_date", "termination_date"):
+                if k in data:
+                    data[k] = _parse_dt(data.get(k))
+            # Convert manager id to UUID if provided
+            if data.get("manager_user_id"):
+                try:
+                    data["manager_user_id"] = uuid.UUID(str(data["manager_user_id"]))
+                except Exception:
+                    data["manager_user_id"] = None
+            for field, value in data.items():
                 setattr(ep, field, value)
             db.add(ep)
             db.commit()
-    except Exception:
-        pass
+        except Exception as e:
+            structlog.get_logger().warning("profile_create_failed", error=str(e))
+            db.rollback()
 
     access = create_access_token(str(user.id), roles=[r.name for r in user.roles])
     refresh = create_refresh_token(str(user.id))
