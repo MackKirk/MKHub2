@@ -182,6 +182,10 @@ def register(payload: RegisterPayload, db: Session = Depends(get_db)):
 
     # Enforce personal email as the invited email (cannot be changed at registration)
     email_personal = inv.email_personal
+    # If the email is already registered, fail early with a clear message
+    existing = db.query(User).filter(User.email_personal == email_personal).first()
+    if existing:
+        raise HTTPException(status_code=409, detail="Email already registered. Please log in or ask admin to reset this user.")
     user = User(
         username=username,
         email_personal=email_personal,
