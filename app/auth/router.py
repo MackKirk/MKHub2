@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Body
 from sqlalchemy.orm import Session
 from slugify import slugify
 
@@ -156,7 +156,11 @@ def admin_delete_invite_by_token(
 
 
 @router.post("/register", response_model=TokenResponse)
-def register(req: RegisterRequest, profile: EmployeeProfileInput | None = None, db: Session = Depends(get_db)):
+def register(
+    req: RegisterRequest,
+    profile: Optional[EmployeeProfileInput] = Body(default=None),
+    db: Session = Depends(get_db),
+):
     inv: Optional[Invite] = db.query(Invite).filter(Invite.token == req.invite_token).first()
     if not inv:
         raise HTTPException(status_code=400, detail="Invalid or expired invite")
@@ -179,7 +183,8 @@ def register(req: RegisterRequest, profile: EmployeeProfileInput | None = None, 
         username = f"{base_username}{i}"
         i += 1
 
-    email_personal = req.email_personal or inv.email_personal
+    # Enforce personal email as the invited email (cannot be changed at registration)
+    email_personal = inv.email_personal
     user = User(
         username=username,
         email_personal=email_personal,

@@ -183,10 +183,30 @@ def ui_register() -> HTMLResponse:
 <form onsubmit="reg(event)">
   <input id="token" placeholder="invite token" required />
   <div class="row">
-    <input id="first" placeholder="first name" />
-    <input id="last" placeholder="last name" />
+    <input id="first" placeholder="first name" required />
+    <input id="last" placeholder="last name" required />
   </div>
-  <input id="email" placeholder="personal email (optional)" type="email" />
+  <input id="email" placeholder="personal email (from invite)" type="email" readonly />
+  <div class="row">
+    <input id="preferred" placeholder="preferred name" />
+    <input id="phone" placeholder="phone" />
+  </div>
+  <div class="row">
+    <input id="mobile" placeholder="mobile phone" />
+    <input id="dob" placeholder="date of birth (YYYY-MM-DD)" />
+  </div>
+  <div class="row">
+    <input id="address1" placeholder="address line 1" />
+    <input id="address2" placeholder="address line 2" />
+  </div>
+  <div class="row">
+    <input id="city" placeholder="city" />
+    <input id="province" placeholder="province/state" />
+  </div>
+  <div class="row">
+    <input id="postal" placeholder="postal code" />
+    <input id="country" placeholder="country" />
+  </div>
   <input id="pw" type="password" placeholder="new password" required />
   <button>Register</button>
 </form>
@@ -195,6 +215,13 @@ def ui_register() -> HTMLResponse:
 // Pre-fill token from query string if present
 const qp = new URLSearchParams(location.search);
 document.getElementById('token').value = qp.get('token') || '';
+// Lookup invite details and lock email field
+if (qp.get('token')) {
+  fetch('/auth/invite/' + encodeURIComponent(qp.get('token')))
+    .then(r => r.json())
+    .then(j => { if (j && j.email_personal) { document.getElementById('email').value = j.email_personal; } })
+    .catch(() => {});
+}
 
 async function reg(ev){
   ev.preventDefault();
@@ -202,8 +229,19 @@ async function reg(ev){
   const pw = document.getElementById('pw').value;
   const first = document.getElementById('first').value;
   const last = document.getElementById('last').value;
-  const email = document.getElementById('email').value;
-  const r = await fetch('/auth/register', { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ invite_token:t, password:pw, first_name:first || null, last_name:last || null, email_personal: email || null }) });
+  const profile = {
+    preferred_name: document.getElementById('preferred').value || null,
+    phone: document.getElementById('phone').value || null,
+    mobile_phone: document.getElementById('mobile').value || null,
+    date_of_birth: document.getElementById('dob').value || null,
+    address_line1: document.getElementById('address1').value || null,
+    address_line2: document.getElementById('address2').value || null,
+    city: document.getElementById('city').value || null,
+    province: document.getElementById('province').value || null,
+    postal_code: document.getElementById('postal').value || null,
+    country: document.getElementById('country').value || null,
+  };
+  const r = await fetch('/auth/register', { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ invite_token:t, password:pw, first_name:first, last_name:last, profile }) });
   const txt = await r.text();
   try {
     const j = JSON.parse(txt);
