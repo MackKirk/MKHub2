@@ -31,7 +31,7 @@ def ui_root() -> HTMLResponse:
       login: async (identifier, password) => fetch('/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ identifier, password }) }).then(r => r.json()),
       me: async (token) => fetch('/auth/me', { headers: { 'Authorization': 'Bearer ' + token } }).then(r => r.json()),
       invite: async (email, token) => fetch('/auth/invite', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token }, body: JSON.stringify({ email_personal: email }) }).then(async r => { const txt = await r.text(); try { return JSON.parse(txt); } catch { return { error: txt || ('HTTP ' + r.status) }; }}),
-      register: async (invite_token, password) => fetch('/auth/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ invite_token, password }) }).then(r => r.json()),
+      register: async (invite_token, password) => fetch('/auth/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ invite_token, password }) }).then(async r => { const txt = await r.text(); try { return JSON.parse(txt); } catch { return { error: txt || ('HTTP ' + r.status) }; }}),
     };
 
     function set(id, txt) { document.getElementById(id).textContent = txt; }
@@ -82,7 +82,7 @@ def ui_root() -> HTMLResponse:
           set('registerMsg', 'Registered'); setClass('registerMsg', 'ok');
           show('meCard');
         } else {
-          set('registerMsg', JSON.stringify(res)); setClass('registerMsg', 'err');
+          set('registerMsg', typeof res === 'object' ? JSON.stringify(res) : String(res)); setClass('registerMsg', 'err');
         }
       } catch (e) { set('registerMsg', String(e)); setClass('registerMsg', 'err'); }
     }

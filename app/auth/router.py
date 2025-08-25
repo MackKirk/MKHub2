@@ -74,7 +74,14 @@ def invite_user(req: InviteRequest, db: Session = Depends(get_db), admin: User =
 @router.post("/register", response_model=TokenResponse)
 def register(req: RegisterRequest, db: Session = Depends(get_db)):
     inv: Optional[Invite] = db.query(Invite).filter(Invite.token == req.invite_token).first()
-    if not inv or inv.accepted_at is not None or inv.expires_at < datetime.now(timezone.utc):
+    if not inv:
+        raise HTTPException(status_code=400, detail="Invalid or expired invite")
+    # Handle naive datetimes from SQLite by assuming UTC
+    now_utc = datetime.now(timezone.utc)
+    expires_at = inv.expires_at
+    if expires_at and expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    if inv.accepted_at is not None or (expires_at and expires_at < now_utc):
         raise HTTPException(status_code=400, detail="Invalid or expired invite")
     username = inv.suggested_username or slugify(inv.email_personal.split("@")[0])
     # ensure unique
