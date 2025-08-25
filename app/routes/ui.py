@@ -182,6 +182,11 @@ def ui_register() -> HTMLResponse:
 <h2>Accept Invite</h2>
 <form onsubmit="reg(event)">
   <input id="token" placeholder="invite token" required />
+  <div class="row">
+    <input id="first" placeholder="first name" />
+    <input id="last" placeholder="last name" />
+  </div>
+  <input id="email" placeholder="personal email (optional)" type="email" />
   <input id="pw" type="password" placeholder="new password" required />
   <button>Register</button>
 </form>
@@ -195,7 +200,10 @@ async function reg(ev){
   ev.preventDefault();
   const t = document.getElementById('token').value;
   const pw = document.getElementById('pw').value;
-  const r = await fetch('/auth/register', { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ invite_token:t, password:pw }) });
+  const first = document.getElementById('first').value;
+  const last = document.getElementById('last').value;
+  const email = document.getElementById('email').value;
+  const r = await fetch('/auth/register', { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ invite_token:t, password:pw, first_name:first || null, last_name:last || null, email_personal: email || null }) });
   const txt = await r.text();
   try {
     const j = JSON.parse(txt);

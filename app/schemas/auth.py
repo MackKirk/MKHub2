@@ -19,6 +19,9 @@ class InviteRequest(BaseModel):
 class RegisterRequest(BaseModel):
     invite_token: str
     password: str = Field(min_length=8)
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    email_personal: Optional[EmailStr] = None
 
 
 class LoginRequest(BaseModel):

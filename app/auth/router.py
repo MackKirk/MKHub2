@@ -122,19 +122,22 @@ def register(req: RegisterRequest, db: Session = Depends(get_db)):
         expires_at = expires_at.replace(tzinfo=timezone.utc)
     if inv.accepted_at is not None or (expires_at and expires_at < now_utc):
         raise HTTPException(status_code=400, detail="Invalid or expired invite")
-    username = inv.suggested_username or slugify(inv.email_personal.split("@")[0])
+    # If user provided names, compute username lastName + first initial, else use suggested/email local part
+    if req.first_name and req.last_name:
+        base_username = compute_username(req.first_name, req.last_name)
+    else:
+        base_username = inv.suggested_username or slugify(inv.email_personal.split("@")[0])
     # ensure unique
-    if db.query(User).filter(User.username == username).first():
-        # find next available
-        base = username
-        i = 1
-        while db.query(User).filter(User.username == f"{base}{i}").first():
-            i += 1
-        username = f"{base}{i}"
+    username = base_username
+    i = 1
+    while db.query(User).filter(User.username == username).first():
+        username = f"{base_username}{i}"
+        i += 1
 
+    email_personal = req.email_personal or inv.email_personal
     user = User(
         username=username,
-        email_personal=inv.email_personal,
+        email_personal=email_personal,
         password_hash=get_password_hash(req.password),
         is_active=True,
     )
