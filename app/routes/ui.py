@@ -168,7 +168,9 @@ def ui_login() -> HTMLResponse:
 <pre id="out"></pre>
 <script>
 async function login(ev){ev.preventDefault(); const r = await fetch('/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({identifier:document.getElementById('id').value,password:document.getElementById('pw').value})}); const j = await r.json(); if(j.access_token){ localStorage.setItem('user_token', j.access_token); location.href='/ui/home'; } else { document.getElementById('out').textContent=JSON.stringify(j,null,2); }}
+function forgot(){ const id = (document.getElementById('id').value||'').trim(); if(!id){ alert('Enter username or email'); return; } fetch('/auth/password/forgot?identifier='+encodeURIComponent(id),{method:'POST'}).then(()=>{ alert('If the account exists, a reset email was sent.'); }); }
 </script>
+<button onclick="forgot()">Forgot password?</button>
 """
     return HTMLResponse(content=html)
 
@@ -332,6 +334,23 @@ async function save(ev){
   const txt = await r.text();
   document.getElementById('msg').textContent = txt;
 }
+</script>
+"""
+    return HTMLResponse(content=html)
+
+
+@router.get("/ui/password-reset", response_class=HTMLResponse)
+def ui_password_reset() -> HTMLResponse:
+    html = """
+<!doctype html>
+<meta charset='utf-8'>
+<title>Password Reset</title>
+<h2>Reset Password</h2>
+<form onsubmit=\"resetpw(event)\"> <input id=\"token\" placeholder=\"token\" required /> <input id=\"pw\" type=\"password\" placeholder=\"new password\" required /> <button>Reset</button></form>
+<pre id=\"msg\"></pre>
+<script>
+const qp = new URLSearchParams(location.search); document.getElementById('token').value = qp.get('token') || '';
+async function resetpw(ev){ ev.preventDefault(); const t=document.getElementById('token').value; const pw=document.getElementById('pw').value; const r = await fetch('/auth/password/reset?token='+encodeURIComponent(t)+'&new_password='+encodeURIComponent(pw), { method:'POST' }); const txt = await r.text(); document.getElementById('msg').textContent = txt; }
 </script>
 """
     return HTMLResponse(content=html)

@@ -31,6 +31,7 @@ from .security import (
 from ..logging import structlog
 import smtplib
 from email.message import EmailMessage
+import secrets
 
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -236,6 +237,27 @@ def register(payload: RegisterPayload, db: Session = Depends(get_db)):
 
     access = create_access_token(str(user.id), roles=[r.name for r in user.roles])
     refresh = create_refresh_token(str(user.id))
+    # Send username email if SMTP configured
+    try:
+        if settings.smtp_host and settings.mail_from:
+            msg = EmailMessage()
+            msg["Subject"] = f"Your {settings.app_name} account"
+            msg["From"] = settings.mail_from
+            msg["To"] = email_personal
+            msg.set_content(f"Your account is ready. Username: {username}")
+            if settings.smtp_tls:
+                with smtplib.SMTP(settings.smtp_host, settings.smtp_port) as s:
+                    s.starttls()
+                    if settings.smtp_username and settings.smtp_password:
+                        s.login(settings.smtp_username, settings.smtp_password)
+                    s.send_message(msg)
+            else:
+                with smtplib.SMTP(settings.smtp_host, settings.smtp_port) as s:
+                    if settings.smtp_username and settings.smtp_password:
+                        s.login(settings.smtp_username, settings.smtp_password)
+                    s.send_message(msg)
+    except Exception as e:
+        structlog.get_logger().warning("username_email_failed", error=str(e))
     return TokenResponse(access_token=access, refresh_token=refresh)
 
 
@@ -377,6 +399,56 @@ def update_my_profile(payload: EmployeeProfileInput, user: User = Depends(get_cu
         setattr(ep, field, value)
     ep.updated_at = datetime.now(timezone.utc)
     ep.updated_by = user.id
+    db.commit()
+    return {"status": "ok"}
+
+
+# Password reset
+@router.post("/password/forgot")
+def password_forgot(identifier: str, db: Session = Depends(get_db)):
+    user = (
+        db.query(User)
+        .filter((User.username == identifier) | (User.email_personal == identifier) | (User.email_corporate == identifier))
+        .first()
+    )
+    if not user:
+        return {"status": "ok"}
+    from ..models.models import PasswordReset
+    token = secrets.token_urlsafe(32)
+    pr = PasswordReset(user_id=user.id, token=token, expires_at=datetime.now(timezone.utc) + timedelta(hours=1))
+    db.add(pr)
+    db.commit()
+    # email link
+    try:
+        if settings.smtp_host and settings.mail_from and settings.public_base_url:
+            link = f"{settings.public_base_url}/ui/password-reset?token={token}"
+            msg = EmailMessage()
+            msg["Subject"] = f"Reset your {settings.app_name} password"
+            msg["From"] = settings.mail_from
+            msg["To"] = user.email_personal
+            msg.set_content(f"Click to reset your password: {link}")
+            with smtplib.SMTP(settings.smtp_host, settings.smtp_port) as s:
+                if settings.smtp_tls:
+                    s.starttls()
+                if settings.smtp_username and settings.smtp_password:
+                    s.login(settings.smtp_username, settings.smtp_password)
+                s.send_message(msg)
+    except Exception as e:
+        structlog.get_logger().warning("password_reset_email_failed", error=str(e))
+    return {"status": "ok"}
+
+
+@router.post("/password/reset")
+def password_reset(token: str, new_password: str, db: Session = Depends(get_db)):
+    from ..models.models import PasswordReset
+    pr = db.query(PasswordReset).filter(PasswordReset.token == token).first()
+    if not pr or pr.used_at is not None or pr.expires_at < datetime.now(timezone.utc):
+        raise HTTPException(status_code=400, detail="Invalid or expired token")
+    user = db.query(User).filter(User.id == pr.user_id).first()
+    if not user:
+        raise HTTPException(status_code=400, detail="Invalid token")
+    user.password_hash = get_password_hash(new_password)
+    pr.used_at = datetime.now(timezone.utc)
     db.commit()
     return {"status": "ok"}
 
