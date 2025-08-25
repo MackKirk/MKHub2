@@ -18,6 +18,7 @@ from .routes.employees import router as employees_router
 from .routes.calendar import router as calendar_router
 from .routes.settings import router as settings_router
 from .routes.integrations import router as integrations_router
+from .routes.ui import router as ui_router
 
 
 def create_app() -> FastAPI:
@@ -48,6 +49,7 @@ def create_app() -> FastAPI:
     app.include_router(calendar_router)
     app.include_router(settings_router)
     app.include_router(integrations_router)
+    app.include_router(ui_router)
 
     # Metrics
     Instrumentator().instrument(app).expose(app)
