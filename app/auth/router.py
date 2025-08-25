@@ -14,6 +14,7 @@ from ..schemas.auth import (
     UsernameSuggestResponse,
     InviteRequest,
     RegisterRequest,
+    EmployeeProfileInput,
     LoginRequest,
     TokenResponse,
     MeResponse,
@@ -155,7 +156,7 @@ def admin_delete_invite_by_token(
 
 
 @router.post("/register", response_model=TokenResponse)
-def register(req: RegisterRequest, db: Session = Depends(get_db)):
+def register(req: RegisterRequest, profile: EmployeeProfileInput | None = None, db: Session = Depends(get_db)):
     inv: Optional[Invite] = db.query(Invite).filter(Invite.token == req.invite_token).first()
     if not inv:
         raise HTTPException(status_code=400, detail="Invalid or expired invite")
@@ -188,6 +189,18 @@ def register(req: RegisterRequest, db: Session = Depends(get_db)):
     db.add(user)
     inv.accepted_at = datetime.now(timezone.utc)
     db.commit()
+
+    # Create or update profile with provided details (non-breaking if omitted)
+    try:
+        from ..models.models import EmployeeProfile
+        if profile:
+            ep = EmployeeProfile(user_id=user.id)
+            for field, value in profile.dict(exclude_unset=True).items():
+                setattr(ep, field, value)
+            db.add(ep)
+            db.commit()
+    except Exception:
+        pass
 
     access = create_access_token(str(user.id), roles=[r.name for r in user.roles])
     refresh = create_refresh_token(str(user.id))

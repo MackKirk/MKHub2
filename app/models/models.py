@@ -247,3 +247,58 @@ class SettingItem(Base):
     sort_index: Mapped[int] = mapped_column(Integer, default=0)
 
 
+# Extended employee profile linked to users for onboarding
+class EmployeeProfile(Base):
+    __tablename__ = "employee_profiles"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), unique=True)
+
+    # Identidade & Login (redundant fields kept in users table)
+    created_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    last_login_date: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+
+    # Dados Pessoais
+    first_name: Mapped[Optional[str]] = mapped_column(String(100))
+    last_name: Mapped[Optional[str]] = mapped_column(String(100))
+    preferred_name: Mapped[Optional[str]] = mapped_column(String(100))
+    gender: Mapped[Optional[str]] = mapped_column(String(50))
+    date_of_birth: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    marital_status: Mapped[Optional[str]] = mapped_column(String(50))
+    nationality: Mapped[Optional[str]] = mapped_column(String(100))
+    phone: Mapped[Optional[str]] = mapped_column(String(100))
+    mobile_phone: Mapped[Optional[str]] = mapped_column(String(100))
+    address_line1: Mapped[Optional[str]] = mapped_column(String(255))
+    address_line2: Mapped[Optional[str]] = mapped_column(String(255))
+    city: Mapped[Optional[str]] = mapped_column(String(100))
+    province: Mapped[Optional[str]] = mapped_column(String(100))
+    postal_code: Mapped[Optional[str]] = mapped_column(String(50))
+    country: Mapped[Optional[str]] = mapped_column(String(100))
+
+    # Informações de Emprego
+    hire_date: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    termination_date: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    job_title: Mapped[Optional[str]] = mapped_column(String(255))
+    division: Mapped[Optional[str]] = mapped_column(String(255))
+    work_email: Mapped[Optional[str]] = mapped_column(String(255))
+    work_phone: Mapped[Optional[str]] = mapped_column(String(100))
+    manager_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+
+    # Financeiro & Contratual
+    pay_rate: Mapped[Optional[str]] = mapped_column(String(100))
+    pay_type: Mapped[Optional[str]] = mapped_column(String(50))  # hourly|salary|contract
+    employment_type: Mapped[Optional[str]] = mapped_column(String(50))  # full-time|part-time|contract
+
+    # Documentos & Legal
+    sin_number: Mapped[Optional[str]] = mapped_column(String(100))
+    work_permit_status: Mapped[Optional[str]] = mapped_column(String(100))
+    visa_status: Mapped[Optional[str]] = mapped_column(String(100))
+    emergency_contact_name: Mapped[Optional[str]] = mapped_column(String(255))
+    emergency_contact_relationship: Mapped[Optional[str]] = mapped_column(String(100))
+    emergency_contact_phone: Mapped[Optional[str]] = mapped_column(String(100))
+
+    # Sistema / Auditoria
+    created_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
+    updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    updated_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
+
