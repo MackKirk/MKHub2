@@ -174,20 +174,41 @@ async function login(ev){ev.preventDefault(); const r = await fetch('/auth/login
 
 
 @router.get("/ui/register", response_class=HTMLResponse)
-def ui_register(token: str | None = None) -> HTMLResponse:
-    html = f"""
+def ui_register() -> HTMLResponse:
+    html = """
 <!doctype html>
 <meta charset='utf-8'>
 <title>Register</title>
 <h2>Accept Invite</h2>
 <form onsubmit="reg(event)">
-  <input id="token" placeholder="invite token" value="{token or ''}" required />
+  <input id="token" placeholder="invite token" required />
   <input id="pw" type="password" placeholder="new password" required />
   <button>Register</button>
 </form>
 <div id="msg"></div>
 <script>
-async function reg(ev){ev.preventDefault(); const t=document.getElementById('token').value; const pw=document.getElementById('pw').value; const r = await fetch('/auth/register', {{method:'POST', headers:{{'Content-Type':'application/json'}}, body: JSON.stringify({{invite_token:t, password:pw}})}}); const txt = await r.text(); try {{ const j = JSON.parse(txt); if(j.access_token){{ localStorage.setItem('user_token', j.access_token); location.href='/ui'; }} else {{ document.getElementById('msg').textContent = JSON.stringify(j); }} }} catch(e) {{ document.getElementById('msg').textContent = txt; }} }
+// Pre-fill token from query string if present
+const qp = new URLSearchParams(location.search);
+document.getElementById('token').value = qp.get('token') || '';
+
+async function reg(ev){
+  ev.preventDefault();
+  const t = document.getElementById('token').value;
+  const pw = document.getElementById('pw').value;
+  const r = await fetch('/auth/register', { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ invite_token:t, password:pw }) });
+  const txt = await r.text();
+  try {
+    const j = JSON.parse(txt);
+    if (j.access_token) {
+      localStorage.setItem('user_token', j.access_token);
+      location.href = '/ui';
+    } else {
+      document.getElementById('msg').textContent = JSON.stringify(j);
+    }
+  } catch(e) {
+    document.getElementById('msg').textContent = txt;
+  }
+}
 </script>
 """
     return HTMLResponse(content=html)
