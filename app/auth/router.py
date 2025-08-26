@@ -213,8 +213,9 @@ def register(payload: RegisterPayload, db: Session = Depends(get_db)):
                 continue
         return None
 
-    if payload.profile:
-        try:
+    try:
+        ep = None
+        if payload.profile:
             ep = EmployeeProfile(user_id=user.id)
             data = payload.profile.dict(exclude_unset=True)
             # Convert date-like fields
@@ -227,13 +228,23 @@ def register(payload: RegisterPayload, db: Session = Depends(get_db)):
                     data["manager_user_id"] = uuid.UUID(str(data["manager_user_id"]))
                 except Exception:
                     data["manager_user_id"] = None
+            # Always persist names from payload
+            if payload.first_name:
+                data["first_name"] = payload.first_name
+            if payload.last_name:
+                data["last_name"] = payload.last_name
             for field, value in data.items():
                 setattr(ep, field, value)
             db.add(ep)
             db.commit()
-        except Exception as e:
-            structlog.get_logger().warning("profile_create_failed", error=str(e))
-            db.rollback()
+        else:
+            # Create minimal profile with names so UI can display them
+            ep = EmployeeProfile(user_id=user.id, first_name=payload.first_name, last_name=payload.last_name)
+            db.add(ep)
+            db.commit()
+    except Exception as e:
+        structlog.get_logger().warning("profile_create_failed", error=str(e))
+        db.rollback()
 
     access = create_access_token(str(user.id), roles=[r.name for r in user.roles])
     refresh = create_refresh_token(str(user.id))
@@ -336,6 +347,8 @@ def my_profile(user: User = Depends(get_current_user), db: Session = Depends(get
             "created_at": user.created_at.isoformat() if user.created_at else None,
             "last_login_at": user.last_login_at.isoformat() if user.last_login_at else None,
             "roles": [r.name for r in user.roles],
+            "first_name": None,
+            "last_name": None,
         },
         "profile": None,
     }
@@ -365,6 +378,10 @@ def my_profile(user: User = Depends(get_current_user), db: Session = Depends(get
             "work_email": ep.work_email,
             "work_phone": ep.work_phone,
         }
+    # Try to surface first/last name from profile for convenience
+    if ep:
+        data["user"]["first_name"] = ep.first_name
+        data["user"]["last_name"] = ep.last_name
     return data
 
 

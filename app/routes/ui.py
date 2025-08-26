@@ -289,7 +289,7 @@ def ui_profile() -> HTMLResponse:
 <title>My Profile</title>
 <h2>My Profile</h2>
 <form onsubmit="save(event)">
-  <div class=\"row\"> <input id=\"first\" placeholder=\"first name\" /> <input id=\"last\" placeholder=\"last name\" /> </div>
+  <div class=\"row\"> <input id=\"first\" placeholder=\"first name\" readonly /> <input id=\"last\" placeholder=\"last name\" readonly /> </div>
   <input id=\"preferred\" placeholder=\"preferred name\" />
   <div class=\"row\"> <input id=\"phone\" placeholder=\"phone\" /> <input id=\"mobile\" placeholder=\"mobile\" /> </div>
   <div class=\"row\"> <input id=\"dob\" placeholder=\"date of birth YYYY-MM-DD\" /> <input id=\"job\" placeholder=\"job title\" /> </div>
@@ -303,10 +303,12 @@ def ui_profile() -> HTMLResponse:
 const token = localStorage.getItem('user_token');
 if(!token){ location.href='/ui/login'; }
 fetch('/auth/me/profile', { headers:{ Authorization:'Bearer '+token }}).then(r=>r.json()).then(d=>{
-  if(d && d.profile){
-    const p = d.profile;
+  if(d){
+    const p = d.profile || {};
     const set=(id,v)=>{const el=document.getElementById(id); if(el) el.value = v || ''};
-    set('first', p.first_name); set('last', p.last_name); set('preferred', p.preferred_name);
+    set('first', p.first_name || (d.user && d.user.first_name) || '');
+    set('last', p.last_name || (d.user && d.user.last_name) || '');
+    set('preferred', p.preferred_name);
     set('phone', p.phone); set('mobile', p.mobile_phone); set('dob', p.date_of_birth);
     set('job', p.job_title); set('address1', p.address_line1); set('address2', p.address_line2);
     set('city', p.city); set('province', p.province); set('postal', p.postal_code); set('country', p.country);
