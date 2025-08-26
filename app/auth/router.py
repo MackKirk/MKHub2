@@ -442,13 +442,23 @@ def password_forgot(identifier: str, db: Session = Depends(get_db)):
 def password_reset(token: str, new_password: str, db: Session = Depends(get_db)):
     from ..models.models import PasswordReset
     pr = db.query(PasswordReset).filter(PasswordReset.token == token).first()
-    if not pr or pr.used_at is not None or pr.expires_at < datetime.now(timezone.utc):
+    if not pr:
+        raise HTTPException(status_code=400, detail="Invalid or expired token")
+    # Normalize datetimes to UTC-aware before comparison
+    now_utc = datetime.now(timezone.utc)
+    expires_at = pr.expires_at
+    if expires_at and expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    used_at = pr.used_at
+    if used_at and used_at.tzinfo is None:
+        used_at = used_at.replace(tzinfo=timezone.utc)
+    if used_at is not None or (expires_at and expires_at < now_utc):
         raise HTTPException(status_code=400, detail="Invalid or expired token")
     user = db.query(User).filter(User.id == pr.user_id).first()
     if not user:
         raise HTTPException(status_code=400, detail="Invalid token")
     user.password_hash = get_password_hash(new_password)
-    pr.used_at = datetime.now(timezone.utc)
+    pr.used_at = now_utc
     db.commit()
     return {"status": "ok"}
 
