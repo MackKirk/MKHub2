@@ -1,0 +1,15 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Login</title>
+<form onsubmit="login(event)">
+  <input id="id" placeholder="username or email" required />
+  <input id="pw" type="password" placeholder="password" required />
+  <button>Login</button>
+</form>
+<button onclick="forgot()">Forgot password?</button>
+<pre id="out"></pre>
+<script>
+async function login(ev){ev.preventDefault(); const r = await fetch('/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({identifier:document.getElementById('id').value,password:document.getElementById('pw').value})}); const j = await r.json(); if(j.access_token){ localStorage.setItem('user_token', j.access_token); location.href='/ui/home.html'; } else { document.getElementById('out').textContent=JSON.stringify(j,null,2); }}
+function forgot(){ const id = (document.getElementById('id').value||'').trim(); if(!id){ alert('Enter username or email'); return; } fetch('/auth/password/forgot?identifier='+encodeURIComponent(id),{method:'POST'}).then(()=>{ alert('If the account exists, a reset email was sent.'); }); }
+</script>
+

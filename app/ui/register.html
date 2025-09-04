@@ -1,0 +1,42 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Register</title>
+<h2>Accept Invite</h2>
+<form onsubmit="reg(event)">
+  <input id="token" type="hidden" />
+  <div class="row" style="display:grid;gap:8px;grid-template-columns:1fr 1fr;max-width:640px">
+    <input id="first" placeholder="first name" required />
+    <input id="last" placeholder="last name" required />
+  </div>
+  <input id="email" placeholder="personal email (from invite)" type="email" readonly />
+  <div class="row" style="display:grid;gap:8px;grid-template-columns:1fr 1fr;max-width:640px">
+    <input id="preferred" placeholder="preferred name" />
+    <input id="phone" placeholder="phone" />
+  </div>
+  <input id="pw" type="password" placeholder="new password" required />
+  <button>Register</button>
+  <a href="/ui/login.html">Back to Login</a>
+</form>
+<pre id="msg"></pre>
+<script>
+const qp = new URLSearchParams(location.search);
+document.getElementById('token').value = qp.get('token') || '';
+if (qp.get('token')) {
+  fetch('/auth/invite/' + encodeURIComponent(qp.get('token')))
+    .then(r => r.json())
+    .then(j => { if (j && j.email_personal) { document.getElementById('email').value = j.email_personal; } })
+    .catch(() => {});
+}
+async function reg(ev){
+  ev.preventDefault();
+  const t = document.getElementById('token').value;
+  const pw = document.getElementById('pw').value;
+  const first = document.getElementById('first').value;
+  const last = document.getElementById('last').value;
+  const profile = { preferred_name: document.getElementById('preferred').value || null, phone: document.getElementById('phone').value || null };
+  const r = await fetch('/auth/register', { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ invite_token:t, password:pw, first_name:first, last_name:last, profile }) });
+  const txt = await r.text();
+  try { const j = JSON.parse(txt); if (j.access_token) { localStorage.setItem('user_token', j.access_token); location.href = '/ui/home.html'; } else { document.getElementById('msg').textContent = JSON.stringify(j); } } catch(e) { document.getElementById('msg').textContent = txt; }
+}
+</script>
+

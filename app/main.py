@@ -1,5 +1,6 @@
 import os
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from prometheus_fastapi_instrumentator import Instrumentator
 from slowapi import Limiter
@@ -18,7 +19,6 @@ from .routes.employees import router as employees_router
 from .routes.calendar import router as calendar_router
 from .routes.settings import router as settings_router
 from .routes.integrations import router as integrations_router
-from .routes.ui import router as ui_router
 
 
 def create_app() -> FastAPI:
@@ -49,7 +49,8 @@ def create_app() -> FastAPI:
     app.include_router(calendar_router)
     app.include_router(settings_router)
     app.include_router(integrations_router)
-    app.include_router(ui_router)
+    # Static UI
+    app.mount("/ui", StaticFiles(directory="app/ui", html=True), name="ui")
 
     # Metrics
     Instrumentator().instrument(app).expose(app)

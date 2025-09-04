@@ -1,0 +1,8 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>MK Hub</title>
+<script>
+const token = localStorage.getItem('user_token');
+if (token) { location.replace('/ui/home.html'); } else { location.replace('/ui/login.html'); }
+</script>
+
