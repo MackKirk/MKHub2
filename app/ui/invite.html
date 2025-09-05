@@ -5,7 +5,11 @@
 <div id="sidebar"></div>
 <div class="main">
   <h2>Invite Users</h2>
-  <form onsubmit="send(ev)"> <input id="email" type="email" placeholder="personal email" required /> <button>Invite</button></form>
+  <form onsubmit="send(ev)">
+    <input id="email" type="email" placeholder="personal email" required />
+    <button id="inviteBtn" type="submit">Invite</button>
+    <span id="status" class="muted"></span>
+  </form>
   <pre id="msg"></pre>
 </div>
 <script>
@@ -15,6 +19,28 @@ fetch('/ui/sidebar.html').then(r=>r.text()).then(html=>{
   document.getElementById('sidebar').outerHTML = html;
   const el = document.getElementById('nav-invite'); if(el){ el.classList.add('active'); }
 });
-async function send(ev){ ev.preventDefault(); const email=document.getElementById('email').value; const r = await fetch('/auth/invite',{ method:'POST', headers:{ 'Content-Type':'application/json', Authorization:'Bearer '+token }, body: JSON.stringify({ email_personal: email })}); const txt = await r.text(); document.getElementById('msg').textContent = txt; }
+async function send(ev){
+  ev.preventDefault();
+  const email = document.getElementById('email').value;
+  const btn = document.getElementById('inviteBtn');
+  const statusEl = document.getElementById('status');
+  const msg = document.getElementById('msg');
+  btn.disabled = true; btn.textContent = 'Inviting...'; statusEl.textContent = 'Sending...'; msg.textContent = '';
+  try {
+    const r = await fetch('/auth/invite', {
+      method:'POST',
+      headers:{ 'Content-Type':'application/json', Authorization:'Bearer '+token },
+      body: JSON.stringify({ email_personal: email })
+    });
+    const raw = await r.text();
+    let out = raw;
+    try { const j = JSON.parse(raw); out = j.invite_token ? ('Invite created: ' + j.invite_token) : JSON.stringify(j); } catch(_) {}
+    msg.textContent = out;
+  } catch (e) {
+    msg.textContent = String(e);
+  } finally {
+    btn.disabled = false; btn.textContent = 'Invite'; statusEl.textContent = '';
+  }
+}
 </script>
 
