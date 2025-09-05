@@ -6,4 +6,18 @@
   <a href="/ui/invite.html" id="nav-invite">Invite Users</a>
   <button onclick="logout()">Logout</button>
 </div>
+<script>
+function logout(){ localStorage.removeItem('user_token'); location.href='/ui/login.html'; }
+const token = localStorage.getItem('user_token');
+if(!token){ location.href='/ui/login.html'; }
+fetch('/auth/me', { headers:{ Authorization:'Bearer '+token } })
+  .then(r => { if (r.status === 401) { localStorage.removeItem('user_token'); location.href='/ui/login.html'; return null; } return r ? r.json() : null; })
+  .then(u => { if (!u) return; const el=document.getElementById('hello'); if(el){ el.textContent = 'Hello, ' + (u.username || 'user'); }});
+// Highlight active
+const path = location.pathname;
+for (const id of ['home','profile','invite']) {
+  const el = document.getElementById('nav-'+id);
+  if (el && path.endsWith(id+'.html')) { el.classList.add('active'); }
+}
+</script>
 
