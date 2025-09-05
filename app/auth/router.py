@@ -420,6 +420,16 @@ def update_my_profile(payload: EmployeeProfileInput, user: User = Depends(get_cu
     return {"status": "ok"}
 
 
+@router.get("/users/options")
+def users_options(q: Optional[str] = None, limit: int = 100, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    query = db.query(User)
+    if q:
+        like = f"%{q}%"
+        query = query.filter((User.username.ilike(like)) | (User.email_personal.ilike(like)))
+    rows = query.limit(limit).all()
+    return [{"id": str(u.id), "username": u.username, "email": u.email_personal} for u in rows]
+
+
 # Password reset
 @router.post("/password/forgot")
 def password_forgot(identifier: str, db: Session = Depends(get_db)):

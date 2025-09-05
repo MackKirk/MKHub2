@@ -4,6 +4,7 @@
 <link rel="stylesheet" href="/ui/styles.css">
 <script src="/ui/app.js"></script>
 <script src="/ui/countries.js"></script>
+<script src="/ui/geo.js"></script>
 <div id="sidebar"></div>
 <div class="main">
 <h2>My Profile</h2>
@@ -201,28 +202,59 @@ async function save(ev){
   document.getElementById('msg').textContent = txt;
 }
 
-// Populate country and city options
+// Populate country/state/city with geo loader
 const countrySel = document.getElementById('country');
-const nationalitySel = document.getElementById('nationality');
-if (window.MKHubCountries) {
-  for (const c of window.MKHubCountries) {
-    const o1=document.createElement('option'); o1.textContent=c; o1.value=c; countrySel && countrySel.appendChild(o1);
-    const o2=document.createElement('option'); o2.textContent=c; o2.value=c; nationalitySel && nationalitySel.appendChild(o2);
-  }
-}
-// Simple city list placeholder for Canada/USA; can be extended or backed by API later
+const stateInp = document.getElementById('province');
 const citySel = document.getElementById('city');
-function populateCities(country){
-  if (!citySel) return;
-  citySel.innerHTML='';
-  const placeholder=document.createElement('option'); placeholder.value=''; placeholder.textContent='Select...'; citySel.appendChild(placeholder);
-  const lists = {
-    Canada:["Vancouver","Toronto","Montreal","Calgary","Ottawa"],
-    "United States":["New York","Los Angeles","Chicago","Houston","Phoenix"],
-  };
-  const arr = lists[country] || [];
-  for (const n of arr){ const o=document.createElement('option'); o.value=n; o.textContent=n; citySel.appendChild(o);}  
-}
-countrySel && countrySel.addEventListener('change', e=>populateCities(e.target.value));
+const nationalitySel = document.getElementById('nationality');
+(async function initGeo(){
+  await (window.MKHubGeo && window.MKHubGeo.load ? window.MKHubGeo.load() : Promise.resolve());
+  const data = (window.MKHubGeo && window.MKHubGeo.data) || [];
+  // Countries for country + nationality
+  for (const c of data){
+    const opt1=document.createElement('option'); opt1.value=c.name; opt1.textContent=c.name; if(countrySel) countrySel.appendChild(opt1);
+    const opt2=document.createElement('option'); opt2.value=c.name; opt2.textContent=c.name; if(nationalitySel) nationalitySel.appendChild(opt2);
+  }
+  function populateStates(country){
+    const c = data.find(x=>x.name===country);
+    if (!c) { stateInp.value=''; citySel.innerHTML='<option value="">Select...</option>'; return; }
+    // Use a datalist-like suggestion by showing placeholder; keep input for free text
+    stateInp.placeholder = (c.states || []).map(s=>s.name).slice(0,6).join(', ');
+    populateCities(country, stateInp.value);
+  }
+  function populateCities(country, state){
+    citySel.innerHTML = '<option value="">Select...</option>';
+    const c = data.find(x=>x.name===country);
+    if (!c) return;
+    let cities = [];
+    if (state){
+      const s = (c.states||[]).find(s=>s.name===state);
+      cities = s && s.cities ? s.cities.map(x=>x.name) : [];
+    } else {
+      for (const s of (c.states||[])){
+        if (s.cities) for (const ct of s.cities) cities.push(ct.name);
+      }
+      cities = cities.slice(0,200);
+    }
+    for (const n of cities){ const o=document.createElement('option'); o.value=n; o.textContent=n; citySel.appendChild(o); }
+  }
+  countrySel && countrySel.addEventListener('change', e=>populateStates(e.target.value));
+  stateInp && stateInp.addEventListener('change', ()=>populateCities(countrySel.value, stateInp.value));
+})();
+
+// Populate manager options
+(async function loadManagers(){
+  const token = MKHubUI.getTokenOrRedirect();
+  try{
+    const r = await fetch('/auth/users/options', { headers:{ Authorization:'Bearer '+token }});
+    if (r.ok){
+      const arr = await r.json();
+      const sel = document.getElementById('manager_user_id');
+      if (sel){
+        sel.innerHTML = '<option value="">Select...</option>' + arr.map(u=>`<option value="${u.id}">${u.username} (${u.email})</option>`).join('');
+      }
+    }
+  } catch(e){}
+})();
 </script>
 </div>
