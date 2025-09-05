@@ -2,6 +2,7 @@
 <meta charset="utf-8">
 <title>My Profile</title>
 <link rel="stylesheet" href="/ui/styles.css">
+<script src="/ui/app.js"></script>
 <div id="sidebar"></div>
 <div class="main">
 <h2>My Profile</h2>
@@ -17,12 +18,8 @@
 </form>
 <pre id="msg" class="muted"></pre>
 <script>
-const token = localStorage.getItem('user_token');
-if(!token){ location.href='/ui/login.html'; }
-fetch('/ui/sidebar.html').then(r=>r.text()).then(html=>{
-  document.getElementById('sidebar').outerHTML = html;
-  const el = document.getElementById('nav-profile'); if(el){ el.classList.add('active'); }
-});
+const token = MKHubUI.getTokenOrRedirect();
+MKHubUI.initSidebar('profile');
 fetch('/auth/me/profile', { headers:{ Authorization:'Bearer '+token }}).then(r=>r.json()).then(d=>{
   if(d){
     const p = d.profile || {};
@@ -53,7 +50,7 @@ async function save(ev){
     postal_code: document.getElementById('postal').value || null,
     country: document.getElementById('country').value || null,
   };
-  const r = await fetch('/auth/me/profile', { method:'PUT', headers:{ 'Content-Type':'application/json', Authorization:'Bearer '+token }, body: JSON.stringify(body) });
+  const r = await fetch('/auth/me/profile', { method:'PUT', headers:{ 'Content-Type':'application/json', Authorization:'Bearer '+MKHubUI.getTokenOrRedirect() }, body: JSON.stringify(body) });
   const txt = await r.text();
   document.getElementById('msg').textContent = txt;
 }

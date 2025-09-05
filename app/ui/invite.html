@@ -2,6 +2,7 @@
 <meta charset="utf-8">
 <title>Invite Users</title>
 <link rel="stylesheet" href="/ui/styles.css">
+<script src="/ui/app.js"></script>
 <div id="sidebar"></div>
 <div class="main">
   <h2>Invite Users</h2>
@@ -13,12 +14,8 @@
   <pre id="msg"></pre>
 </div>
 <script>
-const token = localStorage.getItem('user_token');
-if(!token){ location.href='/ui/login.html'; }
-fetch('/ui/sidebar.html').then(r=>r.text()).then(html=>{
-  document.getElementById('sidebar').outerHTML = html;
-  const el = document.getElementById('nav-invite'); if(el){ el.classList.add('active'); }
-});
+const token = MKHubUI.getTokenOrRedirect();
+MKHubUI.initSidebar('invite');
 async function send(ev){
   ev.preventDefault();
   const email = document.getElementById('email').value;
@@ -29,7 +26,7 @@ async function send(ev){
   try {
     const r = await fetch('/auth/invite', {
       method:'POST',
-      headers:{ 'Content-Type':'application/json', Authorization:'Bearer '+token },
+      headers:{ 'Content-Type':'application/json', Authorization:'Bearer '+MKHubUI.getTokenOrRedirect() },
       body: JSON.stringify({ email_personal: email })
     });
     const raw = await r.text();
