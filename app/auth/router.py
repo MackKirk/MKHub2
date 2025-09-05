@@ -88,7 +88,7 @@ def invite_user(req: InviteRequest, db: Session = Depends(get_db), admin: User =
             msg["Subject"] = f"You're invited to {settings.app_name}"
             msg["From"] = settings.mail_from
             msg["To"] = req.email_personal
-            link = f"{settings.public_base_url}/ui/register?token={token}"
+            link = f"{settings.public_base_url}/ui/register.html?token={token}"
             msg.set_content(f"Click to register: {link}")
             if settings.smtp_tls:
                 with smtplib.SMTP(settings.smtp_host, settings.smtp_port) as s:
@@ -438,7 +438,7 @@ def password_forgot(identifier: str, db: Session = Depends(get_db)):
     # email link
     try:
         if settings.smtp_host and settings.mail_from and settings.public_base_url:
-            link = f"{settings.public_base_url}/ui/password-reset?token={token}"
+            link = f"{settings.public_base_url}/ui/password-reset.html?token={token}"
             msg = EmailMessage()
             msg["Subject"] = f"Reset your {settings.app_name} password"
             msg["From"] = settings.mail_from
