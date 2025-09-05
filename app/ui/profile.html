@@ -3,9 +3,11 @@
 <title>My Profile</title>
 <link rel="stylesheet" href="/ui/styles.css">
 <script src="/ui/app.js"></script>
+<script src="/ui/countries.js"></script>
 <div id="sidebar"></div>
 <div class="main">
 <h2>My Profile</h2>
+<p class="muted">Please complete your profile before using the system. Fields marked with <span class="req">*</span> are required.</p>
 <form onsubmit="save(event)">
   <div class="row">
     <div class="field"><label>First name <span class="req">*</span></label><input id="first" readonly /></div>
@@ -17,19 +19,41 @@
     <div class="field"><label>Mobile phone <span class="req">*</span></label><input id="mobile" /></div>
   </div>
   <div class="row">
-    <div class="field"><label>Gender <span class="req">*</span></label><input id="gender" /></div>
-    <div class="field"><label>Marital status <span class="req">*</span></label><input id="marital" /></div>
+    <div class="field"><label>Gender <span class="req">*</span></label>
+      <select id="gender">
+        <option value="">Select...</option>
+        <option>Female</option>
+        <option>Male</option>
+        <option>Non-binary</option>
+        <option>Prefer not to say</option>
+        <option>Other</option>
+      </select>
+    </div>
+    <div class="field"><label>Marital status <span class="req">*</span></label>
+      <select id="marital">
+        <option value="">Select...</option>
+        <option>Single</option>
+        <option>Married</option>
+        <option>Common-law</option>
+        <option>Divorced</option>
+        <option>Widowed</option>
+      </select>
+    </div>
   </div>
   <div class="row">
     <div class="field"><label>Date of birth (YYYY-MM-DD) <span class="req">*</span></label><input id="dob" /></div>
-    <div class="field"><label>Nationality <span class="req">*</span></label><input id="nationality" /></div>
+    <div class="field"><label>Nationality <span class="req">*</span></label>
+      <select id="nationality"><option value="">Select...</option></select>
+    </div>
   </div>
   <div class="row">
     <div class="field"><label>Address line 1 <span class="req">*</span></label><input id="address1" /></div>
     <div class="field"><label>Address line 2</label><input id="address2" /></div>
   </div>
   <div class="row">
-    <div class="field"><label>City <span class="req">*</span></label><input id="city" /></div>
+    <div class="field"><label>City <span class="req">*</span></label>
+      <select id="city"><option value="">Select...</option></select>
+    </div>
     <div class="field"><label>Province <span class="req">*</span></label><input id="province" /></div>
   </div>
   <div class="row">
@@ -37,24 +61,28 @@
     <div class="field"><label>Country <span class="req">*</span></label><input id="country" /></div>
   </div>
   <div class="row">
-    <div class="field"><label>Hire date (YYYY-MM-DD) <span class="req">*</span></label><input id="hire_date" /></div>
-    <div class="field"><label>Termination date (YYYY-MM-DD)</label><input id="termination_date" /></div>
+    <div class="field"><label>Hire date (YYYY-MM-DD)</label><input id="hire_date" readonly /></div>
+    <div class="field"><label>Termination date (YYYY-MM-DD)</label><input id="termination_date" readonly /></div>
   </div>
   <div class="row">
     <div class="field"><label>Job title <span class="req">*</span></label><input id="job" /></div>
     <div class="field"><label>Division <span class="req">*</span></label><input id="division" /></div>
   </div>
   <div class="row">
-    <div class="field"><label>Work email <span class="req">*</span></label><input id="work_email" /></div>
-    <div class="field"><label>Work phone <span class="req">*</span></label><input id="work_phone" /></div>
+    <div class="field"><label>Personal email</label><input id="personal_email" readonly /></div>
+    <div class="field"><label>Work email</label><input id="work_email" readonly /></div>
   </div>
   <div class="row">
-    <div class="field"><label>Manager user ID</label><input id="manager_user_id" /></div>
-    <div class="field"><label>Pay rate <span class="req">*</span></label><input id="pay_rate" /></div>
+    <div class="field"><label>Work phone</label><input id="work_phone" readonly /></div>
+    <div class="field"><label>Manager</label><select id="manager_user_id" disabled><option value="">Select...</option></select></div>
   </div>
   <div class="row">
-    <div class="field"><label>Pay type (hourly/salary/contract) <span class="req">*</span></label><input id="pay_type" /></div>
-    <div class="field"><label>Employment type (full-time/part-time/contract) <span class="req">*</span></label><input id="employment_type" /></div>
+    <div class="field"><label>Pay rate</label><input id="pay_rate" readonly /></div>
+    <div class="field"><label>Pay type</label><select id="pay_type" disabled><option value="">Select...</option><option>hourly</option><option>salary</option><option>contract</option></select></div>
+  </div>
+  <div class="row">
+    <div class="field"><label>Employment type</label><select id="employment_type" disabled><option value="">Select...</option><option>full-time</option><option>part-time</option><option>contract</option></select></div>
+    <div class="field"><label>Division</label><input id="division" readonly /></div>
   </div>
   <div class="row">
     <div class="field"><label>SIN/SSN <span class="req">*</span></label><input id="sin_number" /></div>
@@ -80,16 +108,24 @@ fetch('/auth/me/profile', { headers:{ Authorization:'Bearer '+token }}).then(r=>
     const set=(id,v)=>{const el=document.getElementById(id); if(el) el.value = v || ''};
     set('first', p.first_name || (d.user && d.user.first_name) || '');
     set('last', p.last_name || (d.user && d.user.last_name) || '');
+    set('personal_email', (d.user && d.user.email) || '');
     set('preferred', p.preferred_name);
     set('phone', p.phone); set('mobile', p.mobile_phone);
-    set('gender', p.gender); set('marital', p.marital_status); set('dob', p.date_of_birth); set('nationality', p.nationality);
+    document.getElementById('gender').value = p.gender || '';
+    document.getElementById('marital').value = p.marital_status || '';
+    set('dob', p.date_of_birth); 
+    document.getElementById('nationality').value = p.nationality || '';
     set('address1', p.address_line1); set('address2', p.address_line2);
-    set('city', p.city); set('province', p.province); set('postal', p.postal_code); set('country', p.country);
+    document.getElementById('city').value = p.city || '';
+    set('province', p.province); set('postal', p.postal_code); 
+    document.getElementById('country').value = p.country || '';
     set('hire_date', p.hire_date); set('termination_date', p.termination_date);
     set('job', p.job_title); set('division', p.division);
     set('work_email', p.work_email); set('work_phone', p.work_phone);
-    set('manager_user_id', p.manager_user_id); set('pay_rate', p.pay_rate);
-    set('pay_type', p.pay_type); set('employment_type', p.employment_type);
+    document.getElementById('manager_user_id').value = p.manager_user_id || '';
+    set('pay_rate', p.pay_rate);
+    document.getElementById('pay_type').value = p.pay_type || '';
+    document.getElementById('employment_type').value = p.employment_type || '';
     set('sin_number', p.sin_number); set('work_permit_status', p.work_permit_status);
     set('visa_status', p.visa_status);
     set('emergency_contact_name', p.emergency_contact_name);
@@ -137,5 +173,29 @@ async function save(ev){
   const txt = await r.text();
   document.getElementById('msg').textContent = txt;
 }
+
+// Populate country and city options
+const countrySel = document.getElementById('country');
+const nationalitySel = document.getElementById('nationality');
+if (window.MKHubCountries) {
+  for (const c of window.MKHubCountries) {
+    const o1=document.createElement('option'); o1.textContent=c; o1.value=c; countrySel && countrySel.appendChild(o1);
+    const o2=document.createElement('option'); o2.textContent=c; o2.value=c; nationalitySel && nationalitySel.appendChild(o2);
+  }
+}
+// Simple city list placeholder for Canada/USA; can be extended or backed by API later
+const citySel = document.getElementById('city');
+function populateCities(country){
+  if (!citySel) return;
+  citySel.innerHTML='';
+  const placeholder=document.createElement('option'); placeholder.value=''; placeholder.textContent='Select...'; citySel.appendChild(placeholder);
+  const lists = {
+    Canada:["Vancouver","Toronto","Montreal","Calgary","Ottawa"],
+    "United States":["New York","Los Angeles","Chicago","Houston","Phoenix"],
+  };
+  const arr = lists[country] || [];
+  for (const n of arr){ const o=document.createElement('option'); o.value=n; o.textContent=n; citySel.appendChild(o);}  
+}
+countrySel && countrySel.addEventListener('change', e=>populateCities(e.target.value));
 </script>
 </div>
