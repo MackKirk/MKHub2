@@ -1,24 +1,8 @@
 <!doctype html>
 <meta charset="utf-8">
 <title>My Profile</title>
-<style>
-body{font-family:system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif;margin:0;display:flex;min-height:100vh}
-.side{width:220px;background:#0f172a;color:#fff;padding:16px}
-.side h3{margin:0 0 12px 0;font-size:16px}
-.side a, .side button{display:block;width:100%;margin:6px 0;padding:8px;border:0;border-radius:6px;background:#334155;color:#fff;cursor:pointer;text-decoration:none;text-align:center}
-.main{flex:1;padding:20px}
-.row{display:grid;gap:8px;grid-template-columns:1fr 1fr;max-width:640px}
-input,button{padding:8px}
-.muted{color:#777}
-</style>
-<div class="side">
-  <h3>MK Hub</h3>
-  <div id="hello" class="muted"></div>
-  <a href="/ui/home.html">Home</a>
-  <a href="/ui/profile.html">My Information</a>
-  <a href="/ui/invite.html">Invite Users</a>
-  <button onclick="logout()">Logout</button>
-</div>
+<link rel="stylesheet" href="/ui/styles.css">
+<div id="sidebar"></div>
 <div class="main">
 <h2>My Profile</h2>
 <form onsubmit="save(event)">
@@ -35,7 +19,7 @@ input,button{padding:8px}
 <script>
 const token = localStorage.getItem('user_token');
 if(!token){ location.href='/ui/login.html'; }
-fetch('/auth/me', { headers:{ Authorization:'Bearer '+token } }).then(r=>r.json()).then(u=>{ document.getElementById('hello').textContent = 'Hello, ' + (u.username || 'user'); });
+fetch('/ui/sidebar.html').then(r=>r.text()).then(html=>{ document.getElementById('sidebar').outerHTML = html; });
 fetch('/auth/me/profile', { headers:{ Authorization:'Bearer '+token }}).then(r=>r.json()).then(d=>{
   if(d){
     const p = d.profile || {};
@@ -70,6 +54,5 @@ async function save(ev){
   const txt = await r.text();
   document.getElementById('msg').textContent = txt;
 }
-function logout(){ localStorage.removeItem('user_token'); location.href='/ui/login.html'; }
 </script>
 </div>

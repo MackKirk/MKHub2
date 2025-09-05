@@ -1,0 +1,9 @@
+body{font-family:system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif;margin:0;display:flex;min-height:100vh}
+.side{width:220px;background:#0f172a;color:#fff;padding:16px}
+.side h3{margin:0 0 12px 0;font-size:16px}
+.side a,.side button{display:block;width:100%;margin:6px 0;padding:8px;border:0;border-radius:6px;background:#334155;color:#fff;cursor:pointer;text-decoration:none;text-align:center}
+.side a.active{background:#1e293b}
+.main{flex:1;padding:20px}
+.muted{color:#777}
+input,button{padding:8px}
+
