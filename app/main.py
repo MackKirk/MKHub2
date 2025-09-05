@@ -9,6 +9,7 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
 from .config import settings
+from fastapi.responses import RedirectResponse
 from .db import Base, engine, SessionLocal
 from .logging import setup_logging, RequestIdMiddleware
 from .auth.router import router as auth_router
@@ -98,7 +99,7 @@ def create_app() -> FastAPI:
 
     @app.get("/")
     def root():
-        return {"service": settings.app_name, "env": settings.environment}
+        return RedirectResponse(url="/ui/")
 
     return app
 
