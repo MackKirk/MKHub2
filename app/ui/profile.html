@@ -112,18 +112,6 @@
       <div class="field"><label>Emergency contact phone <span class="req">*</span></label><input id="emergency_contact_phone" /></div>
     </div>
   </div>
-  <div class="row">
-    <div class="field"><label>SIN/SSN <span class="req">*</span></label><input id="sin_number" /></div>
-    <div class="field"><label>Work permit status <span class="req">*</span></label><input id="work_permit_status" /></div>
-  </div>
-  <div class="row">
-    <div class="field"><label>Visa status <span class="req">*</span></label><input id="visa_status" /></div>
-    <div class="field"><label>Emergency contact name <span class="req">*</span></label><input id="emergency_contact_name" /></div>
-  </div>
-  <div class="row">
-    <div class="field"><label>Emergency contact relationship <span class="req">*</span></label><input id="emergency_contact_relationship" /></div>
-    <div class="field"><label>Emergency contact phone <span class="req">*</span></label><input id="emergency_contact_phone" /></div>
-  </div>
   <button>Save</button>
 </form>
 <pre id="msg" class="muted"></pre>
@@ -209,33 +197,20 @@ const citySel = document.getElementById('city');
 const nationalitySel = document.getElementById('nationality');
 (async function initGeo(){
   await (window.MKHubGeo && window.MKHubGeo.load ? window.MKHubGeo.load() : Promise.resolve());
-  const data = (window.MKHubGeo && window.MKHubGeo.data) || [];
-  // Countries for country + nationality
-  for (const c of data){
+  const countries = (window.MKHubGeo && window.MKHubGeo.data) || [];
+  for (const c of countries){
     const opt1=document.createElement('option'); opt1.value=c.name; opt1.textContent=c.name; if(countrySel) countrySel.appendChild(opt1);
     const opt2=document.createElement('option'); opt2.value=c.name; opt2.textContent=c.name; if(nationalitySel) nationalitySel.appendChild(opt2);
   }
-  function populateStates(country){
-    const c = data.find(x=>x.name===country);
-    if (!c) { stateInp.value=''; citySel.innerHTML='<option value="">Select...</option>'; return; }
-    // Use a datalist-like suggestion by showing placeholder; keep input for free text
-    stateInp.placeholder = (c.states || []).map(s=>s.name).slice(0,6).join(', ');
-    populateCities(country, stateInp.value);
+  async function populateStates(country){
+    stateInp.value='';
+    citySel.innerHTML='<option value="">Select...</option>';
+    const states = window.MKHubGeo.getStates ? await window.MKHubGeo.getStates(country) : [];
+    stateInp.placeholder = states.slice(0,6).join(', ');
   }
-  function populateCities(country, state){
+  async function populateCities(country, state){
     citySel.innerHTML = '<option value="">Select...</option>';
-    const c = data.find(x=>x.name===country);
-    if (!c) return;
-    let cities = [];
-    if (state){
-      const s = (c.states||[]).find(s=>s.name===state);
-      cities = s && s.cities ? s.cities.map(x=>x.name) : [];
-    } else {
-      for (const s of (c.states||[])){
-        if (s.cities) for (const ct of s.cities) cities.push(ct.name);
-      }
-      cities = cities.slice(0,200);
-    }
+    const cities = window.MKHubGeo.getCities ? await window.MKHubGeo.getCities(country, state) : [];
     for (const n of cities){ const o=document.createElement('option'); o.value=n; o.textContent=n; citySel.appendChild(o); }
   }
   countrySel && countrySel.addEventListener('change', e=>populateStates(e.target.value));

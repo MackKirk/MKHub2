@@ -1,36 +1,49 @@
-// Geo loader: countries -> states/provinces -> cities
-// Looks for /ui/geo.json with shape:
-// [ { name: "Canada", iso2: "CA", states: [ { name: "British Columbia", cities: [ { name: "Vancouver" } ] } ] } ]
-// If not found, falls back to a small built-in set (CA/US).
+// Geo loader using public API (countriesnow.space)
+// - Countries list: GET https://countriesnow.space/api/v0.1/countries
+// - States: POST https://countriesnow.space/api/v0.1/countries/states { country }
+// - Cities: POST https://countriesnow.space/api/v0.1/countries/state/cities { country, state }
 (function(){
-  const fallback = [
-    { name: "Canada", iso2: "CA", states: [
-      { name: "British Columbia", cities: [{name:"Vancouver"},{name:"Victoria"},{name:"Kelowna"}] },
-      { name: "Alberta", cities: [{name:"Calgary"},{name:"Edmonton"}] },
-      { name: "Ontario", cities: [{name:"Toronto"},{name:"Ottawa"},{name:"Mississauga"}] },
-      { name: "Quebec", cities: [{name:"Montreal"},{name:"Quebec City"}] }
-    ]},
-    { name: "United States", iso2: "US", states: [
-      { name: "California", cities: [{name:"Los Angeles"},{name:"San Francisco"},{name:"San Diego"}] },
-      { name: "New York", cities: [{name:"New York"},{name:"Buffalo"}] },
-      { name: "Texas", cities: [{name:"Houston"},{name:"Dallas"},{name:"Austin"}] }
-    ]},
-  ];
+  const API_BASE = 'https://countriesnow.space/api/v0.1';
 
-  async function loadGeo(){
+  async function fetchJSON(url, opts){
+    const r = await fetch(url, opts);
+    if (!r.ok) throw new Error('geo api error');
+    return r.json();
+  }
+
+  async function load(){
     try {
-      const r = await fetch('/ui/geo.json', { cache: 'no-store' });
-      if (!r.ok) throw new Error('not found');
-      const data = await r.json();
-      window.MKHubGeo = { data };
-      return data;
+      const res = await fetchJSON(`${API_BASE}/countries`);
+      // shape: { data: [{ country: 'Canada', cities: [...] }, ...] }
+      const countries = (res && res.data) ? res.data.map(c=>({ name: c.country, cities: c.cities||[] })) : [];
+      window.MKHubGeo = { data: countries, load, getStates, getCities };
+      return countries;
     } catch(e){
-      window.MKHubGeo = { data: fallback };
-      return fallback;
+      window.MKHubGeo = { data: [], load, getStates, getCities };
+      return [];
     }
   }
 
-  window.MKHubGeo = { data: [], load: loadGeo };
+  async function getStates(country){
+    try {
+      const res = await fetchJSON(`${API_BASE}/countries/states`, { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ country }) });
+      return (res && res.data && res.data.states) ? res.data.states.map(s=>s.name) : [];
+    } catch(e){ return []; }
+  }
+
+  async function getCities(country, state){
+    try {
+      if (state){
+        const res = await fetchJSON(`${API_BASE}/countries/state/cities`, { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ country, state }) });
+        return (res && res.data) ? res.data : [];
+      }
+      // fallback to country-level cities if state not chosen
+      const c = (window.MKHubGeo.data||[]).find(x=>x.name===country);
+      return c && c.cities ? c.cities : [];
+    } catch(e){ return []; }
+  }
+
+  window.MKHubGeo = { data: [], load, getStates, getCities };
 })();
 
 
