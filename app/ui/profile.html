@@ -60,12 +60,14 @@
       <div class="field"><label>Country <span class="req">*</span></label>
         <select id="country"><option value="">Select...</option></select>
       </div>
-      <div class="field"><label>City <span class="req">*</span></label>
-        <select id="city"><option value="">Select...</option></select>
+      <div class="field"><label>Province/State <span class="req">*</span></label>
+        <select id="province"><option value="">Select...</option></select>
       </div>
     </div>
     <div class="row">
-      <div class="field"><label>Province/State <span class="req">*</span></label><input id="province" /></div>
+      <div class="field"><label>City <span class="req">*</span></label>
+        <select id="city"><option value="">Select...</option></select>
+      </div>
       <div class="field"><label>Postal code <span class="req">*</span></label><input id="postal" /></div>
     </div>
   </div>
@@ -203,10 +205,10 @@ const nationalitySel = document.getElementById('nationality');
     const opt2=document.createElement('option'); opt2.value=c.name; opt2.textContent=c.name; if(nationalitySel) nationalitySel.appendChild(opt2);
   }
   async function populateStates(country){
-    stateInp.value='';
+    stateInp.innerHTML = '<option value="">Select...</option>';
     citySel.innerHTML='<option value="">Select...</option>';
     const states = window.MKHubGeo.getStates ? await window.MKHubGeo.getStates(country) : [];
-    stateInp.placeholder = states.slice(0,6).join(', ');
+    for (const s of states){ const o=document.createElement('option'); o.value=s; o.textContent=s; stateInp.appendChild(o); }
   }
   async function populateCities(country, state){
     citySel.innerHTML = '<option value="">Select...</option>';
