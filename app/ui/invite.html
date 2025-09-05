@@ -6,7 +6,7 @@
 <div id="sidebar"></div>
 <div class="main">
   <h2>Invite Users</h2>
-  <form onsubmit="send(ev)">
+  <form onsubmit="return sendInvite(event)">
     <input id="email" type="email" placeholder="personal email" required />
     <button id="inviteBtn" type="submit">Invite</button>
     <span id="status" class="muted"></span>
@@ -16,28 +16,31 @@
 <script>
 const token = MKHubUI.getTokenOrRedirect();
 MKHubUI.initSidebar('invite');
-async function send(ev){
+function sendInvite(ev){
   ev.preventDefault();
   const email = document.getElementById('email').value;
   const btn = document.getElementById('inviteBtn');
   const statusEl = document.getElementById('status');
   const msg = document.getElementById('msg');
   btn.disabled = true; btn.textContent = 'Inviting...'; statusEl.textContent = 'Sending...'; msg.textContent = '';
-  try {
-    const r = await fetch('/auth/invite', {
-      method:'POST',
-      headers:{ 'Content-Type':'application/json', Authorization:'Bearer '+MKHubUI.getTokenOrRedirect() },
-      body: JSON.stringify({ email_personal: email })
-    });
-    const raw = await r.text();
-    let out = raw;
-    try { const j = JSON.parse(raw); out = j.invite_token ? ('Invite created: ' + j.invite_token) : JSON.stringify(j); } catch(_) {}
-    msg.textContent = out;
-  } catch (e) {
-    msg.textContent = String(e);
-  } finally {
-    btn.disabled = false; btn.textContent = 'Invite'; statusEl.textContent = '';
-  }
+  (async () => {
+    try {
+      const r = await fetch('/auth/invite', {
+        method:'POST',
+        headers:{ 'Content-Type':'application/json', Authorization:'Bearer '+MKHubUI.getTokenOrRedirect() },
+        body: JSON.stringify({ email_personal: email })
+      });
+      const raw = await r.text();
+      let out = raw;
+      try { const j = JSON.parse(raw); out = j.invite_token ? ('Invite created: ' + j.invite_token) : JSON.stringify(j); } catch(_) {}
+      msg.textContent = out;
+    } catch (e) {
+      msg.textContent = String(e);
+    } finally {
+      btn.disabled = false; btn.textContent = 'Invite'; statusEl.textContent = '';
+    }
+  })();
+  return false;
 }
 </script>
 
