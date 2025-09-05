@@ -36,7 +36,7 @@ async function reg(ev){
   const profile = { preferred_name: document.getElementById('preferred').value || null, phone: document.getElementById('phone').value || null };
   const r = await fetch('/auth/register', { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ invite_token:t, password:pw, first_name:first, last_name:last, profile }) });
   const txt = await r.text();
-  try { const j = JSON.parse(txt); if (j.access_token) { localStorage.setItem('user_token', j.access_token); location.href = '/ui/home.html'; } else { document.getElementById('msg').textContent = JSON.stringify(j); } } catch(e) { document.getElementById('msg').textContent = txt; }
+  try { const j = JSON.parse(txt); if (j.access_token) { localStorage.setItem('user_token', j.access_token); location.href = '/ui/profile.html'; } else { document.getElementById('msg').textContent = JSON.stringify(j); } } catch(e) { document.getElementById('msg').textContent = txt; }
 }
 </script>
 
