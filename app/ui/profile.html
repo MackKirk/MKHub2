@@ -10,10 +10,19 @@
   <div class="row"> <input id="first" placeholder="first name" readonly /> <input id="last" placeholder="last name" readonly /> </div>
   <input id="preferred" placeholder="preferred name" />
   <div class="row"> <input id="phone" placeholder="phone" /> <input id="mobile" placeholder="mobile" /> </div>
-  <div class="row"> <input id="dob" placeholder="date of birth YYYY-MM-DD" /> <input id="job" placeholder="job title" /> </div>
+  <div class="row"> <input id="gender" placeholder="gender" /> <input id="marital" placeholder="marital status" /> </div>
+  <div class="row"> <input id="dob" placeholder="date of birth YYYY-MM-DD" /> <input id="nationality" placeholder="nationality" /> </div>
   <div class="row"> <input id="address1" placeholder="address line 1" /> <input id="address2" placeholder="address line 2" /> </div>
   <div class="row"> <input id="city" placeholder="city" /> <input id="province" placeholder="province" /> </div>
   <div class="row"> <input id="postal" placeholder="postal code" /> <input id="country" placeholder="country" /> </div>
+  <div class="row"> <input id="hire_date" placeholder="hire date YYYY-MM-DD" /> <input id="termination_date" placeholder="termination date YYYY-MM-DD (optional)" /> </div>
+  <div class="row"> <input id="job" placeholder="job title" /> <input id="division" placeholder="division" /> </div>
+  <div class="row"> <input id="work_email" placeholder="work email" /> <input id="work_phone" placeholder="work phone" /> </div>
+  <div class="row"> <input id="manager_user_id" placeholder="manager user id (UUID)" /> <input id="pay_rate" placeholder="pay rate" /> </div>
+  <div class="row"> <input id="pay_type" placeholder="pay type (hourly/salary/contract)" /> <input id="employment_type" placeholder="employment type (full-time/part-time/contract)" /> </div>
+  <div class="row"> <input id="sin_number" placeholder="SIN/SSN" /> <input id="work_permit_status" placeholder="work permit status" /> </div>
+  <div class="row"> <input id="visa_status" placeholder="visa status" /> <input id="emergency_contact_name" placeholder="emergency contact name" /> </div>
+  <div class="row"> <input id="emergency_contact_relationship" placeholder="emergency contact relationship" /> <input id="emergency_contact_phone" placeholder="emergency contact phone" /> </div>
   <button>Save</button>
 </form>
 <pre id="msg" class="muted"></pre>
@@ -27,9 +36,20 @@ fetch('/auth/me/profile', { headers:{ Authorization:'Bearer '+token }}).then(r=>
     set('first', p.first_name || (d.user && d.user.first_name) || '');
     set('last', p.last_name || (d.user && d.user.last_name) || '');
     set('preferred', p.preferred_name);
-    set('phone', p.phone); set('mobile', p.mobile_phone); set('dob', p.date_of_birth);
-    set('job', p.job_title); set('address1', p.address_line1); set('address2', p.address_line2);
+    set('phone', p.phone); set('mobile', p.mobile_phone);
+    set('gender', p.gender); set('marital', p.marital_status); set('dob', p.date_of_birth); set('nationality', p.nationality);
+    set('address1', p.address_line1); set('address2', p.address_line2);
     set('city', p.city); set('province', p.province); set('postal', p.postal_code); set('country', p.country);
+    set('hire_date', p.hire_date); set('termination_date', p.termination_date);
+    set('job', p.job_title); set('division', p.division);
+    set('work_email', p.work_email); set('work_phone', p.work_phone);
+    set('manager_user_id', p.manager_user_id); set('pay_rate', p.pay_rate);
+    set('pay_type', p.pay_type); set('employment_type', p.employment_type);
+    set('sin_number', p.sin_number); set('work_permit_status', p.work_permit_status);
+    set('visa_status', p.visa_status);
+    set('emergency_contact_name', p.emergency_contact_name);
+    set('emergency_contact_relationship', p.emergency_contact_relationship);
+    set('emergency_contact_phone', p.emergency_contact_phone);
   }
 });
 
@@ -41,14 +61,32 @@ async function save(ev){
     preferred_name: document.getElementById('preferred').value || null,
     phone: document.getElementById('phone').value || null,
     mobile_phone: document.getElementById('mobile').value || null,
+    gender: document.getElementById('gender').value || null,
+    marital_status: document.getElementById('marital').value || null,
     date_of_birth: document.getElementById('dob').value || null,
-    job_title: document.getElementById('job').value || null,
+    nationality: document.getElementById('nationality').value || null,
     address_line1: document.getElementById('address1').value || null,
     address_line2: document.getElementById('address2').value || null,
     city: document.getElementById('city').value || null,
     province: document.getElementById('province').value || null,
     postal_code: document.getElementById('postal').value || null,
     country: document.getElementById('country').value || null,
+    hire_date: document.getElementById('hire_date').value || null,
+    termination_date: document.getElementById('termination_date').value || null,
+    job_title: document.getElementById('job').value || null,
+    division: document.getElementById('division').value || null,
+    work_email: document.getElementById('work_email').value || null,
+    work_phone: document.getElementById('work_phone').value || null,
+    manager_user_id: document.getElementById('manager_user_id').value || null,
+    pay_rate: document.getElementById('pay_rate').value || null,
+    pay_type: document.getElementById('pay_type').value || null,
+    employment_type: document.getElementById('employment_type').value || null,
+    sin_number: document.getElementById('sin_number').value || null,
+    work_permit_status: document.getElementById('work_permit_status').value || null,
+    visa_status: document.getElementById('visa_status').value || null,
+    emergency_contact_name: document.getElementById('emergency_contact_name').value || null,
+    emergency_contact_relationship: document.getElementById('emergency_contact_relationship').value || null,
+    emergency_contact_phone: document.getElementById('emergency_contact_phone').value || null,
   };
   const r = await fetch('/auth/me/profile', { method:'PUT', headers:{ 'Content-Type':'application/json', Authorization:'Bearer '+MKHubUI.getTokenOrRedirect() }, body: JSON.stringify(body) });
   const txt = await r.text();

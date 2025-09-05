@@ -40,10 +40,24 @@ async function initSidebar(active, enforceProfile=true) {
         const p = data && data.profile ? data.profile : null;
         const first = p && p.first_name ? p.first_name : (data && data.user && data.user.first_name);
         const last = p && p.last_name ? p.last_name : (data && data.user && data.user.last_name);
-        if (!first || !last) {
-          location.href = '/ui/profile.html';
-          return;
+        // Define required fields (phone and address_line2 optional; termination_date optional)
+        const required = [
+          'preferred_name','gender','date_of_birth','marital_status','nationality',
+          'mobile_phone','address_line1','city','province','postal_code','country',
+          'hire_date','job_title','division','work_email','work_phone',
+          'pay_rate','pay_type','employment_type',
+          'sin_number','work_permit_status','visa_status',
+          'emergency_contact_name','emergency_contact_relationship','emergency_contact_phone'
+        ];
+        const missing = [];
+        if (!first) missing.push('first_name');
+        if (!last) missing.push('last_name');
+        if (!p) {
+          missing.push(...required);
+        } else {
+          for (const k of required) { if (!p[k]) missing.push(k); }
         }
+        if (missing.length) { location.href = '/ui/profile.html'; return; }
       }
     } catch (e) {}
   }
