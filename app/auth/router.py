@@ -27,6 +27,7 @@ from .security import (
     create_refresh_token,
     get_current_user,
     require_roles,
+    require_permissions,
 )
 from ..logging import structlog
 import smtplib
@@ -428,6 +429,66 @@ def users_options(q: Optional[str] = None, limit: int = 100, db: Session = Depen
         query = query.filter((User.username.ilike(like)) | (User.email_personal.ilike(like)))
     rows = query.limit(limit).all()
     return [{"id": str(u.id), "username": u.username, "email": u.email_personal} for u in rows]
+
+
+@router.get("/users")
+def list_users(q: Optional[str] = None, limit: int = 100, db: Session = Depends(get_db), _=Depends(require_permissions("users:read"))):
+    query = db.query(User)
+    if q:
+        like = f"%{q}%"
+        query = query.filter((User.username.ilike(like)) | (User.email_personal.ilike(like)))
+    rows = query.limit(limit).all()
+    return [{"id": str(u.id), "username": u.username, "email": u.email_personal, "active": u.is_active} for u in rows]
+
+
+@router.get("/users/{user_id}/profile")
+def get_user_profile(user_id: str, db: Session = Depends(get_db), _=Depends(require_permissions("users:read"))):
+    from ..models.models import EmployeeProfile
+    u = db.query(User).filter(User.id == user_id).first()
+    if not u:
+        raise HTTPException(status_code=404, detail="Not found")
+    ep = db.query(EmployeeProfile).filter(EmployeeProfile.user_id == u.id).first()
+    return {
+        "user": {
+            "id": str(u.id),
+            "username": u.username,
+            "email": u.email_personal,
+            "is_active": u.is_active,
+        },
+        "profile": {
+            k: getattr(ep, k)
+            for k in [
+                "first_name","last_name","preferred_name","gender","date_of_birth","marital_status","nationality",
+                "phone","mobile_phone","address_line1","address_line2","city","province","postal_code","country",
+                "hire_date","termination_date","job_title","division","work_email","work_phone","manager_user_id",
+                "pay_rate","pay_type","employment_type","sin_number","work_permit_status","visa_status",
+                "emergency_contact_name","emergency_contact_relationship","emergency_contact_phone",
+            ]
+        } if ep else None,
+    }
+
+
+@router.put("/users/{user_id}/profile")
+def update_user_profile(user_id: str, payload: EmployeeProfileInput, db: Session = Depends(get_db), _=Depends(require_permissions("users:write"))):
+    from ..models.models import EmployeeProfile
+    u = db.query(User).filter(User.id == user_id).first()
+    if not u:
+        raise HTTPException(status_code=404, detail="Not found")
+    ep = db.query(EmployeeProfile).filter(EmployeeProfile.user_id == u.id).first()
+    if not ep:
+        ep = EmployeeProfile(user_id=u.id)
+        db.add(ep)
+    data = payload.dict(exclude_unset=True)
+    for k in ("date_of_birth","hire_date","termination_date"):
+        if k in data and isinstance(data[k], str):
+            try:
+                dt = datetime.strptime(data[k], "%Y-%m-%d").replace(tzinfo=timezone.utc)
+                data[k] = dt
+            except Exception:
+                data[k] = None
+    for k,v in data.items(): setattr(ep,k,v)
+    db.commit()
+    return {"status":"ok"}
 
 
 # Password reset

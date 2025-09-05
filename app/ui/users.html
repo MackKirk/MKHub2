@@ -1,0 +1,33 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Users</title>
+<link rel="stylesheet" href="/ui/styles.css">
+<script src="/ui/app.js"></script>
+<div id="sidebar"></div>
+<div class="main">
+  <h2>Users</h2>
+  <div class="row">
+    <div class="field" style="max-width:320px"><label>Search</label><input id="q" placeholder="username or email" /></div>
+    <div class="field" style="align-self:end"><button onclick="loadUsers()">Search</button></div>
+  </div>
+  <div id="list" class="card"></div>
+</div>
+<script>
+MKHubUI.initSidebar('users');
+async function loadUsers(){
+  const token = MKHubUI.getTokenOrRedirect();
+  const q = document.getElementById('q').value;
+  const url = q ? ('/auth/users?q=' + encodeURIComponent(q)) : '/auth/users';
+  const r = await fetch(url, { headers:{ Authorization:'Bearer '+token }});
+  const list = document.getElementById('list');
+  if (!r.ok){ list.textContent = 'Not authorized or error.'; return; }
+  const arr = await r.json();
+  if (!arr.length){ list.textContent = 'No users found.'; return; }
+  list.innerHTML = arr.map(u=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #eee">`+
+    `<div><strong>${u.username}</strong><br/><span class="muted">${u.email}</span></div>`+
+    `<div><a href="/ui/user.html?id=${u.id}">Open</a></div>`+
+  `</div>`).join('');
+}
+loadUsers();
+</script>
+

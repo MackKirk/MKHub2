@@ -1,0 +1,51 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>User Detail</title>
+<link rel="stylesheet" href="/ui/styles.css">
+<script src="/ui/app.js"></script>
+<div id="sidebar"></div>
+<div class="main">
+  <h2>User</h2>
+  <div id="info" class="card"></div>
+  <div id="edit" class="card" style="display:none">
+    <h3>Edit Profile (requires permission)</h3>
+    <div class="row">
+      <div class="field"><label>First name</label><input id="first" /></div>
+      <div class="field"><label>Last name</label><input id="last" /></div>
+    </div>
+    <div class="row">
+      <div class="field"><label>Mobile</label><input id="mobile" /></div>
+      <div class="field"><label>Job title</label><input id="job" /></div>
+    </div>
+    <button onclick="save()">Save</button>
+    <pre id="msg" class="muted"></pre>
+  </div>
+</div>
+<script>
+MKHubUI.initSidebar('users');
+const params = new URLSearchParams(location.search);
+const userId = params.get('id');
+async function load(){
+  const token = MKHubUI.getTokenOrRedirect();
+  const r = await fetch('/auth/users/'+userId+'/profile', { headers:{ Authorization:'Bearer '+token }});
+  const info = document.getElementById('info');
+  if (!r.ok){ info.textContent='Not authorized.'; return; }
+  const d = await r.json();
+  info.innerHTML = `<strong>${d.user.username}</strong><br/><span class="muted">${d.user.email}</span>`;
+  // If user has users:write, allow edit (we can't inspect perms client-side yet; show form and rely on API to enforce)
+  document.getElementById('edit').style.display = 'block';
+}
+async function save(){
+  const token = MKHubUI.getTokenOrRedirect();
+  const body = {
+    first_name: document.getElementById('first').value || null,
+    last_name: document.getElementById('last').value || null,
+    mobile_phone: document.getElementById('mobile').value || null,
+    job_title: document.getElementById('job').value || null,
+  };
+  const r = await fetch('/auth/users/'+userId+'/profile', { method:'PUT', headers:{ 'Content-Type':'application/json', Authorization:'Bearer '+token }, body: JSON.stringify(body) });
+  document.getElementById('msg').textContent = await r.text();
+}
+load();
+</script>
+

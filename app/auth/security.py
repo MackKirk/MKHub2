@@ -84,3 +84,25 @@ def require_roles(*required_roles: str):
 
     return _dep
 
+
+def require_permissions(*required_permissions: str):
+    def _dep(user: User = Depends(get_current_user)):
+        # Combine role permissions and user override if available
+        perm_set = set()
+        for r in user.roles:
+            if getattr(r, 'permissions', None):
+                try:
+                    perm_set.update(r.permissions.keys())
+                except Exception:
+                    pass
+        if getattr(user, 'permissions_override', None):
+            try:
+                perm_set.update(user.permissions_override.keys())
+            except Exception:
+                pass
+        if not set(required_permissions).issubset(perm_set):
+            raise HTTPException(status_code=403, detail="Forbidden")
+        return user
+
+    return _dep
+
