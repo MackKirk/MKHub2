@@ -9,17 +9,15 @@
 <h2>My Profile</h2>
 <p class="muted">Please complete your profile before using the system. Fields marked with <span class="req">*</span> are required.</p>
 <form onsubmit="save(event)">
-  <div class="row">
-    <div class="field"><label>First name <span class="req">*</span></label><input id="first" readonly /></div>
-    <div class="field"><label>Last name <span class="req">*</span></label><input id="last" readonly /></div>
-  </div>
-  <div class="field"><label>Preferred name <span class="req">*</span></label><input id="preferred" /></div>
-  <div class="row">
-    <div class="field"><label>Phone</label><input id="phone" /></div>
-    <div class="field"><label>Mobile phone <span class="req">*</span></label><input id="mobile" /></div>
-  </div>
-  <div class="row">
-    <div class="field"><label>Gender <span class="req">*</span></label>
+  <div class="card">
+    <h3>Identity</h3>
+    <div class="row">
+      <div class="field"><label>First name <span class="req">*</span></label><input id="first" readonly /></div>
+      <div class="field"><label>Last name <span class="req">*</span></label><input id="last" readonly /></div>
+    </div>
+    <div class="field"><label>Preferred name <span class="req">*</span></label><input id="preferred" /></div>
+    <div class="row">
+      <div class="field"><label>Gender <span class="req">*</span></label>
       <select id="gender">
         <option value="">Select...</option>
         <option>Female</option>
@@ -28,8 +26,8 @@
         <option>Prefer not to say</option>
         <option>Other</option>
       </select>
-    </div>
-    <div class="field"><label>Marital status <span class="req">*</span></label>
+      </div>
+      <div class="field"><label>Marital status <span class="req">*</span></label>
       <select id="marital">
         <option value="">Select...</option>
         <option>Single</option>
@@ -38,51 +36,80 @@
         <option>Divorced</option>
         <option>Widowed</option>
       </select>
+      </div>
+    <div class="row">
+      <div class="field"><label>Date of birth (YYYY-MM-DD) <span class="req">*</span></label><input id="dob" /></div>
+      <div class="field"><label>Nationality <span class="req">*</span></label>
+        <select id="nationality"><option value="">Select...</option></select>
+      </div>
     </div>
   </div>
-  <div class="row">
-    <div class="field"><label>Date of birth (YYYY-MM-DD) <span class="req">*</span></label><input id="dob" /></div>
-    <div class="field"><label>Nationality <span class="req">*</span></label>
-      <select id="nationality"><option value="">Select...</option></select>
+
+  <div class="card">
+    <h3>Contact & Address</h3>
+    <div class="row">
+      <div class="field"><label>Phone</label><input id="phone" /></div>
+      <div class="field"><label>Mobile phone <span class="req">*</span></label><input id="mobile" /></div>
+    </div>
+    <div class="row">
+      <div class="field"><label>Address line 1 <span class="req">*</span></label><input id="address1" /></div>
+      <div class="field"><label>Address line 2</label><input id="address2" /></div>
+    </div>
+    <div class="row">
+      <div class="field"><label>Country <span class="req">*</span></label>
+        <select id="country"><option value="">Select...</option></select>
+      </div>
+      <div class="field"><label>City <span class="req">*</span></label>
+        <select id="city"><option value="">Select...</option></select>
+      </div>
+    </div>
+    <div class="row">
+      <div class="field"><label>Province/State <span class="req">*</span></label><input id="province" /></div>
+      <div class="field"><label>Postal code <span class="req">*</span></label><input id="postal" /></div>
     </div>
   </div>
-  <div class="row">
-    <div class="field"><label>Address line 1 <span class="req">*</span></label><input id="address1" /></div>
-    <div class="field"><label>Address line 2</label><input id="address2" /></div>
-  </div>
-  <div class="row">
-    <div class="field"><label>City <span class="req">*</span></label>
-      <select id="city"><option value="">Select...</option></select>
+
+  <div class="card">
+    <h3>Employment</h3>
+    <div class="row">
+      <div class="field"><label>Hire date (YYYY-MM-DD)</label><input id="hire_date" readonly /></div>
+      <div class="field"><label>Termination date (YYYY-MM-DD)</label><input id="termination_date" readonly /></div>
     </div>
-    <div class="field"><label>Province <span class="req">*</span></label><input id="province" /></div>
+    <div class="row">
+      <div class="field"><label>Job title <span class="req">*</span></label><input id="job" /></div>
+      <div class="field"><label>Division</label><input id="division" readonly /></div>
+    </div>
+    <div class="row">
+      <div class="field"><label>Personal email</label><input id="personal_email" readonly /></div>
+      <div class="field"><label>Work email</label><input id="work_email" readonly /></div>
+    </div>
+    <div class="row">
+      <div class="field"><label>Work phone</label><input id="work_phone" readonly /></div>
+      <div class="field"><label>Manager</label><select id="manager_user_id" disabled><option value="">Select...</option></select></div>
+    </div>
+    <div class="row">
+      <div class="field"><label>Pay rate</label><input id="pay_rate" readonly /></div>
+      <div class="field"><label>Pay type</label><select id="pay_type" disabled><option value="">Select...</option><option>hourly</option><option>salary</option><option>contract</option></select></div>
+    </div>
+    <div class="row">
+      <div class="field"><label>Employment type</label><select id="employment_type" disabled><option value="">Select...</option><option>full-time</option><option>part-time</option><option>contract</option></select></div>
+    </div>
   </div>
-  <div class="row">
-    <div class="field"><label>Postal code <span class="req">*</span></label><input id="postal" /></div>
-    <div class="field"><label>Country <span class="req">*</span></label><input id="country" /></div>
-  </div>
-  <div class="row">
-    <div class="field"><label>Hire date (YYYY-MM-DD)</label><input id="hire_date" readonly /></div>
-    <div class="field"><label>Termination date (YYYY-MM-DD)</label><input id="termination_date" readonly /></div>
-  </div>
-  <div class="row">
-    <div class="field"><label>Job title <span class="req">*</span></label><input id="job" /></div>
-    <div class="field"><label>Division <span class="req">*</span></label><input id="division" /></div>
-  </div>
-  <div class="row">
-    <div class="field"><label>Personal email</label><input id="personal_email" readonly /></div>
-    <div class="field"><label>Work email</label><input id="work_email" readonly /></div>
-  </div>
-  <div class="row">
-    <div class="field"><label>Work phone</label><input id="work_phone" readonly /></div>
-    <div class="field"><label>Manager</label><select id="manager_user_id" disabled><option value="">Select...</option></select></div>
-  </div>
-  <div class="row">
-    <div class="field"><label>Pay rate</label><input id="pay_rate" readonly /></div>
-    <div class="field"><label>Pay type</label><select id="pay_type" disabled><option value="">Select...</option><option>hourly</option><option>salary</option><option>contract</option></select></div>
-  </div>
-  <div class="row">
-    <div class="field"><label>Employment type</label><select id="employment_type" disabled><option value="">Select...</option><option>full-time</option><option>part-time</option><option>contract</option></select></div>
-    <div class="field"><label>Division</label><input id="division" readonly /></div>
+
+  <div class="card">
+    <h3>Legal & Emergency</h3>
+    <div class="row">
+      <div class="field"><label>SIN/SSN <span class="req">*</span></label><input id="sin_number" /></div>
+      <div class="field"><label>Work permit status <span class="req">*</span></label><input id="work_permit_status" /></div>
+    </div>
+    <div class="row">
+      <div class="field"><label>Visa status <span class="req">*</span></label><input id="visa_status" /></div>
+      <div class="field"><label>Emergency contact name <span class="req">*</span></label><input id="emergency_contact_name" /></div>
+    </div>
+    <div class="row">
+      <div class="field"><label>Emergency contact relationship <span class="req">*</span></label><input id="emergency_contact_relationship" /></div>
+      <div class="field"><label>Emergency contact phone <span class="req">*</span></label><input id="emergency_contact_phone" /></div>
+    </div>
   </div>
   <div class="row">
     <div class="field"><label>SIN/SSN <span class="req">*</span></label><input id="sin_number" /></div>

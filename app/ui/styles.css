@@ -9,4 +9,7 @@ input,button{padding:8px}
 .field{display:flex;flex-direction:column}
 label{font-size:12px;color:#334155;margin-bottom:4px}
 .req{color:#dc2626}
+.card{border:1px solid #e5e7eb;border-radius:8px;padding:16px;margin:12px 0;max-width:880px;background:#fff}
+.card h3{margin:0 0 12px 0;font-size:16px;color:#0f172a}
+select{padding:8px}
 
