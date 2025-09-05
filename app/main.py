@@ -99,7 +99,7 @@ def create_app() -> FastAPI:
 
     @app.get("/")
     def root():
-        return RedirectResponse(url="/ui/")
+        return RedirectResponse(url="/ui/index.html")
 
     return app
 
