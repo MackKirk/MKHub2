@@ -11,7 +11,10 @@
 <script>
 const token = localStorage.getItem('user_token');
 if(!token){ location.href='/ui/login.html'; }
-fetch('/ui/sidebar.html').then(r=>r.text()).then(html=>{ document.getElementById('sidebar').outerHTML = html; });
+fetch('/ui/sidebar.html').then(r=>r.text()).then(html=>{
+  document.getElementById('sidebar').outerHTML = html;
+  const el = document.getElementById('nav-invite'); if(el){ el.classList.add('active'); }
+});
 async function send(ev){ ev.preventDefault(); const email=document.getElementById('email').value; const r = await fetch('/auth/invite',{ method:'POST', headers:{ 'Content-Type':'application/json', Authorization:'Bearer '+token }, body: JSON.stringify({ email_personal: email })}); const txt = await r.text(); document.getElementById('msg').textContent = txt; }
 </script>
 

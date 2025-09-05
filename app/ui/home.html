@@ -8,6 +8,15 @@
   <p class="muted">This is your home. More options coming soon.</p>
 </div>
 <script>
-fetch('/ui/sidebar.html').then(r=>r.text()).then(html=>{ document.getElementById('sidebar').outerHTML = html; });
+const token = localStorage.getItem('user_token');
+if(!token){ location.href='/ui/login.html'; }
+fetch('/ui/sidebar.html').then(r=>r.text()).then(html=>{
+  document.getElementById('sidebar').outerHTML = html;
+  // greet and highlight
+  fetch('/auth/me', { headers:{ Authorization:'Bearer '+token } })
+    .then(r=>r.json())
+    .then(u=>{ const el=document.getElementById('hello'); if(el){ el.textContent = 'Hello, ' + (u.username || 'user'); } });
+  const el = document.getElementById('nav-home'); if(el){ el.classList.add('active'); }
+});
 </script>
 

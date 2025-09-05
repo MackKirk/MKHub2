@@ -19,7 +19,10 @@
 <script>
 const token = localStorage.getItem('user_token');
 if(!token){ location.href='/ui/login.html'; }
-fetch('/ui/sidebar.html').then(r=>r.text()).then(html=>{ document.getElementById('sidebar').outerHTML = html; });
+fetch('/ui/sidebar.html').then(r=>r.text()).then(html=>{
+  document.getElementById('sidebar').outerHTML = html;
+  const el = document.getElementById('nav-profile'); if(el){ el.classList.add('active'); }
+});
 fetch('/auth/me/profile', { headers:{ Authorization:'Bearer '+token }}).then(r=>r.json()).then(d=>{
   if(d){
     const p = d.profile || {};

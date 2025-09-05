@@ -6,16 +6,4 @@
   <a href="/ui/invite.html" id="nav-invite">Invite Users</a>
   <button onclick="logout()">Logout</button>
 </div>
-<script>
-const token = localStorage.getItem('user_token');
-if(!token){ location.href='/ui/login.html'; }
-fetch('/auth/me', { headers:{ Authorization:'Bearer '+token } }).then(r=>r.json()).then(u=>{ const el=document.getElementById('hello'); if(el){ el.textContent = 'Hello, ' + (u.username || 'user'); }});
-function logout(){ localStorage.removeItem('user_token'); location.href='/ui/login.html'; }
-// Highlight active
-const path = location.pathname;
-for (const id of ['home','profile','invite']) {
-  const el = document.getElementById('nav-'+id);
-  if (el && path.endsWith(id+'.html')) { el.classList.add('active'); }
-}
-</script>
 
