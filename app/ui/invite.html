@@ -1,12 +1,33 @@
 <!doctype html>
 <meta charset="utf-8">
 <title>Invite Users</title>
-<h2>Invite Users</h2>
-<form onsubmit="send(ev)"> <input id="email" type="email" placeholder="personal email" required /> <button>Invite</button> <a href="/ui/home.html">Back</a></form>
-<pre id="msg"></pre>
+<style>
+body{font-family:system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif;margin:0;display:flex;min-height:100vh}
+.side{width:220px;background:#0f172a;color:#fff;padding:16px}
+.side h3{margin:0 0 12px 0;font-size:16px}
+.side a, .side button{display:block;width:100%;margin:6px 0;padding:8px;border:0;border-radius:6px;background:#334155;color:#fff;cursor:pointer;text-decoration:none;text-align:center}
+.main{flex:1;padding:20px}
+.muted{color:#777}
+input,button{padding:8px}
+</style>
+<div class="side">
+  <h3>MK Hub</h3>
+  <div id="hello" class="muted"></div>
+  <a href="/ui/home.html">Home</a>
+  <a href="/ui/profile.html">My Information</a>
+  <a href="/ui/invite.html">Invite Users</a>
+  <button onclick="logout()">Logout</button>
+</div>
+<div class="main">
+  <h2>Invite Users</h2>
+  <form onsubmit="send(ev)"> <input id="email" type="email" placeholder="personal email" required /> <button>Invite</button></form>
+  <pre id="msg"></pre>
+</div>
 <script>
 const token = localStorage.getItem('user_token');
 if(!token){ location.href='/ui/login.html'; }
+fetch('/auth/me', { headers:{ Authorization:'Bearer '+token } }).then(r=>r.json()).then(u=>{ document.getElementById('hello').textContent = 'Hello, ' + (u.username || 'user'); });
 async function send(ev){ ev.preventDefault(); const email=document.getElementById('email').value; const r = await fetch('/auth/invite',{ method:'POST', headers:{ 'Content-Type':'application/json', Authorization:'Bearer '+token }, body: JSON.stringify({ email_personal: email })}); const txt = await r.text(); document.getElementById('msg').textContent = txt; }
+function logout(){ localStorage.removeItem('user_token'); location.href='/ui/login.html'; }
 </script>
 
