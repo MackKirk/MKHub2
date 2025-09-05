@@ -7,22 +7,67 @@
 <div class="main">
 <h2>My Profile</h2>
 <form onsubmit="save(event)">
-  <div class="row"> <input id="first" placeholder="first name" readonly /> <input id="last" placeholder="last name" readonly /> </div>
-  <input id="preferred" placeholder="preferred name" />
-  <div class="row"> <input id="phone" placeholder="phone" /> <input id="mobile" placeholder="mobile" /> </div>
-  <div class="row"> <input id="gender" placeholder="gender" /> <input id="marital" placeholder="marital status" /> </div>
-  <div class="row"> <input id="dob" placeholder="date of birth YYYY-MM-DD" /> <input id="nationality" placeholder="nationality" /> </div>
-  <div class="row"> <input id="address1" placeholder="address line 1" /> <input id="address2" placeholder="address line 2" /> </div>
-  <div class="row"> <input id="city" placeholder="city" /> <input id="province" placeholder="province" /> </div>
-  <div class="row"> <input id="postal" placeholder="postal code" /> <input id="country" placeholder="country" /> </div>
-  <div class="row"> <input id="hire_date" placeholder="hire date YYYY-MM-DD" /> <input id="termination_date" placeholder="termination date YYYY-MM-DD (optional)" /> </div>
-  <div class="row"> <input id="job" placeholder="job title" /> <input id="division" placeholder="division" /> </div>
-  <div class="row"> <input id="work_email" placeholder="work email" /> <input id="work_phone" placeholder="work phone" /> </div>
-  <div class="row"> <input id="manager_user_id" placeholder="manager user id (UUID)" /> <input id="pay_rate" placeholder="pay rate" /> </div>
-  <div class="row"> <input id="pay_type" placeholder="pay type (hourly/salary/contract)" /> <input id="employment_type" placeholder="employment type (full-time/part-time/contract)" /> </div>
-  <div class="row"> <input id="sin_number" placeholder="SIN/SSN" /> <input id="work_permit_status" placeholder="work permit status" /> </div>
-  <div class="row"> <input id="visa_status" placeholder="visa status" /> <input id="emergency_contact_name" placeholder="emergency contact name" /> </div>
-  <div class="row"> <input id="emergency_contact_relationship" placeholder="emergency contact relationship" /> <input id="emergency_contact_phone" placeholder="emergency contact phone" /> </div>
+  <div class="row">
+    <div class="field"><label>First name <span class="req">*</span></label><input id="first" readonly /></div>
+    <div class="field"><label>Last name <span class="req">*</span></label><input id="last" readonly /></div>
+  </div>
+  <div class="field"><label>Preferred name <span class="req">*</span></label><input id="preferred" /></div>
+  <div class="row">
+    <div class="field"><label>Phone</label><input id="phone" /></div>
+    <div class="field"><label>Mobile phone <span class="req">*</span></label><input id="mobile" /></div>
+  </div>
+  <div class="row">
+    <div class="field"><label>Gender <span class="req">*</span></label><input id="gender" /></div>
+    <div class="field"><label>Marital status <span class="req">*</span></label><input id="marital" /></div>
+  </div>
+  <div class="row">
+    <div class="field"><label>Date of birth (YYYY-MM-DD) <span class="req">*</span></label><input id="dob" /></div>
+    <div class="field"><label>Nationality <span class="req">*</span></label><input id="nationality" /></div>
+  </div>
+  <div class="row">
+    <div class="field"><label>Address line 1 <span class="req">*</span></label><input id="address1" /></div>
+    <div class="field"><label>Address line 2</label><input id="address2" /></div>
+  </div>
+  <div class="row">
+    <div class="field"><label>City <span class="req">*</span></label><input id="city" /></div>
+    <div class="field"><label>Province <span class="req">*</span></label><input id="province" /></div>
+  </div>
+  <div class="row">
+    <div class="field"><label>Postal code <span class="req">*</span></label><input id="postal" /></div>
+    <div class="field"><label>Country <span class="req">*</span></label><input id="country" /></div>
+  </div>
+  <div class="row">
+    <div class="field"><label>Hire date (YYYY-MM-DD) <span class="req">*</span></label><input id="hire_date" /></div>
+    <div class="field"><label>Termination date (YYYY-MM-DD)</label><input id="termination_date" /></div>
+  </div>
+  <div class="row">
+    <div class="field"><label>Job title <span class="req">*</span></label><input id="job" /></div>
+    <div class="field"><label>Division <span class="req">*</span></label><input id="division" /></div>
+  </div>
+  <div class="row">
+    <div class="field"><label>Work email <span class="req">*</span></label><input id="work_email" /></div>
+    <div class="field"><label>Work phone <span class="req">*</span></label><input id="work_phone" /></div>
+  </div>
+  <div class="row">
+    <div class="field"><label>Manager user ID</label><input id="manager_user_id" /></div>
+    <div class="field"><label>Pay rate <span class="req">*</span></label><input id="pay_rate" /></div>
+  </div>
+  <div class="row">
+    <div class="field"><label>Pay type (hourly/salary/contract) <span class="req">*</span></label><input id="pay_type" /></div>
+    <div class="field"><label>Employment type (full-time/part-time/contract) <span class="req">*</span></label><input id="employment_type" /></div>
+  </div>
+  <div class="row">
+    <div class="field"><label>SIN/SSN <span class="req">*</span></label><input id="sin_number" /></div>
+    <div class="field"><label>Work permit status <span class="req">*</span></label><input id="work_permit_status" /></div>
+  </div>
+  <div class="row">
+    <div class="field"><label>Visa status <span class="req">*</span></label><input id="visa_status" /></div>
+    <div class="field"><label>Emergency contact name <span class="req">*</span></label><input id="emergency_contact_name" /></div>
+  </div>
+  <div class="row">
+    <div class="field"><label>Emergency contact relationship <span class="req">*</span></label><input id="emergency_contact_relationship" /></div>
+    <div class="field"><label>Emergency contact phone <span class="req">*</span></label><input id="emergency_contact_phone" /></div>
+  </div>
   <button>Save</button>
 </form>
 <pre id="msg" class="muted"></pre>
