@@ -135,7 +135,7 @@ fetch('/auth/me/profile', { headers:{ Authorization:'Bearer '+token }}).then(r=>
     document.getElementById('nationality').value = p.nationality || '';
     set('address1', p.address_line1); set('address2', p.address_line2);
     // Stash initial geo to preselect after async geo loads
-    window.MKHubInitialGeo = { country: p.country || '', province: p.province || '', city: p.city || '' };
+    window.MKHubInitialGeo = { country: p.country || '', province: p.province || '', city: p.city || '', nationality: p.nationality || '' };
     set('postal', p.postal_code); 
     set('hire_date', p.hire_date); set('termination_date', p.termination_date);
     set('job', p.job_title); set('division', p.division);
@@ -149,6 +149,8 @@ fetch('/auth/me/profile', { headers:{ Authorization:'Bearer '+token }}).then(r=>
     set('emergency_contact_name', p.emergency_contact_name);
     set('emergency_contact_relationship', p.emergency_contact_relationship);
     set('emergency_contact_phone', p.emergency_contact_phone);
+    // Try preselect if geo already loaded
+    if (window.MKHubGeoReady && typeof window.MKHubTryPreselect === 'function') { window.MKHubTryPreselect(); }
   }
 });
 
@@ -217,14 +219,20 @@ const nationalitySel = document.getElementById('nationality');
   }
   countrySel && countrySel.addEventListener('change', e=>populateStates(e.target.value));
   stateInp && stateInp.addEventListener('change', ()=>populateCities(countrySel.value, stateInp.value));
-  // Preselect from initial profile if available
-  const init = window.MKHubInitialGeo || {};
-  if (init.country){
+  // Expose a preselect helper so either side can trigger when both are ready
+  window.MKHubGeoReady = true;
+  window.MKHubTryPreselect = async function(){
+    const init = window.MKHubInitialGeo || {};
+    if (!init.country) return;
     countrySel.value = init.country;
+    // Set nationality too if present
+    if (init.nationality) { const nat = document.getElementById('nationality'); if (nat) nat.value = init.nationality; }
     await populateStates(init.country);
     if (init.province){ stateInp.value = init.province; await populateCities(init.country, init.province); }
     if (init.city){ citySel.value = init.city; }
-  }
+  };
+  // Attempt preselect now (in case profile already loaded)
+  if (typeof window.MKHubTryPreselect === 'function') { window.MKHubTryPreselect(); }
 })();
 
 // Populate manager options
