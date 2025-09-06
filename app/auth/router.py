@@ -378,6 +378,16 @@ def my_profile(user: User = Depends(get_current_user), db: Session = Depends(get
             "division": ep.division,
             "work_email": ep.work_email,
             "work_phone": ep.work_phone,
+            "manager_user_id": str(ep.manager_user_id) if getattr(ep, "manager_user_id", None) else None,
+            "pay_rate": ep.pay_rate,
+            "pay_type": ep.pay_type,
+            "employment_type": ep.employment_type,
+            "sin_number": ep.sin_number,
+            "work_permit_status": ep.work_permit_status,
+            "visa_status": ep.visa_status,
+            "emergency_contact_name": ep.emergency_contact_name,
+            "emergency_contact_relationship": ep.emergency_contact_relationship,
+            "emergency_contact_phone": ep.emergency_contact_phone,
         }
     # Try to surface first/last name from profile for convenience
     if ep:
