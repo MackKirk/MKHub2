@@ -134,9 +134,9 @@ fetch('/auth/me/profile', { headers:{ Authorization:'Bearer '+token }}).then(r=>
     set('dob', p.date_of_birth); 
     document.getElementById('nationality').value = p.nationality || '';
     set('address1', p.address_line1); set('address2', p.address_line2);
-    document.getElementById('city').value = p.city || '';
-    set('province', p.province); set('postal', p.postal_code); 
-    document.getElementById('country').value = p.country || '';
+    // Stash initial geo to preselect after async geo loads
+    window.MKHubInitialGeo = { country: p.country || '', province: p.province || '', city: p.city || '' };
+    set('postal', p.postal_code); 
     set('hire_date', p.hire_date); set('termination_date', p.termination_date);
     set('job', p.job_title); set('division', p.division);
     set('work_email', p.work_email); set('work_phone', p.work_phone);
@@ -217,6 +217,14 @@ const nationalitySel = document.getElementById('nationality');
   }
   countrySel && countrySel.addEventListener('change', e=>populateStates(e.target.value));
   stateInp && stateInp.addEventListener('change', ()=>populateCities(countrySel.value, stateInp.value));
+  // Preselect from initial profile if available
+  const init = window.MKHubInitialGeo || {};
+  if (init.country){
+    countrySel.value = init.country;
+    await populateStates(init.country);
+    if (init.province){ stateInp.value = init.province; await populateCities(init.country, init.province); }
+    if (init.city){ citySel.value = init.city; }
+  }
 })();
 
 // Populate manager options
