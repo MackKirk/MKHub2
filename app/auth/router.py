@@ -67,17 +67,29 @@ def username_suggest(req: UsernameSuggestRequest, reserve: bool = False, db: Ses
 
 
 @router.post("/invite")
-def invite_user(req: InviteRequest, db: Session = Depends(get_db), admin: User = Depends(get_current_user)):
-    # Basic check: require at least one role named 'admin'
-    if not any(r.name == "admin" for r in admin.roles):
-        raise HTTPException(status_code=403, detail="Admin required")
+def invite_user(req: InviteRequest, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    # Allow if user has admin role OR invite:send permission
+    has_admin = any(r.name == "admin" for r in user.roles)
+    has_perm = False
+    try:
+        perm_map = {}
+        for r in user.roles:
+            if getattr(r, 'permissions', None):
+                perm_map.update(r.permissions)
+        if getattr(user, 'permissions_override', None):
+            perm_map.update(user.permissions_override)
+        has_perm = bool(perm_map.get("invite:send"))
+    except Exception:
+        has_perm = False
+    if not (has_admin or has_perm):
+        raise HTTPException(status_code=403, detail="Forbidden")
     token = str(uuid.uuid4())
     suggested = find_available_username(db, req.email_personal.split("@")[0], "user")
     inv = Invite(
         email_personal=req.email_personal,
         token=token,
         suggested_username=suggested,
-        created_by=admin.id,
+        created_by=user.id,
         expires_at=datetime.now(timezone.utc) + timedelta(days=7),
     )
     db.add(inv)
@@ -306,13 +318,27 @@ def refresh(token: str):
 
 @router.get("/me", response_model=MeResponse)
 def me(user: User = Depends(get_current_user)):
+    # Resolve permissions from roles + user overrides (keys indicate granted perms)
+    perm_map = {}
+    for r in user.roles:
+        if getattr(r, 'permissions', None):
+            try:
+                perm_map.update(r.permissions)
+            except Exception:
+                pass
+    if getattr(user, 'permissions_override', None):
+        try:
+            perm_map.update(user.permissions_override)
+        except Exception:
+            pass
+    granted = sorted([k for k,v in perm_map.items() if v])
     return MeResponse(
         id=str(user.id),
         username=user.username,
         email_personal=user.email_personal,
         email_corporate=user.email_corporate,
         roles=[r.name for r in user.roles],
-        permissions=[],
+        permissions=granted,
     )
 
 
@@ -448,7 +474,29 @@ def list_users(q: Optional[str] = None, limit: int = 100, db: Session = Depends(
         like = f"%{q}%"
         query = query.filter((User.username.ilike(like)) | (User.email_personal.ilike(like)))
     rows = query.limit(limit).all()
-    return [{"id": str(u.id), "username": u.username, "email": u.email_personal, "active": u.is_active} for u in rows]
+    return [{
+        "id": str(u.id),
+        "username": u.username,
+        "email": u.email_personal,
+        "active": u.is_active,
+        "roles": [r.name for r in u.roles],
+        "permissions_override": list((u.permissions_override or {}).keys())
+    } for u in rows]
+
+
+@router.get("/users/{user_id}")
+def get_user(user_id: str, db: Session = Depends(get_db), _=Depends(require_permissions("users:read"))):
+    u = db.query(User).filter(User.id == user_id).first()
+    if not u:
+        raise HTTPException(status_code=404, detail="Not found")
+    return {
+        "id": str(u.id),
+        "username": u.username,
+        "email": u.email_personal,
+        "active": u.is_active,
+        "roles": [r.name for r in u.roles],
+        "permissions_override": u.permissions_override or {},
+    }
 
 
 @router.get("/users/{user_id}/profile")
@@ -499,6 +547,37 @@ def update_user_profile(user_id: str, payload: EmployeeProfileInput, db: Session
     for k,v in data.items(): setattr(ep,k,v)
     db.commit()
     return {"status":"ok"}
+
+
+# Role and permission management
+@router.post("/users/{user_id}/roles")
+def set_user_roles(user_id: str, roles: list[str] = Body(...), db: Session = Depends(get_db), _=Depends(require_permissions("users:write"))):
+    u = db.query(User).filter(User.id == user_id).first()
+    if not u:
+        raise HTTPException(status_code=404, detail="Not found")
+    # Load role records, create if missing
+    role_rows = db.query(Role).filter(Role.name.in_(roles)).all()
+    have = {r.name for r in role_rows}
+    missing = [r for r in roles if r not in have]
+    for name in missing:
+        r = Role(name=name, description=name.title())
+        db.add(r)
+        role_rows.append(r)
+    u.roles = role_rows
+    db.commit()
+    return {"status":"ok", "roles":[r.name for r in u.roles]}
+
+
+@router.put("/users/{user_id}/permissions")
+def update_user_permissions(user_id: str, permissions: dict = Body(...), db: Session = Depends(get_db), _=Depends(require_permissions("users:write"))):
+    u = db.query(User).filter(User.id == user_id).first()
+    if not u:
+        raise HTTPException(status_code=404, detail="Not found")
+    base = u.permissions_override or {}
+    base.update(permissions)
+    u.permissions_override = base
+    db.commit()
+    return {"status":"ok", "permissions": u.permissions_override}
 
 
 # Password reset

@@ -203,17 +203,7 @@ class ClientContact(Base):
     sort_index: Mapped[int] = mapped_column(Integer, default=0)
 
 
-class Employee(Base):
-    __tablename__ = "employees"
-
-    id: Mapped[uuid.UUID] = uuid_pk()
-    name: Mapped[str] = mapped_column(String(255), nullable=False)
-    job_title: Mapped[Optional[str]] = mapped_column(String(255))
-    department: Mapped[Optional[str]] = mapped_column(String(255))
-    email_corporate: Mapped[Optional[str]] = mapped_column(String(255), unique=True)
-    bamboohr_id: Mapped[Optional[str]] = mapped_column(String(100), unique=True)
-    phone: Mapped[Optional[str]] = mapped_column(String(100))
-    manager_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
+# Legacy Employee model removed in favor of EmployeeProfile linked to User
 
 
 class CalendarSource(Base):

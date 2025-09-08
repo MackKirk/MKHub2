@@ -20,6 +20,25 @@
     <button onclick="save()">Save</button>
     <pre id="msg" class="muted"></pre>
   </div>
+  <div id="roles" class="card" style="display:none">
+    <h3>Roles & Permissions</h3>
+    <div class="row">
+      <div class="field"><label>Roles (comma separated)</label><input id="roles_in" placeholder="e.g. admin, manager" /></div>
+    </div>
+    <div class="row">
+      <div class="field"><label>Grant invite:send</label>
+        <select id="perm_invite"><option value="">No change</option><option value="true">Grant</option><option value="false">Revoke</option></select>
+      </div>
+      <div class="field"><label>Grant users:read</label>
+        <select id="perm_users_read"><option value="">No change</option><option value="true">Grant</option><option value="false">Revoke</option></select>
+      </div>
+      <div class="field"><label>Grant users:write</label>
+        <select id="perm_users_write"><option value="">No change</option><option value="true">Grant</option><option value="false">Revoke</option></select>
+      </div>
+    </div>
+    <button onclick="saveRolesPerms()">Save Roles/Permissions</button>
+    <pre id="msg2" class="muted"></pre>
+  </div>
 </div>
 <script>
 MKHubUI.initSidebar('users');
@@ -34,6 +53,16 @@ async function load(){
   info.innerHTML = `<strong>${d.user.username}</strong><br/><span class="muted">${d.user.email}</span>`;
   // If user has users:write, allow edit (we can't inspect perms client-side yet; show form and rely on API to enforce)
   document.getElementById('edit').style.display = 'block';
+  // Roles/Perms panel visible if current user likely an admin or has users:write (best-effort based on /auth/me)
+  try {
+    const me = await fetch('/auth/me', { headers:{ Authorization:'Bearer '+token }}).then(x=>x.json());
+    const canAdmin = (me.roles||[]).includes('admin') || (me.permissions||[]).includes('users:write');
+    if (canAdmin){
+      document.getElementById('roles').style.display = 'block';
+      const u = await fetch('/auth/users/'+userId, { headers:{ Authorization:'Bearer '+token }}).then(x=>x.json());
+      document.getElementById('roles_in').value = (u.roles||[]).join(', ');
+    }
+  } catch(e) {}
 }
 async function save(){
   const token = MKHubUI.getTokenOrRedirect();
@@ -45,6 +74,22 @@ async function save(){
   };
   const r = await fetch('/auth/users/'+userId+'/profile', { method:'PUT', headers:{ 'Content-Type':'application/json', Authorization:'Bearer '+token }, body: JSON.stringify(body) });
   document.getElementById('msg').textContent = await r.text();
+}
+async function saveRolesPerms(){
+  const token = MKHubUI.getTokenOrRedirect();
+  const roles = document.getElementById('roles_in').value.split(',').map(s=>s.trim()).filter(Boolean);
+  const r1 = await fetch('/auth/users/'+userId+'/roles', { method:'POST', headers:{ 'Content-Type':'application/json', Authorization:'Bearer '+token }, body: JSON.stringify(roles) });
+  const changes = {};
+  const v = (id)=>{ const x=document.getElementById(id).value; return x===''?null:(x==='true'); };
+  const inv=v('perm_invite'); if (inv!==null) changes['invite:send']=inv;
+  const ur=v('perm_users_read'); if (ur!==null) changes['users:read']=ur;
+  const uw=v('perm_users_write'); if (uw!==null) changes['users:write']=uw;
+  let txt = await r1.text();
+  if (Object.keys(changes).length){
+    const r2 = await fetch('/auth/users/'+userId+'/permissions', { method:'PUT', headers:{ 'Content-Type':'application/json', Authorization:'Bearer '+token }, body: JSON.stringify(changes) });
+    txt += '\n' + await r2.text();
+  }
+  document.getElementById('msg2').textContent = txt;
 }
 load();
 </script>

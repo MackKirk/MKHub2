@@ -3,8 +3,8 @@
   <div id="hello" class="muted"></div>
   <a href="/ui/home.html" id="nav-home">Home</a>
   <a href="/ui/profile.html" id="nav-profile">My Information</a>
-  <a href="/ui/invite.html" id="nav-invite">Invite Users</a>
-  <a href="/ui/users.html" id="nav-users">Users</a>
+  <a href="/ui/invite.html" id="nav-invite" data-perm="invite:send">Invite Users</a>
+  <a href="/ui/users.html" id="nav-users" data-perm="users:read">Users</a>
   <button onclick="logout()">Logout</button>
 </div>
 <script>
@@ -13,7 +13,16 @@ const token = localStorage.getItem('user_token');
 if(!token){ location.href='/ui/login.html'; }
 fetch('/auth/me', { headers:{ Authorization:'Bearer '+token } })
   .then(r => { if (r.status === 401) { localStorage.removeItem('user_token'); location.href='/ui/login.html'; return null; } return r ? r.json() : null; })
-  .then(u => { if (!u) return; const el=document.getElementById('hello'); if(el){ el.textContent = 'Hello, ' + (u.username || 'user'); }});
+  .then(u => {
+    if (!u) return;
+    const el=document.getElementById('hello'); if(el){ el.textContent = 'Hello, ' + (u.username || 'user'); }
+    // Hide links based on permissions
+    const perms = new Set([...(u.permissions||[]), ...(u.roles||[]).map(r => 'role:'+r)]);
+    document.querySelectorAll('.side a[data-perm]').forEach(a => {
+      const need = a.getAttribute('data-perm');
+      if (need && !perms.has(need)) { a.style.display = 'none'; }
+    });
+  });
 // Highlight active
 const path = location.pathname;
 for (const id of ['home','profile','invite']) {

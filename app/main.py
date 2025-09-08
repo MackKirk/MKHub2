@@ -63,39 +63,7 @@ def create_app() -> FastAPI:
             os.makedirs("var", exist_ok=True)
         if settings.auto_create_db:
             Base.metadata.create_all(bind=engine)
-        # Bootstrap initial admin user if configured and no users exist
-        try:
-            from .models.models import User, Role
-            from .auth.security import get_password_hash
-
-            admin_username = os.getenv("ADMIN_USERNAME")
-            admin_email = os.getenv("ADMIN_EMAIL")
-            admin_password = os.getenv("ADMIN_PASSWORD")
-            if admin_username and admin_email and admin_password:
-                db = SessionLocal()
-                try:
-                    any_user = db.query(User).first()
-                    if not any_user:
-                        admin_role = db.query(Role).filter(Role.name == "admin").first()
-                        if not admin_role:
-                            admin_role = Role(name="admin", description="Administrator")
-                            db.add(admin_role)
-                            db.flush()
-
-                        user = User(
-                            username=admin_username,
-                            email_personal=admin_email,
-                            password_hash=get_password_hash(admin_password),
-                            is_active=True,
-                        )
-                        user.roles.append(admin_role)
-                        db.add(user)
-                        db.commit()
-                finally:
-                    db.close()
-        except Exception:
-            # Do not block startup on bootstrap failures
-            pass
+        # Removed bootstrap admin creation: admins should be granted via roles after onboarding
 
     @app.get("/")
     def root():
