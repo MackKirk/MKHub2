@@ -25,7 +25,11 @@ async function loadUsers(){
   if (!arr.length){ list.textContent = 'No users found.'; return; }
   list.innerHTML = arr.map(u=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #eee">`+
     `<div><strong>${u.username}</strong><br/><span class="muted">${u.email}</span></div>`+
-    `<div><a href="/ui/user.html?id=${u.id}">Open</a></div>`+
+    `<div style="display:flex;gap:12px">`+
+      `<a title="Personal Information" href="/ui/user.html?id=${u.id}&tab=personal" style="text-decoration:none">🧑</a>`+
+      `<a title="Job Information" href="/ui/user.html?id=${u.id}&tab=job" style="text-decoration:none">💼</a>`+
+      `<a title="Permissions" href="/ui/user.html?id=${u.id}&tab=perms" style="text-decoration:none">🔑</a>`+
+    `</div>`+
   `</div>`).join('');
 }
 loadUsers();

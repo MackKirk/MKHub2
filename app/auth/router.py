@@ -580,6 +580,22 @@ def update_user_permissions(user_id: str, permissions: dict = Body(...), db: Ses
     return {"status":"ok", "permissions": u.permissions_override}
 
 
+# Basic user management
+@router.put("/users/{user_id}")
+def update_user(user_id: str, email_personal: Optional[str] = None, username: Optional[str] = None, is_active: Optional[bool] = None, db: Session = Depends(get_db), _=Depends(require_permissions("users:write"))):
+    u = db.query(User).filter(User.id == user_id).first()
+    if not u:
+        raise HTTPException(status_code=404, detail="Not found")
+    if email_personal is not None:
+        u.email_personal = email_personal
+    if username is not None:
+        u.username = username
+    if is_active is not None:
+        u.is_active = bool(is_active)
+    db.commit()
+    return {"status":"ok"}
+
+
 # Password reset
 @router.post("/password/forgot")
 def password_forgot(identifier: str, db: Session = Depends(get_db)):

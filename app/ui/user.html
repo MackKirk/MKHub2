@@ -8,10 +8,14 @@
   <h2>User</h2>
   <div id="info" class="card"></div>
   <div id="edit" class="card" style="display:none">
-    <h3>Edit Profile (requires permission)</h3>
+    <h3>Personal Information</h3>
     <div class="row">
       <div class="field"><label>First name</label><input id="first" /></div>
       <div class="field"><label>Last name</label><input id="last" /></div>
+    </div>
+    <div class="row">
+      <div class="field"><label>Email (personal)</label><input id="email_personal" /></div>
+      <div class="field"><label>Username</label><input id="username" /></div>
     </div>
     <div class="row">
       <div class="field"><label>Mobile</label><input id="mobile" /></div>
@@ -53,6 +57,13 @@ async function load(){
   info.innerHTML = `<strong>${d.user.username}</strong><br/><span class="muted">${d.user.email}</span>`;
   // If user has users:write, allow edit (we can't inspect perms client-side yet; show form and rely on API to enforce)
   document.getElementById('edit').style.display = 'block';
+  // Prefill personal fields
+  document.getElementById('first').value = (d.profile && d.profile.first_name) || '';
+  document.getElementById('last').value = (d.profile && d.profile.last_name) || '';
+  document.getElementById('email_personal').value = (d.user && d.user.email) || '';
+  document.getElementById('username').value = (d.user && d.user.username) || '';
+  document.getElementById('mobile').value = (d.profile && d.profile.mobile_phone) || '';
+  document.getElementById('job').value = (d.profile && d.profile.job_title) || '';
   // Roles/Perms panel visible if current user likely an admin or has users:write (best-effort based on /auth/me)
   try {
     const me = await fetch('/auth/me', { headers:{ Authorization:'Bearer '+token }}).then(x=>x.json());
@@ -73,7 +84,15 @@ async function save(){
     job_title: document.getElementById('job').value || null,
   };
   const r = await fetch('/auth/users/'+userId+'/profile', { method:'PUT', headers:{ 'Content-Type':'application/json', Authorization:'Bearer '+token }, body: JSON.stringify(body) });
-  document.getElementById('msg').textContent = await r.text();
+  let txt = await r.text();
+  // Save user core fields
+  const u = {
+    email_personal: document.getElementById('email_personal').value || null,
+    username: document.getElementById('username').value || null,
+  };
+  const r2 = await fetch('/auth/users/'+userId, { method:'PUT', headers:{ 'Content-Type':'application/json', Authorization:'Bearer '+token }, body: JSON.stringify(u) });
+  txt += '\n' + await r2.text();
+  document.getElementById('msg').textContent = txt;
 }
 async function saveRolesPerms(){
   const token = MKHubUI.getTokenOrRedirect();
