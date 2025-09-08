@@ -30,6 +30,17 @@ async function initSidebar(active, enforceProfile=true) {
     const user = await resp.json();
     const hello = document.getElementById('hello');
     if (hello) hello.textContent = 'Hello, ' + (user.username || 'user');
+    // Reveal sidebar links based on permissions or admin role
+    const roles = (user.roles || []).map(r => (r || '').toLowerCase());
+    const isAdmin = roles.includes('admin');
+    const perms = new Set(user.permissions || []);
+    document.querySelectorAll('.side a[data-perm]').forEach(a => {
+      const need = a.getAttribute('data-perm');
+      const hasAlt = need === 'users:read' && perms.has('users:write');
+      if (isAdmin || (need && (perms.has(need) || hasAlt))) {
+        a.style.display = 'block';
+      }
+    });
   } catch (e) {}
 
   if (enforceProfile && !location.pathname.endsWith('/ui/profile.html')) {
