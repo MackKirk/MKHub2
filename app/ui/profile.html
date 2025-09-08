@@ -192,6 +192,12 @@ async function save(ev){
   const r = await fetch('/auth/me/profile', { method:'PUT', headers:{ 'Content-Type':'application/json', Authorization:'Bearer '+MKHubUI.getTokenOrRedirect() }, body: JSON.stringify(body) });
   const txt = await r.text();
   document.getElementById('msg').textContent = txt;
+  // Update missing indicator from current inputs
+  const reqIds = ['preferred','gender','dob','marital','nationality','mobile','address1','city','province','postal','country','sin_number','work_permit_status','visa_status','emergency_contact_name','emergency_contact_relationship','emergency_contact_phone'];
+  const labels = { preferred:'Preferred name', gender:'Gender', dob:'Date of birth', marital:'Marital status', nationality:'Nationality', mobile:'Mobile phone', address1:'Address line 1', city:'City', province:'Province/State', postal:'Postal code', country:'Country', sin_number:'SIN/SSN', work_permit_status:'Work permit status', visa_status:'Visa status', emergency_contact_name:'Emergency contact name', emergency_contact_relationship:'Emergency contact relationship', emergency_contact_phone:'Emergency contact phone' };
+  const missingNow = [];
+  for (const id of reqIds){ const el=document.getElementById(id); const v = el && (el.value||''); if (!v) missingNow.push(labels[id]||id); }
+  const missEl = document.getElementById('missing'); if (missEl){ missEl.textContent = missingNow.length ? ('Missing: ' + missingNow.join(', ')) : 'All required fields completed.'; }
 }
 
 // Populate country/state/city with geo loader
