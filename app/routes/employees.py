@@ -3,7 +3,6 @@ from sqlalchemy.orm import Session
 from typing import Optional
 
 from ..db import get_db
-from ..models.models import Employee
 
 
 router = APIRouter(prefix="/employees", tags=["employees"])
