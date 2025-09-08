@@ -9,6 +9,12 @@
   <div class="tabs">
     <a id="tab-personal" href="#" class="active" onclick="showTab(event,'personal')">Personal</a>
     <a id="tab-job" href="#" onclick="showTab(event,'job')">Job</a>
+    <a id="tab-timeoff" href="#" onclick="showTab(event,'timeoff')">Time Off</a>
+    <a id="tab-emergency" href="#" onclick="showTab(event,'emergency')">Emergency</a>
+    <a id="tab-docs" href="#" onclick="showTab(event,'docs')">Documents</a>
+    <a id="tab-notes" href="#" onclick="showTab(event,'notes')">Notes</a>
+    <a id="tab-training" href="#" onclick="showTab(event,'training')">Training</a>
+    <a id="tab-benefits" href="#" onclick="showTab(event,'benefits')">Benefits</a>
     <a id="tab-perms" href="#" onclick="showTab(event,'perms')">Permissions</a>
   </div>
   <div id="info" class="card"></div>
@@ -25,6 +31,84 @@
     <div class="row">
       <div class="field"><label>Mobile</label><input id="mobile" /></div>
     </div>
+    <h4>Profile</h4>
+    <div class="row">
+      <div class="field"><label>Preferred name</label><input id="preferred_name" /></div>
+      <div class="field"><label>Gender</label>
+        <select id="p_gender">
+          <option value="">Select...</option>
+          <option>Female</option>
+          <option>Male</option>
+          <option>Non-binary</option>
+          <option>Prefer not to say</option>
+          <option>Other</option>
+        </select>
+      </div>
+    </div>
+    <div class="row">
+      <div class="field"><label>Marital status</label>
+        <select id="p_marital">
+          <option value="">Select...</option>
+          <option>Single</option>
+          <option>Married</option>
+          <option>Common-law</option>
+          <option>Divorced</option>
+          <option>Widowed</option>
+        </select>
+      </div>
+      <div class="field"><label>Date of birth</label><input id="p_dob" type="date" /></div>
+    </div>
+    <div class="row">
+      <div class="field"><label>Nationality</label><input id="p_nationality" /></div>
+      <div class="field"><label>Home phone</label><input id="home_phone" /></div>
+    </div>
+    <h4>Address</h4>
+    <div class="row">
+      <div class="field"><label>Street 1</label><input id="address1" /></div>
+      <div class="field"><label>Street 2</label><input id="address2" /></div>
+    </div>
+    <div class="row">
+      <div class="field"><label>City</label><input id="p_city" /></div>
+      <div class="field"><label>Province/State</label><input id="p_province" /></div>
+    </div>
+    <div class="row">
+      <div class="field"><label>Postal code</label><input id="p_postal" /></div>
+      <div class="field"><label>Country</label><input id="p_country" /></div>
+    </div>
+    <h4>Legal</h4>
+    <div class="row">
+      <div class="field"><label>SIN/SSN</label><input id="p_sin" /></div>
+      <div class="field"><label>Work permit status</label><input id="p_work_permit" /></div>
+    </div>
+    <div class="row">
+      <div class="field"><label>Visa status</label><input id="p_visa" /></div>
+    </div>
+    <h4>Passports</h4>
+    <div id="passportsList" class="card"></div>
+    <div class="row">
+      <div class="field"><label>Number</label><input id="pp_number" /></div>
+      <div class="field"><label>Issuing country</label><input id="pp_country" /></div>
+    </div>
+    <div class="row">
+      <div class="field"><label>Issued</label><input id="pp_issued" type="date" /></div>
+      <div class="field"><label>Expiry</label><input id="pp_expiry" type="date" /></div>
+    </div>
+    <button onclick="addPassport()">Add Passport</button>
+    <h4>Education</h4>
+    <div id="educationList" class="card"></div>
+    <div class="row">
+      <div class="field"><label>Institution</label><input id="ed_inst" /></div>
+      <div class="field"><label>Degree</label><input id="ed_degree" /></div>
+    </div>
+    <div class="row">
+      <div class="field"><label>Major</label><input id="ed_major" /></div>
+      <div class="field"><label>GPA</label><input id="ed_gpa" /></div>
+    </div>
+    <div class="row">
+      <div class="field"><label>Start</label><input id="ed_start" type="date" /></div>
+      <div class="field"><label>End</label><input id="ed_end" type="date" /></div>
+    </div>
+    <button onclick="addEducation()">Add Education</button>
     <button onclick="save()">Save</button>
     <pre id="msg" class="muted"></pre>
   </div>
@@ -40,6 +124,27 @@
     </div>
     <button onclick="saveJob()">Save Job</button>
     <pre id="msgJob" class="muted"></pre>
+  </div>
+  <div id="emergency" class="card" style="display:none">
+    <h3>Emergency Contacts</h3>
+    <div id="emergList" class="card"></div>
+    <h4>Add Contact</h4>
+    <div class="row">
+      <div class="field"><label>Name</label><input id="e_name" /></div>
+      <div class="field"><label>Relationship</label><input id="e_rel" /></div>
+    </div>
+    <div class="row">
+      <div class="field"><label>Mobile</label><input id="e_mobile" /></div>
+      <div class="field"><label>Email</label><input id="e_email" /></div>
+    </div>
+    <div class="row">
+      <div class="field"><label>Address</label><input id="e_address" /></div>
+      <div class="field"><label>Primary</label>
+        <select id="e_primary"><option value="false">No</option><option value="true">Yes</option></select>
+      </div>
+    </div>
+    <button onclick="addEmergency()">Add</button>
+    <pre id="msgEmerg" class="muted"></pre>
   </div>
   <div id="roles" class="card" style="display:none">
     <h3>Roles & Permissions</h3>
@@ -85,15 +190,46 @@ async function load(){
   document.getElementById('employment_type').value = (d.profile && d.profile.employment_type) || '';
   document.getElementById('work_email').value = (d.profile && d.profile.work_email) || '';
   document.getElementById('work_phone').value = (d.profile && d.profile.work_phone) || '';
+  // Prefill personal extended
+  document.getElementById('preferred_name').value = (d.profile && d.profile.preferred_name) || '';
+  document.getElementById('p_gender').value = (d.profile && d.profile.gender) || '';
+  document.getElementById('p_marital').value = (d.profile && d.profile.marital_status) || '';
+  document.getElementById('p_dob').value = (d.profile && (d.profile.date_of_birth || '').slice(0,10)) || '';
+  document.getElementById('p_nationality').value = (d.profile && d.profile.nationality) || '';
+  document.getElementById('home_phone').value = (d.profile && d.profile.phone) || '';
+  document.getElementById('address1').value = (d.profile && d.profile.address_line1) || '';
+  document.getElementById('address2').value = (d.profile && d.profile.address_line2) || '';
+  document.getElementById('p_city').value = (d.profile && d.profile.city) || '';
+  document.getElementById('p_province').value = (d.profile && d.profile.province) || '';
+  document.getElementById('p_postal').value = (d.profile && d.profile.postal_code) || '';
+  document.getElementById('p_country').value = (d.profile && d.profile.country) || '';
+  document.getElementById('p_sin').value = (d.profile && d.profile.sin_number) || '';
+  document.getElementById('p_work_permit').value = (d.profile && d.profile.work_permit_status) || '';
+  document.getElementById('p_visa').value = (d.profile && d.profile.visa_status) || '';
+  // Load passports and education
+  try {
+    const token2 = MKHubUI.getTokenOrRedirect();
+    const [pp, ed] = await Promise.all([
+      fetch('/auth/users/'+userId+'/passports', { headers:{ Authorization:'Bearer '+token2 }}).then(x=>x.json()),
+      fetch('/auth/users/'+userId+'/education', { headers:{ Authorization:'Bearer '+token2 }}).then(x=>x.json()),
+    ]);
+    const pl = document.getElementById('passportsList');
+    if (pl) pl.innerHTML = (pp||[]).map(p=>`<div style="display:flex;justify-content:space-between;border-bottom:1px solid #eee;padding:6px 0">`+
+      `<div>${p.passport_number} — ${p.issuing_country || ''} (${(p.issued_date||'').slice(0,10)} → ${(p.expiry_date||'').slice(0,10)})</div>`+
+      `<button onclick=\"delPassport('${p.id}')\">Remove</button>`+
+    `</div>`).join('') || 'No passports';
+    const el = document.getElementById('educationList');
+    if (el) el.innerHTML = (ed||[]).map(e=>`<div style="display:flex;justify-content:space-between;border-bottom:1px solid #eee;padding:6px 0">`+
+      `<div>${e.college_institution||''} — ${e.degree||''} ${e.major_specialization||''} (${(e.start_date||'').slice(0,10)} → ${(e.end_date||'').slice(0,10)})</div>`+
+      `<button onclick=\"delEducation('${e.id}')\">Remove</button>`+
+    `</div>`).join('') || 'No education records';
+  } catch(e) {}
   // Roles/Perms panel visible if current user likely an admin or has users:write (best-effort based on /auth/me)
   try {
     const me = await fetch('/auth/me', { headers:{ Authorization:'Bearer '+token }}).then(x=>x.json());
     const canAdmin = (me.roles||[]).includes('admin') || (me.permissions||[]).includes('users:write');
-    if (canAdmin){
-      document.getElementById('roles').style.display = 'block';
-      const u = await fetch('/auth/users/'+userId, { headers:{ Authorization:'Bearer '+token }}).then(x=>x.json());
-      document.getElementById('roles_in').value = (u.roles||[]).join(', ');
-    }
+    const tabPerms = document.getElementById('tab-perms');
+    if (tabPerms){ tabPerms.style.display = canAdmin ? 'inline-block' : 'none'; }
   } catch(e) {}
 }
 async function save(){
@@ -101,8 +237,22 @@ async function save(){
   const body = {
     first_name: document.getElementById('first').value || null,
     last_name: document.getElementById('last').value || null,
+    preferred_name: document.getElementById('preferred_name').value || null,
+    gender: document.getElementById('p_gender').value || null,
+    marital_status: document.getElementById('p_marital').value || null,
+    date_of_birth: document.getElementById('p_dob').value || null,
+    nationality: document.getElementById('p_nationality').value || null,
+    phone: document.getElementById('home_phone').value || null,
     mobile_phone: document.getElementById('mobile').value || null,
-    job_title: document.getElementById('job').value || null,
+    address_line1: document.getElementById('address1').value || null,
+    address_line2: document.getElementById('address2').value || null,
+    city: document.getElementById('p_city').value || null,
+    province: document.getElementById('p_province').value || null,
+    postal_code: document.getElementById('p_postal').value || null,
+    country: document.getElementById('p_country').value || null,
+    sin_number: document.getElementById('p_sin').value || null,
+    work_permit_status: document.getElementById('p_work_permit').value || null,
+    visa_status: document.getElementById('p_visa').value || null,
   };
   const r = await fetch('/auth/users/'+userId+'/profile', { method:'PUT', headers:{ 'Content-Type':'application/json', Authorization:'Bearer '+token }, body: JSON.stringify(body) });
   let txt = await r.text();
@@ -132,9 +282,80 @@ async function saveJob(){
   const r = await fetch('/auth/users/'+userId+'/profile', { method:'PUT', headers:{ 'Content-Type':'application/json', Authorization:'Bearer '+token }, body: JSON.stringify(body) });
   document.getElementById('msgJob').textContent = await r.text();
 }
+async function addPassport(){
+  const token = MKHubUI.getTokenOrRedirect();
+  const body = {
+    passport_number: document.getElementById('pp_number').value || null,
+    issuing_country: document.getElementById('pp_country').value || null,
+    issued_date: document.getElementById('pp_issued').value || null,
+    expiry_date: document.getElementById('pp_expiry').value || null,
+  };
+  const r = await fetch('/auth/users/'+userId+'/passports', { method:'POST', headers:{ 'Content-Type':'application/json', Authorization:'Bearer '+token }, body: JSON.stringify(body) });
+  const t = await r.text();
+  document.getElementById('msg').textContent = t;
+  load();
+}
+async function delPassport(id){
+  const token = MKHubUI.getTokenOrRedirect();
+  await fetch('/auth/users/'+userId+'/passports/'+id, { method:'DELETE', headers:{ Authorization:'Bearer '+token } });
+  load();
+}
+async function addEducation(){
+  const token = MKHubUI.getTokenOrRedirect();
+  const body = {
+    college_institution: document.getElementById('ed_inst').value || null,
+    degree: document.getElementById('ed_degree').value || null,
+    major_specialization: document.getElementById('ed_major').value || null,
+    gpa: document.getElementById('ed_gpa').value || null,
+    start_date: document.getElementById('ed_start').value || null,
+    end_date: document.getElementById('ed_end').value || null,
+  };
+  const r = await fetch('/auth/users/'+userId+'/education', { method:'POST', headers:{ 'Content-Type':'application/json', Authorization:'Bearer '+token }, body: JSON.stringify(body) });
+  const t = await r.text();
+  document.getElementById('msg').textContent = t;
+  load();
+}
+async function delEducation(id){
+  const token = MKHubUI.getTokenOrRedirect();
+  await fetch('/auth/users/'+userId+'/education/'+id, { method:'DELETE', headers:{ Authorization:'Bearer '+token } });
+  load();
+}
+async function addEmergency(){
+  const token = MKHubUI.getTokenOrRedirect();
+  const body = {
+    name: document.getElementById('e_name').value || null,
+    relationship: document.getElementById('e_rel').value || null,
+    mobile_phone: document.getElementById('e_mobile').value || null,
+    email: document.getElementById('e_email').value || null,
+    address: document.getElementById('e_address').value || null,
+    is_primary: document.getElementById('e_primary').value === 'true',
+  };
+  const r = await fetch('/auth/users/'+userId+'/emergency-contacts', { method:'POST', headers:{ 'Content-Type':'application/json', Authorization:'Bearer '+token }, body: JSON.stringify(body) });
+  const t = await r.text();
+  document.getElementById('msgEmerg').textContent = t;
+  // reload list
+  const lst = await fetch('/auth/users/'+userId+'/emergency-contacts', { headers:{ Authorization:'Bearer '+token } }).then(x=>x.json());
+  const el = document.getElementById('emergList');
+  if (el) el.innerHTML = (lst||[]).map(e=>`<div style=\"display:flex;justify-content:space-between;border-bottom:1px solid #eee;padding:6px 0\">`+
+    `<div>${e.name} — ${e.relationship||''} ${e.mobile_phone||''}</div>`+
+    `<button onclick=\"delEmergency('${e.id}')\">Remove</button>`+
+  `</div>`).join('') || 'No contacts';
+}
+async function delEmergency(id){
+  const token = MKHubUI.getTokenOrRedirect();
+  await fetch('/auth/users/'+userId+'/emergency-contacts/'+id, { method:'DELETE', headers:{ Authorization:'Bearer '+token } });
+  showTab(null, 'emergency');
+}
 function showTab(ev, which){ ev && ev.preventDefault();
-  for (const k of ['personal','job','perms']){ const el=document.getElementById(k==='perms'?'roles':k); if (el) el.style.display = (k===which) ? 'block':'none'; }
-  for (const k of ['personal','job','perms']){ const t=document.getElementById('tab-'+k); if (t){ if (k===which) t.classList.add('active'); else t.classList.remove('active'); } }
+  const tabs=['personal','job','timeoff','emergency','docs','notes','training','benefits','perms'];
+  for (const k of tabs){ const el=document.getElementById(k==='perms'?'roles':k); if (el) el.style.display = (k===which) ? 'block':'none'; }
+  for (const k of tabs){ const t=document.getElementById('tab-'+k); if (t){ if (k===which) t.classList.add('active'); else t.classList.remove('active'); } }
+  if (which === 'perms' && document.getElementById('roles').style.display === 'block'){
+    // Lazy load roles only when tab opened
+    const token = MKHubUI.getTokenOrRedirect();
+    fetch('/auth/users/'+userId, { headers:{ Authorization:'Bearer '+token }})
+      .then(x=>x.json()).then(u=>{ document.getElementById('roles_in').value = (u.roles||[]).join(', '); });
+  }
 }
 // Default tab
 showTab(null, 'personal');

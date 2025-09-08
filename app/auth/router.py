@@ -33,6 +33,7 @@ from ..logging import structlog
 import smtplib
 from email.message import EmailMessage
 import secrets
+from sqlalchemy import and_
 
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -578,6 +579,145 @@ def update_user_permissions(user_id: str, permissions: dict = Body(...), db: Ses
     u.permissions_override = base
     db.commit()
     return {"status":"ok", "permissions": u.permissions_override}
+
+
+# ----- Multi-record CRUD -----
+@router.get("/users/{user_id}/passports")
+def list_passports(user_id: str, db: Session = Depends(get_db), _=Depends(require_permissions("users:read"))):
+    from ..models.models import EmployeePassport
+    rows = db.query(EmployeePassport).filter(EmployeePassport.user_id == user_id).all()
+    def _row(p):
+        return {
+            "id": str(p.id),
+            "passport_number": p.passport_number,
+            "issuing_country": p.issuing_country,
+            "issued_date": p.issued_date.isoformat() if p.issued_date else None,
+            "expiry_date": p.expiry_date.isoformat() if p.expiry_date else None,
+        }
+    return [_row(p) for p in rows]
+
+
+@router.post("/users/{user_id}/passports")
+def create_passport(user_id: str, payload: dict = Body(...), db: Session = Depends(get_db), _=Depends(require_permissions("users:write"))):
+    from ..models.models import EmployeePassport
+    p = EmployeePassport(user_id=user_id)
+    p.passport_number = payload.get("passport_number")
+    p.issuing_country = payload.get("issuing_country")
+    from datetime import datetime, timezone
+    def _dt(s):
+        if not s:
+            return None
+        try:
+            return datetime.strptime(s, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+        except Exception:
+            return None
+    p.issued_date = _dt(payload.get("issued_date"))
+    p.expiry_date = _dt(payload.get("expiry_date"))
+    db.add(p)
+    db.commit()
+    return {"id": str(p.id)}
+
+
+@router.delete("/users/{user_id}/passports/{pid}")
+def delete_passport(user_id: str, pid: str, db: Session = Depends(get_db), _=Depends(require_permissions("users:write"))):
+    from ..models.models import EmployeePassport
+    db.query(EmployeePassport).filter(and_(EmployeePassport.user_id == user_id, EmployeePassport.id == pid)).delete()
+    db.commit()
+    return {"status": "ok"}
+
+
+@router.get("/users/{user_id}/education")
+def list_education(user_id: str, db: Session = Depends(get_db), _=Depends(require_permissions("users:read"))):
+    from ..models.models import EmployeeEducation
+    rows = db.query(EmployeeEducation).filter(EmployeeEducation.user_id == user_id).all()
+    def _row(e):
+        return {
+            "id": str(e.id),
+            "college_institution": e.college_institution,
+            "degree": e.degree,
+            "major_specialization": e.major_specialization,
+            "gpa": e.gpa,
+            "start_date": e.start_date.isoformat() if e.start_date else None,
+            "end_date": e.end_date.isoformat() if e.end_date else None,
+        }
+    return [_row(e) for e in rows]
+
+
+@router.post("/users/{user_id}/education")
+def create_education(user_id: str, payload: dict = Body(...), db: Session = Depends(get_db), _=Depends(require_permissions("users:write"))):
+    from ..models.models import EmployeeEducation
+    from datetime import datetime, timezone
+    def _dt(s):
+        if not s:
+            return None
+        try:
+            return datetime.strptime(s, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+        except Exception:
+            return None
+    e = EmployeeEducation(user_id=user_id)
+    e.college_institution = payload.get("college_institution")
+    e.degree = payload.get("degree")
+    e.major_specialization = payload.get("major_specialization")
+    e.gpa = payload.get("gpa")
+    e.start_date = _dt(payload.get("start_date"))
+    e.end_date = _dt(payload.get("end_date"))
+    db.add(e)
+    db.commit()
+    return {"id": str(e.id)}
+
+
+@router.delete("/users/{user_id}/education/{eid}")
+def delete_education(user_id: str, eid: str, db: Session = Depends(get_db), _=Depends(require_permissions("users:write"))):
+    from ..models.models import EmployeeEducation
+    db.query(EmployeeEducation).filter(and_(EmployeeEducation.user_id == user_id, EmployeeEducation.id == eid)).delete()
+    db.commit()
+    return {"status": "ok"}
+
+
+@router.get("/users/{user_id}/emergency-contacts")
+def list_emergency_contacts(user_id: str, db: Session = Depends(get_db), _=Depends(require_permissions("users:read"))):
+    from ..models.models import EmployeeEmergencyContact
+    rows = db.query(EmployeeEmergencyContact).filter(EmployeeEmergencyContact.user_id == user_id).all()
+    def _row(e):
+        return {
+            "id": str(e.id),
+            "name": e.name,
+            "relationship": e.relationship,
+            "is_primary": e.is_primary,
+            "work_phone": e.work_phone,
+            "home_phone": e.home_phone,
+            "mobile_phone": e.mobile_phone,
+            "email": e.email,
+            "address": e.address,
+        }
+    return [_row(e) for e in rows]
+
+
+@router.post("/users/{user_id}/emergency-contacts")
+def create_emergency_contact(user_id: str, payload: dict = Body(...), db: Session = Depends(get_db), _=Depends(require_permissions("users:write"))):
+    from ..models.models import EmployeeEmergencyContact
+    e = EmployeeEmergencyContact(
+        user_id=user_id,
+        name=payload.get("name"),
+        relationship=payload.get("relationship"),
+        is_primary=bool(payload.get("is_primary")),
+        work_phone=payload.get("work_phone"),
+        home_phone=payload.get("home_phone"),
+        mobile_phone=payload.get("mobile_phone"),
+        email=payload.get("email"),
+        address=payload.get("address"),
+    )
+    db.add(e)
+    db.commit()
+    return {"id": str(e.id)}
+
+
+@router.delete("/users/{user_id}/emergency-contacts/{eid}")
+def delete_emergency_contact(user_id: str, eid: str, db: Session = Depends(get_db), _=Depends(require_permissions("users:write"))):
+    from ..models.models import EmployeeEmergencyContact
+    db.query(EmployeeEmergencyContact).filter(and_(EmployeeEmergencyContact.user_id == user_id, EmployeeEmergencyContact.id == eid)).delete()
+    db.commit()
+    return {"status": "ok"}
 
 
 # Basic user management

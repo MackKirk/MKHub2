@@ -301,3 +301,55 @@ class EmployeeProfile(Base):
     updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     updated_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
 
+
+# Multi-record tables
+class EmployeePassport(Base):
+    __tablename__ = "employee_passports"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    passport_number: Mapped[str] = mapped_column(String(100))
+    issuing_country: Mapped[Optional[str]] = mapped_column(String(100))
+    issued_date: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    expiry_date: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+
+
+class EmployeeEducation(Base):
+    __tablename__ = "employee_education"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    college_institution: Mapped[Optional[str]] = mapped_column(String(255))
+    degree: Mapped[Optional[str]] = mapped_column(String(255))
+    major_specialization: Mapped[Optional[str]] = mapped_column(String(255))
+    gpa: Mapped[Optional[str]] = mapped_column(String(50))
+    start_date: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    end_date: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+
+
+class EmployeeEmergencyContact(Base):
+    __tablename__ = "employee_emergency_contacts"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(255))
+    relationship: Mapped[Optional[str]] = mapped_column(String(100))
+    is_primary: Mapped[bool] = mapped_column(Boolean, default=False)
+    work_phone: Mapped[Optional[str]] = mapped_column(String(100))
+    home_phone: Mapped[Optional[str]] = mapped_column(String(100))
+    mobile_phone: Mapped[Optional[str]] = mapped_column(String(100))
+    email: Mapped[Optional[str]] = mapped_column(String(255))
+    address: Mapped[Optional[str]] = mapped_column(String(500))
+
+
+class EmployeeDependent(Base):
+    __tablename__ = "employee_dependents"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(255))
+    relationship: Mapped[Optional[str]] = mapped_column(String(100))
+    gender: Mapped[Optional[str]] = mapped_column(String(50))
+    ssn: Mapped[Optional[str]] = mapped_column(String(100))
+    birth_date: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+
