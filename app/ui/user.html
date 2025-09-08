@@ -6,8 +6,13 @@
 <div id="sidebar"></div>
 <div class="main">
   <h2>User</h2>
+  <div class="tabs">
+    <a id="tab-personal" href="#" class="active" onclick="showTab(event,'personal')">Personal</a>
+    <a id="tab-job" href="#" onclick="showTab(event,'job')">Job</a>
+    <a id="tab-perms" href="#" onclick="showTab(event,'perms')">Permissions</a>
+  </div>
   <div id="info" class="card"></div>
-  <div id="edit" class="card" style="display:none">
+  <div id="personal" class="card" style="display:none">
     <h3>Personal Information</h3>
     <div class="row">
       <div class="field"><label>First name</label><input id="first" /></div>
@@ -23,6 +28,19 @@
     </div>
     <button onclick="save()">Save</button>
     <pre id="msg" class="muted"></pre>
+  </div>
+  <div id="job" class="card" style="display:none">
+    <h3>Job Information</h3>
+    <div class="row">
+      <div class="field"><label>Hire date</label><input id="hire_date" type="date" /></div>
+      <div class="field"><label>Employment type</label><input id="employment_type" /></div>
+    </div>
+    <div class="row">
+      <div class="field"><label>Work email</label><input id="work_email" /></div>
+      <div class="field"><label>Work phone</label><input id="work_phone" /></div>
+    </div>
+    <button onclick="saveJob()">Save Job</button>
+    <pre id="msgJob" class="muted"></pre>
   </div>
   <div id="roles" class="card" style="display:none">
     <h3>Roles & Permissions</h3>
@@ -55,8 +73,7 @@ async function load(){
   if (!r.ok){ info.textContent='Not authorized.'; return; }
   const d = await r.json();
   info.innerHTML = `<strong>${d.user.username}</strong><br/><span class="muted">${d.user.email}</span>`;
-  // If user has users:write, allow edit (we can't inspect perms client-side yet; show form and rely on API to enforce)
-  document.getElementById('edit').style.display = 'block';
+  document.getElementById('personal').style.display = 'block';
   // Prefill personal fields
   document.getElementById('first').value = (d.profile && d.profile.first_name) || '';
   document.getElementById('last').value = (d.profile && d.profile.last_name) || '';
@@ -64,6 +81,11 @@ async function load(){
   document.getElementById('username').value = (d.user && d.user.username) || '';
   document.getElementById('mobile').value = (d.profile && d.profile.mobile_phone) || '';
   document.getElementById('job').value = (d.profile && d.profile.job_title) || '';
+  // Prefill job
+  document.getElementById('hire_date').value = (d.profile && (d.profile.hire_date || '').slice(0,10)) || '';
+  document.getElementById('employment_type').value = (d.profile && d.profile.employment_type) || '';
+  document.getElementById('work_email').value = (d.profile && d.profile.work_email) || '';
+  document.getElementById('work_phone').value = (d.profile && d.profile.work_phone) || '';
   // Roles/Perms panel visible if current user likely an admin or has users:write (best-effort based on /auth/me)
   try {
     const me = await fetch('/auth/me', { headers:{ Authorization:'Bearer '+token }}).then(x=>x.json());
@@ -94,6 +116,23 @@ async function save(){
   txt += '\n' + await r2.text();
   document.getElementById('msg').textContent = txt;
 }
+async function saveJob(){
+  const token = MKHubUI.getTokenOrRedirect();
+  const body = {
+    hire_date: document.getElementById('hire_date').value || null,
+    employment_type: document.getElementById('employment_type').value || null,
+    work_email: document.getElementById('work_email').value || null,
+    work_phone: document.getElementById('work_phone').value || null,
+  };
+  const r = await fetch('/auth/users/'+userId+'/profile', { method:'PUT', headers:{ 'Content-Type':'application/json', Authorization:'Bearer '+token }, body: JSON.stringify(body) });
+  document.getElementById('msgJob').textContent = await r.text();
+}
+function showTab(ev, which){ ev && ev.preventDefault();
+  for (const k of ['personal','job','perms']){ const el=document.getElementById(k==='perms'?'roles':k); if (el) el.style.display = (k===which) ? 'block':'none'; }
+  for (const k of ['personal','job','perms']){ const t=document.getElementById('tab-'+k); if (t){ if (k===which) t.classList.add('active'); else t.classList.remove('active'); } }
+}
+// Default tab
+showTab(null, (params.get('tab')||'personal'));
 async function saveRolesPerms(){
   const token = MKHubUI.getTokenOrRedirect();
   const roles = document.getElementById('roles_in').value.split(',').map(s=>s.trim()).filter(Boolean);
