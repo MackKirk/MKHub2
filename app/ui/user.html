@@ -380,18 +380,23 @@ async function addEmergency(){
   const r = await fetch('/auth/users/'+userId+'/emergency-contacts', { method:'POST', headers:{ 'Content-Type':'application/json', Authorization:'Bearer '+token }, body: JSON.stringify(body) });
   const t = await r.text();
   document.getElementById('msgEmerg').textContent = t;
-  // reload list
-  const lst = await fetch('/auth/users/'+userId+'/emergency-contacts', { headers:{ Authorization:'Bearer '+token } }).then(x=>x.json());
-  const el = document.getElementById('emergList');
-  if (el) el.innerHTML = (lst||[]).map(e=>`<div style=\"display:flex;justify-content:space-between;border-bottom:1px solid #eee;padding:6px 0\">`+
-    `<div>${e.name} — ${e.relationship||''} ${e.mobile_phone||''}</div>`+
-    `<button onclick=\"delEmergency('${e.id}')\">Remove</button>`+
-  `</div>`).join('') || 'No contacts';
+  await loadEmergency();
 }
 async function delEmergency(id){
   const token = MKHubUI.getTokenOrRedirect();
   await fetch('/auth/users/'+userId+'/emergency-contacts/'+id, { method:'DELETE', headers:{ Authorization:'Bearer '+token } });
-  showTab(null, 'emergency');
+  await loadEmergency();
+}
+async function loadEmergency(){
+  try{
+    const token = MKHubUI.getTokenOrRedirect();
+    const lst = await fetch('/auth/users/'+userId+'/emergency-contacts', { headers:{ Authorization:'Bearer '+token } }).then(x=>x.json());
+    const el = document.getElementById('emergList');
+    if (el) el.innerHTML = (lst||[]).map(e=>`<div style=\"display:flex;justify-content:space-between;border-bottom:1px solid #eee;padding:6px 0\">`+
+      `<div>${e.name} — ${e.relationship||''} ${e.mobile_phone||''}</div>`+
+      `<button onclick=\"delEmergency('${e.id}')\">Remove</button>`+
+    `</div>`).join('') || 'No contacts';
+  } catch(e) {}
 }
 function showTab(ev, which){ ev && ev.preventDefault();
   const tabs=['personal','job','timeoff','emergency','docs','notes','training','benefits','perms'];
@@ -402,6 +407,9 @@ function showTab(ev, which){ ev && ev.preventDefault();
     const token = MKHubUI.getTokenOrRedirect();
     fetch('/auth/users/'+userId, { headers:{ Authorization:'Bearer '+token }})
       .then(x=>x.json()).then(u=>{ document.getElementById('roles_in').value = (u.roles||[]).join(', '); });
+  }
+  if (which === 'emergency'){
+    loadEmergency();
   }
 }
 // Default tab
