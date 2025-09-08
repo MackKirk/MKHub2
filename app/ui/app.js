@@ -10,7 +10,7 @@ function getTokenOrRedirect() {
 async function initSidebar(active, enforceProfile=true) {
   const mount = document.getElementById('sidebar');
   if (!mount) return;
-  const html = await fetch('/ui/sidebar.html').then(r => r.text());
+  const html = await fetch('/ui/sidebar.html?v=' + Date.now()).then(r => r.text());
   mount.outerHTML = html;
   const nav = document.getElementById('nav-' + active);
   if (nav) nav.classList.add('active');
