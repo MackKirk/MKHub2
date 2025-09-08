@@ -40,12 +40,11 @@ async function initSidebar(active, enforceProfile=true) {
         const p = data && data.profile ? data.profile : null;
         const first = p && p.first_name ? p.first_name : (data && data.user && data.user.first_name);
         const last = p && p.last_name ? p.last_name : (data && data.user && data.user.last_name);
-        // Define required fields (phone and address_line2 optional; termination_date optional)
+        // Required fields that the employee can fill (admin-only fields excluded)
+        // Optional: phone, address_line2, termination_date
         const required = [
           'preferred_name','gender','date_of_birth','marital_status','nationality',
           'mobile_phone','address_line1','city','province','postal_code','country',
-          'hire_date','job_title','division','work_email','work_phone',
-          'pay_rate','pay_type','employment_type',
           'sin_number','work_permit_status','visa_status',
           'emergency_contact_name','emergency_contact_relationship','emergency_contact_phone'
         ];
