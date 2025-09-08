@@ -9,6 +9,7 @@
 <div class="main">
 <h2>My Profile</h2>
 <p class="muted">Please complete your profile before using the system. Fields marked with <span class="req">*</span> are required.</p>
+<ul id="missingList" class="muted"></ul>
 <form onsubmit="save(event)">
   <div class="card">
     <h3>Identity</h3>
@@ -149,6 +150,24 @@ fetch('/auth/me/profile', { headers:{ Authorization:'Bearer '+token }}).then(r=>
     set('emergency_contact_name', p.emergency_contact_name);
     set('emergency_contact_relationship', p.emergency_contact_relationship);
     set('emergency_contact_phone', p.emergency_contact_phone);
+    // Show missing required fields as a bullet list
+    const required = {
+      preferred_name: 'Preferred name', gender: 'Gender', date_of_birth: 'Date of birth', marital_status: 'Marital status', nationality: 'Nationality',
+      mobile_phone: 'Mobile phone', address_line1: 'Address line 1', city: 'City', province: 'Province/State', postal_code: 'Postal code', country: 'Country',
+      sin_number: 'SIN/SSN', work_permit_status: 'Work permit status', visa_status: 'Visa status',
+      emergency_contact_name: 'Emergency contact name', emergency_contact_relationship: 'Emergency contact relationship', emergency_contact_phone: 'Emergency contact phone',
+    };
+    const missing = [];
+    const first = p.first_name || (d.user && d.user.first_name);
+    const last = p.last_name || (d.user && d.user.last_name);
+    if (!first) missing.push('First name');
+    if (!last) missing.push('Last name');
+    for (const [key,label] of Object.entries(required)){
+      if (!p || !p[key]) missing.push(label);
+    }
+    const ul = document.getElementById('missingList');
+    if (ul){ ul.innerHTML = missing.length ? missing.map(m=>`<li>- missing ${m}</li>`).join('') : '<li>All required fields completed.</li>'; }
+
     // Try preselect if geo already loaded
     if (window.MKHubGeoReady && typeof window.MKHubTryPreselect === 'function') { window.MKHubTryPreselect(); }
   }
@@ -197,7 +216,7 @@ async function save(ev){
   const labels = { preferred:'Preferred name', gender:'Gender', dob:'Date of birth', marital:'Marital status', nationality:'Nationality', mobile:'Mobile phone', address1:'Address line 1', city:'City', province:'Province/State', postal:'Postal code', country:'Country', sin_number:'SIN/SSN', work_permit_status:'Work permit status', visa_status:'Visa status', emergency_contact_name:'Emergency contact name', emergency_contact_relationship:'Emergency contact relationship', emergency_contact_phone:'Emergency contact phone' };
   const missingNow = [];
   for (const id of reqIds){ const el=document.getElementById(id); const v = el && (el.value||''); if (!v) missingNow.push(labels[id]||id); }
-  const missEl = document.getElementById('missing'); if (missEl){ missEl.textContent = missingNow.length ? ('Missing: ' + missingNow.join(', ')) : 'All required fields completed.'; }
+  const ul = document.getElementById('missingList'); if (ul){ ul.innerHTML = missingNow.length ? missingNow.map(m=>`<li>- missing ${m}</li>`).join('') : '<li>All required fields completed.</li>'; }
 }
 
 // Populate country/state/city with geo loader
