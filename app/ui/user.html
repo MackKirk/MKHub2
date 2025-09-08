@@ -24,7 +24,6 @@
     </div>
     <div class="row">
       <div class="field"><label>Mobile</label><input id="mobile" /></div>
-      <div class="field"><label>Job title</label><input id="job" /></div>
     </div>
     <button onclick="save()">Save</button>
     <pre id="msg" class="muted"></pre>
@@ -80,7 +79,7 @@ async function load(){
   document.getElementById('email_personal').value = (d.user && d.user.email) || '';
   document.getElementById('username').value = (d.user && d.user.username) || '';
   document.getElementById('mobile').value = (d.profile && d.profile.mobile_phone) || '';
-  document.getElementById('job').value = (d.profile && d.profile.job_title) || '';
+  // moved job_title into Job tab
   // Prefill job
   document.getElementById('hire_date').value = (d.profile && (d.profile.hire_date || '').slice(0,10)) || '';
   document.getElementById('employment_type').value = (d.profile && d.profile.employment_type) || '';
@@ -120,7 +119,13 @@ async function saveJob(){
   const token = MKHubUI.getTokenOrRedirect();
   const body = {
     hire_date: document.getElementById('hire_date').value || null,
+    termination_date: document.getElementById('termination_date').value || null,
+    job_title: document.getElementById('job_title').value || null,
+    division: document.getElementById('division').value || null,
     employment_type: document.getElementById('employment_type').value || null,
+    pay_type: document.getElementById('pay_type').value || null,
+    pay_rate: document.getElementById('pay_rate').value || null,
+    manager_user_id: document.getElementById('manager_user_id').value || null,
     work_email: document.getElementById('work_email').value || null,
     work_phone: document.getElementById('work_phone').value || null,
   };
@@ -132,7 +137,7 @@ function showTab(ev, which){ ev && ev.preventDefault();
   for (const k of ['personal','job','perms']){ const t=document.getElementById('tab-'+k); if (t){ if (k===which) t.classList.add('active'); else t.classList.remove('active'); } }
 }
 // Default tab
-showTab(null, (params.get('tab')||'personal'));
+showTab(null, 'personal');
 async function saveRolesPerms(){
   const token = MKHubUI.getTokenOrRedirect();
   const roles = document.getElementById('roles_in').value.split(',').map(s=>s.trim()).filter(Boolean);
