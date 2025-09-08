@@ -17,11 +17,13 @@ fetch('/auth/me', { headers:{ Authorization:'Bearer '+token } })
     if (!u) return;
     const el=document.getElementById('hello'); if(el){ el.textContent = 'Hello, ' + (u.username || 'user'); }
     // Reveal links if user has permission or admin role
-    const isAdmin = (u.roles||[]).includes('admin');
-    const perms = new Set(u.permissions||[]);
+    const roles = (u.roles||[]).map(r => (r||'').toLowerCase());
+    const isAdmin = roles.includes('admin');
+    const perms = new Set((u.permissions||[]));
     document.querySelectorAll('.side a[data-perm]').forEach(a => {
       const need = a.getAttribute('data-perm');
-      if (isAdmin || (need && perms.has(need))) { a.style.display = 'block'; }
+      const hasAlt = need === 'users:read' && perms.has('users:write');
+      if (isAdmin || (need && (perms.has(need) || hasAlt))) { a.style.display = 'block'; }
     });
   });
 // Highlight active
