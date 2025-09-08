@@ -87,20 +87,24 @@ def require_roles(*required_roles: str):
 
 def require_permissions(*required_permissions: str):
     def _dep(user: User = Depends(get_current_user)):
-        # Combine role permissions and user override if available
-        perm_set = set()
+        # Admin role bypass
+        if any(getattr(r, 'name', None) == 'admin' for r in user.roles):
+            return user
+        # Combine role permissions and user overrides, honoring truthy values only
+        perm_map = {}
         for r in user.roles:
             if getattr(r, 'permissions', None):
                 try:
-                    perm_set.update(r.permissions.keys())
+                    perm_map.update(r.permissions)
                 except Exception:
                     pass
         if getattr(user, 'permissions_override', None):
             try:
-                perm_set.update(user.permissions_override.keys())
+                perm_map.update(user.permissions_override)
             except Exception:
                 pass
-        if not set(required_permissions).issubset(perm_set):
+        granted = {k for k, v in perm_map.items() if v}
+        if not set(required_permissions).issubset(granted):
             raise HTTPException(status_code=403, detail="Forbidden")
         return user
 
