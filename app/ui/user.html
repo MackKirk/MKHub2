@@ -114,13 +114,45 @@
   </div>
   <div id="job" class="card" style="display:none">
     <h3>Job Information</h3>
+    <h4>Employment</h4>
     <div class="row">
-      <div class="field"><label>Hire date</label><input id="hire_date" type="date" /></div>
-      <div class="field"><label>Employment type</label><input id="employment_type" /></div>
+      <div class="field"><label>Hire date (YYYY-MM-DD)</label><input id="hire_date" type="date" /></div>
+      <div class="field"><label>Termination date (YYYY-MM-DD)</label><input id="termination_date" type="date" /></div>
     </div>
     <div class="row">
+      <div class="field"><label>Job title <span class="req">*</span></label><input id="job_title" /></div>
+      <div class="field"><label>Division</label><input id="division" /></div>
+    </div>
+    <div class="row">
+      <div class="field"><label>Personal email</label><input id="job_email_personal" readonly /></div>
       <div class="field"><label>Work email</label><input id="work_email" /></div>
+    </div>
+    <div class="row">
       <div class="field"><label>Work phone</label><input id="work_phone" /></div>
+      <div class="field"><label>Manager</label>
+        <select id="manager_user_id"><option value="">Select...</option></select>
+      </div>
+    </div>
+    <div class="row">
+      <div class="field"><label>Pay rate</label><input id="pay_rate" type="number" step="1" /></div>
+      <div class="field"><label>Pay type</label>
+        <select id="pay_type">
+          <option value="">Select...</option>
+          <option>hourly</option>
+          <option>salary</option>
+          <option>contract</option>
+        </select>
+      </div>
+    </div>
+    <div class="row">
+      <div class="field"><label>Employment type</label>
+        <select id="employment_type">
+          <option value="">Select...</option>
+          <option>full-time</option>
+          <option>part-time</option>
+          <option>contract</option>
+        </select>
+      </div>
     </div>
     <button onclick="saveJob()">Save Job</button>
     <pre id="msgJob" class="muted"></pre>
@@ -187,9 +219,24 @@ async function load(){
   // moved job_title into Job tab
   // Prefill job
   document.getElementById('hire_date').value = (d.profile && (d.profile.hire_date || '').slice(0,10)) || '';
+  document.getElementById('termination_date').value = (d.profile && (d.profile.termination_date || '').slice(0,10)) || '';
+  document.getElementById('job_title').value = (d.profile && d.profile.job_title) || '';
+  document.getElementById('division').value = (d.profile && d.profile.division) || '';
   document.getElementById('employment_type').value = (d.profile && d.profile.employment_type) || '';
   document.getElementById('work_email').value = (d.profile && d.profile.work_email) || '';
   document.getElementById('work_phone').value = (d.profile && d.profile.work_phone) || '';
+  document.getElementById('pay_type').value = (d.profile && d.profile.pay_type) || '';
+  document.getElementById('pay_rate').value = (d.profile && d.profile.pay_rate) || '';
+  document.getElementById('job_email_personal').value = (d.user && d.user.email) || '';
+  // Manager options
+  try {
+    const opts = await fetch('/auth/users/options', { headers:{ Authorization:'Bearer '+token }}).then(x=>x.json());
+    const sel = document.getElementById('manager_user_id');
+    if (Array.isArray(opts)){
+      for (const uo of opts){ const o=document.createElement('option'); o.value=uo.id; o.textContent=uo.username + ' ('+uo.email+')'; sel.appendChild(o); }
+    }
+    if (d.profile && d.profile.manager_user_id){ sel.value = d.profile.manager_user_id; }
+  } catch(e) {}
   // Prefill personal extended
   document.getElementById('preferred_name').value = (d.profile && d.profile.preferred_name) || '';
   document.getElementById('p_gender').value = (d.profile && d.profile.gender) || '';
