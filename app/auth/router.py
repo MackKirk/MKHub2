@@ -502,7 +502,30 @@ def get_user(user_id: str, db: Session = Depends(get_db), _=Depends(require_perm
 
 
 @router.get("/users/{user_id}/profile")
-def get_user_profile(user_id: str, db: Session = Depends(get_db), _=Depends(require_permissions("users:read"))):
+def get_user_profile(user_id: str, db: Session = Depends(get_db), me: User = Depends(get_current_user)):
+    # Allow self or users:read/admin
+    can_read = False
+    try:
+        if str(me.id) == str(user_id):
+            can_read = True
+        else:
+            # emulate require_permissions("users:read")
+            if any((getattr(r, 'name', None) or '').lower() == 'admin' for r in me.roles):
+                can_read = True
+            else:
+                perm_map = {}
+                for r in me.roles:
+                    if getattr(r, 'permissions', None):
+                        try: perm_map.update(r.permissions)
+                        except Exception: pass
+                if getattr(me, 'permissions_override', None):
+                    try: perm_map.update(me.permissions_override)
+                    except Exception: pass
+                can_read = bool(perm_map.get('users:read'))
+    except Exception:
+        can_read = False
+    if not can_read:
+        raise HTTPException(status_code=403, detail="Forbidden")
     from ..models.models import EmployeeProfile
     u = db.query(User).filter(User.id == user_id).first()
     if not u:

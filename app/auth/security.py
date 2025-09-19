@@ -88,7 +88,7 @@ def require_roles(*required_roles: str):
 def require_permissions(*required_permissions: str):
     def _dep(user: User = Depends(get_current_user)):
         # Admin role bypass
-        if any(getattr(r, 'name', None) == 'admin' for r in user.roles):
+        if any((getattr(r, 'name', None) or '').lower() == 'admin' for r in user.roles):
             return user
         # Combine role permissions and user overrides, honoring truthy values only
         perm_map = {}
