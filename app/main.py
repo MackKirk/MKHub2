@@ -11,6 +11,7 @@ from slowapi.middleware import SlowAPIMiddleware
 from .config import settings
 from fastapi.responses import RedirectResponse
 from .db import Base, engine, SessionLocal
+from sqlalchemy import text
 from .logging import setup_logging, RequestIdMiddleware
 from .auth.router import router as auth_router
 from .routes.files import router as files_router
@@ -63,6 +64,13 @@ def create_app() -> FastAPI:
             os.makedirs("var", exist_ok=True)
         if settings.auto_create_db:
             Base.metadata.create_all(bind=engine)
+        # Lightweight dev-time migrations (PostgreSQL): add missing columns safely
+        try:
+            if settings.database_url.startswith("postgres"):
+                with engine.begin() as conn:
+                    conn.execute(text("ALTER TABLE employee_profiles ADD COLUMN IF NOT EXISTS profile_photo_file_id UUID"))
+        except Exception:
+            pass
         # Removed bootstrap admin creation: admins should be granted via roles after onboarding
 
     @app.get("/")
