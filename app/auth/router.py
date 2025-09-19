@@ -674,6 +674,60 @@ def delete_education(user_id: str, eid: str, db: Session = Depends(get_db), _=De
     return {"status": "ok"}
 
 
+@router.get("/users/{user_id}/documents")
+def list_documents(user_id: str, db: Session = Depends(get_db), _=Depends(require_permissions("users:read"))):
+    from ..models.models import EmployeeDocument
+    rows = db.query(EmployeeDocument).filter(EmployeeDocument.user_id == user_id).all()
+    def _row(d):
+        return {
+            "id": str(d.id),
+            "doc_type": d.doc_type,
+            "title": d.title,
+            "number": d.number,
+            "issuing_country": d.issuing_country,
+            "issued_date": d.issued_date.isoformat() if d.issued_date else None,
+            "expiry_date": d.expiry_date.isoformat() if d.expiry_date else None,
+            "notes": d.notes,
+            "file_id": str(d.file_id) if getattr(d, 'file_id', None) else None,
+        }
+    return [_row(d) for d in rows]
+
+
+@router.post("/users/{user_id}/documents")
+def create_document(user_id: str, payload: dict = Body(...), db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    from ..models.models import EmployeeDocument
+    from datetime import datetime, timezone
+    def _dt(s):
+        if not s:
+            return None
+        try:
+            return datetime.strptime(s, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+        except Exception:
+            return None
+    d = EmployeeDocument(
+        user_id=user_id,
+        doc_type=payload.get("doc_type") or "other",
+        title=payload.get("title"),
+        number=payload.get("number"),
+        issuing_country=payload.get("issuing_country"),
+        issued_date=_dt(payload.get("issued_date")),
+        expiry_date=_dt(payload.get("expiry_date")),
+        notes=payload.get("notes"),
+        file_id=payload.get("file_id"),
+        created_by=user.id,
+    )
+    db.add(d)
+    db.commit()
+    return {"id": str(d.id)}
+
+
+@router.delete("/users/{user_id}/documents/{doc_id}")
+def delete_document(user_id: str, doc_id: str, db: Session = Depends(get_db), _=Depends(require_permissions("users:write"))):
+    from ..models.models import EmployeeDocument
+    db.query(EmployeeDocument).filter(and_(EmployeeDocument.user_id == user_id, EmployeeDocument.id == doc_id)).delete()
+    db.commit()
+    return {"status": "ok"}
+
 @router.get("/users/{user_id}/emergency-contacts")
 def list_emergency_contacts(user_id: str, db: Session = Depends(get_db), _=Depends(require_permissions("users:read"))):
     from ..models.models import EmployeeEmergencyContact

@@ -353,3 +353,24 @@ class EmployeeDependent(Base):
     ssn: Mapped[Optional[str]] = mapped_column(String(100))
     birth_date: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
 
+
+class EmployeeDocument(Base):
+    __tablename__ = "employee_documents"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    # Generic document typing
+    doc_type: Mapped[str] = mapped_column(String(100))  # e.g., passport, driver_license, bc_registration
+    title: Mapped[Optional[str]] = mapped_column(String(255))
+    number: Mapped[Optional[str]] = mapped_column(String(100))
+    issuing_country: Mapped[Optional[str]] = mapped_column(String(100))
+    issued_date: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    expiry_date: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    notes: Mapped[Optional[str]] = mapped_column(String(1000))
+    # Optional linkage to uploaded file object (from /files)
+    file_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("file_objects.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    created_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
+    updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    updated_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
+

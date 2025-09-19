@@ -83,17 +83,7 @@
     <div class="row">
       <div class="field"><label>Visa status</label><input id="p_visa" /></div>
     </div>
-    <h4>Passports</h4>
-    <div id="passportsList" class="card"></div>
-    <div class="row">
-      <div class="field"><label>Number</label><input id="pp_number" /></div>
-      <div class="field"><label>Issuing country</label><input id="pp_country" /></div>
-    </div>
-    <div class="row">
-      <div class="field"><label>Issued</label><input id="pp_issued" type="date" /></div>
-      <div class="field"><label>Expiry</label><input id="pp_expiry" type="date" /></div>
-    </div>
-    <button onclick="addPassport()">Add Passport</button>
+    <!-- Passports moved to Documents tab -->
     <h4>Education</h4>
     <div id="educationList" class="card"></div>
     <div class="row">
@@ -178,6 +168,40 @@
     <button onclick="addEmergency()">Add</button>
     <pre id="msgEmerg" class="muted"></pre>
   </div>
+  <div id="docs" class="card" style="display:none">
+    <h3>Documents</h3>
+    <div id="docsList" class="card"></div>
+    <h4>Add Document</h4>
+    <div class="row">
+      <div class="field"><label>Type</label>
+        <select id="doc_type">
+          <option value="passport">Passport</option>
+          <option value="driver_license">Driver Licence</option>
+          <option value="bc_registration">BC Registration</option>
+          <option value="other">Other</option>
+        </select>
+      </div>
+      <div class="field"><label>Title</label><input id="doc_title" placeholder="e.g., Canadian Passport" /></div>
+    </div>
+    <div class="row">
+      <div class="field"><label>Number</label><input id="doc_number" /></div>
+      <div class="field"><label>Issuing country</label><input id="doc_country" /></div>
+    </div>
+    <div class="row">
+      <div class="field"><label>Issued</label><input id="doc_issued" type="date" /></div>
+      <div class="field"><label>Expiry</label><input id="doc_expiry" type="date" /></div>
+    </div>
+    <div class="row">
+      <div class="field" style="flex:1"><label>Notes</label><input id="doc_notes" /></div>
+    </div>
+    <div class="row">
+      <div class="field" style="flex:1"><label>Attach file (optional)</label>
+        <input type="file" id="doc_file" />
+      </div>
+    </div>
+    <button onclick="addDocument()">Add Document</button>
+    <pre id="msgDocs" class="muted"></pre>
+  </div>
   <div id="roles" class="card" style="display:none">
     <h3>Roles & Permissions</h3>
     <div class="row">
@@ -256,20 +280,23 @@ async function load(){
   // Load passports and education
   try {
     const token2 = MKHubUI.getTokenOrRedirect();
-    const [pp, ed] = await Promise.all([
-      fetch('/auth/users/'+userId+'/passports', { headers:{ Authorization:'Bearer '+token2 }}).then(x=>x.json()),
+    const [ed, docs] = await Promise.all([
       fetch('/auth/users/'+userId+'/education', { headers:{ Authorization:'Bearer '+token2 }}).then(x=>x.json()),
+      fetch('/auth/users/'+userId+'/documents', { headers:{ Authorization:'Bearer '+token2 }}).then(x=>x.json()),
     ]);
-    const pl = document.getElementById('passportsList');
-    if (pl) pl.innerHTML = (pp||[]).map(p=>`<div style="display:flex;justify-content:space-between;border-bottom:1px solid #eee;padding:6px 0">`+
-      `<div>${p.passport_number} — ${p.issuing_country || ''} (${(p.issued_date||'').slice(0,10)} → ${(p.expiry_date||'').slice(0,10)})</div>`+
-      `<button onclick=\"delPassport('${p.id}')\">Remove</button>`+
-    `</div>`).join('') || 'No passports';
     const el = document.getElementById('educationList');
     if (el) el.innerHTML = (ed||[]).map(e=>`<div style="display:flex;justify-content:space-between;border-bottom:1px solid #eee;padding:6px 0">`+
       `<div>${e.college_institution||''} — ${e.degree||''} ${e.major_specialization||''} (${(e.start_date||'').slice(0,10)} → ${(e.end_date||'').slice(0,10)})</div>`+
       `<button onclick=\"delEducation('${e.id}')\">Remove</button>`+
     `</div>`).join('') || 'No education records';
+    const dl = document.getElementById('docsList');
+    if (dl) dl.innerHTML = (docs||[]).map(d=>`<div style="display:flex;justify-content:space-between;border-bottom:1px solid #eee;padding:6px 0">`+
+      `<div>[${d.doc_type}] ${d.title||d.number||''} — ${d.issuing_country||''} ${(d.issued_date||'').slice(0,10)} → ${(d.expiry_date||'').slice(0,10)}</div>`+
+      `<div>`+
+        `${d.file_id ? `<a href=\"/files/${d.file_id}/download\" target=\"_blank\">Download</a> ` : ''}`+
+        `<button onclick=\"delDocument('${d.id}')\">Remove</button>`+
+      `</div>`+
+    `</div>`).join('') || 'No documents';
   } catch(e) {}
   // Roles/Perms panel visible if current user likely an admin or has users:write (best-effort based on /auth/me)
   try {
@@ -345,6 +372,49 @@ async function addPassport(){
 async function delPassport(id){
   const token = MKHubUI.getTokenOrRedirect();
   await fetch('/auth/users/'+userId+'/passports/'+id, { method:'DELETE', headers:{ Authorization:'Bearer '+token } });
+  load();
+}
+async function addDocument(){
+  const token = MKHubUI.getTokenOrRedirect();
+  let fileId = null;
+  const fileInput = document.getElementById('doc_file');
+  const f = fileInput && fileInput.files && fileInput.files[0];
+  if (f){
+    // Request pre-signed upload URL
+    const upReq = {
+      project_id: null,
+      client_id: null,
+      employee_id: userId,
+      category_id: 'employee-docs',
+      original_name: f.name,
+      content_type: f.type || 'application/octet-stream'
+    };
+    const up = await fetch('/files/upload', { method:'POST', headers:{ 'Content-Type':'application/json', Authorization:'Bearer '+token }, body: JSON.stringify(upReq) }).then(x=>x.json());
+    // Upload file directly to storage
+    await fetch(up.upload_url, { method:'PUT', headers:{ 'Content-Type': upReq.content_type }, body: f });
+    // Confirm to create FileObject
+    const sha = 'na'; // Optional: compute checksum client-side later
+    const conf = await fetch('/files/confirm', { method:'POST', headers:{ 'Content-Type':'application/json', Authorization:'Bearer '+token }, body: JSON.stringify({ key: up.key, size_bytes: f.size, checksum_sha256: sha }) }).then(x=>x.json());
+    fileId = conf.id;
+  }
+  const body = {
+    doc_type: document.getElementById('doc_type').value || 'other',
+    title: document.getElementById('doc_title').value || null,
+    number: document.getElementById('doc_number').value || null,
+    issuing_country: document.getElementById('doc_country').value || null,
+    issued_date: document.getElementById('doc_issued').value || null,
+    expiry_date: document.getElementById('doc_expiry').value || null,
+    notes: document.getElementById('doc_notes').value || null,
+    file_id: fileId,
+  };
+  const r = await fetch('/auth/users/'+userId+'/documents', { method:'POST', headers:{ 'Content-Type':'application/json', Authorization:'Bearer '+token }, body: JSON.stringify(body) });
+  const t = await r.text();
+  document.getElementById('msgDocs').textContent = t;
+  load();
+}
+async function delDocument(id){
+  const token = MKHubUI.getTokenOrRedirect();
+  await fetch('/auth/users/'+userId+'/documents/'+id, { method:'DELETE', headers:{ Authorization:'Bearer '+token } });
   load();
 }
 async function addEducation(){
