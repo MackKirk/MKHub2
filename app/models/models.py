@@ -289,6 +289,7 @@ class EmployeeProfile(Base):
     employment_type: Mapped[Optional[str]] = mapped_column(String(50))  # full-time|part-time|contract
 
     # Documentos & Legal
+    profile_photo_file_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("file_objects.id", ondelete="SET NULL"))
     sin_number: Mapped[Optional[str]] = mapped_column(String(100))
     work_permit_status: Mapped[Optional[str]] = mapped_column(String(100))
     visa_status: Mapped[Optional[str]] = mapped_column(String(100))

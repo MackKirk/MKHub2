@@ -21,6 +21,19 @@
   <div id="personal" class="card" style="display:none">
     <h3>Personal Information</h3>
     <div class="row">
+      <div class="field" style="max-width:220px">
+        <label>Profile photo</label>
+        <div style="display:flex;align-items:center;gap:10px">
+          <img id="photo_preview" src="" alt="profile" style="width:64px;height:64px;object-fit:cover;border-radius:50%;background:#eee"/>
+          <div>
+            <input type="file" id="photo_file" accept="image/*"/>
+            <button onclick="uploadPhoto()">Upload</button>
+          </div>
+        </div>
+        <small class="muted">JPG/PNG, square recommended</small>
+      </div>
+    </div>
+    <div class="row">
       <div class="field"><label>First name</label><input id="first" /></div>
       <div class="field"><label>Last name</label><input id="last" /></div>
     </div>
@@ -232,7 +245,19 @@ async function load(){
   const info = document.getElementById('info');
   if (!r.ok){ info.textContent='Not authorized.'; return; }
   const d = await r.json();
-  info.innerHTML = `<strong>${d.user.username}</strong><br/><span class="muted">${d.user.email}</span>`;
+  info.innerHTML = `<strong>${d.user.username}</strong><br/><span class=\"muted\">${d.user.email}</span>`;
+  // photo
+  const photoId = d.profile && d.profile.profile_photo_file_id;
+  if (photoId){
+    try {
+      const ph = await fetch('/files/'+photoId+'/download').then(x=>x.json());
+      info.innerHTML = `<div style=\"display:flex;gap:12px;align-items:center\">`+
+        `<img src=\"${ph.download_url}\" alt=\"profile\" style=\"width:64px;height:64px;object-fit:cover;border-radius:50%\" />`+
+        `<div><strong>${d.user.username}</strong><br/><span class=muted>${d.user.email}</span></div>`+
+      `</div>`;
+      const pv = document.getElementById('photo_preview'); if (pv) pv.src = ph.download_url;
+    } catch(e) {}
+  }
   document.getElementById('personal').style.display = 'block';
   // Prefill personal fields
   document.getElementById('first').value = (d.profile && d.profile.first_name) || '';
@@ -290,10 +315,10 @@ async function load(){
       `<button onclick=\"delEducation('${e.id}')\">Remove</button>`+
     `</div>`).join('') || 'No education records';
     const dl = document.getElementById('docsList');
-    if (dl) dl.innerHTML = (docs||[]).map(d=>`<div style="display:flex;justify-content:space-between;border-bottom:1px solid #eee;padding:6px 0">`+
+    if (dl) dl.innerHTML = (docs||[]).map(d=>`<div style=\"display:flex;justify-content:space-between;border-bottom:1px solid #eee;padding:6px 0\">`+
       `<div>[${d.doc_type}] ${d.title||d.number||''} — ${d.issuing_country||''} ${(d.issued_date||'').slice(0,10)} → ${(d.expiry_date||'').slice(0,10)}</div>`+
       `<div>`+
-        `${d.file_id ? `<a href=\"/files/${d.file_id}/download\" target=\"_blank\">Download</a> ` : ''}`+
+        `${d.file_id ? `<button onclick=\"openFile('${d.file_id}')\">Download</button> ` : ''}`+
         `<button onclick=\"delDocument('${d.id}')\">Remove</button>`+
       `</div>`+
     `</div>`).join('') || 'No documents';
@@ -416,6 +441,35 @@ async function delDocument(id){
   const token = MKHubUI.getTokenOrRedirect();
   await fetch('/auth/users/'+userId+'/documents/'+id, { method:'DELETE', headers:{ Authorization:'Bearer '+token } });
   load();
+}
+async function openFile(fileId){
+  try {
+    const r = await fetch('/files/'+fileId+'/download');
+    const j = await r.json();
+    if (j && j.download_url){ window.open(j.download_url, '_blank'); }
+  } catch(e) {}
+}
+async function uploadPhoto(){
+  const token = MKHubUI.getTokenOrRedirect();
+  const inp = document.getElementById('photo_file');
+  const f = inp && inp.files && inp.files[0];
+  if (!f) return;
+  const upReq = {
+    project_id: null,
+    client_id: null,
+    employee_id: userId,
+    category_id: 'employee-photo',
+    original_name: f.name,
+    content_type: f.type || 'image/jpeg'
+  };
+  const up = await fetch('/files/upload', { method:'POST', headers:{ 'Content-Type':'application/json', Authorization:'Bearer '+token }, body: JSON.stringify(upReq) }).then(x=>x.json());
+  await fetch(up.upload_url, { method:'PUT', headers:{ 'Content-Type': upReq.content_type }, body: f });
+  const conf = await fetch('/files/confirm', { method:'POST', headers:{ 'Content-Type':'application/json', Authorization:'Bearer '+token }, body: JSON.stringify({ key: up.key, size_bytes: f.size, checksum_sha256: 'na' }) }).then(x=>x.json());
+  const fileId = conf.id;
+  // Save to profile
+  await fetch('/auth/users/'+userId+'/profile', { method:'PUT', headers:{ 'Content-Type':'application/json', Authorization:'Bearer '+token }, body: JSON.stringify({ profile_photo_file_id: fileId }) });
+  // Update preview
+  try{ const dl = await fetch('/files/'+fileId+'/download').then(x=>x.json()); const pv=document.getElementById('photo_preview'); if (pv && dl.download_url) pv.src = dl.download_url; }catch(e){}
 }
 async function addEducation(){
   const token = MKHubUI.getTokenOrRedirect();

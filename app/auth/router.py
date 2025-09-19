@@ -412,6 +412,7 @@ def my_profile(user: User = Depends(get_current_user), db: Session = Depends(get
             "sin_number": ep.sin_number,
             "work_permit_status": ep.work_permit_status,
             "visa_status": ep.visa_status,
+            "profile_photo_file_id": str(ep.profile_photo_file_id) if getattr(ep, 'profile_photo_file_id', None) else None,
             "emergency_contact_name": ep.emergency_contact_name,
             "emergency_contact_relationship": ep.emergency_contact_relationship,
             "emergency_contact_phone": ep.emergency_contact_phone,
@@ -520,7 +521,7 @@ def get_user_profile(user_id: str, db: Session = Depends(get_db), _=Depends(requ
                 "first_name","last_name","preferred_name","gender","date_of_birth","marital_status","nationality",
                 "phone","mobile_phone","address_line1","address_line2","city","province","postal_code","country",
                 "hire_date","termination_date","job_title","division","work_email","work_phone","manager_user_id",
-                "pay_rate","pay_type","employment_type","sin_number","work_permit_status","visa_status",
+                "pay_rate","pay_type","employment_type","sin_number","work_permit_status","visa_status","profile_photo_file_id",
                 "emergency_contact_name","emergency_contact_relationship","emergency_contact_phone",
             ]
         } if ep else None,

@@ -74,6 +74,7 @@ class EmployeeProfileInput(BaseModel):
     pay_type: Optional[str] = None
     employment_type: Optional[str] = None
     # legal
+    profile_photo_file_id: Optional[str] = None
     sin_number: Optional[str] = None
     work_permit_status: Optional[str] = None
     visa_status: Optional[str] = None
