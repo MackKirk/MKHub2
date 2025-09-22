@@ -5,6 +5,7 @@
   <a href="/ui/profile.html" id="nav-profile">My Information</a>
   <a href="/ui/invite.html" id="nav-invite" data-perm="invite:send" style="display:none">Invite Users</a>
   <a href="/ui/users.html" id="nav-users" data-perm="users:read" style="display:none">Users</a>
+  <a href="/ui/inventory.html" id="nav-inventory" data-perm="inventory:read" style="display:none">Inventory</a>
   <button onclick="logout()">Logout</button>
 </div>
 <script>
@@ -28,7 +29,7 @@ fetch('/auth/me', { headers:{ Authorization:'Bearer '+token } })
   });
 // Highlight active
 const path = location.pathname;
-for (const id of ['home','profile','invite']) {
+for (const id of ['home','profile','invite','users','inventory']) {
   const el = document.getElementById('nav-'+id);
   if (el && path.endsWith(id+'.html')) { el.classList.add('active'); }
 }

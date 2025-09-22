@@ -96,7 +96,6 @@
     <div class="row">
       <div class="field"><label>Visa status</label><input id="p_visa" /></div>
     </div>
-    <!-- Passports moved to Documents tab -->
     <h4>Education</h4>
     <div id="educationList" class="card"></div>
     <div class="row">
@@ -231,6 +230,17 @@
         <select id="perm_users_write"><option value="">No change</option><option value="true">Grant</option><option value="false">Revoke</option></select>
       </div>
     </div>
+    <div class="row">
+      <div class="field"><label>Grant inventory:read</label>
+        <select id="perm_inventory_read"><option value="">No change</option><option value="true">Grant</option><option value="false">Revoke</option></select>
+      </div>
+      <div class="field"><label>Grant inventory:write</label>
+        <select id="perm_inventory_write"><option value="">No change</option><option value="true">Grant</option><option value="false">Revoke</option></select>
+      </div>
+      <div class="field"><label>Grant inventory:send_email</label>
+        <select id="perm_inventory_email"><option value="">No change</option><option value="true">Grant</option><option value="false">Revoke</option></select>
+      </div>
+    </div>
     <button onclick="saveRolesPerms()">Save Roles/Permissions</button>
     <pre id="msg2" class="muted"></pre>
   </div>
@@ -245,28 +255,24 @@ async function load(){
   const info = document.getElementById('info');
   if (!r.ok){ info.textContent='Not authorized.'; return; }
   const d = await r.json();
-  info.innerHTML = `<strong>${d.user.username}</strong><br/><span class=\"muted\">${d.user.email}</span>`;
-  // photo
+  info.innerHTML = `<strong>${d.user.username}</strong><br/><span class="muted">${d.user.email}</span>`;
   const photoId = d.profile && d.profile.profile_photo_file_id;
   if (photoId){
     try {
       const ph = await fetch('/files/'+photoId+'/download').then(x=>x.json());
-      info.innerHTML = `<div style=\"display:flex;gap:12px;align-items:center\">`+
-        `<img src=\"${ph.download_url}\" alt=\"profile\" style=\"width:64px;height:64px;object-fit:cover;border-radius:50%\" />`+
+      info.innerHTML = `<div style="display:flex;gap:12px;align-items:center">`+
+        `<img src="${ph.download_url}" alt="profile" style="width:64px;height:64px;object-fit:cover;border-radius:50%" />`+
         `<div><strong>${d.user.username}</strong><br/><span class=muted>${d.user.email}</span></div>`+
       `</div>`;
       const pv = document.getElementById('photo_preview'); if (pv) pv.src = ph.download_url;
     } catch(e) {}
   }
   document.getElementById('personal').style.display = 'block';
-  // Prefill personal fields
   document.getElementById('first').value = (d.profile && d.profile.first_name) || '';
   document.getElementById('last').value = (d.profile && d.profile.last_name) || '';
   document.getElementById('email_personal').value = (d.user && d.user.email) || '';
   document.getElementById('username').value = (d.user && d.user.username) || '';
   document.getElementById('mobile').value = (d.profile && d.profile.mobile_phone) || '';
-  // moved job_title into Job tab
-  // Prefill job
   document.getElementById('hire_date').value = (d.profile && (d.profile.hire_date || '').slice(0,10)) || '';
   document.getElementById('termination_date').value = (d.profile && (d.profile.termination_date || '').slice(0,10)) || '';
   document.getElementById('job_title').value = (d.profile && d.profile.job_title) || '';
@@ -277,7 +283,6 @@ async function load(){
   document.getElementById('pay_type').value = (d.profile && d.profile.pay_type) || '';
   document.getElementById('pay_rate').value = (d.profile && d.profile.pay_rate) || '';
   document.getElementById('job_email_personal').value = (d.user && d.user.email) || '';
-  // Manager options
   try {
     const opts = await fetch('/auth/users/options', { headers:{ Authorization:'Bearer '+token }}).then(x=>x.json());
     const sel = document.getElementById('manager_user_id');
@@ -286,7 +291,6 @@ async function load(){
     }
     if (d.profile && d.profile.manager_user_id){ sel.value = d.profile.manager_user_id; }
   } catch(e) {}
-  // Prefill personal extended
   document.getElementById('preferred_name').value = (d.profile && d.profile.preferred_name) || '';
   document.getElementById('p_gender').value = (d.profile && d.profile.gender) || '';
   document.getElementById('p_marital').value = (d.profile && d.profile.marital_status) || '';
@@ -302,7 +306,6 @@ async function load(){
   document.getElementById('p_sin').value = (d.profile && d.profile.sin_number) || '';
   document.getElementById('p_work_permit').value = (d.profile && d.profile.work_permit_status) || '';
   document.getElementById('p_visa').value = (d.profile && d.profile.visa_status) || '';
-  // Load passports and education
   try {
     const token2 = MKHubUI.getTokenOrRedirect();
     const [ed, docs] = await Promise.all([
@@ -323,7 +326,6 @@ async function load(){
       `</div>`+
     `</div>`).join('') || 'No documents';
   } catch(e) {}
-  // Roles/Perms panel visible if current user likely an admin or has users:write (best-effort based on /auth/me)
   try {
     const me = await fetch('/auth/me', { headers:{ Authorization:'Bearer '+token }}).then(x=>x.json());
     const canAdmin = (me.roles||[]).includes('admin') || (me.permissions||[]).includes('users:write');
@@ -355,7 +357,6 @@ async function save(){
   };
   const r = await fetch('/auth/users/'+userId+'/profile', { method:'PUT', headers:{ 'Content-Type':'application/json', Authorization:'Bearer '+token }, body: JSON.stringify(body) });
   let txt = await r.text();
-  // Save user core fields
   const u = {
     email_personal: document.getElementById('email_personal').value || null,
     username: document.getElementById('username').value || null,
@@ -381,170 +382,30 @@ async function saveJob(){
   const r = await fetch('/auth/users/'+userId+'/profile', { method:'PUT', headers:{ 'Content-Type':'application/json', Authorization:'Bearer '+token }, body: JSON.stringify(body) });
   document.getElementById('msgJob').textContent = await r.text();
 }
-async function addPassport(){
-  const token = MKHubUI.getTokenOrRedirect();
-  const body = {
-    passport_number: document.getElementById('pp_number').value || null,
-    issuing_country: document.getElementById('pp_country').value || null,
-    issued_date: document.getElementById('pp_issued').value || null,
-    expiry_date: document.getElementById('pp_expiry').value || null,
-  };
-  const r = await fetch('/auth/users/'+userId+'/passports', { method:'POST', headers:{ 'Content-Type':'application/json', Authorization:'Bearer '+token }, body: JSON.stringify(body) });
-  const t = await r.text();
-  document.getElementById('msg').textContent = t;
-  load();
-}
-async function delPassport(id){
-  const token = MKHubUI.getTokenOrRedirect();
-  await fetch('/auth/users/'+userId+'/passports/'+id, { method:'DELETE', headers:{ Authorization:'Bearer '+token } });
-  load();
-}
 async function addDocument(){
   const token = MKHubUI.getTokenOrRedirect();
   let fileId = null;
   const fileInput = document.getElementById('doc_file');
   const f = fileInput && fileInput.files && fileInput.files[0];
   if (f){
-    // Request pre-signed upload URL
-    const upReq = {
-      project_id: null,
-      client_id: null,
-      employee_id: userId,
-      category_id: 'employee-docs',
-      original_name: f.name,
-      content_type: f.type || 'application/octet-stream'
-    };
+    const upReq = { project_id: null, client_id: null, employee_id: userId, category_id: 'employee-docs', original_name: f.name, content_type: f.type || 'application/octet-stream' };
     const up = await fetch('/files/upload', { method:'POST', headers:{ 'Content-Type':'application/json', Authorization:'Bearer '+token }, body: JSON.stringify(upReq) }).then(x=>x.json());
-    // Upload file directly to storage
     const putResp = await fetch(up.upload_url, { method:'PUT', headers:{ 'Content-Type': upReq.content_type, 'x-ms-blob-type': 'BlockBlob' }, body: f });
-    if (!putResp.ok){
-      document.getElementById('msgDocs').textContent = 'Upload failed ('+putResp.status+'). Please try again.';
-      return;
-    }
-    // Confirm to create FileObject
-    const sha = 'na'; // Optional: compute checksum client-side later
-    const conf = await fetch('/files/confirm', { method:'POST', headers:{ 'Content-Type':'application/json', Authorization:'Bearer '+token }, body: JSON.stringify({ key: up.key, size_bytes: f.size, checksum_sha256: sha }) }).then(x=>x.json());
+    if (!putResp.ok){ document.getElementById('msgDocs').textContent = 'Upload failed ('+putResp.status+').'; return; }
+    const conf = await fetch('/files/confirm', { method:'POST', headers:{ 'Content-Type':'application/json', Authorization:'Bearer '+token }, body: JSON.stringify({ key: up.key, size_bytes: f.size, checksum_sha256: 'na' }) }).then(x=>x.json());
     fileId = conf.id;
   }
-  const body = {
-    doc_type: document.getElementById('doc_type').value || 'other',
-    title: document.getElementById('doc_title').value || null,
-    number: document.getElementById('doc_number').value || null,
-    issuing_country: document.getElementById('doc_country').value || null,
-    issued_date: document.getElementById('doc_issued').value || null,
-    expiry_date: document.getElementById('doc_expiry').value || null,
-    notes: document.getElementById('doc_notes').value || null,
-    file_id: fileId,
-  };
+  const body = { doc_type: document.getElementById('doc_type').value || 'other', title: document.getElementById('doc_title').value || null, number: document.getElementById('doc_number').value || null, issuing_country: document.getElementById('doc_country').value || null, issued_date: document.getElementById('doc_issued').value || null, expiry_date: document.getElementById('doc_expiry').value || null, notes: document.getElementById('doc_notes').value || null, file_id: fileId };
   const r = await fetch('/auth/users/'+userId+'/documents', { method:'POST', headers:{ 'Content-Type':'application/json', Authorization:'Bearer '+token }, body: JSON.stringify(body) });
-  const t = await r.text();
-  document.getElementById('msgDocs').textContent = t;
-  load();
+  const t = await r.text(); document.getElementById('msgDocs').textContent = t; load();
 }
-async function delDocument(id){
-  const token = MKHubUI.getTokenOrRedirect();
-  await fetch('/auth/users/'+userId+'/documents/'+id, { method:'DELETE', headers:{ Authorization:'Bearer '+token } });
-  load();
-}
-async function openFile(fileId){
-  try {
-    const r = await fetch('/files/'+fileId+'/download');
-    const j = await r.json();
-    if (j && j.download_url){ window.open(j.download_url, '_blank'); }
-  } catch(e) {}
-}
-async function uploadPhoto(){
-  const token = MKHubUI.getTokenOrRedirect();
-  const inp = document.getElementById('photo_file');
-  const f = inp && inp.files && inp.files[0];
-  if (!f) return;
-  const upReq = {
-    project_id: null,
-    client_id: null,
-    employee_id: userId,
-    category_id: 'employee-photo',
-    original_name: f.name,
-    content_type: f.type || 'image/jpeg'
-  };
-  const up = await fetch('/files/upload', { method:'POST', headers:{ 'Content-Type':'application/json', Authorization:'Bearer '+token }, body: JSON.stringify(upReq) }).then(x=>x.json());
-  const putResp = await fetch(up.upload_url, { method:'PUT', headers:{ 'Content-Type': upReq.content_type, 'x-ms-blob-type': 'BlockBlob' }, body: f });
-  if (!putResp.ok){
-    const pv=document.getElementById('photo_preview'); if (pv) pv.src='';
-    return;
-  }
-  const conf = await fetch('/files/confirm', { method:'POST', headers:{ 'Content-Type':'application/json', Authorization:'Bearer '+token }, body: JSON.stringify({ key: up.key, size_bytes: f.size, checksum_sha256: 'na' }) }).then(x=>x.json());
-  const fileId = conf.id;
-  // Save to profile
-  await fetch('/auth/users/'+userId+'/profile', { method:'PUT', headers:{ 'Content-Type':'application/json', Authorization:'Bearer '+token }, body: JSON.stringify({ profile_photo_file_id: fileId }) });
-  // Update preview
-  try{ const dl = await fetch('/files/'+fileId+'/download').then(x=>x.json()); const pv=document.getElementById('photo_preview'); if (pv && dl.download_url) pv.src = dl.download_url; }catch(e){}
-}
-async function addEducation(){
-  const token = MKHubUI.getTokenOrRedirect();
-  const body = {
-    college_institution: document.getElementById('ed_inst').value || null,
-    degree: document.getElementById('ed_degree').value || null,
-    major_specialization: document.getElementById('ed_major').value || null,
-    gpa: document.getElementById('ed_gpa').value || null,
-    start_date: document.getElementById('ed_start').value || null,
-    end_date: document.getElementById('ed_end').value || null,
-  };
-  const r = await fetch('/auth/users/'+userId+'/education', { method:'POST', headers:{ 'Content-Type':'application/json', Authorization:'Bearer '+token }, body: JSON.stringify(body) });
-  const t = await r.text();
-  document.getElementById('msg').textContent = t;
-  load();
-}
-async function delEducation(id){
-  const token = MKHubUI.getTokenOrRedirect();
-  await fetch('/auth/users/'+userId+'/education/'+id, { method:'DELETE', headers:{ Authorization:'Bearer '+token } });
-  load();
-}
-async function addEmergency(){
-  const token = MKHubUI.getTokenOrRedirect();
-  const body = {
-    name: document.getElementById('e_name').value || null,
-    relationship: document.getElementById('e_rel').value || null,
-    mobile_phone: document.getElementById('e_mobile').value || null,
-    email: document.getElementById('e_email').value || null,
-    address: document.getElementById('e_address').value || null,
-    is_primary: document.getElementById('e_primary').value === 'true',
-  };
-  const r = await fetch('/auth/users/'+userId+'/emergency-contacts', { method:'POST', headers:{ 'Content-Type':'application/json', Authorization:'Bearer '+token }, body: JSON.stringify(body) });
-  const t = await r.text();
-  document.getElementById('msgEmerg').textContent = t;
-  await loadEmergency();
-}
-async function delEmergency(id){
-  const token = MKHubUI.getTokenOrRedirect();
-  await fetch('/auth/users/'+userId+'/emergency-contacts/'+id, { method:'DELETE', headers:{ Authorization:'Bearer '+token } });
-  await loadEmergency();
-}
-async function loadEmergency(){
-  try{
-    const token = MKHubUI.getTokenOrRedirect();
-    const lst = await fetch('/auth/users/'+userId+'/emergency-contacts', { headers:{ Authorization:'Bearer '+token } }).then(x=>x.json());
-    const el = document.getElementById('emergList');
-    if (el) el.innerHTML = (lst||[]).map(e=>`<div style=\"display:flex;justify-content:space-between;border-bottom:1px solid #eee;padding:6px 0\">`+
-      `<div>${e.name} — ${e.relationship||''} ${e.mobile_phone||''}</div>`+
-      `<button onclick=\"delEmergency('${e.id}')\">Remove</button>`+
-    `</div>`).join('') || 'No contacts';
-  } catch(e) {}
-}
-function showTab(ev, which){ ev && ev.preventDefault();
-  const tabs=['personal','job','timeoff','emergency','docs','notes','training','benefits','perms'];
-  for (const k of tabs){ const el=document.getElementById(k==='perms'?'roles':k); if (el) el.style.display = (k===which) ? 'block':'none'; }
-  for (const k of tabs){ const t=document.getElementById('tab-'+k); if (t){ if (k===which) t.classList.add('active'); else t.classList.remove('active'); } }
-  if (which === 'perms' && document.getElementById('roles').style.display === 'block'){
-    // Lazy load roles only when tab opened
-    const token = MKHubUI.getTokenOrRedirect();
-    fetch('/auth/users/'+userId, { headers:{ Authorization:'Bearer '+token }})
-      .then(x=>x.json()).then(u=>{ document.getElementById('roles_in').value = (u.roles||[]).join(', '); });
-  }
-  if (which === 'emergency'){
-    loadEmergency();
-  }
-}
-// Default tab
+async function openFile(fileId){ try{ const r=await fetch('/files/'+fileId+'/download'); const j=await r.json(); if(j&&j.download_url){ window.open(j.download_url, '_blank'); } }catch(e){} }
+async function addEducation(){ const token=MKHubUI.getTokenOrRedirect(); const body={ college_institution: document.getElementById('ed_inst').value || null, degree: document.getElementById('ed_degree').value || null, major_specialization: document.getElementById('ed_major').value || null, gpa: document.getElementById('ed_gpa').value || null, start_date: document.getElementById('ed_start').value || null, end_date: document.getElementById('ed_end').value || null }; const r=await fetch('/auth/users/'+userId+'/education', { method:'POST', headers:{ 'Content-Type':'application/json', Authorization:'Bearer '+token }, body: JSON.stringify(body) }); document.getElementById('msg').textContent = await r.text(); load(); }
+async function delEducation(id){ const token=MKHubUI.getTokenOrRedirect(); await fetch('/auth/users/'+userId+'/education/'+id, { method:'DELETE', headers:{ Authorization:'Bearer '+token } }); load(); }
+async function addEmergency(){ const token=MKHubUI.getTokenOrRedirect(); const body={ name: document.getElementById('e_name').value || null, relationship: document.getElementById('e_rel').value || null, mobile_phone: document.getElementById('e_mobile').value || null, email: document.getElementById('e_email').value || null, address: document.getElementById('e_address').value || null, is_primary: document.getElementById('e_primary').value === 'true' }; const r=await fetch('/auth/users/'+userId+'/emergency-contacts', { method:'POST', headers:{ 'Content-Type':'application/json', Authorization:'Bearer '+token }, body: JSON.stringify(body) }); document.getElementById('msgEmerg').textContent = await r.text(); await loadEmergency(); }
+async function delEmergency(id){ const token=MKHubUI.getTokenOrRedirect(); await fetch('/auth/users/'+userId+'/emergency-contacts/'+id, { method:'DELETE', headers:{ Authorization:'Bearer '+token } }); await loadEmergency(); }
+async function loadEmergency(){ try{ const token=MKHubUI.getTokenOrRedirect(); const lst=await fetch('/auth/users/'+userId+'/emergency-contacts', { headers:{ Authorization:'Bearer '+token } }).then(x=>x.json()); const el=document.getElementById('emergList'); if (el) el.innerHTML = (lst||[]).map(e=>`<div style="display:flex;justify-content:space-between;border-bottom:1px solid #eee;padding:6px 0">`+`<div>${e.name} — ${e.relationship||''} ${e.mobile_phone||''}</div>`+`<button onclick=\"delEmergency('${e.id}')\">Remove</button>`+`</div>`).join('') || 'No contacts'; }catch(e){} }
+function showTab(ev, which){ ev && ev.preventDefault(); const tabs=['personal','job','timeoff','emergency','docs','notes','training','benefits','perms']; for (const k of tabs){ const el=document.getElementById(k==='perms'?'roles':k); if (el) el.style.display = (k===which) ? 'block':'none'; } for (const k of tabs){ const t=document.getElementById('tab-'+k); if (t){ if (k===which) t.classList.add('active'); else t.classList.remove('active'); } } if (which === 'perms' && document.getElementById('roles').style.display === 'block'){ const token = MKHubUI.getTokenOrRedirect(); fetch('/auth/users/'+userId, { headers:{ Authorization:'Bearer '+token }}).then(x=>x.json()).then(u=>{ document.getElementById('roles_in').value = (u.roles||[]).join(', '); }); } if (which === 'emergency'){ loadEmergency(); } }
 showTab(null, 'personal');
 async function saveRolesPerms(){
   const token = MKHubUI.getTokenOrRedirect();
@@ -555,6 +416,9 @@ async function saveRolesPerms(){
   const inv=v('perm_invite'); if (inv!==null) changes['invite:send']=inv;
   const ur=v('perm_users_read'); if (ur!==null) changes['users:read']=ur;
   const uw=v('perm_users_write'); if (uw!==null) changes['users:write']=uw;
+  const ir=v('perm_inventory_read'); if (ir!==null) changes['inventory:read']=ir;
+  const iw=v('perm_inventory_write'); if (iw!==null) changes['inventory:write']=iw;
+  const ie=v('perm_inventory_email'); if (ie!==null) changes['inventory:send_email']=ie;
   let txt = await r1.text();
   if (Object.keys(changes).length){
     const r2 = await fetch('/auth/users/'+userId+'/permissions', { method:'PUT', headers:{ 'Content-Type':'application/json', Authorization:'Bearer '+token }, body: JSON.stringify(changes) });

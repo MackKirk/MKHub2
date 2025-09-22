@@ -1,0 +1,126 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Inventory</title>
+<link rel="stylesheet" href="/ui/styles.css">
+<script src="/ui/app.js"></script>
+<div id="sidebar"></div>
+<div class="main">
+  <h2>Inventory</h2>
+
+  <div class="card">
+    <h3>Products</h3>
+    <form id="productForm" class="row">
+      <input type="text" id="productName" placeholder="Name" required />
+      <input type="text" id="productUnit" placeholder="Unit" required />
+      <input type="number" id="productStock" placeholder="Stock Quantity" required />
+      <input type="number" id="productReorder" placeholder="Reorder Point" required />
+      <button id="submitProductBtn" type="submit">Add Product</button>
+      <button id="cancelEditBtn" type="button" style="display:none">Cancel</button>
+    </form>
+    <div class="table-wrap">
+      <table class="table">
+        <thead>
+          <tr><th>ID</th><th>Name</th><th>Unit</th><th>Stock</th><th>Reorder Point</th><th>Actions</th></tr>
+        </thead>
+        <tbody id="productTable"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Suppliers</h3>
+    <form id="supplierForm" class="row">
+      <input type="text" id="supplierName" placeholder="Name" required />
+      <input type="email" id="supplierEmail" placeholder="Email (optional)" />
+      <button id="submitSupplierBtn" type="submit">Add Supplier</button>
+      <button id="cancelEditSupplierBtn" type="button" style="display:none">Cancel</button>
+    </form>
+    <div class="table-wrap">
+      <table class="table">
+        <thead>
+          <tr><th>ID</th><th>Name</th><th>Email</th><th>Actions</th></tr>
+        </thead>
+        <tbody id="supplierTable"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Supplier Contacts</h3>
+    <form id="contactForm" class="row">
+      <select id="contactSupplierId" required></select>
+      <input type="text" id="contactName" placeholder="Contact Name" required />
+      <input type="email" id="contactEmail" placeholder="Email" />
+      <input type="text" id="contactPhone" placeholder="Phone" />
+      <button type="submit">Add Contact</button>
+      <button id="cancelEditContactBtn" type="button" style="display:none">Cancel</button>
+    </form>
+    <div class="table-wrap">
+      <table class="table">
+        <thead>
+          <tr><th>ID</th><th>Name</th><th>Email</th><th>Phone</th><th>Supplier</th><th>Actions</th></tr>
+        </thead>
+        <tbody id="contactTable"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Low Stock</h3>
+    <div class="table-wrap">
+      <table class="table">
+        <thead>
+          <tr><th>ID</th><th>Name</th><th>Unit</th><th>Stock</th><th>Reorder Point</th></tr>
+        </thead>
+        <tbody id="lowStockTable"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Orders</h3>
+    <form id="orderForm" class="row">
+      <input list="supplierOptions" id="orderSupplierId" placeholder="Supplier ID or pick..." required />
+      <datalist id="supplierOptions"></datalist>
+      <select id="orderSupplierContactId" required><option value="">-- Select contact --</option></select>
+      <div class="order-items">
+        <div class="row" style="justify-content:space-between;align-items:center">
+          <strong>Items</strong>
+          <button type="button" id="addItemBtn">+ Add Item</button>
+        </div>
+        <div class="table-wrap">
+          <table class="table">
+            <thead><tr><th>Product</th><th>Quantity</th><th>Actions</th></tr></thead>
+            <tbody id="orderItemsTbody"></tbody>
+          </table>
+        </div>
+      </div>
+      <button type="submit">Create Order</button>
+    </form>
+    <div class="table-wrap">
+      <table class="table">
+        <thead>
+          <tr><th>Code</th><th>Supplier</th><th>Status</th><th>Order Date</th><th>Delivered</th><th>Email Sent</th><th>Items</th><th>Actions</th></tr>
+        </thead>
+        <tbody id="orderTable"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div id="toast" class="toast" style="display:none"></div>
+
+  <div id="emailModal" class="modal" style="display:none">
+    <div class="modal-content">
+      <span class="close" id="emailModalClose">&times;</span>
+      <h3>Email Draft</h3>
+      <textarea id="emailDraftBox" rows="12" style="width:100%"></textarea>
+      <div style="text-align:right;margin-top:10px">
+        <button id="sendEmailBtn">Send Email</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+<script src="/ui/inventory.js"></script>
+
+
