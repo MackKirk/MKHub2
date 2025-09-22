@@ -375,3 +375,69 @@ class EmployeeDocument(Base):
     updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     updated_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
 
+
+# =====================
+# Inventory domain
+# =====================
+
+class InventoryProduct(Base):
+    __tablename__ = "inventory_products"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    unit: Mapped[str] = mapped_column(String(50), nullable=False)
+    stock_quantity: Mapped[int] = mapped_column(Integer, default=0)
+    reorder_point: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class Supplier(Base):
+    __tablename__ = "suppliers"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    email: Mapped[Optional[str]] = mapped_column(String(255))
+
+    contacts = relationship("SupplierContact", back_populates="supplier", cascade="all, delete-orphan")
+
+
+class SupplierContact(Base):
+    __tablename__ = "supplier_contacts"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    supplier_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("suppliers.id", ondelete="CASCADE"), nullable=False)
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    email: Mapped[Optional[str]] = mapped_column(String(255))
+    phone: Mapped[Optional[str]] = mapped_column(String(100))
+
+    supplier = relationship("Supplier", back_populates="contacts")
+
+
+class InventoryOrder(Base):
+    __tablename__ = "inventory_orders"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    supplier_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("suppliers.id", ondelete="RESTRICT"), nullable=False)
+    contact_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("supplier_contacts.id", ondelete="SET NULL"))
+    status: Mapped[str] = mapped_column(String(50), default="pending")
+    order_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    delivered_date: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    email_sent: Mapped[bool] = mapped_column(Boolean, default=False)
+    email_sent_date: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+
+    items = relationship("InventoryOrderItem", back_populates="order", cascade="all, delete-orphan")
+
+    @property
+    def order_code(self) -> str:
+        # Human-friendly code derived from UUID prefix
+        return f"MK{str(self.id).split('-')[0].upper()}"
+
+
+class InventoryOrderItem(Base):
+    __tablename__ = "inventory_order_items"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    order_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("inventory_orders.id", ondelete="CASCADE"), nullable=False)
+    product_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("inventory_products.id", ondelete="RESTRICT"), nullable=False)
+    quantity: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    order = relationship("InventoryOrder", back_populates="items")

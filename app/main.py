@@ -20,6 +20,7 @@ from .routes.clients import router as clients_router
 from .routes.employees import router as employees_router
 from .routes.calendar import router as calendar_router
 from .routes.settings import router as settings_router
+from .routes.inventory import router as inventory_router
 from .routes.integrations import router as integrations_router
 
 
@@ -51,6 +52,7 @@ def create_app() -> FastAPI:
     app.include_router(calendar_router)
     app.include_router(settings_router)
     app.include_router(integrations_router)
+    app.include_router(inventory_router)
     # Static UI
     app.mount("/ui", StaticFiles(directory="app/ui", html=True), name="ui")
 
