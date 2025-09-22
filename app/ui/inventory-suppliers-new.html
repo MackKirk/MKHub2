@@ -3,6 +3,7 @@
 <title>New Supplier</title>
 <link rel="stylesheet" href="/ui/styles.css">
 <script src="/ui/app.js"></script>
+<script src="/ui/geo.js"></script>
 <div id="sidebar"></div>
 <div class="main">
   <h2>New Supplier</h2>
@@ -22,12 +23,18 @@
       <div class="field"><label>Street 2</label><input id="address_line2" /></div>
     </div>
     <div class="row">
-      <div class="field"><label>City</label><input id="city" /></div>
-      <div class="field"><label>Province/State</label><input id="province" /></div>
+      <div class="field"><label>Country</label>
+        <select id="country"><option value="">Select...</option></select>
+      </div>
+      <div class="field"><label>Province/State</label>
+        <select id="province"><option value="">Select...</option></select>
+      </div>
     </div>
     <div class="row">
+      <div class="field"><label>City</label>
+        <select id="city"><option value="">Select...</option></select>
+      </div>
       <div class="field"><label>Postal</label><input id="postal_code" /></div>
-      <div class="field"><label>Country</label><input id="country" /></div>
     </div>
     <h4>Commercial</h4>
     <div class="row">
@@ -84,6 +91,29 @@ document.getElementById('save').addEventListener('click', async ()=>{
   if (!r.ok){ document.getElementById('msg').textContent = txt; return; }
   location.href = '/ui/inventory-suppliers.html';
 });
+
+// Geo selects (reuse employee register logic)
+(async function initGeo(){
+  await (window.MKHubGeo && window.MKHubGeo.load ? window.MKHubGeo.load() : Promise.resolve());
+  const countrySel = document.getElementById('country');
+  const stateSel = document.getElementById('province');
+  const citySel = document.getElementById('city');
+  const countries = (window.MKHubGeo && window.MKHubGeo.data) || [];
+  for (const c of countries){ const o=document.createElement('option'); o.value=c.name; o.textContent=c.name; countrySel.appendChild(o); }
+  async function populateStates(country){
+    stateSel.innerHTML = '<option value="">Select...</option>';
+    citySel.innerHTML = '<option value="">Select...</option>';
+    const states = window.MKHubGeo.getStates ? await window.MKHubGeo.getStates(country) : [];
+    for (const s of states){ const o=document.createElement('option'); o.value=s; o.textContent=s; stateSel.appendChild(o); }
+  }
+  async function populateCities(country, state){
+    citySel.innerHTML = '<option value="">Select...</option>';
+    const cities = window.MKHubGeo.getCities ? await window.MKHubGeo.getCities(country, state) : [];
+    for (const n of cities){ const o=document.createElement('option'); o.value=n; o.textContent=n; citySel.appendChild(o); }
+  }
+  countrySel.addEventListener('change', e=>populateStates(e.target.value));
+  stateSel.addEventListener('change', ()=>populateCities(countrySel.value, stateSel.value));
+})();
 </script>
 
 
