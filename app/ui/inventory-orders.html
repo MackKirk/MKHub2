@@ -1,0 +1,75 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Orders</title>
+<link rel="stylesheet" href="/ui/styles.css">
+<script src="/ui/app.js"></script>
+<div id="sidebar"></div>
+<div class="main">
+  <h2>Orders</h2>
+  <div class="card">
+    <h3>Create Order</h3>
+    <form id="orderForm" class="row">
+      <input list="supplierOptions" id="supplier" placeholder="Supplier ID or pick..." required />
+      <datalist id="supplierOptions"></datalist>
+      <select id="contact" required><option value="">-- Select contact --</option></select>
+      <button id="addItem" type="button">+ Add Item</button>
+      <div class="table-wrap" style="flex-basis:100%">
+        <table class="table"><thead><tr><th>Product</th><th>Qty</th><th></th></tr></thead><tbody id="items"></tbody></table>
+      </div>
+      <button type="submit">Create</button>
+    </form>
+  </div>
+  <div class="card">
+    <h3>All Orders</h3>
+    <div id="list" class="card"></div>
+  </div>
+
+  <div id="emailModal" class="modal" style="display:none">
+    <div class="modal-content">
+      <span class="close" id="closeEmail">&times;</span>
+      <h3>Email Draft</h3>
+      <textarea id="emailDraft" rows="12" style="width:100%"></textarea>
+      <div style="text-align:right;margin-top:10px"><button id="sendEmail">Send Email</button></div>
+    </div>
+  </div>
+</div>
+<script>
+MKHubUI.initSidebar('inventory-orders');
+let products=[], suppliers=[], contactsBy={}, editing=null;
+function token(){ return MKHubUI.getTokenOrRedirect(); }
+function auth(){ return { Authorization:'Bearer '+token() }; }
+async function loadRefs(){
+  const [p,s] = await Promise.all([
+    fetch('/inventory/products', { headers: auth() }).then(x=>x.json()),
+    fetch('/inventory/suppliers', { headers: auth() }).then(x=>x.json()),
+  ]);
+  products=p; suppliers=s; document.getElementById('supplierOptions').innerHTML = s.map(x=>`<option value="${x.id} - ${x.name}">`).join('');
+}
+function productOptions(sel){ return products.map(p=>`<option value="${p.id}" ${String(sel)===String(p.id)?'selected':''}>${p.name}</option>`).join(''); }
+function addItemRow(){ const tr=document.createElement('tr'); tr.innerHTML=`<td><select class="prod">${productOptions()}</select></td><td><input class="qty" type="number" value="1" min="1"></td><td><button type="button" onclick="this.closest('tr').remove()">Remove</button></td>`; document.getElementById('items').appendChild(tr); }
+document.getElementById('addItem').addEventListener('click', addItemRow);
+document.getElementById('supplier').addEventListener('change', async (e)=>{
+  const id = (e.target.value||'').split(' - ')[0];
+  if (!id) return;
+  const arr = await fetch('/inventory/suppliers/'+id+'/contacts', { headers: auth() }).then(x=>x.json());
+  contactsBy[id]=arr; const sel=document.getElementById('contact'); sel.innerHTML = arr.length ? arr.map(c=>`<option value="${c.id}">${c.name} (${c.email||'no email'})</option>`).join('') : `<option value="">-- No contacts --</option>`;
+});
+document.getElementById('orderForm').addEventListener('submit', async (ev)=>{
+  ev.preventDefault();
+  const id = (document.getElementById('supplier').value||'').split(' - ')[0];
+  const contactId = document.getElementById('contact').value || null;
+  const rows = Array.from(document.querySelectorAll('#items tr'));
+  if (!rows.length){ alert('Add at least one item'); return; }
+  const items = rows.map(r=>({ product_id: r.querySelector('select.prod').value, quantity: parseInt(r.querySelector('input.qty').value||'0') }));
+  const r = await fetch('/inventory/orders', { method:'POST', headers:{ 'Content-Type':'application/json', ...auth() }, body: JSON.stringify({ supplier_id:id, contact_id:contactId, status:'pending', items }) });
+  if (r.ok){ document.getElementById('orderForm').reset(); document.getElementById('items').innerHTML=''; addItemRow(); loadOrders(); }
+});
+async function loadOrders(){ const arr = await fetch('/inventory/orders', { headers: auth() }).then(x=>x.json()); const list=document.getElementById('list'); list.innerHTML = (arr||[]).map(o=>{ const sup = suppliers.find(s=>String(s.id)===String(o.supplier_id)); const items = (o.items||[]).map(i=>{ const p=products.find(pp=>String(pp.id)===String(i.product_id)); return `${p?p.name:i.product_id} (x${i.quantity})`; }).join(', '); const actions = o.status==='pending'?`<button onclick="setStatus('${o.id}','delivered')">Deliver</button> <button onclick="setStatus('${o.id}','canceled')">Cancel</button> <button onclick="openEmail('${o.id}')">${o.email_sent?'Resend Email':'Send Email'}</button>`:`<span class="muted">${o.status}</span>`; return `<div style="display:flex;justify-content:space-between;border-bottom:1px solid #eee;padding:6px 0"><div><strong>${o.order_code}</strong><div class=muted>${sup?sup.name:o.supplier_id}</div><div class=muted>${items}</div></div><div>${actions}</div></div>`; }).join('') || 'No orders'; }
+async function setStatus(id, st){ await fetch('/inventory/orders/'+id+'/status?status='+encodeURIComponent(st), { method:'PUT', headers: auth() }); await loadOrders(); }
+async function openEmail(id){ const arr=await fetch('/inventory/orders', { headers: auth() }).then(x=>x.json()); const o=arr.find(x=>String(x.id)===String(id)); if(!o) return; const sup=suppliers.find(s=>String(s.id)===String(o.supplier_id)); const contactList = contactsBy[o.supplier_id] || []; let name='Sir/Madam'; const c=contactList.find(x=>String(x.id)===String(o.contact_id)); if(c) name=c.name; let body=`Subject: Purchase Order ${o.order_code}\n\nDear ${name} (${sup?sup.name:o.supplier_id}),\n\nWe would like to place the following order:\n\n`; for (const it of o.items||[]){ const p=products.find(pp=>String(pp.id)===String(it.product_id)); body+=`- ${p?p.name:it.product_id}: ${it.quantity}\n`; } body+=`\nOrder Date: ${new Date(o.order_date).toLocaleDateString()}\n\nPlease confirm availability, lead time, and ETA.\n\nBest regards,`; document.getElementById('emailDraft').value=body; const modal=document.getElementById('emailModal'); modal.dataset.orderId=id; modal.style.display='flex'; }
+document.getElementById('closeEmail').addEventListener('click', ()=>{ document.getElementById('emailModal').style.display='none'; });
+document.getElementById('sendEmail').addEventListener('click', async ()=>{ const id=document.getElementById('emailModal').dataset.orderId; await fetch('/inventory/orders/'+id+'/send-email', { method:'POST', headers: auth() }); document.getElementById('emailModal').style.display='none'; await loadOrders(); });
+(async function(){ await loadRefs(); await loadOrders(); addItemRow(); })();
+</script>
+
+

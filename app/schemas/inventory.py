@@ -32,9 +32,28 @@ class ProductResponse(ProductBase):
 
 class SupplierBase(BaseModel):
     name: str
+    legal_name: Optional[str] = None
     email: Optional[str] = None
+    phone: Optional[str] = None
+    website: Optional[str] = None
 
-    @field_validator("email", mode="before")
+    address_line1: Optional[str] = None
+    address_line2: Optional[str] = None
+    city: Optional[str] = None
+    province: Optional[str] = None
+    postal_code: Optional[str] = None
+    country: Optional[str] = None
+
+    tax_number: Optional[str] = None
+    payment_terms: Optional[str] = None
+    currency: Optional[str] = None
+    lead_time_days: Optional[int] = None
+    category: Optional[str] = None
+    status: Optional[str] = None
+    notes: Optional[str] = None
+    is_active: Optional[bool] = True
+
+    @field_validator("email", "phone", "website", "address_line1", "address_line2", "city", "province", "postal_code", "country", "tax_number", "payment_terms", "currency", "category", "status", "notes", mode="before")
     @classmethod
     def empty_str_to_none(cls, v):
         if v is None:
@@ -58,6 +77,8 @@ class SupplierContactBase(BaseModel):
     name: str
     email: Optional[str] = None
     phone: Optional[str] = None
+    title: Optional[str] = None
+    notes: Optional[str] = None
 
     @field_validator("email", "phone", mode="before")
     @classmethod

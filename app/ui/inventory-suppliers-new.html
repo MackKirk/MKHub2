@@ -1,0 +1,89 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>New Supplier</title>
+<link rel="stylesheet" href="/ui/styles.css">
+<script src="/ui/app.js"></script>
+<div id="sidebar"></div>
+<div class="main">
+  <h2>New Supplier</h2>
+  <div class="card">
+    <div class="row">
+      <div class="field"><label>Name *</label><input id="name" required /></div>
+      <div class="field"><label>Legal name</label><input id="legal_name" /></div>
+    </div>
+    <div class="row">
+      <div class="field"><label>Email</label><input id="email" type="email" /></div>
+      <div class="field"><label>Phone</label><input id="phone" /></div>
+      <div class="field"><label>Website</label><input id="website" /></div>
+    </div>
+    <h4>Address</h4>
+    <div class="row">
+      <div class="field"><label>Street 1</label><input id="address_line1" /></div>
+      <div class="field"><label>Street 2</label><input id="address_line2" /></div>
+    </div>
+    <div class="row">
+      <div class="field"><label>City</label><input id="city" /></div>
+      <div class="field"><label>Province/State</label><input id="province" /></div>
+    </div>
+    <div class="row">
+      <div class="field"><label>Postal</label><input id="postal_code" /></div>
+      <div class="field"><label>Country</label><input id="country" /></div>
+    </div>
+    <h4>Commercial</h4>
+    <div class="row">
+      <div class="field"><label>Tax number</label><input id="tax_number" /></div>
+      <div class="field"><label>Payment terms</label><input id="payment_terms" placeholder="e.g., Net 30" /></div>
+    </div>
+    <div class="row">
+      <div class="field"><label>Currency</label><input id="currency" placeholder="e.g., CAD" /></div>
+      <div class="field"><label>Lead time (days)</label><input id="lead_time_days" type="number" min="0" /></div>
+    </div>
+    <div class="row">
+      <div class="field"><label>Category</label><input id="category" /></div>
+      <div class="field"><label>Status</label>
+        <select id="status"><option value="active">active</option><option value="paused">paused</option></select>
+      </div>
+    </div>
+    <div class="row">
+      <div class="field" style="flex:1"><label>Notes</label><input id="notes" /></div>
+    </div>
+    <div class="row">
+      <button id="save">Create Supplier</button>
+      <a class="btn" href="/ui/inventory-suppliers.html">Cancel</a>
+    </div>
+    <pre id="msg" class="muted"></pre>
+  </div>
+</div>
+<script>
+MKHubUI.initSidebar('inventory-suppliers');
+document.getElementById('save').addEventListener('click', async ()=>{
+  const token = MKHubUI.getTokenOrRedirect();
+  const body = {
+    name: document.getElementById('name').value.trim(),
+    legal_name: document.getElementById('legal_name').value || null,
+    email: document.getElementById('email').value || null,
+    phone: document.getElementById('phone').value || null,
+    website: document.getElementById('website').value || null,
+    address_line1: document.getElementById('address_line1').value || null,
+    address_line2: document.getElementById('address_line2').value || null,
+    city: document.getElementById('city').value || null,
+    province: document.getElementById('province').value || null,
+    postal_code: document.getElementById('postal_code').value || null,
+    country: document.getElementById('country').value || null,
+    tax_number: document.getElementById('tax_number').value || null,
+    payment_terms: document.getElementById('payment_terms').value || null,
+    currency: document.getElementById('currency').value || null,
+    lead_time_days: document.getElementById('lead_time_days').value || null,
+    category: document.getElementById('category').value || null,
+    status: document.getElementById('status').value || null,
+    notes: document.getElementById('notes').value || null,
+  };
+  if (!body.name){ document.getElementById('msg').textContent = 'Name is required.'; return; }
+  const r = await fetch('/inventory/suppliers', { method:'POST', headers:{ 'Content-Type':'application/json', Authorization:'Bearer '+token }, body: JSON.stringify(body) });
+  const txt = await r.text();
+  if (!r.ok){ document.getElementById('msg').textContent = txt; return; }
+  location.href = '/ui/inventory-suppliers.html';
+});
+</script>
+
+

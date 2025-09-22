@@ -1,0 +1,144 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Supplier</title>
+<link rel="stylesheet" href="/ui/styles.css">
+<script src="/ui/app.js"></script>
+<div id="sidebar"></div>
+<div class="main">
+  <h2>Supplier</h2>
+  <div id="info" class="card"></div>
+  <div class="card">
+    <h3>Details</h3>
+    <div class="row">
+      <div class="field"><label>Name *</label><input id="name" /></div>
+      <div class="field"><label>Legal name</label><input id="legal_name" /></div>
+    </div>
+    <div class="row">
+      <div class="field"><label>Email</label><input id="email" /></div>
+      <div class="field"><label>Phone</label><input id="phone" /></div>
+      <div class="field"><label>Website</label><input id="website" /></div>
+    </div>
+    <h4>Address</h4>
+    <div class="row">
+      <div class="field"><label>Street 1</label><input id="address_line1" /></div>
+      <div class="field"><label>Street 2</label><input id="address_line2" /></div>
+    </div>
+    <div class="row">
+      <div class="field"><label>City</label><input id="city" /></div>
+      <div class="field"><label>Province/State</label><input id="province" /></div>
+    </div>
+    <div class="row">
+      <div class="field"><label>Postal</label><input id="postal_code" /></div>
+      <div class="field"><label>Country</label><input id="country" /></div>
+    </div>
+    <h4>Commercial</h4>
+    <div class="row">
+      <div class="field"><label>Tax number</label><input id="tax_number" /></div>
+      <div class="field"><label>Payment terms</label><input id="payment_terms" /></div>
+    </div>
+    <div class="row">
+      <div class="field"><label>Currency</label><input id="currency" /></div>
+      <div class="field"><label>Lead time (days)</label><input id="lead_time_days" type="number" min="0" /></div>
+    </div>
+    <div class="row">
+      <div class="field"><label>Category</label><input id="category" /></div>
+      <div class="field"><label>Status</label>
+        <select id="status"><option value="active">active</option><option value="paused">paused</option></select>
+      </div>
+    </div>
+    <div class="row">
+      <div class="field" style="flex:1"><label>Notes</label><input id="notes" /></div>
+    </div>
+    <div class="row">
+      <button id="save">Save</button>
+      <a class="btn" href="/ui/inventory-suppliers.html">Back</a>
+    </div>
+    <pre id="msg" class="muted"></pre>
+  </div>
+
+  <div class="card">
+    <h3>Contacts</h3>
+    <div id="contactsList" class="card"></div>
+    <h4>Add/Edit Contact</h4>
+    <form id="contactForm" class="row">
+      <input type="hidden" id="contact_id" />
+      <div class="field"><label>Name *</label><input id="c_name" required /></div>
+      <div class="field"><label>Title</label><input id="c_title" /></div>
+      <div class="field"><label>Email</label><input id="c_email" /></div>
+      <div class="field"><label>Phone</label><input id="c_phone" /></div>
+    </form>
+    <div class="row">
+      <div class="field" style="flex:1"><label>Notes</label><input id="c_notes" /></div>
+    </div>
+    <div class="row">
+      <button id="saveContact">Save Contact</button>
+      <button id="cancelContact" style="display:none">Cancel</button>
+    </div>
+    <pre id="msgContact" class="muted"></pre>
+  </div>
+</div>
+<script>
+MKHubUI.initSidebar('inventory-suppliers');
+const params = new URLSearchParams(location.search);
+const supId = params.get('id');
+async function load(){
+  const token = MKHubUI.getTokenOrRedirect();
+  const r = await fetch('/inventory/suppliers/'+supId, { headers:{ Authorization:'Bearer '+token }});
+  const info = document.getElementById('info');
+  if (!r.ok){ info.textContent='Not authorized or not found.'; return; }
+  const s = await r.json();
+  info.innerHTML = `<strong>${s.name}</strong>${s.legal_name?`<div class=muted>${s.legal_name}</div>`:''}`+
+    `${s.city||s.province||s.country?`<div class=muted>${[s.city,s.province,s.country].filter(Boolean).join(', ')}</div>`:''}`;
+  const fill = (id, v)=>{ const el=document.getElementById(id); if (el) el.value = v||''; };
+  for (const k of ['name','legal_name','email','phone','website','address_line1','address_line2','city','province','postal_code','country','tax_number','payment_terms','currency','lead_time_days','category','status','notes']){ fill(k, s[k]); }
+  await loadContacts();
+}
+async function loadContacts(){
+  const token = MKHubUI.getTokenOrRedirect();
+  const arr = await fetch('/inventory/suppliers/'+supId+'/contacts', { headers:{ Authorization:'Bearer '+token }}).then(x=>x.json());
+  const el = document.getElementById('contactsList');
+  el.innerHTML = (arr||[]).map(c=>`<div style="display:flex;justify-content:space-between;border-bottom:1px solid #eee;padding:6px 0">`
+    + `<div><strong>${c.name}</strong>${c.title?` — ${c.title}`:''}<div class=muted>${[c.email,c.phone].filter(Boolean).join(' · ')}</div></div>`
+    + `<div>`
+    + `<button onclick="editContact('${c.id}','${(c.name||'').replace(/'/g, '\\'')}','${(c.title||'').replace(/'/g, '\\'')}','${(c.email||'').replace(/'/g, '\\'')}','${(c.phone||'').replace(/'/g, '\\'')}','${(c.notes||'').replace(/'/g, '\\'')}')">Edit</button> `
+    + `<button onclick="delContact('${c.id}')">Delete</button>`
+    + `</div>`
+  + `</div>`).join('') || 'No contacts';
+}
+async function save(){
+  const token = MKHubUI.getTokenOrRedirect();
+  const body = {};
+  for (const k of ['name','legal_name','email','phone','website','address_line1','address_line2','city','province','postal_code','country','tax_number','payment_terms','currency','lead_time_days','category','status','notes']){
+    body[k] = document.getElementById(k).value || null;
+  }
+  if (!body.name){ document.getElementById('msg').textContent='Name is required.'; return; }
+  const r = await fetch('/inventory/suppliers/'+supId, { method:'PUT', headers:{ 'Content-Type':'application/json', Authorization:'Bearer '+token }, body: JSON.stringify(body) });
+  const t = await r.text();
+  document.getElementById('msg').textContent = t;
+  await load();
+}
+async function saveContact(){
+  const token = MKHubUI.getTokenOrRedirect();
+  const id = document.getElementById('contact_id').value || null;
+  const body = { supplier_id: supId, name: document.getElementById('c_name').value || null, title: document.getElementById('c_title').value || null, email: document.getElementById('c_email').value || null, phone: document.getElementById('c_phone').value || null, notes: document.getElementById('c_notes').value || null };
+  if (!body.name){ document.getElementById('msgContact').textContent='Name is required.'; return; }
+  if (id){
+    const r = await fetch('/inventory/contacts/'+id, { method:'PUT', headers:{ 'Content-Type':'application/json', Authorization:'Bearer '+token }, body: JSON.stringify(body) });
+    document.getElementById('msgContact').textContent = await r.text();
+  } else {
+    const r = await fetch('/inventory/contacts', { method:'POST', headers:{ 'Content-Type':'application/json', Authorization:'Bearer '+token }, body: JSON.stringify(body) });
+    document.getElementById('msgContact').textContent = await r.text();
+  }
+  cancelContact();
+  await loadContacts();
+}
+function editContact(id, n,t,e,p,notes){ document.getElementById('contact_id').value=id; document.getElementById('c_name').value=n; document.getElementById('c_title').value=t; document.getElementById('c_email').value=e; document.getElementById('c_phone').value=p; document.getElementById('c_notes').value=notes; document.getElementById('cancelContact').style.display='inline-block'; }
+function cancelContact(){ document.getElementById('contact_id').value=''; for (const k of ['c_name','c_title','c_email','c_phone','c_notes']){ document.getElementById(k).value=''; } document.getElementById('cancelContact').style.display='none'; }
+async function delContact(id){ const token = MKHubUI.getTokenOrRedirect(); await fetch('/inventory/contacts/'+id, { method:'DELETE', headers:{ Authorization:'Bearer '+token } }); await loadContacts(); }
+document.getElementById('save').addEventListener('click', save);
+document.getElementById('saveContact').addEventListener('click', saveContact);
+document.getElementById('cancelContact').addEventListener('click', cancelContact);
+load();
+</script>
+
+

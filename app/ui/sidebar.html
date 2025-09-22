@@ -5,7 +5,10 @@
   <a href="/ui/profile.html" id="nav-profile">My Information</a>
   <a href="/ui/invite.html" id="nav-invite" data-perm="invite:send" style="display:none">Invite Users</a>
   <a href="/ui/users.html" id="nav-users" data-perm="users:read" style="display:none">Users</a>
-  <a href="/ui/inventory.html" id="nav-inventory" data-perm="inventory:read" style="display:none">Inventory</a>
+  <div class="muted" style="margin-top:10px">Inventory</div>
+  <a href="/ui/inventory-suppliers.html" id="nav-inventory-suppliers" data-perm="inventory:read" style="display:none;padding-left:12px">Suppliers</a>
+  <a href="/ui/inventory-products.html" id="nav-inventory-products" data-perm="inventory:read" style="display:none;padding-left:12px">Products</a>
+  <a href="/ui/inventory-orders.html" id="nav-inventory-orders" data-perm="inventory:read" style="display:none;padding-left:12px">Orders</a>
   <button onclick="logout()">Logout</button>
 </div>
 <script>
@@ -17,7 +20,6 @@ fetch('/auth/me', { headers:{ Authorization:'Bearer '+token } })
   .then(u => {
     if (!u) return;
     const el=document.getElementById('hello'); if(el){ el.textContent = 'Hello, ' + (u.username || 'user'); }
-    // Reveal links if user has permission or admin role
     const roles = (u.roles||[]).map(r => (r||'').toLowerCase());
     const isAdmin = roles.includes('admin');
     const perms = new Set((u.permissions||[]));
@@ -27,9 +29,8 @@ fetch('/auth/me', { headers:{ Authorization:'Bearer '+token } })
       if (isAdmin || (need && (perms.has(need) || hasAlt))) { a.style.display = 'block'; }
     });
   });
-// Highlight active
 const path = location.pathname;
-for (const id of ['home','profile','invite','users','inventory']) {
+for (const id of ['home','profile','invite','users','inventory-suppliers','inventory-products','inventory-orders']) {
   const el = document.getElementById('nav-'+id);
   if (el && path.endsWith(id+'.html')) { el.classList.add('active'); }
 }

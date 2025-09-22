@@ -395,7 +395,28 @@ class Supplier(Base):
 
     id: Mapped[uuid.UUID] = uuid_pk()
     name: Mapped[str] = mapped_column(String(100), nullable=False)
+    legal_name: Mapped[Optional[str]] = mapped_column(String(255))
     email: Mapped[Optional[str]] = mapped_column(String(255))
+    phone: Mapped[Optional[str]] = mapped_column(String(100))
+    website: Mapped[Optional[str]] = mapped_column(String(255))
+
+    address_line1: Mapped[Optional[str]] = mapped_column(String(255))
+    address_line2: Mapped[Optional[str]] = mapped_column(String(255))
+    city: Mapped[Optional[str]] = mapped_column(String(100))
+    province: Mapped[Optional[str]] = mapped_column(String(100))
+    postal_code: Mapped[Optional[str]] = mapped_column(String(50))
+    country: Mapped[Optional[str]] = mapped_column(String(100))
+
+    tax_number: Mapped[Optional[str]] = mapped_column(String(100))
+    payment_terms: Mapped[Optional[str]] = mapped_column(String(100))  # e.g., Net 30
+    currency: Mapped[Optional[str]] = mapped_column(String(10))  # e.g., CAD, USD
+    lead_time_days: Mapped[Optional[int]] = mapped_column(Integer)
+    category: Mapped[Optional[str]] = mapped_column(String(100))
+    status: Mapped[Optional[str]] = mapped_column(String(50))  # active, paused
+    notes: Mapped[Optional[str]] = mapped_column(String(2000))
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
 
     contacts = relationship("SupplierContact", back_populates="supplier", cascade="all, delete-orphan")
 
@@ -408,6 +429,8 @@ class SupplierContact(Base):
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     email: Mapped[Optional[str]] = mapped_column(String(255))
     phone: Mapped[Optional[str]] = mapped_column(String(100))
+    title: Mapped[Optional[str]] = mapped_column(String(100))
+    notes: Mapped[Optional[str]] = mapped_column(String(1000))
 
     supplier = relationship("Supplier", back_populates="contacts")
 

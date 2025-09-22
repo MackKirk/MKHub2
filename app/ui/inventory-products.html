@@ -1,0 +1,58 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Products</title>
+<link rel="stylesheet" href="/ui/styles.css">
+<script src="/ui/app.js"></script>
+<div id="sidebar"></div>
+<div class="main">
+  <h2>Products</h2>
+  <div class="card">
+    <form id="productForm" class="row">
+      <input id="name" placeholder="Name" required />
+      <input id="unit" placeholder="Unit" required />
+      <input id="stock" type="number" placeholder="Stock" />
+      <input id="reorder" type="number" placeholder="Reorder point" />
+      <button id="save">Save</button>
+      <button id="cancel" type="button" style="display:none">Cancel</button>
+    </form>
+  </div>
+  <div class="card">
+    <h3>Low stock</h3>
+    <div id="low" class="muted"></div>
+  </div>
+  <div class="card">
+    <h3>All products</h3>
+    <div id="list" class="card"></div>
+  </div>
+</div>
+<script>
+MKHubUI.initSidebar('inventory-products');
+let editing = null;
+async function load(){
+  const token = MKHubUI.getTokenOrRedirect();
+  const [prods, low] = await Promise.all([
+    fetch('/inventory/products', { headers:{ Authorization:'Bearer '+token }}).then(x=>x.json()),
+    fetch('/inventory/products/low_stock', { headers:{ Authorization:'Bearer '+token }}).then(x=>x.json()),
+  ]);
+  const list = document.getElementById('list');
+  list.innerHTML = (prods||[]).map(p=>`<div style="display:flex;justify-content:space-between;border-bottom:1px solid #eee;padding:6px 0">`
+    + `<div><strong>${p.name}</strong> <span class="muted">${p.unit}</span><div class="muted">Stock ${p.stock_quantity} / Reorder ${p.reorder_point}</div></div>`
+    + `<div><button onclick="edit('${p.id}','${p.name}','${p.unit}',${p.stock_quantity},${p.reorder_point})">Edit</button> <button onclick="delp('${p.id}')">Delete</button></div>`
+  + `</div>`).join('') || 'No products';
+  document.getElementById('low').innerHTML = (low||[]).map(p=>`${p.name} (${p.stock_quantity}/${p.reorder_point})`).join(', ') || 'None';
+}
+function edit(id,n,u,s,r){ editing=id; document.getElementById('name').value=n; document.getElementById('unit').value=u; document.getElementById('stock').value=s; document.getElementById('reorder').value=r; document.getElementById('cancel').style.display='inline-block'; }
+async function delp(id){ const token=MKHubUI.getTokenOrRedirect(); await fetch('/inventory/products/'+id, { method:'DELETE', headers:{ Authorization:'Bearer '+token } }); load(); }
+document.getElementById('cancel').addEventListener('click', ()=>{ editing=null; document.getElementById('productForm').reset(); document.getElementById('cancel').style.display='none'; });
+document.getElementById('save').addEventListener('click', async (ev)=>{
+  ev.preventDefault(); const token=MKHubUI.getTokenOrRedirect();
+  const body={ name:document.getElementById('name').value, unit:document.getElementById('unit').value, stock_quantity:parseInt(document.getElementById('stock').value||'0'), reorder_point:parseInt(document.getElementById('reorder').value||'0') };
+  const url = editing ? '/inventory/products/'+editing : '/inventory/products';
+  const method = editing ? 'PUT' : 'POST';
+  const r = await fetch(url, { method, headers:{ 'Content-Type':'application/json', Authorization:'Bearer '+token }, body: JSON.stringify(body) });
+  if (r.ok){ editing=null; document.getElementById('productForm').reset(); document.getElementById('cancel').style.display='none'; load(); }
+});
+load();
+</script>
+
+

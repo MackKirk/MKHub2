@@ -80,13 +80,17 @@ def low_stock_products(db: Session = Depends(get_db), _=Depends(require_permissi
 
 # ---------- SUPPLIERS ----------
 @router.get("/suppliers", response_model=List[SupplierResponse])
-def list_suppliers(db: Session = Depends(get_db), _=Depends(require_permissions("inventory:read"))):
-    return db.query(Supplier).all()
+def list_suppliers(q: str | None = None, db: Session = Depends(get_db), _=Depends(require_permissions("inventory:read"))):
+    query = db.query(Supplier)
+    if q:
+        like = f"%{q}%"
+        query = query.filter((Supplier.name.ilike(like)) | (Supplier.legal_name.ilike(like)))
+    return query.order_by(Supplier.created_at.desc()).limit(500).all()
 
 
 @router.post("/suppliers", response_model=SupplierResponse)
 def create_supplier(supplier: SupplierCreate, db: Session = Depends(get_db), _=Depends(require_permissions("inventory:write"))):
-    row = Supplier(**supplier.dict())
+    row = Supplier(**supplier.dict(exclude_unset=True))
     db.add(row)
     db.commit()
     db.refresh(row)
@@ -98,8 +102,10 @@ def update_supplier(supplier_id: uuid.UUID, supplier: SupplierCreate, db: Sessio
     row = db.query(Supplier).filter(Supplier.id == supplier_id).first()
     if not row:
         raise HTTPException(status_code=404, detail="Supplier not found")
-    row.name = supplier.name
-    row.email = supplier.email
+    data = supplier.dict(exclude_unset=True)
+    for k, v in data.items():
+        setattr(row, k, v)
+    row.updated_at = datetime.now(timezone.utc)
     db.commit()
     db.refresh(row)
     return row
@@ -113,6 +119,14 @@ def delete_supplier(supplier_id: uuid.UUID, db: Session = Depends(get_db), _=Dep
     db.delete(row)
     db.commit()
     return {"message": "Supplier deleted successfully"}
+
+
+@router.get("/suppliers/{supplier_id}", response_model=SupplierResponse)
+def get_supplier(supplier_id: uuid.UUID, db: Session = Depends(get_db), _=Depends(require_permissions("inventory:read"))):
+    row = db.query(Supplier).filter(Supplier.id == supplier_id).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Supplier not found")
+    return row
 
 
 # ---------- SUPPLIER CONTACTS ----------
