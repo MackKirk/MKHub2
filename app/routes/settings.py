@@ -1,16 +1,56 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
+from sqlalchemy.orm import Session
+from typing import List
+
+from ..db import get_db
+from ..models.models import SettingList, SettingItem
+from ..auth.security import require_permissions
 
 router = APIRouter(prefix="/settings", tags=["settings"])
 
 
 @router.get("")
-def get_settings_bundle():
-    return {
-        "project_statuses": [],
-        "divisions": [],
-        "file_categories": [],
-        "client_types": [],
-        "client_statuses": [],
-        "payment_terms": [],
-    }
+def get_settings_bundle(db: Session = Depends(get_db)):
+    rows = db.query(SettingList).all()
+    out = {}
+    for lst in rows:
+        items = db.query(SettingItem).filter(SettingItem.list_id == lst.id).order_by(SettingItem.sort_index.asc()).all()
+        out[lst.name] = [{"id": str(i.id), "label": i.label, "value": i.value, "sort_index": i.sort_index} for i in items]
+    # convenience aliases
+    out.setdefault("client_types", [])
+    out.setdefault("client_statuses", [])
+    out.setdefault("payment_terms", [])
+    return out
+
+
+@router.get("/{list_name}")
+def list_settings(list_name: str, db: Session = Depends(get_db)):
+    lst = db.query(SettingList).filter(SettingList.name == list_name).first()
+    if not lst:
+        return []
+    items = db.query(SettingItem).filter(SettingItem.list_id == lst.id).order_by(SettingItem.sort_index.asc()).all()
+    return [{"id": str(i.id), "label": i.label, "value": i.value, "sort_index": i.sort_index} for i in items]
+
+
+@router.post("/{list_name}")
+def create_setting_item(list_name: str, label: str, value: str = "", sort_index: int = 0, db: Session = Depends(get_db), _=Depends(require_permissions("users:write"))):
+    lst = db.query(SettingList).filter(SettingList.name == list_name).first()
+    if not lst:
+        lst = SettingList(name=list_name)
+        db.add(lst)
+        db.flush()
+    it = SettingItem(list_id=lst.id, label=label, value=value, sort_index=sort_index)
+    db.add(it)
+    db.commit()
+    return {"id": str(it.id)}
+
+
+@router.delete("/{list_name}/{item_id}")
+def delete_setting_item(list_name: str, item_id: str, db: Session = Depends(get_db), _=Depends(require_permissions("users:write"))):
+    lst = db.query(SettingList).filter(SettingList.name == list_name).first()
+    if not lst:
+        return {"status": "ok"}
+    db.query(SettingItem).filter(SettingItem.list_id == lst.id, SettingItem.id == item_id).delete()
+    db.commit()
+    return {"status": "ok"}
 

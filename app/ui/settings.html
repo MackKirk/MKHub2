@@ -1,0 +1,90 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>System Settings</title>
+<link rel="stylesheet" href="/ui/styles.css">
+<script src="/ui/app.js"></script>
+<div id="sidebar"></div>
+<div class="main">
+  <h2>System Settings</h2>
+
+  <div class="card">
+    <h3>Reference Lists</h3>
+    <div class="row">
+      <div class="field"><label>List</label>
+        <select id="listSel">
+          <option value="client_types">Client Types</option>
+          <option value="client_statuses">Client Statuses</option>
+          <option value="payment_terms">Payment Terms</option>
+          <option value="project_statuses">Project Statuses</option>
+          <option value="divisions">Divisions</option>
+          <option value="file_categories">File Categories</option>
+        </select>
+      </div>
+      <div class="field"><label>Label</label><input id="itemLabel" /></div>
+      <div class="field"><label>Value</label><input id="itemValue" /></div>
+      <div class="field"><label>Sort</label><input id="itemSort" type="number" value="0" /></div>
+      <div class="field" style="align-self:end"><button id="addItem">Add</button></div>
+    </div>
+    <div id="items" class="card"></div>
+  </div>
+
+  <div class="card">
+    <h3>Developer Utilities</h3>
+    <div class="row">
+      <button id="mkEmployees">Create 10 Employees</button>
+      <button id="mkCustomers">Create 10 Customers</button>
+    </div>
+    <pre class="muted" id="devMsg"></pre>
+  </div>
+</div>
+<script>
+MKHubUI.initSidebar('settings');
+function auth(){ return { Authorization:'Bearer '+MKHubUI.getTokenOrRedirect() }; }
+async function refresh(){
+  const list = document.getElementById('listSel').value;
+  const arr = await fetch('/settings/'+list, { headers: auth() }).then(x=>x.json());
+  const el = document.getElementById('items');
+  el.innerHTML = (arr||[]).map(i=>`<div style="display:flex;justify-content:space-between;border-bottom:1px solid #eee;padding:6px 0">`
+    + `<div><strong>${i.label}</strong>${i.value?` <span class=muted>(${i.value})</span>`:''} <span class=muted>[${i.sort_index}]</span></div>`
+    + `<div><button onclick="delItem('${i.id}')">Delete</button></div>`
+  + `</div>`).join('') || 'No items';
+}
+document.getElementById('listSel').addEventListener('change', refresh);
+document.getElementById('addItem').addEventListener('click', async ()=>{
+  const list = document.getElementById('listSel').value;
+  const label = document.getElementById('itemLabel').value.trim();
+  const value = document.getElementById('itemValue').value.trim();
+  const sort = parseInt(document.getElementById('itemSort').value||'0');
+  if (!label) return;
+  await fetch(`/settings/${list}?label=${encodeURIComponent(label)}&value=${encodeURIComponent(value)}&sort_index=${sort}`, { method:'POST', headers: auth() });
+  document.getElementById('itemLabel').value=''; document.getElementById('itemValue').value=''; document.getElementById('itemSort').value='0';
+  refresh();
+});
+window.delItem = async function(id){ const list=document.getElementById('listSel').value; await fetch(`/settings/${list}/${id}`, { method:'DELETE', headers: auth() }); refresh(); };
+
+// Developer Utilities - use auth APIs to create data quickly
+document.getElementById('mkEmployees').addEventListener('click', async ()=>{
+  const token = MKHubUI.getTokenOrRedirect();
+  const base = 'seed'+Date.now();
+  const r = await fetch(`/auth/admin/users/bulk-create?count=10&prefix=${encodeURIComponent(base)}&role=estimator`, { method:'POST', headers:{ Authorization:'Bearer '+token } });
+  const txt = await r.text();
+  document.getElementById('devMsg').textContent = r.ok ? 'Created 10 employees.' : txt;
+});
+
+document.getElementById('mkCustomers').addEventListener('click', async ()=>{
+  const token = MKHubUI.getTokenOrRedirect();
+  const base = 'CUST'+Date.now();
+  const reqs = [];
+  for (let i=1;i<=10;i++){
+    const code = `${base}-${i}`;
+    const display = `Test Customer ${i}`;
+    reqs.push(fetch('/clients', { method:'POST', headers:{ 'Content-Type':'application/json', Authorization:'Bearer '+token }, body: JSON.stringify({ code, name: display, display_name: display, client_status: 'Active', client_type: 'Commercial' }) }));
+  }
+  await Promise.allSettled(reqs);
+  document.getElementById('devMsg').textContent = 'Created 10 customers (if permissions allow).';
+});
+
+refresh();
+</script>
+
+

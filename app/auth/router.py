@@ -650,6 +650,57 @@ def delete_passport(user_id: str, pid: str, db: Session = Depends(get_db), _=Dep
     return {"status": "ok"}
 
 
+# --- Admin: bulk create users for testing ---
+@router.post("/admin/users/bulk-create")
+def admin_bulk_create_users(
+    count: int = 10,
+    prefix: str = "testuser",
+    role: str | None = None,
+    db: Session = Depends(get_db),
+    _admin: User = Depends(require_permissions("users:write")),
+):
+    from ..models.models import Role as RoleModel, EmployeeProfile as EP
+    created = []
+    # Ensure role exists if provided
+    role_row = None
+    if role:
+        role_row = db.query(RoleModel).filter(RoleModel.name == role).first()
+        if not role_row:
+            role_row = RoleModel(name=role, description=role.title())
+            db.add(role_row)
+            db.flush()
+    base = prefix.strip() or "testuser"
+    for i in range(1, max(1, int(count)) + 1):
+        # Generate unique username
+        idx = i
+        while True:
+            username = f"{base}{idx}"
+            exists = db.query(User).filter((User.username == username) | (User.email_personal == f"{username}@example.com")).first()
+            if not exists:
+                break
+            idx += 1
+        email = f"{username}@example.com"
+        user = User(
+            username=username,
+            email_personal=email,
+            password_hash=get_password_hash("TestUser123!"),
+            is_active=True,
+            created_at=datetime.now(timezone.utc),
+        )
+        db.add(user)
+        db.flush()
+        # Attach role if provided
+        if role_row:
+            user.roles = [role_row]
+        # Minimal profile
+        ep = EP(user_id=user.id, first_name=username.title(), last_name="User")
+        db.add(ep)
+        db.flush()
+        created.append({"id": str(user.id), "username": username, "email": email, "password": "TestUser123!", "role": role_row.name if role_row else None})
+    db.commit()
+    return {"created": created}
+
+
 @router.get("/users/{user_id}/education")
 def list_education(user_id: str, db: Session = Depends(get_db), _=Depends(require_permissions("users:read"))):
     from ..models.models import EmployeeEducation
