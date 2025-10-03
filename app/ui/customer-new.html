@@ -8,6 +8,26 @@
 <div class="main">
   <h2>New Customer</h2>
   <div class="card">
+    <h4>Communication Preferences</h4>
+    <div class="row">
+      <div class="field"><label>Language</label><input id="preferred_language" /></div>
+      <div class="field"><label>Preferred channels (comma-separated)</label><input id="preferred_channels" placeholder="Email, Phone, SMS"/></div>
+    </div>
+    <div class="row">
+      <div class="field"><label>Marketing opt-in</label><select id="marketing_opt_in"><option value="false">No</option><option value="true">Yes</option></select></div>
+      <div class="field"><label>Invoice delivery</label><input id="invoice_delivery_method" placeholder="Email PDF, Portal, Mail"/></div>
+      <div class="field"><label>Statement delivery</label><input id="statement_delivery_method" placeholder="Email PDF, Portal, Mail"/></div>
+    </div>
+    <div class="row">
+      <div class="field" style="flex:1"><label>CC emails for invoices (comma-separated)</label><input id="cc_emails_for_invoices" /></div>
+    </div>
+    <div class="row">
+      <div class="field" style="flex:1"><label>CC emails for estimates (comma-separated)</label><input id="cc_emails_for_estimates" /></div>
+    </div>
+    <div class="row">
+      <div class="field"><label>Do not contact</label><select id="do_not_contact"><option value="false">No</option><option value="true">Yes</option></select></div>
+      <div class="field" style="flex:1"><label>Reason</label><input id="do_not_contact_reason" /></div>
+    </div>
     <div class="row">
       <div class="field"><label>Display name *</label><input id="display_name" required /></div>
       <div class="field"><label>Legal name</label><input id="legal_name" /></div>
@@ -89,6 +109,15 @@ document.getElementById('save').addEventListener('click', async ()=>{
     billing_province: document.getElementById('billing_province').value || null,
     billing_city: document.getElementById('billing_city').value || null,
     billing_postal_code: document.getElementById('billing_postal_code').value || null,
+    preferred_language: document.getElementById('preferred_language').value || null,
+    preferred_channels: (document.getElementById('preferred_channels').value||'').split(',').map(s=>s.trim()).filter(Boolean),
+    marketing_opt_in: document.getElementById('marketing_opt_in').value === 'true',
+    invoice_delivery_method: document.getElementById('invoice_delivery_method').value || null,
+    statement_delivery_method: document.getElementById('statement_delivery_method').value || null,
+    cc_emails_for_invoices: (document.getElementById('cc_emails_for_invoices').value||'').split(',').map(s=>s.trim()).filter(Boolean),
+    cc_emails_for_estimates: (document.getElementById('cc_emails_for_estimates').value||'').split(',').map(s=>s.trim()).filter(Boolean),
+    do_not_contact: document.getElementById('do_not_contact').value === 'true',
+    do_not_contact_reason: document.getElementById('do_not_contact_reason').value || null,
   };
   if (!body.name){ document.getElementById('msg').textContent='Display name is required.'; return; }
   const r = await fetch('/clients', { method:'POST', headers:{ 'Content-Type':'application/json', Authorization:'Bearer '+token }, body: JSON.stringify(body) });

@@ -70,6 +70,29 @@
   </div>
 
   <div class="card">
+    <h3>Communication Preferences</h3>
+    <div class="row">
+      <div class="field"><label>Language</label><input id="preferred_language" /></div>
+      <div class="field"><label>Preferred channels (comma-separated)</label><input id="preferred_channels" placeholder="Email, Phone, SMS"/></div>
+    </div>
+    <div class="row">
+      <div class="field"><label>Marketing opt-in</label><select id="marketing_opt_in"><option value="false">No</option><option value="true">Yes</option></select></div>
+      <div class="field"><label>Invoice delivery</label><input id="invoice_delivery_method" placeholder="Email PDF, Portal, Mail"/></div>
+      <div class="field"><label>Statement delivery</label><input id="statement_delivery_method" placeholder="Email PDF, Portal, Mail"/></div>
+    </div>
+    <div class="row">
+      <div class="field" style="flex:1"><label>CC emails for invoices (comma-separated)</label><input id="cc_emails_for_invoices" /></div>
+    </div>
+    <div class="row">
+      <div class="field" style="flex:1"><label>CC emails for estimates (comma-separated)</label><input id="cc_emails_for_estimates" /></div>
+    </div>
+    <div class="row">
+      <div class="field"><label>Do not contact</label><select id="do_not_contact"><option value="false">No</option><option value="true">Yes</option></select></div>
+      <div class="field" style="flex:1"><label>Reason</label><input id="do_not_contact_reason" /></div>
+    </div>
+  </div>
+
+  <div class="card">
     <h3>Contacts</h3>
     <div id="contactsList" class="card"></div>
     <h4>Add Contact</h4>
@@ -95,13 +118,27 @@ async function load(){
   info.innerHTML = `<strong>${c.display_name || c.name}</strong>${c.code?` <span class=muted>(${c.code})</span>`:''}` +
     `${c.city||c.province||c.country?`<div class=muted>${[c.city,c.province,c.country].filter(Boolean).join(', ')}</div>`:''}`;
   const set=(k,v)=>{ const el=document.getElementById(k); if (el) el.value=v||''; };
-  for (const k of ['display_name','legal_name','code','client_type','client_status','lead_source','description','billing_email','tax_number','address_line1','address_line2','country','province','city','postal_code','billing_address_line1','billing_address_line2','billing_country','billing_province','billing_city','billing_postal_code']){ set(k, c[k]); }
+  for (const k of ['display_name','legal_name','code','client_type','client_status','lead_source','description','billing_email','tax_number','address_line1','address_line2','country','province','city','postal_code','billing_address_line1','billing_address_line2','billing_country','billing_province','billing_city','billing_postal_code','preferred_language','invoice_delivery_method','statement_delivery_method','do_not_contact_reason']){ set(k, c[k]); }
+  // Multi-value fields
+  const arrOr = (v)=> Array.isArray(v) ? v : (v ? [v] : []);
+  document.getElementById('preferred_channels').value = (arrOr(c.preferred_channels)||[]).join(', ');
+  document.getElementById('cc_emails_for_invoices').value = (arrOr(c.cc_emails_for_invoices)||[]).join(', ');
+  document.getElementById('cc_emails_for_estimates').value = (arrOr(c.cc_emails_for_estimates)||[]).join(', ');
+  document.getElementById('marketing_opt_in').value = c.marketing_opt_in ? 'true':'false';
+  document.getElementById('do_not_contact').value = c.do_not_contact ? 'true':'false';
   document.getElementById('po_required').value = c.po_required ? 'true':'false';
   await loadContacts();
 }
 async function save(){
   const body = {};
-  for (const k of ['display_name','legal_name','code','client_type','client_status','lead_source','description','billing_email','tax_number','address_line1','address_line2','country','province','city','postal_code','billing_address_line1','billing_address_line2','billing_country','billing_province','billing_city','billing_postal_code']){ body[k] = document.getElementById(k).value || null; }
+  for (const k of ['display_name','legal_name','code','client_type','client_status','lead_source','description','billing_email','tax_number','address_line1','address_line2','country','province','city','postal_code','billing_address_line1','billing_address_line2','billing_country','billing_province','billing_city','billing_postal_code','preferred_language','invoice_delivery_method','statement_delivery_method','do_not_contact_reason']){ body[k] = document.getElementById(k).value || null; }
+  // Multi-value
+  const splitCsv = (id)=> (document.getElementById(id).value||'').split(',').map(s=>s.trim()).filter(Boolean);
+  body['preferred_channels'] = splitCsv('preferred_channels');
+  body['cc_emails_for_invoices'] = splitCsv('cc_emails_for_invoices');
+  body['cc_emails_for_estimates'] = splitCsv('cc_emails_for_estimates');
+  body['marketing_opt_in'] = document.getElementById('marketing_opt_in').value === 'true';
+  body['do_not_contact'] = document.getElementById('do_not_contact').value === 'true';
   body['po_required'] = document.getElementById('po_required').value === 'true';
   const r = await fetch('/clients/'+id, { method:'PATCH', headers:{ 'Content-Type':'application/json', ...auth() }, body: JSON.stringify(body) });
   document.getElementById('msg').textContent = await r.text();
@@ -128,8 +165,22 @@ document.getElementById('upload').addEventListener('click', async ()=>{
   const putResp = await fetch(up.upload_url, { method:'PUT', headers:{ 'Content-Type': upReq.content_type, 'x-ms-blob-type': 'BlockBlob' }, body: f });
   if (!putResp.ok) return;
   const conf = await fetch('/files/confirm', { method:'POST', headers:{ 'Content-Type':'application/json', Authorization:'Bearer '+token }, body: JSON.stringify({ key: up.key, size_bytes: f.size, checksum_sha256: 'na' }) }).then(x=>x.json());
-  // In a future improvement, we can store FileObject id onto a customer documents table
+  // Attach file to customer
+  await fetch(`/clients/${id}/files?file_object_id=${encodeURIComponent(conf.id)}&category=client-docs&original_name=${encodeURIComponent(f.name)}`, { method:'POST', headers:{ Authorization:'Bearer '+token } });
+  await loadFiles();
 });
+
+async function loadFiles(){
+  const token = MKHubUI.getTokenOrRedirect();
+  const arr = await fetch(`/clients/${id}/files`, { headers:{ Authorization:'Bearer '+token } }).then(x=>x.json());
+  const el = document.getElementById('filesList');
+  if (!Array.isArray(arr) || !arr.length){ el.textContent = 'No files'; return; }
+  el.innerHTML = arr.map(f=>`<div style="display:flex;justify-content:space-between;border-bottom:1px solid #eee;padding:6px 0">`
+    + `<div>${f.original_name||f.key||f.file_object_id} <span class=muted>${(f.uploaded_at||'').slice(0,19).replace('T',' ')}</span></div>`
+    + `<div><button onclick="downloadFile('${f.file_object_id}')">Download</button></div>`
+  + `</div>`).join('');
+}
+async function downloadFile(fid){ try{ const j=await fetch('/files/'+fid+'/download').then(x=>x.json()); if (j && j.download_url){ window.open(j.download_url, '_blank'); } }catch(e){} }
 
 // Geo dropdowns
 (async function initGeo(){
@@ -146,6 +197,8 @@ document.getElementById('upload').addEventListener('click', async ()=>{
 })();
 
 load();
+// Also load files initially
+loadFiles();
 </script>
 
 
