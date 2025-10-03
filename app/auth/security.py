@@ -7,6 +7,11 @@ import jwt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from passlib.context import CryptContext
+import re
+try:
+    import bcrypt as _bcrypt
+except Exception:
+    _bcrypt = None
 from sqlalchemy.orm import Session
 
 from ..config import settings
@@ -14,32 +19,34 @@ from ..db import get_db
 from ..models.models import User
 
 
-pwd_context = CryptContext(schemes=["bcrypt_sha256", "bcrypt"], deprecated="auto")
+pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
 http_bearer = HTTPBearer(auto_error=False)
 
 
 def get_password_hash(password: str) -> str:
-    # Use bcrypt_sha256 by default (first scheme), which safely supports long passwords
+    # Use pbkdf2_sha256 to avoid native bcrypt backend issues
     return pwd_context.hash(password)
 
 
 def verify_password(plain: str, hashed: str) -> bool:
+    # Fast-path legacy bcrypt ($2a$/$2b$/$2y$) using the bcrypt module directly to avoid passlib backend init quirks
+    if hashed.startswith("$2a$") or hashed.startswith("$2b$") or hashed.startswith("$2y$"):
+        if not _bcrypt:
+            return False
+        try:
+            pb = plain.encode("utf-8")
+        except Exception:
+            pb = plain.encode()
+        if len(pb) > 72:
+            pb = pb[:72]
+        try:
+            return _bcrypt.checkpw(pb, hashed.encode("utf-8"))
+        except Exception:
+            return False
+    # Otherwise, verify using pbkdf2_sha256 (current scheme)
     try:
         return pwd_context.verify(plain, hashed)
-    except ValueError:
-        # Handle legacy bcrypt hashes with the 72-byte limit
-        try:
-            scheme = pwd_context.identify(hashed) or ""
-            if scheme == "bcrypt":
-                short = plain
-                try:
-                    if len(plain.encode("utf-8")) > 72:
-                        short = plain[:72]
-                except Exception:
-                    short = plain[:72]
-                return pwd_context.verify(short, hashed)
-        except Exception:
-            pass
+    except Exception:
         return False
 
 
