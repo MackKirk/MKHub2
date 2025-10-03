@@ -14,16 +14,33 @@ from ..db import get_db
 from ..models.models import User
 
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+pwd_context = CryptContext(schemes=["bcrypt_sha256", "bcrypt"], deprecated="auto")
 http_bearer = HTTPBearer(auto_error=False)
 
 
 def get_password_hash(password: str) -> str:
+    # Use bcrypt_sha256 by default (first scheme), which safely supports long passwords
     return pwd_context.hash(password)
 
 
 def verify_password(plain: str, hashed: str) -> bool:
-    return pwd_context.verify(plain, hashed)
+    try:
+        return pwd_context.verify(plain, hashed)
+    except ValueError:
+        # Handle legacy bcrypt hashes with the 72-byte limit
+        try:
+            scheme = pwd_context.identify(hashed) or ""
+            if scheme == "bcrypt":
+                short = plain
+                try:
+                    if len(plain.encode("utf-8")) > 72:
+                        short = plain[:72]
+                except Exception:
+                    short = plain[:72]
+                return pwd_context.verify(short, hashed)
+        except Exception:
+            pass
+        return False
 
 
 def _create_token(sub: str, ttl_seconds: int, extra: Optional[dict] = None) -> str:
