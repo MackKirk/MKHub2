@@ -25,7 +25,7 @@ async function load(){
   const arr = await r.json();
   if (!arr.length){ list.textContent='No customers found.'; return; }
   list.innerHTML = arr.map(c=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #eee">`
-    + `<div><strong>${c.name}</strong>${c.code?` <span class=muted>(${c.code})</span>`:''}${c.city||c.province||c.country?`<div class=muted>${[c.city,c.province,c.country].filter(Boolean).join(', ')}</div>`:''}</div>`
+    + `<div><strong>${c.display_name || c.name}</strong>${c.code?` <span class=muted>(${c.code})</span>`:''}${c.city||c.province||c.country?`<div class=muted>${[c.city,c.province,c.country].filter(Boolean).join(', ')}</div>`:''}</div>`
     + `<div><a href="/ui/customer.html?id=${c.id}">Open</a></div>`
   + `</div>`).join('');
 }

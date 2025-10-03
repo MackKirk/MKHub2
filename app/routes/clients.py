@@ -3,8 +3,12 @@ from sqlalchemy.orm import Session
 from typing import Optional, List
 
 from ..db import get_db
-from ..models.models import Client, ClientContact
-from ..schemas.clients import ClientCreate, ClientResponse, ClientContactCreate, ClientContactResponse
+from ..models.models import Client, ClientContact, ClientSite, ClientFile, FileObject
+from ..schemas.clients import (
+    ClientCreate, ClientResponse,
+    ClientContactCreate, ClientContactResponse,
+    ClientSiteCreate, ClientSiteResponse,
+)
 from ..auth.security import require_permissions
 
 
@@ -82,6 +86,12 @@ def add_contact(client_id: str, payload: ClientContactCreate, db: Session = Depe
     return contact
 
 
+@router.get("/{client_id}/contacts", response_model=List[ClientContactResponse])
+def list_contacts(client_id: str, db: Session = Depends(get_db), _=Depends(require_permissions("clients:read"))):
+    rows = db.query(ClientContact).filter(ClientContact.client_id == client_id).order_by(ClientContact.sort_index.asc()).all()
+    return rows
+
+
 @router.patch("/{client_id}/contacts/{contact_id}")
 def update_contact(client_id: str, contact_id: str, payload: dict, db: Session = Depends(get_db), _=Depends(require_permissions("clients:write"))):
     c = db.query(ClientContact).filter(ClientContact.id == contact_id, ClientContact.client_id == client_id).first()
@@ -111,4 +121,67 @@ def reorder_contacts(client_id: str, order: list[str], db: Session = Depends(get
         c.sort_index = index.get(str(c.id), c.sort_index)
     db.commit()
     return {"status": "ok"}
+
+
+# ----- Sites -----
+@router.get("/{client_id}/sites", response_model=List[ClientSiteResponse])
+def list_sites(client_id: str, db: Session = Depends(get_db), _=Depends(require_permissions("clients:read"))):
+    rows = db.query(ClientSite).filter(ClientSite.client_id == client_id).order_by(ClientSite.sort_index.asc()).all()
+    return rows
+
+
+@router.post("/{client_id}/sites", response_model=ClientSiteResponse)
+def create_site(client_id: str, payload: ClientSiteCreate, db: Session = Depends(get_db), _=Depends(require_permissions("clients:write"))):
+    row = ClientSite(client_id=client_id, **payload.dict(exclude_unset=True))
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+@router.patch("/{client_id}/sites/{site_id}")
+def update_site(client_id: str, site_id: str, payload: dict, db: Session = Depends(get_db), _=Depends(require_permissions("clients:write"))):
+    row = db.query(ClientSite).filter(ClientSite.id == site_id, ClientSite.client_id == client_id).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Not found")
+    for k, v in payload.items():
+        setattr(row, k, v)
+    db.commit()
+    return {"status": "ok"}
+
+
+@router.delete("/{client_id}/sites/{site_id}")
+def delete_site(client_id: str, site_id: str, db: Session = Depends(get_db), _=Depends(require_permissions("clients:write"))):
+    row = db.query(ClientSite).filter(ClientSite.id == site_id, ClientSite.client_id == client_id).first()
+    if not row:
+        return {"status": "ok"}
+    db.delete(row)
+    db.commit()
+    return {"status": "ok"}
+
+
+# ----- Files -----
+@router.get("/{client_id}/files")
+def list_files(client_id: str, db: Session = Depends(get_db), _=Depends(require_permissions("clients:read"))):
+    rows = db.query(ClientFile).filter(ClientFile.client_id == client_id).order_by(ClientFile.uploaded_at.desc()).all()
+    return [{
+        "id": str(cf.id),
+        "file_object_id": str(cf.file_object_id),
+        "category": cf.category,
+        "key": cf.key,
+        "original_name": cf.original_name,
+        "uploaded_at": cf.uploaded_at.isoformat() if cf.uploaded_at else None,
+        "uploaded_by": str(cf.uploaded_by) if cf.uploaded_by else None,
+    } for cf in rows]
+
+
+@router.post("/{client_id}/files")
+def attach_file(client_id: str, file_object_id: str, category: Optional[str] = None, original_name: Optional[str] = None, db: Session = Depends(get_db), _=Depends(require_permissions("clients:write"))):
+    fo = db.query(FileObject).filter(FileObject.id == file_object_id).first()
+    if not fo:
+        raise HTTPException(status_code=404, detail="File not found")
+    row = ClientFile(client_id=client_id, file_object_id=fo.id, category=category, key=fo.key, original_name=original_name)
+    db.add(row)
+    db.commit()
+    return {"id": str(row.id)}
 

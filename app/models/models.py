@@ -178,11 +178,32 @@ class Client(Base):
 
     id: Mapped[uuid.UUID] = uuid_pk()
     code: Mapped[Optional[str]] = mapped_column(String(50), unique=True, index=True)
-    name: Mapped[str] = mapped_column(String(255), nullable=False)
-    address: Mapped[Optional[str]] = mapped_column(String(255))
+    # Identity
+    name: Mapped[str] = mapped_column(String(255), nullable=False)  # historical
+    legal_name: Mapped[Optional[str]] = mapped_column(String(255))
+    display_name: Mapped[Optional[str]] = mapped_column(String(255))
+    client_type: Mapped[Optional[str]] = mapped_column(String(50))
+    client_status: Mapped[Optional[str]] = mapped_column(String(50))
+    lead_source: Mapped[Optional[str]] = mapped_column(String(100))
+    estimator_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    description: Mapped[Optional[str]] = mapped_column(String(4000))
+
+    # Primary address (supersedes legacy address fields)
+    address_line1: Mapped[Optional[str]] = mapped_column(String(255))
+    address_line2: Mapped[Optional[str]] = mapped_column(String(255))
     city: Mapped[Optional[str]] = mapped_column(String(100))
     province: Mapped[Optional[str]] = mapped_column(String(100))
+    postal_code: Mapped[Optional[str]] = mapped_column(String(50))
     country: Mapped[Optional[str]] = mapped_column(String(100))
+
+    # Billing address
+    billing_address_line1: Mapped[Optional[str]] = mapped_column(String(255))
+    billing_address_line2: Mapped[Optional[str]] = mapped_column(String(255))
+    billing_city: Mapped[Optional[str]] = mapped_column(String(100))
+    billing_province: Mapped[Optional[str]] = mapped_column(String(100))
+    billing_postal_code: Mapped[Optional[str]] = mapped_column(String(50))
+    billing_country: Mapped[Optional[str]] = mapped_column(String(100))
+
     type_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
     status_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
     payment_terms_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
@@ -190,7 +211,22 @@ class Client(Base):
     po_required: Mapped[bool] = mapped_column(Boolean, default=False)
     tax_number: Mapped[Optional[str]] = mapped_column(String(100))
     dataforma_id: Mapped[Optional[str]] = mapped_column(String(100), unique=True)
+    # Communication preferences
+    preferred_language: Mapped[Optional[str]] = mapped_column(String(50))
+    preferred_channels: Mapped[Optional[dict]] = mapped_column(JSON)  # list of strings
+    marketing_opt_in: Mapped[bool] = mapped_column(Boolean, default=False)
+    invoice_delivery_method: Mapped[Optional[str]] = mapped_column(String(50))
+    statement_delivery_method: Mapped[Optional[str]] = mapped_column(String(50))
+    cc_emails_for_invoices: Mapped[Optional[dict]] = mapped_column(JSON)  # list of emails
+    cc_emails_for_estimates: Mapped[Optional[dict]] = mapped_column(JSON)  # list of emails
+    do_not_contact: Mapped[bool] = mapped_column(Boolean, default=False)
+    do_not_contact_reason: Mapped[Optional[str]] = mapped_column(String(500))
+
+    # Audit
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    created_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
+    updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    updated_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
 
 
 class ClientContact(Base):
@@ -199,10 +235,44 @@ class ClientContact(Base):
     id: Mapped[uuid.UUID] = uuid_pk()
     client_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("clients.id", ondelete="CASCADE"))
     name: Mapped[str] = mapped_column(String(255), nullable=False)
+    role_title: Mapped[Optional[str]] = mapped_column(String(100))
+    department: Mapped[Optional[str]] = mapped_column(String(100))
     email: Mapped[Optional[str]] = mapped_column(String(255))
     phone: Mapped[Optional[str]] = mapped_column(String(100))
+    mobile_phone: Mapped[Optional[str]] = mapped_column(String(100))
     is_primary: Mapped[bool] = mapped_column(Boolean, default=False)
     sort_index: Mapped[int] = mapped_column(Integer, default=0)
+    notes: Mapped[Optional[str]] = mapped_column(String(1000))
+    role_tags: Mapped[Optional[dict]] = mapped_column(JSON)  # list of strings
+
+
+class ClientSite(Base):
+    __tablename__ = "client_sites"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    client_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("clients.id", ondelete="CASCADE"))
+    site_name: Mapped[Optional[str]] = mapped_column(String(255))
+    site_address_line1: Mapped[Optional[str]] = mapped_column(String(255))
+    site_address_line2: Mapped[Optional[str]] = mapped_column(String(255))
+    site_city: Mapped[Optional[str]] = mapped_column(String(100))
+    site_province: Mapped[Optional[str]] = mapped_column(String(100))
+    site_postal_code: Mapped[Optional[str]] = mapped_column(String(50))
+    site_country: Mapped[Optional[str]] = mapped_column(String(100))
+    site_notes: Mapped[Optional[str]] = mapped_column(String(1000))
+    sort_index: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class ClientFile(Base):
+    __tablename__ = "client_files"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    client_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("clients.id", ondelete="CASCADE"))
+    file_object_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("file_objects.id", ondelete="CASCADE"))
+    category: Mapped[Optional[str]] = mapped_column(String(100))
+    key: Mapped[Optional[str]] = mapped_column(String(1024))
+    original_name: Mapped[Optional[str]] = mapped_column(String(255))
+    uploaded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    uploaded_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
 
 
 # Legacy Employee model removed in favor of EmployeeProfile linked to User

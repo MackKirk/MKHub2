@@ -12,19 +12,25 @@
   <div class="card">
     <h3>Details</h3>
     <div class="row">
-      <div class="field"><label>Name *</label><input id="name" /></div>
-      <div class="field"><label>Code</label><input id="code" /></div>
+      <div class="field"><label>Display name *</label><input id="display_name" /></div>
+      <div class="field"><label>Legal name</label><input id="legal_name" /></div>
     </div>
     <div class="row">
+      <div class="field"><label>Code</label><input id="code" /></div>
+      <div class="field"><label>Type</label><input id="client_type" /></div>
+      <div class="field"><label>Status</label><input id="client_status" /></div>
+    </div>
+    <div class="row">
+      <div class="field"><label>Lead source</label><input id="lead_source" /></div>
       <div class="field"><label>Billing email</label><input id="billing_email" /></div>
       <div class="field"><label>PO required</label><select id="po_required"><option value="false">No</option><option value="true">Yes</option></select></div>
     </div>
-    <div class="row">
-      <div class="field"><label>Tax number</label><input id="tax_number" /></div>
-    </div>
+    <div class="row"><div class="field"><label>Tax number</label><input id="tax_number" /></div></div>
+    <div class="row"><div class="field" style="flex:1"><label>Description</label><input id="description" /></div></div>
     <h4>Address</h4>
     <div class="row">
-      <div class="field"><label>Address</label><input id="address" /></div>
+      <div class="field"><label>Address 1</label><input id="address_line1" /></div>
+      <div class="field"><label>Address 2</label><input id="address_line2" /></div>
     </div>
     <div class="row">
       <div class="field"><label>Country</label><select id="country"><option value="">Select...</option></select></div>
@@ -32,6 +38,20 @@
     </div>
     <div class="row">
       <div class="field"><label>City</label><select id="city"><option value="">Select...</option></select></div>
+      <div class="field"><label>Postal/Zip</label><input id="postal_code" /></div>
+    </div>
+    <h4>Billing Address</h4>
+    <div class="row">
+      <div class="field"><label>Address 1</label><input id="billing_address_line1" /></div>
+      <div class="field"><label>Address 2</label><input id="billing_address_line2" /></div>
+    </div>
+    <div class="row">
+      <div class="field"><label>Country</label><select id="billing_country"><option value="">Select...</option></select></div>
+      <div class="field"><label>Province/State</label><select id="billing_province"><option value="">Select...</option></select></div>
+    </div>
+    <div class="row">
+      <div class="field"><label>City</label><select id="billing_city"><option value="">Select...</option></select></div>
+      <div class="field"><label>Postal/Zip</label><input id="billing_postal_code" /></div>
     </div>
     <div class="row">
       <button id="save">Save</button>
@@ -72,16 +92,16 @@ async function load(){
   const info = document.getElementById('info');
   if (!r.ok){ info.textContent='Not authorized or not found.'; return; }
   const c = await r.json();
-  info.innerHTML = `<strong>${c.name}</strong>${c.code?` <span class=muted>(${c.code})</span>`:''}` +
+  info.innerHTML = `<strong>${c.display_name || c.name}</strong>${c.code?` <span class=muted>(${c.code})</span>`:''}` +
     `${c.city||c.province||c.country?`<div class=muted>${[c.city,c.province,c.country].filter(Boolean).join(', ')}</div>`:''}`;
   const set=(k,v)=>{ const el=document.getElementById(k); if (el) el.value=v||''; };
-  for (const k of ['name','code','billing_email','tax_number','address','country','province','city']){ set(k, c[k]); }
+  for (const k of ['display_name','legal_name','code','client_type','client_status','lead_source','description','billing_email','tax_number','address_line1','address_line2','country','province','city','postal_code','billing_address_line1','billing_address_line2','billing_country','billing_province','billing_city','billing_postal_code']){ set(k, c[k]); }
   document.getElementById('po_required').value = c.po_required ? 'true':'false';
   await loadContacts();
 }
 async function save(){
   const body = {};
-  for (const k of ['name','code','billing_email','tax_number','address','country','province','city']){ body[k] = document.getElementById(k).value || null; }
+  for (const k of ['display_name','legal_name','code','client_type','client_status','lead_source','description','billing_email','tax_number','address_line1','address_line2','country','province','city','postal_code','billing_address_line1','billing_address_line2','billing_country','billing_province','billing_city','billing_postal_code']){ body[k] = document.getElementById(k).value || null; }
   body['po_required'] = document.getElementById('po_required').value === 'true';
   const r = await fetch('/clients/'+id, { method:'PATCH', headers:{ 'Content-Type':'application/json', ...auth() }, body: JSON.stringify(body) });
   document.getElementById('msg').textContent = await r.text();
