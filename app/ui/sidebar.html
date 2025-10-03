@@ -9,6 +9,9 @@
   <a href="/ui/inventory-suppliers.html" id="nav-inventory-suppliers" data-perm="inventory:read" style="display:none;padding-left:12px">Suppliers</a>
   <a href="/ui/inventory-products.html" id="nav-inventory-products" data-perm="inventory:read" style="display:none;padding-left:12px">Products</a>
   <a href="/ui/inventory-orders.html" id="nav-inventory-orders" data-perm="inventory:read" style="display:none;padding-left:12px">Orders</a>
+  <div class="muted" style="margin-top:10px">Customers</div>
+  <a href="/ui/customers.html" id="nav-customers" data-perm="clients:read" style="display:none;padding-left:12px">All Customers</a>
+  <a href="/ui/customer-new.html" id="nav-customer-new" data-perm="clients:write" style="display:none;padding-left:12px">New Customer</a>
   <button onclick="logout()">Logout</button>
 </div>
 <script>
@@ -30,7 +33,7 @@ fetch('/auth/me', { headers:{ Authorization:'Bearer '+token } })
     });
   });
 const path = location.pathname;
-for (const id of ['home','profile','invite','users','inventory-suppliers','inventory-products','inventory-orders']) {
+for (const id of ['home','profile','invite','users','inventory-suppliers','inventory-products','inventory-orders','customers','customer-new']) {
   const el = document.getElementById('nav-'+id);
   if (el && path.endsWith(id+'.html')) { el.classList.add('active'); }
 }

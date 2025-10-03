@@ -1,0 +1,75 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>New Customer</title>
+<link rel="stylesheet" href="/ui/styles.css">
+<script src="/ui/app.js"></script>
+<script src="/ui/geo.js"></script>
+<div id="sidebar"></div>
+<div class="main">
+  <h2>New Customer</h2>
+  <div class="card">
+    <div class="row">
+      <div class="field"><label>Name *</label><input id="name" required /></div>
+      <div class="field"><label>Code</label><input id="code" placeholder="auto if blank" /></div>
+    </div>
+    <div class="row">
+      <div class="field"><label>Billing email</label><input id="billing_email" type="email" /></div>
+      <div class="field"><label>PO required</label><select id="po_required"><option value="false">No</option><option value="true">Yes</option></select></div>
+    </div>
+    <div class="row">
+      <div class="field"><label>Tax number</label><input id="tax_number" /></div>
+    </div>
+    <h4>Address</h4>
+    <div class="row">
+      <div class="field"><label>Address</label><input id="address" /></div>
+    </div>
+    <div class="row">
+      <div class="field"><label>Country</label><select id="country"><option value="">Select...</option></select></div>
+      <div class="field"><label>Province/State</label><select id="province"><option value="">Select...</option></select></div>
+    </div>
+    <div class="row">
+      <div class="field"><label>City</label><select id="city"><option value="">Select...</option></select></div>
+    </div>
+    <div class="row">
+      <button id="save">Create Customer</button>
+      <a class="btn" href="/ui/customers.html">Cancel</a>
+    </div>
+    <pre id="msg" class="muted"></pre>
+  </div>
+</div>
+<script>
+MKHubUI.initSidebar('customer-new');
+document.getElementById('save').addEventListener('click', async ()=>{
+  const token = MKHubUI.getTokenOrRedirect();
+  const body = {
+    name: document.getElementById('name').value.trim(),
+    code: document.getElementById('code').value || null,
+    billing_email: document.getElementById('billing_email').value || null,
+    po_required: document.getElementById('po_required').value === 'true',
+    tax_number: document.getElementById('tax_number').value || null,
+    address: document.getElementById('address').value || null,
+    country: document.getElementById('country').value || null,
+    province: document.getElementById('province').value || null,
+    city: document.getElementById('city').value || null,
+  };
+  if (!body.name){ document.getElementById('msg').textContent='Name is required.'; return; }
+  const r = await fetch('/clients', { method:'POST', headers:{ 'Content-Type':'application/json', Authorization:'Bearer '+token }, body: JSON.stringify(body) });
+  const txt = await r.text();
+  if (!r.ok){ document.getElementById('msg').textContent = txt; return; }
+  location.href = '/ui/customers.html';
+});
+(async function initGeo(){
+  await (window.MKHubGeo && window.MKHubGeo.load ? window.MKHubGeo.load() : Promise.resolve());
+  const countrySel = document.getElementById('country');
+  const stateSel = document.getElementById('province');
+  const citySel = document.getElementById('city');
+  const countries = (window.MKHubGeo && window.MKHubGeo.data) || [];
+  for (const c of countries){ const o=document.createElement('option'); o.value=c.name; o.textContent=c.name; countrySel.appendChild(o); }
+  async function populateStates(country){ stateSel.innerHTML='<option value="">Select...</option>'; citySel.innerHTML='<option value="">Select...</option>'; const states=window.MKHubGeo.getStates?await window.MKHubGeo.getStates(country):[]; for (const s of states){ const o=document.createElement('option'); o.value=s; o.textContent=s; stateSel.appendChild(o); } }
+  async function populateCities(country,state){ citySel.innerHTML='<option value="">Select...</option>'; const cities=window.MKHubGeo.getCities?await window.MKHubGeo.getCities(country,state):[]; for (const n of cities){ const o=document.createElement('option'); o.value=n; o.textContent=n; citySel.appendChild(o); } }
+  countrySel.addEventListener('change', e=>populateStates(e.target.value));
+  stateSel.addEventListener('change', ()=>populateCities(countrySel.value, stateSel.value));
+})();
+</script>
+
+

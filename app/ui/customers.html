@@ -1,0 +1,36 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Customers</title>
+<link rel="stylesheet" href="/ui/styles.css">
+<script src="/ui/app.js"></script>
+<div id="sidebar"></div>
+<div class="main">
+  <h2>Customers</h2>
+  <div class="row">
+    <div class="field" style="max-width:320px"><label>Search</label><input id="q" placeholder="name" /></div>
+    <div class="field" style="align-self:end"><button id="btnSearch">Search</button></div>
+    <div class="field" style="align-self:end"><a class="btn" href="/ui/customer-new.html">+ New Customer</a></div>
+  </div>
+  <div id="list" class="card"></div>
+</div>
+<script>
+MKHubUI.initSidebar('customers');
+async function load(){
+  const token = MKHubUI.getTokenOrRedirect();
+  const q = document.getElementById('q').value;
+  const url = q ? ('/clients?q='+encodeURIComponent(q)) : '/clients';
+  const r = await fetch(url, { headers:{ Authorization:'Bearer '+token }});
+  const list = document.getElementById('list');
+  if (!r.ok){ list.textContent='Not authorized or error.'; return; }
+  const arr = await r.json();
+  if (!arr.length){ list.textContent='No customers found.'; return; }
+  list.innerHTML = arr.map(c=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #eee">`
+    + `<div><strong>${c.name}</strong>${c.code?` <span class=muted>(${c.code})</span>`:''}${c.city||c.province||c.country?`<div class=muted>${[c.city,c.province,c.country].filter(Boolean).join(', ')}</div>`:''}</div>`
+    + `<div><a href="/ui/customer.html?id=${c.id}">Open</a></div>`
+  + `</div>`).join('');
+}
+document.getElementById('btnSearch').addEventListener('click', load);
+load();
+</script>
+
+

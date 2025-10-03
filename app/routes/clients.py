@@ -1,24 +1,37 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from typing import Optional
+from typing import Optional, List
 
 from ..db import get_db
 from ..models.models import Client, ClientContact
+from ..schemas.clients import ClientCreate, ClientResponse, ClientContactCreate, ClientContactResponse
+from ..auth.security import require_permissions
 
 
 router = APIRouter(prefix="/clients", tags=["clients"])
 
 
-@router.post("")
-def create_client(payload: dict, db: Session = Depends(get_db)):
-    c = Client(**payload)
+@router.post("", response_model=ClientResponse)
+def create_client(payload: ClientCreate, db: Session = Depends(get_db), _=Depends(require_permissions("clients:write"))):
+    data = payload.dict(exclude_unset=True)
+    # Ensure client code uniqueness by simple slug if missing
+    if not data.get("code"):
+        base = (data.get("name") or "client").lower().replace(" ", "-")[:20]
+        code = base
+        i = 1
+        while db.query(Client).filter(Client.code == code).first():
+            code = f"{base}-{i}"
+            i += 1
+        data["code"] = code
+    c = Client(**data)
     db.add(c)
     db.commit()
-    return {"id": str(c.id)}
+    db.refresh(c)
+    return c
 
 
-@router.get("")
-def list_clients(city: Optional[str] = None, status: Optional[str] = None, type: Optional[str] = None, q: Optional[str] = None, db: Session = Depends(get_db)):
+@router.get("", response_model=List[ClientResponse])
+def list_clients(city: Optional[str] = None, status: Optional[str] = None, type: Optional[str] = None, q: Optional[str] = None, db: Session = Depends(get_db), _=Depends(require_permissions("clients:read"))):
     query = db.query(Client)
     if city:
         query = query.filter(Client.city == city)
@@ -28,32 +41,19 @@ def list_clients(city: Optional[str] = None, status: Optional[str] = None, type:
         query = query.filter(Client.type_id == type)
     if q:
         query = query.filter(Client.name.ilike(f"%{q}%"))
-    return [
-        {"id": str(c.id), "name": c.name, "city": c.city}
-        for c in query.limit(200).all()
-    ]
+    return query.order_by(Client.created_at.desc()).limit(500).all()
 
 
-@router.get("/{client_id}")
-def get_client(client_id: str, db: Session = Depends(get_db)):
+@router.get("/{client_id}", response_model=ClientResponse)
+def get_client(client_id: str, db: Session = Depends(get_db), _=Depends(require_permissions("clients:read"))):
     c = db.query(Client).filter(Client.id == client_id).first()
     if not c:
         raise HTTPException(status_code=404, detail="Not found")
-    return {
-        "id": str(c.id),
-        "name": c.name,
-        "city": c.city,
-        "province": c.province,
-        "country": c.country,
-        "billing_email": c.billing_email,
-        "po_required": c.po_required,
-        "tax_number": c.tax_number,
-        "dataforma_id": c.dataforma_id,
-    }
+    return c
 
 
 @router.patch("/{client_id}")
-def update_client(client_id: str, payload: dict, db: Session = Depends(get_db)):
+def update_client(client_id: str, payload: dict, db: Session = Depends(get_db), _=Depends(require_permissions("clients:write"))):
     c = db.query(Client).filter(Client.id == client_id).first()
     if not c:
         raise HTTPException(status_code=404, detail="Not found")
@@ -64,7 +64,7 @@ def update_client(client_id: str, payload: dict, db: Session = Depends(get_db)):
 
 
 @router.delete("/{client_id}")
-def delete_client(client_id: str, db: Session = Depends(get_db)):
+def delete_client(client_id: str, db: Session = Depends(get_db), _=Depends(require_permissions("clients:write"))):
     c = db.query(Client).filter(Client.id == client_id).first()
     if not c:
         return {"status": "ok"}
@@ -73,16 +73,17 @@ def delete_client(client_id: str, db: Session = Depends(get_db)):
     return {"status": "ok"}
 
 
-@router.post("/{client_id}/contacts")
-def add_contact(client_id: str, payload: dict, db: Session = Depends(get_db)):
-    contact = ClientContact(client_id=client_id, **payload)
+@router.post("/{client_id}/contacts", response_model=ClientContactResponse)
+def add_contact(client_id: str, payload: ClientContactCreate, db: Session = Depends(get_db), _=Depends(require_permissions("clients:write"))):
+    contact = ClientContact(client_id=client_id, **payload.dict(exclude_unset=True))
     db.add(contact)
     db.commit()
-    return {"id": str(contact.id)}
+    db.refresh(contact)
+    return contact
 
 
 @router.patch("/{client_id}/contacts/{contact_id}")
-def update_contact(client_id: str, contact_id: str, payload: dict, db: Session = Depends(get_db)):
+def update_contact(client_id: str, contact_id: str, payload: dict, db: Session = Depends(get_db), _=Depends(require_permissions("clients:write"))):
     c = db.query(ClientContact).filter(ClientContact.id == contact_id, ClientContact.client_id == client_id).first()
     if not c:
         raise HTTPException(status_code=404, detail="Not found")
@@ -93,7 +94,7 @@ def update_contact(client_id: str, contact_id: str, payload: dict, db: Session =
 
 
 @router.delete("/{client_id}/contacts/{contact_id}")
-def delete_contact(client_id: str, contact_id: str, db: Session = Depends(get_db)):
+def delete_contact(client_id: str, contact_id: str, db: Session = Depends(get_db), _=Depends(require_permissions("clients:write"))):
     c = db.query(ClientContact).filter(ClientContact.id == contact_id, ClientContact.client_id == client_id).first()
     if not c:
         return {"status": "ok"}

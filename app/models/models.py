@@ -177,6 +177,7 @@ class Client(Base):
     __tablename__ = "clients"
 
     id: Mapped[uuid.UUID] = uuid_pk()
+    code: Mapped[Optional[str]] = mapped_column(String(50), unique=True, index=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     address: Mapped[Optional[str]] = mapped_column(String(255))
     city: Mapped[Optional[str]] = mapped_column(String(100))
@@ -189,6 +190,7 @@ class Client(Base):
     po_required: Mapped[bool] = mapped_column(Boolean, default=False)
     tax_number: Mapped[Optional[str]] = mapped_column(String(100))
     dataforma_id: Mapped[Optional[str]] = mapped_column(String(100), unique=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
 
 
 class ClientContact(Base):
