@@ -213,12 +213,12 @@ class Client(Base):
     dataforma_id: Mapped[Optional[str]] = mapped_column(String(100), unique=True)
     # Communication preferences
     preferred_language: Mapped[Optional[str]] = mapped_column(String(50))
-    preferred_channels: Mapped[Optional[dict]] = mapped_column(JSON)  # list of strings
+    preferred_channels: Mapped[Optional[list]] = mapped_column(JSON)  # list of strings
     marketing_opt_in: Mapped[bool] = mapped_column(Boolean, default=False)
     invoice_delivery_method: Mapped[Optional[str]] = mapped_column(String(50))
     statement_delivery_method: Mapped[Optional[str]] = mapped_column(String(50))
-    cc_emails_for_invoices: Mapped[Optional[dict]] = mapped_column(JSON)  # list of emails
-    cc_emails_for_estimates: Mapped[Optional[dict]] = mapped_column(JSON)  # list of emails
+    cc_emails_for_invoices: Mapped[Optional[list]] = mapped_column(JSON)  # list of emails
+    cc_emails_for_estimates: Mapped[Optional[list]] = mapped_column(JSON)  # list of emails
     do_not_contact: Mapped[bool] = mapped_column(Boolean, default=False)
     do_not_contact_reason: Mapped[Optional[str]] = mapped_column(String(500))
 
@@ -243,7 +243,7 @@ class ClientContact(Base):
     is_primary: Mapped[bool] = mapped_column(Boolean, default=False)
     sort_index: Mapped[int] = mapped_column(Integer, default=0)
     notes: Mapped[Optional[str]] = mapped_column(String(1000))
-    role_tags: Mapped[Optional[dict]] = mapped_column(JSON)  # list of strings
+    role_tags: Mapped[Optional[list]] = mapped_column(JSON)  # list of strings
 
 
 class ClientSite(Base):

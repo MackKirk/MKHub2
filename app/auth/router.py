@@ -34,6 +34,7 @@ import smtplib
 from email.message import EmailMessage
 import secrets
 from sqlalchemy import and_
+import random
 
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -670,6 +671,13 @@ def admin_bulk_create_users(
             db.add(role_row)
             db.flush()
     base = prefix.strip() or "testuser"
+    first_names = ["Liam","Olivia","Noah","Emma","Oliver","Ava","Elijah","Sophia","James","Isabella","Benjamin","Mia","Lucas","Charlotte","Henry","Amelia","Alexander","Harper","Ethan","Evelyn"]
+    last_names = ["Smith","Johnson","Williams","Brown","Jones","Garcia","Miller","Davis","Rodriguez","Martinez","Hernandez","Lopez","Gonzalez","Wilson","Anderson","Thomas","Taylor","Moore","Jackson","Martin"]
+    job_titles = ["Estimator","Project Manager","Site Supervisor","Coordinator","Technician","Engineer","Analyst","Administrator","Operator","Specialist"]
+    divisions = ["Construction","Service","Maintenance","Electrical","Mechanical","Operations","Logistics"]
+    provinces = ["British Columbia","Alberta","Ontario","Quebec","Manitoba","Saskatchewan","Nova Scotia"]
+    cities = ["Vancouver","Burnaby","Surrey","Richmond","Coquitlam","North Vancouver","Langley","Victoria","Kelowna","Abbotsford"]
+    phones = ["604-555-{:04d}".format(n) for n in range(1000, 9999)]
     for i in range(1, max(1, int(count)) + 1):
         # Generate unique username
         idx = i
@@ -693,10 +701,51 @@ def admin_bulk_create_users(
         if role_row:
             user.roles = [role_row]
         # Minimal profile
-        ep = EP(user_id=user.id, first_name=username.title(), last_name="User")
+        fname = random.choice(first_names)
+        lname = random.choice(last_names)
+        city = random.choice(cities)
+        prov = random.choice(provinces)
+        phone = random.choice(phones)
+        job = random.choice(job_titles)
+        division = random.choice(divisions)
+        # Random recent hire date within last 3 years
+        try:
+            days = random.randint(0, 365 * 3)
+            hire_dt = datetime.now(timezone.utc) - timedelta(days=days)
+        except Exception:
+            hire_dt = None
+        ep = EP(
+            user_id=user.id,
+            first_name=fname,
+            last_name=lname,
+            preferred_name=fname,
+            phone=phone,
+            mobile_phone=phone,
+            address_line1=f"{random.randint(10,999)} {random.choice(['Main','Oak','Pine','Maple','Cedar'])} St",
+            city=city,
+            province=prov,
+            postal_code=f"V{random.randint(1,9)}{random.randint(0,9)}{random.choice(['A','B','C','D','E','F'])} {random.randint(1,9)}{random.randint(0,9)}{random.choice(['A','B','C','D','E','F'])}",
+            country="Canada",
+            hire_date=hire_dt,
+            job_title=job,
+            division=division,
+            work_email=f"{username}@example.com",
+            work_phone=phone,
+        )
         db.add(ep)
         db.flush()
-        created.append({"id": str(user.id), "username": username, "email": email, "password": "TestUser123!", "role": role_row.name if role_row else None})
+        created.append({
+            "id": str(user.id),
+            "username": username,
+            "email": email,
+            "password": "TestUser123!",
+            "role": role_row.name if role_row else None,
+            "first_name": fname,
+            "last_name": lname,
+            "job_title": job,
+            "city": city,
+            "province": prov,
+        })
     db.commit()
     return {"created": created}
 
