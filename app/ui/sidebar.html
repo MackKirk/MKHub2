@@ -12,6 +12,7 @@
   <div class="muted" style="margin-top:10px">Customers</div>
   <a href="/ui/customers.html" id="nav-customers" data-perm="clients:read" style="display:none;padding-left:12px">All Customers</a>
   <a href="/ui/customer-new.html" id="nav-customer-new" data-perm="clients:write" style="display:none;padding-left:12px">New Customer</a>
+  <a href="/ui/proposals.html" id="nav-proposals" data-perm="clients:read" style="display:none;padding-left:12px">Proposals</a>
   <div class="muted" style="margin-top:10px">Settings</div>
   <a href="/ui/settings.html" id="nav-settings" data-perm="users:write" style="display:none;padding-left:12px">System Settings</a>
   <button onclick="logout()">Logout</button>
@@ -35,7 +36,7 @@ fetch('/auth/me', { headers:{ Authorization:'Bearer '+token } })
     });
   });
 const path = location.pathname;
-for (const id of ['home','profile','invite','users','inventory-suppliers','inventory-products','inventory-orders','customers','customer-new','settings']) {
+for (const id of ['home','profile','invite','users','inventory-suppliers','inventory-products','inventory-orders','customers','customer-new','proposals','settings']) {
   const el = document.getElementById('nav-'+id);
   if (el && path.endsWith(id+'.html')) { el.classList.add('active'); }
 }

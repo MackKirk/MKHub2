@@ -16,3 +16,8 @@ prometheus-fastapi-instrumentator==6.1.0
 slowapi==0.1.9
 python-slugify==8.0.4
 
+# Proposal generator deps
+reportlab==4.2.2
+PyPDF2==3.0.1
+pillow==11.0.0
+
