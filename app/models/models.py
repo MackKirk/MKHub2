@@ -269,6 +269,7 @@ class ClientFile(Base):
 
     id: Mapped[uuid.UUID] = uuid_pk()
     client_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("clients.id", ondelete="CASCADE"))
+    site_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("client_sites.id", ondelete="CASCADE"))
     file_object_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("file_objects.id", ondelete="CASCADE"))
     category: Mapped[Optional[str]] = mapped_column(String(100))
     key: Mapped[Optional[str]] = mapped_column(String(1024))

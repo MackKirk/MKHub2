@@ -135,6 +135,8 @@ def create_app() -> FastAPI:
                     conn.execute(text("ALTER TABLE client_sites ADD COLUMN IF NOT EXISTS site_country VARCHAR(100)"))
                     conn.execute(text("ALTER TABLE client_sites ADD COLUMN IF NOT EXISTS site_notes VARCHAR(1000)"))
                     conn.execute(text("ALTER TABLE client_sites ADD COLUMN IF NOT EXISTS sort_index INTEGER DEFAULT 0"))
+                    # Link files to sites optionally
+                    conn.execute(text("ALTER TABLE client_files ADD COLUMN IF NOT EXISTS site_id UUID"))
                     # Ensure employee notes table exists
                     conn.execute(text("CREATE TABLE IF NOT EXISTS employee_notes (\n"
                                        "id UUID PRIMARY KEY,\n"

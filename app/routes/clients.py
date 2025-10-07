@@ -189,25 +189,29 @@ def delete_site(client_id: str, site_id: str, db: Session = Depends(get_db), _=D
 
 # ----- Files -----
 @router.get("/{client_id}/files")
-def list_files(client_id: str, db: Session = Depends(get_db), _=Depends(require_permissions("clients:read"))):
-    rows = db.query(ClientFile).filter(ClientFile.client_id == client_id).order_by(ClientFile.uploaded_at.desc()).all()
+def list_files(client_id: str, site_id: Optional[str] = None, db: Session = Depends(get_db), _=Depends(require_permissions("clients:read"))):
+    q = db.query(ClientFile).filter(ClientFile.client_id == client_id)
+    if site_id:
+        q = q.filter(ClientFile.site_id == site_id)
+    rows = q.order_by(ClientFile.uploaded_at.desc()).all()
     return [{
         "id": str(cf.id),
         "file_object_id": str(cf.file_object_id),
         "category": cf.category,
         "key": cf.key,
         "original_name": cf.original_name,
+        "site_id": str(cf.site_id) if getattr(cf, 'site_id', None) else None,
         "uploaded_at": cf.uploaded_at.isoformat() if cf.uploaded_at else None,
         "uploaded_by": str(cf.uploaded_by) if cf.uploaded_by else None,
     } for cf in rows]
 
 
 @router.post("/{client_id}/files")
-def attach_file(client_id: str, file_object_id: str, category: Optional[str] = None, original_name: Optional[str] = None, db: Session = Depends(get_db), _=Depends(require_permissions("clients:write"))):
+def attach_file(client_id: str, file_object_id: str, category: Optional[str] = None, original_name: Optional[str] = None, site_id: Optional[str] = None, db: Session = Depends(get_db), _=Depends(require_permissions("clients:write"))):
     fo = db.query(FileObject).filter(FileObject.id == file_object_id).first()
     if not fo:
         raise HTTPException(status_code=404, detail="File not found")
-    row = ClientFile(client_id=client_id, file_object_id=fo.id, category=category, key=fo.key, original_name=original_name)
+    row = ClientFile(client_id=client_id, site_id=site_id, file_object_id=fo.id, category=category, key=fo.key, original_name=original_name)
     db.add(row)
     db.commit()
     return {"id": str(row.id)}

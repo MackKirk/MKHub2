@@ -121,7 +121,19 @@
 
   <div id="sites" class="card" style="display:none">
     <h3>Sites</h3>
+    <div class="row">
+      <div class="field"><label>Select site</label><select id="site_sel"><option value="">All</option></select></div>
+      <div class="field" style="align-self:end"><button id="btnSiteFiles">View Files</button> <button id="btnSiteProposals">New Proposal</button> <button id="btnSiteProject">New Project</button></div>
+    </div>
     <div id="sitesList" class="card"></div>
+    <div class="card">
+      <h4>Site Files</h4>
+      <div class="row">
+        <input type="file" id="site_file" />
+        <button id="uploadSiteFile">Upload to Site</button>
+      </div>
+      <div id="siteFilesList" class="card"></div>
+    </div>
     <h4>Add Site</h4>
     <div class="row">
       <div class="field"><label>Name</label><input id="s_name" /></div>
@@ -234,6 +246,7 @@ async function loadSites(){
       + `<div><strong>${s.site_name||''}</strong>${s.site_address_line1?` — ${s.site_address_line1}`:''} ${s.site_city||''} ${s.site_province||''} ${s.site_country||''}</div>`
       + `<div><button onclick=\"delSite('${s.id}')\">Delete</button></div>`
     + `</div>`).join('') || 'No sites';
+    const sel = document.getElementById('site_sel'); if (sel){ sel.innerHTML = '<option value="">All</option>' + (arr||[]).map(s=>`<option value="${s.id}">${s.site_name||s.site_address_line1||s.id}</option>`).join(''); }
   }catch(e){}
 }
 async function addSite(){
@@ -252,6 +265,33 @@ async function addSite(){
 }
 async function delSite(sid){ try{ await fetch('/clients/'+id+'/sites/'+sid, { method:'DELETE', headers: auth() }); loadSites(); }catch(e){}
 }
+
+// Site files
+async function loadSiteFiles(){
+  const token = MKHubUI.getTokenOrRedirect();
+  const site = document.getElementById('site_sel').value || '';
+  const arr = await fetch(`/clients/${id}/files` + (site?`?site_id=${encodeURIComponent(site)}`:''), { headers:{ Authorization:'Bearer '+token } }).then(x=>x.json());
+  const el = document.getElementById('siteFilesList');
+  if (!Array.isArray(arr) || !arr.length){ el.textContent = 'No files'; return; }
+  el.innerHTML = arr.map(f=>`<div style=\"display:flex;justify-content:space-between;border-bottom:1px solid #eee;padding:6px 0\">`
+    + `<div>${f.original_name||f.key||f.file_object_id} <span class=muted>${(f.uploaded_at||'').slice(0,19).replace('T',' ')}</span></div>`
+    + `<div><button onclick=\"downloadFile('${f.file_object_id}')\">Download</button></div>`
+  + `</div>`).join('');
+}
+document.getElementById('btnSiteFiles').addEventListener('click', loadSiteFiles);
+document.getElementById('site_sel').addEventListener('change', loadSiteFiles);
+document.getElementById('uploadSiteFile').addEventListener('click', async ()=>{
+  const f = document.getElementById('site_file').files[0]; if (!f) return;
+  const token = MKHubUI.getTokenOrRedirect();
+  const site = document.getElementById('site_sel').value || '';
+  const upReq = { project_id: null, client_id: id, employee_id: null, category_id: 'site-docs', original_name: f.name, content_type: f.type || 'application/octet-stream' };
+  const up = await fetch('/files/upload', { method:'POST', headers:{ 'Content-Type':'application/json', Authorization:'Bearer '+token }, body: JSON.stringify(upReq) }).then(x=>x.json());
+  const putResp = await fetch(up.upload_url, { method:'PUT', headers:{ 'Content-Type': upReq.content_type, 'x-ms-blob-type': 'BlockBlob' }, body: f });
+  if (!putResp.ok) return;
+  const conf = await fetch('/files/confirm', { method:'POST', headers:{ 'Content-Type':'application/json', Authorization:'Bearer '+token }, body: JSON.stringify({ key: up.key, size_bytes: f.size, checksum_sha256: 'na' }) }).then(x=>x.json());
+  await fetch(`/clients/${id}/files?file_object_id=${encodeURIComponent(conf.id)}&category=site-docs&original_name=${encodeURIComponent(f.name)}${site?`&site_id=${encodeURIComponent(site)}`:''}`, { method:'POST', headers:{ Authorization:'Bearer '+token } });
+  await loadSiteFiles();
+});
 
 document.getElementById('saveTop').addEventListener('click', save);
 document.getElementById('addContact').addEventListener('click', addContact);
