@@ -203,6 +203,8 @@ class Client(Base):
     billing_province: Mapped[Optional[str]] = mapped_column(String(100))
     billing_postal_code: Mapped[Optional[str]] = mapped_column(String(50))
     billing_country: Mapped[Optional[str]] = mapped_column(String(100))
+    # Behavior
+    billing_same_as_address: Mapped[bool] = mapped_column(Boolean, default=False)
 
     type_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
     status_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))

@@ -30,6 +30,7 @@ class ClientBase(BaseModel):
     billing_province: Optional[str] = None
     billing_postal_code: Optional[str] = None
     billing_country: Optional[str] = None
+    billing_same_as_address: Optional[bool] = False
 
     # Legacy/commercial
     billing_email: Optional[str] = None
