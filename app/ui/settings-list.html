@@ -1,0 +1,68 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Settings List</title>
+<link rel="stylesheet" href="/ui/styles.css">
+<script src="/ui/app.js"></script>
+<div id="sidebar"></div>
+<div class="main">
+  <h2 id="title">Settings</h2>
+  <div class="card">
+    <div class="row">
+      <div class="field"><label>Label</label><input id="itemLabel" /></div>
+      <div class="field"><label>Description</label><input id="itemValue" /></div>
+      <div class="field"><label>Sort</label><input id="itemSort" type="number" value="0" /></div>
+      <div class="field" style="align-self:end"><button id="addItem">Add</button></div>
+    </div>
+    <div id="items" class="card"></div>
+    <div class="row">
+      <div class="field" style="flex:1"><label>Edit Item</label>
+        <input id="editId" placeholder="item id" />
+        <input id="editLabel" placeholder="new label" />
+        <input id="editValue" placeholder="new description" />
+        <input id="editSort" type="number" placeholder="sort" />
+        <button id="saveEdit">Save Changes</button>
+      </div>
+    </div>
+    <a class="btn" href="/ui/settings.html">Back to Settings</a>
+  </div>
+</div>
+<script>
+MKHubUI.initSidebar('settings');
+function auth(){ return { Authorization:'Bearer '+MKHubUI.getTokenOrRedirect() }; }
+const params = new URLSearchParams(location.search);
+const list = params.get('list') || 'client_types';
+document.getElementById('title').textContent = `List: ${list}`;
+async function refresh(){
+  const arr = await fetch('/settings/'+list, { headers: auth() }).then(x=>x.json());
+  const el = document.getElementById('items');
+  el.innerHTML = (arr||[]).map(i=>`<div style="display:flex;justify-content:space-between;border-bottom:1px solid #eee;padding:6px 0">`
+    + `<div><strong>${i.label}</strong>${i.value?` <span class=muted>(${i.value})</span>`:''} <span class=muted>[${i.sort_index}]</span></div>`
+    + `<div><button onclick="delItem('${i.id}')">Delete</button></div>`
+  + `</div>`).join('') || 'No items';
+}
+document.getElementById('addItem').addEventListener('click', async ()=>{
+  const label = document.getElementById('itemLabel').value.trim();
+  const value = document.getElementById('itemValue').value.trim();
+  const sort = parseInt(document.getElementById('itemSort').value||'0');
+  if (!label) return;
+  await fetch(`/settings/${list}?label=${encodeURIComponent(label)}&value=${encodeURIComponent(value)}&sort_index=${sort}`, { method:'POST', headers: auth() });
+  document.getElementById('itemLabel').value=''; document.getElementById('itemValue').value=''; document.getElementById('itemSort').value='0';
+  refresh();
+});
+window.delItem = async function(id){ await fetch(`/settings/${list}/${id}`, { method:'DELETE', headers: auth() }); refresh(); };
+document.getElementById('saveEdit').addEventListener('click', async ()=>{
+  const id = document.getElementById('editId').value.trim();
+  if (!id) return;
+  const qp = new URLSearchParams();
+  const lbl = document.getElementById('editLabel').value;
+  const val = document.getElementById('editValue').value;
+  const sort = document.getElementById('editSort').value;
+  if (lbl !== '') qp.set('label', lbl);
+  if (val !== '') qp.set('value', val);
+  if (sort !== '') qp.set('sort_index', sort);
+  await fetch(`/settings/${list}/${id}?`+qp.toString(), { method:'PUT', headers: auth() });
+  document.getElementById('editId').value=''; document.getElementById('editLabel').value=''; document.getElementById('editValue').value=''; document.getElementById('editSort').value='';
+  refresh();
+});
+refresh();
+</script>

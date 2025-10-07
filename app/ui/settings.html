@@ -8,33 +8,9 @@
   <h2>System Settings</h2>
 
   <div class="card">
-    <h3>Reference Lists</h3>
-    <div class="row">
-      <div class="field"><label>List</label>
-        <select id="listSel">
-          <option value="client_types">Client Types</option>
-          <option value="client_statuses">Client Statuses</option>
-          <option value="payment_terms">Payment Terms</option>
-          <option value="project_statuses">Project Statuses</option>
-          <option value="divisions">Divisions</option>
-          <option value="file_categories">File Categories</option>
-        </select>
-      </div>
-      <div class="field"><label>Label</label><input id="itemLabel" /></div>
-      <div class="field"><label>Value</label><input id="itemValue" /></div>
-      <div class="field"><label>Sort</label><input id="itemSort" type="number" value="0" /></div>
-      <div class="field" style="align-self:end"><button id="addItem">Add</button></div>
-    </div>
-    <div id="items" class="card"></div>
-    <div class="row">
-      <div class="field" style="flex:1"><label>Edit Item</label>
-        <input id="editId" placeholder="item id" />
-        <input id="editLabel" placeholder="new label" />
-        <input id="editValue" placeholder="new value" />
-        <input id="editSort" type="number" placeholder="sort" />
-        <button id="saveEdit">Save Changes</button>
-      </div>
-    </div>
+    <h3>System Settings</h3>
+    <p class="muted">Manage option lists used across the system.</p>
+    <div id="lists" class="card"></div>
   </div>
 
   <div class="card">
@@ -49,42 +25,27 @@
 <script>
 MKHubUI.initSidebar('settings');
 function auth(){ return { Authorization:'Bearer '+MKHubUI.getTokenOrRedirect() }; }
-async function refresh(){
-  const list = document.getElementById('listSel').value;
-  const arr = await fetch('/settings/'+list, { headers: auth() }).then(x=>x.json());
-  const el = document.getElementById('items');
-  el.innerHTML = (arr||[]).map(i=>`<div style="display:flex;justify-content:space-between;border-bottom:1px solid #eee;padding:6px 0">`
-    + `<div><strong>${i.label}</strong>${i.value?` <span class=muted>(${i.value})</span>`:''} <span class=muted>[${i.sort_index}]</span></div>`
-    + `<div><button onclick="delItem('${i.id}')">Delete</button></div>`
-  + `</div>`).join('') || 'No items';
+const SETTINGS = [
+  { area: 'Customers', name: 'Client Types', key: 'client_types', description: 'Types of clients such as Residential or Commercial' },
+  { area: 'Customers', name: 'Client Statuses', key: 'client_statuses', description: 'Lifecycle statuses such as Active, Prospect, Paused' },
+  { area: 'Finance', name: 'Payment Terms', key: 'payment_terms', description: 'Standard payment terms like Net 30' },
+  { area: 'Projects', name: 'Project Statuses', key: 'project_statuses', description: 'Statuses used in project workflows' },
+  { area: 'Organization', name: 'Divisions', key: 'divisions', description: 'Company divisions or departments' },
+  { area: 'Files', name: 'File Categories', key: 'file_categories', description: 'Categories to group uploaded files' },
+];
+function renderLists(){
+  const byArea = {};
+  for (const s of SETTINGS){ (byArea[s.area] ||= []).push(s); }
+  const el = document.getElementById('lists');
+  el.innerHTML = Object.keys(byArea).sort().map(area => {
+    const items = byArea[area].map(s=>`<div style="display:flex;justify-content:space-between;border-bottom:1px solid #eee;padding:6px 0">`
+      + `<div><strong>${s.name}</strong><div class=muted>${s.description}</div></div>`
+      + `<div><a class="btn" href="/ui/settings-list.html?list=${encodeURIComponent(s.key)}">Edit</a></div>`
+      + `</div>`).join('');
+    return `<h4>${area}</h4><div class=card>${items}</div>`;
+  }).join('');
 }
-document.getElementById('listSel').addEventListener('change', refresh);
-document.getElementById('addItem').addEventListener('click', async ()=>{
-  const list = document.getElementById('listSel').value;
-  const label = document.getElementById('itemLabel').value.trim();
-  const value = document.getElementById('itemValue').value.trim();
-  const sort = parseInt(document.getElementById('itemSort').value||'0');
-  if (!label) return;
-  await fetch(`/settings/${list}?label=${encodeURIComponent(label)}&value=${encodeURIComponent(value)}&sort_index=${sort}`, { method:'POST', headers: auth() });
-  document.getElementById('itemLabel').value=''; document.getElementById('itemValue').value=''; document.getElementById('itemSort').value='0';
-  refresh();
-});
-window.delItem = async function(id){ const list=document.getElementById('listSel').value; await fetch(`/settings/${list}/${id}`, { method:'DELETE', headers: auth() }); refresh(); };
-document.getElementById('saveEdit').addEventListener('click', async ()=>{
-  const list = document.getElementById('listSel').value;
-  const id = document.getElementById('editId').value.trim();
-  if (!id) return;
-  const qp = new URLSearchParams();
-  const lbl = document.getElementById('editLabel').value;
-  const val = document.getElementById('editValue').value;
-  const sort = document.getElementById('editSort').value;
-  if (lbl !== '') qp.set('label', lbl);
-  if (val !== '') qp.set('value', val);
-  if (sort !== '') qp.set('sort_index', sort);
-  await fetch(`/settings/${list}/${id}?`+qp.toString(), { method:'PUT', headers: auth() });
-  document.getElementById('editId').value=''; document.getElementById('editLabel').value=''; document.getElementById('editValue').value=''; document.getElementById('editSort').value='';
-  refresh();
-});
+renderLists();
 
 // Developer Utilities - use auth APIs to create data quickly
 document.getElementById('mkEmployees').addEventListener('click', async ()=>{
@@ -110,8 +71,6 @@ document.getElementById('mkCustomers').addEventListener('click', async ()=>{
   }
   document.getElementById('devMsg').textContent = results.join('\n');
 });
-
-refresh();
 </script>
 
 
