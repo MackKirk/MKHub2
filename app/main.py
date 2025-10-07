@@ -115,6 +115,26 @@ def create_app() -> FastAPI:
                     conn.execute(text("ALTER TABLE clients ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ"))
                     conn.execute(text("ALTER TABLE clients ADD COLUMN IF NOT EXISTS updated_by UUID"))
                     conn.execute(text("ALTER TABLE clients ADD COLUMN IF NOT EXISTS billing_same_as_address BOOLEAN DEFAULT FALSE"))
+                    # Ensure client_contacts columns exist
+                    conn.execute(text("ALTER TABLE client_contacts ADD COLUMN IF NOT EXISTS role_title VARCHAR(100)"))
+                    conn.execute(text("ALTER TABLE client_contacts ADD COLUMN IF NOT EXISTS department VARCHAR(100)"))
+                    conn.execute(text("ALTER TABLE client_contacts ADD COLUMN IF NOT EXISTS email VARCHAR(255)"))
+                    conn.execute(text("ALTER TABLE client_contacts ADD COLUMN IF NOT EXISTS phone VARCHAR(100)"))
+                    conn.execute(text("ALTER TABLE client_contacts ADD COLUMN IF NOT EXISTS mobile_phone VARCHAR(100)"))
+                    conn.execute(text("ALTER TABLE client_contacts ADD COLUMN IF NOT EXISTS is_primary BOOLEAN DEFAULT FALSE"))
+                    conn.execute(text("ALTER TABLE client_contacts ADD COLUMN IF NOT EXISTS sort_index INTEGER DEFAULT 0"))
+                    conn.execute(text("ALTER TABLE client_contacts ADD COLUMN IF NOT EXISTS notes VARCHAR(1000)"))
+                    conn.execute(text("ALTER TABLE client_contacts ADD COLUMN IF NOT EXISTS role_tags JSONB"))
+                    # Ensure client_sites columns exist
+                    conn.execute(text("ALTER TABLE client_sites ADD COLUMN IF NOT EXISTS site_name VARCHAR(255)"))
+                    conn.execute(text("ALTER TABLE client_sites ADD COLUMN IF NOT EXISTS site_address_line1 VARCHAR(255)"))
+                    conn.execute(text("ALTER TABLE client_sites ADD COLUMN IF NOT EXISTS site_address_line2 VARCHAR(255)"))
+                    conn.execute(text("ALTER TABLE client_sites ADD COLUMN IF NOT EXISTS site_city VARCHAR(100)"))
+                    conn.execute(text("ALTER TABLE client_sites ADD COLUMN IF NOT EXISTS site_province VARCHAR(100)"))
+                    conn.execute(text("ALTER TABLE client_sites ADD COLUMN IF NOT EXISTS site_postal_code VARCHAR(50)"))
+                    conn.execute(text("ALTER TABLE client_sites ADD COLUMN IF NOT EXISTS site_country VARCHAR(100)"))
+                    conn.execute(text("ALTER TABLE client_sites ADD COLUMN IF NOT EXISTS site_notes VARCHAR(1000)"))
+                    conn.execute(text("ALTER TABLE client_sites ADD COLUMN IF NOT EXISTS sort_index INTEGER DEFAULT 0"))
                     # Ensure employee notes table exists
                     conn.execute(text("CREATE TABLE IF NOT EXISTS employee_notes (\n"
                                        "id UUID PRIMARY KEY,\n"

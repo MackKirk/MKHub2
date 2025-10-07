@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
+import uuid
 from sqlalchemy.orm import Session
 from typing import Optional, List
 
@@ -90,11 +91,26 @@ def delete_client(client_id: str, db: Session = Depends(get_db), _=Depends(requi
 
 @router.post("/{client_id}/contacts", response_model=ClientContactResponse)
 def add_contact(client_id: str, payload: ClientContactCreate, db: Session = Depends(get_db), _=Depends(require_permissions("clients:write"))):
-    contact = ClientContact(client_id=client_id, **payload.dict(exclude_unset=True))
-    db.add(contact)
-    db.commit()
-    db.refresh(contact)
-    return contact
+    try:
+        # Validate client exists and coerce UUID
+        try:
+            client_uuid = uuid.UUID(str(client_id))
+        except Exception:
+            raise HTTPException(status_code=400, detail="Invalid client id")
+        c = db.query(Client).filter(Client.id == client_uuid).first()
+        if not c:
+            raise HTTPException(status_code=404, detail="Client not found")
+        data = payload.dict(exclude_unset=True)
+        contact = ClientContact(client_id=client_uuid, **data)
+        db.add(contact)
+        db.commit()
+        db.refresh(contact)
+        return contact
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=f"Create contact failed: {e}")
 
 
 @router.get("/{client_id}/contacts", response_model=List[ClientContactResponse])
