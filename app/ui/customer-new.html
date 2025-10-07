@@ -8,15 +8,22 @@
 <div class="main">
   <h2>New Customer</h2>
   <div class="card">
-    <h3>Details</h3>
     <div class="row">
-      <div class="field"><label>Display name *</label><input id="display_name" required /></div>
-      <div class="field"><label>Legal name</label><input id="legal_name" /></div>
+      <div class="field" style="flex:1"><label>All fields (flat JSON)</label><textarea id="all_fields" placeholder="Optional: paste JSON to override form values" style="width:100%;height:120px"></textarea></div>
+    </div>
+    <h3>Quick Fields</h3>
+    <div class="row">
+      <div class="field"><label>Name (required)</label><input id="name" required placeholder="internal canonical name" /></div>
+      <div class="field"><label>Display name</label><input id="display_name" /></div>
+      <div class="field"><label>Code</label><input id="code" placeholder="auto if blank" /></div>
     </div>
     <div class="row">
-      <div class="field"><label>Code</label><input id="code" placeholder="auto if blank" /></div>
       <div class="field"><label>Type</label><input id="client_type" placeholder="Residential, Commercial..." /></div>
       <div class="field"><label>Status</label><input id="client_status" placeholder="Active, Prospect..." /></div>
+    </div>
+    <h3>Details</h3>
+    <div class="row">
+      <div class="field"><label>Legal name</label><input id="legal_name" /></div>
     </div>
     <div class="row">
       <div class="field" style="flex:1"><label>Lead source</label><input id="lead_source" /></div>
@@ -82,6 +89,17 @@
       <a class="btn" href="/ui/customers.html">Cancel</a>
     </div>
     <pre id="msg" class="muted"></pre>
+    <h4>Debug</h4>
+    <div class="row">
+      <div class="field" style="flex:1">
+        <label>Outgoing JSON</label>
+        <textarea id="dbg_body" style="width:100%;height:140px"></textarea>
+      </div>
+      <div class="field" style="flex:1">
+        <label>Server response</label>
+        <textarea id="dbg_resp" style="width:100%;height:140px"></textarea>
+      </div>
+    </div>
   </div>
 </div>
 <script>
@@ -89,8 +107,8 @@ MKHubUI.initSidebar('customer-new');
 document.getElementById('save').addEventListener('click', async ()=>{
   const token = MKHubUI.getTokenOrRedirect();
   const body = {
-    name: document.getElementById('display_name').value.trim(),
-    display_name: document.getElementById('display_name').value.trim(),
+    name: (document.getElementById('name').value || document.getElementById('display_name').value || '').trim(),
+    display_name: (document.getElementById('display_name').value || '').trim(),
     legal_name: document.getElementById('legal_name').value || null,
     code: document.getElementById('code').value || null,
     client_type: document.getElementById('client_type').value || null,
@@ -122,9 +140,20 @@ document.getElementById('save').addEventListener('click', async ()=>{
     do_not_contact: document.getElementById('do_not_contact').value === 'true',
     do_not_contact_reason: document.getElementById('do_not_contact_reason').value || null,
   };
+  // Allow override via flat JSON textarea for debugging
+  try{
+    const raw = document.getElementById('all_fields').value.trim();
+    if (raw){
+      const obj = JSON.parse(raw);
+      Object.assign(body, obj);
+    }
+  }catch(e){ /* ignore json parse */ }
+  // show outgoing body for debugging
+  try { document.getElementById('dbg_body').value = JSON.stringify(body, null, 2); } catch(e) {}
   if (!body.name){ document.getElementById('msg').textContent='Display name is required.'; return; }
   const r = await fetch('/clients', { method:'POST', headers:{ 'Content-Type':'application/json', Authorization:'Bearer '+token }, body: JSON.stringify(body) });
   const txt = await r.text();
+  try { document.getElementById('dbg_resp').value = txt; } catch(e) {}
   if (!r.ok){ document.getElementById('msg').textContent = txt; return; }
   location.href = '/ui/customers.html';
 });

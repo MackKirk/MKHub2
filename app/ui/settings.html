@@ -74,14 +74,17 @@ document.getElementById('mkEmployees').addEventListener('click', async ()=>{
 document.getElementById('mkCustomers').addEventListener('click', async ()=>{
   const token = MKHubUI.getTokenOrRedirect();
   const base = 'CUST'+Date.now();
-  const reqs = [];
+  const results = [];
   for (let i=1;i<=10;i++){
     const code = `${base}-${i}`;
     const display = `Test Customer ${i}`;
-    reqs.push(fetch('/clients', { method:'POST', headers:{ 'Content-Type':'application/json', Authorization:'Bearer '+token }, body: JSON.stringify({ code, name: display, display_name: display, client_status: 'Active', client_type: 'Commercial' }) }));
+    try{
+      const r = await fetch('/clients', { method:'POST', headers:{ 'Content-Type':'application/json', Authorization:'Bearer '+token }, body: JSON.stringify({ code, name: display, display_name: display, client_status: 'Active', client_type: 'Commercial' }) });
+      const txt = await r.text();
+      results.push(`${i}: ${r.status} ${r.ok ? 'OK' : txt}`);
+    }catch(e){ results.push(`${i}: error ${e}`); }
   }
-  await Promise.allSettled(reqs);
-  document.getElementById('devMsg').textContent = 'Created 10 customers (if permissions allow).';
+  document.getElementById('devMsg').textContent = results.join('\n');
 });
 
 refresh();

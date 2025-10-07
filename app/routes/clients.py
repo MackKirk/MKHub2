@@ -17,21 +17,31 @@ router = APIRouter(prefix="/clients", tags=["clients"])
 
 @router.post("", response_model=ClientResponse)
 def create_client(payload: ClientCreate, db: Session = Depends(get_db), _=Depends(require_permissions("clients:write"))):
-    data = payload.dict(exclude_unset=True)
-    # Ensure client code uniqueness by simple slug if missing
-    if not data.get("code"):
-        base = (data.get("name") or "client").lower().replace(" ", "-")[:20]
-        code = base
-        i = 1
-        while db.query(Client).filter(Client.code == code).first():
-            code = f"{base}-{i}"
-            i += 1
-        data["code"] = code
-    c = Client(**data)
-    db.add(c)
-    db.commit()
-    db.refresh(c)
-    return c
+    try:
+        data = payload.dict(exclude_unset=True)
+        # Drop explicit nulls to avoid touching columns that might not exist in older DBs
+        data = {k: v for k, v in data.items() if v is not None}
+        # Ensure a name is always present (display_name fallback)
+        if not data.get("name"):
+            data["name"] = data.get("display_name") or "client"
+        # Ensure client code uniqueness by simple slug if missing
+        if not data.get("code"):
+            base = (data.get("name") or "client").lower().replace(" ", "-")[:20]
+            code = base
+            i = 1
+            while db.query(Client).filter(Client.code == code).first():
+                code = f"{base}-{i}"
+                i += 1
+            data["code"] = code
+        c = Client(**data)
+        db.add(c)
+        db.commit()
+        db.refresh(c)
+        return c
+    except Exception as e:
+        db.rollback()
+        # Expose error detail to aid debugging of prod schema mismatches
+        raise HTTPException(status_code=400, detail=f"Create failed: {e}")
 
 
 @router.get("", response_model=List[ClientResponse])
@@ -44,7 +54,8 @@ def list_clients(city: Optional[str] = None, status: Optional[str] = None, type:
     if type:
         query = query.filter(Client.type_id == type)
     if q:
-        query = query.filter(Client.name.ilike(f"%{q}%"))
+        # Search over display_name or name
+        query = query.filter((Client.name.ilike(f"%{q}%")) | (Client.display_name.ilike(f"%{q}%")))
     return query.order_by(Client.created_at.desc()).limit(500).all()
 
 
