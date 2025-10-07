@@ -320,13 +320,13 @@ document.getElementById('upload').addEventListener('click', async ()=>{
 async function loadFiles(){
   const token = MKHubUI.getTokenOrRedirect();
   const arr = await fetch(`/clients/${id}/files`, { headers:{ Authorization:'Bearer '+token } }).then(x=>x.json());
-  const docs = (arr||[]).filter(f=>!String(f.content_type||'').startsWith('image/'));
-  const pics = (arr||[]).filter(f=>String(f.content_type||'').startsWith('image/'));
+  const docs = (arr||[]).filter(f=>!(f.is_image===true) && !String(f.content_type||'').startsWith('image/'));
+  const pics = (arr||[]).filter(f=>(f.is_image===true) || String(f.content_type||'').startsWith('image/'));
   const docEl = document.getElementById('filesDocs');
   const picEl = document.getElementById('filesPics');
   docEl.innerHTML = (docs.length? docs.map(f=>`<div style=\"display:flex;justify-content:space-between;border-bottom:1px solid #eee;padding:6px 0\">`
     + `<div>${f.original_name||f.key||f.file_object_id} <span class=muted>${(f.uploaded_at||'').slice(0,19).replace('T',' ')}</span></div>`
-    + `<div><button onclick=\"downloadFile('${f.file_object_id}')\">Download</button></div>`
+    + `<div><button onclick=\"downloadFile('${f.file_object_id}')\">Download</button> <button onclick=\"delClientFile('${f.id}')\">Delete</button></div>`
   + `</div>`).join('') : 'No documents');
   // Pictures grid
   if (!pics.length){ picEl.textContent = 'No pictures'; }
@@ -346,6 +346,8 @@ async function loadFiles(){
     picEl.innerHTML=''; picEl.appendChild(grid);
   }
 }
+async function delClientFile(id){ try{ await fetch(`/clients/${idParam()}/files/${encodeURIComponent(id)}`, { method:'DELETE', headers: auth() }); await loadFiles(); }catch(e){} }
+function idParam(){ return id; }
 async function downloadFile(fid){ try{ const j=await fetch('/files/'+fid+'/download').then(x=>x.json()); if (j && j.download_url){ window.open(j.download_url, '_blank'); } }catch(e){} }
 
 // Geo dropdowns

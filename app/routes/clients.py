@@ -5,6 +5,7 @@ from typing import Optional, List
 
 from ..db import get_db
 from ..models.models import Client, ClientContact, ClientSite, ClientFile, FileObject
+import mimetypes
 from ..schemas.clients import (
     ClientCreate, ClientResponse,
     ClientContactCreate, ClientContactResponse,
@@ -197,6 +198,12 @@ def list_files(client_id: str, site_id: Optional[str] = None, db: Session = Depe
     out = []
     for cf in rows:
         fo = db.query(FileObject).filter(FileObject.id == cf.file_object_id).first()
+        ct = getattr(fo, 'content_type', None) if fo else None
+        # Heuristic to determine image if content_type missing
+        name = cf.original_name or cf.key or ''
+        ext = (name.rsplit('.', 1)[-1] if '.' in name else '').lower()
+        is_img_ext = ext in { 'png','jpg','jpeg','webp','gif','bmp','heic','heif' }
+        is_image = (ct or '').startswith('image/') or is_img_ext
         out.append({
             "id": str(cf.id),
             "file_object_id": str(cf.file_object_id),
@@ -206,9 +213,20 @@ def list_files(client_id: str, site_id: Optional[str] = None, db: Session = Depe
             "site_id": str(cf.site_id) if getattr(cf, 'site_id', None) else None,
             "uploaded_at": cf.uploaded_at.isoformat() if cf.uploaded_at else None,
             "uploaded_by": str(cf.uploaded_by) if cf.uploaded_by else None,
-            "content_type": getattr(fo, 'content_type', None) if fo else None,
+            "content_type": ct,
+            "is_image": is_image,
         })
     return out
+
+
+@router.delete("/{client_id}/files/{client_file_id}")
+def delete_client_file(client_id: str, client_file_id: str, db: Session = Depends(get_db), _=Depends(require_permissions("clients:write"))):
+    row = db.query(ClientFile).filter(ClientFile.id == client_file_id, ClientFile.client_id == client_id).first()
+    if not row:
+        return {"status":"ok"}
+    db.delete(row)
+    db.commit()
+    return {"status":"ok"}
 
 
 @router.post("/{client_id}/files")
