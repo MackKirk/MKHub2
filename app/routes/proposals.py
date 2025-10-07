@@ -5,7 +5,7 @@ import json
 import mimetypes
 from typing import Optional
 
-from fastapi import APIRouter, UploadFile, Form, Request, Depends, HTTPException
+from fastapi import APIRouter, UploadFile, Form, Request, Depends, HTTPException, Body
 from fastapi.responses import FileResponse
 
 from ..config import settings
@@ -13,6 +13,7 @@ from ..logging import RequestIdMiddleware
 from ..db import get_db
 from ..models.models import FileObject, ProposalDraft
 from ..auth.security import get_current_user
+from sqlalchemy.orm import Session
 from ..storage.provider import StorageProvider
 from ..storage.blob_provider import BlobStorageProvider
 from ..storage.hybrid_provider import HybridStorageProvider
@@ -54,6 +55,7 @@ async def generate_proposal(
     cover_image: UploadFile = None,
     page2_image: UploadFile = None,
     sections: str = Form("[]"),
+    db: Session = Depends(get_db),
 ):
     file_id = str(uuid.uuid4())
     output_path = os.path.join(UPLOAD_DIR, f"proposal_{file_id}.pdf")
@@ -151,17 +153,8 @@ async def generate_proposal(
 
 # ---------- Drafts ----------
 @router.post("/drafts")
-def create_or_update_draft(request: Request, db: Session = Depends(get_db), user=Depends(get_current_user)):
-    payload = None
-    try:
-        payload = request.json()
-    except Exception:
-        pass
-    # sync read body
-    import json
-    try:
-        body = json.loads(request._body.decode() if hasattr(request, '_body') and request._body else '{}')
-    except Exception:
+def create_or_update_draft(body: dict = Body(None), db: Session = Depends(get_db), user=Depends(get_current_user)):
+    if body is None:
         body = {}
     draft_id = body.get('id')
     if draft_id:
