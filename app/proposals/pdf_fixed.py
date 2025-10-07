@@ -98,7 +98,7 @@ def build_page2(c, data):
 
     c.setFillColor(colors.white)
     c.setFont("Montserrat-Bold", 17.2)
-    c.drawString(40, 784, "COMMERCIAL PROJECT PROPOSAL")
+    c.drawString(40, 784, data.get("cover_title", ""))
     c.setFont("Montserrat-Bold", 13)
     c.drawString(40, 762, data.get("company_name", ""))
 

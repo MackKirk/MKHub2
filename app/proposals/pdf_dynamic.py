@@ -1,9 +1,16 @@
 import os
+import uuid
 from reportlab.lib.pagesizes import A4
 from reportlab.platypus import (
     BaseDocTemplate, Paragraph, Spacer, Frame, PageTemplate, PageBreak, Flowable, KeepTogether,
     Table, TableStyle, Image
 )
+from PIL import Image as PILImage
+try:
+    from pillow_heif import register_heif_opener  # HEIC/HEIF support
+    register_heif_opener()
+except Exception:
+    pass
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
 from reportlab.pdfbase import pdfmetrics
@@ -19,7 +26,7 @@ pdfmetrics.registerFont(TTFont("Montserrat-Bold", os.path.join(fonts_path, "Mont
 def draw_template_page3(c, doc, data):
     c.setFillColor(colors.white)
     c.setFont("Montserrat-Bold", 17.2)
-    c.drawString(40, 784, "COMMERCIAL PROJECT PROPOSAL")
+    c.drawString(40, 784, data.get("cover_title", ""))
     c.setFont("Montserrat-Bold", 13)
     c.drawString(40, 762, data.get("company_name", ""))
 
@@ -126,6 +133,7 @@ def build_dynamic_pages(data, output_path):
             c.line(0, 0, self.width, 0)
 
     story = []
+    temp_images: list[str] = []
     sections = data.get("sections") or []
     for sec in sections:
         if sec.get("type") == "text":
@@ -154,16 +162,28 @@ def build_dynamic_pages(data, output_path):
             for i, img in enumerate(sec.get("images", [])):
                 flow = []
 
-                if os.path.exists(img.get("path", "")):
-                    flow.append(Image(img["path"], width=260, height=150))
-                    flow.append(YellowLine2(width=260))
+                img_path = img.get("path", "")
+                if os.path.exists(img_path):
+                    try:
+                        # Open with PIL to validate and normalize; extension may be .bin
+                        with PILImage.open(img_path) as im:
+                            im = im.convert("RGB")
+                            tmp_path = os.path.join(BASE_DIR, f"tmp_img_{uuid.uuid4().hex}.png")
+                            im.save(tmp_path, format="PNG", optimize=True)
+                            flow.append(Image(tmp_path, width=260, height=150))
+                            flow.append(YellowLine2(width=260))
+                            temp_images.append(tmp_path)
+                    except Exception:
+                        # Skip invalid/unreadable images
+                        pass
                 caption = img.get("caption", "")
 
                 if caption:
                     caption = caption[:90]
                     flow.append(Spacer(1, 4))
                     flow.append(Paragraph(caption, user_style))
-                row.append(flow)
+                if flow:
+                    row.append(flow)
 
                 if len(row) == 2:
                     imgs.append(row)
@@ -173,6 +193,10 @@ def build_dynamic_pages(data, output_path):
                 imgs.append(row)
 
             if imgs:
+                # Ensure rows have two columns for table consistency
+                for r in imgs:
+                    while len(r) < 2:
+                        r.append([Spacer(1, 1)])
                 block = [Paragraph(sec.get("title", ""), title_style)]
                 first_table = Table([imgs[0]], colWidths=[275, 275])
                 first_table.setStyle(TableStyle([
@@ -221,5 +245,12 @@ def build_dynamic_pages(data, output_path):
 
     doc.addPageTemplates([template_page3])
     doc.build(story)
+    # Cleanup temp images
+    for p in temp_images:
+        try:
+            if os.path.exists(p):
+                os.remove(p)
+        except Exception:
+            pass
 
 
