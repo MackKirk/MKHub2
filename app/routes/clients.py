@@ -194,16 +194,21 @@ def list_files(client_id: str, site_id: Optional[str] = None, db: Session = Depe
     if site_id:
         q = q.filter(ClientFile.site_id == site_id)
     rows = q.order_by(ClientFile.uploaded_at.desc()).all()
-    return [{
-        "id": str(cf.id),
-        "file_object_id": str(cf.file_object_id),
-        "category": cf.category,
-        "key": cf.key,
-        "original_name": cf.original_name,
-        "site_id": str(cf.site_id) if getattr(cf, 'site_id', None) else None,
-        "uploaded_at": cf.uploaded_at.isoformat() if cf.uploaded_at else None,
-        "uploaded_by": str(cf.uploaded_by) if cf.uploaded_by else None,
-    } for cf in rows]
+    out = []
+    for cf in rows:
+        fo = db.query(FileObject).filter(FileObject.id == cf.file_object_id).first()
+        out.append({
+            "id": str(cf.id),
+            "file_object_id": str(cf.file_object_id),
+            "category": cf.category,
+            "key": cf.key,
+            "original_name": cf.original_name,
+            "site_id": str(cf.site_id) if getattr(cf, 'site_id', None) else None,
+            "uploaded_at": cf.uploaded_at.isoformat() if cf.uploaded_at else None,
+            "uploaded_by": str(cf.uploaded_by) if cf.uploaded_by else None,
+            "content_type": getattr(fo, 'content_type', None) if fo else None,
+        })
+    return out
 
 
 @router.post("/{client_id}/files")
