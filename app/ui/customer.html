@@ -7,9 +7,17 @@
 <div id="sidebar"></div>
 <div class="main">
   <h2>Customer</h2>
+  <div class="tabs">
+    <a id="tab-details" href="#" class="active" onclick="showTab(event,'details')">Details</a>
+    <a id="tab-addresses" href="#" onclick="showTab(event,'addresses')">Addresses</a>
+    <a id="tab-comms" href="#" onclick="showTab(event,'comms')">Communication</a>
+    <a id="tab-files" href="#" onclick="showTab(event,'files')">Files</a>
+    <a id="tab-contacts" href="#" onclick="showTab(event,'contacts')">Contacts</a>
+    <a id="tab-sites" href="#" onclick="showTab(event,'sites')">Sites</a>
+  </div>
   <div id="info" class="card"></div>
 
-  <div class="card">
+  <div id="details" class="card" style="display:block">
     <h3>Details</h3>
     <div class="row">
       <div class="field"><label>Display name *</label><input id="display_name" /></div>
@@ -27,7 +35,15 @@
     </div>
     <div class="row"><div class="field"><label>Tax number</label><input id="tax_number" /></div></div>
     <div class="row"><div class="field" style="flex:1"><label>Description</label><input id="description" /></div></div>
-    <h4>Address</h4>
+    <div class="row">
+      <button id="save">Save</button>
+      <a class="btn" href="/ui/customers.html">Back</a>
+    </div>
+    <pre id="msg" class="muted"></pre>
+  </div>
+
+  <div id="addresses" class="card" style="display:none">
+    <h3>Address</h3>
     <div class="row">
       <div class="field"><label>Address 1</label><input id="address_line1" /></div>
       <div class="field"><label>Address 2</label><input id="address_line2" /></div>
@@ -53,14 +69,9 @@
       <div class="field"><label>City</label><select id="billing_city"><option value="">Select...</option></select></div>
       <div class="field"><label>Postal/Zip</label><input id="billing_postal_code" /></div>
     </div>
-    <div class="row">
-      <button id="save">Save</button>
-      <a class="btn" href="/ui/customers.html">Back</a>
-    </div>
-    <pre id="msg" class="muted"></pre>
   </div>
 
-  <div class="card">
+  <div id="files" class="card" style="display:none">
     <h3>Files</h3>
     <div class="row">
       <input type="file" id="file" />
@@ -69,7 +80,7 @@
     <div id="filesList" class="card"></div>
   </div>
 
-  <div class="card">
+  <div id="comms" class="card" style="display:none">
     <h3>Communication Preferences</h3>
     <div class="row">
       <div class="field"><label>Language</label><input id="preferred_language" /></div>
@@ -92,7 +103,7 @@
     </div>
   </div>
 
-  <div class="card">
+  <div id="contacts" class="card" style="display:none">
     <h3>Contacts</h3>
     <div id="contactsList" class="card"></div>
     <h4>Add Contact</h4>
@@ -104,12 +115,34 @@
     </div>
     <button id="addContact">Add Contact</button>
   </div>
+
+  <div id="sites" class="card" style="display:none">
+    <h3>Sites</h3>
+    <div id="sitesList" class="card"></div>
+    <h4>Add Site</h4>
+    <div class="row">
+      <div class="field"><label>Name</label><input id="s_name" /></div>
+      <div class="field"><label>Address 1</label><input id="s_address1" /></div>
+      <div class="field"><label>Address 2</label><input id="s_address2" /></div>
+    </div>
+    <div class="row">
+      <div class="field"><label>City</label><input id="s_city" /></div>
+      <div class="field"><label>Province/State</label><input id="s_province" /></div>
+      <div class="field"><label>Postal/Zip</label><input id="s_postal" /></div>
+      <div class="field"><label>Country</label><input id="s_country" /></div>
+    </div>
+    <div class="row">
+      <div class="field" style="flex:1"><label>Notes</label><input id="s_notes" /></div>
+    </div>
+    <button id="addSite">Add Site</button>
+  </div>
 </div>
 <script>
 MKHubUI.initSidebar('customers');
 const params = new URLSearchParams(location.search);
 const id = params.get('id');
 function auth(){ return { Authorization:'Bearer '+MKHubUI.getTokenOrRedirect() }; }
+function showTab(ev, which){ ev && ev.preventDefault(); const tabs=['details','addresses','comms','files','contacts','sites']; for (const k of tabs){ const el=document.getElementById(k); if (el) el.style.display = (k===which) ? 'block':'none'; } for (const k of tabs){ const t=document.getElementById('tab-'+k); if (t){ if (k===which) t.classList.add('active'); else t.classList.remove('active'); } } if (which==='contacts'){ loadContacts(); } if (which==='files'){ loadFiles(); } if (which==='sites'){ loadSites(); } }
 async function load(){
   const r = await fetch('/clients/'+id, { headers: auth() });
   const info = document.getElementById('info');
@@ -127,7 +160,6 @@ async function load(){
   document.getElementById('marketing_opt_in').value = c.marketing_opt_in ? 'true':'false';
   document.getElementById('do_not_contact').value = c.do_not_contact ? 'true':'false';
   document.getElementById('po_required').value = c.po_required ? 'true':'false';
-  await loadContacts();
 }
 // Load settings for dropdowns
 (async function initSettings(){
@@ -158,16 +190,54 @@ async function save(){
   await load();
 }
 async function loadContacts(){
-  const arr = await fetch('/clients/'+id, { headers: auth() }).then(x=>x.json()); // no dedicated list; reuse detail
-  // There's no contacts list in detail response; call a future endpoint if added.
+  try{
+    const arr = await fetch('/clients/'+id+'/contacts', { headers: auth() }).then(x=>x.json());
+    const el = document.getElementById('contactsList');
+    el.innerHTML = (arr||[]).map(c=>`<div style="display:flex;justify-content:space-between;border-bottom:1px solid #eee;padding:6px 0">`
+      + `<div>${c.name||''} ${c.email?`<span class=muted>${c.email}</span>`:''} ${c.phone?`<span class=muted>${c.phone}</span>`:''} ${c.is_primary?`<span class=muted>[primary]</span>`:''}</div>`
+      + `<div><button onclick=\"delContact('${c.id}')\">Delete</button></div>`
+    + `</div>`).join('') || 'No contacts';
+  }catch(e){}
 }
 async function addContact(){
   const body = { name: document.getElementById('c_name').value || null, email: document.getElementById('c_email').value || null, phone: document.getElementById('c_phone').value || null, is_primary: document.getElementById('c_primary').value==='true' };
   const r = await fetch('/clients/'+id+'/contacts', { method:'POST', headers:{ 'Content-Type':'application/json', ...auth() }, body: JSON.stringify(body) });
   if (r.ok){ document.getElementById('c_name').value=''; document.getElementById('c_email').value=''; document.getElementById('c_phone').value=''; loadContacts(); }
 }
+async function delContact(cid){ try{ await fetch('/clients/'+id+'/contacts/'+cid, { method:'DELETE', headers: auth() }); loadContacts(); }catch(e){}
+}
+
+// Sites
+async function loadSites(){
+  try{
+    const arr = await fetch('/clients/'+id+'/sites', { headers: auth() }).then(x=>x.json());
+    const el = document.getElementById('sitesList');
+    el.innerHTML = (arr||[]).map(s=>`<div style="display:flex;justify-content:space-between;border-bottom:1px solid #eee;padding:6px 0">`
+      + `<div><strong>${s.site_name||''}</strong>${s.site_address_line1?` — ${s.site_address_line1}`:''} ${s.site_city||''} ${s.site_province||''} ${s.site_country||''}</div>`
+      + `<div><button onclick=\"delSite('${s.id}')\">Delete</button></div>`
+    + `</div>`).join('') || 'No sites';
+  }catch(e){}
+}
+async function addSite(){
+  const payload = {
+    site_name: document.getElementById('s_name').value || null,
+    site_address_line1: document.getElementById('s_address1').value || null,
+    site_address_line2: document.getElementById('s_address2').value || null,
+    site_city: document.getElementById('s_city').value || null,
+    site_province: document.getElementById('s_province').value || null,
+    site_postal_code: document.getElementById('s_postal').value || null,
+    site_country: document.getElementById('s_country').value || null,
+    site_notes: document.getElementById('s_notes').value || null,
+  };
+  const r = await fetch('/clients/'+id+'/sites', { method:'POST', headers:{ 'Content-Type':'application/json', ...auth() }, body: JSON.stringify(payload) });
+  if (r.ok){ document.getElementById('s_name').value=''; document.getElementById('s_address1').value=''; document.getElementById('s_address2').value=''; document.getElementById('s_city').value=''; document.getElementById('s_province').value=''; document.getElementById('s_postal').value=''; document.getElementById('s_country').value=''; document.getElementById('s_notes').value=''; loadSites(); }
+}
+async function delSite(sid){ try{ await fetch('/clients/'+id+'/sites/'+sid, { method:'DELETE', headers: auth() }); loadSites(); }catch(e){}
+}
+
 document.getElementById('save').addEventListener('click', save);
 document.getElementById('addContact').addEventListener('click', addContact);
+document.getElementById('addSite').addEventListener('click', addSite);
 
 // File uploads linked to client via category key
 document.getElementById('upload').addEventListener('click', async ()=>{
@@ -210,8 +280,6 @@ async function downloadFile(fid){ try{ const j=await fetch('/files/'+fid+'/downl
 })();
 
 load();
-// Also load files initially
-loadFiles();
 </script>
 
 

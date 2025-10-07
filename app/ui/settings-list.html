@@ -10,19 +10,9 @@
     <div class="row">
       <div class="field"><label>Label</label><input id="itemLabel" /></div>
       <div class="field"><label>Description</label><input id="itemValue" /></div>
-      <div class="field"><label>Sort</label><input id="itemSort" type="number" value="0" /></div>
       <div class="field" style="align-self:end"><button id="addItem">Add</button></div>
     </div>
     <div id="items" class="card"></div>
-    <div class="row">
-      <div class="field" style="flex:1"><label>Edit Item</label>
-        <input id="editId" placeholder="item id" />
-        <input id="editLabel" placeholder="new label" />
-        <input id="editValue" placeholder="new description" />
-        <input id="editSort" type="number" placeholder="sort" />
-        <button id="saveEdit">Save Changes</button>
-      </div>
-    </div>
     <a class="btn" href="/ui/settings.html">Back to Settings</a>
   </div>
 </div>
@@ -34,35 +24,83 @@ const list = params.get('list') || 'client_types';
 document.getElementById('title').textContent = `List: ${list}`;
 async function refresh(){
   const arr = await fetch('/settings/'+list, { headers: auth() }).then(x=>x.json());
-  const el = document.getElementById('items');
-  el.innerHTML = (arr||[]).map(i=>`<div style="display:flex;justify-content:space-between;border-bottom:1px solid #eee;padding:6px 0">`
-    + `<div><strong>${i.label}</strong>${i.value?` <span class=muted>(${i.value})</span>`:''} <span class=muted>[${i.sort_index}]</span></div>`
-    + `<div><button onclick="delItem('${i.id}')">Delete</button></div>`
-  + `</div>`).join('') || 'No items';
+  window._items = Array.isArray(arr) ? arr.slice() : [];
+  renderList();
 }
 document.getElementById('addItem').addEventListener('click', async ()=>{
   const label = document.getElementById('itemLabel').value.trim();
   const value = document.getElementById('itemValue').value.trim();
-  const sort = parseInt(document.getElementById('itemSort').value||'0');
   if (!label) return;
-  await fetch(`/settings/${list}?label=${encodeURIComponent(label)}&value=${encodeURIComponent(value)}&sort_index=${sort}`, { method:'POST', headers: auth() });
-  document.getElementById('itemLabel').value=''; document.getElementById('itemValue').value=''; document.getElementById('itemSort').value='0';
+  await fetch(`/settings/${list}?label=${encodeURIComponent(label)}&value=${encodeURIComponent(value)}&sort_index=0`, { method:'POST', headers: auth() });
+  document.getElementById('itemLabel').value=''; document.getElementById('itemValue').value='';
   refresh();
 });
 window.delItem = async function(id){ await fetch(`/settings/${list}/${id}`, { method:'DELETE', headers: auth() }); refresh(); };
-document.getElementById('saveEdit').addEventListener('click', async ()=>{
-  const id = document.getElementById('editId').value.trim();
-  if (!id) return;
+window.editItem = async function(id){
+  const it = (window._items||[]).find(x=>x.id===id);
+  if (!it) return;
+  const newLabel = prompt('Label', it.label || '') ?? it.label;
+  if (newLabel === null) return;
+  const newDesc = prompt('Description', it.value || '') ?? it.value;
   const qp = new URLSearchParams();
-  const lbl = document.getElementById('editLabel').value;
-  const val = document.getElementById('editValue').value;
-  const sort = document.getElementById('editSort').value;
-  if (lbl !== '') qp.set('label', lbl);
-  if (val !== '') qp.set('value', val);
-  if (sort !== '') qp.set('sort_index', sort);
+  qp.set('label', newLabel);
+  qp.set('value', newDesc||'');
   await fetch(`/settings/${list}/${id}?`+qp.toString(), { method:'PUT', headers: auth() });
-  document.getElementById('editId').value=''; document.getElementById('editLabel').value=''; document.getElementById('editValue').value=''; document.getElementById('editSort').value='';
   refresh();
-});
+};
+window.moveUp = function(id){ reorder(id, -1); };
+window.moveDown = function(id){ reorder(id, 1); };
+function renderList(){
+  const el = document.getElementById('items');
+  const arr = window._items || [];
+  if (!arr.length){ el.textContent = 'No items'; return; }
+  el.innerHTML = arr.map(i=>
+    `<div class="dr" draggable="true" data-id="${i.id}" style="display:flex;justify-content:space-between;border-bottom:1px solid #eee;padding:6px 0;gap:10px">`
+    + `<div style="flex:1"><strong>${i.label}</strong>${i.value?` <span class=muted>(${i.value})</span>`:''}</div>`
+    + `<div style="display:flex;gap:6px">`
+      + `<button onclick="moveUp('${i.id}')">↑</button>`
+      + `<button onclick="moveDown('${i.id}')">↓</button>`
+      + `<button onclick="editItem('${i.id}')">Edit</button>`
+      + `<button onclick="delItem('${i.id}')">Delete</button>`
+    + `</div>`
+    + `</div>`
+  ).join('');
+  enableDnD();
+}
+function enableDnD(){
+  const rows = Array.from(document.querySelectorAll('.dr'));
+  let dragId = null;
+  rows.forEach(r=>{
+    r.addEventListener('dragstart', (e)=>{ dragId = r.getAttribute('data-id'); e.dataTransfer.setData('text/plain', dragId); });
+    r.addEventListener('dragover', (e)=>{ e.preventDefault(); r.style.background='#f7f7f7'; });
+    r.addEventListener('dragleave', ()=>{ r.style.background=''; });
+    r.addEventListener('drop', (e)=>{ e.preventDefault(); r.style.background=''; const targetId=r.getAttribute('data-id'); if (!dragId || dragId===targetId) return; reorderBetween(dragId, targetId); dragId=null; });
+  });
+}
+function reorder(id, delta){
+  const arr = window._items || [];
+  const idx = arr.findIndex(x=>x.id===id); if (idx<0) return;
+  const j = idx + delta; if (j<0 || j>=arr.length) return;
+  const tmp = arr[idx]; arr[idx] = arr[j]; arr[j] = tmp;
+  persistOrder(arr);
+}
+function reorderBetween(srcId, dstId){
+  const arr = window._items || [];
+  const si = arr.findIndex(x=>x.id===srcId); const di = arr.findIndex(x=>x.id===dstId);
+  if (si<0 || di<0) return;
+  const [m] = arr.splice(si,1);
+  arr.splice(di,0,m);
+  persistOrder(arr);
+}
+async function persistOrder(arr){
+  const updates = arr.map((it, idx)=>({ id: it.id, sort: (idx+1)*10 }));
+  window._items = arr.map((it, idx)=>({ ...it, sort_index: updates[idx].sort }));
+  renderList();
+  for (const u of updates){
+    const qp = new URLSearchParams(); qp.set('sort_index', String(u.sort));
+    try { await fetch(`/settings/${list}/${u.id}?`+qp.toString(), { method:'PUT', headers: auth() }); } catch(e){}
+  }
+  refresh();
+}
 refresh();
 </script>
