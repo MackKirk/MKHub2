@@ -257,7 +257,6 @@ async function loadSites(){
       + `<div><strong>${s.site_name||''}</strong>${s.site_address_line1?` — ${s.site_address_line1}`:''} ${s.site_city||''} ${s.site_province||''} ${s.site_country||''}</div>`
       + `<div><a class=\"btn\" href=\"/ui/site.html?client_id=${id}&site_id=${s.id}\">Open</a> <button onclick=\"delSite('${s.id}')\">Delete</button></div>`
     + `</div>`).join('') || 'No sites';
-    const sel = document.getElementById('site_sel'); if (sel){ sel.innerHTML = '<option value="">All</option>' + (arr||[]).map(s=>`<option value="${s.id}">${s.site_name||s.site_address_line1||s.id}</option>`).join(''); }
   }catch(e){}
 }
 async function addSite(){
@@ -277,52 +276,6 @@ async function addSite(){
 async function delSite(sid){ try{ await fetch('/clients/'+id+'/sites/'+sid, { method:'DELETE', headers: auth() }); loadSites(); }catch(e){}
 }
 
-// Site files
-async function loadSiteFiles(){
-  const token = MKHubUI.getTokenOrRedirect();
-  const site = document.getElementById('site_sel').value || '';
-  const arr = await fetch(`/clients/${id}/files` + (site?`?site_id=${encodeURIComponent(site)}`:''), { headers:{ Authorization:'Bearer '+token } }).then(x=>x.json());
-  const docs = (arr||[]).filter(f=>!(f.is_image===true) && !String(f.content_type||'').startsWith('image/'));
-  const pics = (arr||[]).filter(f=>(f.is_image===true) || String(f.content_type||'').startsWith('image/'));
-  const docEl = document.getElementById('siteFilesDocs');
-  const picEl = document.getElementById('siteFilesPics');
-  docEl.innerHTML = (docs.length? docs.map(f=>`<div style=\"display:flex;justify-content:space-between;border-bottom:1px solid #eee;padding:6px 0\">`
-    + `<div>${f.original_name||f.key||f.file_object_id} <span class=muted>${(f.uploaded_at||'').slice(0,19).replace('T',' ')}</span></div>`
-    + `<div><button onclick=\"downloadFile('${f.file_object_id}')\">Download</button> <button onclick=\"delClientFile('${f.id}')\">Delete</button></div>`
-  + `</div>`).join('') : 'No documents');
-  if (!pics.length){ picEl.textContent = 'No pictures'; }
-  else {
-    const grid = document.createElement('div');
-    grid.style.display='grid'; grid.style.gridTemplateColumns='repeat(auto-fill, minmax(120px, 1fr))'; grid.style.gap='8px';
-    for (const f of pics){
-      const item = document.createElement('div'); item.style.border='1px solid #eee'; item.style.padding='6px'; item.style.textAlign='center';
-      const thumb = document.createElement('img'); thumb.alt = f.original_name||f.key||f.file_object_id; thumb.style.maxWidth='100%'; thumb.style.height='90px'; thumb.style.objectFit='cover';
-      try{ thumb.src = `/files/${f.file_object_id}/thumbnail?w=200`; }catch(e){}
-      const cap = document.createElement('div'); cap.className='muted'; cap.style.fontSize='12px'; cap.textContent = (f.original_name||'');
-      const row = document.createElement('div'); row.style.display='flex'; row.style.justifyContent='center'; row.style.gap='6px'; row.style.marginTop='4px';
-      const btnD = document.createElement('button'); btnD.textContent='Download'; btnD.onclick=()=>downloadFile(f.file_object_id);
-      const btnDel = document.createElement('button'); btnDel.textContent='Delete'; btnDel.onclick=()=>delClientFile(f.id);
-      row.appendChild(btnD); row.appendChild(btnDel);
-      item.appendChild(thumb); item.appendChild(cap); item.appendChild(row); grid.appendChild(item);
-    }
-    picEl.innerHTML=''; picEl.appendChild(grid);
-  }
-}
-function showSiteFilesTab(ev, which){ ev && ev.preventDefault(); const tabs=['docs','pics']; for (const k of tabs){ const el=document.getElementById('siteFiles'+k.charAt(0).toUpperCase()+k.slice(1)); if (el) el.style.display = (k===which)?'block':'none'; } for (const k of tabs){ const t=document.getElementById('tab-site-'+(k==='docs'?'docs':'pics')); if (t){ if (k===which) t.classList.add('active'); else t.classList.remove('active'); } } }
-document.getElementById('btnSiteFiles').addEventListener('click', loadSiteFiles);
-document.getElementById('site_sel').addEventListener('change', loadSiteFiles);
-document.getElementById('uploadSiteFile').addEventListener('click', async ()=>{
-  const f = document.getElementById('site_file').files[0]; if (!f) return;
-  const token = MKHubUI.getTokenOrRedirect();
-  const site = document.getElementById('site_sel').value || '';
-  const upReq = { project_id: null, client_id: id, employee_id: null, category_id: 'site-docs', original_name: f.name, content_type: f.type || 'application/octet-stream' };
-  const up = await fetch('/files/upload', { method:'POST', headers:{ 'Content-Type':'application/json', Authorization:'Bearer '+token }, body: JSON.stringify(upReq) }).then(x=>x.json());
-  const putResp = await fetch(up.upload_url, { method:'PUT', headers:{ 'Content-Type': upReq.content_type, 'x-ms-blob-type': 'BlockBlob' }, body: f });
-  if (!putResp.ok) return;
-  const conf = await fetch('/files/confirm', { method:'POST', headers:{ 'Content-Type':'application/json', Authorization:'Bearer '+token }, body: JSON.stringify({ key: up.key, size_bytes: f.size, checksum_sha256: 'na', content_type: (f.type||'application/octet-stream') }) }).then(x=>x.json());
-  await fetch(`/clients/${id}/files?file_object_id=${encodeURIComponent(conf.id)}&category=site-docs&original_name=${encodeURIComponent(f.name)}${site?`&site_id=${encodeURIComponent(site)}`:''}`, { method:'POST', headers:{ Authorization:'Bearer '+token } });
-  await loadSiteFiles();
-});
 
 document.getElementById('saveTop').addEventListener('click', save);
 document.getElementById('addContact').addEventListener('click', addContact);
