@@ -54,3 +54,20 @@ def delete_setting_item(list_name: str, item_id: str, db: Session = Depends(get_
     db.commit()
     return {"status": "ok"}
 
+
+@router.put("/{list_name}/{item_id}")
+def update_setting_item(list_name: str, item_id: str, label: str = None, value: str = None, sort_index: int | None = None, db: Session = Depends(get_db), _=Depends(require_permissions("users:write"))):
+    lst = db.query(SettingList).filter(SettingList.name == list_name).first()
+    if not lst:
+        return {"status": "ok"}
+    it = db.query(SettingItem).filter(SettingItem.list_id == lst.id, SettingItem.id == item_id).first()
+    if not it:
+        return {"status": "ok"}
+    if label is not None:
+        it.label = label
+    if value is not None:
+        it.value = value
+    if sort_index is not None:
+        it.sort_index = sort_index
+    db.commit()
+    return {"status": "ok"}

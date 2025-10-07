@@ -16,9 +16,9 @@
       <div class="field"><label>Legal name</label><input id="legal_name" /></div>
     </div>
     <div class="row">
-      <div class="field"><label>Code</label><input id="code" /></div>
-      <div class="field"><label>Type</label><input id="client_type" /></div>
-      <div class="field"><label>Status</label><input id="client_status" /></div>
+      <div class="field"><label>Code</label><input id="code" readonly /></div>
+      <div class="field"><label>Type</label><select id="client_type"><option value="">Select...</option></select></div>
+      <div class="field"><label>Status</label><select id="client_status"><option value="">Select...</option></select></div>
     </div>
     <div class="row">
       <div class="field"><label>Lead source</label><input id="lead_source" /></div>
@@ -129,6 +129,19 @@ async function load(){
   document.getElementById('po_required').value = c.po_required ? 'true':'false';
   await loadContacts();
 }
+// Load settings for dropdowns
+(async function initSettings(){
+  try{
+    const token = MKHubUI.getTokenOrRedirect();
+    const s = await fetch('/settings', { headers:{ Authorization:'Bearer '+token } }).then(x=>x.json());
+    const types = s.client_types || [];
+    const statuses = s.client_statuses || [];
+    const typeSel = document.getElementById('client_type');
+    const statusSel = document.getElementById('client_status');
+    for (const it of types){ const o=document.createElement('option'); o.value=it.value||it.label; o.textContent=it.label; typeSel.appendChild(o); }
+    for (const it of statuses){ const o=document.createElement('option'); o.value=it.value||it.label; o.textContent=it.label; statusSel.appendChild(o); }
+  }catch(e){}
+})();
 async function save(){
   const body = {};
   for (const k of ['display_name','legal_name','code','client_type','client_status','lead_source','description','billing_email','tax_number','address_line1','address_line2','country','province','city','postal_code','billing_address_line1','billing_address_line2','billing_country','billing_province','billing_city','billing_postal_code','preferred_language','invoice_delivery_method','statement_delivery_method','do_not_contact_reason']){ body[k] = document.getElementById(k).value || null; }

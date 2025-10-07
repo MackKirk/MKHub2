@@ -26,6 +26,15 @@
       <div class="field" style="align-self:end"><button id="addItem">Add</button></div>
     </div>
     <div id="items" class="card"></div>
+    <div class="row">
+      <div class="field" style="flex:1"><label>Edit Item</label>
+        <input id="editId" placeholder="item id" />
+        <input id="editLabel" placeholder="new label" />
+        <input id="editValue" placeholder="new value" />
+        <input id="editSort" type="number" placeholder="sort" />
+        <button id="saveEdit">Save Changes</button>
+      </div>
+    </div>
   </div>
 
   <div class="card">
@@ -61,6 +70,21 @@ document.getElementById('addItem').addEventListener('click', async ()=>{
   refresh();
 });
 window.delItem = async function(id){ const list=document.getElementById('listSel').value; await fetch(`/settings/${list}/${id}`, { method:'DELETE', headers: auth() }); refresh(); };
+document.getElementById('saveEdit').addEventListener('click', async ()=>{
+  const list = document.getElementById('listSel').value;
+  const id = document.getElementById('editId').value.trim();
+  if (!id) return;
+  const qp = new URLSearchParams();
+  const lbl = document.getElementById('editLabel').value;
+  const val = document.getElementById('editValue').value;
+  const sort = document.getElementById('editSort').value;
+  if (lbl !== '') qp.set('label', lbl);
+  if (val !== '') qp.set('value', val);
+  if (sort !== '') qp.set('sort_index', sort);
+  await fetch(`/settings/${list}/${id}?`+qp.toString(), { method:'PUT', headers: auth() });
+  document.getElementById('editId').value=''; document.getElementById('editLabel').value=''; document.getElementById('editValue').value=''; document.getElementById('editSort').value='';
+  refresh();
+});
 
 // Developer Utilities - use auth APIs to create data quickly
 document.getElementById('mkEmployees').addEventListener('click', async ()=>{
