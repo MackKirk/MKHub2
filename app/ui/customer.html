@@ -7,6 +7,10 @@
 <div id="sidebar"></div>
 <div class="main">
   <h2>Customer</h2>
+  <div class="row" style="justify-content: flex-end; gap: 8px">
+    <button id="saveTop">Save</button>
+    <a class="btn" href="/ui/customers.html">Back</a>
+  </div>
   <div class="tabs">
     <a id="tab-details" href="#" class="active" onclick="showTab(event,'details')">Details</a>
     <a id="tab-addresses" href="#" onclick="showTab(event,'addresses')">Addresses</a>
@@ -35,10 +39,6 @@
     </div>
     <div class="row"><div class="field"><label>Tax number</label><input id="tax_number" /></div></div>
     <div class="row"><div class="field" style="flex:1"><label>Description</label><input id="description" /></div></div>
-    <div class="row">
-      <button id="save">Save</button>
-      <a class="btn" href="/ui/customers.html">Back</a>
-    </div>
     <pre id="msg" class="muted"></pre>
   </div>
 
@@ -163,6 +163,10 @@ async function load(){
   await ensureGeoReady();
   await setAddressSelects('country','province','city', c.country, c.province, c.city);
   await setAddressSelects('billing_country','billing_province','billing_city', c.billing_country, c.billing_province, c.billing_city);
+  // Restore billing same checkbox if previously saved in server payload or via client-side flag (fallback)
+  const chk = document.getElementById('billing_same');
+  if (chk){ chk.checked = !!(c.billing_same_as_address); }
+  if (chk && chk.checked){ setBillingDisabled(true); }
   // Multi-value fields
   const arrOr = (v)=> Array.isArray(v) ? v : (v ? [v] : []);
   document.getElementById('preferred_channels').value = (arrOr(c.preferred_channels)||[]).join(', ');
@@ -189,6 +193,8 @@ async function load(){
 async function save(){
   const body = {};
   for (const k of ['display_name','legal_name','code','client_type','client_status','lead_source','description','billing_email','tax_number','address_line1','address_line2','country','province','city','postal_code','billing_address_line1','billing_address_line2','billing_country','billing_province','billing_city','billing_postal_code','preferred_language','invoice_delivery_method','statement_delivery_method','do_not_contact_reason']){ body[k] = document.getElementById(k).value || null; }
+  // Persist whether billing mirrors address (client-side preference)
+  body['billing_same_as_address'] = !!(document.getElementById('billing_same') && document.getElementById('billing_same').checked);
   // Multi-value
   const splitCsv = (id)=> (document.getElementById(id).value||'').split(',').map(s=>s.trim()).filter(Boolean);
   body['preferred_channels'] = splitCsv('preferred_channels');
@@ -247,7 +253,7 @@ async function addSite(){
 async function delSite(sid){ try{ await fetch('/clients/'+id+'/sites/'+sid, { method:'DELETE', headers: auth() }); loadSites(); }catch(e){}
 }
 
-document.getElementById('save').addEventListener('click', save);
+document.getElementById('saveTop').addEventListener('click', save);
 document.getElementById('addContact').addEventListener('click', addContact);
 document.getElementById('addSite').addEventListener('click', addSite);
 
