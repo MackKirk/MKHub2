@@ -1,0 +1,94 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Auto Proposal</title>
+<link rel="stylesheet" href="/ui/styles.css">
+<script src="/ui/app.js"></script>
+<div id="sidebar"></div>
+<div class="main">
+  <h2>Create Proposal (Auto)</h2>
+  <div id="info" class="card"></div>
+  <div class="card">
+    <form id="proposalForm" enctype="multipart/form-data">
+      <input type="hidden" id="client_id" />
+      <input type="hidden" id="site_id" />
+      <h3>Company Info</h3>
+      <div class="field"><label>Document Type</label><input type="text" name="cover_title" maxlength="22" required></div>
+      <div class="field"><label>Order Number</label><input type="text" id="order_number" name="order_number" maxlength="10" required readonly></div>
+      <div class="field"><label>Company Name</label><input type="text" id="company_name" name="company_name" maxlength="50" required></div>
+      <div class="field"><label>Company Address</label><input type="text" id="company_address" name="company_address" maxlength="50" required></div>
+      <div class="field"><label>Date</label><input type="date" name="date" required></div>
+
+      <h3>Project Details</h3>
+      <div class="field"><label>Proposal Created For</label>
+        <select id="contact_sel"></select>
+      </div>
+      <div class="field"><label>Primary Contact Name</label><input type="text" id="contact_name" name="primary_contact_name" maxlength="40" readonly></div>
+      <div class="field"><label>Primary Contact Phone</label><input type="text" id="contact_phone" name="primary_contact_phone" maxlength="15" readonly></div>
+      <div class="field"><label>Primary Contact Email</label><input type="email" id="contact_email" name="primary_contact_email" maxlength="40" readonly></div>
+      <div class="field"><label>Type of Project</label><input type="text" name="type_of_project" maxlength="55"></div>
+      <div class="field"><label>Other Notes</label><textarea name="other_notes" maxlength="260"></textarea></div>
+
+      <h3>Images</h3>
+      <div class="field"><label>Cover Image</label><input type="file" name="cover_image" accept="image/*"></div>
+      <div class="field"><label>Page 2 Image</label><input type="file" name="page2_image" accept="image/*"></div>
+
+      <h3>Project Sections</h3>
+      <div id="sectionsContainer"></div>
+      <button type="button" id="addSectionBtn">+ Add Section</button>
+
+      <h3>Pricing</h3>
+      <div class="field"><label>Bid Price</label><input type="number" step="0.01" name="bid_price" required></div>
+      <div id="additionalCostsSection">
+        <h4>Additional Costs</h4>
+        <div id="costsContainer"></div>
+        <button type="button" id="addCostBtn">+ Add Cost</button>
+      </div>
+      <h4>Total: <span id="calculatedTotal">$0.00</span></h4>
+
+      <h3>Terms</h3>
+      <div class="field"><label>Terms</label><textarea name="terms_text"></textarea></div>
+
+      <button type="submit">Generate Proposal</button>
+    </form>
+  </div>
+  <div id="downloadSection" class="card" style="display:none;">
+    <h3>Proposal Generated</h3>
+    <a id="downloadLink" href="#" download="ProjectProposal.pdf">Download PDF</a>
+  </div>
+</div>
+<script src="/ui/proposals.js"></script>
+<script>
+MKHubUI.initSidebar('home');
+const qp = new URLSearchParams(location.search);
+const clientId = qp.get('client_id') || '';
+const siteId = qp.get('site_id') || '';
+document.getElementById('client_id').value = clientId;
+document.getElementById('site_id').value = siteId;
+
+async function initPrefill(){
+  const token = MKHubUI.getTokenOrRedirect();
+  // Load customer and site
+  const cust = await fetch('/clients/'+clientId, { headers:{ Authorization:'Bearer '+token } }).then(x=>x.json());
+  const sites = await fetch('/clients/'+clientId+'/sites', { headers:{ Authorization:'Bearer '+token } }).then(x=>x.json());
+  const site = (sites||[]).find(s=>s.id===siteId) || null;
+  document.getElementById('company_name').value = (cust.display_name || cust.name || '').slice(0,50);
+  const addr = site ? [site.site_address_line1, site.site_city, site.site_province, site.site_country].filter(Boolean).join(', ') : [cust.address_line1, cust.city, cust.province, cust.country].filter(Boolean).join(', ');
+  document.getElementById('company_address').value = addr.slice(0,50);
+  try{
+    const code = await fetch('/proposals/next-code?client_id='+encodeURIComponent(clientId)).then(x=>x.json());
+    if (code && code.order_number){ document.getElementById('order_number').value = code.order_number; }
+  }catch(e){}
+  // Load contacts
+  const contacts = await fetch('/clients/'+clientId+'/contacts', { headers:{ Authorization:'Bearer '+token } }).then(x=>x.json()).catch(()=>[]);
+  const sel = document.getElementById('contact_sel');
+  sel.innerHTML = '<option value="">Select...</option>' + (contacts||[]).map(c=>`<option value="${c.id}" data-email="${c.email||''}" data-phone="${c.phone||''}" data-name="${c.name||''}">${c.name||c.email||c.phone||c.id}</option>`).join('');
+  sel.addEventListener('change', ()=>{
+    const o = sel.options[sel.selectedIndex];
+    document.getElementById('contact_name').value = o.getAttribute('data-name')||'';
+    document.getElementById('contact_phone').value = o.getAttribute('data-phone')||'';
+    document.getElementById('contact_email').value = o.getAttribute('data-email')||'';
+  });
+  document.getElementById('info').innerHTML = `<strong>${cust.display_name || cust.name}</strong>${cust.code?` <span class=muted>(${cust.code})</span>`:''}` + (site?`<div class=muted>Site: ${(site.site_name||site.site_address_line1||'')}</div>`:'');
+}
+initPrefill();
+</script>

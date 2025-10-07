@@ -293,6 +293,18 @@ class ProposalDraft(Base):
     data: Mapped[Optional[dict]] = mapped_column(JSON)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
 
+
+class Proposal(Base):
+    __tablename__ = "proposals"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    client_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+    site_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
+    order_number: Mapped[Optional[str]] = mapped_column(String(20))
+    title: Mapped[Optional[str]] = mapped_column(String(255))
+    data: Mapped[Optional[dict]] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+
 class CalendarSource(Base):
     __tablename__ = "calendar_sources"
 

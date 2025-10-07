@@ -131,7 +131,7 @@ async function downloadFile(fid){ try{ const j=await fetch('/files/'+fid+'/downl
 
 document.getElementById('btnNewProposal').addEventListener('click', ()=>{
   // Open proposals form with context to enable draft association and site files
-  window.location.href = '/ui/proposals.html?client_id=' + encodeURIComponent(clientId||'') + '&site_id=' + encodeURIComponent(siteId||'');
+  window.location.href = '/ui/proposal-auto.html?client_id=' + encodeURIComponent(clientId||'') + '&site_id=' + encodeURIComponent(siteId||'');
 });
 
 document.getElementById('btnNewProject').addEventListener('click', async ()=>{

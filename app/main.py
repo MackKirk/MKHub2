@@ -147,6 +147,15 @@ def create_app() -> FastAPI:
                                        "data JSONB,\n"
                                        "updated_at TIMESTAMPTZ DEFAULT NOW()\n"
                                        ")"))
+                    conn.execute(text("CREATE TABLE IF NOT EXISTS proposals (\n"
+                                       "id UUID PRIMARY KEY,\n"
+                                       "client_id UUID,\n"
+                                       "site_id UUID,\n"
+                                       "order_number VARCHAR(20),\n"
+                                       "title VARCHAR(255),\n"
+                                       "data JSONB,\n"
+                                       "created_at TIMESTAMPTZ DEFAULT NOW()\n"
+                                       ")"))
                     # Ensure employee notes table exists
                     conn.execute(text("CREATE TABLE IF NOT EXISTS employee_notes (\n"
                                        "id UUID PRIMARY KEY,\n"

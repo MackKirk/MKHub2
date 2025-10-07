@@ -11,7 +11,7 @@ from fastapi.responses import FileResponse
 from ..config import settings
 from ..logging import RequestIdMiddleware
 from ..db import get_db
-from ..models.models import FileObject, ProposalDraft
+from ..models.models import FileObject, ProposalDraft, Proposal
 from ..auth.security import get_current_user
 from sqlalchemy.orm import Session
 from ..storage.provider import StorageProvider
@@ -211,5 +211,32 @@ def delete_draft(draft_id: str, db: Session = Depends(get_db), user=Depends(get_
     db.delete(d)
     db.commit()
     return {"status":"ok"}
+
+
+@router.get("/next-code")
+def next_code(client_id: str, db: Session = Depends(get_db)):
+    try:
+        import uuid as _uuid
+        u = _uuid.UUID(str(client_id))
+        base = int.from_bytes(u.bytes[:2], byteorder='big') % 10000
+    except Exception:
+        base = 0
+    # Next sequence per client based on persisted proposals count
+    seq = (db.query(Proposal).filter(Proposal.client_id == client_id).count() or 0) + 1
+    return {"order_number": f"{base:04d}-{seq:03d}"}
+
+
+@router.post("")
+def save_proposal(payload: dict, db: Session = Depends(get_db)):
+    p = Proposal(
+        client_id=payload.get('client_id'),
+        site_id=payload.get('site_id'),
+        order_number=payload.get('order_number'),
+        title=payload.get('cover_title') or payload.get('title') or 'Proposal',
+        data=payload,
+    )
+    db.add(p)
+    db.commit()
+    return {"id": str(p.id)}
 
 
