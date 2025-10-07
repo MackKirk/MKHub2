@@ -154,7 +154,15 @@ async function load(){
   info.innerHTML = `<strong>${c.display_name || c.name}</strong>${c.code?` <span class=muted>(${c.code})</span>`:''}` +
     `${c.city||c.province||c.country?`<div class=muted>${[c.city,c.province,c.country].filter(Boolean).join(', ')}</div>`:''}`;
   const set=(k,v)=>{ const el=document.getElementById(k); if (el) el.value=v||''; };
-  for (const k of ['display_name','legal_name','code','client_type','client_status','lead_source','description','billing_email','tax_number','address_line1','address_line2','country','province','city','postal_code','billing_address_line1','billing_address_line2','billing_country','billing_province','billing_city','billing_postal_code','preferred_language','invoice_delivery_method','statement_delivery_method','do_not_contact_reason']){ set(k, c[k]); }
+  // Set simple inputs first
+  for (const k of ['display_name','legal_name','code','lead_source','description','billing_email','tax_number','address_line1','address_line2','postal_code','billing_address_line1','billing_address_line2','billing_postal_code','preferred_language','invoice_delivery_method','statement_delivery_method','do_not_contact_reason']){ set(k, c[k]); }
+  // Ensure dropdown options are ready then set them
+  await ensureSettingsLoaded();
+  set('client_type', c.client_type);
+  set('client_status', c.client_status);
+  await ensureGeoReady();
+  await setAddressSelects('country','province','city', c.country, c.province, c.city);
+  await setAddressSelects('billing_country','billing_province','billing_city', c.billing_country, c.billing_province, c.billing_city);
   // Multi-value fields
   const arrOr = (v)=> Array.isArray(v) ? v : (v ? [v] : []);
   document.getElementById('preferred_channels').value = (arrOr(c.preferred_channels)||[]).join(', ');
@@ -175,6 +183,7 @@ async function load(){
     const statusSel = document.getElementById('client_status');
     for (const it of types){ const o=document.createElement('option'); o.value=it.value||it.label; o.textContent=it.label; typeSel.appendChild(o); }
     for (const it of statuses){ const o=document.createElement('option'); o.value=it.value||it.label; o.textContent=it.label; statusSel.appendChild(o); }
+    window.__settingsLoaded = true;
   }catch(e){}
 })();
 async function save(){
@@ -261,9 +270,9 @@ async function loadFiles(){
   const arr = await fetch(`/clients/${id}/files`, { headers:{ Authorization:'Bearer '+token } }).then(x=>x.json());
   const el = document.getElementById('filesList');
   if (!Array.isArray(arr) || !arr.length){ el.textContent = 'No files'; return; }
-  el.innerHTML = arr.map(f=>`<div style="display:flex;justify-content:space-between;border-bottom:1px solid #eee;padding:6px 0">`
+  el.innerHTML = arr.map(f=>`<div style=\"display:flex;justify-content:space-between;border-bottom:1px solid #eee;padding:6px 0\">`
     + `<div>${f.original_name||f.key||f.file_object_id} <span class=muted>${(f.uploaded_at||'').slice(0,19).replace('T',' ')}</span></div>`
-    + `<div><button onclick="downloadFile('${f.file_object_id}')">Download</button></div>`
+    + `<div><button onclick=\"downloadFile('${f.file_object_id}')\">Download</button></div>`
   + `</div>`).join('');
 }
 async function downloadFile(fid){ try{ const j=await fetch('/files/'+fid+'/download').then(x=>x.json()); if (j && j.download_url){ window.open(j.download_url, '_blank'); } }catch(e){} }
@@ -280,38 +289,14 @@ async function downloadFile(fid){ try{ const j=await fetch('/files/'+fid+'/downl
   const countries = (window.MKHubGeo && window.MKHubGeo.data) || [];
   for (const c of countries){ const o=document.createElement('option'); o.value=c.name; o.textContent=c.name; countrySel.appendChild(o); }
   for (const c of countries){ const o=document.createElement('option'); o.value=c.name; o.textContent=c.name; bCountrySel.appendChild(o); }
-  async function populateStates(country){
-    stateSel.innerHTML='<option value="">Select...</option>';
-    citySel.innerHTML='<option value="">Select...</option>';
-    const states=window.MKHubGeo.getStates?await window.MKHubGeo.getStates(country):[];
-    for (const s of states){ const o=document.createElement('option'); o.value=s; o.textContent=s; stateSel.appendChild(o); }
-    return states;
-  }
-  async function populateCities(country,state){
-    citySel.innerHTML='<option value="">Select...</option>';
-    const cities=window.MKHubGeo.getCities?await window.MKHubGeo.getCities(country,state):[];
-    for (const n of cities){ const o=document.createElement('option'); o.value=n; o.textContent=n; citySel.appendChild(o); }
-    return cities;
-  }
-  async function bPopulateStates(country){
-    bStateSel.innerHTML='<option value="">Select...</option>';
-    bCitySel.innerHTML='<option value="">Select...</option>';
-    const states=window.MKHubGeo.getStates?await window.MKHubGeo.getStates(country):[];
-    for (const s of states){ const o=document.createElement('option'); o.value=s; o.textContent=s; bStateSel.appendChild(o); }
-    return states;
-  }
-  async function bPopulateCities(country,state){
-    bCitySel.innerHTML='<option value="">Select...</option>';
-    const cities=window.MKHubGeo.getCities?await window.MKHubGeo.getCities(country,state):[];
-    for (const n of cities){ const o=document.createElement('option'); o.value=n; o.textContent=n; bCitySel.appendChild(o); }
-    return cities;
-  }
+  async function populateStates(country){ stateSel.innerHTML='<option value="">Select...</option>'; citySel.innerHTML='<option value="">Select...</option>'; const states=window.MKHubGeo.getStates?await window.MKHubGeo.getStates(country):[]; for (const s of states){ const o=document.createElement('option'); o.value=s; o.textContent=s; stateSel.appendChild(o); } }
+  async function populateCities(country,state){ citySel.innerHTML='<option value="">Select...</option>'; const cities=window.MKHubGeo.getCities?await window.MKHubGeo.getCities(country,state):[]; for (const n of cities){ const o=document.createElement('option'); o.value=n; o.textContent=n; citySel.appendChild(o); } }
+  async function bPopulateStates(country){ bStateSel.innerHTML='<option value="">Select...</option>'; bCitySel.innerHTML='<option value="">Select...</option>'; const states=window.MKHubGeo.getStates?await window.MKHubGeo.getStates(country):[]; for (const s of states){ const o=document.createElement('option'); o.value=s; o.textContent=s; bStateSel.appendChild(o); } }
+  async function bPopulateCities(country,state){ bCitySel.innerHTML='<option value="">Select...</option>'; const cities=window.MKHubGeo.getCities?await window.MKHubGeo.getCities(country,state):[]; for (const n of cities){ const o=document.createElement('option'); o.value=n; o.textContent=n; bCitySel.appendChild(o); } }
   countrySel.addEventListener('change', e=>populateStates(e.target.value));
   stateSel.addEventListener('change', ()=>populateCities(countrySel.value, stateSel.value));
   bCountrySel.addEventListener('change', e=>bPopulateStates(e.target.value));
   bStateSel.addEventListener('change', ()=>bPopulateCities(bCountrySel.value, bStateSel.value));
-
-  // Expose helpers for billing sync
   window.__MKGeo = { populateStates, populateCities, bPopulateStates, bPopulateCities, countrySel, stateSel, citySel, bCountrySel, bStateSel, bCitySel };
 })();
 
@@ -323,11 +308,9 @@ function setBillingDisabled(disabled){
 async function syncBillingFromAddress(){
   const h=window.__MKGeo || {};
   const { countrySel, stateSel, citySel, bCountrySel } = h;
-  // Lines and postal
   document.getElementById('billing_address_line1').value = document.getElementById('address_line1').value || '';
   document.getElementById('billing_address_line2').value = document.getElementById('address_line2').value || '';
   document.getElementById('billing_postal_code').value = document.getElementById('postal_code').value || '';
-  // Country/Province/City
   if (countrySel && bCountrySel){
     const c = countrySel.value || '';
     bCountrySel.value = c;
@@ -342,18 +325,41 @@ async function syncBillingFromAddress(){
 }
 const billingSameEl = document.getElementById('billing_same');
 if (billingSameEl){
-  billingSameEl.addEventListener('change', async ()=>{
-    if (billingSameEl.checked){ await syncBillingFromAddress(); setBillingDisabled(true); }
-    else { setBillingDisabled(false); }
-  });
-  // When address changes and checkbox is on, keep in sync
+  billingSameEl.addEventListener('change', async ()=>{ if (billingSameEl.checked){ await syncBillingFromAddress(); setBillingDisabled(true); } else { setBillingDisabled(false); } });
   const addrIds=['address_line1','address_line2','postal_code'];
   for (const id of addrIds){ const el=document.getElementById(id); if (el){ el.addEventListener('input', ()=>{ if (billingSameEl.checked) syncBillingFromAddress(); }); } }
-  const h = window.__MKGeo || {};
-  // Also sync on dropdown changes
   document.getElementById('country').addEventListener('change', ()=>{ if (billingSameEl.checked) syncBillingFromAddress(); });
   document.getElementById('province').addEventListener('change', ()=>{ if (billingSameEl.checked) syncBillingFromAddress(); });
   document.getElementById('city').addEventListener('change', ()=>{ if (billingSameEl.checked) syncBillingFromAddress(); });
+}
+
+// Helpers to ensure async option lists are ready
+async function ensureSettingsLoaded(){
+  const typeSel = document.getElementById('client_type');
+  const statusSel = document.getElementById('client_status');
+  if ((typeSel && typeSel.options.length>1) && (statusSel && statusSel.options.length>1)) return;
+  try{
+    const token = MKHubUI.getTokenOrRedirect();
+    const s = await fetch('/settings', { headers:{ Authorization:'Bearer '+token } }).then(x=>x.json());
+    const types = s.client_types || [];
+    const statuses = s.client_statuses || [];
+    if (typeSel && typeSel.options.length<=1){ for (const it of types){ const o=document.createElement('option'); o.value=it.value||it.label; o.textContent=it.label; typeSel.appendChild(o); } }
+    if (statusSel && statusSel.options.length<=1){ for (const it of statuses){ const o=document.createElement('option'); o.value=it.value||it.label; o.textContent=it.label; statusSel.appendChild(o); } }
+  }catch(e){}
+}
+function delay(ms){ return new Promise(res=>setTimeout(res, ms)); }
+async function ensureGeoReady(){ for (let i=0;i<50;i++){ if (window.__MKGeo && typeof window.__MKGeo.populateStates==='function') return; await delay(50); } }
+async function setAddressSelects(countryId, provinceId, cityId, country, province, city){
+  const h=window.__MKGeo||{};
+  const cSel=document.getElementById(countryId); const pSel=document.getElementById(provinceId); const ciSel=document.getElementById(cityId);
+  if (!cSel || !pSel || !ciSel) return;
+  if (country){ cSel.value = country; }
+  const fnStates = countryId.startsWith('billing_') ? h.bPopulateStates : h.populateStates;
+  const fnCities = countryId.startsWith('billing_') ? h.bPopulateCities : h.populateCities;
+  if (fnStates) await fnStates(country || cSel.value);
+  if (province){ pSel.value = province; }
+  if (fnCities) await fnCities(country || cSel.value, province || pSel.value);
+  if (city){ ciSel.value = city; }
 }
 
 load();
