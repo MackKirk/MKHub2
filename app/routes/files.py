@@ -3,6 +3,7 @@ from datetime import datetime
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import Response
 from sqlalchemy.orm import Session
 from slugify import slugify
 
@@ -71,4 +72,44 @@ def download(file_id: str, db: Session = Depends(get_db), storage: StorageProvid
     if not url:
         raise HTTPException(status_code=404, detail="Not available")
     return {"download_url": url, "expires_in": 300}
+
+
+@router.get("/{file_id}/thumbnail")
+def thumbnail(file_id: str, w: int = 200, db: Session = Depends(get_db), storage: StorageProvider = Depends(get_storage)):
+    fo: Optional[FileObject] = db.query(FileObject).filter(FileObject.id == file_id).first()
+    if not fo:
+        raise HTTPException(status_code=404, detail="File not found")
+    url = storage.get_download_url(fo.key, expires_s=300)
+    if not url:
+        raise HTTPException(status_code=404, detail="Not available")
+    # Fetch and convert to small PNG
+    try:
+        import io
+        import httpx
+        from PIL import Image as PILImage
+        try:
+            from pillow_heif import register_heif_opener
+            register_heif_opener()
+        except Exception:
+            pass
+        with httpx.stream("GET", url) as r:
+            r.raise_for_status()
+            buf = io.BytesIO()
+            for chunk in r.iter_bytes():
+                buf.write(chunk)
+        buf.seek(0)
+        with PILImage.open(buf) as im:
+            im = im.convert("RGB")
+            # Resize to width maintaining aspect
+            target_w = max(80, min(1024, int(w or 200)))
+            scale = target_w / float(im.width)
+            target_h = int(im.height * scale)
+            im = im.resize((target_w, max(1, target_h)))
+            out = io.BytesIO()
+            im.save(out, format="PNG", optimize=True)
+            out.seek(0)
+            return Response(content=out.read(), media_type="image/png")
+    except Exception:
+        # Fallback to direct download if conversion fails
+        return Response(status_code=302, headers={"Location": url})
 
