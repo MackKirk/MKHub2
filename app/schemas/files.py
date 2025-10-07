@@ -21,4 +21,5 @@ class ConfirmRequest(BaseModel):
     key: str
     size_bytes: int
     checksum_sha256: str
+    content_type: Optional[str] = None
 

@@ -294,7 +294,7 @@ document.getElementById('uploadSiteFile').addEventListener('click', async ()=>{
   const up = await fetch('/files/upload', { method:'POST', headers:{ 'Content-Type':'application/json', Authorization:'Bearer '+token }, body: JSON.stringify(upReq) }).then(x=>x.json());
   const putResp = await fetch(up.upload_url, { method:'PUT', headers:{ 'Content-Type': upReq.content_type, 'x-ms-blob-type': 'BlockBlob' }, body: f });
   if (!putResp.ok) return;
-  const conf = await fetch('/files/confirm', { method:'POST', headers:{ 'Content-Type':'application/json', Authorization:'Bearer '+token }, body: JSON.stringify({ key: up.key, size_bytes: f.size, checksum_sha256: 'na' }) }).then(x=>x.json());
+  const conf = await fetch('/files/confirm', { method:'POST', headers:{ 'Content-Type':'application/json', Authorization:'Bearer '+token }, body: JSON.stringify({ key: up.key, size_bytes: f.size, checksum_sha256: 'na', content_type: (f.type||'application/octet-stream') }) }).then(x=>x.json());
   await fetch(`/clients/${id}/files?file_object_id=${encodeURIComponent(conf.id)}&category=site-docs&original_name=${encodeURIComponent(f.name)}${site?`&site_id=${encodeURIComponent(site)}`:''}`, { method:'POST', headers:{ Authorization:'Bearer '+token } });
   await loadSiteFiles();
 });

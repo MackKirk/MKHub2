@@ -55,6 +55,7 @@ def confirm(req: ConfirmRequest, db: Session = Depends(get_db)):
         key=req.key,
         size_bytes=req.size_bytes,
         checksum_sha256=req.checksum_sha256,
+        content_type=req.content_type,
     )
     db.add(fo)
     db.commit()
