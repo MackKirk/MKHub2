@@ -114,6 +114,17 @@ def create_app() -> FastAPI:
                     conn.execute(text("ALTER TABLE clients ADD COLUMN IF NOT EXISTS created_by UUID"))
                     conn.execute(text("ALTER TABLE clients ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ"))
                     conn.execute(text("ALTER TABLE clients ADD COLUMN IF NOT EXISTS updated_by UUID"))
+                    # Ensure employee notes table exists
+                    conn.execute(text("CREATE TABLE IF NOT EXISTS employee_notes (\n"
+                                       "id UUID PRIMARY KEY,\n"
+                                       "user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,\n"
+                                       "category VARCHAR(100),\n"
+                                       "text VARCHAR(2000) NOT NULL,\n"
+                                       "created_at TIMESTAMPTZ DEFAULT NOW(),\n"
+                                       "created_by UUID REFERENCES users(id),\n"
+                                       "updated_at TIMESTAMPTZ,\n"
+                                       "updated_by UUID\n"
+                                       ")"))
         except Exception:
             pass
         # Removed bootstrap admin creation: admins should be granted via roles after onboarding

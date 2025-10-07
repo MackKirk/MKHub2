@@ -452,6 +452,19 @@ class EmployeeDocument(Base):
 # Inventory domain
 # =====================
 
+# Employee notes
+class EmployeeNote(Base):
+    __tablename__ = "employee_notes"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    category: Mapped[Optional[str]] = mapped_column(String(100))
+    text: Mapped[str] = mapped_column(String(2000))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    created_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    updated_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
+
 class InventoryProduct(Base):
     __tablename__ = "inventory_products"
 

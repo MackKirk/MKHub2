@@ -13,6 +13,7 @@
     <a id="tab-emergency" href="#" onclick="showTab(event,'emergency')">Emergency</a>
     <a id="tab-docs" href="#" onclick="showTab(event,'docs')">Documents</a>
     <a id="tab-notes" href="#" onclick="showTab(event,'notes')">Notes</a>
+    <a id="tab-notes" href="#" onclick="showTab(event,'notes')">Notes</a>
     <a id="tab-training" href="#" onclick="showTab(event,'training')">Training</a>
     <a id="tab-benefits" href="#" onclick="showTab(event,'benefits')">Benefits</a>
     <a id="tab-perms" href="#" onclick="showTab(event,'perms')">Permissions</a>
@@ -214,6 +215,19 @@
     <button onclick="addDocument()">Add Document</button>
     <pre id="msgDocs" class="muted"></pre>
   </div>
+  <div id="notes" class="card" style="display:none">
+    <h3>Notes</h3>
+    <div id="notesList" class="card"></div>
+    <h4>Add Note</h4>
+    <div class="row">
+      <div class="field"><label>Category</label><input id="note_category" placeholder="e.g., Performance, HR, Safety"/></div>
+    </div>
+    <div class="row">
+      <div class="field" style="flex:1"><label>Text</label><textarea id="note_text" style="width:100%;height:100px"></textarea></div>
+    </div>
+    <button onclick="addNote()">Add Note</button>
+    <pre id="msgNotes" class="muted"></pre>
+  </div>
   <div id="roles" class="card" style="display:none">
     <h3>Roles & Permissions</h3>
     <div class="row">
@@ -332,6 +346,7 @@ async function load(){
     const tabPerms = document.getElementById('tab-perms');
     if (tabPerms){ tabPerms.style.display = canAdmin ? 'inline-block' : 'none'; }
   } catch(e) {}
+  await loadNotes();
 }
 async function save(){
   const token = MKHubUI.getTokenOrRedirect();
@@ -406,6 +421,9 @@ async function addEmergency(){ const token=MKHubUI.getTokenOrRedirect(); const b
 async function delEmergency(id){ const token=MKHubUI.getTokenOrRedirect(); await fetch('/auth/users/'+userId+'/emergency-contacts/'+id, { method:'DELETE', headers:{ Authorization:'Bearer '+token } }); await loadEmergency(); }
 async function loadEmergency(){ try{ const token=MKHubUI.getTokenOrRedirect(); const lst=await fetch('/auth/users/'+userId+'/emergency-contacts', { headers:{ Authorization:'Bearer '+token } }).then(x=>x.json()); const el=document.getElementById('emergList'); if (el) el.innerHTML = (lst||[]).map(e=>`<div style="display:flex;justify-content:space-between;border-bottom:1px solid #eee;padding:6px 0">`+`<div>${e.name} — ${e.relationship||''} ${e.mobile_phone||''}</div>`+`<button onclick=\"delEmergency('${e.id}')\">Remove</button>`+`</div>`).join('') || 'No contacts'; }catch(e){} }
 function showTab(ev, which){ ev && ev.preventDefault(); const tabs=['personal','job','timeoff','emergency','docs','notes','training','benefits','perms']; for (const k of tabs){ const el=document.getElementById(k==='perms'?'roles':k); if (el) el.style.display = (k===which) ? 'block':'none'; } for (const k of tabs){ const t=document.getElementById('tab-'+k); if (t){ if (k===which) t.classList.add('active'); else t.classList.remove('active'); } } if (which === 'perms' && document.getElementById('roles').style.display === 'block'){ const token = MKHubUI.getTokenOrRedirect(); fetch('/auth/users/'+userId, { headers:{ Authorization:'Bearer '+token }}).then(x=>x.json()).then(u=>{ document.getElementById('roles_in').value = (u.roles||[]).join(', '); }); } if (which === 'emergency'){ loadEmergency(); } }
+async function loadNotes(){ try{ const token=MKHubUI.getTokenOrRedirect(); const arr=await fetch('/auth/users/'+userId+'/notes', { headers:{ Authorization:'Bearer '+token } }).then(x=>x.json()); const el=document.getElementById('notesList'); if (el) el.innerHTML = (arr||[]).map(n=>`<div style="display:flex;justify-content:space-between;border-bottom:1px solid #eee;padding:6px 0">`+`<div>${n.category?`[${n.category}] `:''}${(n.text||'').replace(/</g,'&lt;')}</div>`+`<button onclick=\"delNote('${n.id}')\">Remove</button>`+`</div>`).join('') || 'No notes'; }catch(e){} }
+async function addNote(){ const token=MKHubUI.getTokenOrRedirect(); const body={ category: document.getElementById('note_category').value || null, text: document.getElementById('note_text').value || '' }; const r=await fetch('/auth/users/'+userId+'/notes', { method:'POST', headers:{ 'Content-Type':'application/json', Authorization:'Bearer '+token }, body: JSON.stringify(body) }); document.getElementById('msgNotes').textContent = await r.text(); document.getElementById('note_text').value=''; await loadNotes(); }
+async function delNote(id){ const token=MKHubUI.getTokenOrRedirect(); await fetch('/auth/users/'+userId+'/notes/'+id, { method:'DELETE', headers:{ Authorization:'Bearer '+token } }); await loadNotes(); }
 showTab(null, 'personal');
 async function saveRolesPerms(){
   const token = MKHubUI.getTokenOrRedirect();

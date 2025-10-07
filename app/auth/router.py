@@ -852,6 +852,46 @@ def delete_document(user_id: str, doc_id: str, db: Session = Depends(get_db), _=
     db.commit()
     return {"status": "ok"}
 
+
+# ===== Employee Notes =====
+@router.get("/users/{user_id}/notes")
+def list_notes(user_id: str, db: Session = Depends(get_db), _=Depends(require_permissions("users:read"))):
+    from ..models.models import EmployeeNote
+    rows = db.query(EmployeeNote).filter(EmployeeNote.user_id == user_id).order_by(EmployeeNote.created_at.desc()).all()
+    return [{
+        "id": str(n.id),
+        "category": n.category,
+        "text": n.text,
+        "created_at": n.created_at.isoformat() if n.created_at else None,
+        "created_by": str(n.created_by) if n.created_by else None,
+        "updated_at": n.updated_at.isoformat() if n.updated_at else None,
+        "updated_by": str(n.updated_by) if n.updated_by else None,
+    } for n in rows]
+
+
+@router.post("/users/{user_id}/notes")
+def create_note(user_id: str, payload: dict = Body(...), db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    from ..models.models import EmployeeNote
+    n = EmployeeNote(
+        user_id=user_id,
+        category=payload.get("category"),
+        text=(payload.get("text") or "").strip(),
+        created_by=user.id,
+    )
+    if not n.text:
+        raise HTTPException(status_code=400, detail="Note text is required")
+    db.add(n)
+    db.commit()
+    return {"id": str(n.id)}
+
+
+@router.delete("/users/{user_id}/notes/{note_id}")
+def delete_note(user_id: str, note_id: str, db: Session = Depends(get_db), _=Depends(require_permissions("users:write"))):
+    from ..models.models import EmployeeNote
+    db.query(EmployeeNote).filter(and_(EmployeeNote.user_id == user_id, EmployeeNote.id == note_id)).delete()
+    db.commit()
+    return {"status": "ok"}
+
 @router.get("/users/{user_id}/emergency-contacts")
 def list_emergency_contacts(user_id: str, db: Session = Depends(get_db), _=Depends(require_permissions("users:read"))):
     from ..models.models import EmployeeEmergencyContact
