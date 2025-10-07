@@ -11,6 +11,7 @@
     <form id="proposalForm" enctype="multipart/form-data">
       <input type="hidden" id="client_id" />
       <input type="hidden" id="site_id" />
+      <input type="hidden" id="proposal_created_for" name="proposal_created_for" />
       <h3>Company Info</h3>
       <div class="field"><label>Document Type</label><input type="text" name="cover_title" maxlength="22" required></div>
       <div class="field"><label>Order Number</label><input type="text" id="order_number" name="order_number" maxlength="10" required readonly></div>
@@ -50,6 +51,7 @@
 
       <button type="submit">Generate Proposal</button>
     </form>
+    <pre id="msg" class="muted"></pre>
   </div>
   <div id="downloadSection" class="card" style="display:none;">
     <h3>Proposal Generated</h3>
@@ -66,29 +68,31 @@ document.getElementById('client_id').value = clientId;
 document.getElementById('site_id').value = siteId;
 
 async function initPrefill(){
-  const token = MKHubUI.getTokenOrRedirect();
-  // Load customer and site
-  const cust = await fetch('/clients/'+clientId, { headers:{ Authorization:'Bearer '+token } }).then(x=>x.json());
-  const sites = await fetch('/clients/'+clientId+'/sites', { headers:{ Authorization:'Bearer '+token } }).then(x=>x.json());
-  const site = (sites||[]).find(s=>s.id===siteId) || null;
-  document.getElementById('company_name').value = (cust.display_name || cust.name || '').slice(0,50);
-  const addr = site ? [site.site_address_line1, site.site_city, site.site_province, site.site_country].filter(Boolean).join(', ') : [cust.address_line1, cust.city, cust.province, cust.country].filter(Boolean).join(', ');
-  document.getElementById('company_address').value = addr.slice(0,50);
   try{
-    const code = await fetch('/proposals/next-code?client_id='+encodeURIComponent(clientId)).then(x=>x.json());
-    if (code && code.order_number){ document.getElementById('order_number').value = code.order_number; }
-  }catch(e){}
-  // Load contacts
-  const contacts = await fetch('/clients/'+clientId+'/contacts', { headers:{ Authorization:'Bearer '+token } }).then(x=>x.json()).catch(()=>[]);
-  const sel = document.getElementById('contact_sel');
-  sel.innerHTML = '<option value="">Select...</option>' + (contacts||[]).map(c=>`<option value="${c.id}" data-email="${c.email||''}" data-phone="${c.phone||''}" data-name="${c.name||''}">${c.name||c.email||c.phone||c.id}</option>`).join('');
-  sel.addEventListener('change', ()=>{
-    const o = sel.options[sel.selectedIndex];
-    document.getElementById('contact_name').value = o.getAttribute('data-name')||'';
-    document.getElementById('contact_phone').value = o.getAttribute('data-phone')||'';
-    document.getElementById('contact_email').value = o.getAttribute('data-email')||'';
-  });
-  document.getElementById('info').innerHTML = `<strong>${cust.display_name || cust.name}</strong>${cust.code?` <span class=muted>(${cust.code})</span>`:''}` + (site?`<div class=muted>Site: ${(site.site_name||site.site_address_line1||'')}</div>`:'');
+    const token = MKHubUI.getTokenOrRedirect();
+    const cust = await fetch('/clients/'+clientId, { headers:{ Authorization:'Bearer '+token } }).then(x=>x.json());
+    const sites = await fetch('/clients/'+clientId+'/sites', { headers:{ Authorization:'Bearer '+token } }).then(x=>x.json());
+    const site = (sites||[]).find(s=>s.id===siteId) || null;
+    document.getElementById('company_name').value = (cust.display_name || cust.name || '').slice(0,50);
+    const addr = site ? [site.site_address_line1, site.site_city, site.site_province, site.site_country].filter(Boolean).join(', ') : [cust.address_line1, cust.city, cust.province, cust.country].filter(Boolean).join(', ');
+    document.getElementById('company_address').value = addr.slice(0,50);
+    try{
+      const code = await fetch('/proposals/next-code?client_id='+encodeURIComponent(clientId)).then(x=>x.json());
+      if (code && code.order_number){ document.getElementById('order_number').value = code.order_number; }
+    }catch(e){}
+    const contacts = await fetch('/clients/'+clientId+'/contacts', { headers:{ Authorization:'Bearer '+token } }).then(x=>x.json()).catch(()=>[]);
+    const sel = document.getElementById('contact_sel');
+    sel.innerHTML = '<option value="">Select...</option>' + (contacts||[]).map(c=>`<option value="${c.id}" data-email="${c.email||''}" data-phone="${c.phone||''}" data-name="${c.name||''}">${c.name||c.email||c.phone||c.id}</option>`).join('');
+    sel.addEventListener('change', ()=>{
+      const o = sel.options[sel.selectedIndex];
+      const nm = o.getAttribute('data-name')||'';
+      document.getElementById('proposal_created_for').value = nm;
+      document.getElementById('contact_name').value = nm;
+      document.getElementById('contact_phone').value = o.getAttribute('data-phone')||'';
+      document.getElementById('contact_email').value = o.getAttribute('data-email')||'';
+    });
+    document.getElementById('info').innerHTML = `<strong>${cust.display_name || cust.name}</strong>${cust.code?` <span class=muted>(${cust.code})</span>`:''}` + (site?`<div class=muted>Site: ${(site.site_name||site.site_address_line1||'')}</div>`:'');
+  }catch(e){ document.getElementById('msg').textContent = 'Prefill failed. Please ensure you opened from a site or are logged in.'; }
 }
 initPrefill();
 </script>
