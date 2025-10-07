@@ -1,0 +1,146 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Site</title>
+<link rel="stylesheet" href="/ui/styles.css">
+<script src="/ui/app.js"></script>
+<div id="sidebar"></div>
+<div class="main">
+  <h2>Site</h2>
+  <div class="row" style="justify-content: space-between; align-items:center">
+    <div id="breadcrumb" class="muted"></div>
+    <div>
+      <a id="backToCustomer" class="btn" href="#">Back to Customer</a>
+    </div>
+  </div>
+  <div class="tabs">
+    <a id="tab-overview" href="#" class="active" onclick="showTab(event,'overview')">Overview</a>
+    <a id="tab-files" href="#" onclick="showTab(event,'files')">Files</a>
+    <a id="tab-proposals" href="#" onclick="showTab(event,'proposals')">Proposals</a>
+    <a id="tab-projects" href="#" onclick="showTab(event,'projects')">Projects</a>
+  </div>
+
+  <div id="overview" class="card" style="display:block">
+    <h3>Details</h3>
+    <div id="siteInfo" class="card"></div>
+    <div class="row">
+      <div class="field"><label>Name</label><input id="sv_name" /></div>
+      <div class="field"><label>Address 1</label><input id="sv_address1" /></div>
+      <div class="field"><label>Address 2</label><input id="sv_address2" /></div>
+    </div>
+    <div class="row">
+      <div class="field"><label>City</label><input id="sv_city" /></div>
+      <div class="field"><label>Province/State</label><input id="sv_province" /></div>
+      <div class="field"><label>Postal/Zip</label><input id="sv_postal" /></div>
+      <div class="field"><label>Country</label><input id="sv_country" /></div>
+    </div>
+    <div class="row">
+      <div class="field" style="flex:1"><label>Notes</label><input id="sv_notes" /></div>
+    </div>
+    <div class="row" style="justify-content:flex-end"><button id="saveSite">Save</button></div>
+    <pre id="msgSite" class="muted"></pre>
+  </div>
+
+  <div id="files" class="card" style="display:none">
+    <h3>Files</h3>
+    <div class="row">
+      <input type="file" id="site_file" />
+      <button id="uploadSiteFile">Upload to Site</button>
+    </div>
+    <div id="siteFilesList" class="card"></div>
+  </div>
+
+  <div id="proposals" class="card" style="display:none">
+    <h3>Proposals</h3>
+    <div class="row" style="justify-content:flex-end"><button id="btnNewProposal">New Proposal</button></div>
+    <div class="muted">Use the button above to open the proposal form prefilled for this site.</div>
+  </div>
+
+  <div id="projects" class="card" style="display:none">
+    <h3>Projects</h3>
+    <div class="row" style="justify-content:flex-end"><button id="btnNewProject">New Project</button></div>
+    <div class="muted">Coming soon</div>
+  </div>
+</div>
+<script>
+MKHubUI.initSidebar('customers');
+const qp = new URLSearchParams(location.search);
+const clientId = qp.get('client_id');
+const siteId = qp.get('site_id');
+function showTab(ev, which){ ev && ev.preventDefault(); const tabs=['overview','files','proposals','projects']; for (const k of tabs){ const el=document.getElementById(k); if (el) el.style.display = (k===which) ? 'block':'none'; } for (const k of tabs){ const t=document.getElementById('tab-'+k); if (t){ if (k===which) t.classList.add('active'); else t.classList.remove('active'); } } if (which==='files'){ loadSiteFiles(); } }
+
+document.getElementById('backToCustomer').href = '/ui/customer.html?id=' + encodeURIComponent(clientId||'');
+
+document.getElementById('saveSite').addEventListener('click', async ()=>{
+  const body = {
+    site_name: document.getElementById('sv_name').value || null,
+    site_address_line1: document.getElementById('sv_address1').value || null,
+    site_address_line2: document.getElementById('sv_address2').value || null,
+    site_city: document.getElementById('sv_city').value || null,
+    site_province: document.getElementById('sv_province').value || null,
+    site_postal_code: document.getElementById('sv_postal').value || null,
+    site_country: document.getElementById('sv_country').value || null,
+    site_notes: document.getElementById('sv_notes').value || null,
+  };
+  const r = await fetch(`/clients/${clientId}/sites/${siteId}`, { method:'PATCH', headers:{ 'Content-Type':'application/json', Authorization:'Bearer '+MKHubUI.getTokenOrRedirect() }, body: JSON.stringify(body) });
+  document.getElementById('msgSite').textContent = await r.text();
+  await loadSite();
+});
+
+async function loadSite(){
+  const token = MKHubUI.getTokenOrRedirect();
+  const sites = await fetch(`/clients/${clientId}/sites`, { headers:{ Authorization:'Bearer '+token } }).then(x=>x.json());
+  const s = (sites||[]).find(x=>x.id===siteId);
+  const info = document.getElementById('siteInfo');
+  if (!s){ info.textContent = 'Not found'; return; }
+  document.getElementById('breadcrumb').textContent = `Customer → Site: ${s.site_name || s.site_address_line1 || siteId}`;
+  const set=(id,v)=>{ const el=document.getElementById(id); if (el) el.value=v||''; };
+  set('sv_name', s.site_name);
+  set('sv_address1', s.site_address_line1);
+  set('sv_address2', s.site_address_line2);
+  set('sv_city', s.site_city);
+  set('sv_province', s.site_province);
+  set('sv_postal', s.site_postal_code);
+  set('sv_country', s.site_country);
+  set('sv_notes', s.site_notes);
+}
+
+async function loadSiteFiles(){
+  const token = MKHubUI.getTokenOrRedirect();
+  const arr = await fetch(`/clients/${clientId}/files?site_id=${encodeURIComponent(siteId||'')}`, { headers:{ Authorization:'Bearer '+token } }).then(x=>x.json());
+  const el = document.getElementById('siteFilesList');
+  if (!Array.isArray(arr) || !arr.length){ el.textContent = 'No files'; return; }
+  el.innerHTML = arr.map(f=>`<div style="display:flex;justify-content:space-between;border-bottom:1px solid #eee;padding:6px 0">`
+    + `<div>${f.original_name||f.key||f.file_object_id} <span class=muted>${(f.uploaded_at||'').slice(0,19).replace('T',' ')}</span></div>`
+    + `<div><button onclick="downloadFile('${f.file_object_id}')">Download</button></div>`
+  + `</div>`).join('');
+}
+
+document.getElementById('uploadSiteFile').addEventListener('click', async ()=>{
+  const f = document.getElementById('site_file').files[0]; if (!f) return;
+  const token = MKHubUI.getTokenOrRedirect();
+  const upReq = { project_id: null, client_id: clientId, employee_id: null, category_id: 'site-docs', original_name: f.name, content_type: f.type || 'application/octet-stream' };
+  const up = await fetch('/files/upload', { method:'POST', headers:{ 'Content-Type':'application/json', Authorization:'Bearer '+token }, body: JSON.stringify(upReq) }).then(x=>x.json());
+  const putResp = await fetch(up.upload_url, { method:'PUT', headers:{ 'Content-Type': upReq.content_type, 'x-ms-blob-type': 'BlockBlob' }, body: f });
+  if (!putResp.ok) return;
+  const conf = await fetch('/files/confirm', { method:'POST', headers:{ 'Content-Type':'application/json', Authorization:'Bearer '+token }, body: JSON.stringify({ key: up.key, size_bytes: f.size, checksum_sha256: 'na' }) }).then(x=>x.json());
+  await fetch(`/clients/${clientId}/files?file_object_id=${encodeURIComponent(conf.id)}&category=site-docs&original_name=${encodeURIComponent(f.name)}&site_id=${encodeURIComponent(siteId||'')}`, { method:'POST', headers:{ Authorization:'Bearer '+token } });
+  await loadSiteFiles();
+});
+
+async function downloadFile(fid){ try{ const j=await fetch('/files/'+fid+'/download').then(x=>x.json()); if (j && j.download_url){ window.open(j.download_url, '_blank'); } }catch(e){} }
+
+document.getElementById('btnNewProposal').addEventListener('click', ()=>{
+  // Open proposals form with context to enable draft association and site files
+  window.location.href = '/ui/proposals.html?client_id=' + encodeURIComponent(clientId||'') + '&site_id=' + encodeURIComponent(siteId||'');
+});
+
+document.getElementById('btnNewProject').addEventListener('click', async ()=>{
+  try{
+    const name = prompt('Project name'); if (!name) return;
+    const r = await fetch('/projects', { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ name, code: name.replace(/\s+/g,'-').slice(0,50), client_id: clientId }) });
+    const txt = await r.text(); alert(r.ok ? 'Project created' : txt);
+  }catch(e){ alert('Failed'); }
+});
+
+loadSite();
+</script>

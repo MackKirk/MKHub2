@@ -137,6 +137,16 @@ def create_app() -> FastAPI:
                     conn.execute(text("ALTER TABLE client_sites ADD COLUMN IF NOT EXISTS sort_index INTEGER DEFAULT 0"))
                     # Link files to sites optionally
                     conn.execute(text("ALTER TABLE client_files ADD COLUMN IF NOT EXISTS site_id UUID"))
+                    # Proposal drafts table
+                    conn.execute(text("CREATE TABLE IF NOT EXISTS proposal_drafts (\n"
+                                       "id UUID PRIMARY KEY,\n"
+                                       "client_id UUID,\n"
+                                       "site_id UUID,\n"
+                                       "user_id UUID,\n"
+                                       "title VARCHAR(255),\n"
+                                       "data JSONB,\n"
+                                       "updated_at TIMESTAMPTZ DEFAULT NOW()\n"
+                                       ")"))
                     # Ensure employee notes table exists
                     conn.execute(text("CREATE TABLE IF NOT EXISTS employee_notes (\n"
                                        "id UUID PRIMARY KEY,\n"

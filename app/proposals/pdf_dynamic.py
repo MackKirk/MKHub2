@@ -161,11 +161,10 @@ def build_dynamic_pages(data, output_path):
 
             for i, img in enumerate(sec.get("images", [])):
                 flow = []
-
+                # Prefer direct path from uploaded temp; future: support direct blob fetch for file_object_id
                 img_path = img.get("path", "")
-                if os.path.exists(img_path):
+                if img_path and os.path.exists(img_path):
                     try:
-                        # Open with PIL to validate and normalize; extension may be .bin
                         with PILImage.open(img_path) as im:
                             im = im.convert("RGB")
                             tmp_path = os.path.join(BASE_DIR, f"tmp_img_{uuid.uuid4().hex}.png")
@@ -174,7 +173,6 @@ def build_dynamic_pages(data, output_path):
                             flow.append(YellowLine2(width=260))
                             temp_images.append(tmp_path)
                     except Exception:
-                        # Skip invalid/unreadable images
                         pass
                 caption = img.get("caption", "")
 

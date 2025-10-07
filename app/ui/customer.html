@@ -242,9 +242,9 @@ async function loadSites(){
   try{
     const arr = await fetch('/clients/'+id+'/sites', { headers: auth() }).then(x=>x.json());
     const el = document.getElementById('sitesList');
-    el.innerHTML = (arr||[]).map(s=>`<div style="display:flex;justify-content:space-between;border-bottom:1px solid #eee;padding:6px 0">`
+    el.innerHTML = (arr||[]).map(s=>`<div style=\"display:flex;justify-content:space-between;border-bottom:1px solid #eee;padding:6px 0\">`
       + `<div><strong>${s.site_name||''}</strong>${s.site_address_line1?` — ${s.site_address_line1}`:''} ${s.site_city||''} ${s.site_province||''} ${s.site_country||''}</div>`
-      + `<div><button onclick=\"delSite('${s.id}')\">Delete</button></div>`
+      + `<div><a class=\"btn\" href=\"/ui/site.html?client_id=${id}&site_id=${s.id}\">Open</a> <button onclick=\"delSite('${s.id}')\">Delete</button></div>`
     + `</div>`).join('') || 'No sites';
     const sel = document.getElementById('site_sel'); if (sel){ sel.innerHTML = '<option value="">All</option>' + (arr||[]).map(s=>`<option value="${s.id}">${s.site_name||s.site_address_line1||s.id}</option>`).join(''); }
   }catch(e){}

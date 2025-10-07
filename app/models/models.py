@@ -281,6 +281,18 @@ class ClientFile(Base):
 # Legacy Employee model removed in favor of EmployeeProfile linked to User
 
 
+# Proposal drafts for saving in-progress proposals
+class ProposalDraft(Base):
+    __tablename__ = "proposal_drafts"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    client_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
+    site_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
+    user_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+    title: Mapped[Optional[str]] = mapped_column(String(255))
+    data: Mapped[Optional[dict]] = mapped_column(JSON)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+
 class CalendarSource(Base):
     __tablename__ = "calendar_sources"
 
