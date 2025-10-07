@@ -81,12 +81,14 @@ class ClientContactBase(BaseModel):
 
 
 class ClientContactCreate(ClientContactBase):
-    client_id: uuid.UUID
+    pass
 
 
 class ClientContactResponse(ClientContactBase):
     id: uuid.UUID
     client_id: uuid.UUID
+    class Config:
+        from_attributes = True
 class ClientSiteBase(BaseModel):
     site_name: Optional[str] = None
     site_address_line1: Optional[str] = None
@@ -100,7 +102,7 @@ class ClientSiteBase(BaseModel):
 
 
 class ClientSiteCreate(ClientSiteBase):
-    client_id: uuid.UUID
+    pass
 
 
 class ClientSiteResponse(ClientSiteBase):
@@ -110,8 +112,5 @@ class ClientSiteResponse(ClientSiteBase):
     class Config:
         from_attributes = True
 
-
-    class Config:
-        from_attributes = True
 
 

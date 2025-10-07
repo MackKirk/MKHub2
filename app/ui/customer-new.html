@@ -8,26 +8,7 @@
 <div class="main">
   <h2>New Customer</h2>
   <div class="card">
-    <h4>Communication Preferences</h4>
-    <div class="row">
-      <div class="field"><label>Language</label><input id="preferred_language" /></div>
-      <div class="field"><label>Preferred channels (comma-separated)</label><input id="preferred_channels" placeholder="Email, Phone, SMS"/></div>
-    </div>
-    <div class="row">
-      <div class="field"><label>Marketing opt-in</label><select id="marketing_opt_in"><option value="false">No</option><option value="true">Yes</option></select></div>
-      <div class="field"><label>Invoice delivery</label><input id="invoice_delivery_method" placeholder="Email PDF, Portal, Mail"/></div>
-      <div class="field"><label>Statement delivery</label><input id="statement_delivery_method" placeholder="Email PDF, Portal, Mail"/></div>
-    </div>
-    <div class="row">
-      <div class="field" style="flex:1"><label>CC emails for invoices (comma-separated)</label><input id="cc_emails_for_invoices" /></div>
-    </div>
-    <div class="row">
-      <div class="field" style="flex:1"><label>CC emails for estimates (comma-separated)</label><input id="cc_emails_for_estimates" /></div>
-    </div>
-    <div class="row">
-      <div class="field"><label>Do not contact</label><select id="do_not_contact"><option value="false">No</option><option value="true">Yes</option></select></div>
-      <div class="field" style="flex:1"><label>Reason</label><input id="do_not_contact_reason" /></div>
-    </div>
+    <h3>Details</h3>
     <div class="row">
       <div class="field"><label>Display name *</label><input id="display_name" required /></div>
       <div class="field"><label>Legal name</label><input id="legal_name" /></div>
@@ -61,6 +42,7 @@
     </div>
     <div class="row">
       <div class="field"><label>City</label><select id="city"><option value="">Select...</option></select></div>
+      <div class="field"><label>Postal/Zip</label><input id="postal_code" /></div>
     </div>
     <h4>Billing Address</h4>
     <div class="row">
@@ -74,6 +56,26 @@
     <div class="row">
       <div class="field"><label>City</label><select id="billing_city"><option value="">Select...</option></select></div>
       <div class="field"><label>Postal/Zip</label><input id="billing_postal_code" /></div>
+    </div>
+    <h4>Communication Preferences</h4>
+    <div class="row">
+      <div class="field"><label>Language</label><input id="preferred_language" /></div>
+      <div class="field"><label>Preferred channels (comma-separated)</label><input id="preferred_channels" placeholder="Email, Phone, SMS"/></div>
+    </div>
+    <div class="row">
+      <div class="field"><label>Marketing opt-in</label><select id="marketing_opt_in"><option value="false">No</option><option value="true">Yes</option></select></div>
+      <div class="field"><label>Invoice delivery</label><input id="invoice_delivery_method" placeholder="Email PDF, Portal, Mail"/></div>
+      <div class="field"><label>Statement delivery</label><input id="statement_delivery_method" placeholder="Email PDF, Portal, Mail"/></div>
+    </div>
+    <div class="row">
+      <div class="field" style="flex:1"><label>CC emails for invoices (comma-separated)</label><input id="cc_emails_for_invoices" /></div>
+    </div>
+    <div class="row">
+      <div class="field" style="flex:1"><label>CC emails for estimates (comma-separated)</label><input id="cc_emails_for_estimates" /></div>
+    </div>
+    <div class="row">
+      <div class="field"><label>Do not contact</label><select id="do_not_contact"><option value="false">No</option><option value="true">Yes</option></select></div>
+      <div class="field" style="flex:1"><label>Reason</label><input id="do_not_contact_reason" /></div>
     </div>
     <div class="row">
       <button id="save">Create Customer</button>
@@ -103,6 +105,7 @@ document.getElementById('save').addEventListener('click', async ()=>{
     country: document.getElementById('country').value || null,
     province: document.getElementById('province').value || null,
     city: document.getElementById('city').value || null,
+    postal_code: document.getElementById('postal_code').value || null,
     billing_address_line1: document.getElementById('billing_address_line1').value || null,
     billing_address_line2: document.getElementById('billing_address_line2').value || null,
     billing_country: document.getElementById('billing_country').value || null,
