@@ -318,7 +318,10 @@ function collectDraft(){
     }else{
       const images=[]; sec.querySelectorAll('.imageItem').forEach((imgItem)=>{
         const captionInput = imgItem.querySelector('input[type="text"]');
-        images.push({ caption: captionInput?.value || '' });
+        const fid = imgItem.dataset.fileId;
+        const entry = { caption: captionInput?.value || '' };
+        if (fid){ entry.file_object_id = fid; }
+        images.push(entry);
       });
       secs.push({ title, type:'images', images });
     }
@@ -358,7 +361,7 @@ async function loadDraft(){
     (d.additional_costs||[]).forEach(c=>{ addCostBtn.click(); const last = costsContainer.querySelector('.costItem:last-child'); last.querySelector('input[name^="cost_label_"]').value = c.label||''; last.querySelector('input[name^="cost_value_"]').value = c.value||''; });
     // Sections
     sectionsContainer.innerHTML = '';
-    (d.sections||[]).forEach(sec=>{ addSectionBtn.click(); const last = sectionsContainer.querySelector('.sectionItem:last-child'); last.querySelector(`[name^="section_title_"]`).value = sec.title||''; last.querySelector('[data-role="section-type"]').value = sec.type||'text'; renderSectionContent(last, sec.type||'text'); if (sec.type==='text'){ last.querySelector(`[name^="section_text_"]`).value = sec.text||''; } else { (sec.images||[]).forEach(im=>{ last.querySelector('[data-action="add-image"]').click(); const imgLast = last.querySelector('.imageItem:last-child'); imgLast.querySelector('input[type="text"]').value = im.caption||''; }); } });
+    (d.sections||[]).forEach(sec=>{ addSectionBtn.click(); const last = sectionsContainer.querySelector('.sectionItem:last-child'); last.querySelector(`[name^="section_title_"]`).value = sec.title||''; last.querySelector('[data-role="section-type"]').value = sec.type||'text'; renderSectionContent(last, sec.type||'text'); if (sec.type==='text'){ last.querySelector(`[name^="section_text_"]`).value = sec.text||''; } else { (sec.images||[]).forEach(im=>{ if (im && im.file_object_id){ const imagesBox = last.querySelector('[data-role="images-box"]'); const wrap=document.createElement('div'); wrap.className='imageItem'; wrap.dataset.fileId = im.file_object_id; wrap.innerHTML = `<div class="muted">From site: ${im.file_object_id}</div><label>Caption:<input type="text" maxlength="90"></label><div class="inline-actions"><button type="button" class="btn-danger" data-action="remove-image">Remove image</button></div>`; imagesBox.appendChild(wrap); wrap.querySelector('input[type="text"]').value = im.caption||''; } else { last.querySelector('[data-action="add-image"]').click(); const imgLast = last.querySelector('.imageItem:last-child'); imgLast.querySelector('input[type="text"]').value = (im && im.caption)||''; } }); } });
     calculateTotal();
   }catch(e){}
 }
