@@ -220,9 +220,13 @@ document.addEventListener("input", (e) => {
   }
 });
 
-document.getElementById("proposalForm").addEventListener("submit", async (e) => {
+const formEl = document.getElementById("proposalForm");
+const submitBtn = formEl ? formEl.querySelector('button[type="submit"]') : null;
+const msgEl = document.getElementById('msg');
+
+if (formEl) formEl.addEventListener("submit", async (e) => {
   e.preventDefault();
-  MKHubUI.getTokenOrRedirect();
+  try{ MKHubUI.getTokenOrRedirect(); }catch(e){}
   const form = e.target;
   const formData = new FormData(form);
 
@@ -264,16 +268,28 @@ document.getElementById("proposalForm").addEventListener("submit", async (e) => 
   formData.set("sections", JSON.stringify(sections));
   formData.set("total", String(calculateTotal()));
 
+  // Disable button and show progress
+  if (submitBtn){ submitBtn.disabled = true; submitBtn.textContent = 'Generating…'; }
+  if (msgEl){ msgEl.textContent = 'Generating PDF, please wait…'; }
   try {
     const resp = await fetch("/proposals/generate", { method: "POST", body: formData });
-    if (!resp.ok) { alert("Error generating proposal"); return; }
+    if (!resp.ok) {
+      const txt = await resp.text();
+      if (msgEl){ msgEl.textContent = 'Error: ' + txt; }
+      alert("Error generating proposal");
+      return;
+    }
     const blob = await resp.blob();
     const url = window.URL.createObjectURL(blob);
     document.getElementById("downloadLink").href = url;
     document.getElementById("downloadSection").style.display = "block";
+    if (msgEl){ msgEl.textContent = 'Done. Your proposal is ready.'; }
   } catch (err) {
     console.error(err);
+    if (msgEl){ msgEl.textContent = 'Request failed. Please try again.'; }
     alert("Request failed");
+  } finally {
+    if (submitBtn){ submitBtn.disabled = false; submitBtn.textContent = 'Generate Proposal'; }
   }
 });
 

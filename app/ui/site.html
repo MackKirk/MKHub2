@@ -56,8 +56,11 @@
 
   <div id="proposals" class="card" style="display:none">
     <h3>Proposals</h3>
-    <div class="row" style="justify-content:flex-end"><button id="btnNewProposal">New Proposal</button></div>
-    <div class="muted">Use the button above to open the proposal form prefilled for this site.</div>
+    <div class="row" style="justify-content:space-between; align-items:center">
+      <div class="muted">Use the button to create a new proposal or open existing ones.</div>
+      <div><button id="btnNewProposal">New Proposal</button></div>
+    </div>
+    <div id="siteProposalsList" class="card" style="margin-top:8px"></div>
   </div>
 
   <div id="projects" class="card" style="display:none">
@@ -169,4 +172,19 @@ document.getElementById('btnNewProject').addEventListener('click', async ()=>{
 });
 
 loadSite();
+
+async function loadSiteProposals(){
+  try{
+    const arr = await fetch(`/proposals?client_id=${encodeURIComponent(clientId||'')}&site_id=${encodeURIComponent(siteId||'')}`).then(x=>x.json());
+    const el = document.getElementById('siteProposalsList'); if (!el) return;
+    if (!Array.isArray(arr) || !arr.length){ el.textContent = 'No proposals yet'; return; }
+    el.innerHTML = arr.map(p => `<div style="display:flex;justify-content:space-between;border-bottom:1px solid #eee;padding:6px 0">`
+      + `<div><strong>${p.title||'Proposal'}</strong> <span class=muted>${(p.created_at||'').slice(0,19).replace('T',' ')}</span> ${p.order_number?`<span class=muted>(${p.order_number})</span>`:''}</div>`
+      + `<div><a class="btn" href="/ui/proposal-auto.html?draft_id=${p.id}&client_id=${encodeURIComponent(clientId||'')}&site_id=${encodeURIComponent(siteId||'')}">Open</a></div>`
+      + `</div>`).join('');
+  }catch(e){}
+}
+
+// Also refresh proposals when switching to Proposals tab
+const tabProposals = document.getElementById('tab-proposals'); if (tabProposals){ tabProposals.addEventListener('click', ()=>{ setTimeout(loadSiteProposals, 0); }); }
 </script>

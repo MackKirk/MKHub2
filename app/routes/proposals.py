@@ -5,7 +5,7 @@ import json
 import mimetypes
 from typing import Optional
 
-from fastapi import APIRouter, UploadFile, Form, Request, Depends, HTTPException, Body
+from fastapi import APIRouter, UploadFile, Form, Request, Depends, HTTPException, Body, Query
 from fastapi.responses import FileResponse
 
 from ..config import settings
@@ -261,16 +261,64 @@ def next_code(client_id: str, db: Session = Depends(get_db)):
 
 
 @router.post("")
-def save_proposal(payload: dict, db: Session = Depends(get_db)):
-    p = Proposal(
-        client_id=payload.get('client_id'),
-        site_id=payload.get('site_id'),
-        order_number=payload.get('order_number'),
-        title=payload.get('cover_title') or payload.get('title') or 'Proposal',
-        data=payload,
-    )
-    db.add(p)
-    db.commit()
-    return {"id": str(p.id)}
+def save_proposal(payload: dict = Body(...), db: Session = Depends(get_db)):
+    pid = payload.get('id')
+    title = payload.get('cover_title') or payload.get('title') or 'Proposal'
+    if pid:
+        p = db.query(Proposal).filter(Proposal.id == pid).first()
+        if not p:
+            raise HTTPException(status_code=404, detail='Proposal not found')
+        p.client_id = payload.get('client_id') or p.client_id
+        p.site_id = payload.get('site_id') or p.site_id
+        p.order_number = payload.get('order_number') or p.order_number
+        p.title = title
+        p.data = payload
+        db.commit()
+        return {"id": str(p.id)}
+    else:
+        p = Proposal(
+            client_id=payload.get('client_id'),
+            site_id=payload.get('site_id'),
+            order_number=payload.get('order_number'),
+            title=title,
+            data=payload,
+        )
+        db.add(p)
+        db.commit()
+        return {"id": str(p.id)}
+
+
+@router.get("")
+def list_proposals(client_id: Optional[str] = Query(None), site_id: Optional[str] = Query(None), db: Session = Depends(get_db)):
+    q = db.query(Proposal)
+    if client_id:
+        q = q.filter(Proposal.client_id == client_id)
+    if site_id:
+        q = q.filter(Proposal.site_id == site_id)
+    rows = q.order_by(Proposal.created_at.desc()).limit(100).all()
+    return [{
+        "id": str(r.id),
+        "client_id": str(r.client_id) if r.client_id else None,
+        "site_id": str(r.site_id) if r.site_id else None,
+        "order_number": r.order_number,
+        "title": r.title,
+        "created_at": r.created_at.isoformat() if r.created_at else None,
+    } for r in rows]
+
+
+@router.get("/{proposal_id}")
+def get_proposal(proposal_id: str, db: Session = Depends(get_db)):
+    p = db.query(Proposal).filter(Proposal.id == proposal_id).first()
+    if not p:
+        raise HTTPException(status_code=404, detail='Not found')
+    return {
+        "id": str(p.id),
+        "client_id": str(p.client_id) if p.client_id else None,
+        "site_id": str(p.site_id) if p.site_id else None,
+        "order_number": p.order_number,
+        "title": p.title,
+        "data": p.data or {},
+        "created_at": p.created_at.isoformat() if p.created_at else None,
+    }
 
 
