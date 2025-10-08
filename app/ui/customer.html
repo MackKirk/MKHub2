@@ -126,24 +126,7 @@
 
   <div id="sites" class="card" style="display:none">
     <h3>Sites</h3>
-    <div class="row">
-      <div class="field"><label>Select site</label><select id="site_sel"><option value="">All</option></select></div>
-      <div class="field" style="align-self:end"><button id="btnSiteFiles">View Files</button> <button id="btnSiteProposals">New Proposal</button> <button id="btnSiteProject">New Project</button></div>
-    </div>
     <div id="sitesList" class="card"></div>
-    <div class="card">
-      <h4>Site Files</h4>
-      <div class="tabs" style="margin-top:8px">
-        <a id="tab-site-docs" href="#" class="active" onclick="showSiteFilesTab(event,'docs')">Documents</a>
-        <a id="tab-site-pics" href="#" onclick="showSiteFilesTab(event,'pics')">Pictures</a>
-      </div>
-      <div class="row" style="margin-top:8px">
-        <input type="file" id="site_file" />
-        <button id="uploadSiteFile">Upload to Site</button>
-      </div>
-      <div id="siteFilesDocs" class="card" style="display:block"></div>
-      <div id="siteFilesPics" class="card" style="display:none"></div>
-    </div>
     <h4>Add Site</h4>
     <div class="row">
       <div class="field"><label>Name</label><input id="s_name" /></div>
