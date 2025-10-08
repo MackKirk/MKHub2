@@ -114,15 +114,26 @@ async def generate_proposal(
             url = storage.get_download_url(fo.key, expires_s=300)
             if not url:
                 return None
-            # Pick extension from content type if available, else default
-            ext = mimetypes.guess_extension(fo.content_type or "") or ".bin"
-            tmp_path = os.path.join(UPLOAD_DIR, f"{prefix}_{file_id}{ext}")
+            # Download original then normalize to PNG
+            in_ext = mimetypes.guess_extension(fo.content_type or "") or ".bin"
+            tmp_in = os.path.join(UPLOAD_DIR, f"{prefix}_in_{file_id}{in_ext}")
+            tmp_path = os.path.join(UPLOAD_DIR, f"{prefix}_{file_id}.png")
             async with httpx.AsyncClient(timeout=30.0) as client:
                 async with client.stream("GET", url) as r:
                     r.raise_for_status()
-                    with open(tmp_path, "wb") as out:
+                    with open(tmp_in, "wb") as out:
                         async for chunk in r.aiter_bytes():
                             out.write(chunk)
+            # Convert to PNG for consistent downstream handling
+            try:
+                with PILImage.open(tmp_in) as im:
+                    im = im.convert("RGB")
+                    im.save(tmp_path, format="PNG", optimize=True)
+            finally:
+                try:
+                    os.remove(tmp_in)
+                except Exception:
+                    pass
             return tmp_path
         except Exception:
             return None
@@ -152,11 +163,9 @@ async def generate_proposal(
             for img in sec.get("images", []):
                 # Prefer site-linked file object if present; fallback to uploaded field
                 if img.get("file_object_id"):
-                    fo = db.query(FileObject).filter(FileObject.id == img["file_object_id"]).first()
-                    if fo:
-                        # For file objects, use the storage key directly (downloader will fetch; pdf generator opens via blob fetch done earlier if needed)
-                        # For simplicity, leave path empty; pdf_dynamic will skip if path missing. Optionally could download to temp.
-                        pass
+                    tmp = await _download_fileobject_to_tmp(img["file_object_id"], f"secimg_{uuid.uuid4().hex}")
+                    if tmp:
+                        img["path"] = tmp
                 else:
                     field_name = img.get("file_field")
                     found = None
@@ -165,11 +174,21 @@ async def generate_proposal(
                             found = value
                             break
                     if found:
-                        ext = mimetypes.guess_extension(getattr(found, "content_type", "") or "") or ".png"
-                        tmp_path = os.path.join(UPLOAD_DIR, f"{field_name}_{uuid.uuid4()}{ext}")
-                        with open(tmp_path, "wb") as buffer:
+                        in_ext = mimetypes.guess_extension(getattr(found, "content_type", "") or "") or ".bin"
+                        tmp_in = os.path.join(UPLOAD_DIR, f"{field_name}_{uuid.uuid4()}{in_ext}")
+                        with open(tmp_in, "wb") as buffer:
                             shutil.copyfileobj(found.file, buffer)
-                        img["path"] = tmp_path
+                        try:
+                            with PILImage.open(tmp_in) as im:
+                                im = im.convert("RGB")
+                                tmp_out = os.path.join(UPLOAD_DIR, f"{field_name}_{uuid.uuid4()}.png")
+                                im.save(tmp_out, format="PNG", optimize=True)
+                                img["path"] = tmp_out
+                        finally:
+                            try:
+                                os.remove(tmp_in)
+                            except Exception:
+                                pass
 
     proposal_data = {
         "company_name": company_name,
