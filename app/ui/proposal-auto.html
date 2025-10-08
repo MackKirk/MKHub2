@@ -82,6 +82,30 @@
     <a id="downloadLink" href="#" download="ProjectProposal.pdf">Download PDF</a>
   </div>
 </div>
+
+<!-- Image Picker Modal -->
+<div id="imgPickerModal" class="modal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.4); align-items:center; justify-content:center; z-index:9999">
+  <div class="card" style="width:90%; max-width:900px; max-height:80%; overflow:auto;">
+    <div class="row" style="justify-content:space-between; align-items:center">
+      <h3>Select Picture</h3>
+      <button type="button" id="imgPickerClose">Close</button>
+    </div>
+    <div class="row" style="gap:8px; align-items:center; margin-bottom:8px">
+      <input type="file" id="imgPickerUpload" accept="image/*" />
+      <button type="button" id="imgPickerUploadBtn">Upload to Site</button>
+      <span class="muted">Uploads attach to this site</span>
+    </div>
+    <div id="imgPickerGrid" style="display:grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap:10px"></div>
+    <div class="row" style="justify-content:flex-end; margin-top:10px">
+      <button type="button" id="imgPickerSelect" disabled>Select</button>
+    </div>
+  </div>
+  <style>
+    .modal-item{ border:1px solid #eee; padding:6px; text-align:center; background:#fff }
+    .modal-item img{ max-width:100%; height:110px; object-fit:cover }
+    .modal-item.active{ outline:2px solid #3b82f6 }
+  </style>
+</div>
 <script src="/ui/proposals.js"></script>
 <script>
 document.addEventListener('DOMContentLoaded', async () => {
@@ -157,28 +181,108 @@ document.addEventListener('DOMContentLoaded', async () => {
   async function choosePic(target){
     try{
       if (!clientId){ alert('Missing customer'); return; }
+      // Open modal
+      const modal = document.getElementById('imgPickerModal'); if (!modal) return;
+      modal.style.display = 'flex';
+      modal.dataset.target = target;
+      const grid = document.getElementById('imgPickerGrid');
+      const selBtn = document.getElementById('imgPickerSelect'); selBtn.disabled = true; selBtn.dataset.fileId='';
+      grid.innerHTML = 'Loading…';
       const token = window.MKHubUI ? MKHubUI.getTokenOrRedirect() : localStorage.getItem('user_token');
       const url = '/clients/'+encodeURIComponent(clientId)+'/files' + (siteId? ('?site_id='+encodeURIComponent(siteId)) : '');
       const arr = await fetch(url, { headers: token? { Authorization:'Bearer '+token } : {} }).then(x=>x.json());
       const pics = (arr||[]).filter(f=> (f.is_image===true) || String(f.content_type||'').startsWith('image/'));
-      if (!pics.length){ alert('No pictures found for this customer'); return; }
-      const names = pics.map((f,i)=>`${i+1}. ${f.original_name || f.key || f.file_object_id}`).join('\n');
-      const pick = prompt(`Choose image number:\n${names}`);
-      const idx = parseInt(pick||'',10)-1; if (!(idx>=0 && idx<pics.length)) return;
-      const chosen = pics[idx];
-      if (target==='cover'){
-        const hid = document.getElementById('cover_file_object_id'); if (hid) hid.value = chosen.file_object_id;
-        const info = document.getElementById('coverPickInfo'); if (info) info.textContent = (chosen.original_name||chosen.key||chosen.file_object_id);
-        const fi = document.querySelector('input[name="cover_image"]'); if (fi) fi.value = '';
-      } else {
-        const hid = document.getElementById('page2_file_object_id'); if (hid) hid.value = chosen.file_object_id;
-        const info = document.getElementById('page2PickInfo'); if (info) info.textContent = (chosen.original_name||chosen.key||chosen.file_object_id);
-        const fi = document.querySelector('input[name="page2_image"]'); if (fi) fi.value = '';
-      }
+      if (!pics.length){ grid.textContent = 'No pictures yet'; selBtn.disabled = true; return; }
+      const frag = document.createDocumentFragment();
+      pics.forEach(f=>{
+        const item = document.createElement('div'); item.className='modal-item'; item.tabIndex=0; item.dataset.fileId = f.file_object_id;
+        const img = document.createElement('img'); img.alt = f.original_name||f.key||f.file_object_id; img.src = `/files/${f.file_object_id}/thumbnail?w=300`;
+        const cap = document.createElement('div'); cap.className='muted'; cap.style.fontSize='12px'; cap.textContent = f.original_name||'';
+        item.appendChild(img); item.appendChild(cap);
+        item.addEventListener('click', ()=>{
+          grid.querySelectorAll('.modal-item').forEach(el=>el.classList.remove('active'));
+          item.classList.add('active'); selBtn.disabled = false; selBtn.dataset.fileId = f.file_object_id; selBtn.dataset.fileName = (f.original_name||f.key||f.file_object_id);
+        });
+        frag.appendChild(item);
+      });
+      grid.innerHTML=''; grid.appendChild(frag);
     }catch(e){}
   }
   const btnCover = document.getElementById('chooseCoverFromPics'); if (btnCover){ btnCover.addEventListener('click', ()=>choosePic('cover')); }
   const btnPage2 = document.getElementById('choosePage2FromPics'); if (btnPage2){ btnPage2.addEventListener('click', ()=>choosePic('page2')); }
+
+  // Modal controls
+  const modal = document.getElementById('imgPickerModal');
+  const modalClose = document.getElementById('imgPickerClose'); if (modalClose){ modalClose.addEventListener('click', ()=>{ modal.style.display='none'; }); }
+  const modalSelect = document.getElementById('imgPickerSelect'); if (modalSelect){ modalSelect.addEventListener('click', ()=>{
+    const fid = modalSelect.dataset.fileId || '';
+    const fname = modalSelect.dataset.fileName || fid;
+    const target = modal.dataset.target || '';
+    if (!fid || !target){ return; }
+    if (target==='cover'){
+      const hid = document.getElementById('cover_file_object_id'); if (hid) hid.value = fid;
+      const info = document.getElementById('coverPickInfo'); if (info) info.textContent = fname;
+      const fi = document.querySelector('input[name="cover_image"]'); if (fi) fi.value = '';
+    } else if (target==='page2'){
+      const hid = document.getElementById('page2_file_object_id'); if (hid) hid.value = fid;
+      const info = document.getElementById('page2PickInfo'); if (info) info.textContent = fname;
+      const fi = document.querySelector('input[name="page2_image"]'); if (fi) fi.value = '';
+    } else {
+      // Section images: target holds section element id
+      const section = document.getElementById(target);
+      if (section){
+        const imagesBox = section.querySelector('[data-role="images-box"]');
+        if (imagesBox){
+          // create imageItem with file_object_id
+          const wrapper = document.createElement('div'); wrapper.className='imageItem';
+          wrapper.dataset.fileId = fid;
+          wrapper.innerHTML = `
+            <div class="muted">From site: ${fname}</div>
+            <label>Caption:
+              <input type="text" maxlength="90">
+            </label>
+            <div class="inline-actions">
+              <button type="button" class="btn-danger" data-action="remove-image">Remove image</button>
+            </div>
+          `;
+          imagesBox.appendChild(wrapper);
+          if (window.scheduleAutosave){ window.scheduleAutosave(); }
+        }
+      }
+    }
+    modal.style.display='none';
+  }); }
+
+  // Modal upload to site
+  const upBtn = document.getElementById('imgPickerUploadBtn'); if (upBtn){ upBtn.addEventListener('click', async ()=>{
+    try{
+      const f = document.getElementById('imgPickerUpload').files[0]; if (!f){ alert('Choose an image'); return; }
+      const token = window.MKHubUI ? MKHubUI.getTokenOrRedirect() : localStorage.getItem('user_token');
+      // Upload to files service, then attach to site
+      const upReq = { project_id: null, client_id: clientId, employee_id: null, category_id: 'site-docs', original_name: f.name, content_type: f.type || 'application/octet-stream' };
+      const up = await fetch('/files/upload', { method:'POST', headers:{ 'Content-Type':'application/json', Authorization:'Bearer '+token }, body: JSON.stringify(upReq) }).then(x=>x.json());
+      const putResp = await fetch(up.upload_url, { method:'PUT', headers:{ 'Content-Type': upReq.content_type, 'x-ms-blob-type': 'BlockBlob' }, body: f });
+      if (!putResp.ok){ alert('Upload failed'); return; }
+      const conf = await fetch('/files/confirm', { method:'POST', headers:{ 'Content-Type':'application/json', Authorization:'Bearer '+token }, body: JSON.stringify({ key: up.key, size_bytes: f.size, checksum_sha256: 'na', content_type: (f.type||'application/octet-stream') }) }).then(x=>x.json());
+      await fetch(`/clients/${encodeURIComponent(clientId)}/files?file_object_id=${encodeURIComponent(conf.id)}&category=site-docs&original_name=${encodeURIComponent(f.name)}&site_id=${encodeURIComponent(siteId||'')}`, { method:'POST', headers:{ Authorization:'Bearer '+token } });
+      // Refresh grid
+      choosePic(modal.dataset.target||'cover');
+    }catch(e){ alert('Upload failed'); }
+  }); }
+
+  // Expose picker for section images
+  window.MK_OpenImagePickerForSection = async function(sectionEl){
+    try{
+      const id = sectionEl?.getAttribute('data-section-id') ? sectionEl.getAttribute('data-section-id') : (sectionEl?.id || '');
+      let secId = id;
+      if (!secId){
+        // ensure section has an id
+        secId = 'section_' + (sectionEl?.dataset?.sectionId || Math.random().toString(36).slice(2));
+        sectionEl.id = secId;
+      }
+      await choosePic(secId);
+    }catch(e){}
+  }
 
   // Save proposal (create or update)
   const saveBtn = document.getElementById('saveProposalBtn');

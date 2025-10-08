@@ -172,6 +172,7 @@ sectionsContainer.addEventListener("click", (e) => {
 
 async function chooseSiteFileAndInsert(section){
   try{
+    if (window.MK_OpenImagePickerForSection){ window.MK_OpenImagePickerForSection(section); return; }
     if (!draftClientId || !draftSiteId){ alert('Open this from a site to choose site files.'); return; }
     const token = MKHubUI.getTokenOrRedirect();
     const files = await fetch(`/clients/${encodeURIComponent(draftClientId)}/files?site_id=${encodeURIComponent(draftSiteId)}`, { headers:{ Authorization:'Bearer '+token } }).then(x=>x.json());
