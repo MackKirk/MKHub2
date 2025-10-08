@@ -273,13 +273,11 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Expose picker for section images
   window.MK_OpenImagePickerForSection = async function(sectionEl){
     try{
-      const id = sectionEl?.getAttribute('data-section-id') ? sectionEl.getAttribute('data-section-id') : (sectionEl?.id || '');
-      let secId = id;
-      if (!secId){
-        // ensure section has an id
-        secId = 'section_' + (sectionEl?.dataset?.sectionId || Math.random().toString(36).slice(2));
-        sectionEl.id = secId;
-      }
+      const dataId = sectionEl?.getAttribute('data-section-id') || sectionEl?.dataset?.sectionId || '';
+      let secId = dataId || sectionEl?.id || '';
+      if (!secId){ secId = 'section_' + Math.random().toString(36).slice(2); }
+      // Always assign the element id so the modal can resolve it later
+      sectionEl.id = secId;
       await choosePic(secId);
     }catch(e){}
   }
