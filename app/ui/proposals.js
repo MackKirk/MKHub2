@@ -356,6 +356,18 @@ async function loadDraft(){
     // Fill simple fields
     const form = document.getElementById('proposalForm');
     ['cover_title','order_number','company_name','company_address','date','proposal_created_for','primary_contact_name','primary_contact_phone','primary_contact_email','type_of_project','other_notes','bid_price','terms_text'].forEach(k=>{ const el=form.querySelector(`[name="${k}"]`); if(el) el.value = d[k] || ''; });
+    // Restore cover/page2 file_object_id picks if present in payload
+    try{
+      if (d.cover_file_object_id){ const hid=document.getElementById('cover_file_object_id'); if (hid) hid.value = d.cover_file_object_id; const info=document.getElementById('coverPickInfo'); if (info) info.textContent = d.cover_file_object_id; }
+      if (d.page2_file_object_id){ const hid=document.getElementById('page2_file_object_id'); if (hid) hid.value = d.page2_file_object_id; const info=document.getElementById('page2PickInfo'); if (info) info.textContent = d.page2_file_object_id; }
+    }catch(e){}
+    // Debug indicators for cover/page2 restoration
+    try{
+      const dbg = document.getElementById('imgDebug');
+      if (dbg){
+        dbg.textContent = `cover_file_object_id: ${(form.querySelector('#cover_file_object_id')?.value||'')} | page2_file_object_id: ${(form.querySelector('#page2_file_object_id')?.value||'')}`;
+      }
+    }catch(e){}
     // Additional costs
     costsContainer.innerHTML = '';
     (d.additional_costs||[]).forEach(c=>{ addCostBtn.click(); const last = costsContainer.querySelector('.costItem:last-child'); last.querySelector('input[name^="cost_label_"]').value = c.label||''; last.querySelector('input[name^="cost_value_"]').value = c.value||''; });

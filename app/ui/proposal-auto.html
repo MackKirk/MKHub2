@@ -33,6 +33,7 @@
       <div class="field"><label>Other Notes</label><textarea name="other_notes" maxlength="260"></textarea></div>
 
       <h3>Images</h3>
+      <div id="imgDebug" class="muted"></div>
       <div class="field"><label>Cover Image</label>
         <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap">
           <input type="file" name="cover_image" accept="image/*">
@@ -146,7 +147,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       const dateEl = document.getElementById('date'); if (dateEl) dateEl.value = `${yyyy}-${mm}-${dd}`;
       try{
         const code = await fetch('/proposals/next-code?client_id='+encodeURIComponent(clientId)).then(x=>x.json());
-        if (code && code.order_number){ const on = document.getElementById('order_number'); if (on) on.value = code.order_number; }
+        if (code && code.order_number){ const on = document.getElementById('order_number'); if (on && !on.value) on.value = code.order_number; }
       }catch(e){}
       const contacts = await fetch('/clients/'+clientId+'/contacts', { headers: token? { Authorization:'Bearer '+token } : {} }).then(x=>x.json()).catch(()=>[]);
       const selFor = document.getElementById('contact_sel_for');
