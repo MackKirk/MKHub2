@@ -4,6 +4,11 @@ from reportlab.pdfgen import canvas
 from reportlab.lib import colors
 from reportlab.lib.utils import ImageReader
 from PIL import Image, ImageOps
+try:
+    from pillow_heif import register_heif_opener  # HEIC/HEIF support
+    register_heif_opener()
+except Exception:
+    pass
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from datetime import datetime

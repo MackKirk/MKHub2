@@ -23,6 +23,12 @@ from ..schemas import files as file_schemas
 
 from ..proposals.pdf_merge import generate_pdf
 import httpx
+from PIL import Image as PILImage
+try:
+    from pillow_heif import register_heif_opener
+    register_heif_opener()
+except Exception:
+    pass
 
 
 router = APIRouter(prefix="/proposals", tags=["proposals"])
@@ -66,14 +72,37 @@ async def generate_proposal(
     cover_path, page2_path = None, None
 
     if cover_image:
-        cover_path = os.path.join(UPLOAD_DIR, f"cover_{file_id}.png")
-        with open(cover_path, "wb") as buffer:
+        # Normalize to PNG using PIL (handles HEIC via pillow-heif)
+        tmp_ext = mimetypes.guess_extension(getattr(cover_image, "content_type", "") or "") or ".bin"
+        tmp_in = os.path.join(UPLOAD_DIR, f"cover_in_{file_id}{tmp_ext}")
+        with open(tmp_in, "wb") as buffer:
             shutil.copyfileobj(cover_image.file, buffer)
+        try:
+            with PILImage.open(tmp_in) as im:
+                im = im.convert("RGB")
+                cover_path = os.path.join(UPLOAD_DIR, f"cover_{file_id}.png")
+                im.save(cover_path, format="PNG", optimize=True)
+        finally:
+            try:
+                os.remove(tmp_in)
+            except Exception:
+                pass
 
     if page2_image:
-        page2_path = os.path.join(UPLOAD_DIR, f"page2_{file_id}.png")
-        with open(page2_path, "wb") as buffer:
+        tmp_ext = mimetypes.guess_extension(getattr(page2_image, "content_type", "") or "") or ".bin"
+        tmp_in = os.path.join(UPLOAD_DIR, f"page2_in_{file_id}{tmp_ext}")
+        with open(tmp_in, "wb") as buffer:
             shutil.copyfileobj(page2_image.file, buffer)
+        try:
+            with PILImage.open(tmp_in) as im:
+                im = im.convert("RGB")
+                page2_path = os.path.join(UPLOAD_DIR, f"page2_{file_id}.png")
+                im.save(page2_path, format="PNG", optimize=True)
+        finally:
+            try:
+                os.remove(tmp_in)
+            except Exception:
+                pass
 
     # If no direct upload, but a file_object_id is provided, download the image from storage
     storage: StorageProvider = BlobStorageProvider()

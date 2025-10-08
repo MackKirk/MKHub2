@@ -299,7 +299,13 @@ function collectDraft(){
   const out = {};
   fd.forEach((v,k)=>{ if (v instanceof File) return; out[k]=v; });
   // Attach constructed arrays
-  out.additional_costs = JSON.parse(document.getElementById('proposalForm').querySelector('[name="additional_costs"]').value || '[]');
+  const addCosts = [];
+  costsContainer.querySelectorAll('.costItem').forEach((item)=>{
+    const lbl = item.querySelector('input[name^="cost_label_"]')?.value?.trim();
+    const val = item.querySelector('input[name^="cost_value_"]')?.value;
+    if (lbl && val !== '' && val !== null && val !== undefined){ addCosts.push({ label: lbl, value: parseFloat(val) }); }
+  });
+  out.additional_costs = addCosts;
   const secs = [];
   sectionsContainer.querySelectorAll('.sectionItem').forEach((sec)=>{
     const sectionId = sec.dataset.sectionId.replace('section_','');
@@ -334,8 +340,14 @@ async function saveDraft(){
 async function loadDraft(){
   if (!draftId) return;
   try{
-    const j = await fetch('/proposals/drafts/'+encodeURIComponent(draftId)).then(x=>x.json());
-    if (!j || !j.data) return;
+    let j = null;
+    try{
+      j = await fetch('/proposals/drafts/'+encodeURIComponent(draftId)).then(x=>x.json());
+    }catch(e){}
+    if (!j || !j.data){
+      try{ j = await fetch('/proposals/'+encodeURIComponent(draftId)).then(x=>x.json()); }catch(e){}
+      if (!j || !j.data) return;
+    }
     const d = j.data;
     // Fill simple fields
     const form = document.getElementById('proposalForm');
