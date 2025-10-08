@@ -74,76 +74,93 @@
 </div>
 <script src="/ui/proposals.js"></script>
 <script>
-MKHubUI.initSidebar('home');
-const qp = new URLSearchParams(location.search);
-const clientId = qp.get('client_id') || '';
-const siteId = qp.get('site_id') || '';
-document.getElementById('client_id').value = clientId;
-document.getElementById('site_id').value = siteId;
-
-async function initPrefill(){
+document.addEventListener('DOMContentLoaded', async () => {
+  // Sidebar init with fallback if MKHubUI not present yet
   try{
-    const token = MKHubUI.getTokenOrRedirect();
-    const cust = await fetch('/clients/'+clientId, { headers:{ Authorization:'Bearer '+token } }).then(x=>x.json());
-    const sites = await fetch('/clients/'+clientId+'/sites', { headers:{ Authorization:'Bearer '+token } }).then(x=>x.json());
-    const site = (sites||[]).find(s=>s.id===siteId) || null;
-    document.getElementById('company_name').value = (cust.display_name || cust.name || '').slice(0,50);
-    const addr = site ? [site.site_address_line1, site.site_city, site.site_province, site.site_country].filter(Boolean).join(', ') : [cust.address_line1, cust.city, cust.province, cust.country].filter(Boolean).join(', ');
-    document.getElementById('company_address').value = addr.slice(0,50);
-    // preset today's date
-    const today = new Date();
-    const yyyy = today.getFullYear();
-    const mm = String(today.getMonth()+1).padStart(2,'0');
-    const dd = String(today.getDate()).padStart(2,'0');
-    const dateEl = document.getElementById('date'); if (dateEl) dateEl.value = `${yyyy}-${mm}-${dd}`;
-    try{
-      const code = await fetch('/proposals/next-code?client_id='+encodeURIComponent(clientId)).then(x=>x.json());
-      if (code && code.order_number){ document.getElementById('order_number').value = code.order_number; }
-    }catch(e){}
-    const contacts = await fetch('/clients/'+clientId+'/contacts', { headers:{ Authorization:'Bearer '+token } }).then(x=>x.json()).catch(()=>[]);
-    const sel = document.getElementById('contact_sel');
-    sel.innerHTML = '<option value="">Select...</option>' + (contacts||[]).map(c=>`<option value="${c.id}" data-email="${c.email||''}" data-phone="${c.phone||''}" data-name="${c.name||''}" data-primary="${c.is_primary?'1':'0'}">${c.name||c.email||c.phone||c.id}</option>`).join('');
-    sel.addEventListener('change', ()=>{
-      const o = sel.options[sel.selectedIndex];
-      const nm = o.getAttribute('data-name')||'';
-      document.getElementById('proposal_created_for').value = nm;
-      document.getElementById('contact_name').value = nm;
-      document.getElementById('contact_phone').value = o.getAttribute('data-phone')||'';
-      document.getElementById('contact_email').value = o.getAttribute('data-email')||'';
-    });
-    // auto-select primary contact if available
-    const primaryOpt = Array.from(sel.options).find(o=>o.getAttribute('data-primary')==='1');
-    if (primaryOpt){ sel.value = primaryOpt.value; sel.dispatchEvent(new Event('change')); }
-    document.getElementById('info').innerHTML = `<strong>${cust.display_name || cust.name}</strong>${cust.code?` <span class=muted>(${cust.code})</span>`:''}` + (site?`<div class=muted>Site: ${(site.site_name||site.site_address_line1||'')}</div>`:'');
-  }catch(e){ document.getElementById('msg').textContent = 'Prefill failed. Please ensure you opened from a site or are logged in.'; }
-}
-initPrefill();
-
-// Choose cover/page2 from customer pictures
-async function choosePic(target){
-  try{
-    if (!clientId){ alert('Missing customer'); return; }
-    const token = MKHubUI.getTokenOrRedirect();
-    const url = '/clients/'+encodeURIComponent(clientId)+'/files' + (siteId? ('?site_id='+encodeURIComponent(siteId)) : '');
-    const arr = await fetch(url, { headers:{ Authorization:'Bearer '+token } }).then(x=>x.json());
-    const pics = (arr||[]).filter(f=> (f.is_image===true) || String(f.content_type||'').startsWith('image/'));
-    if (!pics.length){ alert('No pictures found for this customer'); return; }
-    const names = pics.map((f,i)=>`${i+1}. ${f.original_name || f.key || f.file_object_id}`).join('\n');
-    const pick = prompt(`Choose image number:\n${names}`);
-    const idx = parseInt(pick||'',10)-1; if (!(idx>=0 && idx<pics.length)) return;
-    const chosen = pics[idx];
-    if (target==='cover'){
-      document.getElementById('cover_file_object_id').value = chosen.file_object_id;
-      document.getElementById('coverPickInfo').textContent = (chosen.original_name||chosen.key||chosen.file_object_id);
-      // clear file input to avoid conflicts
-      const fi = document.querySelector('input[name="cover_image"]'); if (fi) fi.value = '';
+    if (window.MKHubUI && typeof MKHubUI.initSidebar === 'function') {
+      MKHubUI.initSidebar('home');
     } else {
-      document.getElementById('page2_file_object_id').value = chosen.file_object_id;
-      document.getElementById('page2PickInfo').textContent = (chosen.original_name||chosen.key||chosen.file_object_id);
-      const fi = document.querySelector('input[name="page2_image"]'); if (fi) fi.value = '';
+      const mount = document.getElementById('sidebar');
+      if (mount) {
+        const html = await fetch('/ui/sidebar.html?v=' + Date.now()).then(r=>r.text()).catch(()=>null);
+        if (html) mount.outerHTML = html;
+      }
     }
   }catch(e){}
-}
-document.getElementById('chooseCoverFromPics').addEventListener('click', ()=>choosePic('cover'));
-document.getElementById('choosePage2FromPics').addEventListener('click', ()=>choosePic('page2'));
+
+  const qp = new URLSearchParams(location.search);
+  const clientId = qp.get('client_id') || '';
+  const siteId = qp.get('site_id') || '';
+  const clientHidden = document.getElementById('client_id'); if (clientHidden) clientHidden.value = clientId;
+  const siteHidden = document.getElementById('site_id'); if (siteHidden) siteHidden.value = siteId;
+
+  async function initPrefill(){
+    try{
+      const token = window.MKHubUI ? MKHubUI.getTokenOrRedirect() : localStorage.getItem('user_token');
+      if (!clientId){ throw new Error('missing client'); }
+      const cust = await fetch('/clients/'+clientId, { headers: token? { Authorization:'Bearer '+token } : {} }).then(x=>x.json());
+      const sites = await fetch('/clients/'+clientId+'/sites', { headers: token? { Authorization:'Bearer '+token } : {} }).then(x=>x.json());
+      const site = (sites||[]).find(s=>s.id===siteId) || null;
+      const nameEl = document.getElementById('company_name'); if (nameEl) nameEl.value = (cust.display_name || cust.name || '').slice(0,50);
+      const addr = site ? [site.site_address_line1, site.site_city, site.site_province, site.site_country].filter(Boolean).join(', ') : [cust.address_line1, cust.city, cust.province, cust.country].filter(Boolean).join(', ');
+      const addrEl = document.getElementById('company_address'); if (addrEl) addrEl.value = addr.slice(0,50);
+      // preset today's date
+      const today = new Date();
+      const yyyy = today.getFullYear();
+      const mm = String(today.getMonth()+1).padStart(2,'0');
+      const dd = String(today.getDate()).padStart(2,'0');
+      const dateEl = document.getElementById('date'); if (dateEl) dateEl.value = `${yyyy}-${mm}-${dd}`;
+      try{
+        const code = await fetch('/proposals/next-code?client_id='+encodeURIComponent(clientId)).then(x=>x.json());
+        if (code && code.order_number){ const on = document.getElementById('order_number'); if (on) on.value = code.order_number; }
+      }catch(e){}
+      const contacts = await fetch('/clients/'+clientId+'/contacts', { headers: token? { Authorization:'Bearer '+token } : {} }).then(x=>x.json()).catch(()=>[]);
+      const sel = document.getElementById('contact_sel');
+      if (sel){
+        sel.innerHTML = '<option value="">Select...</option>' + (contacts||[]).map(c=>`<option value="${c.id}" data-email="${c.email||''}" data-phone="${c.phone||''}" data-name="${c.name||''}" data-primary="${c.is_primary?'1':'0'}">${c.name||c.email||c.phone||c.id}</option>`).join('');
+        sel.addEventListener('change', ()=>{
+          const o = sel.options[sel.selectedIndex] || {};
+          const nm = o.getAttribute ? (o.getAttribute('data-name')||'') : '';
+          const setVal=(id,v)=>{ const el=document.getElementById(id); if (el) el.value=v; };
+          setVal('proposal_created_for', nm);
+          setVal('contact_name', nm);
+          setVal('contact_phone', o.getAttribute ? (o.getAttribute('data-phone')||'') : '');
+          setVal('contact_email', o.getAttribute ? (o.getAttribute('data-email')||'') : '');
+        });
+        const primaryOpt = Array.from(sel.options||[]).find(o=>o.getAttribute && o.getAttribute('data-primary')==='1');
+        if (primaryOpt){ sel.value = primaryOpt.value; sel.dispatchEvent(new Event('change')); }
+      }
+      const info = document.getElementById('info');
+      if (info){ info.innerHTML = `<strong>${cust.display_name || cust.name}</strong>${cust.code?` <span class=muted>(${cust.code})</span>`:''}` + (site?`<div class=muted>Site: ${(site.site_name||site.site_address_line1||'')}</div>`:''); }
+    }catch(e){ const msg=document.getElementById('msg'); if (msg) msg.textContent = 'Prefill failed. Please ensure you opened from a site or are logged in.'; }
+  }
+  initPrefill();
+
+  // Choose cover/page2 from customer pictures
+  async function choosePic(target){
+    try{
+      if (!clientId){ alert('Missing customer'); return; }
+      const token = window.MKHubUI ? MKHubUI.getTokenOrRedirect() : localStorage.getItem('user_token');
+      const url = '/clients/'+encodeURIComponent(clientId)+'/files' + (siteId? ('?site_id='+encodeURIComponent(siteId)) : '');
+      const arr = await fetch(url, { headers: token? { Authorization:'Bearer '+token } : {} }).then(x=>x.json());
+      const pics = (arr||[]).filter(f=> (f.is_image===true) || String(f.content_type||'').startsWith('image/'));
+      if (!pics.length){ alert('No pictures found for this customer'); return; }
+      const names = pics.map((f,i)=>`${i+1}. ${f.original_name || f.key || f.file_object_id}`).join('\n');
+      const pick = prompt(`Choose image number:\n${names}`);
+      const idx = parseInt(pick||'',10)-1; if (!(idx>=0 && idx<pics.length)) return;
+      const chosen = pics[idx];
+      if (target==='cover'){
+        const hid = document.getElementById('cover_file_object_id'); if (hid) hid.value = chosen.file_object_id;
+        const info = document.getElementById('coverPickInfo'); if (info) info.textContent = (chosen.original_name||chosen.key||chosen.file_object_id);
+        const fi = document.querySelector('input[name="cover_image"]'); if (fi) fi.value = '';
+      } else {
+        const hid = document.getElementById('page2_file_object_id'); if (hid) hid.value = chosen.file_object_id;
+        const info = document.getElementById('page2PickInfo'); if (info) info.textContent = (chosen.original_name||chosen.key||chosen.file_object_id);
+        const fi = document.querySelector('input[name="page2_image"]'); if (fi) fi.value = '';
+      }
+    }catch(e){}
+  }
+  const btnCover = document.getElementById('chooseCoverFromPics'); if (btnCover){ btnCover.addEventListener('click', ()=>choosePic('cover')); }
+  const btnPage2 = document.getElementById('choosePage2FromPics'); if (btnPage2){ btnPage2.addEventListener('click', ()=>choosePic('page2')); }
+});
 </script>
