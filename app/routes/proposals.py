@@ -71,36 +71,46 @@ async def generate_proposal(
 
     cover_path, page2_path = None, None
 
-    if cover_image:
+    if cover_image and getattr(cover_image, "filename", ""):
         # Normalize to PNG using PIL (handles HEIC via pillow-heif)
         tmp_ext = mimetypes.guess_extension(getattr(cover_image, "content_type", "") or "") or ".bin"
         tmp_in = os.path.join(UPLOAD_DIR, f"cover_in_{file_id}{tmp_ext}")
         with open(tmp_in, "wb") as buffer:
             shutil.copyfileobj(cover_image.file, buffer)
         try:
-            with PILImage.open(tmp_in) as im:
-                im = im.convert("RGB")
-                cover_path = os.path.join(UPLOAD_DIR, f"cover_{file_id}.png")
-                im.save(cover_path, format="PNG", optimize=True)
+            # Skip empty uploads
+            if os.path.getsize(tmp_in) > 0:
+                with PILImage.open(tmp_in) as im:
+                    im = im.convert("RGB")
+                    cover_path = os.path.join(UPLOAD_DIR, f"cover_{file_id}.png")
+                    im.save(cover_path, format="PNG", optimize=True)
+        except Exception:
+            # Ignore invalid image; proceed without cover
+            cover_path = None
         finally:
             try:
-                os.remove(tmp_in)
+                if os.path.exists(tmp_in):
+                    os.remove(tmp_in)
             except Exception:
                 pass
 
-    if page2_image:
+    if page2_image and getattr(page2_image, "filename", ""):
         tmp_ext = mimetypes.guess_extension(getattr(page2_image, "content_type", "") or "") or ".bin"
         tmp_in = os.path.join(UPLOAD_DIR, f"page2_in_{file_id}{tmp_ext}")
         with open(tmp_in, "wb") as buffer:
             shutil.copyfileobj(page2_image.file, buffer)
         try:
-            with PILImage.open(tmp_in) as im:
-                im = im.convert("RGB")
-                page2_path = os.path.join(UPLOAD_DIR, f"page2_{file_id}.png")
-                im.save(page2_path, format="PNG", optimize=True)
+            if os.path.getsize(tmp_in) > 0:
+                with PILImage.open(tmp_in) as im:
+                    im = im.convert("RGB")
+                    page2_path = os.path.join(UPLOAD_DIR, f"page2_{file_id}.png")
+                    im.save(page2_path, format="PNG", optimize=True)
+        except Exception:
+            page2_path = None
         finally:
             try:
-                os.remove(tmp_in)
+                if os.path.exists(tmp_in):
+                    os.remove(tmp_in)
             except Exception:
                 pass
 
