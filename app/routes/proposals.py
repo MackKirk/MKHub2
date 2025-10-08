@@ -22,6 +22,7 @@ from ..models import models
 from ..schemas import files as file_schemas
 
 from ..proposals.pdf_merge import generate_pdf
+import httpx
 
 
 router = APIRouter(prefix="/proposals", tags=["proposals"])
@@ -55,6 +56,8 @@ async def generate_proposal(
     cover_image: UploadFile = None,
     page2_image: UploadFile = None,
     sections: str = Form("[]"),
+    cover_file_object_id: Optional[str] = Form(None),
+    page2_file_object_id: Optional[str] = Form(None),
     db: Session = Depends(get_db),
 ):
     file_id = str(uuid.uuid4())
@@ -71,6 +74,34 @@ async def generate_proposal(
         page2_path = os.path.join(UPLOAD_DIR, f"page2_{file_id}.png")
         with open(page2_path, "wb") as buffer:
             shutil.copyfileobj(page2_image.file, buffer)
+
+    # If no direct upload, but a file_object_id is provided, download the image from storage
+    storage: StorageProvider = BlobStorageProvider()
+    async def _download_fileobject_to_tmp(file_object_id: str, prefix: str) -> Optional[str]:
+        try:
+            fo = db.query(FileObject).filter(FileObject.id == file_object_id).first()
+            if not fo:
+                return None
+            url = storage.get_download_url(fo.key, expires_s=300)
+            if not url:
+                return None
+            # Pick extension from content type if available, else default
+            ext = mimetypes.guess_extension(fo.content_type or "") or ".bin"
+            tmp_path = os.path.join(UPLOAD_DIR, f"{prefix}_{file_id}{ext}")
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                async with client.stream("GET", url) as r:
+                    r.raise_for_status()
+                    with open(tmp_path, "wb") as out:
+                        async for chunk in r.aiter_bytes():
+                            out.write(chunk)
+            return tmp_path
+        except Exception:
+            return None
+
+    if (not cover_path) and cover_file_object_id:
+        cover_path = await _download_fileobject_to_tmp(cover_file_object_id, "cover")
+    if (not page2_path) and page2_file_object_id:
+        page2_path = await _download_fileobject_to_tmp(page2_file_object_id, "page2")
 
     try:
         parsed_costs = json.loads(additional_costs)
@@ -222,8 +253,11 @@ def next_code(client_id: str, db: Session = Depends(get_db)):
     except Exception:
         base = 0
     # Next sequence per client based on persisted proposals count
+    from datetime import datetime
     seq = (db.query(Proposal).filter(Proposal.client_id == client_id).count() or 0) + 1
-    return {"order_number": f"{base:04d}-{seq:03d}"}
+    yy = int(datetime.utcnow().strftime("%y"))
+    # Note: UI/PDF will render with the MK- prefix; here we return the internal code
+    return {"order_number": f"{base:04d}-{seq:03d}-{yy:02d}"}
 
 
 @router.post("")

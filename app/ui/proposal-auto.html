@@ -14,10 +14,10 @@
       <input type="hidden" id="proposal_created_for" name="proposal_created_for" />
       <h3>Company Info</h3>
       <div class="field"><label>Document Type</label><input type="text" name="cover_title" maxlength="22" required></div>
-      <div class="field"><label>Order Number</label><input type="text" id="order_number" name="order_number" maxlength="10" required readonly></div>
+      <div class="field"><label>Order Number</label><input type="text" id="order_number" name="order_number" maxlength="20" required readonly></div>
       <div class="field"><label>Company Name</label><input type="text" id="company_name" name="company_name" maxlength="50" required></div>
       <div class="field"><label>Company Address</label><input type="text" id="company_address" name="company_address" maxlength="50" required></div>
-      <div class="field"><label>Date</label><input type="date" name="date" required></div>
+      <div class="field"><label>Date</label><input type="date" id="date" name="date" required></div>
 
       <h3>Project Details</h3>
       <div class="field"><label>Proposal Created For</label>
@@ -30,8 +30,22 @@
       <div class="field"><label>Other Notes</label><textarea name="other_notes" maxlength="260"></textarea></div>
 
       <h3>Images</h3>
-      <div class="field"><label>Cover Image</label><input type="file" name="cover_image" accept="image/*"></div>
-      <div class="field"><label>Page 2 Image</label><input type="file" name="page2_image" accept="image/*"></div>
+      <div class="field"><label>Cover Image</label>
+        <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap">
+          <input type="file" name="cover_image" accept="image/*">
+          <input type="hidden" id="cover_file_object_id" name="cover_file_object_id" />
+          <button type="button" id="chooseCoverFromPics">Choose from Customer Pictures</button>
+          <span id="coverPickInfo" class="muted"></span>
+        </div>
+      </div>
+      <div class="field"><label>Page 2 Image</label>
+        <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap">
+          <input type="file" name="page2_image" accept="image/*">
+          <input type="hidden" id="page2_file_object_id" name="page2_file_object_id" />
+          <button type="button" id="choosePage2FromPics">Choose from Customer Pictures</button>
+          <span id="page2PickInfo" class="muted"></span>
+        </div>
+      </div>
 
       <h3>Project Sections</h3>
       <div id="sectionsContainer"></div>
@@ -76,13 +90,19 @@ async function initPrefill(){
     document.getElementById('company_name').value = (cust.display_name || cust.name || '').slice(0,50);
     const addr = site ? [site.site_address_line1, site.site_city, site.site_province, site.site_country].filter(Boolean).join(', ') : [cust.address_line1, cust.city, cust.province, cust.country].filter(Boolean).join(', ');
     document.getElementById('company_address').value = addr.slice(0,50);
+    // preset today's date
+    const today = new Date();
+    const yyyy = today.getFullYear();
+    const mm = String(today.getMonth()+1).padStart(2,'0');
+    const dd = String(today.getDate()).padStart(2,'0');
+    const dateEl = document.getElementById('date'); if (dateEl) dateEl.value = `${yyyy}-${mm}-${dd}`;
     try{
       const code = await fetch('/proposals/next-code?client_id='+encodeURIComponent(clientId)).then(x=>x.json());
       if (code && code.order_number){ document.getElementById('order_number').value = code.order_number; }
     }catch(e){}
     const contacts = await fetch('/clients/'+clientId+'/contacts', { headers:{ Authorization:'Bearer '+token } }).then(x=>x.json()).catch(()=>[]);
     const sel = document.getElementById('contact_sel');
-    sel.innerHTML = '<option value="">Select...</option>' + (contacts||[]).map(c=>`<option value="${c.id}" data-email="${c.email||''}" data-phone="${c.phone||''}" data-name="${c.name||''}">${c.name||c.email||c.phone||c.id}</option>`).join('');
+    sel.innerHTML = '<option value="">Select...</option>' + (contacts||[]).map(c=>`<option value="${c.id}" data-email="${c.email||''}" data-phone="${c.phone||''}" data-name="${c.name||''}" data-primary="${c.is_primary?'1':'0'}">${c.name||c.email||c.phone||c.id}</option>`).join('');
     sel.addEventListener('change', ()=>{
       const o = sel.options[sel.selectedIndex];
       const nm = o.getAttribute('data-name')||'';
@@ -91,8 +111,39 @@ async function initPrefill(){
       document.getElementById('contact_phone').value = o.getAttribute('data-phone')||'';
       document.getElementById('contact_email').value = o.getAttribute('data-email')||'';
     });
+    // auto-select primary contact if available
+    const primaryOpt = Array.from(sel.options).find(o=>o.getAttribute('data-primary')==='1');
+    if (primaryOpt){ sel.value = primaryOpt.value; sel.dispatchEvent(new Event('change')); }
     document.getElementById('info').innerHTML = `<strong>${cust.display_name || cust.name}</strong>${cust.code?` <span class=muted>(${cust.code})</span>`:''}` + (site?`<div class=muted>Site: ${(site.site_name||site.site_address_line1||'')}</div>`:'');
   }catch(e){ document.getElementById('msg').textContent = 'Prefill failed. Please ensure you opened from a site or are logged in.'; }
 }
 initPrefill();
+
+// Choose cover/page2 from customer pictures
+async function choosePic(target){
+  try{
+    if (!clientId){ alert('Missing customer'); return; }
+    const token = MKHubUI.getTokenOrRedirect();
+    const url = '/clients/'+encodeURIComponent(clientId)+'/files' + (siteId? ('?site_id='+encodeURIComponent(siteId)) : '');
+    const arr = await fetch(url, { headers:{ Authorization:'Bearer '+token } }).then(x=>x.json());
+    const pics = (arr||[]).filter(f=> (f.is_image===true) || String(f.content_type||'').startsWith('image/'));
+    if (!pics.length){ alert('No pictures found for this customer'); return; }
+    const names = pics.map((f,i)=>`${i+1}. ${f.original_name || f.key || f.file_object_id}`).join('\n');
+    const pick = prompt(`Choose image number:\n${names}`);
+    const idx = parseInt(pick||'',10)-1; if (!(idx>=0 && idx<pics.length)) return;
+    const chosen = pics[idx];
+    if (target==='cover'){
+      document.getElementById('cover_file_object_id').value = chosen.file_object_id;
+      document.getElementById('coverPickInfo').textContent = (chosen.original_name||chosen.key||chosen.file_object_id);
+      // clear file input to avoid conflicts
+      const fi = document.querySelector('input[name="cover_image"]'); if (fi) fi.value = '';
+    } else {
+      document.getElementById('page2_file_object_id').value = chosen.file_object_id;
+      document.getElementById('page2PickInfo').textContent = (chosen.original_name||chosen.key||chosen.file_object_id);
+      const fi = document.querySelector('input[name="page2_image"]'); if (fi) fi.value = '';
+    }
+  }catch(e){}
+}
+document.getElementById('chooseCoverFromPics').addEventListener('click', ()=>choosePic('cover'));
+document.getElementById('choosePage2FromPics').addEventListener('click', ()=>choosePic('page2'));
 </script>
