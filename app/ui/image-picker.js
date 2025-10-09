@@ -91,11 +91,25 @@
           const pics = (arr||[]).filter(f=> (f.is_image===true) || String(f.content_type||'').startsWith('image/'));
           if (!pics.length){ grid.textContent = 'No pictures yet'; return; }
           grid.innerHTML='';
+          // Helper: lightbox view for quick zoom
+          function openLightbox(fid, name){
+            const lb = h('div', { class:'mk-lightbox', style:{ position:'fixed', inset:'0', background:'rgba(0,0,0,0.8)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:10000 } });
+            const img = h('img', { src:`/files/${encodeURIComponent(fid)}/thumbnail?w=1600`, alt:(name||''), style:{ maxWidth:'90vw', maxHeight:'90vh', boxShadow:'0 8px 24px rgba(0,0,0,0.5)', borderRadius:'6px' } });
+            lb.appendChild(img);
+            const close = ()=>{ try{ document.body.removeChild(lb); }catch(e){} window.removeEventListener('keydown', onKey); };
+            lb.addEventListener('click', close);
+            const onKey = (e)=>{ if (e.key==='Escape'){ e.preventDefault(); close(); } };
+            window.addEventListener('keydown', onKey);
+            document.body.appendChild(lb);
+          }
           for (const f of pics){
-            const it = h('div', { className:'modal-item', style:{ border:'1px solid #eee', padding:'6px', textAlign:'center', background:'#fff', cursor:'pointer' } });
+            const it = h('div', { className:'modal-item', style:{ position:'relative', border:'1px solid #eee', padding:'6px', textAlign:'center', background:'#fff', cursor:'pointer' } });
             const im = h('img', { alt:(f.original_name||f.key||f.file_object_id), src:`/files/${f.file_object_id}/thumbnail?w=300`, style:{ maxWidth:'100%', height:'110px', objectFit:'cover' } });
             const cap = h('div', { className:'muted', style:{ fontSize:'12px' } }, [ f.original_name||'' ]);
+            const zoomBtn = h('button', { title:'View larger', style:{ position:'absolute', right:'6px', top:'6px', background:'rgba(255,255,255,0.95)', border:'1px solid #ddd', borderRadius:'4px', padding:'2px 6px', cursor:'pointer' } }, ['🔍']);
+            zoomBtn.addEventListener('click', (e)=>{ e.stopPropagation(); openLightbox(f.file_object_id, (f.original_name||f.key||f.file_object_id)); });
             it.appendChild(im); it.appendChild(cap);
+            it.appendChild(zoomBtn);
       it.addEventListener('click', ()=>{ grid.querySelectorAll('.modal-item').forEach(x=>x.classList.remove('active')); it.classList.add('active'); sel.id=f.file_object_id; sel.name=(f.original_name||f.key||f.file_object_id); const selBtn=card.querySelector('#mkSelect'); const editBtn=card.querySelector('#mkEdit'); if (selBtn) selBtn.disabled=false; if (editBtn) editBtn.disabled=false; });
             grid.appendChild(it);
           }
