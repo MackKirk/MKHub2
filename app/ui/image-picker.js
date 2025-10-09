@@ -32,6 +32,10 @@
       // Editor
       const editor = h('div', { id:'mkEditor', style:{ display:'none', marginTop:'10px' } });
       const hint = h('div', { id:'mkEH', className:'muted' });
+      const phaseBar = h('div', { style:{ display:'flex', gap:'8px', alignItems:'center', margin:'6px 0' } }, [
+        h('button', { id:'mkPhaseImg', className:'active' }, ['Edit Image']),
+        h('button', { id:'mkPhaseNotes' }, ['Edit/Add Notes'])
+      ]);
       const wrap = h('div', { style:{ display:'flex', gap:'10px', alignItems:'flex-start', flexWrap:'wrap' } });
       // Left toolbar (icons)
       const toolbar = h('div', { style:{ display:'flex', flexDirection:'column', gap:'6px', alignItems:'stretch' } }, [
@@ -56,7 +60,7 @@
       const act = h('div', { style:{ display:'flex', gap:'6px', justifyContent:'flex-end', flexWrap:'wrap' } }, [ h('button', { id:'mkBack' }, ['Back']), h('button', { id:'mkReset' }, ['Reset']), h('button', { id:'mkApply' }, ['Apply']) ]);
       side.appendChild(modes); side.appendChild(colorStroke); side.appendChild(textRow); side.appendChild(rotRow); side.appendChild(zoomRow); side.appendChild(tips); side.appendChild(act);
       wrap.appendChild(toolbar); wrap.appendChild(canvWrap); wrap.appendChild(side);
-      editor.appendChild(hint); editor.appendChild(wrap);
+      editor.appendChild(hint); editor.appendChild(phaseBar); editor.appendChild(wrap);
 
       card.appendChild(rowTop); card.appendChild(rowUp); card.appendChild(grid); card.appendChild(rowBottom); card.appendChild(editor);
       modal.appendChild(card); document.body.appendChild(modal);
@@ -99,7 +103,7 @@
       });
 
       // Editor state
-      let ES = { img:null, angle:0, scale:1, offsetX:0, offsetY:0, aspect:rec.w/rec.h, items:[], selectedId:null, color:'#ff0000', stroke:3, font:'16px Montserrat', text:'', fileId:'', fileName:'' };
+      let ES = { img:null, angle:0, scale:1, offsetX:0, offsetY:0, aspect:rec.w/rec.h, items:[], selectedId:null, color:'#ff0000', stroke:3, font:'16px Montserrat', text:'', fileId:'', fileName:'', phase:'image' };
       function setCanvasSize(){ const maxW=800; const w=Math.min(maxW, (modal.clientWidth||900)-120); const aspect=ES.aspect; cvs.width=w; cvs.height=Math.round(w/aspect); overlay.width=cvs.width; overlay.height=cvs.height; }
       function drawBase(){ const ctx=cvs.getContext('2d'); ctx.save(); ctx.clearRect(0,0,cvs.width,cvs.height); ctx.fillStyle='#f6f6f6'; ctx.fillRect(0,0,cvs.width,cvs.height); if(!ES.img){ ctx.restore(); return; } ctx.translate(cvs.width/2+ES.offsetX, cvs.height/2+ES.offsetY); ctx.rotate(ES.angle*Math.PI/180); const iw=ES.img.width, ih=ES.img.height, s=ES.scale; const dw=iw*s, dh=ih*s; ctx.drawImage(ES.img, -dw/2, -dh/2, dw, dh); ctx.restore(); }
       function itemBounds(it){ if (it.type==='rect'){ const w=Math.abs(it.w), h=Math.abs(it.h); const x=Math.min(it.x, it.x+it.w), y=Math.min(it.y, it.y+it.h); return {x,y,w,h}; } if (it.type==='arrow'){ const x=Math.min(it.x,it.x2), y=Math.min(it.y,it.y2); return {x,y,w:Math.abs(it.x2-it.x), h:Math.abs(it.y2-it.y)}; } if (it.type==='text'){ const ctx=overlay.getContext('2d'); ctx.font=it.font; const w=ctx.measureText(it.text||'').width; const h=parseInt(it.font,10)||16; return {x:it.x,y:it.y-h,w,h}; } return null; }
@@ -107,7 +111,23 @@
       }
       function redraw(){ drawBase(); drawOverlay(); }
 
-      function setMode(m){ ES.mode=m; ['#mkPan','#mkRect','#mkArrow','#mkText','#mkTBPan','#mkTBRect','#mkTBArrow','#mkTBText'].forEach(sel=>{ const b=card.querySelector(sel); if(b) b.classList.remove('active'); }); const map={pan:'#mkPan', rect:'#mkRect', arrow:'#mkArrow', text:'#mkText'}; const btn=card.querySelector(map[m]); if(btn) btn.classList.add('active'); const tmap={pan:'#mkTBPan', rect:'#mkTBRect', arrow:'#mkTBArrow', text:'#mkTBText'}; const tbtn=card.querySelector(tmap[m]); if (tbtn) tbtn.classList.add('active'); overlay.style.pointerEvents = (m==='pan'?'none':'auto'); }
+      function setMode(m){ ES.mode=m; ['#mkPan','#mkRect','#mkArrow','#mkText','#mkTBPan','#mkTBRect','#mkTBArrow','#mkTBText'].forEach(sel=>{ const b=card.querySelector(sel); if(b) b.classList.remove('active'); }); const map={pan:'#mkPan', rect:'#mkRect', arrow:'#mkArrow', text:'#mkText'}; const btn=card.querySelector(map[m]); if(btn) btn.classList.add('active'); const tmap={pan:'#mkTBPan', rect:'#mkTBRect', arrow:'#mkTBArrow', text:'#mkTBText'}; const tbtn=card.querySelector(tmap[m]); if (tbtn) tbtn.classList.add('active'); updatePhaseUI(); }
+
+      function updatePhaseUI(){
+        // Phase toggles
+        const pImg = card.querySelector('#mkPhaseImg'); const pNotes = card.querySelector('#mkPhaseNotes');
+        if (pImg && pNotes){ pImg.classList.remove('active'); pNotes.classList.remove('active'); if (ES.phase==='image') pImg.classList.add('active'); else pNotes.classList.add('active'); }
+        // Enable/disable overlay interactions and tool buttons based on phase
+        const notesEnabled = ES.phase === 'notes';
+        overlay.style.pointerEvents = notesEnabled ? 'auto' : 'none';
+        // Disable shape buttons in image phase
+        const shapeBtns = ['#mkRect','#mkArrow','#mkText','#mkTBRect','#mkTBArrow','#mkTBText'];
+        shapeBtns.forEach(sel=>{ const b=card.querySelector(sel); if (b){ b.disabled = !notesEnabled; if (!notesEnabled) b.classList.remove('active'); } });
+        // Force pan mode in image phase
+        if (!notesEnabled) { ES.mode = 'pan'; }
+      }
+      card.querySelector('#mkPhaseImg').addEventListener('click', ()=>{ ES.phase='image'; updatePhaseUI(); });
+      card.querySelector('#mkPhaseNotes').addEventListener('click', ()=>{ ES.phase='notes'; updatePhaseUI(); });
       card.querySelector('#mkPan').addEventListener('click', ()=>setMode('pan'));
       card.querySelector('#mkRect').addEventListener('click', ()=>setMode('rect'));
       card.querySelector('#mkArrow').addEventListener('click', ()=>setMode('arrow'));
@@ -135,7 +155,7 @@
       card.querySelector('#mkReset').addEventListener('click', ()=>{ ES.angle=0; ES.scale=1; ES.offsetX=0; ES.offsetY=0; ES.items=[]; ES.selectedId=null; redraw(); });
       card.querySelector('#mkBack').addEventListener('click', ()=>{ editor.style.display='none'; grid.style.display='grid'; });
 
-      async function openEditor(fid, fname){ try{ const j=await fetch('/files/'+encodeURIComponent(fid)+'/download').then(x=>x.json()); const url=j && j.download_url ? j.download_url : null; if (!url){ alert('Cannot download image'); return; } ES = { ...ES, img:new Image(), angle:0, scale:1, offsetX:0, offsetY:0, aspect:rec.w/rec.h, items:[], selectedId:null, fileId: fid, fileName: fname||fid }; hint.textContent = `Edit ${fname||fid} — aspect ${(ES.aspect).toFixed(3)}`; await new Promise((res,rej)=>{ ES.img.crossOrigin='anonymous'; ES.img.onload=()=>res(null); ES.img.onerror=rej; ES.img.src=url; }); setCanvasSize(); redraw(); grid.style.display='none'; editor.style.display='block'; }catch(e){ alert('Failed to load image'); } }
+      async function openEditor(fid, fname){ try{ const j=await fetch('/files/'+encodeURIComponent(fid)+'/download').then(x=>x.json()); const url=j && j.download_url ? j.download_url : null; if (!url){ alert('Cannot download image'); return; } ES = { ...ES, img:new Image(), angle:0, scale:1, offsetX:0, offsetY:0, aspect:rec.w/rec.h, items:[], selectedId:null, fileId: fid, fileName: fname||fid, phase:'image', mode:'pan' }; hint.textContent = `Edit ${fname||fid} — aspect ${(ES.aspect).toFixed(3)}`; await new Promise((res,rej)=>{ ES.img.crossOrigin='anonymous'; ES.img.onload=()=>res(null); ES.img.onerror=rej; ES.img.src=url; }); setCanvasSize(); redraw(); updatePhaseUI(); grid.style.display='none'; editor.style.display='block'; }catch(e){ alert('Failed to load image'); } }
       card.querySelector('#mkEdit').addEventListener('click', ()=>{ if (!sel.id) return; openEditor(sel.id, sel.name); });
       card.querySelector('#mkApply').addEventListener('click', async ()=>{
         try{
@@ -144,7 +164,13 @@
           ctxBase.drawImage(overlay, 0, 0);
           const blob = await new Promise(res=>cvs.toBlob(res,'image/png'));
           if (!blob){ alert('Render failed'); return; }
-          const f = new File([blob], 'edited.png', { type:'image/png' });
+          // Preserve original name with _edited suffix
+          let base = ES.fileName || 'image.png';
+          let dot = base.lastIndexOf('.');
+          if (dot <= 0 || dot === base.length-1) { dot = -1; }
+          const nameNoExt = dot>0 ? base.slice(0, dot) : base.replace(/\.+$/,'');
+          const ext = dot>0 ? base.slice(dot) : '.png';
+          const f = new File([blob], `${nameNoExt}_edited${ext}`, { type:'image/png' });
           const upReq = { project_id: null, client_id: clientId, employee_id: null, category_id: 'site-docs', original_name: f.name, content_type: f.type };
           const up = await fetch('/files/upload', { method:'POST', headers:{ 'Content-Type':'application/json', Authorization:'Bearer '+token }, body: JSON.stringify(upReq) }).then(x=>x.json());
           const putResp = await fetch(up.upload_url, { method:'PUT', headers:{ 'Content-Type': f.type, 'x-ms-blob-type': 'BlockBlob' }, body: f }); if (!putResp.ok){ alert('Upload failed'); return; }
