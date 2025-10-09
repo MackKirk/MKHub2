@@ -196,6 +196,7 @@
           ctx.strokeRect(x, y, w, h);
           ctx.restore();
         }
+      }
       function redraw(){ drawBase(); drawOverlay(); }
 
       function setMode(m){ ES.mode=m; ['#mkPan','#mkRect','#mkArrow','#mkText','#mkTBPan','#mkTBRect','#mkTBArrow','#mkTBText'].forEach(sel=>{ const b=card.querySelector(sel); if(b) b.classList.remove('active'); }); const map={pan:'#mkPan', rect:'#mkRect', arrow:'#mkArrow', text:'#mkText'}; const btn=card.querySelector(map[m]); if(btn) btn.classList.add('active'); const tmap={pan:'#mkTBPan', rect:'#mkTBRect', arrow:'#mkTBArrow', text:'#mkTBText'}; const tbtn=card.querySelector(tmap[m]); if (tbtn) tbtn.classList.add('active'); updatePhaseUI(); }

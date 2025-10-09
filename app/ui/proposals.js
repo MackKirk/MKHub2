@@ -346,7 +346,8 @@ async function loadDraft(){
   try{
     let j = null;
     try{
-      j = await fetch('/proposals/drafts/'+encodeURIComponent(draftId)).then(x=>x.json());
+      const r = await fetch('/proposals/drafts/'+encodeURIComponent(draftId));
+      j = r.ok ? await r.json() : null;
     }catch(e){}
     if (!j || !j.data){
       try{ j = await fetch('/proposals/'+encodeURIComponent(draftId)).then(x=>x.json()); }catch(e){}
