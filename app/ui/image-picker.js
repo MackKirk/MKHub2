@@ -33,6 +33,15 @@
       const editor = h('div', { id:'mkEditor', style:{ display:'none', marginTop:'10px' } });
       const hint = h('div', { id:'mkEH', className:'muted' });
       const wrap = h('div', { style:{ display:'flex', gap:'10px', alignItems:'flex-start', flexWrap:'wrap' } });
+      // Left toolbar (icons)
+      const toolbar = h('div', { style:{ display:'flex', flexDirection:'column', gap:'6px', alignItems:'stretch' } }, [
+        h('button', { id:'mkTBPan', title:'Pan (drag)', className:'active' }, ['🖐️']),
+        h('button', { id:'mkTBRect', title:'Rectangle' }, ['▭']),
+        h('button', { id:'mkTBArrow', title:'Arrow' }, ['➤']),
+        h('button', { id:'mkTBText', title:'Text' }, ['T']),
+        h('button', { id:'mkTBRotL', title:'Rotate Left' }, ['⟲']),
+        h('button', { id:'mkTBRotR', title:'Rotate Right' }, ['⟳']),
+      ]);
       const canvWrap = h('div', { style:{ position:'relative' } });
       const cvs = h('canvas', { id:'mkC', style:{ background:'#f6f6f6', maxWidth:'100%', border:'1px solid #eee' } });
       const overlay = h('canvas', { id:'mkO', style:{ position:'absolute', left:'0', top:'0', pointerEvents:'none' } });
@@ -42,11 +51,11 @@
       const colorStroke = h('div', { style:{ display:'flex', gap:'6px', alignItems:'center' } }, [ h('label', {}, ['Color ', h('input',{ type:'color', id:'mkColor', value:'#ff0000' }) ]), h('label', {}, ['Stroke ', h('input',{ type:'number', id:'mkStroke', min:'1', max:'20', value:'3', style:'width:60px' }) ]) ]);
       const textRow = h('div', { style:{ display:'flex', gap:'6px', alignItems:'center' } }, [ h('label', {}, ['Font ', h('input',{ type:'text', id:'mkFont', value:'16px Montserrat', style:'width:140px' }) ]), h('label', { style:{ flex:'1' } }, ['Text ', h('input',{ type:'text', id:'mkTxt', placeholder:'Your text', style:'width:100%' }) ]) ]);
       const rotRow = h('div', { style:{ display:'flex', gap:'6px', alignItems:'center' } }, [ h('button', { id:'mkRotL' }, ['Rotate ⟲']), h('button', { id:'mkRotR' }, ['Rotate ⟳']) ]);
-      const zoomRow = h('label', {}, ['Zoom ', h('input',{ type:'range', id:'mkZoom', min:'0.5', max:'3', value:'1', step:'0.01' }) ]);
+      const zoomRow = h('label', {}, ['Zoom ', h('input',{ type:'range', id:'mkZoom', min:'0.1', max:'3', value:'1', step:'0.01' }) ]);
       const tips = h('div', { className:'muted' }, ['Tips: Pan mode: drag image. Rect/Arrow/Text: click or drag on canvas. Click an annotation to select, drag to move. Del removes.']);
       const act = h('div', { style:{ display:'flex', gap:'6px', justifyContent:'flex-end', flexWrap:'wrap' } }, [ h('button', { id:'mkBack' }, ['Back']), h('button', { id:'mkReset' }, ['Reset']), h('button', { id:'mkApply' }, ['Apply']) ]);
       side.appendChild(modes); side.appendChild(colorStroke); side.appendChild(textRow); side.appendChild(rotRow); side.appendChild(zoomRow); side.appendChild(tips); side.appendChild(act);
-      wrap.appendChild(canvWrap); wrap.appendChild(side);
+      wrap.appendChild(toolbar); wrap.appendChild(canvWrap); wrap.appendChild(side);
       editor.appendChild(hint); editor.appendChild(wrap);
 
       card.appendChild(rowTop); card.appendChild(rowUp); card.appendChild(grid); card.appendChild(rowBottom); card.appendChild(editor);
@@ -98,11 +107,16 @@
       }
       function redraw(){ drawBase(); drawOverlay(); }
 
-      function setMode(m){ ES.mode=m; ['#mkPan','#mkRect','#mkArrow','#mkText'].forEach(sel=>{ const b=card.querySelector(sel); if(b) b.classList.remove('active'); }); const map={pan:'#mkPan', rect:'#mkRect', arrow:'#mkArrow', text:'#mkText'}; const btn=card.querySelector(map[m]); if(btn) btn.classList.add('active'); overlay.style.pointerEvents = (m==='pan'?'none':'auto'); }
+      function setMode(m){ ES.mode=m; ['#mkPan','#mkRect','#mkArrow','#mkText','#mkTBPan','#mkTBRect','#mkTBArrow','#mkTBText'].forEach(sel=>{ const b=card.querySelector(sel); if(b) b.classList.remove('active'); }); const map={pan:'#mkPan', rect:'#mkRect', arrow:'#mkArrow', text:'#mkText'}; const btn=card.querySelector(map[m]); if(btn) btn.classList.add('active'); const tmap={pan:'#mkTBPan', rect:'#mkTBRect', arrow:'#mkTBArrow', text:'#mkTBText'}; const tbtn=card.querySelector(tmap[m]); if (tbtn) tbtn.classList.add('active'); overlay.style.pointerEvents = (m==='pan'?'none':'auto'); }
       card.querySelector('#mkPan').addEventListener('click', ()=>setMode('pan'));
       card.querySelector('#mkRect').addEventListener('click', ()=>setMode('rect'));
       card.querySelector('#mkArrow').addEventListener('click', ()=>setMode('arrow'));
       card.querySelector('#mkText').addEventListener('click', ()=>setMode('text'));
+      // Toolbar mirrors
+      card.querySelector('#mkTBPan').addEventListener('click', ()=>setMode('pan'));
+      card.querySelector('#mkTBRect').addEventListener('click', ()=>setMode('rect'));
+      card.querySelector('#mkTBArrow').addEventListener('click', ()=>setMode('arrow'));
+      card.querySelector('#mkTBText').addEventListener('click', ()=>setMode('text'));
       card.querySelector('#mkColor').addEventListener('input', (e)=>{ ES.color=e.target.value; });
       card.querySelector('#mkStroke').addEventListener('input', (e)=>{ ES.stroke=parseInt(e.target.value||'3',10)||3; });
       card.querySelector('#mkFont').addEventListener('input', (e)=>{ ES.font=e.target.value||'16px Montserrat'; });
@@ -113,13 +127,21 @@
       let moving=null, mStart=null; function itemAt(x,y){ for (let i=ES.items.length-1;i>=0;i--){ const it=ES.items[i]; const b=itemBounds(it); if (b && x>=b.x && y>=b.y && x<=b.x+b.w && y<=b.y+b.h) return it; } return null; }
       overlay.addEventListener('mousedown', (e)=>{ if (ES.mode!=='pan') return; const hit=itemAt(e.offsetX,e.offsetY); if (hit){ moving=hit; mStart={x:e.offsetX, y:e.offsetY}; e.preventDefault(); } });
       overlay.addEventListener('mousemove', (e)=>{ if (!moving) return; const dx=e.offsetX-mStart.x, dy=e.offsetY-mStart.y; mStart={x:e.offsetX,y:e.offsetY}; if (moving.type==='rect'){ moving.x+=dx; moving.y+=dy; } if (moving.type==='arrow'){ moving.x+=dx; moving.y+=dy; moving.x2+=dx; moving.y2+=dy; } if (moving.type==='text'){ moving.x+=dx; moving.y+=dy; } redraw(); }); window.addEventListener('mouseup', ()=>{ moving=null; }); window.addEventListener('keydown', (e)=>{ if (e.key==='Delete' && ES.selectedId){ ES.items = ES.items.filter(it=>it.id!==ES.selectedId); ES.selectedId=null; redraw(); } });
-      card.querySelector('#mkRotL').addEventListener('click', ()=>{ ES.angle=(ES.angle+270)%360; redraw(); }); card.querySelector('#mkRotR').addEventListener('click', ()=>{ ES.angle=(ES.angle+90)%360; redraw(); }); card.querySelector('#mkZoom').addEventListener('input', (e)=>{ ES.scale=parseFloat(e.target.value||'1'); redraw(); }); card.querySelector('#mkReset').addEventListener('click', ()=>{ ES.angle=0; ES.scale=1; ES.offsetX=0; ES.offsetY=0; ES.items=[]; ES.selectedId=null; redraw(); });
+      card.querySelector('#mkRotL').addEventListener('click', ()=>{ ES.angle=(ES.angle+270)%360; redraw(); }); card.querySelector('#mkRotR').addEventListener('click', ()=>{ ES.angle=(ES.angle+90)%360; redraw(); });
+      // Toolbar rotate mirrors
+      card.querySelector('#mkTBRotL').addEventListener('click', ()=>{ ES.angle=(ES.angle+270)%360; redraw(); });
+      card.querySelector('#mkTBRotR').addEventListener('click', ()=>{ ES.angle=(ES.angle+90)%360; redraw(); });
+      card.querySelector('#mkZoom').addEventListener('input', (e)=>{ ES.scale=parseFloat(e.target.value||'1'); redraw(); });
+      card.querySelector('#mkReset').addEventListener('click', ()=>{ ES.angle=0; ES.scale=1; ES.offsetX=0; ES.offsetY=0; ES.items=[]; ES.selectedId=null; redraw(); });
       card.querySelector('#mkBack').addEventListener('click', ()=>{ editor.style.display='none'; grid.style.display='grid'; });
 
       async function openEditor(fid, fname){ try{ const j=await fetch('/files/'+encodeURIComponent(fid)+'/download').then(x=>x.json()); const url=j && j.download_url ? j.download_url : null; if (!url){ alert('Cannot download image'); return; } ES = { ...ES, img:new Image(), angle:0, scale:1, offsetX:0, offsetY:0, aspect:rec.w/rec.h, items:[], selectedId:null, fileId: fid, fileName: fname||fid }; hint.textContent = `Edit ${fname||fid} — aspect ${(ES.aspect).toFixed(3)}`; await new Promise((res,rej)=>{ ES.img.crossOrigin='anonymous'; ES.img.onload=()=>res(null); ES.img.onerror=rej; ES.img.src=url; }); setCanvasSize(); redraw(); grid.style.display='none'; editor.style.display='block'; }catch(e){ alert('Failed to load image'); } }
       card.querySelector('#mkEdit').addEventListener('click', ()=>{ if (!sel.id) return; openEditor(sel.id, sel.name); });
       card.querySelector('#mkApply').addEventListener('click', async ()=>{
         try{
+          // Flatten overlay onto base before exporting
+          const ctxBase = cvs.getContext('2d');
+          ctxBase.drawImage(overlay, 0, 0);
           const blob = await new Promise(res=>cvs.toBlob(res,'image/png'));
           if (!blob){ alert('Render failed'); return; }
           const f = new File([blob], 'edited.png', { type:'image/png' });
