@@ -25,10 +25,10 @@
       // Build modal
       const modal = h('div', { class:'mk-modal', style:{ position:'fixed', inset:'0', background:'rgba(0,0,0,0.4)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:9999 } });
       const card = h('div', { class:'card', style:{ width:'90%', maxWidth:'900px', maxHeight:'80%', overflow:'auto', background:'#fff', padding:'12px' } });
-      const rowTop = h('div', { style:{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'6px' } }, [ h('h3', {}, ['Select Picture']), h('button', { id:'mkClose' }, ['Close']) ]);
+      const rowTop = h('div', { style:{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'6px' } }, [ h('h3', {}, ['Select Picture']), h('button', { id:'mkClose', type:'button' }, ['Close']) ]);
       const rowUp = h('div', { style:{ display:'flex', gap:'8px', alignItems:'center', marginBottom:'8px', flexWrap:'wrap' } }, [ h('input', { type:'file', id:'mkUp', accept:'image/*' }), h('button', { id:'mkUpBtn' }, ['Upload to Site']), h('span', { className:'muted' }, ['Uploads attach to this site']) ]);
       const grid = h('div', { id:'mkGrid', style:{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(140px, 1fr))', gap:'10px' } });
-      const rowBottom = h('div', { style:{ display:'flex', justifyContent:'space-between', alignItems:'center', marginTop:'10px' } }, [ h('div', { id:'mkHint', className:'muted' }), h('div', { style:{ display:'flex', gap:'8px' } }, [ h('button', { id:'mkEdit', disabled:true }, ['Edit']), h('button', { id:'mkSelect', disabled:true }, ['Select']) ]) ]);
+      const rowBottom = h('div', { style:{ display:'flex', justifyContent:'space-between', alignItems:'center', marginTop:'10px' } }, [ h('div', { id:'mkHint', className:'muted' }), h('div', { style:{ display:'flex', gap:'8px' } }, [ h('button', { id:'mkEdit', type:'button', disabled:true }, ['Edit']), h('button', { id:'mkSelect', type:'button', disabled:true }, ['Select']) ]) ]);
 
       // Editor
       const editor = h('div', { id:'mkEditor', style:{ display:'none', marginTop:'10px' } });
@@ -280,6 +280,14 @@
         if (id === 'mkClose'){ doClose(); }
         if (id === 'mkEdit' && !e.target.disabled){ try{ console.log('[MKImagePicker] edit click'); }catch(e){} if (!sel.id){ alert('Pick an image'); return; } openEditor(sel.id, sel.name); }
         if (id === 'mkSelect' && !e.target.disabled){ doSelect(); }
+      });
+      // Robust delegation from modal root using closest() (handles text-node clicks)
+      modal.addEventListener('click', (e)=>{
+        const btn = e.target && e.target.closest && e.target.closest('#mkClose, #mkEdit, #mkSelect');
+        if (!btn) return;
+        if (btn.id === 'mkClose'){ e.stopPropagation(); doClose(); return; }
+        if (btn.id === 'mkEdit' && !btn.disabled){ e.stopPropagation(); if (!sel.id){ alert('Pick an image'); return; } openEditor(sel.id, sel.name); return; }
+        if (btn.id === 'mkSelect' && !btn.disabled){ e.stopPropagation(); doSelect(); return; }
       });
       function cleanup(){ try{ document.body.removeChild(modal); }catch(e){} }
     });
