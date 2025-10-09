@@ -39,7 +39,7 @@
       contentRow.appendChild(leftCol);
       contentRow.appendChild(rightCol);
       contentArea.appendChild(contentRow);
-      const rowBottom = h('div', { style:{ display:'flex', justifyContent:'space-between', alignItems:'center', marginTop:'10px', position:'sticky', bottom:'0', background:'#fff', paddingTop:'8px', borderTop:'1px solid #eee' } }, [ h('div', { id:'mkHint', className:'muted' }), h('div', { style:{ display:'flex', gap:'8px' } }, [ h('button', { id:'mkEdit', type:'button', disabled:true }, ['Edit']), h('button', { id:'mkSelect', type:'button', disabled:true }, ['Select']) ]) ]);
+      const rowBottom = h('div', { style:{ display:'flex', justifyContent:'space-between', alignItems:'center', marginTop:'10px', position:'sticky', bottom:'0', background:'#fff', paddingTop:'8px', borderTop:'1px solid #eee' } }, [ h('div', { id:'mkHint', className:'muted' }), h('div', { style:{ display:'flex', gap:'8px' } }, [ h('button', { id:'mkSelect', type:'button', disabled:true }, ['Select']) ]) ]);
 
       // Editor
       const editor = h('div', { id:'mkEditor', style:{ display:'none', marginTop:'10px' } });
@@ -105,13 +105,14 @@
             const it = h('div', { className:'modal-item', style:{ position:'relative', border:'1px solid #eee', padding:'6px', textAlign:'center', background:'#fff', cursor:'pointer' } });
             const im = h('img', { alt:(f.original_name||f.key||f.file_object_id), src:`/files/${f.file_object_id}/thumbnail?w=300`, style:{ maxWidth:'100%', height:'110px', objectFit:'cover' } });
             const cap = h('div', { className:'muted', style:{ fontSize:'12px' } }, [ f.original_name||'' ]);
-            const zoomBtn = h('button', { title:'View larger', style:{ position:'absolute', right:'6px', top:'6px', background:'rgba(255,255,255,0.95)', border:'1px solid #ddd', borderRadius:'4px', padding:'2px 6px', cursor:'pointer' } }, ['🔍']);
+            const zoomBtn = h('button', { title:'View larger', style:{ position:'absolute', right:'36px', top:'6px', background:'rgba(255,255,255,0.95)', border:'1px solid #ddd', borderRadius:'4px', padding:'2px 6px', cursor:'pointer' } }, ['🔍']);
+            const editBtn = h('button', { title:'Edit', style:{ position:'absolute', right:'6px', top:'6px', background:'rgba(255,255,255,0.95)', border:'1px solid #ddd', borderRadius:'4px', padding:'2px 6px', cursor:'pointer' } }, ['✏️']);
             zoomBtn.addEventListener('click', (e)=>{ e.stopPropagation(); openLightbox(f.file_object_id, (f.original_name||f.key||f.file_object_id)); });
+            editBtn.addEventListener('click', (e)=>{ e.stopPropagation(); sel.id=f.file_object_id; sel.name=(f.original_name||f.key||f.file_object_id); openEditor(sel.id, sel.name); });
             it.appendChild(im); it.appendChild(cap);
             it.appendChild(zoomBtn);
-            it.addEventListener('click', ()=>{ grid.querySelectorAll('.modal-item').forEach(x=>x.classList.remove('active')); it.classList.add('active'); sel.id=f.file_object_id; sel.name=(f.original_name||f.key||f.file_object_id); const selBtn=card.querySelector('#mkSelect'); const editBtn=card.querySelector('#mkEdit'); if (selBtn) selBtn.disabled=false; if (editBtn) editBtn.disabled=false; // Immediately open editor to position/crop
-              openEditor(sel.id, sel.name);
-            });
+            it.appendChild(editBtn);
+            it.addEventListener('click', ()=>{ grid.querySelectorAll('.modal-item').forEach(x=>x.classList.remove('active')); it.classList.add('active'); sel.id=f.file_object_id; sel.name=(f.original_name||f.key||f.file_object_id); const selBtn=card.querySelector('#mkSelect'); if (selBtn) selBtn.disabled=false; });
             grid.appendChild(it);
           }
         }catch(e){ grid.textContent='Failed to load'; }
