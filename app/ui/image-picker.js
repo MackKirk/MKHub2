@@ -17,6 +17,7 @@
 
   async function open(opts){
     const { clientId, siteId, target } = opts||{};
+    try{ console.log('[MKImagePicker] open()', { clientId, siteId, target }); }catch(e){}
     if (!clientId) throw new Error('clientId required');
     const token = (window.MKHubUI && MKHubUI.getTokenOrRedirect) ? MKHubUI.getTokenOrRedirect() : localStorage.getItem('user_token');
 
@@ -65,6 +66,7 @@
 
       card.appendChild(rowTop); card.appendChild(rowUp); card.appendChild(grid); card.appendChild(rowBottom); card.appendChild(editor);
       modal.appendChild(card); document.body.appendChild(modal);
+      try{ console.log('[MKImagePicker] modal mounted'); }catch(e){}
 
       const rec = recSize(target); const hintEl = card.querySelector('#mkHint'); if (hintEl) hintEl.textContent = `Recommended size: ${rec.w}×${rec.h}`;
 
@@ -100,7 +102,7 @@
           const conf = await fetch('/files/confirm', { method:'POST', headers:{ 'Content-Type':'application/json', Authorization:'Bearer '+token }, body: JSON.stringify({ key: up.key, size_bytes: f.size, checksum_sha256: 'na', content_type: (f.type||'application/octet-stream') }) }).then(x=>x.json());
           await fetch(`/clients/${encodeURIComponent(clientId)}/files?file_object_id=${encodeURIComponent(conf.id)}&category=site-docs&original_name=${encodeURIComponent(f.name)}&site_id=${encodeURIComponent(siteId||'')}`, { method:'POST', headers:{ Authorization:'Bearer '+token } });
           await loadGrid();
-        }catch(e){ alert('Upload failed'); }
+        }catch(e){ try{ console.error('[MKImagePicker] upload failed', e); }catch(_e){} alert('Upload failed'); }
       });
 
       // Editor state
@@ -267,15 +269,15 @@
       });
 
       // Select / Close (with delegation fallback)
-      function doSelect(){ if (!sel.id){ alert('Pick an image'); return; } cleanup(); resolve({ file_object_id: sel.id, original_name: sel.name }); }
-      function doClose(){ cleanup(); resolve(null); }
+      function doSelect(){ try{ console.log('[MKImagePicker] select', sel); }catch(e){} if (!sel.id){ alert('Pick an image'); return; } cleanup(); resolve({ file_object_id: sel.id, original_name: sel.name }); }
+      function doClose(){ try{ console.log('[MKImagePicker] close'); }catch(e){} cleanup(); resolve(null); }
       const btnSelect = card.querySelector('#mkSelect'); if (btnSelect){ btnSelect.addEventListener('click', (e)=>{ e.stopPropagation(); doSelect(); }); }
       const btnClose = card.querySelector('#mkClose'); if (btnClose){ btnClose.addEventListener('click', (e)=>{ e.stopPropagation(); doClose(); }); }
       // Delegation in case direct bindings fail due to late re-render
       card.addEventListener('click', (e)=>{
         const id = e.target && e.target.id;
         if (id === 'mkClose'){ doClose(); }
-        if (id === 'mkEdit' && !e.target.disabled){ if (!sel.id){ alert('Pick an image'); return; } openEditor(sel.id, sel.name); }
+        if (id === 'mkEdit' && !e.target.disabled){ try{ console.log('[MKImagePicker] edit click'); }catch(e){} if (!sel.id){ alert('Pick an image'); return; } openEditor(sel.id, sel.name); }
         if (id === 'mkSelect' && !e.target.disabled){ doSelect(); }
       });
       function cleanup(){ try{ document.body.removeChild(modal); }catch(e){} }
