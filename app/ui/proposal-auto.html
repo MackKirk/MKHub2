@@ -225,7 +225,14 @@ async function initPrefill(){
       // Ensure picker script is loaded
       async function ensurePicker(){
         if (window.MKImagePicker && typeof MKImagePicker.open==='function') return true;
-        await new Promise((res,rej)=>{ const s=document.createElement('script'); s.src='/ui/image-picker.js?v='+Date.now(); s.onload=()=>res(true); s.onerror=rej; document.head.appendChild(s); });
+        try{
+          await new Promise((res)=>{ const s=document.createElement('script'); s.src='/ui/image-picker.js?ts='+Date.now(); s.onload=()=>res(); s.onerror=()=>res(); document.head.appendChild(s); });
+        }catch(e){}
+        if (window.MKImagePicker && typeof MKImagePicker.open==='function') return true;
+        try{
+          const txt = await fetch('/ui/image-picker.js?ts='+Date.now()).then(r=> r.ok ? r.text() : '');
+          if (txt) { (0,eval)(txt); }
+        }catch(e){}
         return (window.MKImagePicker && typeof MKImagePicker.open==='function');
       }
       const ok = await ensurePicker(); if (!ok){ alert('Failed to load image picker'); return; }
