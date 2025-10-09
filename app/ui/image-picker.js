@@ -53,30 +53,26 @@
       ]);
       const wrap = h('div', { style:{ display:'flex', gap:'10px', alignItems:'flex-start', flexWrap:'wrap' } });
       // Left toolbar (icons)
-      const toolbar = h('div', { style:{ display:'flex', flexDirection:'column', gap:'6px', alignItems:'center' } }, [
-        h('button', { id:'mkTBPan', title:'Pan (drag)', className:'active' }, ['🖐️']),
-        h('button', { id:'mkTBRect', title:'Rectangle' }, ['▭']),
-        h('button', { id:'mkTBArrow', title:'Arrow' }, ['➤']),
-        h('button', { id:'mkTBText', title:'Text' }, ['T']),
-        h('input', { id:'mkTBZoom', type:'range', min:'0.1', max:'3', value:'1', step:'0.01' }),
+      const toolsTop = h('div', { id:'mkToolsTop', style:{ display:'flex', gap:'8px', alignItems:'center', flexWrap:'wrap', margin:'6px 0' } }, [
+        h('button', { id:'mkTBPan', title:'Pan (drag)', className:'active' }, ['Pan']),
+        h('button', { id:'mkTBRect', title:'Rectangle' }, ['Rect']),
+        h('button', { id:'mkTBArrow', title:'Arrow' }, ['Arrow']),
+        h('button', { id:'mkTBText', title:'Text' }, ['Text']),
         h('button', { id:'mkTBRotL', title:'Rotate Left' }, ['⟲']),
         h('button', { id:'mkTBRotR', title:'Rotate Right' }, ['⟳']),
+        h('label', {}, ['Zoom ', h('input', { id:'mkTBZoom', type:'range', min:'0.1', max:'3', value:'1', step:'0.01' }) ]),
+        h('label', {}, ['Color ', h('input',{ type:'color', id:'mkColor', value:'#ff0000' }) ]),
+        h('label', {}, ['Stroke ', h('input',{ type:'number', id:'mkStroke', min:'1', max:'20', value:'3', style:'width:60px' }) ]),
+        h('label', {}, ['Font ', h('input',{ type:'text', id:'mkFont', value:'16px Montserrat', style:'width:140px' }) ]),
       ]);
       const canvWrap = h('div', { style:{ position:'relative' } });
       const cvs = h('canvas', { id:'mkC', style:{ background:'#f6f6f6', maxWidth:'100%', border:'1px solid #eee' } });
       const overlay = h('canvas', { id:'mkO', style:{ position:'absolute', left:'0', top:'0', pointerEvents:'none' } });
       canvWrap.appendChild(cvs); canvWrap.appendChild(overlay);
-      const side = h('div', { style:{ display:'flex', flexDirection:'column', gap:'8px', minWidth:'240px' } });
-      const modes = h('div', { style:{ display:'flex', gap:'6px', alignItems:'center', flexWrap:'wrap' } }, [ h('button', { id:'mkPan', className:'active' }, ['Pan']), h('button', { id:'mkRect' }, ['Rect']), h('button', { id:'mkArrow' }, ['Arrow']), h('button', { id:'mkText' }, ['Text']) ]);
-      const colorStroke = h('div', { style:{ display:'flex', gap:'6px', alignItems:'center' } }, [ h('label', {}, ['Color ', h('input',{ type:'color', id:'mkColor', value:'#ff0000' }) ]), h('label', {}, ['Stroke ', h('input',{ type:'number', id:'mkStroke', min:'1', max:'20', value:'3', style:'width:60px' }) ]) ]);
-      const textRow = h('div', { style:{ display:'flex', gap:'6px', alignItems:'center' } }, [ h('label', {}, ['Font ', h('input',{ type:'text', id:'mkFont', value:'16px Montserrat', style:'width:140px' }) ]), h('label', { style:{ flex:'1' } }, ['Text ', h('input',{ type:'text', id:'mkTxt', placeholder:'Your text', style:'width:100%' }) ]) ]);
-      const rotRow = h('div', { style:{ display:'flex', gap:'6px', alignItems:'center' } }, [ h('button', { id:'mkRotL' }, ['Rotate ⟲']), h('button', { id:'mkRotR' }, ['Rotate ⟳']) ]);
-      const zoomRow = h('label', {}, ['Zoom ', h('input',{ type:'range', id:'mkZoom', min:'0.1', max:'3', value:'1', step:'0.01' }) ]);
-      const tips = h('div', { className:'muted' }, ['Tips: Pan mode: drag image. Rect/Arrow/Text: click or drag on canvas. Click an annotation to select, drag to move. Del removes.']);
+      const tips = h('div', { className:'muted' }, ['Tips: Pan: arraste a imagem. Retângulo/Seta/Texto: clique ou arraste. Clique para selecionar, arraste para mover. Del remove.']);
       const act = h('div', { style:{ display:'flex', gap:'6px', justifyContent:'flex-end', flexWrap:'wrap' } }, [ h('button', { id:'mkBack', type:'button' }, ['Back']), h('button', { id:'mkReset', type:'button' }, ['Reset']), h('button', { id:'mkApply', type:'button' }, ['Apply']) ]);
-      side.appendChild(modes); side.appendChild(colorStroke); side.appendChild(textRow); side.appendChild(rotRow); side.appendChild(zoomRow); side.appendChild(tips); side.appendChild(act);
-      wrap.appendChild(toolbar); wrap.appendChild(canvWrap); wrap.appendChild(side);
-      editor.appendChild(hint); editor.appendChild(phaseBar); editor.appendChild(wrap);
+      wrap.appendChild(canvWrap);
+      editor.appendChild(hint); editor.appendChild(phaseBar); editor.appendChild(toolsTop); editor.appendChild(wrap); editor.appendChild(tips); editor.appendChild(act);
 
       card.appendChild(rowTop); card.appendChild(rowUp); card.appendChild(contentArea); card.appendChild(rowBottom); contentArea.appendChild(editor);
       modal.appendChild(card); document.body.appendChild(modal);
@@ -215,28 +211,39 @@
       }
       function redraw(){ drawBase(); drawOverlay(); }
 
-      function setMode(m){ ES.mode=m; ['#mkPan','#mkRect','#mkArrow','#mkText','#mkTBPan','#mkTBRect','#mkTBArrow','#mkTBText'].forEach(sel=>{ const b=card.querySelector(sel); if(b) b.classList.remove('active'); }); const map={pan:'#mkPan', rect:'#mkRect', arrow:'#mkArrow', text:'#mkText'}; const btn=card.querySelector(map[m]); if(btn) btn.classList.add('active'); const tmap={pan:'#mkTBPan', rect:'#mkTBRect', arrow:'#mkTBArrow', text:'#mkTBText'}; const tbtn=card.querySelector(tmap[m]); if (tbtn) tbtn.classList.add('active'); updatePhaseUI(); }
+      function setMode(m){
+        ES.mode = m;
+        ['#mkTBPan','#mkTBRect','#mkTBArrow','#mkTBText'].forEach(sel=>{ const b=card.querySelector(sel); if (b) b.classList.remove('active'); });
+        const tmap = { pan:'#mkTBPan', rect:'#mkTBRect', arrow:'#mkTBArrow', text:'#mkTBText' };
+        const tbtn = card.querySelector(tmap[m]); if (tbtn) tbtn.classList.add('active');
+        updatePhaseUI();
+      }
 
       function updatePhaseUI(){
-        // Phase toggles
         const pImg = card.querySelector('#mkPhaseImg'); const pNotes = card.querySelector('#mkPhaseNotes');
         if (pImg && pNotes){ pImg.classList.remove('active'); pNotes.classList.remove('active'); if (ES.phase==='image') pImg.classList.add('active'); else pNotes.classList.add('active'); }
-        // Enable/disable overlay interactions and tool buttons based on phase
         const notesEnabled = ES.phase === 'notes';
         overlay.style.pointerEvents = notesEnabled ? 'auto' : 'none';
-        // Disable shape buttons in image phase
-        const shapeBtns = ['#mkRect','#mkArrow','#mkText','#mkTBRect','#mkTBArrow','#mkTBText'];
-        shapeBtns.forEach(sel=>{ const b=card.querySelector(sel); if (b){ b.disabled = !notesEnabled; if (!notesEnabled) b.classList.remove('active'); } });
-        // Force pan mode in image phase
-        if (!notesEnabled) { ES.mode = 'pan'; }
+        // Helpers to toggle entire label groups
+        const toggleLabelFor = (sel, show)=>{ const input = card.querySelector(sel); if (!input) return; const label = input.closest('label'); const node = label || input; node.style.display = show ? '' : 'none'; };
+        const toggleBtn = (sel, show)=>{ const btn = card.querySelector(sel); if (btn) btn.style.display = show ? '' : 'none'; };
+        const isImage = ES.phase === 'image';
+        // Image phase controls
+        toggleBtn('#mkTBPan', isImage);
+        toggleBtn('#mkTBRotL', isImage);
+        toggleBtn('#mkTBRotR', isImage);
+        toggleLabelFor('#mkTBZoom', isImage);
+        // Notes phase controls
+        toggleBtn('#mkTBRect', !isImage);
+        toggleBtn('#mkTBArrow', !isImage);
+        toggleBtn('#mkTBText', !isImage);
+        toggleLabelFor('#mkColor', !isImage);
+        toggleLabelFor('#mkStroke', !isImage);
+        toggleLabelFor('#mkFont', !isImage);
+        if (!notesEnabled){ ES.mode = 'pan'; setMode('pan'); }
       }
       card.querySelector('#mkPhaseImg').addEventListener('click', ()=>{ ES.phase='image'; updatePhaseUI(); });
       card.querySelector('#mkPhaseNotes').addEventListener('click', ()=>{ ES.phase='notes'; updatePhaseUI(); });
-      card.querySelector('#mkPan').addEventListener('click', ()=>setMode('pan'));
-      card.querySelector('#mkRect').addEventListener('click', ()=>setMode('rect'));
-      card.querySelector('#mkArrow').addEventListener('click', ()=>setMode('arrow'));
-      card.querySelector('#mkText').addEventListener('click', ()=>setMode('text'));
-      // Toolbar mirrors
       card.querySelector('#mkTBPan').addEventListener('click', ()=>setMode('pan'));
       card.querySelector('#mkTBRect').addEventListener('click', ()=>setMode('rect'));
       card.querySelector('#mkTBArrow').addEventListener('click', ()=>setMode('arrow'));
@@ -244,7 +251,6 @@
       card.querySelector('#mkColor').addEventListener('input', (e)=>{ ES.color=e.target.value; });
       card.querySelector('#mkStroke').addEventListener('input', (e)=>{ ES.stroke=parseInt(e.target.value||'3',10)||3; });
       card.querySelector('#mkFont').addEventListener('input', (e)=>{ ES.font=e.target.value||'16px Montserrat'; });
-      card.querySelector('#mkTxt').addEventListener('input', (e)=>{ ES.text=e.target.value||''; });
       let dragging=false, startX=0, startY=0; cvs.addEventListener('mousedown', (e)=>{ if (ES.phase!=='image' || ES.mode!=='pan') return; dragging=true; startX=e.offsetX; startY=e.offsetY; }); cvs.addEventListener('mousemove', (e)=>{ if (!dragging||ES.phase!=='image' || ES.mode!=='pan') return; ES.offsetX+=(e.offsetX-startX); ES.offsetY+=(e.offsetY-startY); startX=e.offsetX; startY=e.offsetY; redraw(); }); window.addEventListener('mouseup', ()=>{ dragging=false; });
       let drawing=null; overlay.style.pointerEvents='auto'; overlay.addEventListener('mousedown', (e)=>{ const x=e.offsetX, y=e.offsetY; if (ES.phase==='notes' && ES.mode==='rect'){ drawing={ id:'it_'+Date.now(), type:'rect', x, y, w:1, h:1, color:ES.color, stroke:ES.stroke }; ES.items.push(drawing); redraw(); } else if (ES.phase==='notes' && ES.mode==='arrow'){ drawing={ id:'it_'+Date.now(), type:'arrow', x, y, x2:x+1, y2:y+1, color:ES.color, stroke:ES.stroke }; ES.items.push(drawing); redraw(); } else if (ES.phase==='notes' && ES.mode==='text'){ const inp=document.createElement('input'); inp.type='text'; inp.placeholder='Type...'; inp.style.position='absolute'; const r=overlay.getBoundingClientRect(); inp.style.left = (x + r.left - r.left) + 'px'; inp.style.top = (y + r.top - r.top) + 'px'; inp.style.zIndex='10000'; inp.style.padding='2px 4px'; inp.style.border='1px solid #ccc'; inp.style.font = ES.font; overlay.parentElement.appendChild(inp); inp.focus(); const commit=()=>{ const txt=inp.value.trim(); inp.parentElement.removeChild(inp); if (!txt){ redraw(); return; } const it={ id:'it_'+Date.now(), type:'text', x, y, text:txt, font:ES.font, color:ES.color, stroke:ES.stroke }; ES.items.push(it); redraw(); }; inp.addEventListener('keydown', (ev)=>{ if (ev.key==='Enter'){ commit(); } else if (ev.key==='Escape'){ inp.parentElement.removeChild(inp); redraw(); } }); inp.addEventListener('blur', commit); } else if (ES.phase==='notes' && ES.mode==='pan'){ const hit=itemAt(e.offsetX,e.offsetY); if (e.shiftKey && !hit){ ES._marquee = { x:e.offsetX, y:e.offsetY, x2:e.offsetX, y2:e.offsetY }; } else if (hit){ if (!ES.selectedIds || !ES.selectedIds.includes(hit.id)){ ES.selectedIds=[hit.id]; } drawing=null; moving=true; mStart={x:e.offsetX, y:e.offsetY}; } else { ES.selectedIds=[]; } redraw(); } });
       overlay.addEventListener('mousemove', (e)=>{ if (ES._marquee){ ES._marquee.x2=e.offsetX; ES._marquee.y2=e.offsetY; redraw(); return; } if (!drawing) return; if (drawing.type==='rect'){ drawing.w=(e.offsetX-drawing.x); drawing.h=(e.offsetY-drawing.y); } if (drawing.type==='arrow'){ drawing.x2=e.offsetX; drawing.y2=e.offsetY; } redraw(); });
@@ -252,14 +258,10 @@
       let moving=false, mStart=null; function itemAt(x,y){ for (let i=ES.items.length-1;i>=0;i--){ const it=ES.items[i]; const b=itemBounds(it); if (b && x>=b.x && y>=b.y && x<=b.x+b.w && y<=b.y+b.h) return it; } return null; }
       overlay.addEventListener('mousemove', (e)=>{ if (!moving) return; const dx=e.offsetX-mStart.x, dy=e.offsetY-mStart.y; mStart={x:e.offsetX,y:e.offsetY}; const targets=(ES.selectedIds&&ES.selectedIds.length)?ES.selectedIds:[]; for (const it of ES.items){ if (targets.includes(it.id)){ if (it.type==='rect'){ it.x+=dx; it.y+=dy; } if (it.type==='arrow'){ it.x+=dx; it.y+=dy; it.x2+=dx; it.y2+=dy; } if (it.type==='text'){ it.x+=dx; it.y+=dy; } } } redraw(); });
       window.addEventListener('keydown', (e)=>{ if (e.key==='Delete' && ES.selectedIds && ES.selectedIds.length){ ES.items=ES.items.filter(it=>!ES.selectedIds.includes(it.id)); ES.selectedIds=[]; redraw(); } });
-      card.querySelector('#mkRotL').addEventListener('click', ()=>{ ES.angle=(ES.angle+270)%360; redraw(); }); card.querySelector('#mkRotR').addEventListener('click', ()=>{ ES.angle=(ES.angle+90)%360; redraw(); });
-      // Toolbar rotate mirrors
       card.querySelector('#mkTBRotL').addEventListener('click', ()=>{ ES.angle=(ES.angle+270)%360; redraw(); });
       card.querySelector('#mkTBRotR').addEventListener('click', ()=>{ ES.angle=(ES.angle+90)%360; redraw(); });
-      const mkZoom = card.querySelector('#mkZoom');
       const mkTBZoom = card.querySelector('#mkTBZoom');
-      if (mkZoom){ mkZoom.addEventListener('input', (e)=>{ ES.scale=parseFloat(e.target.value||'1'); if(mkTBZoom && mkTBZoom.value!==e.target.value) mkTBZoom.value=e.target.value; redraw(); }); }
-      if (mkTBZoom){ mkTBZoom.addEventListener('input', (e)=>{ ES.scale=parseFloat(e.target.value||'1'); if(mkZoom && mkZoom.value!==e.target.value) mkZoom.value=e.target.value; redraw(); }); }
+      if (mkTBZoom){ mkTBZoom.addEventListener('input', (e)=>{ ES.scale=parseFloat(e.target.value||'1'); redraw(); }); }
       card.querySelector('#mkReset').addEventListener('click', ()=>{ ES.angle=0; ES.scale=1; ES.offsetX=0; ES.offsetY=0; ES.items=[]; ES.selectedIds=[]; redraw(); });
       card.querySelector('#mkBack').addEventListener('click', ()=>{ editor.style.display='none'; contentRow.style.display='flex'; });
 
