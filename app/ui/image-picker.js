@@ -240,7 +240,12 @@
         toggleLabelFor('#mkColor', !isImage);
         toggleLabelFor('#mkStroke', !isImage);
         toggleLabelFor('#mkFont', !isImage);
-        if (!notesEnabled){ ES.mode = 'pan'; setMode('pan'); }
+        if (!notesEnabled){
+          // Force Pan mode without recursion
+          ES.mode = 'pan';
+          ['#mkTBPan','#mkTBRect','#mkTBArrow','#mkTBText'].forEach(sel=>{ const b=card.querySelector(sel); if (b) b.classList.remove('active'); });
+          const panBtn = card.querySelector('#mkTBPan'); if (panBtn) panBtn.classList.add('active');
+        }
       }
       card.querySelector('#mkPhaseImg').addEventListener('click', ()=>{ ES.phase='image'; updatePhaseUI(); });
       card.querySelector('#mkPhaseNotes').addEventListener('click', ()=>{ ES.phase='notes'; updatePhaseUI(); });
@@ -265,7 +270,17 @@
       card.querySelector('#mkReset').addEventListener('click', ()=>{ ES.angle=0; ES.scale=1; ES.offsetX=0; ES.offsetY=0; ES.items=[]; ES.selectedIds=[]; redraw(); });
       card.querySelector('#mkBack').addEventListener('click', ()=>{ editor.style.display='none'; contentRow.style.display='flex'; });
 
-      async function openEditor(fid, fname){ try{ const url = '/files/'+encodeURIComponent(fid)+'/thumbnail?w=1600'; ES = { ...ES, img:new Image(), angle:0, scale:1, offsetX:0, offsetY:0, aspect:rec.w/rec.h, items:[], selectedIds:[], fileId: fid, fileName: fname||fid, phase:'image', mode:'pan' }; hint.textContent = `Edit ${fname||fid} — aspect ${(ES.aspect).toFixed(3)}`; await new Promise((res,rej)=>{ ES.img.onload=()=>res(null); ES.img.onerror=rej; ES.img.src=url; }); setCanvasSize(); redraw(); updatePhaseUI(); contentRow.style.display='none'; editor.style.display='block'; }catch(e){ alert('Failed to load image'); } }
+      async function openEditor(fid, fname){
+        try{
+          const prevEl = document.getElementById('mkPreviewBox'); if (prevEl){ prevEl.style.pointerEvents='none'; }
+          const url = '/files/'+encodeURIComponent(fid)+'/thumbnail?w=1600';
+          ES = { ...ES, img:new Image(), angle:0, scale:1, offsetX:0, offsetY:0, aspect:rec.w/rec.h, items:[], selectedIds:[], fileId: fid, fileName: fname||fid, phase:'image', mode:'pan' };
+          hint.textContent = `Edit ${fname||fid} — aspect ${(ES.aspect).toFixed(3)}`;
+          await new Promise((res)=>{ ES.img.onload=()=>res(null); ES.img.onerror=()=>res(null); ES.img.src=url; });
+          setCanvasSize(); redraw(); updatePhaseUI(); contentRow.style.display='none'; editor.style.display='block';
+          if (prevEl){ prevEl.style.pointerEvents=''; }
+        }catch(e){ alert('Failed to load image'); }
+      }
       card.querySelector('#mkEdit').addEventListener('click', (e)=>{ e.stopPropagation(); if (!sel.id) return; openEditor(sel.id, sel.name); });
       card.querySelector('#mkApply').addEventListener('click', async ()=>{
         try{
