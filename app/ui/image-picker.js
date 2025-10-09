@@ -109,7 +109,9 @@
             zoomBtn.addEventListener('click', (e)=>{ e.stopPropagation(); openLightbox(f.file_object_id, (f.original_name||f.key||f.file_object_id)); });
             it.appendChild(im); it.appendChild(cap);
             it.appendChild(zoomBtn);
-      it.addEventListener('click', ()=>{ grid.querySelectorAll('.modal-item').forEach(x=>x.classList.remove('active')); it.classList.add('active'); sel.id=f.file_object_id; sel.name=(f.original_name||f.key||f.file_object_id); const selBtn=card.querySelector('#mkSelect'); const editBtn=card.querySelector('#mkEdit'); if (selBtn) selBtn.disabled=false; if (editBtn) editBtn.disabled=false; });
+            it.addEventListener('click', ()=>{ grid.querySelectorAll('.modal-item').forEach(x=>x.classList.remove('active')); it.classList.add('active'); sel.id=f.file_object_id; sel.name=(f.original_name||f.key||f.file_object_id); const selBtn=card.querySelector('#mkSelect'); const editBtn=card.querySelector('#mkEdit'); if (selBtn) selBtn.disabled=false; if (editBtn) editBtn.disabled=false; // Immediately open editor to position/crop
+              openEditor(sel.id, sel.name);
+            });
             grid.appendChild(it);
           }
         }catch(e){ grid.textContent='Failed to load'; }
@@ -133,11 +135,9 @@
       // Editor state
       let ES = { img:null, angle:0, scale:1, offsetX:0, offsetY:0, aspect:rec.w/rec.h, items:[], selectedIds:[], color:'#ff0000', stroke:3, font:'16px Montserrat', text:'', fileId:'', fileName:'', phase:'image', mode:'pan' };
       function setCanvasSize(){
-        const maxW = 800;
-        const w = Math.min(maxW, (modal.clientWidth || 900) - 120);
-        const aspect = ES.aspect;
-        cvs.width = w;
-        cvs.height = Math.round(w / aspect);
+        // Render canvas at exact target pixel resolution for optimal export
+        cvs.width = rec.w;
+        cvs.height = rec.h;
         overlay.width = cvs.width;
         overlay.height = cvs.height;
       }
@@ -329,6 +329,7 @@
           // Flatten overlay onto base before exporting
           const ctxBase = cvs.getContext('2d');
           ctxBase.drawImage(overlay, 0, 0);
+          // Export at exact target size (canvas is already rec.w x rec.h)
           const blob = await new Promise(res=>cvs.toBlob(res,'image/png'));
           if (!blob){ alert('Render failed'); return; }
           // Preserve original name with _edited suffix
@@ -343,7 +344,8 @@
           const putResp = await fetch(up.upload_url, { method:'PUT', headers:{ 'Content-Type': f.type, 'x-ms-blob-type': 'BlockBlob' }, body: f }); if (!putResp.ok){ alert('Upload failed'); return; }
           const conf = await fetch('/files/confirm', { method:'POST', headers:{ 'Content-Type':'application/json', Authorization:'Bearer '+token }, body: JSON.stringify({ key: up.key, size_bytes: blob.size, checksum_sha256: 'na', content_type: f.type }) }).then(x=>x.json());
           await fetch(`/clients/${encodeURIComponent(clientId)}/files?file_object_id=${encodeURIComponent(conf.id)}&category=site-docs&original_name=${encodeURIComponent(f.name)}&site_id=${encodeURIComponent(siteId||'')}`, { method:'POST', headers:{ Authorization:'Bearer '+token } });
-          await loadGrid(); sel.id=conf.id; sel.name=f.name; editor.style.display='none'; contentRow.style.display='flex';
+          // Auto-complete: resolve with the new image immediately
+          sel.id=conf.id; sel.name=f.name; doSelect();
         }catch(e){ alert('Apply failed'); }
       });
 
