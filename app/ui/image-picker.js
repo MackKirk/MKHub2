@@ -35,10 +35,7 @@
       const grid = h('div', { id:'mkGrid', style:{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(140px, 1fr))', gap:'10px', border:'1px solid #eee', padding:'8px', borderRadius:'6px' } });
       leftCol.appendChild(grid);
       const rightCol = h('div', { style:{ display:'flex', flexDirection:'column', gap:'8px', flex:'1 1 0', minWidth:'260px' } });
-      const prevTitle = h('div', { className:'muted' }, ['Preview']);
-      const preview = h('div', { id:'mkPreviewBox', style:{ border:'1px solid #eee', borderRadius:'6px', padding:'8px', background:'#fafafa', display:'flex', alignItems:'center', justifyContent:'center', minHeight:'260px' } }, [ h('div', { id:'mkPreviewEmpty', className:'muted' }, ['No image selected']) ]);
-      rightCol.appendChild(prevTitle);
-      rightCol.appendChild(preview);
+      // Preview removed per request — keep column for future metadata if needed
       contentRow.appendChild(leftCol);
       contentRow.appendChild(rightCol);
       contentArea.appendChild(contentRow);
@@ -54,16 +51,21 @@
       const wrap = h('div', { style:{ display:'flex', gap:'10px', alignItems:'flex-start', flexWrap:'wrap' } });
       // Left toolbar (icons)
       const toolsTop = h('div', { id:'mkToolsTop', style:{ display:'flex', gap:'8px', alignItems:'center', flexWrap:'wrap', margin:'6px 0' } }, [
-        h('button', { id:'mkTBPan', title:'Pan (drag)', className:'active' }, ['Pan']),
-        h('button', { id:'mkTBRect', title:'Rectangle' }, ['Rect']),
-        h('button', { id:'mkTBArrow', title:'Arrow' }, ['Arrow']),
-        h('button', { id:'mkTBText', title:'Text' }, ['Text']),
+        h('button', { id:'mkTBPan', title:'Pan (drag)', className:'active' }, ['🖐️']),
         h('button', { id:'mkTBRotL', title:'Rotate Left' }, ['⟲']),
         h('button', { id:'mkTBRotR', title:'Rotate Right' }, ['⟳']),
         h('label', {}, ['Zoom ', h('input', { id:'mkTBZoom', type:'range', min:'0.1', max:'3', value:'1', step:'0.01' }) ]),
+        // Notes tools
+        h('button', { id:'mkTBSelect', title:'Select/Move' }, ['🖱️']),
+        h('button', { id:'mkTBRect', title:'Rectangle' }, ['▭']),
+        h('button', { id:'mkTBArrow', title:'Arrow' }, ['➤']),
+        h('button', { id:'mkTBText', title:'Text' }, ['T']),
+        h('button', { id:'mkTBCircle', title:'Circle' }, ['◯']),
+        h('button', { id:'mkTBDraw', title:'Freehand draw' }, ['✏️']),
         h('label', {}, ['Color ', h('input',{ type:'color', id:'mkColor', value:'#ff0000' }) ]),
         h('label', {}, ['Stroke ', h('input',{ type:'number', id:'mkStroke', min:'1', max:'20', value:'3', style:'width:60px' }) ]),
         h('label', {}, ['Font ', h('input',{ type:'text', id:'mkFont', value:'16px Montserrat', style:'width:140px' }) ]),
+        h('label', {}, ['Text ', h('input',{ type:'text', id:'mkTxt', placeholder:'Your text', style:'width:160px' }) ]),
       ]);
       const canvWrap = h('div', { style:{ position:'relative' } });
       const cvs = h('canvas', { id:'mkC', style:{ background:'#f6f6f6', maxWidth:'100%', border:'1px solid #eee' } });
@@ -94,9 +96,7 @@
             const im = h('img', { alt:(f.original_name||f.key||f.file_object_id), src:`/files/${f.file_object_id}/thumbnail?w=300`, style:{ maxWidth:'100%', height:'110px', objectFit:'cover' } });
             const cap = h('div', { className:'muted', style:{ fontSize:'12px' } }, [ f.original_name||'' ]);
             it.appendChild(im); it.appendChild(cap);
-      it.addEventListener('click', ()=>{ grid.querySelectorAll('.modal-item').forEach(x=>x.classList.remove('active')); it.classList.add('active'); sel.id=f.file_object_id; sel.name=(f.original_name||f.key||f.file_object_id); const selBtn=card.querySelector('#mkSelect'); const editBtn=card.querySelector('#mkEdit'); if (selBtn) selBtn.disabled=false; if (editBtn) editBtn.disabled=false; // update preview
-        const prev = document.getElementById('mkPreviewBox'); if (prev){ prev.innerHTML=''; const big = h('img', { src:`/files/${f.file_object_id}/thumbnail?w=800`, alt: sel.name, style:{ maxWidth:'100%', maxHeight:'360px', objectFit:'contain' } }); prev.appendChild(big); }
-      });
+      it.addEventListener('click', ()=>{ grid.querySelectorAll('.modal-item').forEach(x=>x.classList.remove('active')); it.classList.add('active'); sel.id=f.file_object_id; sel.name=(f.original_name||f.key||f.file_object_id); const selBtn=card.querySelector('#mkSelect'); const editBtn=card.querySelector('#mkEdit'); if (selBtn) selBtn.disabled=false; if (editBtn) editBtn.disabled=false; });
             grid.appendChild(it);
           }
         }catch(e){ grid.textContent='Failed to load'; }
@@ -159,6 +159,17 @@
           const h = parseInt(it.font, 10) || 16;
           return { x: it.x, y: it.y - h, w, h };
         }
+        if (it.type === 'circle'){
+          const r = Math.max(1, it.r||1);
+          return { x: it.x - r, y: it.y - r, w: r*2, h: r*2 };
+        }
+        if (it.type === 'path'){
+          const pts = it.points || [];
+          if (!pts.length) return null;
+          let minX=pts[0].x, minY=pts[0].y, maxX=pts[0].x, maxY=pts[0].y;
+          for (const p of pts){ if (p.x<minX) minX=p.x; if (p.y<minY) minY=p.y; if (p.x>maxX) maxX=p.x; if (p.y>maxY) maxY=p.y; }
+          return { x:minX, y:minY, w:(maxX-minX), h:(maxY-minY) };
+        }
         return null;
       }
       function drawOverlay(){
@@ -189,6 +200,18 @@
           } else if (it.type === 'text'){
             ctx.font = it.font;
             ctx.fillText(it.text || '', it.x, it.y);
+          } else if (it.type === 'circle'){
+            ctx.beginPath();
+            ctx.arc(it.x, it.y, Math.max(1, it.r||1), 0, Math.PI*2);
+            ctx.stroke();
+          } else if (it.type === 'path'){
+            const pts = it.points || [];
+            if (pts.length>1){
+              ctx.beginPath();
+              ctx.moveTo(pts[0].x, pts[0].y);
+              for (let i=1;i<pts.length;i++){ ctx.lineTo(pts[i].x, pts[i].y); }
+              ctx.stroke();
+            }
           }
           if (ES.selectedIds && ES.selectedIds.includes(it.id)){
             ctx.setLineDash([4,3]);
@@ -214,7 +237,7 @@
       function setMode(m){
         ES.mode = m;
         ['#mkTBPan','#mkTBRect','#mkTBArrow','#mkTBText'].forEach(sel=>{ const b=card.querySelector(sel); if (b) b.classList.remove('active'); });
-        const tmap = { pan:'#mkTBPan', rect:'#mkTBRect', arrow:'#mkTBArrow', text:'#mkTBText' };
+        const tmap = { pan:'#mkTBPan', rect:'#mkTBRect', arrow:'#mkTBArrow', text:'#mkTBText', select:'#mkTBSelect', circle:'#mkTBCircle', draw:'#mkTBDraw' };
         const tbtn = card.querySelector(tmap[m]); if (tbtn) tbtn.classList.add('active');
         updatePhaseUI();
       }
@@ -234,9 +257,12 @@
         toggleBtn('#mkTBRotR', isImage);
         toggleLabelFor('#mkTBZoom', isImage);
         // Notes phase controls
+        toggleBtn('#mkTBSelect', !isImage);
         toggleBtn('#mkTBRect', !isImage);
         toggleBtn('#mkTBArrow', !isImage);
         toggleBtn('#mkTBText', !isImage);
+        toggleBtn('#mkTBCircle', !isImage);
+        toggleBtn('#mkTBDraw', !isImage);
         toggleLabelFor('#mkColor', !isImage);
         toggleLabelFor('#mkStroke', !isImage);
         toggleLabelFor('#mkFont', !isImage);
@@ -250,15 +276,18 @@
       card.querySelector('#mkPhaseImg').addEventListener('click', ()=>{ ES.phase='image'; updatePhaseUI(); });
       card.querySelector('#mkPhaseNotes').addEventListener('click', ()=>{ ES.phase='notes'; updatePhaseUI(); });
       card.querySelector('#mkTBPan').addEventListener('click', ()=>setMode('pan'));
+      card.querySelector('#mkTBSelect').addEventListener('click', ()=>setMode('select'));
       card.querySelector('#mkTBRect').addEventListener('click', ()=>setMode('rect'));
       card.querySelector('#mkTBArrow').addEventListener('click', ()=>setMode('arrow'));
       card.querySelector('#mkTBText').addEventListener('click', ()=>setMode('text'));
+      card.querySelector('#mkTBCircle').addEventListener('click', ()=>setMode('circle'));
+      card.querySelector('#mkTBDraw').addEventListener('click', ()=>setMode('draw'));
       card.querySelector('#mkColor').addEventListener('input', (e)=>{ ES.color=e.target.value; });
       card.querySelector('#mkStroke').addEventListener('input', (e)=>{ ES.stroke=parseInt(e.target.value||'3',10)||3; });
       card.querySelector('#mkFont').addEventListener('input', (e)=>{ ES.font=e.target.value||'16px Montserrat'; });
       let dragging=false, startX=0, startY=0; cvs.addEventListener('mousedown', (e)=>{ if (ES.phase!=='image' || ES.mode!=='pan') return; dragging=true; startX=e.offsetX; startY=e.offsetY; }); cvs.addEventListener('mousemove', (e)=>{ if (!dragging||ES.phase!=='image' || ES.mode!=='pan') return; ES.offsetX+=(e.offsetX-startX); ES.offsetY+=(e.offsetY-startY); startX=e.offsetX; startY=e.offsetY; redraw(); }); window.addEventListener('mouseup', ()=>{ dragging=false; });
-      let drawing=null; overlay.style.pointerEvents='auto'; overlay.addEventListener('mousedown', (e)=>{ const x=e.offsetX, y=e.offsetY; if (ES.phase==='notes' && ES.mode==='rect'){ drawing={ id:'it_'+Date.now(), type:'rect', x, y, w:1, h:1, color:ES.color, stroke:ES.stroke }; ES.items.push(drawing); redraw(); } else if (ES.phase==='notes' && ES.mode==='arrow'){ drawing={ id:'it_'+Date.now(), type:'arrow', x, y, x2:x+1, y2:y+1, color:ES.color, stroke:ES.stroke }; ES.items.push(drawing); redraw(); } else if (ES.phase==='notes' && ES.mode==='text'){ const inp=document.createElement('input'); inp.type='text'; inp.placeholder='Type...'; inp.style.position='absolute'; const r=overlay.getBoundingClientRect(); inp.style.left = (x + r.left - r.left) + 'px'; inp.style.top = (y + r.top - r.top) + 'px'; inp.style.zIndex='10000'; inp.style.padding='2px 4px'; inp.style.border='1px solid #ccc'; inp.style.font = ES.font; overlay.parentElement.appendChild(inp); inp.focus(); const commit=()=>{ const txt=inp.value.trim(); inp.parentElement.removeChild(inp); if (!txt){ redraw(); return; } const it={ id:'it_'+Date.now(), type:'text', x, y, text:txt, font:ES.font, color:ES.color, stroke:ES.stroke }; ES.items.push(it); redraw(); }; inp.addEventListener('keydown', (ev)=>{ if (ev.key==='Enter'){ commit(); } else if (ev.key==='Escape'){ inp.parentElement.removeChild(inp); redraw(); } }); inp.addEventListener('blur', commit); } else if (ES.phase==='notes' && ES.mode==='pan'){ const hit=itemAt(e.offsetX,e.offsetY); if (e.shiftKey && !hit){ ES._marquee = { x:e.offsetX, y:e.offsetY, x2:e.offsetX, y2:e.offsetY }; } else if (hit){ if (!ES.selectedIds || !ES.selectedIds.includes(hit.id)){ ES.selectedIds=[hit.id]; } drawing=null; moving=true; mStart={x:e.offsetX, y:e.offsetY}; } else { ES.selectedIds=[]; } redraw(); } });
-      overlay.addEventListener('mousemove', (e)=>{ if (ES._marquee){ ES._marquee.x2=e.offsetX; ES._marquee.y2=e.offsetY; redraw(); return; } if (!drawing) return; if (drawing.type==='rect'){ drawing.w=(e.offsetX-drawing.x); drawing.h=(e.offsetY-drawing.y); } if (drawing.type==='arrow'){ drawing.x2=e.offsetX; drawing.y2=e.offsetY; } redraw(); });
+      let drawing=null; overlay.style.pointerEvents='auto'; overlay.addEventListener('mousedown', (e)=>{ const x=e.offsetX, y=e.offsetY; if (ES.phase==='notes' && ES.mode==='rect'){ drawing={ id:'it_'+Date.now(), type:'rect', x, y, w:1, h:1, color:ES.color, stroke:ES.stroke }; ES.items.push(drawing); redraw(); } else if (ES.phase==='notes' && ES.mode==='arrow'){ drawing={ id:'it_'+Date.now(), type:'arrow', x, y, x2:x+1, y2:y+1, color:ES.color, stroke:ES.stroke }; ES.items.push(drawing); redraw(); } else if (ES.phase==='notes' && ES.mode==='circle'){ drawing={ id:'it_'+Date.now(), type:'circle', x, y, r:1, color:ES.color, stroke:ES.stroke }; ES.items.push(drawing); redraw(); } else if (ES.phase==='notes' && ES.mode==='draw'){ drawing={ id:'it_'+Date.now(), type:'path', points:[{x,y}], color:ES.color, stroke:ES.stroke }; ES.items.push(drawing); redraw(); } else if (ES.phase==='notes' && ES.mode==='text'){ const inp=document.createElement('input'); inp.type='text'; inp.placeholder='Type...'; inp.style.position='absolute'; const r=overlay.getBoundingClientRect(); inp.style.left = (x + r.left - r.left) + 'px'; inp.style.top = (y + r.top - r.top) + 'px'; inp.style.zIndex='10000'; inp.style.padding='2px 4px'; inp.style.border='1px solid #ccc'; inp.style.font = ES.font; overlay.parentElement.appendChild(inp); inp.focus(); const commit=()=>{ const txt=inp.value.trim(); inp.parentElement.removeChild(inp); if (!txt){ redraw(); return; } const it={ id:'it_'+Date.now(), type:'text', x, y, text:txt, font:ES.font, color:ES.color, stroke:ES.stroke }; ES.items.push(it); redraw(); }; inp.addEventListener('keydown', (ev)=>{ if (ev.key==='Enter'){ commit(); } else if (ev.key==='Escape'){ inp.parentElement.removeChild(inp); redraw(); } }); inp.addEventListener('blur', commit); } else if (ES.phase==='notes' && (ES.mode==='pan' || ES.mode==='select')){ const hit=itemAt(e.offsetX,e.offsetY); if (e.shiftKey && !hit){ ES._marquee = { x:e.offsetX, y:e.offsetY, x2:e.offsetX, y2:e.offsetY }; } else if (hit){ if (!ES.selectedIds || !ES.selectedIds.includes(hit.id)){ ES.selectedIds=[hit.id]; } drawing=null; moving=true; mStart={x:e.offsetX, y:e.offsetY}; } else { ES.selectedIds=[]; } redraw(); } });
+      overlay.addEventListener('mousemove', (e)=>{ if (ES._marquee){ ES._marquee.x2=e.offsetX; ES._marquee.y2=e.offsetY; redraw(); return; } if (!drawing) return; if (drawing.type==='rect'){ drawing.w=(e.offsetX-drawing.x); drawing.h=(e.offsetY-drawing.y); } if (drawing.type==='arrow'){ drawing.x2=e.offsetX; drawing.y2=e.offsetY; } if (drawing.type==='circle'){ const dx=e.offsetX-drawing.x, dy=e.offsetY-drawing.y; drawing.r=Math.max(1, Math.hypot(dx,dy)); } if (drawing.type==='path'){ drawing.points.push({ x:e.offsetX, y:e.offsetY }); } redraw(); });
       window.addEventListener('mouseup', ()=>{ if (drawing){ drawing=null; redraw(); } if (ES._marquee){ const m=ES._marquee; const x=Math.min(m.x,m.x2), y=Math.min(m.y,m.y2), w=Math.abs(m.x2-m.x), h=Math.abs(m.y2-m.y); const sel=[]; for (const it of ES.items){ const b=itemBounds(it); if (!b) continue; const inside=(b.x>=x && b.y>=y && (b.x+b.w)<=x+w && (b.y+b.h)<=y+h); if (inside) sel.push(it.id); } ES.selectedIds=sel; ES._marquee=null; redraw(); } moving=false; });
       let moving=false, mStart=null; function itemAt(x,y){ for (let i=ES.items.length-1;i>=0;i--){ const it=ES.items[i]; const b=itemBounds(it); if (b && x>=b.x && y>=b.y && x<=b.x+b.w && y<=b.y+b.h) return it; } return null; }
       overlay.addEventListener('mousemove', (e)=>{ if (!moving) return; const dx=e.offsetX-mStart.x, dy=e.offsetY-mStart.y; mStart={x:e.offsetX,y:e.offsetY}; const targets=(ES.selectedIds&&ES.selectedIds.length)?ES.selectedIds:[]; for (const it of ES.items){ if (targets.includes(it.id)){ if (it.type==='rect'){ it.x+=dx; it.y+=dy; } if (it.type==='arrow'){ it.x+=dx; it.y+=dy; it.x2+=dx; it.y2+=dy; } if (it.type==='text'){ it.x+=dx; it.y+=dy; } } } redraw(); });
