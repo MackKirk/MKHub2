@@ -265,8 +265,8 @@
       card.querySelector('#mkReset').addEventListener('click', ()=>{ ES.angle=0; ES.scale=1; ES.offsetX=0; ES.offsetY=0; ES.items=[]; ES.selectedIds=[]; redraw(); });
       card.querySelector('#mkBack').addEventListener('click', ()=>{ editor.style.display='none'; contentRow.style.display='flex'; });
 
-      async function openEditor(fid, fname){ try{ const j=await fetch('/files/'+encodeURIComponent(fid)+'/download').then(x=>x.json()); const url=j && j.download_url ? j.download_url : null; if (!url){ alert('Cannot download image'); return; } ES = { ...ES, img:new Image(), angle:0, scale:1, offsetX:0, offsetY:0, aspect:rec.w/rec.h, items:[], selectedIds:[], fileId: fid, fileName: fname||fid, phase:'image', mode:'pan' }; hint.textContent = `Edit ${fname||fid} — aspect ${(ES.aspect).toFixed(3)}`; await new Promise((res,rej)=>{ ES.img.crossOrigin='anonymous'; ES.img.onload=()=>res(null); ES.img.onerror=rej; ES.img.src=url; }); setCanvasSize(); redraw(); updatePhaseUI(); contentRow.style.display='none'; editor.style.display='block'; }catch(e){ alert('Failed to load image'); } }
-      card.querySelector('#mkEdit').addEventListener('click', ()=>{ if (!sel.id) return; openEditor(sel.id, sel.name); });
+      async function openEditor(fid, fname){ try{ const url = '/files/'+encodeURIComponent(fid)+'/thumbnail?w=1600'; ES = { ...ES, img:new Image(), angle:0, scale:1, offsetX:0, offsetY:0, aspect:rec.w/rec.h, items:[], selectedIds:[], fileId: fid, fileName: fname||fid, phase:'image', mode:'pan' }; hint.textContent = `Edit ${fname||fid} — aspect ${(ES.aspect).toFixed(3)}`; await new Promise((res,rej)=>{ ES.img.onload=()=>res(null); ES.img.onerror=rej; ES.img.src=url; }); setCanvasSize(); redraw(); updatePhaseUI(); contentRow.style.display='none'; editor.style.display='block'; }catch(e){ alert('Failed to load image'); } }
+      card.querySelector('#mkEdit').addEventListener('click', (e)=>{ e.stopPropagation(); if (!sel.id) return; openEditor(sel.id, sel.name); });
       card.querySelector('#mkApply').addEventListener('click', async ()=>{
         try{
           // Flatten overlay onto base before exporting
@@ -286,7 +286,7 @@
           const putResp = await fetch(up.upload_url, { method:'PUT', headers:{ 'Content-Type': f.type, 'x-ms-blob-type': 'BlockBlob' }, body: f }); if (!putResp.ok){ alert('Upload failed'); return; }
           const conf = await fetch('/files/confirm', { method:'POST', headers:{ 'Content-Type':'application/json', Authorization:'Bearer '+token }, body: JSON.stringify({ key: up.key, size_bytes: blob.size, checksum_sha256: 'na', content_type: f.type }) }).then(x=>x.json());
           await fetch(`/clients/${encodeURIComponent(clientId)}/files?file_object_id=${encodeURIComponent(conf.id)}&category=site-docs&original_name=${encodeURIComponent(f.name)}&site_id=${encodeURIComponent(siteId||'')}`, { method:'POST', headers:{ Authorization:'Bearer '+token } });
-          await loadGrid(); sel.id=conf.id; sel.name=f.name; editor.style.display='none'; grid.style.display='grid';
+          await loadGrid(); sel.id=conf.id; sel.name=f.name; editor.style.display='none'; contentRow.style.display='flex';
         }catch(e){ alert('Apply failed'); }
       });
 
@@ -295,13 +295,7 @@
       function doClose(){ try{ console.log('[MKImagePicker] close'); }catch(e){} cleanup(); resolve(null); }
       const btnSelect = card.querySelector('#mkSelect'); if (btnSelect){ btnSelect.addEventListener('click', (e)=>{ e.stopPropagation(); doSelect(); }); }
       const btnClose = card.querySelector('#mkClose'); if (btnClose){ btnClose.addEventListener('click', (e)=>{ e.stopPropagation(); doClose(); }); }
-      // Delegation in case direct bindings fail due to late re-render
-      card.addEventListener('click', (e)=>{
-        const id = e.target && e.target.id;
-        if (id === 'mkClose'){ doClose(); }
-        if (id === 'mkEdit' && !e.target.disabled){ try{ console.log('[MKImagePicker] edit click'); }catch(e){} if (!sel.id){ alert('Pick an image'); return; } openEditor(sel.id, sel.name); }
-        if (id === 'mkSelect' && !e.target.disabled){ doSelect(); }
-      });
+      // (Removed inner card delegation to avoid duplicate handlers; using explicit + modal delegation)
       // Robust delegation from modal root using closest() (handles text-node clicks)
       modal.addEventListener('click', (e)=>{
         const btn = e.target && e.target.closest && e.target.closest('#mkClose, #mkEdit, #mkSelect');
