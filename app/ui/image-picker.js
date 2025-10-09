@@ -267,9 +267,18 @@
         }catch(e){ alert('Apply failed'); }
       });
 
-      // Select / Close
-      card.querySelector('#mkSelect').addEventListener('click', ()=>{ if (!sel.id){ alert('Pick an image'); return; } cleanup(); resolve({ file_object_id: sel.id, original_name: sel.name }); });
-      card.querySelector('#mkClose').addEventListener('click', ()=>{ cleanup(); resolve(null); });
+      // Select / Close (with delegation fallback)
+      function doSelect(){ if (!sel.id){ alert('Pick an image'); return; } cleanup(); resolve({ file_object_id: sel.id, original_name: sel.name }); }
+      function doClose(){ cleanup(); resolve(null); }
+      const btnSelect = card.querySelector('#mkSelect'); if (btnSelect) btnSelect.addEventListener('click', doSelect);
+      const btnClose = card.querySelector('#mkClose'); if (btnClose) btnClose.addEventListener('click', doClose);
+      // Delegation in case direct bindings fail due to late re-render
+      card.addEventListener('click', (e)=>{
+        const id = e.target && e.target.id;
+        if (id === 'mkClose'){ doClose(); }
+        if (id === 'mkEdit' && !e.target.disabled){ if (!sel.id){ alert('Pick an image'); return; } openEditor(sel.id, sel.name); }
+        if (id === 'mkSelect' && !e.target.disabled){ doSelect(); }
+      });
       function cleanup(){ try{ document.body.removeChild(modal); }catch(e){} }
     });
   }
