@@ -27,7 +27,7 @@
       const rowTop = h('div', { style:{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'6px' } }, [ h('h3', {}, ['Select Picture']), h('button', { id:'mkClose' }, ['Close']) ]);
       const rowUp = h('div', { style:{ display:'flex', gap:'8px', alignItems:'center', marginBottom:'8px', flexWrap:'wrap' } }, [ h('input', { type:'file', id:'mkUp', accept:'image/*' }), h('button', { id:'mkUpBtn' }, ['Upload to Site']), h('span', { className:'muted' }, ['Uploads attach to this site']) ]);
       const grid = h('div', { id:'mkGrid', style:{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(140px, 1fr))', gap:'10px' } });
-      const rowBottom = h('div', { style:{ display:'flex', justifyContent:'space-between', alignItems:'center', marginTop:'10px' } }, [ h('div', { id:'mkHint', className:'muted' }), h('div', { style:{ display:'flex', gap:'8px' } }, [ h('button', { id:'mkEdit', disabled:'true' }, ['Edit']), h('button', { id:'mkSelect', disabled:'true' }, ['Select']) ]) ]);
+      const rowBottom = h('div', { style:{ display:'flex', justifyContent:'space-between', alignItems:'center', marginTop:'10px' } }, [ h('div', { id:'mkHint', className:'muted' }), h('div', { style:{ display:'flex', gap:'8px' } }, [ h('button', { id:'mkEdit', disabled:true }, ['Edit']), h('button', { id:'mkSelect', disabled:true }, ['Select']) ]) ]);
 
       // Editor
       const editor = h('div', { id:'mkEditor', style:{ display:'none', marginTop:'10px' } });
@@ -82,7 +82,7 @@
             const im = h('img', { alt:(f.original_name||f.key||f.file_object_id), src:`/files/${f.file_object_id}/thumbnail?w=300`, style:{ maxWidth:'100%', height:'110px', objectFit:'cover' } });
             const cap = h('div', { className:'muted', style:{ fontSize:'12px' } }, [ f.original_name||'' ]);
             it.appendChild(im); it.appendChild(cap);
-            it.addEventListener('click', ()=>{ grid.querySelectorAll('.modal-item').forEach(x=>x.classList.remove('active')); it.classList.add('active'); sel.id=f.file_object_id; sel.name=(f.original_name||f.key||f.file_object_id); card.querySelector('#mkSelect').disabled=false; card.querySelector('#mkEdit').disabled=false; });
+      it.addEventListener('click', ()=>{ grid.querySelectorAll('.modal-item').forEach(x=>x.classList.remove('active')); it.classList.add('active'); sel.id=f.file_object_id; sel.name=(f.original_name||f.key||f.file_object_id); const selBtn=card.querySelector('#mkSelect'); const editBtn=card.querySelector('#mkEdit'); if (selBtn) selBtn.disabled=false; if (editBtn) editBtn.disabled=false; });
             grid.appendChild(it);
           }
         }catch(e){ grid.textContent='Failed to load'; }
@@ -194,7 +194,6 @@
           ctx.strokeRect(x, y, w, h);
           ctx.restore();
         }
-      }
       function redraw(){ drawBase(); drawOverlay(); }
 
       function setMode(m){ ES.mode=m; ['#mkPan','#mkRect','#mkArrow','#mkText','#mkTBPan','#mkTBRect','#mkTBArrow','#mkTBText'].forEach(sel=>{ const b=card.querySelector(sel); if(b) b.classList.remove('active'); }); const map={pan:'#mkPan', rect:'#mkRect', arrow:'#mkArrow', text:'#mkText'}; const btn=card.querySelector(map[m]); if(btn) btn.classList.add('active'); const tmap={pan:'#mkTBPan', rect:'#mkTBRect', arrow:'#mkTBArrow', text:'#mkTBText'}; const tbtn=card.querySelector(tmap[m]); if (tbtn) tbtn.classList.add('active'); updatePhaseUI(); }
@@ -270,8 +269,8 @@
       // Select / Close (with delegation fallback)
       function doSelect(){ if (!sel.id){ alert('Pick an image'); return; } cleanup(); resolve({ file_object_id: sel.id, original_name: sel.name }); }
       function doClose(){ cleanup(); resolve(null); }
-      const btnSelect = card.querySelector('#mkSelect'); if (btnSelect) btnSelect.addEventListener('click', doSelect);
-      const btnClose = card.querySelector('#mkClose'); if (btnClose) btnClose.addEventListener('click', doClose);
+      const btnSelect = card.querySelector('#mkSelect'); if (btnSelect){ btnSelect.addEventListener('click', (e)=>{ e.stopPropagation(); doSelect(); }); }
+      const btnClose = card.querySelector('#mkClose'); if (btnClose){ btnClose.addEventListener('click', (e)=>{ e.stopPropagation(); doClose(); }); }
       // Delegation in case direct bindings fail due to late re-render
       card.addEventListener('click', (e)=>{
         const id = e.target && e.target.id;
