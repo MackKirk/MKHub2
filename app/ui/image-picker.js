@@ -147,6 +147,53 @@
         }
         return null;
       }
+      function drawOverlay(){
+        const ctx = overlay.getContext('2d');
+        ctx.clearRect(0, 0, overlay.width, overlay.height);
+        for (const it of ES.items){
+          ctx.save();
+          ctx.strokeStyle = it.color;
+          ctx.fillStyle = it.color;
+          ctx.lineWidth = it.stroke;
+          if (it.type === 'rect'){
+            ctx.strokeRect(it.x, it.y, it.w, it.h);
+          } else if (it.type === 'arrow'){
+            const dx = it.x2 - it.x, dy = it.y2 - it.y;
+            const len = Math.hypot(dx, dy) || 1;
+            const ux = dx/len, uy = dy/len;
+            const head = 10 + it.stroke * 2;
+            ctx.beginPath();
+            ctx.moveTo(it.x, it.y);
+            ctx.lineTo(it.x2, it.y2);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(it.x2, it.y2);
+            ctx.lineTo(it.x2 - ux*head - uy*head*0.5, it.y2 - uy*head + ux*head*0.5);
+            ctx.lineTo(it.x2 - ux*head + uy*head*0.5, it.y2 - uy*head - ux*head*0.5);
+            ctx.closePath();
+            ctx.fill();
+          } else if (it.type === 'text'){
+            ctx.font = it.font;
+            ctx.fillText(it.text || '', it.x, it.y);
+          }
+          if (ES.selectedIds && ES.selectedIds.includes(it.id)){
+            ctx.setLineDash([4,3]);
+            ctx.strokeStyle = '#3b82f6';
+            const bb = itemBounds(it);
+            if (bb){ ctx.strokeRect(bb.x, bb.y, bb.w, bb.h); }
+          }
+          ctx.restore();
+        }
+        if (ES._marquee){
+          ctx.save();
+          ctx.setLineDash([5,4]);
+          ctx.strokeStyle = '#3b82f6';
+          const m = ES._marquee;
+          const x = Math.min(m.x, m.x2), y = Math.min(m.y, m.y2);
+          const w = Math.abs(m.x2 - m.x), h = Math.abs(m.y2 - m.y);
+          ctx.strokeRect(x, y, w, h);
+          ctx.restore();
+        }
       }
       function redraw(){ drawBase(); drawOverlay(); }
 
