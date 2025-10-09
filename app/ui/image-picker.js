@@ -26,7 +26,7 @@
       const modal = h('div', { class:'mk-modal', style:{ position:'fixed', inset:'0', background:'rgba(0,0,0,0.4)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:9999 } });
       const card = h('div', { class:'card', style:{ width:'90%', maxWidth:'900px', maxHeight:'80%', overflow:'auto', background:'#fff', padding:'12px' } });
       const rowTop = h('div', { style:{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'6px' } }, [ h('h3', {}, ['Select Picture']), h('button', { id:'mkClose', type:'button' }, ['Close']) ]);
-      const rowUp = h('div', { style:{ display:'flex', gap:'8px', alignItems:'center', marginBottom:'8px', flexWrap:'wrap' } }, [ h('input', { type:'file', id:'mkUp', accept:'image/*' }), h('button', { id:'mkUpBtn' }, ['Upload to Site']), h('span', { className:'muted' }, ['Uploads attach to this site']) ]);
+      const rowUp = h('div', { style:{ display:'flex', gap:'8px', alignItems:'center', marginBottom:'8px', flexWrap:'wrap' } }, [ h('input', { type:'file', id:'mkUp', accept:'image/*' }), h('button', { id:'mkUpBtn', type:'button' }, ['Upload to Site']), h('span', { className:'muted' }, ['Uploads attach to this site']) ]);
       const grid = h('div', { id:'mkGrid', style:{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(140px, 1fr))', gap:'10px' } });
       const rowBottom = h('div', { style:{ display:'flex', justifyContent:'space-between', alignItems:'center', marginTop:'10px' } }, [ h('div', { id:'mkHint', className:'muted' }), h('div', { style:{ display:'flex', gap:'8px' } }, [ h('button', { id:'mkEdit', type:'button', disabled:true }, ['Edit']), h('button', { id:'mkSelect', type:'button', disabled:true }, ['Select']) ]) ]);
 
@@ -44,7 +44,7 @@
         h('button', { id:'mkTBRect', title:'Rectangle' }, ['▭']),
         h('button', { id:'mkTBArrow', title:'Arrow' }, ['➤']),
         h('button', { id:'mkTBText', title:'Text' }, ['T']),
-        h('input', { id:'mkTBZoom', type:'range', min:'0.1', max:'3', value:'1', step:'0.01', style:'writing-mode: bt-lr; -webkitAppearance: slider-vertical; appearance: slider-vertical; height: 140px; transform: rotate(180deg);' }),
+        h('input', { id:'mkTBZoom', type:'range', min:'0.1', max:'3', value:'1', step:'0.01' }),
         h('button', { id:'mkTBRotL', title:'Rotate Left' }, ['⟲']),
         h('button', { id:'mkTBRotR', title:'Rotate Right' }, ['⟳']),
       ]);
@@ -59,8 +59,8 @@
       const rotRow = h('div', { style:{ display:'flex', gap:'6px', alignItems:'center' } }, [ h('button', { id:'mkRotL' }, ['Rotate ⟲']), h('button', { id:'mkRotR' }, ['Rotate ⟳']) ]);
       const zoomRow = h('label', {}, ['Zoom ', h('input',{ type:'range', id:'mkZoom', min:'0.1', max:'3', value:'1', step:'0.01' }) ]);
       const tips = h('div', { className:'muted' }, ['Tips: Pan mode: drag image. Rect/Arrow/Text: click or drag on canvas. Click an annotation to select, drag to move. Del removes.']);
-      const act = h('div', { style:{ display:'flex', gap:'6px', justifyContent:'flex-end', flexWrap:'wrap' } }, [ h('button', { id:'mkBack' }, ['Back']), h('button', { id:'mkReset' }, ['Reset']), h('button', { id:'mkApply' }, ['Apply']) ]);
-      side.appendChild(modes); side.appendChild(colorStroke); side.appendChild(textRow); side.appendChild(rotRow); side.appendChild(tips); side.appendChild(act);
+      const act = h('div', { style:{ display:'flex', gap:'6px', justifyContent:'flex-end', flexWrap:'wrap' } }, [ h('button', { id:'mkBack', type:'button' }, ['Back']), h('button', { id:'mkReset', type:'button' }, ['Reset']), h('button', { id:'mkApply', type:'button' }, ['Apply']) ]);
+      side.appendChild(modes); side.appendChild(colorStroke); side.appendChild(textRow); side.appendChild(rotRow); side.appendChild(zoomRow); side.appendChild(tips); side.appendChild(act);
       wrap.appendChild(toolbar); wrap.appendChild(canvWrap); wrap.appendChild(side);
       editor.appendChild(hint); editor.appendChild(phaseBar); editor.appendChild(wrap);
 
@@ -240,7 +240,10 @@
       // Toolbar rotate mirrors
       card.querySelector('#mkTBRotL').addEventListener('click', ()=>{ ES.angle=(ES.angle+270)%360; redraw(); });
       card.querySelector('#mkTBRotR').addEventListener('click', ()=>{ ES.angle=(ES.angle+90)%360; redraw(); });
-      card.querySelector('#mkZoom').addEventListener('input', (e)=>{ ES.scale=parseFloat(e.target.value||'1'); redraw(); });
+      const mkZoom = card.querySelector('#mkZoom');
+      const mkTBZoom = card.querySelector('#mkTBZoom');
+      if (mkZoom){ mkZoom.addEventListener('input', (e)=>{ ES.scale=parseFloat(e.target.value||'1'); if(mkTBZoom && mkTBZoom.value!==e.target.value) mkTBZoom.value=e.target.value; redraw(); }); }
+      if (mkTBZoom){ mkTBZoom.addEventListener('input', (e)=>{ ES.scale=parseFloat(e.target.value||'1'); if(mkZoom && mkZoom.value!==e.target.value) mkZoom.value=e.target.value; redraw(); }); }
       card.querySelector('#mkReset').addEventListener('click', ()=>{ ES.angle=0; ES.scale=1; ES.offsetX=0; ES.offsetY=0; ES.items=[]; ES.selectedIds=[]; redraw(); });
       card.querySelector('#mkBack').addEventListener('click', ()=>{ editor.style.display='none'; grid.style.display='grid'; });
 
