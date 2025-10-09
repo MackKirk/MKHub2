@@ -105,9 +105,48 @@
 
       // Editor state
       let ES = { img:null, angle:0, scale:1, offsetX:0, offsetY:0, aspect:rec.w/rec.h, items:[], selectedIds:[], color:'#ff0000', stroke:3, font:'16px Montserrat', text:'', fileId:'', fileName:'', phase:'image', mode:'pan' };
-      function setCanvasSize(){ const maxW=800; const w=Math.min(maxW, (modal.clientWidth||900)-120); const aspect=ES.aspect; cvs.width=w; cvs.height=Math.round(w/aspect); overlay.width=cvs.width; overlay.height=cvs.height; }
-      function drawBase(){ const ctx=cvs.getContext('2d'); ctx.save(); ctx.clearRect(0,0,cvs.width,cvs.height); ctx.fillStyle='#f6f6f6'; ctx.fillRect(0,0,cvs.width,cvs.height); if(!ES.img){ ctx.restore(); return; } ctx.translate(cvs.width/2+ES.offsetX, cvs.height/2+ES.offsetY); ctx.rotate(ES.angle*Math.PI/180); const iw=ES.img.width, ih=ES.img.height, s=ES.scale; const dw=iw*s, dh=ih*s; ctx.drawImage(ES.img, -dw/2, -dh/2, dw, dh); ctx.restore(); }
-      function itemBounds(it){ if (it.type==='rect'){ const w=Math.abs(it.w), h=Math.abs(it.h); const x=Math.min(it.x, it.x+it.w), y=Math.min(it.y, it.y+it.h); return {x,y,w,h}; } if (it.type==='arrow'){ const x=Math.min(it.x,it.x2), y=Math.min(it.y,it.y2); return {x,y,w:Math.abs(it.x2-it.x), h:Math.abs(it.y2-it.y)}; } if (it.type==='text'){ const ctx=overlay.getContext('2d'); ctx.font=it.font; const w=ctx.measureText(it.text||'').width; const h=parseInt(it.font,10)||16; return {x:it.x,y:it.y-h,w,h}; } return null; }
+      function setCanvasSize(){
+        const maxW = 800;
+        const w = Math.min(maxW, (modal.clientWidth || 900) - 120);
+        const aspect = ES.aspect;
+        cvs.width = w;
+        cvs.height = Math.round(w / aspect);
+        overlay.width = cvs.width;
+        overlay.height = cvs.height;
+      }
+      function drawBase(){
+        const ctx = cvs.getContext('2d');
+        ctx.save();
+        ctx.clearRect(0, 0, cvs.width, cvs.height);
+        ctx.fillStyle = '#f6f6f6';
+        ctx.fillRect(0, 0, cvs.width, cvs.height);
+        if (!ES.img) { ctx.restore(); return; }
+        ctx.translate(cvs.width/2 + ES.offsetX, cvs.height/2 + ES.offsetY);
+        ctx.rotate(ES.angle * Math.PI/180);
+        const iw = ES.img.width, ih = ES.img.height, s = ES.scale;
+        const dw = iw * s, dh = ih * s;
+        ctx.drawImage(ES.img, -dw/2, -dh/2, dw, dh);
+        ctx.restore();
+      }
+      function itemBounds(it){
+        if (it.type === 'rect'){
+          const w = Math.abs(it.w), h = Math.abs(it.h);
+          const x = Math.min(it.x, it.x + it.w), y = Math.min(it.y, it.y + it.h);
+          return { x, y, w, h };
+        }
+        if (it.type === 'arrow'){
+          const x = Math.min(it.x, it.x2), y = Math.min(it.y, it.y2);
+          return { x, y, w: Math.abs(it.x2 - it.x), h: Math.abs(it.y2 - it.y) };
+        }
+        if (it.type === 'text'){
+          const ctx = overlay.getContext('2d');
+          ctx.font = it.font;
+          const w = ctx.measureText(it.text || '').width;
+          const h = parseInt(it.font, 10) || 16;
+          return { x: it.x, y: it.y - h, w, h };
+        }
+        return null;
+      }
       }
       function redraw(){ drawBase(); drawOverlay(); }
 
