@@ -24,11 +24,25 @@
     return new Promise(async (resolve) => {
       // Build modal
       const modal = h('div', { class:'mk-modal', style:{ position:'fixed', inset:'0', background:'rgba(0,0,0,0.4)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:9999 } });
-      const card = h('div', { class:'card', style:{ width:'90%', maxWidth:'900px', maxHeight:'80%', overflow:'auto', background:'#fff', padding:'12px' } });
+      const card = h('div', { class:'card', style:{ width:'96vw', maxWidth:'1100px', maxHeight:'90vh', background:'#fff', padding:'12px', display:'flex', flexDirection:'column', overflow:'hidden' } });
       const rowTop = h('div', { style:{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'6px' } }, [ h('h3', {}, ['Select Picture']), h('button', { id:'mkClose', type:'button' }, ['Close']) ]);
       const rowUp = h('div', { style:{ display:'flex', gap:'8px', alignItems:'center', marginBottom:'8px', flexWrap:'wrap' } }, [ h('input', { type:'file', id:'mkUp', accept:'image/*' }), h('button', { id:'mkUpBtn', type:'button' }, ['Upload to Site']), h('span', { className:'muted' }, ['Uploads attach to this site']) ]);
-      const grid = h('div', { id:'mkGrid', style:{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(140px, 1fr))', gap:'10px' } });
-      const rowBottom = h('div', { style:{ display:'flex', justifyContent:'space-between', alignItems:'center', marginTop:'10px' } }, [ h('div', { id:'mkHint', className:'muted' }), h('div', { style:{ display:'flex', gap:'8px' } }, [ h('button', { id:'mkEdit', type:'button', disabled:true }, ['Edit']), h('button', { id:'mkSelect', type:'button', disabled:true }, ['Select']) ]) ]);
+      // Content area (scrollable)
+      const contentArea = h('div', { style:{ flex:'1 1 auto', overflow:'auto' } });
+      // Two-column content row: grid (left) + preview (right)
+      const contentRow = h('div', { style:{ display:'flex', gap:'10px', alignItems:'stretch', minHeight:'300px' } });
+      const leftCol = h('div', { style:{ display:'flex', flexDirection:'column', flex:'2 1 0', minWidth:'300px', minHeight:'300px' } });
+      const grid = h('div', { id:'mkGrid', style:{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(140px, 1fr))', gap:'10px', border:'1px solid #eee', padding:'8px', borderRadius:'6px' } });
+      leftCol.appendChild(grid);
+      const rightCol = h('div', { style:{ display:'flex', flexDirection:'column', gap:'8px', flex:'1 1 0', minWidth:'260px' } });
+      const prevTitle = h('div', { className:'muted' }, ['Preview']);
+      const preview = h('div', { id:'mkPreviewBox', style:{ border:'1px solid #eee', borderRadius:'6px', padding:'8px', background:'#fafafa', display:'flex', alignItems:'center', justifyContent:'center', minHeight:'260px' } }, [ h('div', { id:'mkPreviewEmpty', className:'muted' }, ['No image selected']) ]);
+      rightCol.appendChild(prevTitle);
+      rightCol.appendChild(preview);
+      contentRow.appendChild(leftCol);
+      contentRow.appendChild(rightCol);
+      contentArea.appendChild(contentRow);
+      const rowBottom = h('div', { style:{ display:'flex', justifyContent:'space-between', alignItems:'center', marginTop:'10px', position:'sticky', bottom:'0', background:'#fff', paddingTop:'8px', borderTop:'1px solid #eee' } }, [ h('div', { id:'mkHint', className:'muted' }), h('div', { style:{ display:'flex', gap:'8px' } }, [ h('button', { id:'mkEdit', type:'button', disabled:true }, ['Edit']), h('button', { id:'mkSelect', type:'button', disabled:true }, ['Select']) ]) ]);
 
       // Editor
       const editor = h('div', { id:'mkEditor', style:{ display:'none', marginTop:'10px' } });
@@ -64,7 +78,7 @@
       wrap.appendChild(toolbar); wrap.appendChild(canvWrap); wrap.appendChild(side);
       editor.appendChild(hint); editor.appendChild(phaseBar); editor.appendChild(wrap);
 
-      card.appendChild(rowTop); card.appendChild(rowUp); card.appendChild(grid); card.appendChild(rowBottom); card.appendChild(editor);
+      card.appendChild(rowTop); card.appendChild(rowUp); card.appendChild(contentArea); card.appendChild(rowBottom); contentArea.appendChild(editor);
       modal.appendChild(card); document.body.appendChild(modal);
       try{ console.log('[MKImagePicker] modal mounted'); }catch(e){}
 
@@ -84,7 +98,9 @@
             const im = h('img', { alt:(f.original_name||f.key||f.file_object_id), src:`/files/${f.file_object_id}/thumbnail?w=300`, style:{ maxWidth:'100%', height:'110px', objectFit:'cover' } });
             const cap = h('div', { className:'muted', style:{ fontSize:'12px' } }, [ f.original_name||'' ]);
             it.appendChild(im); it.appendChild(cap);
-      it.addEventListener('click', ()=>{ grid.querySelectorAll('.modal-item').forEach(x=>x.classList.remove('active')); it.classList.add('active'); sel.id=f.file_object_id; sel.name=(f.original_name||f.key||f.file_object_id); const selBtn=card.querySelector('#mkSelect'); const editBtn=card.querySelector('#mkEdit'); if (selBtn) selBtn.disabled=false; if (editBtn) editBtn.disabled=false; });
+      it.addEventListener('click', ()=>{ grid.querySelectorAll('.modal-item').forEach(x=>x.classList.remove('active')); it.classList.add('active'); sel.id=f.file_object_id; sel.name=(f.original_name||f.key||f.file_object_id); const selBtn=card.querySelector('#mkSelect'); const editBtn=card.querySelector('#mkEdit'); if (selBtn) selBtn.disabled=false; if (editBtn) editBtn.disabled=false; // update preview
+        const prev = document.getElementById('mkPreviewBox'); if (prev){ prev.innerHTML=''; const big = h('img', { src:`/files/${f.file_object_id}/thumbnail?w=800`, alt: sel.name, style:{ maxWidth:'100%', maxHeight:'360px', objectFit:'contain' } }); prev.appendChild(big); }
+      });
             grid.appendChild(it);
           }
         }catch(e){ grid.textContent='Failed to load'; }
@@ -245,9 +261,9 @@
       if (mkZoom){ mkZoom.addEventListener('input', (e)=>{ ES.scale=parseFloat(e.target.value||'1'); if(mkTBZoom && mkTBZoom.value!==e.target.value) mkTBZoom.value=e.target.value; redraw(); }); }
       if (mkTBZoom){ mkTBZoom.addEventListener('input', (e)=>{ ES.scale=parseFloat(e.target.value||'1'); if(mkZoom && mkZoom.value!==e.target.value) mkZoom.value=e.target.value; redraw(); }); }
       card.querySelector('#mkReset').addEventListener('click', ()=>{ ES.angle=0; ES.scale=1; ES.offsetX=0; ES.offsetY=0; ES.items=[]; ES.selectedIds=[]; redraw(); });
-      card.querySelector('#mkBack').addEventListener('click', ()=>{ editor.style.display='none'; grid.style.display='grid'; });
+      card.querySelector('#mkBack').addEventListener('click', ()=>{ editor.style.display='none'; contentRow.style.display='flex'; });
 
-      async function openEditor(fid, fname){ try{ const j=await fetch('/files/'+encodeURIComponent(fid)+'/download').then(x=>x.json()); const url=j && j.download_url ? j.download_url : null; if (!url){ alert('Cannot download image'); return; } ES = { ...ES, img:new Image(), angle:0, scale:1, offsetX:0, offsetY:0, aspect:rec.w/rec.h, items:[], selectedIds:[], fileId: fid, fileName: fname||fid, phase:'image', mode:'pan' }; hint.textContent = `Edit ${fname||fid} — aspect ${(ES.aspect).toFixed(3)}`; await new Promise((res,rej)=>{ ES.img.crossOrigin='anonymous'; ES.img.onload=()=>res(null); ES.img.onerror=rej; ES.img.src=url; }); setCanvasSize(); redraw(); updatePhaseUI(); grid.style.display='none'; editor.style.display='block'; }catch(e){ alert('Failed to load image'); } }
+      async function openEditor(fid, fname){ try{ const j=await fetch('/files/'+encodeURIComponent(fid)+'/download').then(x=>x.json()); const url=j && j.download_url ? j.download_url : null; if (!url){ alert('Cannot download image'); return; } ES = { ...ES, img:new Image(), angle:0, scale:1, offsetX:0, offsetY:0, aspect:rec.w/rec.h, items:[], selectedIds:[], fileId: fid, fileName: fname||fid, phase:'image', mode:'pan' }; hint.textContent = `Edit ${fname||fid} — aspect ${(ES.aspect).toFixed(3)}`; await new Promise((res,rej)=>{ ES.img.crossOrigin='anonymous'; ES.img.onload=()=>res(null); ES.img.onerror=rej; ES.img.src=url; }); setCanvasSize(); redraw(); updatePhaseUI(); contentRow.style.display='none'; editor.style.display='block'; }catch(e){ alert('Failed to load image'); } }
       card.querySelector('#mkEdit').addEventListener('click', ()=>{ if (!sel.id) return; openEditor(sel.id, sel.name); });
       card.querySelector('#mkApply').addEventListener('click', async ()=>{
         try{
@@ -292,7 +308,10 @@
         if (btn.id === 'mkEdit' && !btn.disabled){ e.stopPropagation(); if (!sel.id){ alert('Pick an image'); return; } openEditor(sel.id, sel.name); return; }
         if (btn.id === 'mkSelect' && !btn.disabled){ e.stopPropagation(); doSelect(); return; }
       });
-      function cleanup(){ try{ document.body.removeChild(modal); }catch(e){} }
+      // Keyboard shortcuts when not in editor: Esc=close, Enter=select
+      const onKey = (e)=>{ if (editor.style.display!=='block'){ if (e.key==='Escape'){ e.preventDefault(); doClose(); } else if (e.key==='Enter' && sel.id){ e.preventDefault(); doSelect(); } } };
+      window.addEventListener('keydown', onKey);
+      function cleanup(){ try{ window.removeEventListener('keydown', onKey); document.body.removeChild(modal); }catch(e){} }
     });
   }
 
