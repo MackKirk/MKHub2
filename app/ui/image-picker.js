@@ -105,13 +105,16 @@
             const it = h('div', { className:'modal-item', style:{ position:'relative', border:'1px solid #eee', padding:'6px', textAlign:'center', background:'#fff', cursor:'pointer' } });
             const im = h('img', { alt:(f.original_name||f.key||f.file_object_id), src:`/files/${f.file_object_id}/thumbnail?w=300`, style:{ maxWidth:'100%', height:'110px', objectFit:'cover' } });
             const cap = h('div', { className:'muted', style:{ fontSize:'12px' } }, [ f.original_name||'' ]);
-            const zoomBtn = h('button', { title:'View larger', style:{ position:'absolute', right:'36px', top:'6px', background:'rgba(255,255,255,0.95)', border:'1px solid #ddd', borderRadius:'4px', padding:'2px 6px', cursor:'pointer' } }, ['🔍']);
-            const editBtn = h('button', { title:'Edit', style:{ position:'absolute', right:'6px', top:'6px', background:'rgba(255,255,255,0.95)', border:'1px solid #ddd', borderRadius:'4px', padding:'2px 6px', cursor:'pointer' } }, ['✏️']);
+            const zoomBtn = h('button', { title:'View larger', style:{ position:'absolute', right:'36px', top:'6px', background:'rgba(255,255,255,0.95)', border:'1px solid #ddd', borderRadius:'4px', padding:'2px 6px', cursor:'pointer', display:'none' } }, ['🔍']);
+            const editBtn = h('button', { title:'Edit', style:{ position:'absolute', right:'6px', top:'6px', background:'rgba(255,255,255,0.95)', border:'1px solid #ddd', borderRadius:'4px', padding:'2px 6px', cursor:'pointer', display:'none' } }, ['✏️']);
             zoomBtn.addEventListener('click', (e)=>{ e.stopPropagation(); openLightbox(f.file_object_id, (f.original_name||f.key||f.file_object_id)); });
             editBtn.addEventListener('click', (e)=>{ e.stopPropagation(); sel.id=f.file_object_id; sel.name=(f.original_name||f.key||f.file_object_id); openEditor(sel.id, sel.name); });
             it.appendChild(im); it.appendChild(cap);
             it.appendChild(zoomBtn);
             it.appendChild(editBtn);
+            // Show action icons only on hover
+            it.addEventListener('mouseenter', ()=>{ zoomBtn.style.display=''; editBtn.style.display=''; });
+            it.addEventListener('mouseleave', ()=>{ zoomBtn.style.display='none'; editBtn.style.display='none'; });
             it.addEventListener('click', ()=>{ grid.querySelectorAll('.modal-item').forEach(x=>x.classList.remove('active')); it.classList.add('active'); sel.id=f.file_object_id; sel.name=(f.original_name||f.key||f.file_object_id); const selBtn=card.querySelector('#mkSelect'); if (selBtn) selBtn.disabled=false; });
             grid.appendChild(it);
           }
@@ -353,7 +356,7 @@
       // Select / Close (with delegation fallback)
       function doSelect(){ try{ console.log('[MKImagePicker] select', sel); }catch(e){} if (!sel.id){ alert('Pick an image'); return; } cleanup(); resolve({ file_object_id: sel.id, original_name: sel.name }); }
       function doClose(){ try{ console.log('[MKImagePicker] close'); }catch(e){} cleanup(); resolve(null); }
-      const btnSelect = card.querySelector('#mkSelect'); if (btnSelect){ btnSelect.addEventListener('click', (e)=>{ e.stopPropagation(); doSelect(); }); }
+      const btnSelect = card.querySelector('#mkSelect'); if (btnSelect){ btnSelect.addEventListener('click', (e)=>{ e.stopPropagation(); if (!sel.id){ alert('Pick an image'); return; } openEditor(sel.id, sel.name); }); }
       const btnClose = card.querySelector('#mkClose'); if (btnClose){ btnClose.addEventListener('click', (e)=>{ e.stopPropagation(); doClose(); }); }
       // (Removed inner card delegation to avoid duplicate handlers; using explicit + modal delegation)
       // Robust delegation from modal root using closest() (handles text-node clicks)
@@ -362,7 +365,7 @@
         if (!btn) return;
         if (btn.id === 'mkClose'){ e.stopPropagation(); doClose(); return; }
         if (btn.id === 'mkEdit' && !btn.disabled){ e.stopPropagation(); if (!sel.id){ alert('Pick an image'); return; } openEditor(sel.id, sel.name); return; }
-        if (btn.id === 'mkSelect' && !btn.disabled){ e.stopPropagation(); doSelect(); return; }
+        if (btn.id === 'mkSelect' && !btn.disabled){ e.stopPropagation(); if (!sel.id){ alert('Pick an image'); return; } openEditor(sel.id, sel.name); return; }
       });
       // Keyboard shortcuts when not in editor: Esc=close, Enter=select
       const onKey = (e)=>{ if (editor.style.display!=='block'){ if (e.key==='Escape'){ e.preventDefault(); doClose(); } else if (e.key==='Enter' && sel.id){ e.preventDefault(); doSelect(); } } };
