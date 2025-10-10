@@ -16,7 +16,7 @@
   function recSize(target){ if (target==='cover') return { w:566, h:537 }; if (target==='page2') return { w:540, h:340 }; return { w:260, h:150 }; }
 
   async function open(opts){
-    const { clientId, siteId, target } = opts||{};
+    const { clientId, siteId, target, editOnPick = true } = opts||{};
     try{ console.log('[MKImagePicker] open()', { clientId, siteId, target }); }catch(e){}
     if (!clientId) throw new Error('clientId required');
     const token = (window.MKHubUI && MKHubUI.getTokenOrRedirect) ? MKHubUI.getTokenOrRedirect() : localStorage.getItem('user_token');
@@ -115,7 +115,7 @@
             // Show action icons only on hover
             it.addEventListener('mouseenter', ()=>{ zoomBtn.style.display=''; editBtn.style.display=''; });
             it.addEventListener('mouseleave', ()=>{ zoomBtn.style.display='none'; editBtn.style.display='none'; });
-            it.addEventListener('click', ()=>{ grid.querySelectorAll('.modal-item').forEach(x=>x.classList.remove('active')); it.classList.add('active'); sel.id=f.file_object_id; sel.name=(f.original_name||f.key||f.file_object_id); const selBtn=card.querySelector('#mkSelect'); if (selBtn) selBtn.disabled=false; });
+            it.addEventListener('click', ()=>{ grid.querySelectorAll('.modal-item').forEach(x=>x.classList.remove('active')); it.classList.add('active'); sel.id=f.file_object_id; sel.name=(f.original_name||f.key||f.file_object_id); const selBtn=card.querySelector('#mkSelect'); if (selBtn) selBtn.disabled=false; if (editOnPick){ openEditor(sel.id, sel.name); } });
             grid.appendChild(it);
           }
         }catch(e){ grid.textContent='Failed to load'; }
