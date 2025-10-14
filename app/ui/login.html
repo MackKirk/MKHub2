@@ -5,25 +5,24 @@
 <div class="login-wrapper">
   <aside class="login-hero">
     <div class="hero-content">
-      <div class="brand">
-        <img src="/ui/assets/login/logo-light.svg" alt="Logo" onerror="this.style.display='none'">
-        <span>MKHub</span>
+      <div class="brand" style="gap:14px">
+        <img src="/ui/assets/login/logo-light.svg" alt="Logo" style="height:44px" onerror="this.style.display='none'">
+        <span style="font-size:20px">MKHub</span>
       </div>
-      <h1 class="hero-title">Hello, welcome!</h1>
-      <p class="hero-sub">Entre para acessar seus clientes, propostas e inventário em um só lugar.</p>
-      <div class="hero-cta"><a href="#" onclick="event.preventDefault()">View more</a></div>
+      <h1 class="hero-title">Welcome back!</h1>
+      <p class="hero-sub">Sign in to access customers, proposals, inventory and more.</p>
     </div>
   </aside>
   <section class="login-form">
-    <div class="form-title">Acesse sua conta</div>
+    <div class="form-title">Sign in</div>
     <form onsubmit="login(event)">
       <div class="field">
         <img class="icon" src="/ui/assets/login/icons/mail.svg" alt="" onerror="this.style.display='none'">
-        <input id="id" placeholder="Email ou usuário" required />
+        <input id="id" placeholder="Email or username" required />
       </div>
       <div class="field">
         <img class="icon" src="/ui/assets/login/icons/lock.svg" alt="" onerror="this.style.display='none'">
-        <input id="pw" type="password" placeholder="Senha" required />
+        <input id="pw" type="password" placeholder="Password" required />
       </div>
       <div class="actions">
         <label class="muted"><input id="remember" type="checkbox"> Remember me</label>
@@ -32,10 +31,7 @@
       <button class="btn-primary">Login</button>
       <pre id="out" class="muted" style="white-space:pre-wrap"></pre>
     </form>
-    <div class="signup">
-      <div>Not a member yet?</div>
-      <a class="cta" href="/ui/register.html">Sign up</a>
-    </div>
+    
   </section>
 </div>
 <script>
