@@ -1,0 +1,96 @@
+/* Login page dedicated styles */
+:root{
+  /* Brand: red/black/white + gold accents */
+  --brand-red:#d11616;           /* primary */
+  --brand-red-700:#a90f0f;       /* hover */
+  --brand-black:#0b0b0c;         /* deep black */
+  --brand-gold:#d4af37;          /* accent */
+  --bg-start:#0b0b0c;            /* gradient start */
+  --bg-end:#1a1a1c;              /* gradient end */
+  --panel:#121216;               /* hero panel */
+  --text:#111827;                /* dark text on white */
+  --muted:#6b7280;
+  --white:#ffffff;
+  --input-bg:#0f1114;            /* dark inputs to contrast */
+  --input-border:#2a2d33;
+  --primary:var(--brand-red);
+  --primary-700:var(--brand-red-700);
+}
+
+*{box-sizing:border-box}
+@font-face{font-family:Montserrat; src:url('/proposals/assets/fonts/Montserrat-VariableFont_wght.ttf') format('truetype'); font-weight:100 900; font-style:normal; font-display:swap}
+@font-face{font-family:Montserrat; src:url('/proposals/assets/fonts/Montserrat-Italic-VariableFont_wght.ttf') format('truetype'); font-weight:100 900; font-style:italic; font-display:swap}
+html,body{height:100%}
+body{
+  margin:0;
+  font-family:Montserrat, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+  background: radial-gradient(900px 540px at 18% 12%, rgba(212,175,55,0.15) 0%, rgba(212,175,55,0) 60%), linear-gradient(135deg, var(--bg-start), var(--bg-end));
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  color:var(--white);
+}
+
+.login-wrapper{
+  width:min(980px, 94vw);
+  display:grid;
+  grid-template-columns: 1.1fr 1fr;
+  background:var(--white);
+  border-radius:16px;
+  box-shadow:0 30px 80px rgba(3,7,18,.25);
+  overflow:hidden;
+}
+
+.login-hero{
+  position:relative;
+  background:linear-gradient(160deg, #1a1a1c, #121216 60%, #0b0b0c);
+  color:var(--white);
+  padding:32px;
+  display:flex;
+  flex-direction:column;
+  justify-content:space-between;
+  min-height:420px;
+}
+
+.login-hero::before{
+  content:"";
+  position:absolute; inset:0;
+  background-image:url('./assets/login/panel-texture.png');
+  background-size:cover; background-position:center; opacity:.25;
+}
+
+.hero-content{position:relative; z-index:1}
+.brand{display:flex; align-items:center; gap:10px; font-weight:700}
+.brand img{height:28px}
+.hero-title{font-size:44px; font-weight:800; letter-spacing:.2px; line-height:1.08; margin:22px 0 8px}
+.hero-sub{opacity:.9; max-width:40ch}
+.hero-cta{margin-top:24px}
+.hero-cta a{display:inline-block; padding:10px 16px; border-radius:999px; background:rgba(212,175,55,.2); color:#fff; text-decoration:none; border:1px solid rgba(212,175,55,.6)}
+
+.login-form{
+  padding:28px 28px 32px;
+  display:flex; flex-direction:column; justify-content:center;
+}
+
+.form-title{font-size:24px; font-weight:800; color:var(--brand-black); margin:8px 0 18px}
+.field{display:flex; align-items:center; gap:10px; background:var(--input-bg); border:1px solid var(--input-border); border-radius:12px; padding:12px 14px; margin:12px 0}
+.field input{border:none; outline:none; background:transparent; width:100%; font-size:15px; color:#e5e7eb}
+.field .icon{width:18px; height:18px; opacity:.6}
+
+.actions{display:flex; align-items:center; justify-content:space-between; margin:8px 2px 14px}
+.muted{color:#9ca3af; font-size:12px}
+.link{font-size:12px; color:var(--brand-gold); text-decoration:none}
+.link:hover{color:var(--primary-700)}
+
+.btn-primary{display:block; width:100%; background:linear-gradient(90deg, var(--brand-red), #ee2b2b); color:#fff; border:none; border-radius:12px; padding:13px 16px; font-weight:800; letter-spacing:.2px; cursor:pointer; box-shadow:0 8px 24px rgba(209,22,22,.35)}
+.btn-primary:hover{background:linear-gradient(90deg, var(--brand-red-700), #d11616)}
+
+.signup{margin-top:18px; text-align:center; font-size:13px; color:var(--brand-black)}
+.signup .cta{display:inline-block; margin-top:10px; padding:10px 18px; border-radius:10px; color:#000; text-decoration:none; background:linear-gradient(90deg,#f7df8a,#d4af37); border:1px solid #d4af37}
+
+@media (max-width:860px){
+  .login-wrapper{grid-template-columns:1fr}
+  .login-hero{display:none}
+}
+
+

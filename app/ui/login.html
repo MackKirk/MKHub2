@@ -1,15 +1,66 @@
 <!doctype html>
 <meta charset="utf-8">
 <title>Login</title>
-<form onsubmit="login(event)">
-  <input id="id" placeholder="username or email" required />
-  <input id="pw" type="password" placeholder="password" required />
-  <button>Login</button>
-</form>
-<button onclick="forgot()">Forgot password?</button>
-<pre id="out"></pre>
+<link rel="stylesheet" href="/ui/login.css">
+<div class="login-wrapper">
+  <aside class="login-hero">
+    <div class="hero-content">
+      <div class="brand">
+        <img src="/ui/assets/login/logo-light.svg" alt="Logo" onerror="this.style.display='none'">
+        <span>MKHub</span>
+      </div>
+      <h1 class="hero-title">Hello, welcome!</h1>
+      <p class="hero-sub">Entre para acessar seus clientes, propostas e inventário em um só lugar.</p>
+      <div class="hero-cta"><a href="#" onclick="event.preventDefault()">View more</a></div>
+    </div>
+  </aside>
+  <section class="login-form">
+    <div class="form-title">Acesse sua conta</div>
+    <form onsubmit="login(event)">
+      <div class="field">
+        <img class="icon" src="/ui/assets/login/icons/mail.svg" alt="" onerror="this.style.display='none'">
+        <input id="id" placeholder="Email ou usuário" required />
+      </div>
+      <div class="field">
+        <img class="icon" src="/ui/assets/login/icons/lock.svg" alt="" onerror="this.style.display='none'">
+        <input id="pw" type="password" placeholder="Senha" required />
+      </div>
+      <div class="actions">
+        <label class="muted"><input id="remember" type="checkbox"> Remember me</label>
+        <a class="link" href="#" onclick="forgot();return false;">Forgot password?</a>
+      </div>
+      <button class="btn-primary">Login</button>
+      <pre id="out" class="muted" style="white-space:pre-wrap"></pre>
+    </form>
+    <div class="signup">
+      <div>Not a member yet?</div>
+      <a class="cta" href="/ui/register.html">Sign up</a>
+    </div>
+  </section>
+</div>
 <script>
-async function login(ev){ev.preventDefault(); const r = await fetch('/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({identifier:document.getElementById('id').value,password:document.getElementById('pw').value})}); const j = await r.json(); if(j.access_token){ localStorage.setItem('user_token', j.access_token); location.href='/ui/home.html'; } else { document.getElementById('out').textContent=JSON.stringify(j,null,2); }}
-function forgot(){ const id = (document.getElementById('id').value||'').trim(); if(!id){ alert('Enter username or email'); return; } fetch('/auth/password/forgot?identifier='+encodeURIComponent(id),{method:'POST'}).then(()=>{ alert('If the account exists, a reset email was sent.'); }); }
+async function login(ev){
+  ev.preventDefault();
+  const idEl=document.getElementById('id');
+  const pwEl=document.getElementById('pw');
+  const out=document.getElementById('out');
+  out.textContent='';
+  try{
+    const r = await fetch('/auth/login',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({identifier:idEl.value,password:pwEl.value, remember_me: document.getElementById('remember').checked})
+    });
+    const j = await r.json();
+    if(j && j.access_token){ localStorage.setItem('user_token', j.access_token); location.href='/ui/home.html'; }
+    else { out.textContent = (j && (j.detail||j.message)) ? (j.detail||j.message) : JSON.stringify(j,null,2); }
+  }catch(e){ out.textContent = 'Failed to login'; }
+}
+function forgot(){
+  const id = (document.getElementById('id').value||'').trim();
+  if(!id){ alert('Enter username or email'); return; }
+  fetch('/auth/password/forgot?identifier='+encodeURIComponent(id),{method:'POST'})
+    .then(()=>{ alert('If the account exists, a reset email was sent.'); location.href='/ui/password-reset.html'; })
+    .catch(()=>{});
+}
 </script>
-
