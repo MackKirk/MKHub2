@@ -103,9 +103,12 @@ async function initSidebar(active, enforceProfile=true) {
   });
 }
 
-async function loadPage(url){
+async function loadPage(evOrUrl, maybeUrl){
+  // Support inline onclick="return MKHubUI.loadPage(event,'/ui/page.html')"
+  let url = typeof evOrUrl === 'string' ? evOrUrl : (maybeUrl || (evOrUrl && evOrUrl.currentTarget && evOrUrl.currentTarget.getAttribute('href')));
+  if (evOrUrl && typeof evOrUrl !== 'string' && typeof evOrUrl.preventDefault === 'function') { evOrUrl.preventDefault(); }
   const main = document.querySelector('.main .container') || document.querySelector('.main');
-  if (!main) { location.href = url; return; }
+  if (!main) { location.href = url; return false; }
   const loader = document.createElement('div'); loader.style.padding='30px'; loader.innerHTML = '<div style="display:flex;align-items:center;gap:8px"><div class="spin" style="width:16px;height:16px;border:3px solid #eee;border-top-color:#d11616;border-radius:50%;animation:spin 1s linear infinite"></div> Loading...</div>';
   const prev = document.createElement('div'); prev.innerHTML = main.innerHTML; main.innerHTML = ''; main.appendChild(loader);
   try{
@@ -122,6 +125,7 @@ async function loadPage(url){
     }
     history.pushState({ url }, '', url);
   }catch(e){ main.innerHTML = prev.innerHTML; }
+  return false;
 }
 
 window.addEventListener('popstate', (e)=>{ if (e.state && e.state.url){ loadPage(e.state.url); } });

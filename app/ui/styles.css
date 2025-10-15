@@ -17,7 +17,9 @@ body{font-family:Montserrat,Segoe UI,Roboto,Helvetica,Arial,sans-serif;margin:0;
 .container{padding:20px}
 
 /* Topbar */
-.topbar{height:56px;display:flex;align-items:center;justify-content:space-between;padding:0 16px;background:#fff;border-bottom:1px solid var(--border);position:sticky;top:0;z-index:100}
+.topbar{height:56px;display:flex;align-items:center;justify-content:space-between;padding:0 16px;background:#0f1114;border-bottom:1px solid #1f242b;position:sticky;top:0;z-index:100}
+.topbar .userName{color:#e5e7eb}
+.topbar input{background:#0c0e11;color:#e5e7eb;border-color:#1f242b}
 .topbar .search{flex:1;max-width:520px}
 .topbar input{width:100%;border:1px solid var(--border);border-radius:999px;padding:8px 12px}
 .topbar .actions{display:flex;align-items:center;gap:10px}
