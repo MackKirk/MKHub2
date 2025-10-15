@@ -2,9 +2,9 @@
 @font-face{font-family:Montserrat;src:url('/proposals/assets/fonts/Montserrat-Italic-VariableFont_wght.ttf') format('truetype');font-weight:100 900;font-style:italic;font-display:swap}
 :root{--brand-red:#d11616;--brand-red-700:#a90f0f;--brand-black:#0b0b0c;--brand-gold:#d4af37;--muted:#6b7280;--bg:#f6f7f9;--white:#ffffff;--border:#e5e7eb;--ink:#0f172a}
 body{font-family:Montserrat,Segoe UI,Roboto,Helvetica,Arial,sans-serif;margin:0;display:flex;min-height:100vh;background:var(--bg);color:var(--ink)}
-.side{width:240px;background:var(--brand-black);color:#fff;padding:16px}
+.side{position:sticky;top:0;height:100vh;overflow:auto;width:260px;background:var(--brand-black);color:#fff;padding:16px}
 .side .brandBox{display:flex;flex-direction:column;align-items:center;gap:6px;margin-bottom:12px}
-.side .brandBox img{height:42px}
+.side .brandBox img{height:56px}
 .side .hello{font-size:12px}
 .side .section{color:#9ca3af;font-size:12px;margin:12px 6px 4px}
 .side a,.side button{display:flex;align-items:center;gap:10px;width:100%;margin:6px 0;padding:10px;border:0;border-radius:8px;background:#23262d;color:#fff;cursor:pointer;text-decoration:none;text-align:left}
@@ -13,10 +13,11 @@ body{font-family:Montserrat,Segoe UI,Roboto,Helvetica,Arial,sans-serif;margin:0;
 .side a:hover{background:#2d3038}
 .side a.active{background:linear-gradient(90deg,var(--brand-red),#ee2b2b)}
 .side .logout{margin-top:12px;background:#2d3038}
-.main{flex:1;padding:20px}
+.main{flex:1;min-width:0;padding:0}
+.container{padding:20px}
 
 /* Topbar */
-.topbar{height:56px;display:flex;align-items:center;justify-content:space-between;padding:0 16px;background:#fff;border-bottom:1px solid var(--border);position:sticky;top:0;z-index:10}
+.topbar{height:56px;display:flex;align-items:center;justify-content:space-between;padding:0 16px;background:#fff;border-bottom:1px solid var(--border);position:sticky;top:0;z-index:100}
 .topbar .search{flex:1;max-width:520px}
 .topbar input{width:100%;border:1px solid var(--border);border-radius:999px;padding:8px 12px}
 .topbar .actions{display:flex;align-items:center;gap:10px}
@@ -44,6 +45,9 @@ select{padding:8px}
 
 /* Inputs */
 input[type="text"],input[type="password"],input:not([type]),textarea,select{border:1px solid var(--border);border-radius:8px;background:#fff;color:#111827}
+
+/* Spinner */
+@keyframes spin{to{transform:rotate(360deg)}}
 
 /* Proposals page helpers */
 .costItem{margin-bottom:10px;padding:8px;border:1px dashed #aaa;border-radius:8px;background:#f9f9f9}

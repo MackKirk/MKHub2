@@ -12,6 +12,19 @@ async function initSidebar(active, enforceProfile=true) {
   if (!mount) return;
   const html = await fetch('/ui/sidebar.html?v=' + Date.now()).then(r => r.text());
   mount.outerHTML = html;
+  // Inject global topbar if not present
+  const main = document.querySelector('.main');
+  if (main && !document.querySelector('.topbar')){
+    const bar = document.createElement('div');
+    bar.className = 'topbar';
+    bar.innerHTML = '<div class="search"><input placeholder="Search" /></div><div class="actions"><span class="userName" id="tbUser"></span><img id="tbAvatar" class="avatar" src="/ui/assets/login/logo-light.svg" alt="user"></div>';
+    main.prepend(bar);
+    // Wrap existing content for consistent padding
+    const container = document.createElement('div');
+    container.className = 'container';
+    while (bar.nextSibling){ container.appendChild(bar.nextSibling); }
+    main.appendChild(container);
+  }
   const nav = document.getElementById('nav-' + active);
   if (nav) nav.classList.add('active');
 
@@ -90,6 +103,29 @@ async function initSidebar(active, enforceProfile=true) {
   });
 }
 
-window.MKHubUI = { getTokenOrRedirect, initSidebar };
+async function loadPage(url){
+  const main = document.querySelector('.main .container') || document.querySelector('.main');
+  if (!main) { location.href = url; return; }
+  const loader = document.createElement('div'); loader.style.padding='30px'; loader.innerHTML = '<div style="display:flex;align-items:center;gap:8px"><div class="spin" style="width:16px;height:16px;border:3px solid #eee;border-top-color:#d11616;border-radius:50%;animation:spin 1s linear infinite"></div> Loading...</div>';
+  const prev = document.createElement('div'); prev.innerHTML = main.innerHTML; main.innerHTML = ''; main.appendChild(loader);
+  try{
+    const resp = await fetch(url, { headers:{ 'X-Partial':'1' } });
+    const html = await resp.text();
+    // Extract body of the page (after sidebar) to inject
+    const div = document.createElement('div'); div.innerHTML = html;
+    const newMain = div.querySelector('.main');
+    if (newMain){
+      const inner = newMain.querySelector('.container') || newMain;
+      main.innerHTML = inner.innerHTML;
+    } else {
+      main.innerHTML = html;
+    }
+    history.pushState({ url }, '', url);
+  }catch(e){ main.innerHTML = prev.innerHTML; }
+}
+
+window.addEventListener('popstate', (e)=>{ if (e.state && e.state.url){ loadPage(e.state.url); } });
+
+window.MKHubUI = { getTokenOrRedirect, initSidebar, loadPage };
 
 
