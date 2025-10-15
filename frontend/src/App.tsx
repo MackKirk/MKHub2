@@ -19,6 +19,7 @@ export default function App(){
     <QueryClientProvider client={queryClient}>
       <Routes>
         <Route path="/" element={<Home/>} />
+        <Route path="/index.html" element={<Home/>} />
         <Route path="/login" element={<Login/>} />
         <Route element={<Protected/>}>
           <Route path="/home" element={<AppShell><HomePage/></AppShell>} />

@@ -1,9 +1,10 @@
-import { Navigate, Outlet } from 'react-router-dom';
+import { Navigate, Outlet, useLocation } from 'react-router-dom';
 import { getToken } from './api';
 
 export default function Protected(){
   const t = getToken();
-  if (!t) return <Navigate to="/login" replace />;
+  const loc = useLocation();
+  if (!t) return <Navigate to="/login" replace state={{ from: loc.pathname+loc.search }} />;
   return <Outlet/>;
 }
 

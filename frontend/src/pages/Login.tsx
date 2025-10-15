@@ -1,18 +1,23 @@
 import { useState } from 'react';
 import { api } from '@/lib/api';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 
 export default function Login(){
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const nav = useNavigate();
+  const loc = useLocation() as any;
 
   async function onSubmit(e: React.FormEvent){
     e.preventDefault(); setError('');
     try{
       const j = await api<{access_token:string}>('POST','/auth/login',{ identifier, password });
-      if (j && j.access_token){ localStorage.setItem('user_token', j.access_token); nav('/home'); }
+      if (j && j.access_token){
+        localStorage.setItem('user_token', j.access_token);
+        const to = (loc.state && loc.state.from) ? String(loc.state.from) : '/home';
+        nav(to, { replace: true });
+      }
       else setError('Invalid credentials');
     }catch(err:any){ setError(err?.message||'Login failed'); }
   }
