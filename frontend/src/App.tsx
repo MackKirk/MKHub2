@@ -10,6 +10,7 @@ import HomePage from './pages/Home';
 import Customers from './pages/Customers';
 import Inventory from './pages/Inventory';
 import Proposals from './pages/Proposals';
+import CustomerDetail from './pages/CustomerDetail';
 
 import { getToken } from './lib/api';
 function Home(){ return <Navigate to={getToken()? '/home':'/login'} replace />; }
@@ -25,6 +26,7 @@ export default function App(){
           <Route path="/home" element={<AppShell><HomePage/></AppShell>} />
           <Route path="/profile" element={<AppShell><Profile/></AppShell>} />
           <Route path="/customers" element={<AppShell><Customers/></AppShell>} />
+          <Route path="/customers/:id" element={<AppShell><CustomerDetail/></AppShell>} />
           <Route path="/inventory" element={<AppShell><Inventory/></AppShell>} />
           <Route path="/proposals" element={<AppShell><Proposals/></AppShell>} />
         </Route>
