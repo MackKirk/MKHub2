@@ -13,9 +13,15 @@
       <img id="avatarPreview" class="avatar-lg" src="/ui/assets/login/logo-light.svg" alt="avatar">
       <div class="avatar-edit">✏️</div>
     </div>
-    <div>
+    <div class="hero-right">
       <div class="hero-name" id="heroName">My Profile</div>
       <div class="hero-sub">Complete your information to unlock all features</div>
+      <div class="hero-tabs">
+        <a href="#" id="h-tab-personal" class="active" onclick="return switchPanel(event,'personal')">Personal</a>
+        <a href="#" id="h-tab-job" onclick="return switchPanel(event,'job')">Job</a>
+        <a href="#" id="h-tab-emergency" onclick="return switchPanel(event,'emergency')">Emergency</a>
+        <a href="#" id="h-tab-docs" onclick="return switchPanel(event,'docs')">Documents</a>
+      </div>
     </div>
   </div>
   <div class="hero-actions">
@@ -23,12 +29,7 @@
     <button type="button" class="btn" id="uploadAvatar">Save Photo</button>
   </div>
  </div>
-<div class="profile-tabs">
-  <a href="#" id="tab-personal" class="active" onclick="return switchPanel(event,'personal')">Personal</a>
-  <a href="#" id="tab-job" onclick="return switchPanel(event,'job')">Job</a>
-  <a href="#" id="tab-emergency" onclick="return switchPanel(event,'emergency')">Emergency</a>
-  <a href="#" id="tab-docs" onclick="return switchPanel(event,'docs')">Documents</a>
-</div>
+<!-- tabs moved into hero -->
 <p class="muted">Please complete your profile before using the system. Fields marked with <span class="req">*</span> are required.</p>
 <ul id="missingList" class="muted"></ul>
 <form onsubmit="save(event)">
@@ -175,6 +176,13 @@ fetch('/auth/me/profile', { headers:{ Authorization:'Bearer '+token }}).then(r=>
     const set=(id,v)=>{const el=document.getElementById(id); if(el) el.value = v || ''};
     set('first', p.first_name || (d.user && d.user.first_name) || '');
     set('last', p.last_name || (d.user && d.user.last_name) || '');
+    // Header name and role
+    try{
+      const firstName = p.first_name || (d.user && d.user.first_name) || '';
+      const lastName = p.last_name || (d.user && d.user.last_name) || '';
+      const hn = document.getElementById('heroName'); if (hn) hn.textContent = (firstName+" "+lastName).trim() || 'My Profile';
+      const hs = document.querySelector('.hero-sub'); if (hs) hs.textContent = p.job_title || ' ';
+    }catch(e){}
     const userEmail = (d.user && d.user.email) || '';
     set('personal_email', userEmail);
     const emailOut = document.getElementById('v_email'); if (emailOut) emailOut.textContent = userEmail;
@@ -236,7 +244,7 @@ fetch('/auth/me/profile', { headers:{ Authorization:'Bearer '+token }}).then(r=>
   }
 });
 
-function switchPanel(ev, which){ ev && ev.preventDefault(); const tabs=['personal','job','emergency','docs']; for (const k of tabs){ const el=document.getElementById('panel-'+k); if(el) el.className = 'panel' + (k===which?' active':''); const t=document.getElementById('tab-'+k); if(t){ if(k===which) t.classList.add('active'); else t.classList.remove('active'); } } return false; }
+function switchPanel(ev, which){ ev && ev.preventDefault(); const tabs=['personal','job','emergency','docs']; for (const k of tabs){ const el=document.getElementById('panel-'+k); if(el) el.className = 'panel' + (k===which?' active':''); const t1=document.getElementById('tab-'+k); if(t1){ if(k===which) t1.classList.add('active'); else t1.classList.remove('active'); } const t2=document.getElementById('h-tab-'+k); if(t2){ if(k===which) t2.classList.add('active'); else t2.classList.remove('active'); } } return false; }
 
 async function save(ev){
   ev.preventDefault();
