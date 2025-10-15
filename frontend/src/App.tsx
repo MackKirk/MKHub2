@@ -11,7 +11,8 @@ import Customers from './pages/Customers';
 import Inventory from './pages/Inventory';
 import Proposals from './pages/Proposals';
 
-function Home(){ return <div>Home</div>; }
+import { getToken } from './lib/api';
+function Home(){ return <Navigate to={getToken()? '/home':'/login'} replace />; }
 
 export default function App(){
   return (
@@ -26,7 +27,7 @@ export default function App(){
           <Route path="/inventory" element={<AppShell><Inventory/></AppShell>} />
           <Route path="/proposals" element={<AppShell><Proposals/></AppShell>} />
         </Route>
-        <Route path="*" element={<Navigate to="/" replace />} />
+        <Route path="*" element={<Navigate to={getToken()? '/home':'/login'} replace />} />
       </Routes>
       <Toaster position="top-right" />
     </QueryClientProvider>
