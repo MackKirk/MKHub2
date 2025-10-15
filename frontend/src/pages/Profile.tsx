@@ -36,6 +36,12 @@ export default function Profile(){
   const missingPersonal = reqPersonal.filter(k => !String((form as any)[k]||'').trim());
   const missingEmergency = reqEmergency.filter(k => !String((form as any)[k]||'').trim());
   const totalMissing = missingPersonal.length + missingEmergency.length;
+  const labelMap: Record<string,string> = {
+    preferred_name:'Preferred name', gender:'Gender', date_of_birth:'Date of birth', marital_status:'Marital status', nationality:'Nationality',
+    mobile_phone:'Mobile phone', address_line1:'Address line 1', city:'City', province:'Province/State', postal_code:'Postal code', country:'Country',
+    sin_number:'SIN/SSN', work_permit_status:'Work permit status', visa_status:'Visa status',
+    emergency_contact_name:'Emergency contact name', emergency_contact_relationship:'Emergency contact relationship', emergency_contact_phone:'Emergency contact phone'
+  };
   return (
     <div>
       {/* Title above hero */}
@@ -44,6 +50,7 @@ export default function Profile(){
         <h2 className="text-xl font-extrabold">My Information</h2>
         {totalMissing>0 && <span className="text-red-700 text-sm bg-red-50 border border-red-200 rounded-full px-2 py-0.5">Missing {totalMissing}</span>}
       </div>
+      <p className="text-sm text-gray-600 mb-2">Please complete your profile. Fields marked with <span className="text-red-600">*</span> are required.</p>
       <motion.div initial={{opacity:0, y:10}} animate={{opacity:1, y:0}} className="rounded-xl border shadow-hero bg-white">
         <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] rounded-t-xl p-5 text-white">
           <div className="flex gap-4 items-stretch min-h-[180px]">
@@ -131,14 +138,25 @@ export default function Profile(){
               {tab==='docs' && (
                 <div className="text-sm text-gray-600">Documents section coming soon.</div>
               )}
-              <div className="flex justify-end mt-6">
-                <button onClick={async()=>{
+              <div className="flex items-start justify-between mt-6 gap-4 flex-wrap">
+                <div className="text-sm text-gray-700 flex-1 min-w-[240px]">
+                  {totalMissing>0 && (
+                    <div className="bg-red-50 border border-red-200 rounded p-3">
+                      <div className="font-semibold text-red-700 mb-1">Missing required fields</div>
+                      <ul className="list-disc pl-5 text-red-700">
+                        {[...missingPersonal, ...missingEmergency].map(k=> (<li key={k}>{labelMap[k]||k}</li>))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+                <button disabled={totalMissing>0} onClick={async()=>{
+                  if (totalMissing>0){ toast.error('Please complete required fields'); return; }
                   try{
                     await api('PUT','/auth/me/profile', form);
                     toast.success('Profile saved');
                     await queryClient.invalidateQueries({ queryKey:['meProfile'] });
                   }catch(e){ toast.error('Failed to save'); }
-                }} className="px-5 py-2 rounded-xl bg-gradient-to-r from-brand-red to-[#ee2b2b] font-bold">Save</button>
+                }} className="px-5 py-2 rounded-xl bg-gradient-to-r from-brand-red to-[#ee2b2b] font-bold disabled:opacity-50">Save</button>
               </div>
             </>
           )}
@@ -148,11 +166,14 @@ export default function Profile(){
   );
 }
 
-function Field({label, children}:{label:string, children:any}){
+function Field({label, children, required, invalid}:{label:string, children:any, required?:boolean, invalid?:boolean}){
   return (
     <div className="space-y-2">
-      <label className="text-sm text-gray-600">{label}</label>
-      {children}
+      <label className="text-sm text-gray-600">{label} {required && <span className="text-red-600">*</span>}</label>
+      <div className={invalid? 'ring-2 ring-red-400 rounded-lg p-0.5':'p-0'}>
+        {children}
+      </div>
+      {invalid && <div className="text-xs text-red-600">Required</div>}
     </div>
   );
 }
