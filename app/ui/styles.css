@@ -83,7 +83,7 @@ input[type="text"],input[type="password"],input:not([type]),textarea,select{bord
 .avatar-wrap:hover .avatar-edit{opacity:1;cursor:pointer}
 .hero-name{font-size:18px;font-weight:800;color:#e5e7eb}
 .hero-sub{font-size:12px;color:#9ca3af}
-.hero-actions{display:flex;gap:8px}
+.hero-actions{display:flex;gap:8px;align-items:center}
 .hero-actions .btn,.hero-actions .btn-secondary{font-family:Montserrat;font-weight:800}
 
 /* Hero content right and tabs */
@@ -91,7 +91,7 @@ input[type="text"],input[type="password"],input:not([type]),textarea,select{bord
 .hero-name{font-size:28px;font-weight:800;color:#fff}
 .hero-sub{font-size:14px;color:#f3f4f6;margin-top:4px}
 .hero-card{min-height:180px}
-.hero-tabs{display:flex;gap:8px;margin-top:auto;align-self:flex-start;padding-top:8px}
+.hero-tabs{display:flex;gap:8px;margin-top:auto;align-self:flex-start;padding-top:0;padding-bottom:8px}
 .hero-tabs a{padding:8px 12px;border-radius:999px;background:#fff;color:#111827;text-decoration:none;border:1px solid rgba(255,255,255,.2)}
 .hero-tabs a.active{background:#111827;color:#fff;border-color:#111827}
 
