@@ -87,7 +87,7 @@ input[type="text"],input[type="password"],input:not([type]),textarea,select{bord
 .hero-actions .btn,.hero-actions .btn-secondary{font-family:Montserrat;font-weight:800}
 
 /* Hero content right and tabs */
-.hero-right{display:flex;flex-direction:column;justify-content:flex-start;height:100%}
+.hero-right{display:flex;flex-direction:column;justify-content:flex-start;align-self:stretch;min-height:100%}
 .hero-name{font-size:28px;font-weight:800;color:#fff}
 .hero-sub{font-size:14px;color:#f3f4f6;margin-top:4px}
 .hero-card{min-height:180px}
