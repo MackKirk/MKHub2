@@ -59,3 +59,17 @@ input[type="text"],input[type="password"],input:not([type]),textarea,select{bord
 .btn-move{background:linear-gradient(90deg,#f7df8a,var(--brand-gold));color:#000;border:none;border-radius:8px;padding:6px 10px;font-size:13px;cursor:pointer;margin-right:5px;border:1px solid var(--brand-gold)}
 .btn-move:hover{filter:brightness(.95)}
 
+/* Home tiles */
+.grid{display:grid;gap:16px}
+.grid.cols-3{grid-template-columns:repeat(3,minmax(0,1fr))}
+.tile{background:#fff;border:1px solid var(--border);border-radius:12px;padding:14px}
+.tile h3{margin:0 0 10px 0;font-size:16px;color:#111827}
+.list{display:flex;flex-direction:column;gap:8px}
+.list .item{display:flex;justify-content:space-between;align-items:center;padding:8px;border-radius:8px;border:1px solid #eef1f5}
+.badge{display:inline-flex;align-items:center;gap:6px;padding:2px 8px;border-radius:999px;font-size:12px}
+.badge.red{background:rgba(209,22,22,.08);color:#7f0f0f;border:1px solid rgba(209,22,22,.25)}
+.badge.gold{background:rgba(212,175,55,.12);color:#7a640e;border:1px solid rgba(212,175,55,.35)}
+.links{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:8px}
+.links a{display:flex;align-items:center;gap:8px;border:1px solid var(--border);border-radius:10px;padding:10px;color:#111827;text-decoration:none}
+.links a:hover{border-color:var(--brand-red);box-shadow:0 0 0 2px rgba(209,22,22,.1)}
+

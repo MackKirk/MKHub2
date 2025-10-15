@@ -5,8 +5,38 @@
 <script src="/ui/app.js"></script>
 <div id="sidebar"></div>
 <div class="main">
-  <h2>Welcome</h2>
-  <p class="muted">This is your home. More options coming soon.</p>
+  <!-- topbar injected globally by app.js -->
+  <div class="container">
+    <h2>Home</h2>
+    <div class="grid cols-3" style="margin-top:10px">
+      <div class="tile">
+        <h3>Inbox</h3>
+        <div class="list" id="inboxList">
+          <div class="item"><div>New proposal awaiting review</div><span class="badge red">2 new</span></div>
+          <div class="item"><div>Time entry approval</div><span class="badge gold">Pending</span></div>
+          <div class="item"><div>Inventory low: cable ties</div><span class="badge red">Critical</span></div>
+        </div>
+      </div>
+      <div class="tile">
+        <h3>Company News</h3>
+        <div class="list" id="newsList">
+          <div class="item"><div>Welcome our new PMs to the team</div><span class="muted">Today</span></div>
+          <div class="item"><div>Safety training scheduled next week</div><span class="muted">2d</span></div>
+          <div class="item"><div>New supplier partnership announced</div><span class="muted">5d</span></div>
+        </div>
+      </div>
+      <div class="tile">
+        <h3>Quick Links</h3>
+        <div class="links">
+          <a href="/ui/customers.html" onclick="return MKHubUI.loadPage(event,'/ui/customers.html')"><img src="/ui/assets/icons/customers.svg" class="i"> Customers</a>
+          <a href="/ui/proposals.html" onclick="return MKHubUI.loadPage(event,'/ui/proposals.html')"><img src="/ui/assets/icons/proposals.svg" class="i"> Proposals</a>
+          <a href="/ui/inventory-products.html" onclick="return MKHubUI.loadPage(event,'/ui/inventory-products.html')"><img src="/ui/assets/icons/inventory.svg" class="i"> Products</a>
+          <a href="/ui/users.html" onclick="return MKHubUI.loadPage(event,'/ui/users.html')"><img src="/ui/assets/icons/users.svg" class="i"> Users</a>
+          <a href="/ui/settings.html" onclick="return MKHubUI.loadPage(event,'/ui/settings.html')"><img src="/ui/assets/icons/settings.svg" class="i"> Settings</a>
+        </div>
+      </div>
+    </div>
+  </div>
 </div>
 <script>
 MKHubUI.initSidebar('home');
