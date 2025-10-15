@@ -2,12 +2,26 @@
 @font-face{font-family:Montserrat;src:url('/proposals/assets/fonts/Montserrat-Italic-VariableFont_wght.ttf') format('truetype');font-weight:100 900;font-style:italic;font-display:swap}
 :root{--brand-red:#d11616;--brand-red-700:#a90f0f;--brand-black:#0b0b0c;--brand-gold:#d4af37;--muted:#6b7280;--bg:#f6f7f9;--white:#ffffff;--border:#e5e7eb;--ink:#0f172a}
 body{font-family:Montserrat,Segoe UI,Roboto,Helvetica,Arial,sans-serif;margin:0;display:flex;min-height:100vh;background:var(--bg);color:var(--ink)}
-.side{width:220px;background:var(--brand-black);color:#fff;padding:16px}
-.side h3{margin:0 0 12px 0;font-size:16px}
-.side a,.side button{display:block;width:100%;margin:6px 0;padding:8px;border:0;border-radius:6px;background:#23262d;color:#fff;cursor:pointer;text-decoration:none;text-align:center}
+.side{width:240px;background:var(--brand-black);color:#fff;padding:16px}
+.side .brandBox{display:flex;flex-direction:column;align-items:center;gap:6px;margin-bottom:12px}
+.side .brandBox img{height:42px}
+.side .hello{font-size:12px}
+.side .section{color:#9ca3af;font-size:12px;margin:12px 6px 4px}
+.side a,.side button{display:flex;align-items:center;gap:10px;width:100%;margin:6px 0;padding:10px;border:0;border-radius:8px;background:#23262d;color:#fff;cursor:pointer;text-decoration:none;text-align:left}
+.side a .i{width:16px;height:16px;opacity:.9}
+.side a .dot{width:6px;height:6px;border-radius:50%;background:#9ca3af;display:inline-block}
 .side a:hover{background:#2d3038}
-.side a.active{background:var(--brand-red)}
+.side a.active{background:linear-gradient(90deg,var(--brand-red),#ee2b2b)}
+.side .logout{margin-top:12px;background:#2d3038}
 .main{flex:1;padding:20px}
+
+/* Topbar */
+.topbar{height:56px;display:flex;align-items:center;justify-content:space-between;padding:0 16px;background:#fff;border-bottom:1px solid var(--border);position:sticky;top:0;z-index:10}
+.topbar .search{flex:1;max-width:520px}
+.topbar input{width:100%;border:1px solid var(--border);border-radius:999px;padding:8px 12px}
+.topbar .actions{display:flex;align-items:center;gap:10px}
+.avatar{width:28px;height:28px;border-radius:50%;object-fit:cover;border:2px solid var(--brand-red)}
+.userName{font-size:13px;color:#374151}
 .muted{color:#6b7280}
 input,button,select{padding:8px}
 .field{display:flex;flex-direction:column}

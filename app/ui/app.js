@@ -30,6 +30,17 @@ async function initSidebar(active, enforceProfile=true) {
     const user = await resp.json();
     const hello = document.getElementById('hello');
     if (hello) hello.textContent = 'Hello, ' + (user.username || 'user');
+    const tbUser = document.getElementById('tbUser');
+    if (tbUser) tbUser.textContent = (user.username || user.email_personal || '');
+    const tbAvatar = document.getElementById('tbAvatar');
+    if (tbAvatar){
+      // Try profile photo if provided later; fallback to logo circle
+      try{
+        const pr = await fetch('/auth/me/profile', { headers: { Authorization: 'Bearer ' + token } }).then(x=>x.json());
+        const fid = pr && pr.profile && pr.profile.profile_photo_file_id;
+        if (fid){ tbAvatar.src = '/files/' + fid + '/thumbnail?w=80'; }
+      }catch(e){}
+    }
     // Reveal sidebar links based on permissions or admin role
     const roles = (user.roles || []).map(r => (r || '').toLowerCase());
     const isAdmin = roles.includes('admin');

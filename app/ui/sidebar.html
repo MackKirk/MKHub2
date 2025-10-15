@@ -1,21 +1,28 @@
 <div class="side">
-  <h3>MK Hub</h3>
-  <div id="hello" class="muted"></div>
-  <a href="/ui/home.html" id="nav-home">Home</a>
-  <a href="/ui/profile.html" id="nav-profile">My Information</a>
-  <a href="/ui/invite.html" id="nav-invite" data-perm="invite:send" style="display:none">Invite Users</a>
-  <a href="/ui/users.html" id="nav-users" data-perm="users:read" style="display:none">Users</a>
-  <div class="muted" style="margin-top:10px">Inventory</div>
-  <a href="/ui/inventory-suppliers.html" id="nav-inventory-suppliers" data-perm="inventory:read" style="display:none;padding-left:12px">Suppliers</a>
-  <a href="/ui/inventory-products.html" id="nav-inventory-products" data-perm="inventory:read" style="display:none;padding-left:12px">Products</a>
-  <a href="/ui/inventory-orders.html" id="nav-inventory-orders" data-perm="inventory:read" style="display:none;padding-left:12px">Orders</a>
-  <div class="muted" style="margin-top:10px">Customers</div>
-  <a href="/ui/customers.html" id="nav-customers" data-perm="clients:read" style="display:none;padding-left:12px">All Customers</a>
-  <a href="/ui/customer-new.html" id="nav-customer-new" data-perm="clients:write" style="display:none;padding-left:12px">New Customer</a>
-  <a href="/ui/proposals.html" id="nav-proposals" data-perm="clients:read" style="display:none;padding-left:12px">Proposals</a>
-  <div class="muted" style="margin-top:10px">Settings</div>
-  <a href="/ui/settings.html" id="nav-settings" data-perm="users:write" style="display:none;padding-left:12px">System Settings</a>
-  <button onclick="logout()">Logout</button>
+  <div class="brandBox">
+    <img src="/ui/assets/login/logo-light.svg" alt="Mack Kirk" onerror="this.style.display='none'">
+    <div id="hello" class="hello muted"></div>
+  </div>
+
+  <a href="/ui/home.html" id="nav-home"><img src="/ui/assets/icons/home.svg" class="i"> Home</a>
+  <a href="/ui/profile.html" id="nav-profile"><span class="dot"></span> My Information</a>
+  <a href="/ui/invite.html" id="nav-invite" data-perm="invite:send" style="display:none"><span class="dot"></span> Invite Users</a>
+  <a href="/ui/users.html" id="nav-users" data-perm="users:read" style="display:none"><span class="dot"></span> Users</a>
+
+  <div class="section">Inventory</div>
+  <a href="/ui/inventory-suppliers.html" id="nav-inventory-suppliers" data-perm="inventory:read" style="display:none"><img src="/ui/assets/icons/inventory.svg" class="i"> Suppliers</a>
+  <a href="/ui/inventory-products.html" id="nav-inventory-products" data-perm="inventory:read" style="display:none"><span class="dot"></span> Products</a>
+  <a href="/ui/inventory-orders.html" id="nav-inventory-orders" data-perm="inventory:read" style="display:none"><span class="dot"></span> Orders</a>
+
+  <div class="section">Customers</div>
+  <a href="/ui/customers.html" id="nav-customers" data-perm="clients:read" style="display:none"><img src="/ui/assets/icons/customers.svg" class="i"> All Customers</a>
+  <a href="/ui/customer-new.html" id="nav-customer-new" data-perm="clients:write" style="display:none"><span class="dot"></span> New Customer</a>
+  <a href="/ui/proposals.html" id="nav-proposals" data-perm="clients:read" style="display:none"><img src="/ui/assets/icons/proposals.svg" class="i"> Proposals</a>
+
+  <div class="section">Settings</div>
+  <a href="/ui/settings.html" id="nav-settings" data-perm="users:write" style="display:none"><img src="/ui/assets/icons/settings.svg" class="i"> System Settings</a>
+
+  <button onclick="logout()" class="logout">Logout</button>
 </div>
 <script>
 function logout(){ localStorage.removeItem('user_token'); location.href='/ui/login.html'; }
