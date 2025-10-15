@@ -9,7 +9,7 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
 from .config import settings
-from fastapi.responses import RedirectResponse
+from fastapi.responses import RedirectResponse, FileResponse
 from .db import Base, engine, SessionLocal
 from sqlalchemy import text
 from .logging import setup_logging, RequestIdMiddleware
@@ -76,12 +76,8 @@ def create_app() -> FastAPI:
 
     # Static UI (legacy)
     app.mount("/ui", StaticFiles(directory="app/ui", html=True), name="ui")
-    # React frontend (served when built)
-    try:
-        if os.path.isdir("frontend/dist"):
-            app.mount("/", StaticFiles(directory="frontend/dist", html=True), name="frontend")
-    except Exception:
-        pass
+    # React frontend (SPA) - fallback router that serves index.html for unknown paths
+    FRONT_DIST = os.path.join("frontend", "dist")
 
     # Metrics
     Instrumentator().instrument(app).expose(app)
@@ -199,9 +195,23 @@ def create_app() -> FastAPI:
     @app.get("/")
     def root():
         # Prefer React app if built; else fallback to legacy UI
-        if os.path.isdir("frontend/dist"):
-            return RedirectResponse(url="/index.html")
+        if os.path.isdir(FRONT_DIST):
+            index_path = os.path.join(FRONT_DIST, "index.html")
+            if os.path.exists(index_path):
+                return FileResponse(index_path)
         return RedirectResponse(url="/ui/index.html")
+
+    # After all API routers, provide SPA catch-all for deep links
+    if os.path.isdir(FRONT_DIST):
+        INDEX_PATH = os.path.join(FRONT_DIST, "index.html")
+
+        @app.get("/{full_path:path}")
+        def spa_fallback(full_path: str):
+            # If a built asset exists, serve it; otherwise serve index.html
+            asset_path = os.path.join(FRONT_DIST, full_path)
+            if os.path.isfile(asset_path):
+                return FileResponse(asset_path)
+            return FileResponse(INDEX_PATH)
 
     return app
 
