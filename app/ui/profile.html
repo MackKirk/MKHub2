@@ -9,7 +9,10 @@
 <div class="main">
  <div class="hero-card red">
   <div class="hero-left">
-    <img id="avatarPreview" class="avatar-lg" src="/ui/assets/login/logo-light.svg" alt="avatar">
+    <div class="avatar-wrap" onclick="document.getElementById('avatarFile').click()" title="Change photo">
+      <img id="avatarPreview" class="avatar-lg" src="/ui/assets/login/logo-light.svg" alt="avatar">
+      <div class="avatar-edit">✏️</div>
+    </div>
     <div>
       <div class="hero-name" id="heroName">My Profile</div>
       <div class="hero-sub">Complete your information to unlock all features</div>
@@ -17,8 +20,7 @@
   </div>
   <div class="hero-actions">
     <input type="file" id="avatarFile" accept="image/*" style="display:none">
-    <button type="button" class="btn-secondary" onclick="document.getElementById('avatarFile').click()">Choose Photo</button>
-    <button type="button" class="btn" id="uploadAvatar">Upload</button>
+    <button type="button" class="btn" id="uploadAvatar">Save Photo</button>
   </div>
  </div>
 <div class="profile-tabs">
@@ -33,13 +35,25 @@
   <div class="card elev">
     <div class="section-header"><div class="section-title">Identity</div><span id="avatarMsg" class="muted"></span></div>
   <div id="panel-personal" class="panel active">
+  <div class="profile-layout">
+    <aside class="vitals" id="vitals">
+      <h4>Vitals</h4>
+      <div class="vlist">
+        <div class="vitem"><span class="k">Email</span><span class="v" id="v_email">—</span></div>
+        <div class="vitem"><span class="k">Role</span><span class="v" id="v_role">—</span></div>
+        <div class="vitem"><span class="k">Hire Date</span><span class="v" id="v_hire">—</span></div>
+        <div class="vitem"><span class="k">Manager</span><span class="v" id="v_manager">—</span></div>
+      </div>
+    </aside>
+    <div>
   <div class="card elev">
-    <div class="section-title">Identity</div>
+    <div class="section-title"><img src="/ui/assets/icons/id-card.svg"> Identity <span class="chip red">Required</span></div>
     <div class="row">
       <div class="field"><label>First name <span class="req">*</span></label><input id="first" readonly /></div>
+      <div class="field"><label>Middle name</label><input id="middle" readonly /></div>
       <div class="field"><label>Last name <span class="req">*</span></label><input id="last" readonly /></div>
+      <div class="field"><label>Preferred name <span class="req">*</span></label><input id="preferred" /></div>
     </div>
-    <div class="field"><label>Preferred name <span class="req">*</span></label><input id="preferred" /></div>
     <div class="row">
       <div class="field"><label>Gender <span class="req">*</span></label>
       <select id="gender">
@@ -62,7 +76,7 @@
       </select>
       </div>
     <div class="row">
-      <div class="field"><label>Date of birth (YYYY-MM-DD) <span class="req">*</span></label><input id="dob" /></div>
+      <div class="field"><label>Date of birth (YYYY-MM-DD) <span class="req">*</span></label><input id="dob" /><div id="ageOut" class="muted"></div></div>
       <div class="field"><label>Nationality <span class="req">*</span></label>
         <select id="nationality"><option value="">Select...</option></select>
       </div>
@@ -70,7 +84,7 @@
   </div>
 
   <div class="card elev">
-    <div class="section-title">Contact & Address</div>
+    <div class="section-title"><img src="/ui/assets/icons/contact.svg"> Contact & Address</div>
     <div class="row">
       <div class="field"><label>Phone</label><input id="phone" /></div>
       <div class="field"><label>Mobile phone <span class="req">*</span></label><input id="mobile" /></div>
@@ -96,7 +110,7 @@
   </div>
 
   <div class="card elev">
-    <div class="section-title">Employment</div>
+    <div class="section-title"><img src="/ui/assets/icons/employment.svg"> Employment</div>
     <div class="row">
       <div class="field"><label>Hire date (YYYY-MM-DD)</label><input id="hire_date" readonly /></div>
       <div class="field"><label>Termination date (YYYY-MM-DD)</label><input id="termination_date" readonly /></div>
@@ -123,7 +137,7 @@
   </div>
 
   <div class="card elev">
-    <div class="section-title">Legal & Emergency</div>
+    <div class="section-title"><img src="/ui/assets/icons/legal.svg"> Legal & Emergency</div>
     <div class="row">
       <div class="field"><label>SIN/SSN <span class="req">*</span></label><input id="sin_number" /></div>
       <div class="field"><label>Work permit status <span class="req">*</span></label><input id="work_permit_status" /></div>
@@ -138,6 +152,8 @@
     </div>
   </div>
   <div class="row" style="justify-content:flex-end"><button class="btn">Save</button></div>
+    </div>
+  </div>
   </div>
   <div id="panel-job" class="panel">
     <div class="card elev"><div class="section-title">Job Overview</div><div class="muted">Coming soon</div></div>
@@ -159,21 +175,31 @@ fetch('/auth/me/profile', { headers:{ Authorization:'Bearer '+token }}).then(r=>
     const set=(id,v)=>{const el=document.getElementById(id); if(el) el.value = v || ''};
     set('first', p.first_name || (d.user && d.user.first_name) || '');
     set('last', p.last_name || (d.user && d.user.last_name) || '');
-    set('personal_email', (d.user && d.user.email) || '');
+    const userEmail = (d.user && d.user.email) || '';
+    set('personal_email', userEmail);
+    const emailOut = document.getElementById('v_email'); if (emailOut) emailOut.textContent = userEmail;
     set('preferred', p.preferred_name);
     set('phone', p.phone); set('mobile', p.mobile_phone);
     document.getElementById('gender').value = p.gender || '';
     document.getElementById('marital').value = p.marital_status || '';
     set('dob', p.date_of_birth); 
+    // Age calc
+    try{
+      const ageOut = document.getElementById('ageOut');
+      if (p.date_of_birth && ageOut){ const d2=new Date(p.date_of_birth); const n=new Date(); let age=n.getFullYear()-d2.getFullYear(); const m=n.getMonth()-d2.getMonth(); if(m<0 || (m===0 && n.getDate()<d2.getDate())) age--; ageOut.textContent = 'Age: '+age; }
+    }catch(e){}
     document.getElementById('nationality').value = p.nationality || '';
     set('address1', p.address_line1); set('address2', p.address_line2);
     // Stash initial geo to preselect after async geo loads
     window.MKHubInitialGeo = { country: p.country || '', province: p.province || '', city: p.city || '', nationality: p.nationality || '' };
     set('postal', p.postal_code); 
     set('hire_date', p.hire_date); set('termination_date', p.termination_date);
+    const hireOut = document.getElementById('v_hire'); if (hireOut) hireOut.textContent = (p.hire_date || '—');
     set('job', p.job_title); set('division', p.division);
+    const roleOut = document.getElementById('v_role'); if (roleOut) roleOut.textContent = (p.job_title || '—');
     set('work_email', p.work_email); set('work_phone', p.work_phone);
     document.getElementById('manager_user_id').value = p.manager_user_id || '';
+    const mgrOut = document.getElementById('v_manager'); if (mgrOut) mgrOut.textContent = p.manager_user_id ? 'Selected' : '—';
     set('pay_rate', p.pay_rate);
     document.getElementById('pay_type').value = p.pay_type || '';
     document.getElementById('employment_type').value = p.employment_type || '';
