@@ -7,21 +7,27 @@
 <script src="/ui/geo.js"></script>
 <div id="sidebar"></div>
 <div class="main">
-<h2>My Profile</h2>
+<div class="hero-card">
+  <div class="hero-left">
+    <img id="avatarPreview" class="avatar-lg" src="/ui/assets/login/logo-light.svg" alt="avatar">
+    <div>
+      <div class="hero-name" id="heroName">My Profile</div>
+      <div class="hero-sub">Complete your information to unlock all features</div>
+    </div>
+  </div>
+  <div class="hero-actions">
+    <input type="file" id="avatarFile" accept="image/*" style="display:none">
+    <button type="button" class="btn-secondary" onclick="document.getElementById('avatarFile').click()">Choose Photo</button>
+    <button type="button" class="btn" id="uploadAvatar">Upload</button>
+  </div>
+ </div>
 <p class="muted">Please complete your profile before using the system. Fields marked with <span class="req">*</span> are required.</p>
 <ul id="missingList" class="muted"></ul>
 <form onsubmit="save(event)">
-  <div class="card">
-    <h3>Profile Photo</h3>
-    <div class="row" style="align-items:center;gap:12px">
-      <img id="avatarPreview" class="avatar" style="width:64px;height:64px;border-width:3px" src="/ui/assets/login/logo-light.svg" alt="avatar">
-      <input type="file" id="avatarFile" accept="image/*" />
-      <button type="button" id="uploadAvatar">Upload</button>
-      <span id="avatarMsg" class="muted"></span>
-    </div>
-  </div>
-  <div class="card">
-    <h3>Identity</h3>
+  <div class="card elev">
+    <div class="section-header"><div class="section-title">Identity</div><span id="avatarMsg" class="muted"></span></div>
+  <div class="card elev">
+    <div class="section-title">Identity</div>
     <div class="row">
       <div class="field"><label>First name <span class="req">*</span></label><input id="first" readonly /></div>
       <div class="field"><label>Last name <span class="req">*</span></label><input id="last" readonly /></div>
@@ -56,8 +62,8 @@
     </div>
   </div>
 
-  <div class="card">
-    <h3>Contact & Address</h3>
+  <div class="card elev">
+    <div class="section-title">Contact & Address</div>
     <div class="row">
       <div class="field"><label>Phone</label><input id="phone" /></div>
       <div class="field"><label>Mobile phone <span class="req">*</span></label><input id="mobile" /></div>
@@ -82,8 +88,8 @@
     </div>
   </div>
 
-  <div class="card">
-    <h3>Employment</h3>
+  <div class="card elev">
+    <div class="section-title">Employment</div>
     <div class="row">
       <div class="field"><label>Hire date (YYYY-MM-DD)</label><input id="hire_date" readonly /></div>
       <div class="field"><label>Termination date (YYYY-MM-DD)</label><input id="termination_date" readonly /></div>
@@ -109,8 +115,8 @@
     </div>
   </div>
 
-  <div class="card">
-    <h3>Legal & Emergency</h3>
+  <div class="card elev">
+    <div class="section-title">Legal & Emergency</div>
     <div class="row">
       <div class="field"><label>SIN/SSN <span class="req">*</span></label><input id="sin_number" /></div>
       <div class="field"><label>Work permit status <span class="req">*</span></label><input id="work_permit_status" /></div>
@@ -124,7 +130,7 @@
       <div class="field"><label>Emergency contact phone <span class="req">*</span></label><input id="emergency_contact_phone" /></div>
     </div>
   </div>
-  <button>Save</button>
+  <div class="row" style="justify-content:flex-end"><button class="btn">Save</button></div>
 </form>
 <pre id="msg" class="muted"></pre>
 <script>

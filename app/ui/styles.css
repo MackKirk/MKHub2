@@ -73,3 +73,18 @@ input[type="text"],input[type="password"],input:not([type]),textarea,select{bord
 .links a{display:flex;align-items:center;gap:8px;border:1px solid var(--border);border-radius:10px;padding:10px;color:#111827;text-decoration:none}
 .links a:hover{border-color:var(--brand-red);box-shadow:0 0 0 2px rgba(209,22,22,.1)}
 
+/* Fancy profile components */
+.hero-card{display:flex;justify-content:space-between;align-items:center;padding:14px 16px;border-radius:14px;border:1px solid #1f242b;background:linear-gradient(135deg,rgba(15,17,20,.96),rgba(20,24,28,.92));box-shadow:0 12px 40px rgba(0,0,0,.25);margin:12px 0}
+.hero-left{display:flex;align-items:center;gap:12px}
+.avatar-lg{width:64px;height:64px;border-radius:50%;border:3px solid var(--brand-red);object-fit:cover;background:#0b0b0c}
+.hero-name{font-size:18px;font-weight:800;color:#e5e7eb}
+.hero-sub{font-size:12px;color:#9ca3af}
+.hero-actions{display:flex;gap:8px}
+
+.card.elev{border-radius:12px;border:1px solid var(--border);box-shadow:0 10px 30px rgba(0,0,0,.06)}
+.section-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+.section-title{font-weight:800;color:#111827;position:relative;padding-bottom:6px}
+.section-title::after{content:"";position:absolute;left:0;bottom:0;width:48px;height:3px;background:linear-gradient(90deg,var(--brand-red),#ee2b2b);border-radius:3px}
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media (max-width: 900px){ .grid-2{grid-template-columns:1fr} }
+
