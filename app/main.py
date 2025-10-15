@@ -55,8 +55,33 @@ def create_app() -> FastAPI:
     app.include_router(integrations_router)
     app.include_router(inventory_router)
     app.include_router(proposals_router)
-    # Static UI
+    # Legacy UI redirects to new React routes (exact paths)
+    legacy_map = {
+        "/ui/login.html": "/login",
+        "/ui/home.html": "/home",
+        "/ui/profile.html": "/profile",
+        "/ui/customers.html": "/customers",
+        "/ui/users.html": "/customers",
+        "/ui/inventory.html": "/inventory",
+        "/ui/inventory-products.html": "/inventory",
+        "/ui/inventory-suppliers.html": "/inventory",
+        "/ui/inventory-orders.html": "/inventory",
+        "/ui/proposals.html": "/proposals",
+    }
+
+    for old_path, new_path in legacy_map.items():
+        @app.get(old_path)  # type: ignore[misc]
+        def _redir(new_path=new_path):  # default binds current value
+            return RedirectResponse(url=new_path)
+
+    # Static UI (legacy)
     app.mount("/ui", StaticFiles(directory="app/ui", html=True), name="ui")
+    # React frontend (served when built)
+    try:
+        if os.path.isdir("frontend/dist"):
+            app.mount("/", StaticFiles(directory="frontend/dist", html=True), name="frontend")
+    except Exception:
+        pass
 
     # Metrics
     Instrumentator().instrument(app).expose(app)
@@ -173,6 +198,9 @@ def create_app() -> FastAPI:
 
     @app.get("/")
     def root():
+        # Prefer React app if built; else fallback to legacy UI
+        if os.path.isdir("frontend/dist"):
+            return RedirectResponse(url="/index.html")
         return RedirectResponse(url="/ui/index.html")
 
     return app

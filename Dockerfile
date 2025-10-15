@@ -1,3 +1,8 @@
+FROM node:20-slim as frontend
+WORKDIR /work
+COPY frontend ./frontend
+RUN cd frontend && npm ci && npm run build
+
 FROM python:3.11-slim
 
 ENV PYTHONUNBUFFERED=1
@@ -7,6 +12,8 @@ COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
+# Copy built frontend
+COPY --from=frontend /work/frontend/dist ./frontend/dist
 
 # Render sets $PORT; default to 8000
 ENV PORT=8000
