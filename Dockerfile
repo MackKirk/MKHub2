@@ -1,7 +1,13 @@
 FROM node:20-slim as frontend
-WORKDIR /work
-COPY frontend ./frontend
-RUN cd frontend && npm ci && npm run build
+WORKDIR /work/frontend
+# Install deps first for better caching
+COPY frontend/package.json ./
+# If a lockfile is added later, COPY it too for repeatable builds
+# RUN npm ci
+RUN npm install --no-audit --no-fund
+# Now copy the rest and build
+COPY frontend ./
+RUN npm run build
 
 FROM python:3.11-slim
 
