@@ -118,10 +118,23 @@ async function loadPage(evOrUrl, maybeUrl){
     const div = document.createElement('div'); div.innerHTML = html;
     const newMain = div.querySelector('.main');
     if (newMain){
+      // Remove any page-embedded topbar to avoid duplication
+      const tb = newMain.querySelector('.topbar'); if (tb) tb.remove();
       const inner = newMain.querySelector('.container') || newMain;
       main.innerHTML = inner.innerHTML;
     } else {
       main.innerHTML = html;
+    }
+    // Execute inline scripts from fetched page (to load data)
+    const scripts = div.querySelectorAll('script');
+    for (const s of scripts){
+      const src = s.getAttribute('src');
+      if (src && src.includes('/ui/app.js')) continue; // avoid reloading app.js
+      const el = document.createElement('script');
+      if (src) { el.src = src; }
+      else { el.textContent = s.textContent || ''; }
+      document.body.appendChild(el);
+      if (!src) el.remove();
     }
     history.pushState({ url }, '', url);
   }catch(e){ main.innerHTML = prev.innerHTML; }
