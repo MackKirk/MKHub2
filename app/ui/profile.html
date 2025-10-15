@@ -7,7 +7,7 @@
 <script src="/ui/geo.js"></script>
 <div id="sidebar"></div>
 <div class="main">
-<div class="hero-card">
+ <div class="hero-card red">
   <div class="hero-left">
     <img id="avatarPreview" class="avatar-lg" src="/ui/assets/login/logo-light.svg" alt="avatar">
     <div>
@@ -21,11 +21,18 @@
     <button type="button" class="btn" id="uploadAvatar">Upload</button>
   </div>
  </div>
+<div class="profile-tabs">
+  <a href="#" id="tab-personal" class="active" onclick="return switchPanel(event,'personal')">Personal</a>
+  <a href="#" id="tab-job" onclick="return switchPanel(event,'job')">Job</a>
+  <a href="#" id="tab-emergency" onclick="return switchPanel(event,'emergency')">Emergency</a>
+  <a href="#" id="tab-docs" onclick="return switchPanel(event,'docs')">Documents</a>
+</div>
 <p class="muted">Please complete your profile before using the system. Fields marked with <span class="req">*</span> are required.</p>
 <ul id="missingList" class="muted"></ul>
 <form onsubmit="save(event)">
   <div class="card elev">
     <div class="section-header"><div class="section-title">Identity</div><span id="avatarMsg" class="muted"></span></div>
+  <div id="panel-personal" class="panel active">
   <div class="card elev">
     <div class="section-title">Identity</div>
     <div class="row">
@@ -131,6 +138,16 @@
     </div>
   </div>
   <div class="row" style="justify-content:flex-end"><button class="btn">Save</button></div>
+  </div>
+  <div id="panel-job" class="panel">
+    <div class="card elev"><div class="section-title">Job Overview</div><div class="muted">Coming soon</div></div>
+  </div>
+  <div id="panel-emergency" class="panel">
+    <div class="card elev"><div class="section-title">Emergency Contacts</div><div class="muted">Coming soon</div></div>
+  </div>
+  <div id="panel-docs" class="panel">
+    <div class="card elev"><div class="section-title">Documents</div><div class="muted">Coming soon</div></div>
+  </div>
 </form>
 <pre id="msg" class="muted"></pre>
 <script>
@@ -192,6 +209,8 @@ fetch('/auth/me/profile', { headers:{ Authorization:'Bearer '+token }}).then(r=>
     if (window.MKHubGeoReady && typeof window.MKHubTryPreselect === 'function') { window.MKHubTryPreselect(); }
   }
 });
+
+function switchPanel(ev, which){ ev && ev.preventDefault(); const tabs=['personal','job','emergency','docs']; for (const k of tabs){ const el=document.getElementById('panel-'+k); if(el) el.className = 'panel' + (k===which?' active':''); const t=document.getElementById('tab-'+k); if(t){ if(k===which) t.classList.add('active'); else t.classList.remove('active'); } } return false; }
 
 async function save(ev){
   ev.preventDefault();

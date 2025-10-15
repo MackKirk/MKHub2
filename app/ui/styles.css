@@ -75,6 +75,7 @@ input[type="text"],input[type="password"],input:not([type]),textarea,select{bord
 
 /* Fancy profile components */
 .hero-card{display:flex;justify-content:space-between;align-items:center;padding:14px 16px;border-radius:14px;border:1px solid #1f242b;background:linear-gradient(135deg,rgba(15,17,20,.96),rgba(20,24,28,.92));box-shadow:0 12px 40px rgba(0,0,0,.25);margin:12px 0}
+.hero-card.red{border-color:#6d0b0b;background:linear-gradient(135deg,#7f1010,#a31414)}
 .hero-left{display:flex;align-items:center;gap:12px}
 .avatar-lg{width:64px;height:64px;border-radius:50%;border:3px solid var(--brand-red);object-fit:cover;background:#0b0b0c}
 .hero-name{font-size:18px;font-weight:800;color:#e5e7eb}
@@ -87,4 +88,11 @@ input[type="text"],input[type="password"],input:not([type]),textarea,select{bord
 .section-title::after{content:"";position:absolute;left:0;bottom:0;width:48px;height:3px;background:linear-gradient(90deg,var(--brand-red),#ee2b2b);border-radius:3px}
 .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 @media (max-width: 900px){ .grid-2{grid-template-columns:1fr} }
+
+/* Profile sub-tabs */
+.profile-tabs{display:flex;gap:8px;margin:8px 0 12px}
+.profile-tabs a{padding:10px 14px;border-radius:10px;background:#fff;border:1px solid var(--border);color:#374151;text-decoration:none}
+.profile-tabs a.active{background:linear-gradient(90deg,var(--brand-red),#ee2b2b);color:#fff;border-color:transparent}
+.panel{display:none}
+.panel.active{display:block}
 
