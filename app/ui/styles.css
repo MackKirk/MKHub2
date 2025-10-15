@@ -74,9 +74,9 @@ input[type="text"],input[type="password"],input:not([type]),textarea,select{bord
 .links a:hover{border-color:var(--brand-red);box-shadow:0 0 0 2px rgba(209,22,22,.1)}
 
 /* Fancy profile components */
-.hero-card{display:flex;justify-content:space-between;align-items:center;padding:14px 16px;border-radius:14px;border:1px solid #1f242b;background:linear-gradient(135deg,rgba(15,17,20,.96),rgba(20,24,28,.92));box-shadow:0 12px 40px rgba(0,0,0,.25);margin:12px 0}
+.hero-card{display:flex;justify-content:space-between;align-items:stretch;padding:14px 16px;border-radius:14px;border:1px solid #1f242b;background:linear-gradient(135deg,rgba(15,17,20,.96),rgba(20,24,28,.92));box-shadow:0 12px 40px rgba(0,0,0,.25);margin:12px 0;min-height:180px}
 .hero-card.red{border-color:#6d0b0b;background:linear-gradient(135deg,#7f1010,#a31414)}
-.hero-left{display:flex;align-items:center;gap:18px}
+.hero-left{display:flex;align-items:flex-start;gap:18px;flex:1;height:100%}
 .avatar-wrap{position:relative;width:140px;height:140px}
 .avatar-lg{width:140px;height:140px;border-radius:12px;border:3px solid var(--brand-red);object-fit:cover;background:#0b0b0c;display:block;box-shadow:0 8px 26px rgba(209,22,22,.25), 0 2px 18px rgba(0,0,0,.35)}
 .avatar-edit{position:absolute;inset:0;background:rgba(0,0,0,.35);border-radius:12px;display:flex;align-items:center;justify-content:center;color:#fff;opacity:0;transition:opacity .2s}
@@ -87,11 +87,11 @@ input[type="text"],input[type="password"],input:not([type]),textarea,select{bord
 .hero-actions .btn,.hero-actions .btn-secondary{font-family:Montserrat;font-weight:800}
 
 /* Hero content right and tabs */
-.hero-right{display:flex;flex-direction:column;justify-content:flex-start}
+.hero-right{display:flex;flex-direction:column;justify-content:flex-start;height:100%}
 .hero-name{font-size:28px;font-weight:800;color:#fff}
 .hero-sub{font-size:14px;color:#f3f4f6;margin-top:4px}
-.hero-card{min-height:150px}
-.hero-tabs{display:flex;gap:8px;margin-top:auto}
+.hero-card{min-height:180px}
+.hero-tabs{display:flex;gap:8px;margin-top:auto;align-self:flex-start;padding-top:8px}
 .hero-tabs a{padding:8px 12px;border-radius:999px;background:#fff;color:#111827;text-decoration:none;border:1px solid rgba(255,255,255,.2)}
 .hero-tabs a.active{background:#111827;color:#fff;border-color:#111827}
 
