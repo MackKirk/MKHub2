@@ -125,16 +125,18 @@ async function loadPage(evOrUrl, maybeUrl){
     } else {
       main.innerHTML = html;
     }
-    // Execute inline scripts from fetched page (to load data)
-    const scripts = div.querySelectorAll('script');
-    for (const s of scripts){
-      const src = s.getAttribute('src');
-      if (src && src.includes('/ui/app.js')) continue; // avoid reloading app.js
-      const el = document.createElement('script');
-      if (src) { el.src = src; }
-      else { el.textContent = s.textContent || ''; }
-      document.body.appendChild(el);
-      if (!src) el.remove();
+    // Load external scripts sequentially, then run inline scripts
+    const scripts = Array.from(div.querySelectorAll('script'));
+    const externals = scripts.filter(s => s.src && !s.src.includes('/ui/app.js')).map(s => s.src);
+    const inlines = scripts.filter(s => !s.src).map(s => s.textContent || '');
+    for (const src of externals){
+      if (document.querySelector('script[src="'+src+'"]')) continue; // assume already loaded
+      await new Promise((resolve, reject) => {
+        const el = document.createElement('script'); el.src = src; el.onload = resolve; el.onerror = reject; document.body.appendChild(el);
+      });
+    }
+    for (const code of inlines){
+      const el = document.createElement('script'); el.textContent = code; document.body.appendChild(el); el.remove();
     }
     history.pushState({ url }, '', url);
   }catch(e){ main.innerHTML = prev.innerHTML; }
