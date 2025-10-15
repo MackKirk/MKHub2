@@ -29,8 +29,21 @@ export default function Profile(){
     emergency_contact_name: p.emergency_contact_name||'', emergency_contact_relationship: p.emergency_contact_relationship||'', emergency_contact_phone: p.emergency_contact_phone||''
   }); } }, [data]);
   const set = (k:string, v:any)=> setForm((s:any)=>({ ...s, [k]: v }));
+
+  // Missing required indicators by category
+  const reqPersonal = ['preferred_name','gender','date_of_birth','marital_status','nationality','mobile_phone','address_line1','city','province','postal_code','country'];
+  const reqEmergency = ['sin_number','work_permit_status','visa_status','emergency_contact_name','emergency_contact_relationship','emergency_contact_phone'];
+  const missingPersonal = reqPersonal.filter(k => !String((form as any)[k]||'').trim());
+  const missingEmergency = reqEmergency.filter(k => !String((form as any)[k]||'').trim());
+  const totalMissing = missingPersonal.length + missingEmergency.length;
   return (
     <div>
+      {/* Title above hero */}
+      <div className="mb-3 flex items-center gap-3">
+        <img className="w-10 h-10 rounded-full border-2 border-brand-red object-cover" src={p.profile_photo_file_id? `/files/${p.profile_photo_file_id}/thumbnail?w=64`:'/ui/assets/login/logo-light.svg'} />
+        <h2 className="text-xl font-extrabold">My Information</h2>
+        {totalMissing>0 && <span className="text-red-700 text-sm bg-red-50 border border-red-200 rounded-full px-2 py-0.5">Missing {totalMissing}</span>}
+      </div>
       <motion.div initial={{opacity:0, y:10}} animate={{opacity:1, y:0}} className="rounded-xl border shadow-hero bg-white">
         <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] rounded-t-xl p-5 text-white">
           <div className="flex gap-4 items-stretch min-h-[180px]">
@@ -43,9 +56,13 @@ export default function Profile(){
               <div className="text-3xl font-extrabold">{p.first_name || data?.user?.first_name || data?.user?.username} {p.last_name || data?.user?.last_name || ''}</div>
               <div className="text-sm opacity-90 mt-1">{p.job_title||data?.user?.email||''}</div>
               <div className="mt-auto flex gap-3">
-                <button onClick={()=>setTab('personal')} className={`px-4 py-2 rounded-full ${tab==='personal'?'bg-black text-white':'bg-white text-black'}`}>Personal</button>
+                <button onClick={()=>setTab('personal')} className={`px-4 py-2 rounded-full ${tab==='personal'?'bg-black text-white':'bg-white text-black'}`}>
+                  Personal {missingPersonal.length>0 && <span className="ml-2 text-xs bg-red-50 text-red-700 border border-red-200 rounded-full px-2">{missingPersonal.length}</span>}
+                </button>
                 <button onClick={()=>setTab('job')} className={`px-4 py-2 rounded-full ${tab==='job'?'bg-black text-white':'bg-white text-black'}`}>Job</button>
-                <button onClick={()=>setTab('emergency')} className={`px-4 py-2 rounded-full ${tab==='emergency'?'bg-black text-white':'bg-white text-black'}`}>Emergency</button>
+                <button onClick={()=>setTab('emergency')} className={`px-4 py-2 rounded-full ${tab==='emergency'?'bg-black text-white':'bg-white text-black'}`}>
+                  Emergency {missingEmergency.length>0 && <span className="ml-2 text-xs bg-red-50 text-red-700 border border-red-200 rounded-full px-2">{missingEmergency.length}</span>}
+                </button>
                 <button onClick={()=>setTab('docs')} className={`px-4 py-2 rounded-full ${tab==='docs'?'bg-black text-white':'bg-white text-black'}`}>Documents</button>
               </div>
             </div>
@@ -72,19 +89,19 @@ export default function Profile(){
             <>
               {tab==='personal' && (
                 <div className="grid md:grid-cols-2 gap-4">
-                  <Field label="Preferred name"><input value={form.preferred_name} onChange={e=>set('preferred_name', e.target.value)} className="w-full rounded-lg border px-3 py-2"/></Field>
+                  <Field label="Preferred name" required invalid={missingPersonal.includes('preferred_name')}><input value={form.preferred_name} onChange={e=>set('preferred_name', e.target.value)} className="w-full rounded-lg border px-3 py-2"/></Field>
                   <Field label="Phone"><input value={form.phone} onChange={e=>set('phone', e.target.value)} className="w-full rounded-lg border px-3 py-2"/></Field>
-                  <Field label="Mobile phone"><input value={form.mobile_phone} onChange={e=>set('mobile_phone', e.target.value)} className="w-full rounded-lg border px-3 py-2"/></Field>
-                  <Field label="Gender"><input value={form.gender} onChange={e=>set('gender', e.target.value)} className="w-full rounded-lg border px-3 py-2"/></Field>
-                  <Field label="Marital status"><input value={form.marital_status} onChange={e=>set('marital_status', e.target.value)} className="w-full rounded-lg border px-3 py-2"/></Field>
-                  <Field label="Date of birth (YYYY-MM-DD)"><input value={form.date_of_birth} onChange={e=>set('date_of_birth', e.target.value)} className="w-full rounded-lg border px-3 py-2"/></Field>
-                  <Field label="Nationality"><input value={form.nationality} onChange={e=>set('nationality', e.target.value)} className="w-full rounded-lg border px-3 py-2"/></Field>
-                  <Field label="Address line 1"><input value={form.address_line1} onChange={e=>set('address_line1', e.target.value)} className="w-full rounded-lg border px-3 py-2"/></Field>
+                  <Field label="Mobile phone" required invalid={missingPersonal.includes('mobile_phone')}><input value={form.mobile_phone} onChange={e=>set('mobile_phone', e.target.value)} className="w-full rounded-lg border px-3 py-2"/></Field>
+                  <Field label="Gender" required invalid={missingPersonal.includes('gender')}><input value={form.gender} onChange={e=>set('gender', e.target.value)} className="w-full rounded-lg border px-3 py-2"/></Field>
+                  <Field label="Marital status" required invalid={missingPersonal.includes('marital_status')}><input value={form.marital_status} onChange={e=>set('marital_status', e.target.value)} className="w-full rounded-lg border px-3 py-2"/></Field>
+                  <Field label="Date of birth (YYYY-MM-DD)" required invalid={missingPersonal.includes('date_of_birth')}><input value={form.date_of_birth} onChange={e=>set('date_of_birth', e.target.value)} className="w-full rounded-lg border px-3 py-2"/></Field>
+                  <Field label="Nationality" required invalid={missingPersonal.includes('nationality')}><input value={form.nationality} onChange={e=>set('nationality', e.target.value)} className="w-full rounded-lg border px-3 py-2"/></Field>
+                  <Field label="Address line 1" required invalid={missingPersonal.includes('address_line1')}><input value={form.address_line1} onChange={e=>set('address_line1', e.target.value)} className="w-full rounded-lg border px-3 py-2"/></Field>
                   <Field label="Address line 2"><input value={form.address_line2} onChange={e=>set('address_line2', e.target.value)} className="w-full rounded-lg border px-3 py-2"/></Field>
-                  <Field label="City"><input value={form.city} onChange={e=>set('city', e.target.value)} className="w-full rounded-lg border px-3 py-2"/></Field>
-                  <Field label="Province/State"><input value={form.province} onChange={e=>set('province', e.target.value)} className="w-full rounded-lg border px-3 py-2"/></Field>
-                  <Field label="Postal code"><input value={form.postal_code} onChange={e=>set('postal_code', e.target.value)} className="w-full rounded-lg border px-3 py-2"/></Field>
-                  <Field label="Country"><input value={form.country} onChange={e=>set('country', e.target.value)} className="w-full rounded-lg border px-3 py-2"/></Field>
+                  <Field label="City" required invalid={missingPersonal.includes('city')}><input value={form.city} onChange={e=>set('city', e.target.value)} className="w-full rounded-lg border px-3 py-2"/></Field>
+                  <Field label="Province/State" required invalid={missingPersonal.includes('province')}><input value={form.province} onChange={e=>set('province', e.target.value)} className="w-full rounded-lg border px-3 py-2"/></Field>
+                  <Field label="Postal code" required invalid={missingPersonal.includes('postal_code')}><input value={form.postal_code} onChange={e=>set('postal_code', e.target.value)} className="w-full rounded-lg border px-3 py-2"/></Field>
+                  <Field label="Country" required invalid={missingPersonal.includes('country')}><input value={form.country} onChange={e=>set('country', e.target.value)} className="w-full rounded-lg border px-3 py-2"/></Field>
                 </div>
               )}
               {tab==='job' && (
@@ -103,12 +120,12 @@ export default function Profile(){
               )}
               {tab==='emergency' && (
                 <div className="grid md:grid-cols-2 gap-4">
-                  <Field label="SIN/SSN"><input value={form.sin_number} onChange={e=>set('sin_number', e.target.value)} className="w-full rounded-lg border px-3 py-2"/></Field>
-                  <Field label="Work permit status"><input value={form.work_permit_status} onChange={e=>set('work_permit_status', e.target.value)} className="w-full rounded-lg border px-3 py-2"/></Field>
-                  <Field label="Visa status"><input value={form.visa_status} onChange={e=>set('visa_status', e.target.value)} className="w-full rounded-lg border px-3 py-2"/></Field>
-                  <Field label="Emergency contact name"><input value={form.emergency_contact_name} onChange={e=>set('emergency_contact_name', e.target.value)} className="w-full rounded-lg border px-3 py-2"/></Field>
-                  <Field label="Emergency contact relationship"><input value={form.emergency_contact_relationship} onChange={e=>set('emergency_contact_relationship', e.target.value)} className="w-full rounded-lg border px-3 py-2"/></Field>
-                  <Field label="Emergency contact phone"><input value={form.emergency_contact_phone} onChange={e=>set('emergency_contact_phone', e.target.value)} className="w-full rounded-lg border px-3 py-2"/></Field>
+                  <Field label="SIN/SSN" required invalid={missingEmergency.includes('sin_number')}><input value={form.sin_number} onChange={e=>set('sin_number', e.target.value)} className="w-full rounded-lg border px-3 py-2"/></Field>
+                  <Field label="Work permit status" required invalid={missingEmergency.includes('work_permit_status')}><input value={form.work_permit_status} onChange={e=>set('work_permit_status', e.target.value)} className="w-full rounded-lg border px-3 py-2"/></Field>
+                  <Field label="Visa status" required invalid={missingEmergency.includes('visa_status')}><input value={form.visa_status} onChange={e=>set('visa_status', e.target.value)} className="w-full rounded-lg border px-3 py-2"/></Field>
+                  <Field label="Emergency contact name" required invalid={missingEmergency.includes('emergency_contact_name')}><input value={form.emergency_contact_name} onChange={e=>set('emergency_contact_name', e.target.value)} className="w-full rounded-lg border px-3 py-2"/></Field>
+                  <Field label="Emergency contact relationship" required invalid={missingEmergency.includes('emergency_contact_relationship')}><input value={form.emergency_contact_relationship} onChange={e=>set('emergency_contact_relationship', e.target.value)} className="w-full rounded-lg border px-3 py-2"/></Field>
+                  <Field label="Emergency contact phone" required invalid={missingEmergency.includes('emergency_contact_phone')}><input value={form.emergency_contact_phone} onChange={e=>set('emergency_contact_phone', e.target.value)} className="w-full rounded-lg border px-3 py-2"/></Field>
                 </div>
               )}
               {tab==='docs' && (
