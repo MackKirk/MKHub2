@@ -8,15 +8,20 @@ type Client = { id:string, name?:string, display_name?:string, city?:string, pro
 type Site = { id:string, site_name?:string, site_address_line1?:string, site_city?:string, site_province?:string, site_country?:string };
 type ClientFile = { id:string, file_object_id:string, is_image?:boolean, content_type?:string, site_id?:string };
 type Project = { id:string, code?:string, name?:string, slug?:string };
+type Contact = { id:string, name?:string, email?:string, phone?:string, is_primary?:boolean };
 
 export default function CustomerDetail(){
   const { id } = useParams();
-  const [tab, setTab] = useState<'details'|'addresses'|'comms'|'files'|'contacts'|'sites'|'projects'>('details');
+  const [tab, setTab] = useState<'overview'|'details'|'addresses'|'comms'|'files'|'contacts'|'sites'|'projects'>('overview');
   const { data:client, isLoading } = useQuery({ queryKey:['client', id], queryFn: ()=>api<Client>('GET', `/clients/${id}`) });
   const { data:sites } = useQuery({ queryKey:['clientSites', id], queryFn: ()=>api<Site[]>('GET', `/clients/${id}/sites`) });
   const { data:files } = useQuery({ queryKey:['clientFiles', id], queryFn: ()=>api<ClientFile[]>('GET', `/clients/${id}/files`) });
   const { data:settings } = useQuery({ queryKey:['settings'], queryFn: ()=>api<any>('GET','/settings') });
   const { data:projects } = useQuery({ queryKey:['clientProjects', id], queryFn: ()=>api<Project[]>('GET', `/projects?client=${encodeURIComponent(String(id||''))}`) });
+  const { data:contacts } = useQuery({ queryKey:['clientContacts', id], queryFn: ()=>api<Contact[]>('GET', `/clients/${id}/contacts`) });
+  const primaryContact = (contacts||[]).find(c=>c.is_primary) || (contacts||[])[0];
+  const clientImages = (files||[]).filter(f=> !f.site_id && ((f.is_image===true) || String(f.content_type||'').startsWith('image/')));
+  const clientAvatar = clientImages.length? `/files/${clientImages[0].file_object_id}/thumbnail?w=96` : '/ui/assets/login/logo-light.svg';
   const [form, setForm] = useState<any>({});
   useEffect(()=>{ if(client){ setForm({
     display_name: client.display_name||'', legal_name: client.legal_name||'', code: client.id?.slice(0,8) || '',
@@ -47,12 +52,15 @@ export default function CustomerDetail(){
       <div className="rounded-xl border bg-white">
         <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] rounded-t-xl p-5 text-white">
           <div className="flex justify-between items-end">
-            <div>
-              <div className="text-2xl font-extrabold">{c.display_name||c.name||id}</div>
-              <div className="opacity-90 text-sm">{c.city||''} {c.province||''} {c.country||''}</div>
+            <div className="flex items-center gap-3">
+              <img src={clientAvatar} className="w-12 h-12 rounded-full border-2 border-brand-red object-cover" />
+              <div>
+                <div className="text-2xl font-extrabold">{c.display_name||c.name||id}</div>
+                <div className="opacity-90 text-sm">{c.city||''} {c.province||''} {c.country||''}</div>
+              </div>
             </div>
             <div className="flex gap-2">
-              {(['details','addresses','comms','files','contacts','sites','projects'] as const).map(k=> (
+              {(['overview','details','addresses','comms','files','contacts','sites','projects'] as const).map(k=> (
                 <button key={k} onClick={()=>setTab(k)} className={`px-3 py-1.5 rounded-full ${tab===k?'bg-black text-white':'bg-white text-black'}`}>{k[0].toUpperCase()+k.slice(1)}</button>
               ))}
             </div>
@@ -61,6 +69,57 @@ export default function CustomerDetail(){
         <div className="p-5">
           {isLoading? <div className="h-24 animate-pulse bg-gray-100 rounded"/> : (
             <>
+              {tab==='overview' && (
+                <div className="space-y-6">
+                  <div className="grid md:grid-cols-3 gap-4">
+                    <div className="rounded-xl border bg-white p-4">
+                      <h4 className="font-semibold mb-2">Client</h4>
+                      <div className="text-sm text-gray-700">{c.display_name||c.name}</div>
+                      <div className="text-sm text-gray-500">{[c.address_line1, c.city, c.province, c.country].filter(Boolean).join(', ')}</div>
+                    </div>
+                    <div className="rounded-xl border bg-white p-4">
+                      <h4 className="font-semibold mb-2">Primary Contact</h4>
+                      <div className="text-sm text-gray-700">{primaryContact?.name||'-'}</div>
+                      <div className="text-sm text-gray-500">{primaryContact?.email||''} {primaryContact?.phone? `· ${primaryContact.phone}`:''}</div>
+                    </div>
+                    <div className="rounded-xl border bg-white p-4">
+                      <h4 className="font-semibold mb-2">Overview</h4>
+                      <div className="text-sm text-gray-700">Sites: {sites?.length||0}</div>
+                      <div className="text-sm text-gray-700">Projects: {projects?.length||0}</div>
+                    </div>
+                  </div>
+                  <div>
+                    <div className="flex items-center justify-between mb-2"><h3 className="font-semibold">Recent Sites</h3><button onClick={()=>setTab('sites')} className="text-sm px-3 py-1.5 rounded bg-brand-red text-white">View all</button></div>
+                    <div className="grid md:grid-cols-3 gap-4">
+                      {(sites||[]).slice(0,3).map(s=> (
+                        <div key={s.id} className="rounded-xl border overflow-hidden bg-white">
+                          <div className="h-28 bg-gray-100"/>
+                          <div className="p-3 text-sm">
+                            <div className="font-semibold">{s.site_name||'Site'}</div>
+                            <div className="text-gray-600">{s.site_address_line1||''}</div>
+                          </div>
+                        </div>
+                      ))}
+                      {(!(sites||[]).length) && <div className="text-sm text-gray-600">No sites</div>}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="flex items-center justify-between mb-2"><h3 className="font-semibold">Recent Projects</h3><button onClick={()=>setTab('projects')} className="text-sm px-3 py-1.5 rounded bg-brand-red text-white">View all</button></div>
+                    <div className="grid md:grid-cols-3 gap-4">
+                      {(projects||[]).slice(0,3).map(p=> (
+                        <div key={p.id} className="rounded-xl border overflow-hidden bg-white">
+                          <div className="h-28 bg-gray-100"/>
+                          <div className="p-3 text-sm">
+                            <div className="font-semibold">{p.name||'Project'}</div>
+                            <div className="text-gray-600">{p.code||''}</div>
+                          </div>
+                        </div>
+                      ))}
+                      {(!(projects||[]).length) && <div className="text-sm text-gray-600">No projects</div>}
+                    </div>
+                  </div>
+                </div>
+              )}
               {tab==='details' && (
                 <div className="grid md:grid-cols-2 gap-4">
                   <Field label="Display name *"><input className="w-full border rounded px-3 py-2" value={form.display_name||''} onChange={e=>set('display_name', e.target.value)} /></Field>
