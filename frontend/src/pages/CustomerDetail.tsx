@@ -425,30 +425,47 @@ function FilesCard({ id, files, sites }:{ id:string, files: ClientFile[], sites:
 }
 
 function ContactsCard({ id }:{ id:string }){
-  const { data, refetch, isLoading } = useQuery({ queryKey:['clientContacts', id], queryFn: ()=>api<any[]>('GET', `/clients/${id}/contacts`) });
+  const { data, refetch } = useQuery({ queryKey:['clientContacts', id], queryFn: ()=>api<any[]>('GET', `/clients/${id}/contacts`) });
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [primary, setPrimary] = useState('false');
+  const [role, setRole] = useState('');
   return (
     <div>
       <h4 className="font-semibold mb-2">Contacts</h4>
-      <div className="rounded border bg-white">
-        {(data||[]).length? (data||[]).map(c=> (
-          <div key={c.id} className="flex items-center justify-between border-b px-3 py-2 text-sm">
-            <div>{c.name||''} {c.email? <span className="text-gray-500">{c.email}</span>:''} {c.phone? <span className="text-gray-500">{c.phone}</span>:''} {c.is_primary? <span className="text-gray-500">[primary]</span>:''}</div>
-            <div><button onClick={async()=>{ await api('DELETE', `/clients/${id}/contacts/${c.id}`); refetch(); }} className="px-2 py-1 rounded bg-gray-100">Delete</button></div>
+      <div className="grid md:grid-cols-2 gap-4">
+        {(data||[]).map(c=> (
+          <div key={c.id} className="rounded-xl border bg-white overflow-hidden flex">
+            <div className="w-28 bg-gray-100 flex items-center justify-center">
+              <div className="w-20 h-20 rounded bg-gray-200 grid place-items-center text-lg font-bold text-gray-600">
+                {(c.name||'?').slice(0,2).toUpperCase()}
+              </div>
+            </div>
+            <div className="flex-1 p-3 text-sm">
+              <div className="flex items-center justify-between">
+                <div className="font-semibold">{c.name}</div>
+                {c.is_primary && <span className="text-[11px] bg-green-50 text-green-700 border border-green-200 rounded-full px-2">Primary</span>}
+              </div>
+              <div className="text-gray-600">{c.role_title||''} {c.department? `· ${c.department}`:''}</div>
+              <div className="text-gray-600">{c.email||''} {c.phone? `· ${c.phone}`:''}</div>
+              <div className="mt-2 text-right">
+                <button onClick={async()=>{ await api('DELETE', `/clients/${id}/contacts/${c.id}`); refetch(); }} className="px-2 py-1 rounded bg-gray-100">Delete</button>
+              </div>
+            </div>
           </div>
-        )): <div className="p-3 text-sm text-gray-600">No contacts</div>}
+        ))}
+        {(!data || !data.length) && <div className="text-sm text-gray-600">No contacts</div>}
       </div>
       <h4 className="font-semibold mt-4 mb-2">Add Contact</h4>
-      <div className="grid md:grid-cols-4 gap-2">
+      <div className="grid md:grid-cols-5 gap-2">
         <input placeholder="Name" className="border rounded px-3 py-2" value={name} onChange={e=>setName(e.target.value)} />
         <input placeholder="Email" className="border rounded px-3 py-2" value={email} onChange={e=>setEmail(e.target.value)} />
         <input placeholder="Phone" className="border rounded px-3 py-2" value={phone} onChange={e=>setPhone(e.target.value)} />
+        <input placeholder="Role/Title" className="border rounded px-3 py-2" value={role} onChange={e=>setRole(e.target.value)} />
         <select className="border rounded px-3 py-2" value={primary} onChange={e=>setPrimary(e.target.value)}><option value="false">Primary? No</option><option value="true">Primary? Yes</option></select>
       </div>
-      <div className="mt-2"><button onClick={async()=>{ await api('POST', `/clients/${id}/contacts`, { name, email, phone, is_primary: primary==='true' }); setName(''); setEmail(''); setPhone(''); setPrimary('false'); refetch(); }} className="px-3 py-2 rounded bg-brand-red text-white">Add Contact</button></div>
+      <div className="mt-2"><button onClick={async()=>{ await api('POST', `/clients/${id}/contacts`, { name, email, phone, role_title: role, is_primary: primary==='true' }); setName(''); setEmail(''); setPhone(''); setRole(''); setPrimary('false'); refetch(); }} className="px-3 py-2 rounded bg-brand-red text-white">Add Contact</button></div>
     </div>
   );
 }

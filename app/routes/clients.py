@@ -211,6 +211,7 @@ def list_files(client_id: str, site_id: Optional[str] = None, db: Session = Depe
             "key": cf.key,
             "original_name": cf.original_name,
             "site_id": str(cf.site_id) if getattr(cf, 'site_id', None) else None,
+            "project_id": str(getattr(fo, 'project_id', '')) if fo and getattr(fo, 'project_id', None) else None,
             "uploaded_at": cf.uploaded_at.isoformat() if cf.uploaded_at else None,
             "uploaded_by": str(cf.uploaded_by) if cf.uploaded_by else None,
             "content_type": ct,
