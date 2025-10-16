@@ -23,7 +23,7 @@ export default function CustomerDetail(){
   const primaryContact = (contacts||[]).find(c=>c.is_primary) || (contacts||[])[0];
   const clientImages = (files||[]).filter(f=> !f.site_id && ((f.is_image===true) || String(f.content_type||'').startsWith('image/')));
   const clientAvatar = clientImages.length? `/files/${clientImages[0].file_object_id}/thumbnail?w=96` : '/ui/assets/login/logo-light.svg';
-  const clientAvatarLarge = clientImages.length? `/files/${clientImages[0].file_object_id}/thumbnail?w=240` : '/ui/assets/login/logo-light.svg';
+  const clientAvatarLarge = clientImages.length? `/files/${clientImages[0].file_object_id}/thumbnail?w=480` : '/ui/assets/login/logo-light.svg';
   const [form, setForm] = useState<any>({});
   const [pickerOpen, setPickerOpen] = useState(false);
   const [sitePicker, setSitePicker] = useState<{ open:boolean, siteId?:string }|null>(null);
@@ -288,7 +288,7 @@ export default function CustomerDetail(){
           )}
         </div>
       </div>
-      <ImagePicker isOpen={pickerOpen} onClose={()=>setPickerOpen(false)} clientId={String(id)} targetWidth={240} targetHeight={180} allowEdit={true} onConfirm={async(blob, original)=>{
+      <ImagePicker isOpen={pickerOpen} onClose={()=>setPickerOpen(false)} clientId={String(id)} targetWidth={800} targetHeight={600} allowEdit={true} onConfirm={async(blob, original)=>{
         try{
           // upload processed image as derived client-logo
           const up:any = await api('POST','/files/upload',{ project_id:null, client_id:id, employee_id:null, category_id:'client-logo-derived', original_name: 'client-logo.jpg', content_type: 'image/jpeg' });

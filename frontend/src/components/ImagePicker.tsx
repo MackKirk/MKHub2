@@ -133,7 +133,7 @@ export default function ImagePicker({
     const sh = ch / scale;
     // draw scaled to target canvas
     ctx.drawImage(img, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
-    canvas.toBlob((b)=>{ if(b){ onConfirm(b, originalFileObjectId); } }, 'image/jpeg', 0.9);
+    canvas.toBlob((b)=>{ if(b){ onConfirm(b, originalFileObjectId); } }, 'image/jpeg', 0.94);
   };
 
   if(!isOpen) return null;
