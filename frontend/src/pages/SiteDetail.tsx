@@ -66,10 +66,10 @@ export default function SiteDetail(){
                 }} className="px-3 py-2 rounded bg-black text-white">Download all pictures</button>
               </div>
               <h4 className="font-semibold mb-2">Pictures</h4>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3 mb-4">
                 {pics.map(f=> (
                   <div key={f.id} className="relative group">
-                    <img className="w-full h-32 object-cover rounded border" src={`/files/${f.file_object_id}/thumbnail?w=300`} />
+                    <img className="w-full h-24 object-cover rounded border" src={`/files/${f.file_object_id}/thumbnail?w=300`} />
                     <div className="absolute right-2 top-2 hidden group-hover:flex gap-1">
                       <a href={`/files/${f.file_object_id}/download`} target="_blank" className="bg-black/70 hover:bg-black/80 text-white text-[11px] px-2 py-1 rounded" title="Zoom">🔍</a>
                       <button onClick={async(e)=>{ e.stopPropagation(); if(!confirm('Delete this picture?')) return; try{ await api('DELETE', `/clients/${customerId}/files/${encodeURIComponent(String(f.id))}`); toast.success('Deleted'); location.reload(); }catch(_e){ toast.error('Delete failed'); } }} className="bg-black/70 hover:bg-black/80 text-white text-[11px] px-2 py-1 rounded" title="Delete">🗑️</button>

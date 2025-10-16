@@ -151,7 +151,17 @@ export default function CustomerDetail(){
                   <Field label="Tax number"><input className="w-full border rounded px-3 py-2" value={form.tax_number||''} onChange={e=>set('tax_number', e.target.value)} /></Field>
                   <div className="md:col-span-2"><Field label="Description"><input className="w-full border rounded px-3 py-2" value={form.description||''} onChange={e=>set('description', e.target.value)} /></Field></div>
                   <div className="md:col-span-2 flex justify-end"><button onClick={async()=>{
-                    const payload = { ...form, po_required: form.po_required==='true' };
+                    const payload:any = {
+                      display_name: form.display_name||null,
+                      legal_name: form.legal_name||null,
+                      client_type: form.client_type||null,
+                      client_status: form.client_status||null,
+                      lead_source: form.lead_source||null,
+                      billing_email: form.billing_email||null,
+                      po_required: form.po_required==='true',
+                      tax_number: form.tax_number||null,
+                      description: form.description||null,
+                    };
                     try{ await api('PATCH', `/clients/${id}`, payload); toast.success('Customer saved'); }catch(e){ toast.error('Save failed'); }
                   }} className="px-4 py-2 rounded bg-brand-red text-white">Save</button></div>
                 </div>
@@ -174,7 +184,21 @@ export default function CustomerDetail(){
                   <Field label="Billing City"><input disabled={!!form.billing_same_as_address} className="w-full border rounded px-3 py-2" value={form.billing_city||''} onChange={e=>set('billing_city', e.target.value)} /></Field>
                   <Field label="Billing Postal code"><input disabled={!!form.billing_same_as_address} className="w-full border rounded px-3 py-2" value={form.billing_postal_code||''} onChange={e=>set('billing_postal_code', e.target.value)} /></Field>
                   <div className="md:col-span-2 flex justify-end"><button onClick={async()=>{
-                    const payload = { ...form, po_required: form.po_required==='true' };
+                    const payload:any = {
+                      address_line1: form.address_line1||null,
+                      address_line2: form.address_line2||null,
+                      country: form.country||null,
+                      province: form.province||null,
+                      city: form.city||null,
+                      postal_code: form.postal_code||null,
+                      billing_same_as_address: !!form.billing_same_as_address,
+                      billing_address_line1: form.billing_same_as_address? (form.address_line1||null) : (form.billing_address_line1||null),
+                      billing_address_line2: form.billing_same_as_address? (form.address_line2||null) : (form.billing_address_line2||null),
+                      billing_country: form.billing_same_as_address? (form.country||null) : (form.billing_country||null),
+                      billing_province: form.billing_same_as_address? (form.province||null) : (form.billing_province||null),
+                      billing_city: form.billing_same_as_address? (form.city||null) : (form.billing_city||null),
+                      billing_postal_code: form.billing_same_as_address? (form.postal_code||null) : (form.billing_postal_code||null),
+                    };
                     try{ await api('PATCH', `/clients/${id}`, payload); toast.success('Addresses saved'); }catch(e){ toast.error('Save failed'); }
                   }} className="px-4 py-2 rounded bg-brand-red text-white">Save</button></div>
                 </div>
@@ -191,7 +215,18 @@ export default function CustomerDetail(){
                   <Field label="Do not contact"><select className="w-full border rounded px-3 py-2" value={form.do_not_contact||'false'} onChange={e=>set('do_not_contact', e.target.value)}><option value="false">No</option><option value="true">Yes</option></select></Field>
                   <div className="md:col-span-2"><Field label="Reason"><input className="w-full border rounded px-3 py-2" value={form.do_not_contact_reason||''} onChange={e=>set('do_not_contact_reason', e.target.value)} /></Field></div>
                   <div className="md:col-span-2 flex justify-end"><button onClick={async()=>{
-                    const payload = { ...form, marketing_opt_in: form.marketing_opt_in==='true', do_not_contact: form.do_not_contact==='true' };
+                    const toList = (s:string)=> (String(s||'').split(',').map(x=>x.trim()).filter(Boolean));
+                    const payload:any = {
+                      preferred_language: form.preferred_language||null,
+                      preferred_channels: toList(form.preferred_channels||''),
+                      marketing_opt_in: form.marketing_opt_in==='true',
+                      invoice_delivery_method: form.invoice_delivery_method||null,
+                      statement_delivery_method: form.statement_delivery_method||null,
+                      cc_emails_for_invoices: toList(form.cc_emails_for_invoices||''),
+                      cc_emails_for_estimates: toList(form.cc_emails_for_estimates||''),
+                      do_not_contact: form.do_not_contact==='true',
+                      do_not_contact_reason: form.do_not_contact_reason||null,
+                    };
                     try{ await api('PATCH', `/clients/${id}`, payload); toast.success('Preferences saved'); }catch(e){ toast.error('Save failed'); }
                   }} className="px-4 py-2 rounded bg-brand-red text-white">Save</button></div>
                 </div>
@@ -363,23 +398,23 @@ function FilesCard({ id, files, sites }:{ id:string, files: ClientFile[], sites:
         )) : <div className="p-3 text-sm text-gray-600">No documents</div>}
       </div>
       <h4 className="font-semibold mt-4 mb-2">Pictures</h4>
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3">
         {(pics||[]).map(f=> {
           const isSite = !!f.site_id;
           const s = isSite? siteMap[String(f.site_id||'')] : undefined;
           const tip = isSite? `${s?.site_name||'Site'} — ${[s?.site_address_line1, s?.site_city, s?.site_province].filter(Boolean).join(', ')}` : 'General Customer image';
           return (
             <div key={f.id} className="relative group">
-              <img className="w-full h-32 object-cover rounded border" src={`/files/${f.file_object_id}/thumbnail?w=300`} />
+              <img className="w-full h-24 object-cover rounded border" src={`/files/${f.file_object_id}/thumbnail?w=300`} />
               <div className="absolute right-2 top-2 hidden group-hover:flex gap-1">
                 <a href={`/files/${f.file_object_id}/download`} target="_blank" className="bg-black/70 hover:bg-black/80 text-white text-[11px] px-2 py-1 rounded" title="Zoom">🔍</a>
                 <button onClick={async(e)=>{ e.stopPropagation(); if(!confirm('Delete this picture?')) return; try{ await api('DELETE', `/clients/${id}/files/${encodeURIComponent(String(f.id))}`); toast.success('Deleted'); location.reload(); }catch(_e){ toast.error('Delete failed'); } }} className="bg-black/70 hover:bg-black/80 text-white text-[11px] px-2 py-1 rounded" title="Delete">🗑️</button>
               </div>
-              <div className="absolute left-2 bottom-2 bg-black/70 text-white text-[11px] px-2 py-1 rounded flex items-center gap-1">
-                <span>{isSite? '🏗️' : '👤'}</span>
+              <div className={`absolute left-2 top-2 text-[10px] font-bold rounded-full w-6 h-6 grid place-items-center ${isSite? 'bg-blue-500 text-white':'bg-green-500 text-white'}`} title={isSite? 'Site image':'Client image'}>
+                {isSite? String((f.site_id||'') as string).slice(0,2).toUpperCase() : 'C'}
               </div>
-              <div className="absolute left-2 bottom-10 hidden group-hover:block bg-black/80 text-white text-[11px] px-2 py-1 rounded max-w-[240px]">
-                {tip}
+              <div className="absolute inset-x-0 bottom-0 hidden group-hover:flex items-center text-[11px] text-white bg-gradient-to-t from-black/70 to-transparent px-2 py-1">
+                <span className="truncate">{tip}</span>
               </div>
             </div>
           );
