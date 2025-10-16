@@ -25,6 +25,7 @@ export default function CustomerDetail(){
   const clientAvatar = clientImages.length? `/files/${clientImages[0].file_object_id}/thumbnail?w=96` : '/ui/assets/login/logo-light.svg';
   const clientAvatarLarge = clientImages.length? `/files/${clientImages[0].file_object_id}/thumbnail?w=480` : '/ui/assets/login/logo-light.svg';
   const [form, setForm] = useState<any>({});
+  const [dirty, setDirty] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [sitePicker, setSitePicker] = useState<{ open:boolean, siteId?:string }|null>(null);
   const [projectPicker, setProjectPicker] = useState<{ open:boolean, projectId?:string }|null>(null);
@@ -39,8 +40,8 @@ export default function CustomerDetail(){
     marketing_opt_in: (client as any).marketing_opt_in? 'true':'false', invoice_delivery_method:(client as any).invoice_delivery_method||'', statement_delivery_method:(client as any).statement_delivery_method||'',
     cc_emails_for_invoices: ((client as any).cc_emails_for_invoices||[]).join(', '), cc_emails_for_estimates: ((client as any).cc_emails_for_estimates||[]).join(', '),
     do_not_contact:(client as any).do_not_contact? 'true':'false', do_not_contact_reason:(client as any).do_not_contact_reason||''
-  }); } }, [client]);
-  const set = (k:string, v:any)=> setForm((s:any)=>({ ...s, [k]: v }));
+  }); setDirty(false); } }, [client]);
+  const set = (k:string, v:any)=> setForm((s:any)=>{ setDirty(true); return { ...s, [k]: v }; });
   const fileBySite = useMemo(()=>{
     const m: Record<string, ClientFile[]> = {};
     (files||[]).forEach(f=>{ const sid = (f.site_id||'') as string; m[sid] = m[sid]||[]; m[sid].push(f); });
@@ -150,21 +151,6 @@ export default function CustomerDetail(){
                       <select className="w-full border rounded px-3 py-2" value={form.po_required||'false'} onChange={e=>set('po_required', e.target.value)}><option value="false">No</option><option value="true">Yes</option></select>
                     </Field>
                     <Field label="Tax number"><input className="w-full border rounded px-3 py-2" value={form.tax_number||''} onChange={e=>set('tax_number', e.target.value)} /></Field>
-                    <div className="md:col-span-2"><Field label="Description"><input className="w-full border rounded px-3 py-2" value={form.description||''} onChange={e=>set('description', e.target.value)} /></Field></div>
-                    <div className="md:col-span-2 flex justify-end"><button onClick={async()=>{
-                      const payload:any = {
-                        display_name: form.display_name||null,
-                        legal_name: form.legal_name||null,
-                        client_type: form.client_type||null,
-                        client_status: form.client_status||null,
-                        lead_source: form.lead_source||null,
-                        billing_email: form.billing_email||null,
-                        po_required: form.po_required==='true',
-                        tax_number: form.tax_number||null,
-                        description: form.description||null,
-                      };
-                      try{ await api('PATCH', `/clients/${id}`, payload); toast.success('Customer saved'); }catch(e){ toast.error('Save failed'); }
-                    }} className="px-4 py-2 rounded bg-brand-red text-white">Save</button></div>
                   </div>
 
                   <div className="grid md:grid-cols-2 gap-4">
@@ -183,8 +169,46 @@ export default function CustomerDetail(){
                     <Field label="Billing Province/State"><input disabled={!!form.billing_same_as_address} className="w-full border rounded px-3 py-2" value={form.billing_province||''} onChange={e=>set('billing_province', e.target.value)} /></Field>
                     <Field label="Billing City"><input disabled={!!form.billing_same_as_address} className="w-full border rounded px-3 py-2" value={form.billing_city||''} onChange={e=>set('billing_city', e.target.value)} /></Field>
                     <Field label="Billing Postal code"><input disabled={!!form.billing_same_as_address} className="w-full border rounded px-3 py-2" value={form.billing_postal_code||''} onChange={e=>set('billing_postal_code', e.target.value)} /></Field>
-                    <div className="md:col-span-2 flex justify-end"><button onClick={async()=>{
+                  </div>
+
+                  <div className="grid md:grid-cols-2 gap-4">
+                    <Field label="Language"><input className="w-full border rounded px-3 py-2" value={form.preferred_language||''} onChange={e=>set('preferred_language', e.target.value)} /></Field>
+                    <Field label="Preferred channels (comma-separated)"><input className="w-full border rounded px-3 py-2" value={form.preferred_channels||''} onChange={e=>set('preferred_channels', e.target.value)} /></Field>
+                    <Field label="Marketing opt-in"><select className="w-full border rounded px-3 py-2" value={form.marketing_opt_in||'false'} onChange={e=>set('marketing_opt_in', e.target.value)}><option value="false">No</option><option value="true">Yes</option></select></Field>
+                    <Field label="Invoice delivery"><input className="w-full border rounded px-3 py-2" value={form.invoice_delivery_method||''} onChange={e=>set('invoice_delivery_method', e.target.value)} /></Field>
+                    <Field label="Statement delivery"><input className="w-full border rounded px-3 py-2" value={form.statement_delivery_method||''} onChange={e=>set('statement_delivery_method', e.target.value)} /></Field>
+                    <Field label="CC emails for invoices"><input className="w-full border rounded px-3 py-2" value={form.cc_emails_for_invoices||''} onChange={e=>set('cc_emails_for_invoices', e.target.value)} /></Field>
+                    <Field label="CC emails for estimates"><input className="w-full border rounded px-3 py-2" value={form.cc_emails_for_estimates||''} onChange={e=>set('cc_emails_for_estimates', e.target.value)} /></Field>
+                    <Field label="Do not contact"><select className="w-full border rounded px-3 py-2" value={form.do_not_contact||'false'} onChange={e=>set('do_not_contact', e.target.value)}><option value="false">No</option><option value="true">Yes</option></select></Field>
+                    <div className="md:col-span-2"><Field label="Reason"><input className="w-full border rounded px-3 py-2" value={form.do_not_contact_reason||''} onChange={e=>set('do_not_contact_reason', e.target.value)} /></Field></div>
+                  </div>
+
+                  <div className="md:col-span-2">
+                    <Field label="Description">
+                      <textarea rows={6} className="w-full border rounded px-3 py-2 resize-y" value={form.description||''} onChange={e=>set('description', e.target.value)} />
+                    </Field>
+                  </div>
+
+                  <div className="h-16" />
+                  <div className="fixed left-0 right-0 bottom-0 z-40">
+                    <div className="px-4">
+                      <div className="mx-auto max-w-[1400px] rounded-t-xl border bg-white/95 backdrop-blur p-3 flex items-center justify-between shadow-[0_-6px_16px_rgba(0,0,0,0.08)]">
+                        <div className={dirty? 'text-[12px] text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5' : 'text-[12px] text-green-700 bg-green-50 border border-green-200 rounded-full px-2 py-0.5'}>
+                          {dirty? 'Unsaved changes' : 'All changes saved'}
+                        </div>
+                        <button disabled={!dirty} onClick={async()=>{
+                      const toList = (s:string)=> (String(s||'').split(',').map(x=>x.trim()).filter(Boolean));
                       const payload:any = {
+                        // identity
+                        display_name: form.display_name||null,
+                        legal_name: form.legal_name||null,
+                        client_type: form.client_type||null,
+                        client_status: form.client_status||null,
+                        lead_source: form.lead_source||null,
+                        billing_email: form.billing_email||null,
+                        po_required: form.po_required==='true',
+                        tax_number: form.tax_number||null,
+                        // address
                         address_line1: form.address_line1||null,
                         address_line2: form.address_line2||null,
                         country: form.country||null,
@@ -198,24 +222,7 @@ export default function CustomerDetail(){
                         billing_province: form.billing_same_as_address? (form.province||null) : (form.billing_province||null),
                         billing_city: form.billing_same_as_address? (form.city||null) : (form.billing_city||null),
                         billing_postal_code: form.billing_same_as_address? (form.postal_code||null) : (form.billing_postal_code||null),
-                      };
-                      try{ await api('PATCH', `/clients/${id}`, payload); toast.success('Addresses saved'); }catch(e){ toast.error('Save failed'); }
-                    }} className="px-4 py-2 rounded bg-brand-red text-white">Save</button></div>
-                  </div>
-
-                  <div className="grid md:grid-cols-2 gap-4">
-                    <Field label="Language"><input className="w-full border rounded px-3 py-2" value={form.preferred_language||''} onChange={e=>set('preferred_language', e.target.value)} /></Field>
-                    <Field label="Preferred channels (comma-separated)"><input className="w-full border rounded px-3 py-2" value={form.preferred_channels||''} onChange={e=>set('preferred_channels', e.target.value)} /></Field>
-                    <Field label="Marketing opt-in"><select className="w-full border rounded px-3 py-2" value={form.marketing_opt_in||'false'} onChange={e=>set('marketing_opt_in', e.target.value)}><option value="false">No</option><option value="true">Yes</option></select></Field>
-                    <Field label="Invoice delivery"><input className="w-full border rounded px-3 py-2" value={form.invoice_delivery_method||''} onChange={e=>set('invoice_delivery_method', e.target.value)} /></Field>
-                    <Field label="Statement delivery"><input className="w-full border rounded px-3 py-2" value={form.statement_delivery_method||''} onChange={e=>set('statement_delivery_method', e.target.value)} /></Field>
-                    <Field label="CC emails for invoices"><input className="w-full border rounded px-3 py-2" value={form.cc_emails_for_invoices||''} onChange={e=>set('cc_emails_for_invoices', e.target.value)} /></Field>
-                    <Field label="CC emails for estimates"><input className="w-full border rounded px-3 py-2" value={form.cc_emails_for_estimates||''} onChange={e=>set('cc_emails_for_estimates', e.target.value)} /></Field>
-                    <Field label="Do not contact"><select className="w-full border rounded px-3 py-2" value={form.do_not_contact||'false'} onChange={e=>set('do_not_contact', e.target.value)}><option value="false">No</option><option value="true">Yes</option></select></Field>
-                    <div className="md:col-span-2"><Field label="Reason"><input className="w-full border rounded px-3 py-2" value={form.do_not_contact_reason||''} onChange={e=>set('do_not_contact_reason', e.target.value)} /></Field></div>
-                    <div className="md:col-span-2 flex justify-end"><button onClick={async()=>{
-                      const toList = (s:string)=> (String(s||'').split(',').map(x=>x.trim()).filter(Boolean));
-                      const payload:any = {
+                        // comms
                         preferred_language: form.preferred_language||null,
                         preferred_channels: toList(form.preferred_channels||''),
                         marketing_opt_in: form.marketing_opt_in==='true',
@@ -225,9 +232,13 @@ export default function CustomerDetail(){
                         cc_emails_for_estimates: toList(form.cc_emails_for_estimates||''),
                         do_not_contact: form.do_not_contact==='true',
                         do_not_contact_reason: form.do_not_contact_reason||null,
+                        // final
+                        description: form.description||null,
                       };
-                      try{ await api('PATCH', `/clients/${id}`, payload); toast.success('Preferences saved'); }catch(e){ toast.error('Save failed'); }
-                    }} className="px-4 py-2 rounded bg-brand-red text-white">Save</button></div>
+                      try{ await api('PATCH', `/clients/${id}`, payload); toast.success('Saved'); setDirty(false); }catch(e){ toast.error('Save failed'); }
+                        }} className="px-5 py-2 rounded-xl bg-gradient-to-r from-brand-red to-[#ee2b2b] text-white font-semibold disabled:opacity-50">Save</button>
+                      </div>
+                    </div>
                   </div>
                 </div>
               )}
