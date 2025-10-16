@@ -33,6 +33,7 @@ export default function ImagePicker({
   const [tx, setTx] = useState(0);
   const [ty, setTy] = useState(0);
   const dragging = useRef<{x:number, y:number, tx:number, ty:number}|null>(null);
+  const [isPanning, setIsPanning] = useState(true);
 
   useEffect(()=>{
     if(!isOpen){
@@ -102,13 +103,13 @@ export default function ImagePicker({
   };
 
   const onPointerDown = (e: React.PointerEvent)=>{
-    if(!allowEdit || !img) return;
+    if(!allowEdit || !img || !isPanning) return;
     const rect = (containerRef.current as HTMLDivElement).getBoundingClientRect();
     dragging.current = { x: e.clientX - rect.left, y: e.clientY - rect.top, tx, ty };
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
   };
   const onPointerMove = (e: React.PointerEvent)=>{
-    if(!allowEdit || !img) return;
+    if(!allowEdit || !img || !isPanning) return;
     if(!dragging.current) return;
     const rect = (containerRef.current as HTMLDivElement).getBoundingClientRect();
     const dx = e.clientX - rect.left - dragging.current.x;
@@ -164,17 +165,21 @@ export default function ImagePicker({
           <div className="col-span-2">
             <div className="p-4">
               <div className="mb-3 text-sm text-gray-600">Target: {targetWidth}×{targetHeight}px</div>
-              <div ref={containerRef} className="relative bg-gray-100 overflow-hidden" style={{ width: cw, height: ch }} onWheel={handleWheel} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp}>
+              <div ref={containerRef} className="relative bg-gray-100 overflow-hidden" style={{ width: cw, height: ch, userSelect:'none', cursor: (img && isPanning)? (dragging.current? 'grabbing':'grab') : 'default', touchAction:'none' as any }} onWheel={handleWheel} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp}>
                 {img && (
-                  <img src={img.src} style={{ position:'absolute', left: tx, top: ty, width: img.naturalWidth*coverScale*zoom, height: img.naturalHeight*coverScale*zoom }} />
+                  <img src={img.src} draggable={false} onDragStart={(e)=>e.preventDefault()} style={{ position:'absolute', left: tx, top: ty, width: img.naturalWidth*coverScale*zoom, height: img.naturalHeight*coverScale*zoom, userSelect:'none' }} />
                 )}
                 {!img && <div className="w-full h-full grid place-items-center text-sm text-gray-500">Select or upload an image</div>}
                 <div className="absolute inset-0 ring-2 ring-black/70 pointer-events-none" />
               </div>
-              <div className="mt-3 flex items-center gap-2">
-                <button disabled={!img || !allowEdit} onClick={()=>{ const nz = Math.min(6, zoom*1.1); const { x, y } = clamp(tx, ty, nz); setZoom(nz); setTx(x); setTy(y); }} className="px-3 py-1.5 rounded bg-gray-100 disabled:opacity-50">Zoom +</button>
-                <button disabled={!img || !allowEdit} onClick={()=>{ const nz = Math.max(1, zoom/1.1); const { x, y } = clamp(tx, ty, nz); setZoom(nz); setTx(x); setTy(y); }} className="px-3 py-1.5 rounded bg-gray-100 disabled:opacity-50">Zoom -</button>
+              <div className="mt-3 flex items-center gap-3">
+                <label className="text-sm text-gray-600">Zoom</label>
+                <input type="range" min={1} max={6} step={0.01} disabled={!img || !allowEdit} value={zoom} onChange={(e)=>{ const nz = Math.min(6, Math.max(1, parseFloat(e.target.value||'1'))); const { x, y } = clamp(tx, ty, nz); setZoom(nz); setTx(x); setTy(y); }} />
                 <button disabled={!img || !allowEdit} onClick={()=>{ const { x, y } = clamp(0,0,1); setZoom(1); setTx(x); setTy(y); }} className="px-3 py-1.5 rounded bg-gray-100 disabled:opacity-50">Reset</button>
+                <div className="ml-2 flex items-center gap-2">
+                  <input id="panToggle" type="checkbox" checked={isPanning} onChange={e=>setIsPanning(e.target.checked)} />
+                  <label htmlFor="panToggle" className="text-sm">Pan</label>
+                </div>
                 <div className="ml-auto" />
                 <button disabled={!img} onClick={confirm} className="px-4 py-2 rounded bg-brand-red text-white disabled:opacity-50">Confirm</button>
               </div>
