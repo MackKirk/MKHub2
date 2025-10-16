@@ -1,13 +1,43 @@
-import { useParams } from 'react-router-dom';
+import { useParams, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
+import { useEffect, useMemo, useState } from 'react';
+import toast from 'react-hot-toast';
 
 type Client = { id:string, name?:string, display_name?:string, city?:string, province?:string, postal_code?:string, country?:string, address_line1?:string, address_line2?:string, created_at?:string };
+type Site = { id:string, site_name?:string, site_address_line1?:string, site_city?:string, site_province?:string, site_country?:string };
+type ClientFile = { id:string, file_object_id:string, is_image?:boolean, content_type?:string, site_id?:string };
+type Project = { id:string, code?:string, name?:string, slug?:string };
 
 export default function CustomerDetail(){
   const { id } = useParams();
-  const { data, isLoading } = useQuery({ queryKey:['client', id], queryFn: ()=>api<Client>('GET', `/clients/${id}`) });
-  const c = data || {} as Client;
+  const [tab, setTab] = useState<'details'|'addresses'|'comms'|'files'|'contacts'|'sites'|'projects'>('details');
+  const { data:client, isLoading } = useQuery({ queryKey:['client', id], queryFn: ()=>api<Client>('GET', `/clients/${id}`) });
+  const { data:sites } = useQuery({ queryKey:['clientSites', id], queryFn: ()=>api<Site[]>('GET', `/clients/${id}/sites`) });
+  const { data:files } = useQuery({ queryKey:['clientFiles', id], queryFn: ()=>api<ClientFile[]>('GET', `/clients/${id}/files`) });
+  const { data:settings } = useQuery({ queryKey:['settings'], queryFn: ()=>api<any>('GET','/settings') });
+  const { data:projects } = useQuery({ queryKey:['clientProjects', id], queryFn: ()=>api<Project[]>('GET', `/projects?client=${encodeURIComponent(String(id||''))}`) });
+  const [form, setForm] = useState<any>({});
+  useEffect(()=>{ if(client){ setForm({
+    display_name: client.display_name||'', legal_name: client.legal_name||'', code: client.id?.slice(0,8) || '',
+    client_type: (client as any).client_type||'', client_status: (client as any).client_status||'', lead_source:(client as any).lead_source||'',
+    billing_email:(client as any).billing_email||'', po_required: (client as any).po_required? 'true':'false', tax_number:(client as any).tax_number||'', description:(client as any).description||'',
+    address_line1: client.address_line1||'', address_line2: client.address_line2||'', country:(client as any).country||'', province:(client as any).province||'', city:(client as any).city||'', postal_code: client.postal_code||'',
+    billing_same_as_address: (client as any).billing_same_as_address? true:false,
+    billing_address_line1: (client as any).billing_address_line1||'', billing_address_line2:(client as any).billing_address_line2||'', billing_country:(client as any).billing_country||'', billing_province:(client as any).billing_province||'', billing_city:(client as any).billing_city||'', billing_postal_code:(client as any).billing_postal_code||'',
+    preferred_language:(client as any).preferred_language||'', preferred_channels: ((client as any).preferred_channels||[]).join(', '),
+    marketing_opt_in: (client as any).marketing_opt_in? 'true':'false', invoice_delivery_method:(client as any).invoice_delivery_method||'', statement_delivery_method:(client as any).statement_delivery_method||'',
+    cc_emails_for_invoices: ((client as any).cc_emails_for_invoices||[]).join(', '), cc_emails_for_estimates: ((client as any).cc_emails_for_estimates||[]).join(', '),
+    do_not_contact:(client as any).do_not_contact? 'true':'false', do_not_contact_reason:(client as any).do_not_contact_reason||''
+  }); } }, [client]);
+  const set = (k:string, v:any)=> setForm((s:any)=>({ ...s, [k]: v }));
+  const fileBySite = useMemo(()=>{
+    const m: Record<string, ClientFile[]> = {};
+    (files||[]).forEach(f=>{ const sid = (f.site_id||'') as string; m[sid] = m[sid]||[]; m[sid].push(f); });
+    return m;
+  }, [files]);
+  const c = client || {} as Client;
+
   return (
     <div>
       <div className="mb-3 flex items-center gap-3">
@@ -21,18 +51,132 @@ export default function CustomerDetail(){
               <div className="text-2xl font-extrabold">{c.display_name||c.name||id}</div>
               <div className="opacity-90 text-sm">{c.city||''} {c.province||''} {c.country||''}</div>
             </div>
-            <div><button className="px-4 py-2 rounded-xl bg-black/80">Actions</button></div>
+            <div className="flex gap-2">
+              {(['details','addresses','comms','files','contacts','sites','projects'] as const).map(k=> (
+                <button key={k} onClick={()=>setTab(k)} className={`px-3 py-1.5 rounded-full ${tab===k?'bg-black text-white':'bg-white text-black'}`}>{k[0].toUpperCase()+k.slice(1)}</button>
+              ))}
+            </div>
           </div>
         </div>
-        <div className="p-5 grid md:grid-cols-2 gap-4">
+        <div className="p-5">
           {isLoading? <div className="h-24 animate-pulse bg-gray-100 rounded"/> : (
             <>
-              <Field label="Address line 1"><div className="border rounded px-3 py-2 bg-gray-50">{c.address_line1||'-'}</div></Field>
-              <Field label="Address line 2"><div className="border rounded px-3 py-2 bg-gray-50">{c.address_line2||'-'}</div></Field>
-              <Field label="City"><div className="border rounded px-3 py-2 bg-gray-50">{c.city||'-'}</div></Field>
-              <Field label="Province/State"><div className="border rounded px-3 py-2 bg-gray-50">{c.province||'-'}</div></Field>
-              <Field label="Postal code"><div className="border rounded px-3 py-2 bg-gray-50">{c.postal_code||'-'}</div></Field>
-              <Field label="Country"><div className="border rounded px-3 py-2 bg-gray-50">{c.country||'-'}</div></Field>
+              {tab==='details' && (
+                <div className="grid md:grid-cols-2 gap-4">
+                  <Field label="Display name *"><input className="w-full border rounded px-3 py-2" value={form.display_name||''} onChange={e=>set('display_name', e.target.value)} /></Field>
+                  <Field label="Legal name"><input className="w-full border rounded px-3 py-2" value={form.legal_name||''} onChange={e=>set('legal_name', e.target.value)} /></Field>
+                  <Field label="Code"><input className="w-full border rounded px-3 py-2" value={form.code||''} readOnly /></Field>
+                  <Field label="Type">
+                    <select className="w-full border rounded px-3 py-2" value={form.client_type||''} onChange={e=>set('client_type', e.target.value)}>
+                      <option value="">Select...</option>
+                      {(settings?.client_types||[]).map((t:any)=> <option key={t.value||t.label} value={t.value||t.label}>{t.label}</option>)}
+                    </select>
+                  </Field>
+                  <Field label="Status">
+                    <select className="w-full border rounded px-3 py-2" value={form.client_status||''} onChange={e=>set('client_status', e.target.value)}>
+                      <option value="">Select...</option>
+                      {(settings?.client_statuses||[]).map((t:any)=> <option key={t.value||t.label} value={t.value||t.label}>{t.label}</option>)}
+                    </select>
+                  </Field>
+                  <Field label="Lead source"><input className="w-full border rounded px-3 py-2" value={form.lead_source||''} onChange={e=>set('lead_source', e.target.value)} /></Field>
+                  <Field label="Billing email"><input className="w-full border rounded px-3 py-2" value={form.billing_email||''} onChange={e=>set('billing_email', e.target.value)} /></Field>
+                  <Field label="PO required">
+                    <select className="w-full border rounded px-3 py-2" value={form.po_required||'false'} onChange={e=>set('po_required', e.target.value)}><option value="false">No</option><option value="true">Yes</option></select>
+                  </Field>
+                  <Field label="Tax number"><input className="w-full border rounded px-3 py-2" value={form.tax_number||''} onChange={e=>set('tax_number', e.target.value)} /></Field>
+                  <div className="md:col-span-2"><Field label="Description"><input className="w-full border rounded px-3 py-2" value={form.description||''} onChange={e=>set('description', e.target.value)} /></Field></div>
+                  <div className="md:col-span-2 flex justify-end"><button onClick={async()=>{
+                    const payload = { ...form, po_required: form.po_required==='true' };
+                    try{ await api('PATCH', `/clients/${id}`, payload); toast.success('Customer saved'); }catch(e){ toast.error('Save failed'); }
+                  }} className="px-4 py-2 rounded bg-brand-red text-white">Save</button></div>
+                </div>
+              )}
+              {tab==='addresses' && (
+                <div className="grid md:grid-cols-2 gap-4">
+                  <Field label="Address 1"><input className="w-full border rounded px-3 py-2" value={form.address_line1||''} onChange={e=>set('address_line1', e.target.value)} /></Field>
+                  <Field label="Address 2"><input className="w-full border rounded px-3 py-2" value={form.address_line2||''} onChange={e=>set('address_line2', e.target.value)} /></Field>
+                  <Field label="Country"><input className="w-full border rounded px-3 py-2" value={form.country||''} onChange={e=>set('country', e.target.value)} /></Field>
+                  <Field label="Province/State"><input className="w-full border rounded px-3 py-2" value={form.province||''} onChange={e=>set('province', e.target.value)} /></Field>
+                  <Field label="City"><input className="w-full border rounded px-3 py-2" value={form.city||''} onChange={e=>set('city', e.target.value)} /></Field>
+                  <Field label="Postal code"><input className="w-full border rounded px-3 py-2" value={form.postal_code||''} onChange={e=>set('postal_code', e.target.value)} /></Field>
+                  <div className="md:col-span-2 border-t pt-3 text-sm">
+                    <label className="inline-flex items-center gap-2"><input type="checkbox" checked={!!form.billing_same_as_address} onChange={e=>set('billing_same_as_address', e.target.checked)} /> Billing address is the same as Address</label>
+                  </div>
+                  <Field label="Billing Address 1"><input disabled={!!form.billing_same_as_address} className="w-full border rounded px-3 py-2" value={form.billing_address_line1||''} onChange={e=>set('billing_address_line1', e.target.value)} /></Field>
+                  <Field label="Billing Address 2"><input disabled={!!form.billing_same_as_address} className="w-full border rounded px-3 py-2" value={form.billing_address_line2||''} onChange={e=>set('billing_address_line2', e.target.value)} /></Field>
+                  <Field label="Billing Country"><input disabled={!!form.billing_same_as_address} className="w-full border rounded px-3 py-2" value={form.billing_country||''} onChange={e=>set('billing_country', e.target.value)} /></Field>
+                  <Field label="Billing Province/State"><input disabled={!!form.billing_same_as_address} className="w-full border rounded px-3 py-2" value={form.billing_province||''} onChange={e=>set('billing_province', e.target.value)} /></Field>
+                  <Field label="Billing City"><input disabled={!!form.billing_same_as_address} className="w-full border rounded px-3 py-2" value={form.billing_city||''} onChange={e=>set('billing_city', e.target.value)} /></Field>
+                  <Field label="Billing Postal code"><input disabled={!!form.billing_same_as_address} className="w-full border rounded px-3 py-2" value={form.billing_postal_code||''} onChange={e=>set('billing_postal_code', e.target.value)} /></Field>
+                  <div className="md:col-span-2 flex justify-end"><button onClick={async()=>{
+                    const payload = { ...form, po_required: form.po_required==='true' };
+                    try{ await api('PATCH', `/clients/${id}`, payload); toast.success('Addresses saved'); }catch(e){ toast.error('Save failed'); }
+                  }} className="px-4 py-2 rounded bg-brand-red text-white">Save</button></div>
+                </div>
+              )}
+              {tab==='comms' && (
+                <div className="grid md:grid-cols-2 gap-4">
+                  <Field label="Language"><input className="w-full border rounded px-3 py-2" value={form.preferred_language||''} onChange={e=>set('preferred_language', e.target.value)} /></Field>
+                  <Field label="Preferred channels (comma-separated)"><input className="w-full border rounded px-3 py-2" value={form.preferred_channels||''} onChange={e=>set('preferred_channels', e.target.value)} /></Field>
+                  <Field label="Marketing opt-in"><select className="w-full border rounded px-3 py-2" value={form.marketing_opt_in||'false'} onChange={e=>set('marketing_opt_in', e.target.value)}><option value="false">No</option><option value="true">Yes</option></select></Field>
+                  <Field label="Invoice delivery"><input className="w-full border rounded px-3 py-2" value={form.invoice_delivery_method||''} onChange={e=>set('invoice_delivery_method', e.target.value)} /></Field>
+                  <Field label="Statement delivery"><input className="w-full border rounded px-3 py-2" value={form.statement_delivery_method||''} onChange={e=>set('statement_delivery_method', e.target.value)} /></Field>
+                  <Field label="CC emails for invoices"><input className="w-full border rounded px-3 py-2" value={form.cc_emails_for_invoices||''} onChange={e=>set('cc_emails_for_invoices', e.target.value)} /></Field>
+                  <Field label="CC emails for estimates"><input className="w-full border rounded px-3 py-2" value={form.cc_emails_for_estimates||''} onChange={e=>set('cc_emails_for_estimates', e.target.value)} /></Field>
+                  <Field label="Do not contact"><select className="w-full border rounded px-3 py-2" value={form.do_not_contact||'false'} onChange={e=>set('do_not_contact', e.target.value)}><option value="false">No</option><option value="true">Yes</option></select></Field>
+                  <div className="md:col-span-2"><Field label="Reason"><input className="w-full border rounded px-3 py-2" value={form.do_not_contact_reason||''} onChange={e=>set('do_not_contact_reason', e.target.value)} /></Field></div>
+                  <div className="md:col-span-2 flex justify-end"><button onClick={async()=>{
+                    const payload = { ...form, marketing_opt_in: form.marketing_opt_in==='true', do_not_contact: form.do_not_contact==='true' };
+                    try{ await api('PATCH', `/clients/${id}`, payload); toast.success('Preferences saved'); }catch(e){ toast.error('Save failed'); }
+                  }} className="px-4 py-2 rounded bg-brand-red text-white">Save</button></div>
+                </div>
+              )}
+              {tab==='files' && (
+                <FilesCard id={String(id)} files={files||[]} sites={sites||[]} />
+              )}
+              {tab==='contacts' && (
+                <ContactsCard id={String(id)} />
+              )}
+              {tab==='sites' && (
+                <div>
+                  <h3 className="font-semibold mb-3">Construction Sites</h3>
+                  <div className="grid md:grid-cols-3 gap-4">
+                    {(sites||[]).map(s=>{
+                      const img = (fileBySite[s.id||'']||[]).find(f=> (f.is_image===true) || String(f.content_type||'').startsWith('image/'));
+                      const src = img? `/files/${img.file_object_id}/thumbnail?w=600` : '/ui/assets/login/logo-light.svg';
+                      return (
+                        <div key={s.id} className="rounded-xl border overflow-hidden bg-white">
+                          <div className="h-40 bg-gray-100"><img className="w-full h-full object-cover" src={src} /></div>
+                          <div className="p-3 text-sm">
+                            <div className="font-semibold">{s.site_name||'Site'}</div>
+                            <div className="text-gray-600">{s.site_address_line1||''}</div>
+                            <div className="text-gray-500">{s.site_city||''} {s.site_province||''} {s.site_country||''}</div>
+                            <div className="mt-3 text-right"><Link to={`/customers/${encodeURIComponent(String(id||''))}/sites/${encodeURIComponent(String(s.id))}`} className="px-3 py-1.5 rounded bg-brand-red text-white">Open</Link></div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+              {tab==='projects' && (
+                <div>
+                  <h3 className="font-semibold mb-3">Projects</h3>
+                  <div className="grid md:grid-cols-3 gap-4">
+                    {(projects||[]).map(p=> (
+                      <div key={p.id} className="rounded-xl border bg-white overflow-hidden">
+                        <div className="h-28 bg-gray-100"/>
+                        <div className="p-3 text-sm">
+                          <div className="font-semibold">{p.name||'Project'}</div>
+                          <div className="text-gray-600">{p.code||''}</div>
+                          <div className="mt-3 text-right"><a className="px-3 py-1.5 rounded bg-brand-red text-white" href="#">Open</a></div>
+                        </div>
+                      </div>
+                    ))}
+                    {(!projects||!projects.length) && <div className="text-sm text-gray-600">No projects</div>}
+                  </div>
+                </div>
+              )}
             </>
           )}
         </div>
@@ -46,6 +190,85 @@ function Field({label, children}:{label:string, children:any}){
     <div className="space-y-2">
       <label className="text-sm text-gray-600">{label}</label>
       {children}
+    </div>
+  );
+}
+
+function FilesCard({ id, files, sites }:{ id:string, files: ClientFile[], sites: Site[] }){
+  const [which, setWhich] = useState<'client'|'site'>('client');
+  const [siteId, setSiteId] = useState<string>('');
+  const docs = (files||[]).filter(f=> which==='client' ? (!f.site_id && !(f.is_image===true) && !String(f.content_type||'').startsWith('image/')) : (f.site_id===siteId && !(f.is_image===true) && !String(f.content_type||'').startsWith('image/')) );
+  const pics = (files||[]).filter(f=> which==='client' ? (!f.site_id && ((f.is_image===true) || String(f.content_type||'').startsWith('image/'))) : (f.site_id===siteId && ((f.is_image===true) || String(f.content_type||'').startsWith('image/'))) );
+  const [file, setFile] = useState<File|null>(null);
+  return (
+    <div>
+      <div className="mb-3 flex items-center gap-2 flex-wrap">
+        <select className="border rounded px-3 py-2" value={which} onChange={e=>setWhich(e.target.value as any)}>
+          <option value="client">Client Files</option>
+          <option value="site">Site Files</option>
+        </select>
+        {which==='site' && (
+          <select className="border rounded px-3 py-2" value={siteId} onChange={e=>setSiteId(e.target.value)}>
+            <option value="">Select site...</option>
+            {sites.map(s=> <option key={String(s.id)} value={String(s.id)}>{s.site_name||s.site_address_line1||s.id}</option>)}
+          </select>
+        )}
+        <input type="file" onChange={e=>setFile(e.target.files?.[0]||null)} />
+        <button onClick={async()=>{
+        if(!file) return; try{
+          const category = which==='client' ? 'client-docs' : 'site-docs';
+          const up:any = await api('POST','/files/upload',{ project_id:null, client_id:id, employee_id:null, category_id:category, original_name:file.name, content_type: file.type||'application/octet-stream' });
+          const put = await fetch(up.upload_url, { method:'PUT', headers:{ 'Content-Type': file.type||'application/octet-stream', 'x-ms-blob-type': 'BlockBlob' }, body: file });
+          if (!put.ok) throw new Error('upload failed');
+          const conf:any = await api('POST','/files/confirm',{ key: up.key, size_bytes: file.size, checksum_sha256:'na', content_type: file.type||'application/octet-stream' });
+          const qs = which==='client' ? '' : `&site_id=${encodeURIComponent(siteId)}`;
+          await api('POST', `/clients/${id}/files?file_object_id=${encodeURIComponent(conf.id)}&category=${encodeURIComponent(category)}&original_name=${encodeURIComponent(file.name)}${qs}`);
+          toast.success('Uploaded');
+          location.reload();
+        }catch(e){ toast.error('Upload failed'); }
+      }} className="px-3 py-2 rounded bg-brand-red text-white">Upload</button></div>
+      <h4 className="font-semibold mb-2">Documents</h4>
+      <div className="rounded border">
+        {(docs||[]).length? (docs||[]).map(f=> (
+          <div key={f.id} className="flex items-center justify-between border-b px-3 py-2 text-sm">
+            <div>{f.file_object_id}</div>
+            <div className="space-x-2"><a className="underline" href={`/files/${f.file_object_id}/download`} target="_blank">Download</a></div>
+          </div>
+        )) : <div className="p-3 text-sm text-gray-600">No documents</div>}
+      </div>
+      <h4 className="font-semibold mt-4 mb-2">Pictures</h4>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        {(pics||[]).map(f=> <img key={f.id} className="w-full h-32 object-cover rounded border" src={`/files/${f.file_object_id}/thumbnail?w=300`} />)}
+      </div>
+    </div>
+  );
+}
+
+function ContactsCard({ id }:{ id:string }){
+  const { data, refetch, isLoading } = useQuery({ queryKey:['clientContacts', id], queryFn: ()=>api<any[]>('GET', `/clients/${id}/contacts`) });
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
+  const [primary, setPrimary] = useState('false');
+  return (
+    <div>
+      <h4 className="font-semibold mb-2">Contacts</h4>
+      <div className="rounded border bg-white">
+        {(data||[]).length? (data||[]).map(c=> (
+          <div key={c.id} className="flex items-center justify-between border-b px-3 py-2 text-sm">
+            <div>{c.name||''} {c.email? <span className="text-gray-500">{c.email}</span>:''} {c.phone? <span className="text-gray-500">{c.phone}</span>:''} {c.is_primary? <span className="text-gray-500">[primary]</span>:''}</div>
+            <div><button onClick={async()=>{ await api('DELETE', `/clients/${id}/contacts/${c.id}`); refetch(); }} className="px-2 py-1 rounded bg-gray-100">Delete</button></div>
+          </div>
+        )): <div className="p-3 text-sm text-gray-600">No contacts</div>}
+      </div>
+      <h4 className="font-semibold mt-4 mb-2">Add Contact</h4>
+      <div className="grid md:grid-cols-4 gap-2">
+        <input placeholder="Name" className="border rounded px-3 py-2" value={name} onChange={e=>setName(e.target.value)} />
+        <input placeholder="Email" className="border rounded px-3 py-2" value={email} onChange={e=>setEmail(e.target.value)} />
+        <input placeholder="Phone" className="border rounded px-3 py-2" value={phone} onChange={e=>setPhone(e.target.value)} />
+        <select className="border rounded px-3 py-2" value={primary} onChange={e=>setPrimary(e.target.value)}><option value="false">Primary? No</option><option value="true">Primary? Yes</option></select>
+      </div>
+      <div className="mt-2"><button onClick={async()=>{ await api('POST', `/clients/${id}/contacts`, { name, email, phone, is_primary: primary==='true' }); setName(''); setEmail(''); setPhone(''); setPrimary('false'); refetch(); }} className="px-3 py-2 rounded bg-brand-red text-white">Add Contact</button></div>
     </div>
   );
 }
