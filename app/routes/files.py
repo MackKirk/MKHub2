@@ -38,8 +38,10 @@ def canonical_key(
 
 @router.post("/upload", response_model=UploadResponse)
 def upload(req: UploadRequest, storage: StorageProvider = Depends(get_storage)):
+    # Use project_id OR client_id to partition blob paths so uploads from different
+    # entities never overwrite when original_name is stable (e.g., 'client-logo.jpg').
     key = canonical_key(
-        project_code=req.project_id or "misc",
+        project_code=(req.project_id or req.client_id or "misc"),
         slug=None,
         category=req.category_id or "files",
         original_name=req.original_name,

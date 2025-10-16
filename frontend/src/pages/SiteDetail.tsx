@@ -67,14 +67,25 @@ export default function SiteDetail(){
               </div>
               <h4 className="font-semibold mb-2">Pictures</h4>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-                {pics.map(f=> <img key={f.id} className="w-full h-32 object-cover rounded border" src={`/files/${f.file_object_id}/thumbnail?w=300`} />)}
+                {pics.map(f=> (
+                  <div key={f.id} className="relative group">
+                    <img className="w-full h-32 object-cover rounded border" src={`/files/${f.file_object_id}/thumbnail?w=300`} />
+                    <div className="absolute right-2 top-2 hidden group-hover:flex gap-1">
+                      <a href={`/files/${f.file_object_id}/download`} target="_blank" className="bg-black/70 hover:bg-black/80 text-white text-[11px] px-2 py-1 rounded" title="Zoom">🔍</a>
+                      <button onClick={async(e)=>{ e.stopPropagation(); if(!confirm('Delete this picture?')) return; try{ await api('DELETE', `/clients/${customerId}/files/${encodeURIComponent(String(f.id))}`); toast.success('Deleted'); location.reload(); }catch(_e){ toast.error('Delete failed'); } }} className="bg-black/70 hover:bg-black/80 text-white text-[11px] px-2 py-1 rounded" title="Delete">🗑️</button>
+                    </div>
+                  </div>
+                ))}
               </div>
               <h4 className="font-semibold mb-2">Documents</h4>
               <div className="rounded border">
                 {(docs||[]).length? (docs||[]).map(f=> (
                   <div key={f.id} className="flex items-center justify-between border-b px-3 py-2 text-sm">
-                    <div>{f.file_object_id}</div>
-                    <div className="space-x-2"><a className="underline" href={`/files/${f.file_object_id}/download`} target="_blank">Download</a></div>
+                    <div className="truncate max-w-[60%]">{f.file_object_id}</div>
+                    <div className="space-x-2">
+                      <a className="underline" href={`/files/${f.file_object_id}/download`} target="_blank">Open</a>
+                      <button onClick={async()=>{ if(!confirm('Delete this file?')) return; try{ await api('DELETE', `/clients/${customerId}/files/${encodeURIComponent(String(f.id))}`); toast.success('Deleted'); location.reload(); }catch(_e){ toast.error('Delete failed'); } }} className="px-2 py-1 rounded bg-gray-100">Delete</button>
+                    </div>
                   </div>
                 )) : <div className="p-3 text-sm text-gray-600">No documents</div>}
               </div>

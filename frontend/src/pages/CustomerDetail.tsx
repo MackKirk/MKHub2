@@ -305,17 +305,29 @@ function Field({label, children}:{label:string, children:any}){
 }
 
 function FilesCard({ id, files, sites }:{ id:string, files: ClientFile[], sites: Site[] }){
-  const [which, setWhich] = useState<'client'|'site'>('client');
+  const [which, setWhich] = useState<'all'|'client'|'site'>('all');
   const [siteId, setSiteId] = useState<string>('');
-  const docs = (files||[]).filter(f=> which==='client' ? (!f.site_id && !(f.is_image===true) && !String(f.content_type||'').startsWith('image/')) : (f.site_id===siteId && !(f.is_image===true) && !String(f.content_type||'').startsWith('image/')) );
-  const pics = (files||[]).filter(f=> which==='client' ? (!f.site_id && ((f.is_image===true) || String(f.content_type||'').startsWith('image/'))) : (f.site_id===siteId && ((f.is_image===true) || String(f.content_type||'').startsWith('image/'))) );
+  const siteMap = useMemo(()=>{
+    const m:Record<string, Site> = {};
+    (sites||[]).forEach(s=>{ if(s.id) m[String(s.id)] = s; });
+    return m;
+  }, [sites]);
+  const base = useMemo(()=>{
+    let arr = files||[];
+    if (which==='client') arr = arr.filter(f=>!f.site_id);
+    else if (which==='site') arr = arr.filter(f=> siteId? f.site_id===siteId : !!f.site_id);
+    return arr;
+  }, [files, which, siteId]);
+  const docs = base.filter(f=> !(f.is_image===true) && !String(f.content_type||'').startsWith('image/'));
+  const pics = base.filter(f=> (f.is_image===true) || String(f.content_type||'').startsWith('image/'));
   const [file, setFile] = useState<File|null>(null);
   return (
     <div>
       <div className="mb-3 flex items-center gap-2 flex-wrap">
         <select className="border rounded px-3 py-2" value={which} onChange={e=>setWhich(e.target.value as any)}>
-          <option value="client">Client Files</option>
-          <option value="site">Site Files</option>
+          <option value="all">All Files</option>
+          <option value="client">Client</option>
+          <option value="site">Site</option>
         </select>
         {which==='site' && (
           <select className="border rounded px-3 py-2" value={siteId} onChange={e=>setSiteId(e.target.value)}>
@@ -326,12 +338,13 @@ function FilesCard({ id, files, sites }:{ id:string, files: ClientFile[], sites:
         <input type="file" onChange={e=>setFile(e.target.files?.[0]||null)} />
         <button onClick={async()=>{
         if(!file) return; try{
-          const category = which==='client' ? 'client-docs' : 'site-docs';
+          const targetIsSite = which==='site';
+          const category = targetIsSite ? 'site-docs' : 'client-docs';
           const up:any = await api('POST','/files/upload',{ project_id:null, client_id:id, employee_id:null, category_id:category, original_name:file.name, content_type: file.type||'application/octet-stream' });
           const put = await fetch(up.upload_url, { method:'PUT', headers:{ 'Content-Type': file.type||'application/octet-stream', 'x-ms-blob-type': 'BlockBlob' }, body: file });
           if (!put.ok) throw new Error('upload failed');
           const conf:any = await api('POST','/files/confirm',{ key: up.key, size_bytes: file.size, checksum_sha256:'na', content_type: file.type||'application/octet-stream' });
-          const qs = which==='client' ? '' : `&site_id=${encodeURIComponent(siteId)}`;
+          const qs = targetIsSite ? `&site_id=${encodeURIComponent(siteId)}` : '';
           await api('POST', `/clients/${id}/files?file_object_id=${encodeURIComponent(conf.id)}&category=${encodeURIComponent(category)}&original_name=${encodeURIComponent(file.name)}${qs}`);
           toast.success('Uploaded');
           location.reload();
@@ -341,14 +354,36 @@ function FilesCard({ id, files, sites }:{ id:string, files: ClientFile[], sites:
       <div className="rounded border">
         {(docs||[]).length? (docs||[]).map(f=> (
           <div key={f.id} className="flex items-center justify-between border-b px-3 py-2 text-sm">
-            <div>{f.file_object_id}</div>
-            <div className="space-x-2"><a className="underline" href={`/files/${f.file_object_id}/download`} target="_blank">Download</a></div>
+            <div className="truncate max-w-[60%]">{f.file_object_id}</div>
+            <div className="space-x-2">
+              <a className="underline" href={`/files/${f.file_object_id}/download`} target="_blank">Open</a>
+              <button onClick={async()=>{ if(!confirm('Delete this file?')) return; try{ await api('DELETE', `/clients/${id}/files/${encodeURIComponent(String(f.id))}`); toast.success('Deleted'); location.reload(); }catch(_e){ toast.error('Delete failed'); } }} className="px-2 py-1 rounded bg-gray-100">Delete</button>
+            </div>
           </div>
         )) : <div className="p-3 text-sm text-gray-600">No documents</div>}
       </div>
       <h4 className="font-semibold mt-4 mb-2">Pictures</h4>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        {(pics||[]).map(f=> <img key={f.id} className="w-full h-32 object-cover rounded border" src={`/files/${f.file_object_id}/thumbnail?w=300`} />)}
+        {(pics||[]).map(f=> {
+          const isSite = !!f.site_id;
+          const s = isSite? siteMap[String(f.site_id||'')] : undefined;
+          const tip = isSite? `${s?.site_name||'Site'} — ${[s?.site_address_line1, s?.site_city, s?.site_province].filter(Boolean).join(', ')}` : 'General Customer image';
+          return (
+            <div key={f.id} className="relative group">
+              <img className="w-full h-32 object-cover rounded border" src={`/files/${f.file_object_id}/thumbnail?w=300`} />
+              <div className="absolute right-2 top-2 hidden group-hover:flex gap-1">
+                <a href={`/files/${f.file_object_id}/download`} target="_blank" className="bg-black/70 hover:bg-black/80 text-white text-[11px] px-2 py-1 rounded" title="Zoom">🔍</a>
+                <button onClick={async(e)=>{ e.stopPropagation(); if(!confirm('Delete this picture?')) return; try{ await api('DELETE', `/clients/${id}/files/${encodeURIComponent(String(f.id))}`); toast.success('Deleted'); location.reload(); }catch(_e){ toast.error('Delete failed'); } }} className="bg-black/70 hover:bg-black/80 text-white text-[11px] px-2 py-1 rounded" title="Delete">🗑️</button>
+              </div>
+              <div className="absolute left-2 bottom-2 bg-black/70 text-white text-[11px] px-2 py-1 rounded flex items-center gap-1">
+                <span>{isSite? '🏗️' : '👤'}</span>
+              </div>
+              <div className="absolute left-2 bottom-10 hidden group-hover:block bg-black/80 text-white text-[11px] px-2 py-1 rounded max-w-[240px]">
+                {tip}
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
