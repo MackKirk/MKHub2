@@ -27,7 +27,7 @@ def list_projects(client: Optional[str] = None, status: Optional[str] = None, q:
     if q:
         query = query.filter(Project.name.ilike(f"%{q}%"))
     return [
-        {"id": str(p.id), "code": p.code, "name": p.name, "slug": p.slug}
+        {"id": str(p.id), "code": p.code, "name": p.name, "slug": p.slug, "client_id": str(p.client_id) if getattr(p, 'client_id', None) else None}
         for p in query.order_by(Project.created_at.desc()).limit(100).all()
     ]
 

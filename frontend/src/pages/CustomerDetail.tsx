@@ -3,10 +3,11 @@ import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { useEffect, useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
+import ImagePicker from '@/components/ImagePicker';
 
 type Client = { id:string, name?:string, display_name?:string, city?:string, province?:string, postal_code?:string, country?:string, address_line1?:string, address_line2?:string, created_at?:string };
 type Site = { id:string, site_name?:string, site_address_line1?:string, site_city?:string, site_province?:string, site_country?:string };
-type ClientFile = { id:string, file_object_id:string, is_image?:boolean, content_type?:string, site_id?:string };
+type ClientFile = { id:string, file_object_id:string, is_image?:boolean, content_type?:string, site_id?:string, category?:string };
 type Project = { id:string, code?:string, name?:string, slug?:string };
 type Contact = { id:string, name?:string, email?:string, phone?:string, is_primary?:boolean };
 
@@ -22,7 +23,11 @@ export default function CustomerDetail(){
   const primaryContact = (contacts||[]).find(c=>c.is_primary) || (contacts||[])[0];
   const clientImages = (files||[]).filter(f=> !f.site_id && ((f.is_image===true) || String(f.content_type||'').startsWith('image/')));
   const clientAvatar = clientImages.length? `/files/${clientImages[0].file_object_id}/thumbnail?w=96` : '/ui/assets/login/logo-light.svg';
+  const clientAvatarLarge = clientImages.length? `/files/${clientImages[0].file_object_id}/thumbnail?w=240` : '/ui/assets/login/logo-light.svg';
   const [form, setForm] = useState<any>({});
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [sitePicker, setSitePicker] = useState<{ open:boolean, siteId?:string }|null>(null);
+  const [projectPicker, setProjectPicker] = useState<{ open:boolean, projectId?:string }|null>(null);
   useEffect(()=>{ if(client){ setForm({
     display_name: client.display_name||'', legal_name: client.legal_name||'', code: client.id?.slice(0,8) || '',
     client_type: (client as any).client_type||'', client_status: (client as any).client_status||'', lead_source:(client as any).lead_source||'',
@@ -51,18 +56,19 @@ export default function CustomerDetail(){
       </div>
       <div className="rounded-xl border bg-white">
         <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] rounded-t-xl p-5 text-white">
-          <div className="flex justify-between items-end">
-            <div className="flex items-center gap-3">
-              <img src={clientAvatar} className="w-12 h-12 rounded-full border-2 border-brand-red object-cover" />
-              <div>
-                <div className="text-2xl font-extrabold">{c.display_name||c.name||id}</div>
-                <div className="opacity-90 text-sm">{c.city||''} {c.province||''} {c.country||''}</div>
-              </div>
+          <div className="flex gap-4 items-stretch min-h-[180px]">
+            <div className="w-[220px] relative group">
+              <img src={clientAvatarLarge} className="w-full h-full object-cover rounded-xl border-2 border-brand-red" />
+              <button onClick={()=>setPickerOpen(true)} className="absolute inset-0 rounded-xl bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white">✏️ Change</button>
             </div>
-            <div className="flex gap-2">
-              {(['overview','details','addresses','comms','files','contacts','sites','projects'] as const).map(k=> (
-                <button key={k} onClick={()=>setTab(k)} className={`px-3 py-1.5 rounded-full ${tab===k?'bg-black text-white':'bg-white text-black'}`}>{k[0].toUpperCase()+k.slice(1)}</button>
-              ))}
+            <div className="flex-1 flex flex-col justify-start">
+              <div className="text-3xl font-extrabold">{c.display_name||c.name||id}</div>
+              <div className="text-sm opacity-90 mt-1">{c.city||''} {c.province||''} {c.country||''}</div>
+              <div className="mt-auto flex gap-3">
+                {(['overview','details','addresses','comms','files','contacts','sites','projects'] as const).map(k=> (
+                  <button key={k} onClick={()=>setTab(k)} className={`px-4 py-2 rounded-full ${tab===k?'bg-black text-white':'bg-white text-black'}`}>{k[0].toUpperCase()+k.slice(1)}</button>
+                ))}
+              </div>
             </div>
           </div>
         </div>
@@ -201,11 +207,16 @@ export default function CustomerDetail(){
                   <h3 className="font-semibold mb-3">Construction Sites</h3>
                   <div className="grid md:grid-cols-3 gap-4">
                     {(sites||[]).map(s=>{
-                      const img = (fileBySite[s.id||'']||[]).find(f=> (f.is_image===true) || String(f.content_type||'').startsWith('image/'));
+                      const filesForSite = (fileBySite[s.id||'']||[]);
+                      const cover = filesForSite.find(f=> String(f.category||'')==='site-cover-derived');
+                      const img = cover || filesForSite.find(f=> (f.is_image===true) || String(f.content_type||'').startsWith('image/'));
                       const src = img? `/files/${img.file_object_id}/thumbnail?w=600` : '/ui/assets/login/logo-light.svg';
                       return (
                         <div key={s.id} className="rounded-xl border overflow-hidden bg-white">
-                          <div className="h-40 bg-gray-100"><img className="w-full h-full object-cover" src={src} /></div>
+                          <div className="h-40 bg-gray-100 relative">
+                            <img className="w-full h-full object-cover" src={src} />
+                            <button onClick={()=>setSitePicker({ open:true, siteId: String(s.id) })} className="absolute right-2 top-2 text-xs px-2 py-1 rounded bg-black/70 text-white">Change cover</button>
+                          </div>
                           <div className="p-3 text-sm">
                             <div className="font-semibold">{s.site_name||'Site'}</div>
                             <div className="text-gray-600">{s.site_address_line1||''}</div>
@@ -224,7 +235,9 @@ export default function CustomerDetail(){
                   <div className="grid md:grid-cols-3 gap-4">
                     {(projects||[]).map(p=> (
                       <div key={p.id} className="rounded-xl border bg-white overflow-hidden">
-                        <div className="h-28 bg-gray-100"/>
+                        <div className="h-28 bg-gray-100 relative">
+                          <button onClick={()=>setProjectPicker({ open:true, projectId: String(p.id) })} className="absolute right-2 top-2 text-xs px-2 py-1 rounded bg-black/70 text-white">Change cover</button>
+                        </div>
                         <div className="p-3 text-sm">
                           <div className="font-semibold">{p.name||'Project'}</div>
                           <div className="text-gray-600">{p.code||''}</div>
@@ -240,6 +253,44 @@ export default function CustomerDetail(){
           )}
         </div>
       </div>
+      <ImagePicker isOpen={pickerOpen} onClose={()=>setPickerOpen(false)} clientId={String(id)} targetWidth={240} targetHeight={180} allowEdit={true} onConfirm={async(blob, original)=>{
+        try{
+          // upload processed image as derived client-logo
+          const up:any = await api('POST','/files/upload',{ project_id:null, client_id:id, employee_id:null, category_id:'client-logo-derived', original_name: 'client-logo.jpg', content_type: 'image/jpeg' });
+          await fetch(up.upload_url, { method:'PUT', headers:{ 'Content-Type':'image/jpeg', 'x-ms-blob-type':'BlockBlob' }, body: blob });
+          const conf:any = await api('POST','/files/confirm',{ key: up.key, size_bytes: blob.size, checksum_sha256:'na', content_type:'image/jpeg' });
+          await api('POST', `/clients/${id}/files?file_object_id=${encodeURIComponent(conf.id)}&category=client-logo-derived&original_name=client-logo.jpg`);
+          toast.success('Logo updated');
+          location.reload();
+        }catch(e){ toast.error('Failed to update logo'); }
+        finally{ setPickerOpen(false); }
+      }} />
+      {sitePicker?.open && (
+        <ImagePicker isOpen={true} onClose={()=>setSitePicker(null)} clientId={String(id)} targetWidth={1200} targetHeight={400} allowEdit={true} onConfirm={async(blob)=>{
+          try{
+            const up:any = await api('POST','/files/upload',{ project_id:null, client_id:id, employee_id:null, category_id:'site-cover-derived', original_name:'site-cover.jpg', content_type:'image/jpeg' });
+            await fetch(up.upload_url, { method:'PUT', headers:{ 'Content-Type':'image/jpeg', 'x-ms-blob-type':'BlockBlob' }, body: blob });
+            const conf:any = await api('POST','/files/confirm',{ key: up.key, size_bytes: blob.size, checksum_sha256:'na', content_type:'image/jpeg' });
+            await api('POST', `/clients/${id}/files?file_object_id=${encodeURIComponent(conf.id)}&category=site-cover-derived&original_name=site-cover.jpg&site_id=${encodeURIComponent(String(sitePicker?.siteId||''))}`);
+            toast.success('Site cover updated');
+            location.reload();
+          }catch(e){ toast.error('Failed to update site cover'); }
+          finally{ setSitePicker(null); }
+        }} />
+      )}
+      {projectPicker?.open && (
+        <ImagePicker isOpen={true} onClose={()=>setProjectPicker(null)} clientId={String(id)} targetWidth={800} targetHeight={300} allowEdit={true} onConfirm={async(blob)=>{
+          try{
+            const up:any = await api('POST','/files/upload',{ project_id: projectPicker?.projectId||null, client_id:id, employee_id:null, category_id:'project-cover-derived', original_name:'project-cover.jpg', content_type:'image/jpeg' });
+            await fetch(up.upload_url, { method:'PUT', headers:{ 'Content-Type':'image/jpeg', 'x-ms-blob-type':'BlockBlob' }, body: blob });
+            const conf:any = await api('POST','/files/confirm',{ key: up.key, size_bytes: blob.size, checksum_sha256:'na', content_type:'image/jpeg' });
+            await api('POST', `/clients/${id}/files?file_object_id=${encodeURIComponent(conf.id)}&category=project-cover-derived&original_name=project-cover.jpg`);
+            toast.success('Project cover updated');
+            location.reload();
+          }catch(e){ toast.error('Failed to update project cover'); }
+          finally{ setProjectPicker(null); }
+        }} />
+      )}
     </div>
   );
 }
