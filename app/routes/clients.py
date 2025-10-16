@@ -190,14 +190,18 @@ def delete_site(client_id: str, site_id: str, db: Session = Depends(get_db), _=D
 
 # ----- Files -----
 @router.get("/{client_id}/files")
-def list_files(client_id: str, site_id: Optional[str] = None, db: Session = Depends(get_db), _=Depends(require_permissions("clients:read"))):
-    q = db.query(ClientFile).filter(ClientFile.client_id == client_id)
+def list_files(client_id: str, site_id: Optional[str] = None, project_id: Optional[str] = None, db: Session = Depends(get_db), _=Depends(require_permissions("clients:read"))):
+    q = db.query(ClientFile)
+    q = q.filter(ClientFile.client_id == client_id)
     if site_id:
         q = q.filter(ClientFile.site_id == site_id)
     rows = q.order_by(ClientFile.uploaded_at.desc()).all()
     out = []
     for cf in rows:
         fo = db.query(FileObject).filter(FileObject.id == cf.file_object_id).first()
+        # Optional filter by project id - only include if matches
+        if project_id and (not fo or str(getattr(fo, 'project_id', None) or '') != str(project_id)):
+            continue
         ct = getattr(fo, 'content_type', None) if fo else None
         # Heuristic to determine image if content_type missing
         name = cf.original_name or cf.key or ''

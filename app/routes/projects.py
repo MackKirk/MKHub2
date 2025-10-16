@@ -18,16 +18,31 @@ def create_project(payload: dict, db: Session = Depends(get_db)):
 
 
 @router.get("")
-def list_projects(client: Optional[str] = None, status: Optional[str] = None, q: Optional[str] = None, db: Session = Depends(get_db)):
+def list_projects(client: Optional[str] = None, site: Optional[str] = None, status: Optional[str] = None, q: Optional[str] = None, year: Optional[int] = None, db: Session = Depends(get_db)):
     query = db.query(Project)
     if client:
         query = query.filter(Project.client_id == client)
+    if site:
+        # site link via custom field if present later; for now stored in slug or notes? Keeping placeholder
+        pass
     if status:
         query = query.filter(Project.status_id == status)
     if q:
         query = query.filter(Project.name.ilike(f"%{q}%"))
+    if year:
+        from sqlalchemy import extract
+        query = query.filter(extract('year', Project.created_at) == int(year))
     return [
-        {"id": str(p.id), "code": p.code, "name": p.name, "slug": p.slug, "client_id": str(p.client_id) if getattr(p, 'client_id', None) else None}
+        {
+            "id": str(p.id),
+            "code": p.code,
+            "name": p.name,
+            "slug": p.slug,
+            "client_id": str(p.client_id) if getattr(p, 'client_id', None) else None,
+            "created_at": p.created_at.isoformat() if getattr(p, 'created_at', None) else None,
+            "date_start": p.date_start.isoformat() if getattr(p, 'date_start', None) else None,
+            "date_end": p.date_end.isoformat() if getattr(p, 'date_end', None) else None,
+        }
         for p in query.order_by(Project.created_at.desc()).limit(100).all()
     ]
 

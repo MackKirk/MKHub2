@@ -4,7 +4,7 @@ import { useMemo, useState } from 'react';
 import ImagePicker from '@/components/ImagePicker';
 import toast from 'react-hot-toast';
 
-type Project = { id:string, code?:string, name?:string, slug?:string, client_id?:string };
+type Project = { id:string, code?:string, name?:string, slug?:string, client_id?:string, created_at?:string, date_start?:string, date_end?:string };
 type ClientFile = { id:string, file_object_id:string, is_image?:boolean, content_type?:string };
 
 export default function Projects(){
@@ -28,6 +28,7 @@ export default function Projects(){
             <div className="p-3 text-sm">
               <div className="font-semibold">{p.name||'Project'}</div>
               <div className="text-gray-600">{p.code||''}</div>
+              <div className="text-[11px] text-gray-500 mt-1">{(p.date_start||p.created_at||'').slice(0,10)}</div>
               <div className="mt-3 flex justify-end"><a href="#" className="px-3 py-1.5 rounded bg-brand-red text-white">Open</a></div>
             </div>
           </div>
