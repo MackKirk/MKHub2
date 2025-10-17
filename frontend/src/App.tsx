@@ -13,6 +13,7 @@ import Proposals from './pages/Proposals';
 import CustomerDetail from './pages/CustomerDetail';
 import SiteDetail from './pages/SiteDetail';
 import Projects from './pages/Projects';
+import ProjectDetail from './pages/ProjectDetail';
 
 import { getToken } from './lib/api';
 function Home(){ return <Navigate to={getToken()? '/home':'/login'} replace />; }
@@ -33,6 +34,7 @@ export default function App(){
           <Route path="/inventory" element={<AppShell><Inventory/></AppShell>} />
           <Route path="/proposals" element={<AppShell><Proposals/></AppShell>} />
           <Route path="/projects" element={<AppShell><Projects/></AppShell>} />
+          <Route path="/projects/:id" element={<AppShell><ProjectDetail/></AppShell>} />
         </Route>
         <Route path="*" element={<Navigate to={getToken()? '/home':'/login'} replace />} />
       </Routes>
