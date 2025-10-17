@@ -14,11 +14,15 @@ export default function Projects(){
   const { data, isLoading, refetch } = useQuery({ queryKey:['projects', qs], queryFn: ()=>api<Project[]>('GET', `/projects${qs}`) });
   const arr = data||[];
   const [pickerOpen, setPickerOpen] = useState<{ open:boolean, clientId?:string, projectId?:string }|null>(null);
+  const [newOpen, setNewOpen] = useState(false);
+  const [name, setName] = useState('');
+  const [clientId, setClientId] = useState('');
   return (
     <div>
       <div className="mb-3 rounded-xl border bg-white p-3 flex items-end gap-2">
         <div className="flex-1 max-w-[420px]"><label className="text-xs text-gray-600">Search</label><input className="w-full border rounded px-3 py-2" placeholder="code/name" value={q} onChange={e=>setQ(e.target.value)} onKeyDown={e=>{ if(e.key==='Enter') refetch(); }} /></div>
         <button onClick={()=>refetch()} className="px-3 py-2 rounded bg-brand-red text-white">Apply</button>
+        <button onClick={()=>setNewOpen(true)} className="px-3 py-2 rounded bg-black text-white">New Project</button>
       </div>
       <div className="grid md:grid-cols-3 gap-4">
         {isLoading? <div className="h-32 bg-gray-100 animate-pulse rounded"/> : arr.map(p => (
@@ -47,6 +51,26 @@ export default function Projects(){
             setPickerOpen(null);
           }catch(e){ toast.error('Failed to update cover'); setPickerOpen(null); }
         }} />
+      )}
+      {newOpen && (
+        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center">
+          <div className="w-[600px] max-w-[95vw] bg-white rounded-xl overflow-hidden">
+            <div className="px-4 py-3 border-b flex items-center justify-between"><div className="font-semibold">New Project</div><button onClick={()=>setNewOpen(false)} className="px-3 py-1 rounded bg-gray-100">Close</button></div>
+            <div className="p-4 grid gap-3">
+              <div>
+                <label className="text-xs text-gray-600">Project Name</label>
+                <input className="w-full border rounded px-3 py-2" value={name} onChange={e=>setName(e.target.value)} />
+              </div>
+              <div>
+                <label className="text-xs text-gray-600">Client ID</label>
+                <input className="w-full border rounded px-3 py-2" value={clientId} onChange={e=>setClientId(e.target.value)} placeholder="client uuid" />
+              </div>
+              <div className="text-right">
+                <button onClick={async()=>{ if(!name||!clientId){ toast.error('Name and client required'); return; } try{ const created:any = await api('POST','/projects', { name, client_id: clientId }); toast.success('Project created'); setNewOpen(false); setName(''); setClientId(''); if(created?.id){ location.href = `/projects/${encodeURIComponent(String(created.id))}`; } }catch(_e){ toast.error('Failed to create'); } }} className="px-4 py-2 rounded bg-brand-red text-white">Create</button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

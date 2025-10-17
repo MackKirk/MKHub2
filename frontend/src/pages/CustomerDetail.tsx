@@ -277,7 +277,10 @@ export default function CustomerDetail(){
               )}
               {tab==='projects' && (
                 <div>
-                  <h3 className="font-semibold mb-3">Projects</h3>
+                  <div className="mb-3 flex items-center justify-between">
+                    <h3 className="font-semibold">Projects</h3>
+                    <button onClick={async()=>{ const nm = prompt('Project name'); if(!nm) return; try{ const created:any = await api('POST','/projects', { name: nm, client_id: id }); toast.success('Project created'); if(created?.id){ location.href = `/projects/${encodeURIComponent(String(created.id))}`; } }catch(_e){ toast.error('Failed to create'); } }} className="px-3 py-1.5 rounded bg-brand-red text-white">New Project</button>
+                  </div>
                   <div className="grid md:grid-cols-3 gap-4">
                     {(projects||[]).map(p=> (
                       <div key={p.id} className="rounded-xl border bg-white overflow-hidden">
@@ -288,7 +291,7 @@ export default function CustomerDetail(){
                           <div className="font-semibold">{p.name||'Project'}</div>
                           <div className="text-gray-600">{p.code||''}</div>
                           <div className="text-[11px] text-gray-500 mt-1">{(p.date_start||p.created_at||'').slice(0,10)}</div>
-                          <div className="mt-3 text-right"><a className="px-3 py-1.5 rounded bg-brand-red text-white" href="#">Open</a></div>
+                          <div className="mt-3 text-right"><Link to={`/projects/${encodeURIComponent(String(p.id))}`} className="px-3 py-1.5 rounded bg-brand-red text-white">Open</Link></div>
                         </div>
                       </div>
                     ))}
