@@ -190,7 +190,7 @@ export default function CustomerDetail(){
                   </div>
 
                   <div className="h-16" />
-                  <div className="fixed left-0 right-0 bottom-0 z-40">
+                  <div className="fixed left-60 right-0 bottom-0 z-40">
                     <div className="px-4">
                       <div className="mx-auto max-w-[1400px] rounded-t-xl border bg-white/95 backdrop-blur p-3 flex items-center justify-between shadow-[0_-6px_16px_rgba(0,0,0,0.08)]">
                         <div className={dirty? 'text-[12px] text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5' : 'text-[12px] text-green-700 bg-green-50 border border-green-200 rounded-full px-2 py-0.5'}>
