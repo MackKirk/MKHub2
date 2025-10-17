@@ -230,10 +230,13 @@ def list_files(client_id: str, site_id: Optional[str] = None, project_id: Option
             "is_image": is_image,
             "sort_index": sort_index,
         })
-    # Sort by explicit sort_index, then fallback to uploaded_at desc
-    def sort_key(item: dict):
-        return (int(item.get("sort_index") or 0), -(int((item.get("uploaded_at") or "1970-01-01").replace("-", "").replace(":", "").replace("T", "").replace("Z", "")[0:14]) if (item.get("uploaded_at") or "").strip() else 0)))
-    out.sort(key=sort_key)
+    # Sort by explicit sort_index asc, then uploaded_at desc
+    try:
+        out.sort(key=lambda x: (int(x.get("sort_index") or 0), (x.get("uploaded_at") or "")), reverse=False)
+        # stable sort for uploaded_at desc within same sort_index
+        out.sort(key=lambda x: (x.get("uploaded_at") or ""), reverse=True)
+    except Exception:
+        pass
     return out
 
 
