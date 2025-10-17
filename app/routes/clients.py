@@ -208,6 +208,14 @@ def list_files(client_id: str, site_id: Optional[str] = None, project_id: Option
         ext = (name.rsplit('.', 1)[-1] if '.' in name else '').lower()
         is_img_ext = ext in { 'png','jpg','jpeg','webp','gif','bmp','heic','heif' }
         is_image = (ct or '').startswith('image/') or is_img_ext
+        # Per-client sort index stored in FileObject.tags.client_sort[client_id]
+        sort_index = 0
+        try:
+            if fo and getattr(fo, "tags", None):
+                client_sort = (fo.tags or {}).get("client_sort") or {}
+                sort_index = int(client_sort.get(str(client_id), 0) or 0)
+        except Exception:
+            sort_index = 0
         out.append({
             "id": str(cf.id),
             "file_object_id": str(cf.file_object_id),
@@ -220,7 +228,12 @@ def list_files(client_id: str, site_id: Optional[str] = None, project_id: Option
             "uploaded_by": str(cf.uploaded_by) if cf.uploaded_by else None,
             "content_type": ct,
             "is_image": is_image,
+            "sort_index": sort_index,
         })
+    # Sort by explicit sort_index, then fallback to uploaded_at desc
+    def sort_key(item: dict):
+        return (int(item.get("sort_index") or 0), -(int((item.get("uploaded_at") or "1970-01-01").replace("-", "").replace(":", "").replace("T", "").replace("Z", "")[0:14]) if (item.get("uploaded_at") or "").strip() else 0)))
+    out.sort(key=sort_key)
     return out
 
 
@@ -232,6 +245,27 @@ def delete_client_file(client_id: str, client_file_id: str, db: Session = Depend
     db.delete(row)
     db.commit()
     return {"status":"ok"}
+
+
+@router.post("/{client_id}/files/reorder")
+def reorder_client_files(client_id: str, order: list[str], db: Session = Depends(get_db), _=Depends(require_permissions("clients:write"))):
+    # Persist per-client order using FileObject.tags.client_sort[client_id] = index
+    cfiles = db.query(ClientFile).filter(ClientFile.client_id == client_id).all()
+    index = {str(cid): i for i, cid in enumerate(order or [])}
+    for cf in cfiles:
+        idx = index.get(str(cf.id))
+        if idx is None:
+            continue
+        fo = db.query(FileObject).filter(FileObject.id == cf.file_object_id).first()
+        if not fo:
+            continue
+        tags = dict(getattr(fo, "tags", None) or {})
+        client_sort = dict(tags.get("client_sort") or {})
+        client_sort[str(client_id)] = int(idx)
+        tags["client_sort"] = client_sort
+        fo.tags = tags
+    db.commit()
+    return {"status": "ok"}
 
 
 @router.post("/{client_id}/files")

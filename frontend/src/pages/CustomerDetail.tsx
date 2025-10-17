@@ -16,7 +16,7 @@ export default function CustomerDetail(){
   const [tab, setTab] = useState<'overview'|'general'|'files'|'contacts'|'sites'|'projects'>('overview');
   const { data:client, isLoading } = useQuery({ queryKey:['client', id], queryFn: ()=>api<Client>('GET', `/clients/${id}`) });
   const { data:sites } = useQuery({ queryKey:['clientSites', id], queryFn: ()=>api<Site[]>('GET', `/clients/${id}/sites`) });
-  const { data:files } = useQuery({ queryKey:['clientFiles', id], queryFn: ()=>api<ClientFile[]>('GET', `/clients/${id}/files`) });
+  const { data:files, refetch: refetchFiles } = useQuery({ queryKey:['clientFiles', id], queryFn: ()=>api<ClientFile[]>('GET', `/clients/${id}/files`) });
   const { data:settings } = useQuery({ queryKey:['settings'], queryFn: ()=>api<any>('GET','/settings') });
   const { data:projects } = useQuery({ queryKey:['clientProjects', id], queryFn: ()=>api<Project[]>('GET', `/projects?client=${encodeURIComponent(String(id||''))}`) });
   const { data:contacts } = useQuery({ queryKey:['clientContacts', id], queryFn: ()=>api<Contact[]>('GET', `/clients/${id}/contacts`) });
@@ -243,7 +243,7 @@ export default function CustomerDetail(){
                 </div>
               )}
               {tab==='files' && (
-                <FilesCard id={String(id)} files={files||[]} sites={sites||[]} />
+                <FilesCard id={String(id)} files={files||[]} sites={sites||[]} onRefresh={refetchFiles} />
               )}
               {tab==='contacts' && (
                 <ContactsCard id={String(id)} />
@@ -351,10 +351,11 @@ function Field({label, children}:{label:string, children:any}){
   );
 }
 
-function FilesCard({ id, files, sites }:{ id:string, files: ClientFile[], sites: Site[] }){
+function FilesCard({ id, files, sites, onRefresh }:{ id:string, files: ClientFile[], sites: Site[], onRefresh: ()=>any }){
   const [which, setWhich] = useState<'all'|'client'|'site'>('all');
   const [siteId, setSiteId] = useState<string>('');
-  const [previewPdf, setPreviewPdf] = useState<{ id:string, name:string }|null>(null);
+  const [previewPdf, setPreviewPdf] = useState<{ url:string, name:string }|null>(null);
+  const [cat, setCat] = useState<string>('all');
   const siteMap = useMemo(()=>{
     const m:Record<string, Site> = {};
     (sites||[]).forEach(s=>{ if(s.id) m[String(s.id)] = s; });
@@ -364,11 +365,51 @@ function FilesCard({ id, files, sites }:{ id:string, files: ClientFile[], sites:
     let arr = files||[];
     if (which==='client') arr = arr.filter(f=>!f.site_id);
     else if (which==='site') arr = arr.filter(f=> siteId? f.site_id===siteId : !!f.site_id);
+    if (cat && cat !== 'all') arr = arr.filter(f=> String(f.category||'') === cat);
     return arr;
+  }, [files, which, siteId]);
+  const categories = useMemo(()=>{
+    const set = new Map<string, number>();
+    (files||[]).forEach(f=>{
+      // Count within current which/site context for relevance
+      if (which==='client' && f.site_id) return;
+      if (which==='site' && siteId && f.site_id!==siteId) return;
+      const key = String(f.category||'uncategorized');
+      set.set(key, (set.get(key)||0)+1);
+    });
+    return Array.from(set.entries()).sort((a,b)=> a[0].localeCompare(b[0]));
   }, [files, which, siteId]);
   const docs = base.filter(f=> !(f.is_image===true) && !String(f.content_type||'').startsWith('image/'));
   const pics = base.filter(f=> (f.is_image===true) || String(f.content_type||'').startsWith('image/'));
   const [file, setFile] = useState<File|null>(null);
+  const [docList, setDocList] = useState<ClientFile[]>([]);
+  const [picList, setPicList] = useState<ClientFile[]>([]);
+  useEffect(()=>{ setDocList(docs); }, [docs]);
+  useEffect(()=>{ setPicList(pics); }, [pics]);
+  const [dragDocId, setDragDocId] = useState<string|null>(null);
+  const onDocDragStart = (id:string)=> setDragDocId(id);
+  const onDocDragOver = (e:React.DragEvent)=> e.preventDefault();
+  const onDocDropOver = (overId:string)=>{
+    if(!dragDocId || dragDocId===overId) return;
+    const curr = [...docList];
+    const from = curr.findIndex(x=> x.id===dragDocId);
+    const to = curr.findIndex(x=> x.id===overId);
+    if(from<0 || to<0) return;
+    const [moved] = curr.splice(from,1);
+    curr.splice(to,0,moved);
+    setDocList(curr);
+  };
+  const saveDocOrder = async()=>{
+    try{
+      const order = docList.map(f=> String(f.id));
+      await api('POST', `/clients/${id}/files/reorder`, order);
+      toast.success('Order saved');
+    }catch(_e){ toast.error('Failed to save order'); }
+  };
+  const fetchDownloadUrl = async (fid:string)=>{
+    try{ const r:any = await api('GET', `/files/${fid}/download`); return String(r.download_url||''); }catch(_e){ toast.error('Download link unavailable'); return ''; }
+  };
+  const openDownload = async (f:ClientFile)=>{ const url = await fetchDownloadUrl(f.file_object_id); if(url) window.open(url, '_blank'); };
   const iconFor = (f:ClientFile)=>{
     const name = String(f.original_name||'');
     const ext = (name.includes('.')? name.split('.').pop() : '').toLowerCase();
@@ -408,23 +449,35 @@ function FilesCard({ id, files, sites }:{ id:string, files: ClientFile[], sites:
           const qs = targetIsSite ? `&site_id=${encodeURIComponent(siteId)}` : '';
           await api('POST', `/clients/${id}/files?file_object_id=${encodeURIComponent(conf.id)}&category=${encodeURIComponent(category)}&original_name=${encodeURIComponent(file.name)}${qs}`);
           toast.success('Uploaded');
-          location.reload();
+          await onRefresh();
         }catch(e){ toast.error('Upload failed'); }
       }} className="px-3 py-2 rounded bg-brand-red text-white">Upload</button></div>
-      <h4 className="font-semibold mb-2">Documents</h4>
+      <div className="mb-2 flex items-center justify-between">
+        <h4 className="font-semibold">Documents</h4>
+        <div className="flex items-center gap-2">
+          <div className="text-xs text-gray-500">Drag to reorder</div>
+          <button onClick={saveDocOrder} className="px-3 py-1.5 rounded bg-gray-100 text-xs">Save order</button>
+        </div>
+      </div>
+      {categories.length>0 && (
+        <div className="mb-2 flex items-center gap-2 flex-wrap">
+          <button onClick={()=>setCat('all')} className={`px-2 py-1 rounded-full text-xs border ${cat==='all'?'bg-black text-white border-black':'bg-white text-gray-700'}`}>All</button>
+          {categories.map(([key,count])=> (
+            <button key={key} onClick={()=>setCat(key)} className={`px-2 py-1 rounded-full text-xs border ${cat===key?'bg-black text-white border-black':'bg-white text-gray-700'}`}>{key} <span className="opacity-60">{count}</span></button>
+          ))}
+        </div>
+      )}
       <div className="rounded-xl border overflow-hidden">
-        {(docs||[]).length? (
+        {(docList||[]).length? (
           <div className="divide-y">
-            {(docs||[]).map(f=>{
+            {(docList||[]).map(f=>{
               const icon = iconFor(f);
               const name = f.original_name || f.file_object_id;
               const canPreviewPdf = String(f.content_type||'').toLowerCase().includes('pdf') || String(name||'').toLowerCase().endsWith('.pdf');
               return (
-                <div
-                  key={f.id}
+                <div key={f.id} draggable onDragStart={()=>onDocDragStart(String(f.id))} onDragOver={onDocDragOver} onDrop={()=>onDocDropOver(String(f.id))}
                   className="flex items-center justify-between px-3 py-2 text-sm bg-white hover:bg-gray-50 cursor-pointer"
-                  onClick={()=>{ if (canPreviewPdf) setPreviewPdf({ id:f.file_object_id, name }); else window.open(`/files/${f.file_object_id}/download`, '_blank'); }}
-                >
+                  onClick={async()=>{ if (canPreviewPdf) { const url = await fetchDownloadUrl(f.file_object_id); if(url) setPreviewPdf({ url, name }); } else { await openDownload(f); } }}>
                   <div className="flex items-center gap-3 min-w-0">
                     <div className={`w-8 h-8 rounded grid place-items-center text-[10px] font-bold text-white ${icon.color}`}>{icon.label}</div>
                     <div className="min-w-0">
@@ -433,8 +486,8 @@ function FilesCard({ id, files, sites }:{ id:string, files: ClientFile[], sites:
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    <a onClick={(e)=>e.stopPropagation()} className="px-2 py-1 rounded bg-gray-100" href={`/files/${f.file_object_id}/download`} target="_blank">Download</a>
-                    <button onClick={async(e)=>{ e.stopPropagation(); if(!confirm('Delete this file?')) return; try{ await api('DELETE', `/clients/${id}/files/${encodeURIComponent(String(f.id))}`); toast.success('Deleted'); location.reload(); }catch(_e){ toast.error('Delete failed'); } }} className="px-2 py-1 rounded bg-gray-100">Delete</button>
+                    <button onClick={async(e)=>{ e.stopPropagation(); await openDownload(f); }} className="px-2 py-1 rounded bg-gray-100">Download</button>
+                    <button onClick={async(e)=>{ e.stopPropagation(); if(!confirm('Delete this file?')) return; try{ await api('DELETE', `/clients/${id}/files/${encodeURIComponent(String(f.id))}`); toast.success('Deleted'); await onRefresh(); }catch(_e){ toast.error('Delete failed'); } }} className="px-2 py-1 rounded bg-gray-100">Delete</button>
                   </div>
                 </div>
               );
@@ -444,7 +497,7 @@ function FilesCard({ id, files, sites }:{ id:string, files: ClientFile[], sites:
       </div>
       <h4 className="font-semibold mt-4 mb-2">Pictures</h4>
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3">
-        {(pics||[]).map(f=> {
+        {(picList||[]).map(f=> {
           const isSite = !!f.site_id;
           const s = isSite? siteMap[String(f.site_id||'')] : undefined;
           const tip = isSite? `${s?.site_name||'Site'} — ${[s?.site_address_line1, s?.site_city, s?.site_province].filter(Boolean).join(', ')}` : 'General Customer image';
@@ -452,7 +505,7 @@ function FilesCard({ id, files, sites }:{ id:string, files: ClientFile[], sites:
             <div key={f.id} className="relative group">
               <img className="w-full h-24 object-cover rounded border" src={`/files/${f.file_object_id}/thumbnail?w=300`} />
               <div className="absolute right-2 top-2 hidden group-hover:flex gap-1">
-                <a href={`/files/${f.file_object_id}/download`} target="_blank" className="bg-black/70 hover:bg-black/80 text-white text-[11px] px-2 py-1 rounded" title="Zoom">🔍</a>
+                <button onClick={async(e)=>{ e.stopPropagation(); const url = await fetchDownloadUrl(f.file_object_id); if(url) window.open(url,'_blank'); }} className="bg-black/70 hover:bg-black/80 text-white text-[11px] px-2 py-1 rounded" title="Zoom">🔍</button>
                 <button onClick={async(e)=>{ e.stopPropagation(); if(!confirm('Delete this picture?')) return; try{ await api('DELETE', `/clients/${id}/files/${encodeURIComponent(String(f.id))}`); toast.success('Deleted'); location.reload(); }catch(_e){ toast.error('Delete failed'); } }} className="bg-black/70 hover:bg-black/80 text-white text-[11px] px-2 py-1 rounded" title="Delete">🗑️</button>
               </div>
               <div className={`absolute left-2 top-2 text-[10px] font-bold rounded-full w-6 h-6 grid place-items-center ${isSite? 'bg-blue-500 text-white':'bg-green-500 text-white'}`} title={isSite? 'Site image':'Client image'}>
@@ -471,11 +524,11 @@ function FilesCard({ id, files, sites }:{ id:string, files: ClientFile[], sites:
             <div className="px-3 py-2 border-b flex items-center justify-between">
               <div className="font-semibold text-sm truncate pr-2">{previewPdf.name}</div>
               <div className="flex items-center gap-2">
-                <a className="px-2 py-1 rounded bg-gray-100 text-sm" href={`/files/${previewPdf.id}/download`} target="_blank">Download</a>
+                <a className="px-2 py-1 rounded bg-gray-100 text-sm" href={previewPdf.url} target="_blank">Download</a>
                 <button onClick={()=>setPreviewPdf(null)} className="px-2 py-1 rounded bg-gray-100 text-sm">Close</button>
               </div>
             </div>
-            <iframe className="flex-1" src={`/files/${previewPdf.id}/download`} title="PDF Preview"></iframe>
+            <iframe className="flex-1" src={previewPdf.url} title="PDF Preview"></iframe>
           </div>
         </div>
       )}
