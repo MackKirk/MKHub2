@@ -8,6 +8,7 @@ import Protected from './lib/protected';
 import Profile from './pages/Profile';
 import HomePage from './pages/Home';
 import Customers from './pages/Customers';
+import CustomerNew from './pages/CustomerNew';
 import Inventory from './pages/Inventory';
 import InventorySuppliers from './pages/InventorySuppliers';
 import InventoryProducts from './pages/InventoryProducts';
@@ -33,6 +34,7 @@ export default function App(){
           <Route path="/home" element={<AppShell><HomePage/></AppShell>} />
           <Route path="/profile" element={<AppShell><Profile/></AppShell>} />
           <Route path="/customers" element={<AppShell><Customers/></AppShell>} />
+          <Route path="/customers/new" element={<AppShell><CustomerNew/></AppShell>} />
           <Route path="/customers/:id" element={<AppShell><CustomerDetail/></AppShell>} />
           <Route path="/customers/:customerId/sites/:siteId" element={<AppShell><SiteDetail/></AppShell>} />
           <Route path="/inventory" element={<AppShell><Inventory/></AppShell>} />
