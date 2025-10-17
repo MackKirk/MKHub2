@@ -7,7 +7,7 @@ import ImagePicker from '@/components/ImagePicker';
 
 type Client = { id:string, name?:string, display_name?:string, city?:string, province?:string, postal_code?:string, country?:string, address_line1?:string, address_line2?:string, created_at?:string };
 type Site = { id:string, site_name?:string, site_address_line1?:string, site_city?:string, site_province?:string, site_country?:string };
-type ClientFile = { id:string, file_object_id:string, is_image?:boolean, content_type?:string, site_id?:string, category?:string };
+type ClientFile = { id:string, file_object_id:string, is_image?:boolean, content_type?:string, site_id?:string, category?:string, original_name?:string, uploaded_at?:string };
 type Project = { id:string, code?:string, name?:string, slug?:string, created_at?:string, date_start?:string, date_end?:string };
 type Contact = { id:string, name?:string, email?:string, phone?:string, is_primary?:boolean };
 
@@ -21,9 +21,9 @@ export default function CustomerDetail(){
   const { data:projects } = useQuery({ queryKey:['clientProjects', id], queryFn: ()=>api<Project[]>('GET', `/projects?client=${encodeURIComponent(String(id||''))}`) });
   const { data:contacts } = useQuery({ queryKey:['clientContacts', id], queryFn: ()=>api<Contact[]>('GET', `/clients/${id}/contacts`) });
   const primaryContact = (contacts||[]).find(c=>c.is_primary) || (contacts||[])[0];
-  const clientImages = (files||[]).filter(f=> !f.site_id && ((f.is_image===true) || String(f.content_type||'').startsWith('image/')));
-  const clientAvatar = clientImages.length? `/files/${clientImages[0].file_object_id}/thumbnail?w=96` : '/ui/assets/login/logo-light.svg';
-  const clientAvatarLarge = clientImages.length? `/files/${clientImages[0].file_object_id}/thumbnail?w=480` : '/ui/assets/login/logo-light.svg';
+  const clientLogoRec = (files||[]).find(f=> !f.site_id && String(f.category||'').toLowerCase()==='client-logo-derived');
+  const clientAvatar = clientLogoRec? `/files/${clientLogoRec.file_object_id}/thumbnail?w=96` : '/ui/assets/login/logo-light.svg';
+  const clientAvatarLarge = clientLogoRec? `/files/${clientLogoRec.file_object_id}/thumbnail?w=480` : '/ui/assets/login/logo-light.svg';
   const [form, setForm] = useState<any>({});
   const [dirty, setDirty] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -354,6 +354,7 @@ function Field({label, children}:{label:string, children:any}){
 function FilesCard({ id, files, sites }:{ id:string, files: ClientFile[], sites: Site[] }){
   const [which, setWhich] = useState<'all'|'client'|'site'>('all');
   const [siteId, setSiteId] = useState<string>('');
+  const [previewPdf, setPreviewPdf] = useState<{ id:string, name:string }|null>(null);
   const siteMap = useMemo(()=>{
     const m:Record<string, Site> = {};
     (sites||[]).forEach(s=>{ if(s.id) m[String(s.id)] = s; });
@@ -368,6 +369,19 @@ function FilesCard({ id, files, sites }:{ id:string, files: ClientFile[], sites:
   const docs = base.filter(f=> !(f.is_image===true) && !String(f.content_type||'').startsWith('image/'));
   const pics = base.filter(f=> (f.is_image===true) || String(f.content_type||'').startsWith('image/'));
   const [file, setFile] = useState<File|null>(null);
+  const iconFor = (f:ClientFile)=>{
+    const name = String(f.original_name||'');
+    const ext = (name.includes('.')? name.split('.').pop() : '').toLowerCase();
+    const ct = String(f.content_type||'').toLowerCase();
+    const is = (x:string)=> ct.includes(x) || ext===x;
+    if (is('pdf')) return { label:'PDF', color:'bg-red-500' };
+    if (['xlsx','xls','csv'].includes(ext) || ct.includes('excel') || ct.includes('spreadsheet')) return { label:'XLS', color:'bg-green-600' };
+    if (['doc','docx'].includes(ext) || ct.includes('word')) return { label:'DOC', color:'bg-blue-600' };
+    if (['ppt','pptx'].includes(ext) || ct.includes('powerpoint')) return { label:'PPT', color:'bg-orange-500' };
+    if (['zip','rar','7z'].includes(ext) || ct.includes('zip')) return { label:'ZIP', color:'bg-gray-700' };
+    if (is('txt')) return { label:'TXT', color:'bg-gray-500' };
+    return { label: (ext||'FILE').toUpperCase().slice(0,4), color:'bg-gray-600' };
+  };
   return (
     <div>
       <div className="mb-3 flex items-center gap-2 flex-wrap">
@@ -398,16 +412,35 @@ function FilesCard({ id, files, sites }:{ id:string, files: ClientFile[], sites:
         }catch(e){ toast.error('Upload failed'); }
       }} className="px-3 py-2 rounded bg-brand-red text-white">Upload</button></div>
       <h4 className="font-semibold mb-2">Documents</h4>
-      <div className="rounded border">
-        {(docs||[]).length? (docs||[]).map(f=> (
-          <div key={f.id} className="flex items-center justify-between border-b px-3 py-2 text-sm">
-            <div className="truncate max-w-[60%]">{f.file_object_id}</div>
-            <div className="space-x-2">
-              <a className="underline" href={`/files/${f.file_object_id}/download`} target="_blank">Open</a>
-              <button onClick={async()=>{ if(!confirm('Delete this file?')) return; try{ await api('DELETE', `/clients/${id}/files/${encodeURIComponent(String(f.id))}`); toast.success('Deleted'); location.reload(); }catch(_e){ toast.error('Delete failed'); } }} className="px-2 py-1 rounded bg-gray-100">Delete</button>
-            </div>
+      <div className="rounded-xl border overflow-hidden">
+        {(docs||[]).length? (
+          <div className="divide-y">
+            {(docs||[]).map(f=>{
+              const icon = iconFor(f);
+              const name = f.original_name || f.file_object_id;
+              const canPreviewPdf = String(f.content_type||'').toLowerCase().includes('pdf') || String(name||'').toLowerCase().endsWith('.pdf');
+              return (
+                <div
+                  key={f.id}
+                  className="flex items-center justify-between px-3 py-2 text-sm bg-white hover:bg-gray-50 cursor-pointer"
+                  onClick={()=>{ if (canPreviewPdf) setPreviewPdf({ id:f.file_object_id, name }); else window.open(`/files/${f.file_object_id}/download`, '_blank'); }}
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className={`w-8 h-8 rounded grid place-items-center text-[10px] font-bold text-white ${icon.color}`}>{icon.label}</div>
+                    <div className="min-w-0">
+                      <div className="truncate font-medium">{name}</div>
+                      <div className="text-[11px] text-gray-500">{(f.uploaded_at||'').slice(0,10)}</div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <a onClick={(e)=>e.stopPropagation()} className="px-2 py-1 rounded bg-gray-100" href={`/files/${f.file_object_id}/download`} target="_blank">Download</a>
+                    <button onClick={async(e)=>{ e.stopPropagation(); if(!confirm('Delete this file?')) return; try{ await api('DELETE', `/clients/${id}/files/${encodeURIComponent(String(f.id))}`); toast.success('Deleted'); location.reload(); }catch(_e){ toast.error('Delete failed'); } }} className="px-2 py-1 rounded bg-gray-100">Delete</button>
+                  </div>
+                </div>
+              );
+            })}
           </div>
-        )) : <div className="p-3 text-sm text-gray-600">No documents</div>}
+        ) : <div className="p-3 text-sm text-gray-600 bg-white">No documents</div>}
       </div>
       <h4 className="font-semibold mt-4 mb-2">Pictures</h4>
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3">
@@ -432,6 +465,20 @@ function FilesCard({ id, files, sites }:{ id:string, files: ClientFile[], sites:
           );
         })}
       </div>
+      {previewPdf && (
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center">
+          <div className="w-[1000px] max-w-[95vw] h-[85vh] bg-white rounded-xl overflow-hidden shadow-2xl flex flex-col">
+            <div className="px-3 py-2 border-b flex items-center justify-between">
+              <div className="font-semibold text-sm truncate pr-2">{previewPdf.name}</div>
+              <div className="flex items-center gap-2">
+                <a className="px-2 py-1 rounded bg-gray-100 text-sm" href={`/files/${previewPdf.id}/download`} target="_blank">Download</a>
+                <button onClick={()=>setPreviewPdf(null)} className="px-2 py-1 rounded bg-gray-100 text-sm">Close</button>
+              </div>
+            </div>
+            <iframe className="flex-1" src={`/files/${previewPdf.id}/download`} title="PDF Preview"></iframe>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
