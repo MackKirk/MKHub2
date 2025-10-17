@@ -9,9 +9,17 @@ export default function AppShell({ children }: PropsWithChildren){
         <nav className="flex flex-col gap-2">
           <NavLink to="/home" className={({isActive})=>`px-3 py-2 rounded ${isActive?'bg-brand-red':''}`}>Home</NavLink>
           <NavLink to="/profile" className={({isActive})=>`px-3 py-2 rounded ${isActive?'bg-brand-red':''}`}>My Information</NavLink>
-          <NavLink to="/customers" className={({isActive})=>`px-3 py-2 rounded ${isActive?'bg-brand-red':''}`}>Customers</NavLink>
-          <NavLink to="/inventory" className={({isActive})=>`px-3 py-2 rounded ${isActive?'bg-brand-red':''}`}>Inventory</NavLink>
+          <NavLink to="/customers" className={({isActive})=>`px-3 py-2 rounded ${isActive?'bg-brand-red':''}`}>All Customers</NavLink>
+          <NavLink to="/customers/new" className={({isActive})=>`px-3 py-2 rounded ${isActive?'bg-brand-red':''}`}>New Customer</NavLink>
+          <div className="mt-2 text-[11px] uppercase text-gray-400 px-1">Inventory</div>
+          <NavLink to="/inventory/suppliers" className={({isActive})=>`px-3 py-2 rounded ${isActive?'bg-brand-red':''}`}>Suppliers</NavLink>
+          <NavLink to="/inventory/products" className={({isActive})=>`px-3 py-2 rounded ${isActive?'bg-brand-red':''}`}>Products</NavLink>
+          <NavLink to="/inventory/orders" className={({isActive})=>`px-3 py-2 rounded ${isActive?'bg-brand-red':''}`}>Orders</NavLink>
+          <div className="mt-2 text-[11px] uppercase text-gray-400 px-1">Projects</div>
+          <NavLink to="/projects" className={({isActive})=>`px-3 py-2 rounded ${isActive?'bg-brand-red':''}`}>Projects</NavLink>
           <NavLink to="/proposals" className={({isActive})=>`px-3 py-2 rounded ${isActive?'bg-brand-red':''}`}>Proposals</NavLink>
+          <div className="mt-2 text-[11px] uppercase text-gray-400 px-1">Settings</div>
+          <NavLink to="/settings" className={({isActive})=>`px-3 py-2 rounded ${isActive?'bg-brand-red':''}`}>System Settings</NavLink>
         </nav>
       </aside>
       <main className="flex-1 min-w-0">
