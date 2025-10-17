@@ -9,11 +9,15 @@ import Profile from './pages/Profile';
 import HomePage from './pages/Home';
 import Customers from './pages/Customers';
 import Inventory from './pages/Inventory';
+import InventorySuppliers from './pages/InventorySuppliers';
+import InventoryProducts from './pages/InventoryProducts';
+import InventoryOrders from './pages/InventoryOrders';
 import Proposals from './pages/Proposals';
 import CustomerDetail from './pages/CustomerDetail';
 import SiteDetail from './pages/SiteDetail';
 import Projects from './pages/Projects';
 import ProjectDetail from './pages/ProjectDetail';
+import SystemSettings from './pages/SystemSettings';
 
 import { getToken } from './lib/api';
 function Home(){ return <Navigate to={getToken()? '/home':'/login'} replace />; }
@@ -32,9 +36,13 @@ export default function App(){
           <Route path="/customers/:id" element={<AppShell><CustomerDetail/></AppShell>} />
           <Route path="/customers/:customerId/sites/:siteId" element={<AppShell><SiteDetail/></AppShell>} />
           <Route path="/inventory" element={<AppShell><Inventory/></AppShell>} />
+          <Route path="/inventory/suppliers" element={<AppShell><InventorySuppliers/></AppShell>} />
+          <Route path="/inventory/products" element={<AppShell><InventoryProducts/></AppShell>} />
+          <Route path="/inventory/orders" element={<AppShell><InventoryOrders/></AppShell>} />
           <Route path="/proposals" element={<AppShell><Proposals/></AppShell>} />
           <Route path="/projects" element={<AppShell><Projects/></AppShell>} />
           <Route path="/projects/:id" element={<AppShell><ProjectDetail/></AppShell>} />
+          <Route path="/settings" element={<AppShell><SystemSettings/></AppShell>} />
         </Route>
         <Route path="*" element={<Navigate to={getToken()? '/home':'/login'} replace />} />
       </Routes>
