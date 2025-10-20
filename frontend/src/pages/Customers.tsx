@@ -91,7 +91,7 @@ function ClientRow({ c, statusColorMap }:{ c: Client, statusColorMap: Record<str
   return (
     <div className="p-3 flex items-center justify-between">
       <div className="flex items-center gap-3 min-w-0">
-        <img src={avatarUrl} className="w-8 h-8 rounded-full border object-cover"/>
+        <img src={avatarUrl} className="w-12 h-12 rounded-lg border object-cover"/>
         <div className="min-w-0">
           <div className="font-medium truncate">{c.display_name||c.name||c.id}</div>
           {c.address_line1 && <div className="text-xs text-gray-700 truncate">{String(c.address_line1)}</div>}
