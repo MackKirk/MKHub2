@@ -23,6 +23,10 @@ export default function Customers(){
 
   return (
     <div>
+      <div className="mb-3 flex items-center justify-between">
+        <h1 className="text-2xl font-bold">Customers</h1>
+        <Link to="/customers/new" className="px-4 py-2 rounded bg-brand-red text-white">New Customer</Link>
+      </div>
       <div className="mb-3 rounded-xl border bg-white p-3">
         <div className="grid md:grid-cols-4 gap-2 items-end">
           <div>
@@ -48,31 +52,32 @@ export default function Customers(){
         </div>
       </div>
 
-      <div className="rounded-xl border bg-white overflow-hidden">
-        <table className="w-full text-sm">
-          <thead className="bg-gray-50">
-            <tr>
-              <th className="text-left p-2">Name</th>
-              <th className="text-left p-2">City</th>
-              <th className="text-left p-2">Province</th>
-              <th className="text-left p-2">Created</th>
-              <th className="text-left p-2 w-32"></th>
-            </tr>
-          </thead>
-          <tbody>
-            {isLoading ? (
-              <tr><td colSpan={5} className="p-4"><div className="h-6 bg-gray-100 animate-pulse rounded"/></td></tr>
-            ) : (data||[]).map(c => (
-              <tr key={c.id} className="border-t">
-                <td className="p-2">{c.display_name||c.name||c.id}</td>
-                <td className="p-2">{c.city||''}</td>
-                <td className="p-2">{c.province||''}</td>
-                <td className="p-2">{(c.created_at||'').slice(0,10)}</td>
-                <td className="p-2 text-right"><Link className="px-3 py-1.5 rounded bg-brand-red text-white" to={`/customers/${encodeURIComponent(c.id)}`}>Open</Link></td>
-              </tr>
+      <div className="rounded-xl border bg-white">
+        {isLoading ? (
+          <div className="p-4"><div className="h-6 bg-gray-100 animate-pulse rounded"/></div>
+        ) : (
+          <div className="divide-y">
+            {(data||[]).map(c => (
+              <div key={c.id} className="p-3 flex items-center justify-between">
+                <div className="flex items-center gap-3 min-w-0">
+                  <img src="/ui/assets/login/logo-light.svg" className="w-8 h-8 rounded-full border"/>
+                  <div className="min-w-0">
+                    <div className="font-medium truncate">{c.display_name||c.name||c.id}</div>
+                    {(c as any).address_line1 && <div className="text-xs text-gray-700 truncate">{String((c as any).address_line1)}</div>}
+                    <div className="text-xs text-gray-600 truncate">{[c.city, c.province].filter(Boolean).join(', ')}</div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3 text-sm">
+                  <span className="text-gray-600">Status:</span>
+                  <span className="px-2 py-0.5 rounded-full border text-gray-700 bg-gray-50">{String((c as any).client_status||'—')}</span>
+                  <span className="text-gray-600">Type:</span>
+                  <span className="px-2 py-0.5 rounded-full border text-gray-700 bg-gray-50">{String((c as any).client_type||'—')}</span>
+                  <Link className="ml-2 px-3 py-1.5 rounded bg-brand-red text-white" to={`/customers/${encodeURIComponent(c.id)}`}>Edit</Link>
+                </div>
+              </div>
             ))}
-          </tbody>
-        </table>
+          </div>
+        )}
       </div>
     </div>
   );
