@@ -33,7 +33,7 @@ def list_settings(list_name: str, db: Session = Depends(get_db)):
 
 
 @router.post("/{list_name}")
-def create_setting_item(list_name: str, label: str, value: str = "", sort_index: Optional[int] = None, db: Session = Depends(get_db), _=Depends(require_permissions("users:write"))):
+def create_setting_item(list_name: str, label: str, value: str = "", sort_index: Optional[int] = None, abbr: Optional[str] = None, color: Optional[str] = None, db: Session = Depends(get_db), _=Depends(require_permissions("users:write"))):
     lst = db.query(SettingList).filter(SettingList.name == list_name).first()
     if not lst:
         lst = SettingList(name=list_name)
@@ -43,7 +43,12 @@ def create_setting_item(list_name: str, label: str, value: str = "", sort_index:
     if sort_index is None:
         last = db.query(SettingItem).filter(SettingItem.list_id == lst.id).order_by(SettingItem.sort_index.desc()).first()
         sort_index = ((last.sort_index or 0) + 1) if last and (last.sort_index is not None) else 0
-    it = SettingItem(list_id=lst.id, label=label, value=value, sort_index=sort_index)
+    meta = {}
+    if abbr:
+        meta["abbr"] = abbr
+    if color:
+        meta["color"] = color
+    it = SettingItem(list_id=lst.id, label=label, value=value, sort_index=sort_index, meta=meta or None)
     db.add(it)
     db.commit()
     return {"id": str(it.id)}
@@ -60,7 +65,7 @@ def delete_setting_item(list_name: str, item_id: str, db: Session = Depends(get_
 
 
 @router.put("/{list_name}/{item_id}")
-def update_setting_item(list_name: str, item_id: str, label: str = None, value: str = None, sort_index: int | None = None, db: Session = Depends(get_db), _=Depends(require_permissions("users:write"))):
+def update_setting_item(list_name: str, item_id: str, label: str = None, value: str = None, sort_index: int | None = None, abbr: Optional[str] = None, color: Optional[str] = None, db: Session = Depends(get_db), _=Depends(require_permissions("users:write"))):
     lst = db.query(SettingList).filter(SettingList.name == list_name).first()
     if not lst:
         return {"status": "ok"}
@@ -75,6 +80,13 @@ def update_setting_item(list_name: str, item_id: str, label: str = None, value: 
         it.value = value
     if sort_index is not None:
         it.sort_index = sort_index
+    # update meta
+    meta = dict(it.meta or {})
+    if abbr is not None:
+        meta["abbr"] = abbr
+    if color is not None:
+        meta["color"] = color
+    it.meta = meta or None
     db.commit()
     # Propagate label rename to referencing records (non-destructive; only on rename, not on delete)
     if label_changed and label:

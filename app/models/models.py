@@ -143,6 +143,8 @@ class Project(Base):
     date_start: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     date_eta: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     date_end: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    # Visual progress percentage 0-100
+    progress: Mapped[Optional[int]] = mapped_column(Integer)
     cost_estimated: Mapped[Optional[int]] = mapped_column(BigInteger)
     cost_actual: Mapped[Optional[int]] = mapped_column(BigInteger)
     service_value: Mapped[Optional[int]] = mapped_column(BigInteger)
@@ -343,6 +345,8 @@ class SettingItem(Base):
     label: Mapped[str] = mapped_column(String(255), nullable=False)
     value: Mapped[Optional[str]] = mapped_column(String(255))
     sort_index: Mapped[int] = mapped_column(Integer, default=0)
+    # Optional metadata for richer lists (e.g., { abbr: "OPS" })
+    meta: Mapped[Optional[dict]] = mapped_column(JSON)
 
 
 # Extended employee profile linked to users for onboarding

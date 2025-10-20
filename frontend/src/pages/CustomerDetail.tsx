@@ -96,28 +96,6 @@ export default function CustomerDetail(){
                     </div>
                   </div>
                   <div>
-                    <div className="flex items-center justify-between mb-2"><h3 className="font-semibold">Recent Sites</h3><button onClick={()=>setTab('sites')} className="text-sm px-3 py-1.5 rounded bg-brand-red text-white">View all</button></div>
-                    <div className="grid md:grid-cols-3 gap-4">
-                      {(sites||[]).slice(0,3).map(s=>{
-                        const filesForSite = (fileBySite[s.id||'']||[]);
-                        const cover = filesForSite.find(f=> String(f.category||'')==='site-cover-derived') || filesForSite.find(f=> (f.is_image===true) || String(f.content_type||'').startsWith('image/'));
-                        const src = cover? `/files/${cover.file_object_id}/thumbnail?w=600` : '/ui/assets/login/logo-light.svg';
-                        return (
-                          <Link to={`/customers/${encodeURIComponent(String(id||''))}/sites/${encodeURIComponent(String(s.id||''))}`} key={String(s.id)} className="group rounded-xl border overflow-hidden bg-white block">
-                            <div className="aspect-square w-full bg-gray-100">
-                              <img className="w-full h-full object-cover" src={src} />
-                            </div>
-                            <div className="p-3">
-                              <div className="font-semibold text-base group-hover:underline">{s.site_name||'Site'}</div>
-                              <div className="text-sm text-gray-600 truncate">{s.site_address_line1||''}</div>
-                            </div>
-                          </Link>
-                        );
-                      })}
-                      {(!(sites||[]).length) && <div className="text-sm text-gray-600">No sites</div>}
-                    </div>
-                  </div>
-                  <div>
                     <div className="flex items-center justify-between mb-2"><h3 className="font-semibold">Recent Projects</h3><button onClick={()=>setTab('projects')} className="text-sm px-3 py-1.5 rounded bg-brand-red text-white">View all</button></div>
                     <div className="grid md:grid-cols-3 gap-4">
                       {(projects||[]).slice(0,3).map(p=> (
@@ -130,6 +108,28 @@ export default function CustomerDetail(){
                         </div>
                       ))}
                       {(!(projects||[]).length) && <div className="text-sm text-gray-600">No projects</div>}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="flex items-center justify-between mb-2"><h3 className="font-semibold">Recent Sites</h3><button onClick={()=>setTab('sites')} className="text-sm px-3 py-1.5 rounded bg-brand-red text-white">View all</button></div>
+                    <div className="grid md:grid-cols-3 gap-4">
+                      {(sites||[]).slice(0,3).map(s=>{
+                        const filesForSite = (fileBySite[s.id||'']||[]);
+                        const cover = filesForSite.find(f=> String(f.category||'')==='site-cover-derived') || filesForSite.find(f=> (f.is_image===true) || String(f.content_type||'').startsWith('image/'));
+                        const src = cover? `/files/${cover.file_object_id}/thumbnail?w=600` : '/ui/assets/login/logo-light.svg';
+                        return (
+                          <Link to={`/customers/${encodeURIComponent(String(id||''))}/sites/${encodeURIComponent(String(s.id||''))}`} key={String(s.id)} className="group rounded-xl border overflow-hidden bg-white block">
+                            <div className="h-40 w-full bg-gray-100">
+                              <img className="w-full h-full object-cover" src={src} />
+                            </div>
+                            <div className="p-3">
+                              <div className="font-semibold text-base group-hover:underline">{s.site_name||'Site'}</div>
+                              <div className="text-sm text-gray-600 truncate">{s.site_address_line1||''}</div>
+                            </div>
+                          </Link>
+                        );
+                      })}
+                      {(!(sites||[]).length) && <div className="text-sm text-gray-600">No sites</div>}
                     </div>
                   </div>
                 </div>
@@ -288,19 +288,24 @@ export default function CustomerDetail(){
                     <button onClick={async()=>{ const nm = prompt('Project name'); if(!nm) return; try{ const created:any = await api('POST','/projects', { name: nm, client_id: id }); toast.success('Project created'); if(created?.id){ location.href = `/projects/${encodeURIComponent(String(created.id))}`; } }catch(_e){ toast.error('Failed to create'); } }} className="px-3 py-1.5 rounded bg-brand-red text-white">New Project</button>
                   </div>
                   <div className="grid md:grid-cols-3 gap-4">
-                    {(projects||[]).map(p=> (
-                      <div key={p.id} className="rounded-xl border bg-white overflow-hidden">
-                        <div className="h-28 bg-gray-100 relative">
-                          <button onClick={()=>setProjectPicker({ open:true, projectId: String(p.id) })} className="absolute right-2 top-2 text-xs px-2 py-1 rounded bg-black/70 text-white">Change cover</button>
-                        </div>
-                        <div className="p-3 text-sm">
-                          <div className="font-semibold">{p.name||'Project'}</div>
-                          <div className="text-gray-600">{p.code||''}</div>
-                          <div className="text-[11px] text-gray-500 mt-1">{(p.date_start||p.created_at||'').slice(0,10)}</div>
-                          <div className="mt-3 text-right"><Link to={`/projects/${encodeURIComponent(String(p.id))}`} className="px-3 py-1.5 rounded bg-brand-red text-white">Open</Link></div>
-                        </div>
-                      </div>
-                    ))}
+                    {(projects||[]).map(p=> {
+                      const pfiles = (files||[]).filter(f=> String((f as any).project_id||'')===String(p.id));
+                      const cover = pfiles.find(f=> String(f.category||'')==='project-cover-derived') || pfiles.find(f=> (f.is_image===true) || String(f.content_type||'').startsWith('image/'));
+                      const src = cover? `/files/${cover.file_object_id}/thumbnail?w=600` : '/ui/assets/login/logo-light.svg';
+                      return (
+                        <Link to={`/projects/${encodeURIComponent(String(p.id))}`} key={p.id} className="group rounded-xl border bg-white overflow-hidden block">
+                          <div className="aspect-square bg-gray-100 relative">
+                            <img className="w-full h-full object-cover" src={src} />
+                            <button onClick={(e)=>{ e.preventDefault(); e.stopPropagation(); setProjectPicker({ open:true, projectId: String(p.id) }); }} className="absolute right-2 top-2 text-xs px-2 py-1 rounded bg-black/70 text-white">Change cover</button>
+                          </div>
+                          <div className="p-3 text-sm">
+                            <div className="font-semibold text-base group-hover:underline">{p.name||'Project'}</div>
+                            <div className="text-gray-600">{p.code||''}</div>
+                            <div className="text-[11px] text-gray-500 mt-1">{(p.date_start||p.created_at||'').slice(0,10)}</div>
+                          </div>
+                        </Link>
+                      );
+                    })}
                     {(!projects||!projects.length) && <div className="text-sm text-gray-600">No projects</div>}
                   </div>
                 </div>
