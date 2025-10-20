@@ -81,7 +81,7 @@ function ClientRow({ c, statusColorMap }:{ c: Client, statusColorMap: Record<str
   const avatarUrl = logo? `/files/${logo.file_object_id}/thumbnail?w=96${logo.uploaded_at?`&t=${encodeURIComponent(logo.uploaded_at)}`:''}` : '/ui/assets/login/logo-light.svg';
   const status = String(c.client_status||'').trim();
   const color = status ? (statusColorMap[status] || '') : '';
-  const badgeStyle: any = color ? { backgroundColor: `${color}20`, borderColor: color, color: color } : {};
+  const badgeStyle: any = color ? { backgroundColor: color, borderColor: 'transparent', color: '#000' } : {};
   return (
     <div className="p-3 flex items-center justify-between">
       <div className="flex items-center gap-3 min-w-0">

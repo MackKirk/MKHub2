@@ -57,10 +57,10 @@ export default function SystemSettings(){
                     ) : (
                       <input className="border rounded px-2 py-1 text-sm w-40" placeholder="Value" value={e.value||''} onChange={ev=> setEdits(s=>({ ...s, [it.id]: { ...(s[it.id]||it), value: ev.target.value } }))} />
                     )}
-                    <input type="number" className="border rounded px-2 py-1 text-sm w-20" title="Sort index" value={e.sort_index??0} onChange={ev=> setEdits(s=>({ ...s, [it.id]: { ...(s[it.id]||it), sort_index: Number(ev.target.value||0) } }))} />
+                    {/* sort index is now auto-assigned and not user-editable */}
                   </div>
                   <div className="flex items-center gap-2">
-                    <button onClick={async()=>{ try{ await api('PUT', `/settings/${encodeURIComponent(sel)}/${encodeURIComponent(it.id)}?label=${encodeURIComponent(e.label||'')}&value=${encodeURIComponent(e.value||'')}&sort_index=${encodeURIComponent(String(e.sort_index??0))}`); await refetch(); toast.success('Saved'); }catch(_e){ toast.error('Failed'); } }} className="px-2 py-1 rounded bg-black text-white">Save</button>
+                    <button onClick={async()=>{ try{ await api('PUT', `/settings/${encodeURIComponent(sel)}/${encodeURIComponent(it.id)}?label=${encodeURIComponent(e.label||'')}&value=${encodeURIComponent(e.value||'')}`); await refetch(); toast.success('Saved'); }catch(_e){ toast.error('Failed'); } }} className="px-2 py-1 rounded bg-black text-white">Save</button>
                     <button onClick={async()=>{ if(!confirm('Delete item?')) return; try{ await api('DELETE', `/settings/${encodeURIComponent(sel)}/${encodeURIComponent(it.id)}`); await refetch(); toast.success('Deleted'); }catch(_e){ toast.error('Failed'); } }} className="px-2 py-1 rounded bg-gray-100">Delete</button>
                   </div>
                 </div>

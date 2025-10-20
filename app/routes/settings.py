@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
-from typing import List
+from typing import List, Optional
 
 from ..db import get_db
 from ..models.models import SettingList, SettingItem
@@ -33,12 +33,16 @@ def list_settings(list_name: str, db: Session = Depends(get_db)):
 
 
 @router.post("/{list_name}")
-def create_setting_item(list_name: str, label: str, value: str = "", sort_index: int = 0, db: Session = Depends(get_db), _=Depends(require_permissions("users:write"))):
+def create_setting_item(list_name: str, label: str, value: str = "", sort_index: Optional[int] = None, db: Session = Depends(get_db), _=Depends(require_permissions("users:write"))):
     lst = db.query(SettingList).filter(SettingList.name == list_name).first()
     if not lst:
         lst = SettingList(name=list_name)
         db.add(lst)
         db.flush()
+    # Auto-assign sort_index if not provided to keep stable ordering and avoid renumbering
+    if sort_index is None:
+        last = db.query(SettingItem).filter(SettingItem.list_id == lst.id).order_by(SettingItem.sort_index.desc()).first()
+        sort_index = ((last.sort_index or 0) + 1) if last and (last.sort_index is not None) else 0
     it = SettingItem(list_id=lst.id, label=label, value=value, sort_index=sort_index)
     db.add(it)
     db.commit()
