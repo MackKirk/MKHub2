@@ -1,11 +1,12 @@
-from sqlalchemy.orm import declarative_base, sessionmaker, scoped_session
+from sqlalchemy.orm import declarative_base, sessionmaker
 from sqlalchemy import create_engine
 from .config import settings
 
 
 engine = create_engine(settings.database_url, future=True, pool_pre_ping=True)
 
-SessionLocal = scoped_session(sessionmaker(bind=engine, autoflush=False, autocommit=False, future=True))
+# IMPORTANT: do not use scoped_session with async frameworks; create a fresh Session per request
+SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, future=True)
 
 Base = declarative_base()
 

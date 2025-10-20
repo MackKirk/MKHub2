@@ -76,9 +76,15 @@ export default function Customers(){
 }
 
 function ClientRow({ c, statusColorMap }:{ c: Client, statusColorMap: Record<string,string> }){
-  const { data:files } = useQuery({ queryKey:['clientFilesForList', c.id], queryFn: ()=>api<ClientFile[]>('GET', `/clients/${encodeURIComponent(c.id)}/files`) });
+  const { data:files, isError } = useQuery({
+    queryKey:['clientFilesForList', c.id],
+    queryFn: ()=>api<ClientFile[]>('GET', `/clients/${encodeURIComponent(c.id)}/files`),
+    enabled: !!c.id,
+    retry: 0,
+    staleTime: 5 * 60 * 1000,
+  });
   const logo = (files||[]).find(f=> !f.site_id && String(f.category||'').toLowerCase()==='client-logo-derived');
-  const avatarUrl = logo? `/files/${logo.file_object_id}/thumbnail?w=96${logo.uploaded_at?`&t=${encodeURIComponent(logo.uploaded_at)}`:''}` : '/ui/assets/login/logo-light.svg';
+  const avatarUrl = (!isError && logo)? `/files/${logo.file_object_id}/thumbnail?w=96${logo.uploaded_at?`&t=${encodeURIComponent(logo.uploaded_at)}`:''}` : '/ui/assets/login/logo-light.svg';
   const status = String(c.client_status||'').trim();
   const color = status ? (statusColorMap[status] || '') : '';
   const badgeStyle: any = color ? { backgroundColor: color, borderColor: 'transparent', color: '#000' } : {};

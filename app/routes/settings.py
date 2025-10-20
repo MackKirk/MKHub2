@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from typing import List, Optional
 
 from ..db import get_db
-from ..models.models import SettingList, SettingItem
+from ..models.models import SettingList, SettingItem, Client
 from ..auth.security import require_permissions
 
 router = APIRouter(prefix="/settings", tags=["settings"])
@@ -67,6 +67,8 @@ def update_setting_item(list_name: str, item_id: str, label: str = None, value: 
     it = db.query(SettingItem).filter(SettingItem.list_id == lst.id, SettingItem.id == item_id).first()
     if not it:
         return {"status": "ok"}
+    old_label = it.label
+    label_changed = label is not None and label != old_label
     if label is not None:
         it.label = label
     if value is not None:
@@ -74,4 +76,12 @@ def update_setting_item(list_name: str, item_id: str, label: str = None, value: 
     if sort_index is not None:
         it.sort_index = sort_index
     db.commit()
+    # Propagate label rename to referencing records (non-destructive; only on rename, not on delete)
+    if label_changed and label:
+        if list_name == "client_statuses":
+            db.query(Client).filter(Client.client_status == old_label).update({Client.client_status: label}, synchronize_session=False)
+            db.commit()
+        elif list_name == "client_types":
+            db.query(Client).filter(Client.client_type == old_label).update({Client.client_type: label}, synchronize_session=False)
+            db.commit()
     return {"status": "ok"}
