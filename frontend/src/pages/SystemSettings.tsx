@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
 
 type Item = { id:string, label:string, value?:string, sort_index?:number };
@@ -12,6 +12,9 @@ export default function SystemSettings(){
   const items = (data||{})[sel]||[];
   const [label, setLabel] = useState('');
   const [value, setValue] = useState('');
+  const [edits, setEdits] = useState<Record<string, Item>>({});
+  const isColorList = useMemo(()=> sel.toLowerCase().includes('status'), [sel]);
+  const getEdit = (it: Item): Item => edits[it.id] || it;
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -31,20 +34,38 @@ export default function SystemSettings(){
             <h4 className="font-semibold">{sel}</h4>
             <div className="flex items-center gap-2">
               <input className="border rounded px-2 py-1 text-sm" placeholder="Label" value={label} onChange={e=>setLabel(e.target.value)} />
-              <input className="border rounded px-2 py-1 text-sm" placeholder="Value" value={value} onChange={e=>setValue(e.target.value)} />
-              <button onClick={async()=>{ if(!label){ toast.error('Label required'); return; } try{ await api('POST', `/settings/${encodeURIComponent(sel)}`, undefined, { 'Content-Type':'application/x-www-form-urlencoded' }); /* fallback if server refuses JSON */ }catch{} try{ await api('POST', `/settings/${encodeURIComponent(sel)}?label=${encodeURIComponent(label)}&value=${encodeURIComponent(value)}`); setLabel(''); setValue(''); await refetch(); toast.success('Added'); }catch(_e){ toast.error('Failed'); } }} className="px-3 py-1.5 rounded bg-brand-red text-white">Add</button>
+              {isColorList ? (
+                <input type="color" title="Color" className="border rounded w-10 h-8 p-0" value={value||'#cccccc'} onChange={e=>setValue(e.target.value)} />
+              ) : (
+                <input className="border rounded px-2 py-1 text-sm" placeholder="Value" value={value} onChange={e=>setValue(e.target.value)} />
+              )}
+              <button onClick={async()=>{ if(!label){ toast.error('Label required'); return; } try{ await api('POST', `/settings/${encodeURIComponent(sel)}`, undefined, { 'Content-Type':'application/x-www-form-urlencoded' }); }catch{} try{ await api('POST', `/settings/${encodeURIComponent(sel)}?label=${encodeURIComponent(label)}&value=${encodeURIComponent(value)}`); setLabel(''); setValue(''); await refetch(); toast.success('Added'); }catch(_e){ toast.error('Failed'); } }} className="px-3 py-1.5 rounded bg-brand-red text-white">Add</button>
             </div>
           </div>
           <div className="rounded border overflow-hidden divide-y">
-            {isLoading? <div className="p-3"><div className="h-6 bg-gray-100 animate-pulse rounded"/></div> : items.length? items.map(it=> (
-              <div key={it.id} className="px-3 py-2 text-sm flex items-center justify-between">
-                <div>
-                  <div className="font-medium">{it.label}</div>
-                  {it.value? <div className="text-[11px] text-gray-500">{it.value}</div> : null}
+            {isLoading? <div className="p-3"><div className="h-6 bg-gray-100 animate-pulse rounded"/></div> : items.length? items.map(it=> {
+              const e = getEdit(it);
+              return (
+                <div key={it.id} className="px-3 py-2 text-sm flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2 flex-1 min-w-0">
+                    <input className="border rounded px-2 py-1 text-sm w-48" value={e.label} onChange={ev=> setEdits(s=>({ ...s, [it.id]: { ...(s[it.id]||it), label: ev.target.value } }))} />
+                    {isColorList ? (
+                      <>
+                        <input type="color" title="Color" className="border rounded w-10 h-8 p-0" value={e.value||'#cccccc'} onChange={ev=> setEdits(s=>({ ...s, [it.id]: { ...(s[it.id]||it), value: ev.target.value } }))} />
+                        <span className="text-[11px] text-gray-500">{e.value}</span>
+                      </>
+                    ) : (
+                      <input className="border rounded px-2 py-1 text-sm w-40" placeholder="Value" value={e.value||''} onChange={ev=> setEdits(s=>({ ...s, [it.id]: { ...(s[it.id]||it), value: ev.target.value } }))} />
+                    )}
+                    <input type="number" className="border rounded px-2 py-1 text-sm w-20" title="Sort index" value={e.sort_index??0} onChange={ev=> setEdits(s=>({ ...s, [it.id]: { ...(s[it.id]||it), sort_index: Number(ev.target.value||0) } }))} />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button onClick={async()=>{ try{ await api('PUT', `/settings/${encodeURIComponent(sel)}/${encodeURIComponent(it.id)}?label=${encodeURIComponent(e.label||'')}&value=${encodeURIComponent(e.value||'')}&sort_index=${encodeURIComponent(String(e.sort_index??0))}`); await refetch(); toast.success('Saved'); }catch(_e){ toast.error('Failed'); } }} className="px-2 py-1 rounded bg-black text-white">Save</button>
+                    <button onClick={async()=>{ if(!confirm('Delete item?')) return; try{ await api('DELETE', `/settings/${encodeURIComponent(sel)}/${encodeURIComponent(it.id)}`); await refetch(); toast.success('Deleted'); }catch(_e){ toast.error('Failed'); } }} className="px-2 py-1 rounded bg-gray-100">Delete</button>
+                  </div>
                 </div>
-                <button onClick={async()=>{ if(!confirm('Delete item?')) return; try{ await api('DELETE', `/settings/${encodeURIComponent(sel)}/${encodeURIComponent(it.id)}`); await refetch(); toast.success('Deleted'); }catch(_e){ toast.error('Failed'); } }} className="px-2 py-1 rounded bg-gray-100">Delete</button>
-              </div>
-            )) : <div className="p-3 text-sm text-gray-600">No items</div>}
+              );
+            }) : <div className="p-3 text-sm text-gray-600">No items</div>}
           </div>
         </div>
       </div>

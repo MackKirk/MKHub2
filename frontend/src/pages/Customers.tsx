@@ -3,7 +3,8 @@ import { api } from '@/lib/api';
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 
-type Client = { id:string, name?:string, display_name?:string, city?:string, province?:string, status_id?:string, created_at?:string };
+type Client = { id:string, name?:string, display_name?:string, city?:string, province?:string, client_status?:string, client_type?:string, address_line1?:string, created_at?:string };
+type ClientFile = { id:string, file_object_id:string, is_image?:boolean, content_type?:string, site_id?:string, category?:string, original_name?:string, uploaded_at?:string };
 
 export default function Customers(){
   const [q, setQ] = useState('');
@@ -20,6 +21,13 @@ export default function Customers(){
     return s? ('?'+s): '';
   }, [q, city, status, ctype]);
   const { data, isLoading, refetch, isFetching } = useQuery({ queryKey:['clients', queryString], queryFn: ()=>api<Client[]>('GET', `/clients${queryString}`) });
+  const { data:settings } = useQuery({ queryKey:['settings'], queryFn: ()=>api<any>('GET','/settings') });
+  const statusColorMap: Record<string,string> = useMemo(()=>{
+    const list = (settings||{}).client_statuses as {label?:string, value?:string}[]|undefined;
+    const m: Record<string,string> = {};
+    (list||[]).forEach(it=>{ const k = String(it.label||'').trim(); const v = String(it.value||'').trim(); if(k){ m[k] = v || ''; } });
+    return m;
+  }, [settings]);
 
   return (
     <div>
@@ -58,26 +66,38 @@ export default function Customers(){
         ) : (
           <div className="divide-y">
             {(data||[]).map(c => (
-              <div key={c.id} className="p-3 flex items-center justify-between">
-                <div className="flex items-center gap-3 min-w-0">
-                  <img src="/ui/assets/login/logo-light.svg" className="w-8 h-8 rounded-full border"/>
-                  <div className="min-w-0">
-                    <div className="font-medium truncate">{c.display_name||c.name||c.id}</div>
-                    {(c as any).address_line1 && <div className="text-xs text-gray-700 truncate">{String((c as any).address_line1)}</div>}
-                    <div className="text-xs text-gray-600 truncate">{[c.city, c.province].filter(Boolean).join(', ')}</div>
-                  </div>
-                </div>
-                <div className="flex items-center gap-3 text-sm">
-                  <span className="text-gray-600">Status:</span>
-                  <span className="px-2 py-0.5 rounded-full border text-gray-700 bg-gray-50">{String((c as any).client_status||'—')}</span>
-                  <span className="text-gray-600">Type:</span>
-                  <span className="px-2 py-0.5 rounded-full border text-gray-700 bg-gray-50">{String((c as any).client_type||'—')}</span>
-                  <Link className="ml-2 px-3 py-1.5 rounded bg-brand-red text-white" to={`/customers/${encodeURIComponent(c.id)}`}>Edit</Link>
-                </div>
-              </div>
+              <ClientRow key={c.id} c={c} statusColorMap={statusColorMap} />
             ))}
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+function ClientRow({ c, statusColorMap }:{ c: Client, statusColorMap: Record<string,string> }){
+  const { data:files } = useQuery({ queryKey:['clientFilesForList', c.id], queryFn: ()=>api<ClientFile[]>('GET', `/clients/${encodeURIComponent(c.id)}/files`) });
+  const logo = (files||[]).find(f=> !f.site_id && String(f.category||'').toLowerCase()==='client-logo-derived');
+  const avatarUrl = logo? `/files/${logo.file_object_id}/thumbnail?w=96${logo.uploaded_at?`&t=${encodeURIComponent(logo.uploaded_at)}`:''}` : '/ui/assets/login/logo-light.svg';
+  const status = String(c.client_status||'').trim();
+  const color = status ? (statusColorMap[status] || '') : '';
+  const badgeStyle: any = color ? { backgroundColor: `${color}20`, borderColor: color, color: color } : {};
+  return (
+    <div className="p-3 flex items-center justify-between">
+      <div className="flex items-center gap-3 min-w-0">
+        <img src={avatarUrl} className="w-8 h-8 rounded-full border object-cover"/>
+        <div className="min-w-0">
+          <div className="font-medium truncate">{c.display_name||c.name||c.id}</div>
+          {c.address_line1 && <div className="text-xs text-gray-700 truncate">{String(c.address_line1)}</div>}
+          <div className="text-xs text-gray-600 truncate">{[c.city, c.province].filter(Boolean).join(', ')}</div>
+        </div>
+      </div>
+      <div className="flex items-center gap-3 text-sm">
+        <span className="text-gray-600">Status:</span>
+        <span className="px-2 py-0.5 rounded-full border" style={badgeStyle}>{status || '—'}</span>
+        <span className="text-gray-600">Type:</span>
+        <span className="px-2 py-0.5 rounded-full border text-gray-700 bg-gray-50">{String(c.client_type||'—')}</span>
+        <Link className="ml-2 px-3 py-1.5 rounded bg-brand-red text-white" to={`/customers/${encodeURIComponent(c.id)}`}>Edit</Link>
       </div>
     </div>
   );
