@@ -136,13 +136,13 @@ export default function CustomerDetail(){
                     <Field label="Type">
                       <select className="w-full border rounded px-3 py-2" value={form.client_type||''} onChange={e=>set('client_type', e.target.value)}>
                         <option value="">Select...</option>
-                        {(settings?.client_types||[]).map((t:any)=> <option key={t.value||t.label} value={t.value||t.label}>{t.label}</option>)}
+                        {(settings?.client_types||[]).map((t:any)=> <option key={t.value||t.label} value={t.label}>{t.label}</option>)}
                       </select>
                     </Field>
                     <Field label="Status">
                       <select className="w-full border rounded px-3 py-2" value={form.client_status||''} onChange={e=>set('client_status', e.target.value)}>
                         <option value="">Select...</option>
-                        {(settings?.client_statuses||[]).map((t:any)=> <option key={t.value||t.label} value={t.value||t.label}>{t.label}</option>)}
+                        {(settings?.client_statuses||[]).map((t:any)=> <option key={t.value||t.label} value={t.label}>{t.label}</option>)}
                       </select>
                     </Field>
                     <Field label="Lead source"><input className="w-full border rounded px-3 py-2" value={form.lead_source||''} onChange={e=>set('lead_source', e.target.value)} /></Field>
