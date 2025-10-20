@@ -47,7 +47,7 @@ async function login(ev){
       body:JSON.stringify({identifier:idEl.value,password:pwEl.value, remember_me: document.getElementById('remember').checked})
     });
     const j = await r.json();
-    if(j && j.access_token){ localStorage.setItem('user_token', j.access_token); location.href='/ui/home.html'; }
+    if(j && j.access_token){ localStorage.setItem('user_token', j.access_token); location.href='/home'; }
     else { out.textContent = (j && (j.detail||j.message)) ? (j.detail||j.message) : JSON.stringify(j,null,2); }
   }catch(e){ out.textContent = 'Failed to login'; }
 }
