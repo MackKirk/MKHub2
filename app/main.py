@@ -198,7 +198,8 @@ def create_app() -> FastAPI:
         if os.path.isdir(FRONT_DIST):
             index_path = os.path.join(FRONT_DIST, "index.html")
             if os.path.exists(index_path):
-                return FileResponse(index_path)
+                # Serve index.html with no-cache to avoid stale shell after deployments
+                return FileResponse(index_path, headers={"Cache-Control":"no-cache, no-store, must-revalidate"})
         return RedirectResponse(url="/ui/index.html")
 
     # After all API routers, provide SPA catch-all for deep links
@@ -210,8 +211,11 @@ def create_app() -> FastAPI:
             # If a built asset exists, serve it; otherwise serve index.html
             asset_path = os.path.join(FRONT_DIST, full_path)
             if os.path.isfile(asset_path):
-                return FileResponse(asset_path)
-            return FileResponse(INDEX_PATH)
+                # Cache static assets briefly; index is handled separately
+                headers = {"Cache-Control":"public, max-age=3600"}
+                return FileResponse(asset_path, headers=headers)
+            # For SPA routes like /home, serve index.html with no-cache
+            return FileResponse(INDEX_PATH, headers={"Cache-Control":"no-cache, no-store, must-revalidate"})
 
     return app
 
