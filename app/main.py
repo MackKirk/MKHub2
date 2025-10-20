@@ -188,6 +188,9 @@ def create_app() -> FastAPI:
                                        "updated_at TIMESTAMPTZ,\n"
                                        "updated_by UUID\n"
                                        ")"))
+                    # New columns used by UI
+                    conn.execute(text("ALTER TABLE setting_items ADD COLUMN IF NOT EXISTS meta JSONB"))
+                    conn.execute(text("ALTER TABLE projects ADD COLUMN IF NOT EXISTS progress INTEGER"))
         except Exception:
             pass
         # Removed bootstrap admin creation: admins should be granted via roles after onboarding
