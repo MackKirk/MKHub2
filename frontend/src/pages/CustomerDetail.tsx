@@ -98,15 +98,22 @@ export default function CustomerDetail(){
                   <div>
                     <div className="flex items-center justify-between mb-2"><h3 className="font-semibold">Recent Sites</h3><button onClick={()=>setTab('sites')} className="text-sm px-3 py-1.5 rounded bg-brand-red text-white">View all</button></div>
                     <div className="grid md:grid-cols-3 gap-4">
-                      {(sites||[]).slice(0,3).map(s=> (
-                        <div key={s.id} className="rounded-xl border overflow-hidden bg-white">
-                          <div className="h-28 bg-gray-100"/>
-                          <div className="p-3 text-sm">
-                            <div className="font-semibold">{s.site_name||'Site'}</div>
-                            <div className="text-gray-600">{s.site_address_line1||''}</div>
-                          </div>
-                        </div>
-                      ))}
+                      {(sites||[]).slice(0,3).map(s=>{
+                        const filesForSite = (fileBySite[s.id||'']||[]);
+                        const cover = filesForSite.find(f=> String(f.category||'')==='site-cover-derived') || filesForSite.find(f=> (f.is_image===true) || String(f.content_type||'').startsWith('image/'));
+                        const src = cover? `/files/${cover.file_object_id}/thumbnail?w=600` : '/ui/assets/login/logo-light.svg';
+                        return (
+                          <Link to={`/customers/${encodeURIComponent(String(id||''))}/sites/${encodeURIComponent(String(s.id||''))}`} key={String(s.id)} className="group rounded-xl border overflow-hidden bg-white block">
+                            <div className="aspect-square w-full bg-gray-100">
+                              <img className="w-full h-full object-cover" src={src} />
+                            </div>
+                            <div className="p-3">
+                              <div className="font-semibold text-base group-hover:underline">{s.site_name||'Site'}</div>
+                              <div className="text-sm text-gray-600 truncate">{s.site_address_line1||''}</div>
+                            </div>
+                          </Link>
+                        );
+                      })}
                       {(!(sites||[]).length) && <div className="text-sm text-gray-600">No sites</div>}
                     </div>
                   </div>
@@ -258,18 +265,17 @@ export default function CustomerDetail(){
                       const img = cover || filesForSite.find(f=> (f.is_image===true) || String(f.content_type||'').startsWith('image/'));
                       const src = img? `/files/${img.file_object_id}/thumbnail?w=600` : '/ui/assets/login/logo-light.svg';
                       return (
-                        <div key={s.id} className="rounded-xl border overflow-hidden bg-white">
-                          <div className="h-40 bg-gray-100 relative">
+                        <Link to={`/customers/${encodeURIComponent(String(id||''))}/sites/${encodeURIComponent(String(s.id))}`} key={String(s.id)} className="group rounded-xl border overflow-hidden bg-white block">
+                          <div className="aspect-square w-full bg-gray-100 relative">
                             <img className="w-full h-full object-cover" src={src} />
-                            <button onClick={()=>setSitePicker({ open:true, siteId: String(s.id) })} className="absolute right-2 top-2 text-xs px-2 py-1 rounded bg-black/70 text-white">Change cover</button>
+                            <button onClick={(e)=>{ e.preventDefault(); e.stopPropagation(); setSitePicker({ open:true, siteId: String(s.id) }); }} className="absolute right-2 top-2 text-xs px-2 py-1 rounded bg-black/70 text-white">Change cover</button>
                           </div>
-                          <div className="p-3 text-sm">
-                            <div className="font-semibold">{s.site_name||'Site'}</div>
-                            <div className="text-gray-600">{s.site_address_line1||''}</div>
-                            <div className="text-gray-500">{s.site_city||''} {s.site_province||''} {s.site_country||''}</div>
-                            <div className="mt-3 text-right"><Link to={`/customers/${encodeURIComponent(String(id||''))}/sites/${encodeURIComponent(String(s.id))}`} className="px-3 py-1.5 rounded bg-brand-red text-white">Open</Link></div>
+                          <div className="p-3">
+                            <div className="font-semibold text-base group-hover:underline">{s.site_name||'Site'}</div>
+                            <div className="text-sm text-gray-600 truncate">{s.site_address_line1||''}</div>
+                            <div className="text-xs text-gray-500">{s.site_city||''} {s.site_province||''} {s.site_country||''}</div>
                           </div>
-                        </div>
+                        </Link>
                       );
                     })}
                   </div>
