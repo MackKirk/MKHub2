@@ -447,10 +447,18 @@ def update_my_profile(payload: EmployeeProfileInput, user: User = Depends(get_cu
         ep = EmployeeProfile(user_id=user.id)
         db.add(ep)
 
-    data = payload.dict(exclude_unset=True)
-    for k in ("date_of_birth", "hire_date", "termination_date"):
-        if k in data:
-            data[k] = _parse_dt(data.get(k))
+    # Allow self to update only personal/emergency contact fields, not job/company controlled fields
+    allowed_keys = {
+        "preferred_name","phone","mobile_phone","gender","marital_status","date_of_birth","nationality",
+        "address_line1","address_line2","city","province","postal_code","country",
+        "sin_number","work_permit_status","visa_status",
+        "emergency_contact_name","emergency_contact_relationship","emergency_contact_phone",
+        "profile_photo_file_id",
+    }
+    incoming = payload.dict(exclude_unset=True)
+    data = { k: v for k, v in incoming.items() if k in allowed_keys }
+    if "date_of_birth" in data:
+        data["date_of_birth"] = _parse_dt(data.get("date_of_birth"))
 
     for field, value in data.items():
         setattr(ep, field, value)
@@ -562,6 +570,7 @@ def update_user_profile(user_id: str, payload: EmployeeProfileInput, db: Session
     if not ep:
         ep = EmployeeProfile(user_id=u.id)
         db.add(ep)
+    # Admin/editor can update all fields. Keep behavior, but normalize dates
     data = payload.dict(exclude_unset=True)
     for k in ("date_of_birth","hire_date","termination_date"):
         if k in data and isinstance(data[k], str):

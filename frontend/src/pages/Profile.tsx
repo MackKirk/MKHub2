@@ -112,17 +112,17 @@ export default function Profile(){
                 </div>
               )}
               {tab==='job' && (
-                <div className="grid md:grid-cols-2 gap-4">
-                  <Field label="Hire date (YYYY-MM-DD)"><input value={form.hire_date} onChange={e=>set('hire_date', e.target.value)} className="w-full rounded-lg border px-3 py-2"/></Field>
-                  <Field label="Termination date (YYYY-MM-DD)"><input value={form.termination_date} onChange={e=>set('termination_date', e.target.value)} className="w-full rounded-lg border px-3 py-2"/></Field>
-                  <Field label="Job title"><input value={form.job_title} onChange={e=>set('job_title', e.target.value)} className="w-full rounded-lg border px-3 py-2"/></Field>
-                  <Field label="Division"><input value={form.division} onChange={e=>set('division', e.target.value)} className="w-full rounded-lg border px-3 py-2"/></Field>
-                  <Field label="Work email"><input value={form.work_email} onChange={e=>set('work_email', e.target.value)} className="w-full rounded-lg border px-3 py-2"/></Field>
-                  <Field label="Work phone"><input value={form.work_phone} onChange={e=>set('work_phone', e.target.value)} className="w-full rounded-lg border px-3 py-2"/></Field>
-                  <Field label="Manager user id"><input value={form.manager_user_id} onChange={e=>set('manager_user_id', e.target.value)} className="w-full rounded-lg border px-3 py-2"/></Field>
-                  <Field label="Pay rate"><input value={form.pay_rate} onChange={e=>set('pay_rate', e.target.value)} className="w-full rounded-lg border px-3 py-2"/></Field>
-                  <Field label="Pay type"><input value={form.pay_type} onChange={e=>set('pay_type', e.target.value)} className="w-full rounded-lg border px-3 py-2"/></Field>
-                  <Field label="Employment type"><input value={form.employment_type} onChange={e=>set('employment_type', e.target.value)} className="w-full rounded-lg border px-3 py-2"/></Field>
+                <div className="grid md:grid-cols-2 gap-4 opacity-70 pointer-events-none select-none">
+                  <Field label="Hire date (YYYY-MM-DD)"><input value={form.hire_date} readOnly className="w-full rounded-lg border px-3 py-2 bg-gray-50"/></Field>
+                  <Field label="Termination date (YYYY-MM-DD)"><input value={form.termination_date} readOnly className="w-full rounded-lg border px-3 py-2 bg-gray-50"/></Field>
+                  <Field label="Job title"><input value={form.job_title} readOnly className="w-full rounded-lg border px-3 py-2 bg-gray-50"/></Field>
+                  <Field label="Division"><input value={form.division} readOnly className="w-full rounded-lg border px-3 py-2 bg-gray-50"/></Field>
+                  <Field label="Work email"><input value={form.work_email} readOnly className="w-full rounded-lg border px-3 py-2 bg-gray-50"/></Field>
+                  <Field label="Work phone"><input value={form.work_phone} readOnly className="w-full rounded-lg border px-3 py-2 bg-gray-50"/></Field>
+                  <Field label="Manager user id"><input value={form.manager_user_id} readOnly className="w-full rounded-lg border px-3 py-2 bg-gray-50"/></Field>
+                  <Field label="Pay rate"><input value={form.pay_rate} readOnly className="w-full rounded-lg border px-3 py-2 bg-gray-50"/></Field>
+                  <Field label="Pay type"><input value={form.pay_type} readOnly className="w-full rounded-lg border px-3 py-2 bg-gray-50"/></Field>
+                  <Field label="Employment type"><input value={form.employment_type} readOnly className="w-full rounded-lg border px-3 py-2 bg-gray-50"/></Field>
                 </div>
               )}
               {tab==='emergency' && (
