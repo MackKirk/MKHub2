@@ -60,7 +60,7 @@ export default function ProjectDetail(){
               <div className="grid md:grid-cols-3 gap-4">
                 <div className="rounded-xl border bg-white p-4">
                   <h4 className="font-semibold mb-2">Client</h4>
-                  <div className="text-sm text-gray-700">{proj?.client_id||'-'}</div>
+                  <ClientName clientId={String(proj?.client_id||'')} />
                   <div className="text-sm text-gray-500">{proj?.address_city||''} {proj?.address_province||''} {proj?.address_country||''}</div>
                 </div>
                 <ProjectQuickEdit projectId={String(id)} proj={proj||{}} settings={settings||{}} />
@@ -104,7 +104,7 @@ export default function ProjectDetail(){
       </div>
 
       {pickerOpen && (
-        <ImagePicker isOpen={true} onClose={()=>setPickerOpen(false)} clientId={String(proj?.client_id||'')} targetWidth={800} targetHeight={300} allowEdit={true} onConfirm={async(blob)=>{
+        <ImagePicker isOpen={true} onClose={()=>setPickerOpen(false)} clientId={String(proj?.client_id||'')} targetWidth={800} targetHeight={800} allowEdit={true} onConfirm={async(blob)=>{
           try{
             const up:any = await api('POST','/files/upload',{ project_id:id, client_id:proj?.client_id||null, employee_id:null, category_id:'project-cover-derived', original_name:'project-cover.jpg', content_type:'image/jpeg' });
             await fetch(up.upload_url, { method:'PUT', headers:{ 'Content-Type':'image/jpeg', 'x-ms-blob-type':'BlockBlob' }, body: blob });
@@ -281,6 +281,78 @@ function PhotosTab({ files }:{ files: ProjectFile[] }){
   );
 }
 
+function ClientName({ clientId }:{ clientId:string }){
+  const { data } = useQuery({ queryKey:['client-name', clientId], queryFn: ()=> clientId? api<any>('GET', `/clients/${clientId}`): Promise.resolve(null) });
+  const name = data?.display_name || data?.name || clientId || '-';
+  return <div className="text-sm text-gray-700">{name}</div>;
+}
+
+function AddDivisionDropdown({ divisions, selected, onAdd }:{ divisions:any[], selected:string[], onAdd:(id:string)=>void }){
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState('');
+  const list = (divisions||[]).filter((d:any)=>{
+    const id = String(d.id||d.label||d.value);
+    const txt = (String(d.label||'') + ' ' + String(d.meta?.abbr||'')).toLowerCase();
+    return !selected.includes(id) && txt.includes(q.toLowerCase());
+  });
+  return (
+    <div className="relative">
+      <button onClick={()=>setOpen(v=>!v)} className="px-2 py-1 rounded-full border text-xs bg-white">+ Add Division</button>
+      {open && (
+        <div className="absolute z-50 mt-2 w-56 rounded-lg border bg-white shadow-lg p-2">
+          <input className="w-full border rounded px-2 py-1 text-sm mb-2" placeholder="Search" value={q} onChange={e=>setQ(e.target.value)} />
+          <div className="max-h-56 overflow-auto">
+            {list.length? list.map((d:any)=>{
+              const id = String(d.id||d.label||d.value);
+              const bg = d.meta?.color || '#eef2f7';
+              return (
+                <button key={id} onClick={()=>{ onAdd(id); setOpen(false); setQ(''); }} className="w-full text-left px-2 py-1 rounded flex items-center gap-2 hover:bg-gray-50">
+                  <span className="inline-block w-3 h-3 rounded-full" style={{ backgroundColor: bg }} />
+                  <span className="text-sm">{d.meta?.abbr || d.label}</span>
+                </button>
+              );
+            }) : <div className="text-sm text-gray-600 px-2 py-1">No results</div>}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function EmployeeSelect({ label, value, onChange, employees }:{ label:string, value?:string, onChange:(v:string)=>void, employees:any[] }){
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState('');
+  const current = (employees||[]).find((e:any)=> String(e.id)===String(value||''));
+  const filtered = (employees||[]).filter((e:any)=>{
+    const t = (String(e.name||'') + ' ' + String(e.username||'')).toLowerCase();
+    return t.includes(q.toLowerCase());
+  });
+  return (
+    <div>
+      <label className="text-xs text-gray-600">{label}</label>
+      <div className="relative">
+        <button onClick={()=>setOpen(v=>!v)} className="w-full border rounded px-2 py-1.5 flex items-center gap-2 bg-white">
+          {current?.profile_photo_file_id ? (<img src={`/files/${current.profile_photo_file_id}/thumbnail?w=64`} className="w-6 h-6 rounded-full object-cover"/>) : (<span className="w-6 h-6 rounded-full bg-gray-200 inline-block" />)}
+          <span className="text-sm truncate">{current? (current.name || current.username) : 'Select...'}</span>
+        </button>
+        {open && (
+          <div className="absolute z-50 mt-1 w-72 rounded-lg border bg-white shadow-lg p-2">
+            <input className="w-full border rounded px-2 py-1 text-sm mb-2" placeholder="Search" value={q} onChange={e=>setQ(e.target.value)} />
+            <div className="max-h-60 overflow-auto">
+              {filtered.length? filtered.map((e:any)=> (
+                <button key={e.id} onClick={()=>{ onChange(String(e.id)); setOpen(false); setQ(''); }} className="w-full text-left px-2 py-1 rounded flex items-center gap-2 hover:bg-gray-50">
+                  {e.profile_photo_file_id ? (<img src={`/files/${e.profile_photo_file_id}/thumbnail?w=64`} className="w-6 h-6 rounded-full object-cover"/>) : (<span className="w-6 h-6 rounded-full bg-gray-200 inline-block" />)}
+                  <span className="text-sm">{e.name || e.username}</span>
+                </button>
+              )) : <div className="text-sm text-gray-600 px-2 py-1">No results</div>}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function ProjectQuickEdit({ projectId, proj, settings }:{ projectId:string, proj:any, settings:any }){
   const [status, setStatus] = useState<string>(proj?.status_label||'');
   const [divs, setDivs] = useState<string[]>(Array.isArray(proj?.division_ids)? proj.division_ids : []);
@@ -289,6 +361,7 @@ function ProjectQuickEdit({ projectId, proj, settings }:{ projectId:string, proj
   const [lead, setLead] = useState<string>(proj?.onsite_lead_id||'');
   const statuses = (settings?.project_statuses||[]) as any[];
   const divisions = (settings?.divisions||[]) as any[];
+  const { data:employees } = useQuery({ queryKey:['employees'], queryFn: ()=>api<any[]>('GET','/employees') });
   const toggleDiv = (id:string)=> setDivs(prev=> prev.includes(id)? prev.filter(x=>x!==id) : [...prev, id]);
   return (
     <div className="rounded-xl border bg-white p-4">
@@ -308,22 +381,22 @@ function ProjectQuickEdit({ projectId, proj, settings }:{ projectId:string, proj
         <div className="col-span-2">
           <label className="text-xs text-gray-600">Divisions</label>
           <div className="flex flex-wrap gap-2 mt-1">
-            {divisions.map((d:any)=>{
-              const id = String(d.id||d.label||d.value);
-              const active = divs.includes(id);
-              const style:any = active? { backgroundColor: d.meta?.color||'#eef2f7' } : {};
-              return <button key={id} onClick={()=>toggleDiv(id)} className={`px-2 py-1 rounded-full border text-xs ${active? '':'bg-white'}`} style={style}>{d.meta?.abbr||d.label}</button>;
+            {divs.map((id)=>{
+              const d = divisions.find((x:any)=> String(x.id||x.label||x.value)===id);
+              const bg = d?.meta?.color || '#eef2f7';
+              const ab = d?.meta?.abbr || d?.label || id;
+              return (
+                <span key={id} className="px-2 py-1 rounded-full border text-xs flex items-center gap-1" style={{ backgroundColor: bg }}>
+                  {ab}
+                  <button onClick={()=> setDivs(prev=> prev.filter(x=>x!==id))} className="ml-1 text-[10px]">✕</button>
+                </span>
+              );
             })}
+            <AddDivisionDropdown divisions={divisions} selected={divs} onAdd={(id)=> setDivs(prev=> prev.includes(id)? prev : [...prev, id])} />
           </div>
         </div>
-        <div>
-          <label className="text-xs text-gray-600">Estimator</label>
-          <input className="w-full border rounded px-2 py-1.5" value={estimator} onChange={e=>setEstimator(e.target.value)} />
-        </div>
-        <div>
-          <label className="text-xs text-gray-600">On-site lead</label>
-          <input className="w-full border rounded px-2 py-1.5" value={lead} onChange={e=>setLead(e.target.value)} />
-        </div>
+        <EmployeeSelect label="Estimator" value={estimator} onChange={setEstimator} employees={employees||[]} />
+        <EmployeeSelect label="On-site lead" value={lead} onChange={setLead} employees={employees||[]} />
         <div className="col-span-2 text-right">
           <button onClick={async()=>{ try{ await api('PATCH', `/projects/${projectId}`, { status_label: status||null, division_ids: divs, progress, estimator_id: estimator||null, onsite_lead_id: lead||null }); toast.success('Saved'); location.reload(); }catch(_e){ toast.error('Failed to save'); } }} className="px-3 py-2 rounded bg-brand-red text-white">Save</button>
         </div>
@@ -331,5 +404,6 @@ function ProjectQuickEdit({ projectId, proj, settings }:{ projectId:string, proj
     </div>
   );
 }
+
 
 
