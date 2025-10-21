@@ -181,6 +181,15 @@ def create_app() -> FastAPI:
                                        ")"))
                     # Ensure employee notes table exists
                     conn.execute(text("CREATE TABLE IF NOT EXISTS employee_notes (\n"
+                                       "id UUID PRIMARY KEY,\n"
+                                       "user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,\n"
+                                       "category VARCHAR(100),\n"
+                                       "text VARCHAR(2000) NOT NULL,\n"
+                                       "created_at TIMESTAMPTZ DEFAULT NOW(),\n"
+                                       "created_by UUID REFERENCES users(id),\n"
+                                       "updated_at TIMESTAMPTZ,\n"
+                                       "updated_by UUID\n"
+                                       ")"))
                     # Extend project reports with audit fields
                     conn.execute(text("ALTER TABLE project_reports ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW()"))
                     conn.execute(text("ALTER TABLE project_reports ADD COLUMN IF NOT EXISTS created_by UUID"))
@@ -203,15 +212,6 @@ def create_app() -> FastAPI:
                                        "action VARCHAR(50) NOT NULL,\n"
                                        "changes JSONB,\n"
                                        "timestamp TIMESTAMPTZ DEFAULT NOW()\n"
-                                       ")"))
-                                       "id UUID PRIMARY KEY,\n"
-                                       "user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,\n"
-                                       "category VARCHAR(100),\n"
-                                       "text VARCHAR(2000) NOT NULL,\n"
-                                       "created_at TIMESTAMPTZ DEFAULT NOW(),\n"
-                                       "created_by UUID REFERENCES users(id),\n"
-                                       "updated_at TIMESTAMPTZ,\n"
-                                       "updated_by UUID\n"
                                        ")"))
                     # New columns used by UI
                     conn.execute(text("ALTER TABLE setting_items ADD COLUMN IF NOT EXISTS meta JSONB"))
