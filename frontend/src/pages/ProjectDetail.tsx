@@ -385,10 +385,13 @@ function TimesheetTab({ projectId }:{ projectId:string }){
     const s = p.toString();
     return s? ('?'+s): '';
   }, [month, userFilter]);
-  const { data, refetch } = useQuery({ queryKey:['timesheet', projectId, qs], queryFn: ()=> api<any[]>(`GET`, `/projects/${projectId}/timesheet${qs}`) });
+  const { data, refetch } = useQuery({ queryKey:['timesheet', projectId, qs], queryFn: ()=> api<any[]>(`GET`, `/projects/${projectId}/timesheet${qs}`), refetchInterval: 10000 });
   const entries = data||[];
   const [workDate, setWorkDate] = useState<string>(new Date().toISOString().slice(0,10));
   const [hours, setHours] = useState<string>('8');
+  const [start, setStart] = useState<string>('');
+  const [end, setEnd] = useState<string>('');
+  const [targetUser, setTargetUser] = useState<string>('');
   const [notes, setNotes] = useState<string>('');
   const minutesTotal = (entries||[]).reduce((acc:number, e:any)=> acc + Number(e.minutes||0), 0);
   const hoursTotal = (minutesTotal/60).toFixed(1);
@@ -411,11 +414,13 @@ function TimesheetTab({ projectId }:{ projectId:string }){
       <div className="rounded-xl border bg-white p-4">
         <h4 className="font-semibold mb-2">Add Time Entry</h4>
         <div className="grid gap-2 text-sm">
+          <div><label className="text-xs text-gray-600">Employee (admin)</label><select className="w-full border rounded px-3 py-2" value={targetUser} onChange={e=>setTargetUser(e.target.value)}><option value="">Me</option>{(employees||[]).map((emp:any)=> <option key={emp.id} value={emp.id}>{emp.name||emp.username}</option>)}</select></div>
           <div><label className="text-xs text-gray-600">Date</label><input type="date" className="w-full border rounded px-3 py-2" value={workDate} onChange={e=>setWorkDate(e.target.value)} /></div>
-          <div><label className="text-xs text-gray-600">Hours</label><input className="w-full border rounded px-3 py-2" value={hours} onChange={e=>setHours(e.target.value)} /></div>
-          <div><label className="text-xs text-gray-600">Notes</label><input className="w-full border rounded px-3 py-2" value={notes} onChange={e=>setNotes(e.target.value)} /></div>
+          <div className="grid grid-cols-2 gap-2"><div><label className="text-xs text-gray-600">Start</label><input type="time" className="w-full border rounded px-3 py-2" value={start} onChange={e=>setStart(e.target.value)} /></div><div><label className="text-xs text-gray-600">End</label><input type="time" className="w-full border rounded px-3 py-2" value={end} onChange={e=>setEnd(e.target.value)} /></div></div>
+          <div><label className="text-xs text-gray-600">Hours (fallback)</label><input className="w-full border rounded px-3 py-2" value={hours} onChange={e=>setHours(e.target.value)} /></div>
+          <div><label className="text-xs text-gray-600">Notes (required)</label><input className="w-full border rounded px-3 py-2" value={notes} onChange={e=>setNotes(e.target.value)} placeholder="Justification" /></div>
         </div>
-        <div className="mt-3 text-right"><button onClick={async()=>{ try{ const mins = Math.round(Number(hours||'0')*60); await api('POST', `/projects/${projectId}/timesheet`, { work_date: workDate, minutes: mins, notes }); setNotes(''); await refetch(); toast.success('Saved'); }catch(_e){ toast.error('Failed'); } }} className="px-3 py-2 rounded bg-brand-red text-white">Add</button></div>
+        <div className="mt-3 text-right"><button onClick={async()=>{ try{ if(!notes.trim()){ toast.error('Notes required'); return; } let mins = Math.round(Number(hours||'0')*60); if(start && end){ const [sh,sm] = start.split(':').map(Number); const [eh,em] = end.split(':').map(Number); mins = Math.max(0,(eh*60+em)-(sh*60+sm)); } const payload:any = { work_date: workDate, minutes: mins, notes, start_time: start||null, end_time: end||null }; if(targetUser) payload.user_id = targetUser; await api('POST', `/projects/${projectId}/timesheet`, payload); setNotes(''); setStart(''); setEnd(''); await refetch(); toast.success('Saved'); }catch(_e){ toast.error('Failed'); } }} className="px-3 py-2 rounded bg-brand-red text-white">Add</button></div>
       </div>
       <div className="md:col-span-2 rounded-xl border bg-white">
         <div className="p-3 flex items-center justify-between gap-3">
@@ -427,21 +432,36 @@ function TimesheetTab({ projectId }:{ projectId:string }){
           </div>
         </div>
         <div className="border-t divide-y">
-          {entries.length? entries.map((e:any)=> (
+          {entries.length? entries.map((e:any)=> {
+            const now = new Date();
+            const endDt = e.end_time? new Date(`${e.work_date}T${e.end_time}`) : new Date(`${e.work_date}T23:59:00`);
+            const created = e.created_at? new Date(e.created_at) : null;
+            const future = endDt.getTime() > now.getTime();
+            let offIcon = '';
+            if(created){
+              const wdEnd = new Date(`${e.work_date}T23:59:00`);
+              const diffH = (created.getTime()-wdEnd.getTime())/3600000;
+              if(diffH>0){ if(diffH<=12) offIcon='🟢'; else if(diffH<=24) offIcon='🟡'; else offIcon='🔴'; }
+            }
+            const futIcon = future? '⏳' : '';
+            return (
             <div key={e.id} className="px-3 py-2 text-sm flex items-center justify-between">
               <div className="flex items-center gap-3">
                 {e.user_avatar_file_id? <img src={`/files/${e.user_avatar_file_id}/thumbnail?w=64`} className="w-6 h-6 rounded-full"/> : <span className="w-6 h-6 rounded-full bg-gray-200 inline-block"/>}
                 <div className="w-24 text-gray-700 truncate">{e.user_name||''}</div>
                 <div className="w-12 text-gray-600">{String(e.work_date).slice(5,10)}</div>
+                <div className="w-20 text-gray-600">{(e.start_time||'--:--')} - {(e.end_time||'--:--')}</div>
                 <div className="w-14 font-medium">{(e.minutes/60).toFixed(2)}h</div>
                 <div className="text-gray-600">{e.notes||''}</div>
+                {(futIcon||offIcon) && <span title={future? 'Future time': 'Logged after day end'}>{futIcon}{offIcon}</span>}
               </div>
               <div className="flex items-center gap-2">
                 <button onClick={async()=>{ const val = prompt('New hours', (e.minutes/60).toFixed(2)); if(val==null) return; const mins = Math.round(Number(val||'0')*60); try{ await api('PATCH', `/projects/${projectId}/timesheet/${e.id}`, { minutes: mins }); await refetch(); }catch(_e){ toast.error('Not authorized'); } }} className="px-2 py-1 rounded bg-gray-100">Edit</button>
                 <button onClick={async()=>{ if(!confirm('Delete entry?')) return; await api('DELETE', `/projects/${projectId}/timesheet/${e.id}`); await refetch(); }} className="px-2 py-1 rounded bg-gray-100">Delete</button>
               </div>
             </div>
-          )) : <div className="p-3 text-sm text-gray-600">No time entries</div>}
+          );
+          }) : <div className="p-3 text-sm text-gray-600">No time entries</div>}
         </div>
       </div>
       <TimeAudit projectId={projectId} month={month} />

@@ -7,6 +7,7 @@ from sqlalchemy import (
     String,
     DateTime,
     Date,
+    Time,
     Boolean,
     ForeignKey,
     Table,
@@ -189,6 +190,8 @@ class ProjectTimeEntry(Base):
     project_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"))
     user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"))
     work_date: Mapped[Date] = mapped_column(Date, nullable=False)
+    start_time: Mapped[Optional[Time]] = mapped_column(Time(timezone=False))
+    end_time: Mapped[Optional[Time]] = mapped_column(Time(timezone=False))
     minutes: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     notes: Mapped[Optional[str]] = mapped_column(String(1000))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)

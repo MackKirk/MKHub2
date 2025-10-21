@@ -199,6 +199,8 @@ def create_app() -> FastAPI:
                                        "project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,\n"
                                        "user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,\n"
                                        "work_date DATE NOT NULL,\n"
+                                       "start_time TIME,\n"
+                                       "end_time TIME,\n"
                                        "minutes INTEGER NOT NULL DEFAULT 0,\n"
                                        "notes VARCHAR(1000),\n"
                                        "created_at TIMESTAMPTZ DEFAULT NOW(),\n"

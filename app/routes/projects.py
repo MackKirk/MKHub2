@@ -267,8 +267,11 @@ def list_timesheet(project_id: str, month: Optional[str] = None, user_id: Option
             "user_name": (getattr(ep,'preferred_name',None) or ((' '.join([getattr(ep,'first_name',None) or '', getattr(ep,'last_name',None) or '']).strip()) if ep else '') or u.username),
             "user_avatar_file_id": str(getattr(ep,'profile_photo_file_id')) if (ep and getattr(ep,'profile_photo_file_id', None)) else None,
             "work_date": r.work_date.isoformat(),
+            "start_time": getattr(r,'start_time', None).isoformat() if getattr(r,'start_time', None) else None,
+            "end_time": getattr(r,'end_time', None).isoformat() if getattr(r,'end_time', None) else None,
             "minutes": r.minutes,
             "notes": r.notes,
+            "created_at": r.created_at.isoformat() if getattr(r,'created_at', None) else None,
         })
     return out
 
@@ -279,6 +282,9 @@ def create_time_entry(project_id: str, payload: dict, db: Session = Depends(get_
     work_date = payload.get("work_date")
     minutes = int(payload.get("minutes") or 0)
     notes = payload.get("notes")
+    start_time = payload.get("start_time")
+    end_time = payload.get("end_time")
+    target_user_id = payload.get("user_id") or str(user.id)
     if not work_date:
         from fastapi import HTTPException
         raise HTTPException(status_code=400, detail="work_date required")
@@ -287,7 +293,23 @@ def create_time_entry(project_id: str, payload: dict, db: Session = Depends(get_
     except Exception:
         from fastapi import HTTPException
         raise HTTPException(status_code=400, detail="invalid date")
-    row = ProjectTimeEntry(project_id=project_id, user_id=user.id, work_date=d, minutes=minutes, notes=notes, created_by=user.id)
+    from datetime import time as _time
+    st = None; et = None
+    try:
+        if start_time: st = _time.fromisoformat(start_time)
+    except Exception:
+        st = None
+    try:
+        if end_time: et = _time.fromisoformat(end_time)
+    except Exception:
+        et = None
+    # allow admins to create entries on behalf of others (timesheet:write already enforced)
+    try:
+        from uuid import UUID as _UUID
+        target_uuid = _UUID(str(target_user_id))
+    except Exception:
+        target_uuid = user.id
+    row = ProjectTimeEntry(project_id=project_id, user_id=target_uuid, work_date=d, start_time=st, end_time=et, minutes=minutes, notes=notes, created_by=user.id)
     db.add(row)
     db.commit()
     db.refresh(row)
@@ -308,6 +330,8 @@ def update_time_entry(project_id: str, entry_id: str, payload: dict, db: Session
     work_date = payload.get("work_date")
     minutes = payload.get("minutes")
     notes = payload.get("notes")
+    start_time = payload.get("start_time")
+    end_time = payload.get("end_time")
     if work_date is not None:
         try:
             from datetime import datetime as _dt
@@ -321,6 +345,18 @@ def update_time_entry(project_id: str, entry_id: str, payload: dict, db: Session
             pass
     if notes is not None:
         row.notes = notes
+    if start_time is not None:
+        try:
+            from datetime import time as _time
+            row.start_time = _time.fromisoformat(str(start_time)) if start_time else None
+        except Exception:
+            pass
+    if end_time is not None:
+        try:
+            from datetime import time as _time
+            row.end_time = _time.fromisoformat(str(end_time)) if end_time else None
+        except Exception:
+            pass
     db.commit()
     after = {"work_date": row.work_date.isoformat(), "minutes": row.minutes, "notes": row.notes}
     db.add(ProjectTimeEntryLog(entry_id=row.id, project_id=row.project_id, user_id=user.id, action="update", changes={"before": before, "after": after}))
