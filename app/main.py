@@ -84,6 +84,23 @@ def create_app() -> FastAPI:
     # Metrics
     Instrumentator().instrument(app).expose(app)
 
+    # Serve SPA index.html on hard reloads for HTML requests (avoid hitting JSON APIs)
+    @app.middleware("http")
+    async def spa_html_middle(request, call_next):
+        try:
+            accept = request.headers.get("accept", "")
+            path = request.url.path or "/"
+            if "text/html" in accept and request.method == "GET":
+                # Allowlist actual non-SPA paths
+                if not (path.startswith("/api") or path.startswith("/auth") or path.startswith("/files") or path.startswith("/ui") or path.startswith("/assets") or path in {"/favicon.ico","/robots.txt","/metrics"}):
+                    if os.path.isdir(FRONT_DIST):
+                        index_path = os.path.join(FRONT_DIST, "index.html")
+                        if os.path.exists(index_path):
+                            return FileResponse(index_path, headers={"Cache-Control":"no-cache, no-store, must-revalidate"})
+        except Exception:
+            pass
+        return await call_next(request)
+
     @app.on_event("startup")
     def _startup():
         # Ensure local SQLite directory exists
