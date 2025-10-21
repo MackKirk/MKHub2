@@ -6,6 +6,7 @@ from sqlalchemy import (
     Column,
     String,
     DateTime,
+    Date,
     Boolean,
     ForeignKey,
     Table,
@@ -176,7 +177,34 @@ class ProjectReport(Base):
     description: Mapped[Optional[str]] = mapped_column(String(2000))
     images: Mapped[Optional[dict]] = mapped_column(JSON)
     status: Mapped[Optional[str]] = mapped_column(String(100))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    created_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
 
+
+# Employee time entries per project
+class ProjectTimeEntry(Base):
+    __tablename__ = "project_time_entries"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    project_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"))
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"))
+    work_date: Mapped[Date] = mapped_column(Date, nullable=False)
+    minutes: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    notes: Mapped[Optional[str]] = mapped_column(String(1000))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    created_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
+
+
+class ProjectTimeEntryLog(Base):
+    __tablename__ = "project_time_entry_logs"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    entry_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("project_time_entries.id", ondelete="CASCADE"))
+    project_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"))
+    user_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+    action: Mapped[str] = mapped_column(String(50))  # create|update|delete
+    changes: Mapped[Optional[dict]] = mapped_column(JSON)
+    timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
 
 class Client(Base):
     __tablename__ = "clients"

@@ -3,7 +3,8 @@ from sqlalchemy.orm import Session
 from typing import List, Optional
 
 from ..db import get_db
-from ..models.models import Project, ClientFile, FileObject, ProjectUpdate, ProjectReport
+from ..models.models import Project, ClientFile, FileObject, ProjectUpdate, ProjectReport, ProjectTimeEntry, ProjectTimeEntryLog, User, EmployeeProfile
+from ..auth.security import get_current_user, require_permissions
 
 
 router = APIRouter(prefix="/projects", tags=["projects"])
@@ -207,12 +208,14 @@ def list_project_reports(project_id: str, db: Session = Depends(get_db)):
             "description": getattr(r, 'description', None),
             "images": getattr(r, 'images', None),
             "status": getattr(r, 'status', None),
+            "created_at": getattr(r, 'created_at', None).isoformat() if getattr(r, 'created_at', None) else None,
+            "created_by": str(getattr(r, 'created_by', None)) if getattr(r, 'created_by', None) else None,
         })
     return out
 
 
 @router.post("/{project_id}/reports")
-def create_project_report(project_id: str, payload: dict, db: Session = Depends(get_db)):
+def create_project_report(project_id: str, payload: dict, db: Session = Depends(get_db), user=Depends(get_current_user)):
     row = ProjectReport(
         project_id=project_id,
         category_id=payload.get("category_id"),
@@ -220,6 +223,7 @@ def create_project_report(project_id: str, payload: dict, db: Session = Depends(
         description=payload.get("description"),
         images=payload.get("images"),
         status=payload.get("status"),
+        created_by=user.id,
     )
     db.add(row)
     db.commit()
@@ -235,4 +239,140 @@ def delete_project_report(project_id: str, report_id: str, db: Session = Depends
     db.delete(row)
     db.commit()
     return {"status": "ok"}
+
+
+# ---- Timesheets ----
+@router.get("/{project_id}/timesheet")
+def list_timesheet(project_id: str, month: Optional[str] = None, user_id: Optional[str] = None, db: Session = Depends(get_db), _=Depends(require_permissions("timesheet:read"))):
+    # join with users and employee_profiles for display
+    q = db.query(ProjectTimeEntry, User, EmployeeProfile).join(User, User.id == ProjectTimeEntry.user_id).outerjoin(EmployeeProfile, EmployeeProfile.user_id == User.id).filter(ProjectTimeEntry.project_id == project_id)
+    if month:
+        try:
+            from datetime import datetime
+            dt = datetime.strptime(month+"-01", "%Y-%m-%d").date()
+            y = dt.year; m = dt.month
+            from sqlalchemy import extract
+            q = q.filter(extract('year', ProjectTimeEntry.work_date) == y, extract('month', ProjectTimeEntry.work_date) == m)
+        except Exception:
+            pass
+    if user_id:
+        q = q.filter(ProjectTimeEntry.user_id == user_id)
+    rows = q.order_by(ProjectTimeEntry.work_date.asc()).all()
+    out = []
+    for r,u,ep in rows:
+        out.append({
+            "id": str(r.id),
+            "project_id": str(r.project_id),
+            "user_id": str(r.user_id),
+            "user_name": (getattr(ep,'preferred_name',None) or ((' '.join([getattr(ep,'first_name',None) or '', getattr(ep,'last_name',None) or '']).strip()) if ep else '') or u.username),
+            "user_avatar_file_id": str(getattr(ep,'profile_photo_file_id')) if (ep and getattr(ep,'profile_photo_file_id', None)) else None,
+            "work_date": r.work_date.isoformat(),
+            "minutes": r.minutes,
+            "notes": r.notes,
+        })
+    return out
+
+
+@router.post("/{project_id}/timesheet")
+def create_time_entry(project_id: str, payload: dict, db: Session = Depends(get_db), user=Depends(get_current_user), _=Depends(require_permissions("timesheet:write"))):
+    from datetime import datetime as _dt
+    work_date = payload.get("work_date")
+    minutes = int(payload.get("minutes") or 0)
+    notes = payload.get("notes")
+    if not work_date:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=400, detail="work_date required")
+    try:
+        d = _dt.strptime(work_date, "%Y-%m-%d").date()
+    except Exception:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=400, detail="invalid date")
+    row = ProjectTimeEntry(project_id=project_id, user_id=user.id, work_date=d, minutes=minutes, notes=notes, created_by=user.id)
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    # log
+    log = ProjectTimeEntryLog(entry_id=row.id, project_id=row.project_id, user_id=user.id, action="create", changes={"minutes": row.minutes, "work_date": row.work_date.isoformat(), "notes": row.notes or None})
+    db.add(log)
+    db.commit()
+    return {"id": str(row.id)}
+
+
+@router.patch("/{project_id}/timesheet/{entry_id}")
+def update_time_entry(project_id: str, entry_id: str, payload: dict, db: Session = Depends(get_db), user=Depends(get_current_user), _=Depends(require_permissions("timesheet:write"))):
+    row = db.query(ProjectTimeEntry).filter(ProjectTimeEntry.id == entry_id, ProjectTimeEntry.project_id == project_id).first()
+    if not row:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="Not found")
+    before = {"work_date": row.work_date.isoformat(), "minutes": row.minutes, "notes": row.notes}
+    work_date = payload.get("work_date")
+    minutes = payload.get("minutes")
+    notes = payload.get("notes")
+    if work_date is not None:
+        try:
+            from datetime import datetime as _dt
+            row.work_date = _dt.strptime(str(work_date), "%Y-%m-%d").date()
+        except Exception:
+            pass
+    if minutes is not None:
+        try:
+            row.minutes = int(minutes)
+        except Exception:
+            pass
+    if notes is not None:
+        row.notes = notes
+    db.commit()
+    after = {"work_date": row.work_date.isoformat(), "minutes": row.minutes, "notes": row.notes}
+    db.add(ProjectTimeEntryLog(entry_id=row.id, project_id=row.project_id, user_id=user.id, action="update", changes={"before": before, "after": after}))
+    db.commit()
+    return {"status":"ok"}
+
+
+@router.delete("/{project_id}/timesheet/{entry_id}")
+def delete_time_entry(project_id: str, entry_id: str, db: Session = Depends(get_db), user=Depends(get_current_user), _=Depends(require_permissions("timesheet:write"))):
+    row = db.query(ProjectTimeEntry).filter(ProjectTimeEntry.id == entry_id, ProjectTimeEntry.project_id == project_id).first()
+    if not row:
+        return {"status":"ok"}
+    db.add(ProjectTimeEntryLog(entry_id=row.id, project_id=row.project_id, user_id=user.id, action="delete", changes=None))
+    db.delete(row)
+    db.commit()
+    return {"status":"ok"}
+
+
+@router.get("/{project_id}/timesheet/logs")
+def list_time_logs(project_id: str, month: Optional[str] = None, user_id: Optional[str] = None, limit: int = 50, offset: int = 0, db: Session = Depends(get_db), _=Depends(require_permissions("timesheet:read"))):
+    q = db.query(ProjectTimeEntryLog, User, EmployeeProfile).outerjoin(User, User.id == ProjectTimeEntryLog.user_id).outerjoin(EmployeeProfile, EmployeeProfile.user_id == User.id).filter(ProjectTimeEntryLog.project_id == project_id)
+    if month:
+        try:
+            from datetime import datetime
+            dt = datetime.strptime(month+"-01", "%Y-%m-%d").date()
+            y = dt.year; m = dt.month
+            from sqlalchemy import extract
+            q = q.filter(extract('year', ProjectTimeEntryLog.timestamp) == y, extract('month', ProjectTimeEntryLog.timestamp) == m)
+        except Exception:
+            pass
+    if user_id:
+        q = q.filter(ProjectTimeEntryLog.user_id == user_id)
+    try:
+        limit = max(1, min(200, int(limit)))
+    except Exception:
+        limit = 50
+    try:
+        offset = max(0, int(offset))
+    except Exception:
+        offset = 0
+    rows = q.order_by(ProjectTimeEntryLog.timestamp.desc()).offset(offset).limit(limit).all()
+    out = []
+    for r,u,ep in rows:
+        out.append({
+            "id": str(r.id),
+            "entry_id": str(r.entry_id),
+            "action": r.action,
+            "timestamp": r.timestamp.isoformat() if r.timestamp else None,
+            "user_id": str(getattr(r,'user_id', '') or '') or None,
+            "user_name": getattr(u,'username', None),
+            "user_avatar_file_id": str(getattr(ep,'profile_photo_file_id')) if (ep and getattr(ep,'profile_photo_file_id', None)) else None,
+            "changes": r.changes or None,
+        })
+    return out
 

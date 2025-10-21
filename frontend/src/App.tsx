@@ -19,6 +19,8 @@ import SiteDetail from './pages/SiteDetail';
 import Projects from './pages/Projects';
 import ProjectDetail from './pages/ProjectDetail';
 import SystemSettings from './pages/SystemSettings';
+import Users from './pages/Users';
+import UserDetail from './pages/UserDetail';
 
 import { getToken } from './lib/api';
 function Home(){ return <Navigate to={getToken()? '/home':'/login'} replace />; }
@@ -45,6 +47,8 @@ export default function App(){
           <Route path="/projects" element={<AppShell><Projects/></AppShell>} />
           <Route path="/projects/:id" element={<AppShell><ProjectDetail/></AppShell>} />
           <Route path="/settings" element={<AppShell><SystemSettings/></AppShell>} />
+          <Route path="/users" element={<AppShell><Users/></AppShell>} />
+          <Route path="/users/:id" element={<AppShell><UserDetail/></AppShell>} />
         </Route>
         <Route path="*" element={<Navigate to={getToken()? '/home':'/login'} replace />} />
       </Routes>

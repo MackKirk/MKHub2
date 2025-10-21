@@ -23,6 +23,7 @@ from .routes.settings import router as settings_router
 from .routes.inventory import router as inventory_router
 from .routes.integrations import router as integrations_router
 from .routes.proposals import router as proposals_router
+from .routes.users import router as users_router
 
 
 def create_app() -> FastAPI:
@@ -55,6 +56,7 @@ def create_app() -> FastAPI:
     app.include_router(integrations_router)
     app.include_router(inventory_router)
     app.include_router(proposals_router)
+    app.include_router(users_router)
     # Legacy UI redirects to new React routes (exact paths)
     legacy_map = {
         "/ui/login.html": "/login",
@@ -179,6 +181,29 @@ def create_app() -> FastAPI:
                                        ")"))
                     # Ensure employee notes table exists
                     conn.execute(text("CREATE TABLE IF NOT EXISTS employee_notes (\n"
+                    # Extend project reports with audit fields
+                    conn.execute(text("ALTER TABLE project_reports ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW()"))
+                    conn.execute(text("ALTER TABLE project_reports ADD COLUMN IF NOT EXISTS created_by UUID"))
+                    # Timesheets
+                    conn.execute(text("CREATE TABLE IF NOT EXISTS project_time_entries (\n"
+                                       "id UUID PRIMARY KEY,\n"
+                                       "project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,\n"
+                                       "user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,\n"
+                                       "work_date DATE NOT NULL,\n"
+                                       "minutes INTEGER NOT NULL DEFAULT 0,\n"
+                                       "notes VARCHAR(1000),\n"
+                                       "created_at TIMESTAMPTZ DEFAULT NOW(),\n"
+                                       "created_by UUID\n"
+                                       ")"))
+                    conn.execute(text("CREATE TABLE IF NOT EXISTS project_time_entry_logs (\n"
+                                       "id UUID PRIMARY KEY,\n"
+                                       "entry_id UUID NOT NULL REFERENCES project_time_entries(id) ON DELETE CASCADE,\n"
+                                       "project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,\n"
+                                       "user_id UUID REFERENCES users(id) ON DELETE SET NULL,\n"
+                                       "action VARCHAR(50) NOT NULL,\n"
+                                       "changes JSONB,\n"
+                                       "timestamp TIMESTAMPTZ DEFAULT NOW()\n"
+                                       ")"))
                                        "id UUID PRIMARY KEY,\n"
                                        "user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,\n"
                                        "category VARCHAR(100),\n"

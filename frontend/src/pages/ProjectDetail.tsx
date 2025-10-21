@@ -17,7 +17,7 @@ export default function ProjectDetail(){
   const { data:files, refetch: refetchFiles } = useQuery({ queryKey:['projectFiles', id], queryFn: ()=>api<ProjectFile[]>('GET', `/projects/${id}/files`) });
   const { data:updates, refetch: refetchUpdates } = useQuery({ queryKey:['projectUpdates', id], queryFn: ()=>api<Update[]>('GET', `/projects/${id}/updates`) });
   const { data:reports, refetch: refetchReports } = useQuery({ queryKey:['projectReports', id], queryFn: ()=>api<Report[]>('GET', `/projects/${id}/reports`) });
-  const [tab, setTab] = useState<'overview'|'updates'|'reports'|'files'|'photos'>('overview');
+  const [tab, setTab] = useState<'overview'|'general'|'reports'|'timesheet'|'files'|'photos'>('overview');
   const [pickerOpen, setPickerOpen] = useState(false);
   const cover = useMemo(()=>{
     const img = (files||[]).find(f=> String(f.category||'')==='project-cover-derived') || (files||[]).find(f=> (f.is_image===true) || String(f.content_type||'').startsWith('image/'));
@@ -44,7 +44,7 @@ export default function ProjectDetail(){
                 </div>
               </div>
               <div className="mt-auto flex gap-3">
-                {(['overview','updates','reports','files','photos'] as const).map(k=> (
+                {(['overview','general','reports','timesheet','files','photos'] as const).map(k=> (
                   <button key={k} onClick={()=>setTab(k)} className={`px-4 py-2 rounded-full ${tab===k?'bg-black text-white':'bg-white text-black'}`}>{k[0].toUpperCase()+k.slice(1)}</button>
                 ))}
               </div>
@@ -84,12 +84,16 @@ export default function ProjectDetail(){
               </div>
             )}
 
-            {tab==='updates' && (
-              <UpdatesTab projectId={String(id)} items={updates||[]} onRefresh={refetchUpdates} />
+            {tab==='general' && (
+              <ProjectGeneralForm projectId={String(id)} proj={proj||{}} onSaved={()=> location.reload()} />
             )}
 
             {tab==='reports' && (
-              <ReportsTab projectId={String(id)} items={reports||[]} onRefresh={refetchReports} />
+              <ReportsTabEnhanced projectId={String(id)} items={reports||[]} onRefresh={refetchReports} />
+            )}
+
+            {tab==='timesheet' && (
+              <TimesheetTab projectId={String(id)} />
             )}
 
             {tab==='files' && (
@@ -146,25 +150,43 @@ function UpdatesTab({ projectId, items, onRefresh }:{ projectId:string, items: U
   );
 }
 
-function ReportsTab({ projectId, items, onRefresh }:{ projectId:string, items: Report[], onRefresh: ()=>any }){
+function ReportsTabEnhanced({ projectId, items, onRefresh }:{ projectId:string, items: Report[], onRefresh: ()=>any }){
   const [category, setCategory] = useState('');
   const [desc, setDesc] = useState('');
+  const [file, setFile] = useState<File|null>(null);
+  const { data:me } = useQuery({ queryKey:['me'], queryFn: ()=>api<any>('GET','/auth/me') });
+  const avatar = me?.profile_photo_file_id ? `/files/${me.profile_photo_file_id}/thumbnail?w=64` : '/ui/assets/login/logo-light.svg';
   return (
     <div className="grid md:grid-cols-3 gap-4">
       <div className="md:col-span-1 rounded-xl border bg-white p-4">
-        <h4 className="font-semibold mb-2">New Report</h4>
+        <h4 className="font-semibold mb-3">New Report</h4>
+        <div className="flex items-center gap-2 mb-2"><img src={avatar} className="w-6 h-6 rounded-full" /><span className="text-sm">{me?.username||'me'}</span></div>
         <input className="w-full border rounded px-3 py-2 mb-2" placeholder="Category" value={category} onChange={e=>setCategory(e.target.value)} />
         <textarea className="w-full border rounded px-3 py-2 h-28" placeholder="Description" value={desc} onChange={e=>setDesc(e.target.value)} />
-        <div className="mt-2 text-right"><button onClick={async()=>{ try{ await api('POST', `/projects/${projectId}/reports`, { category_id: category, description: desc }); setCategory(''); setDesc(''); await onRefresh(); toast.success('Report created'); }catch(_e){ toast.error('Failed'); } }} className="px-3 py-2 rounded bg-brand-red text-white">Create Report</button></div>
+        <div className="mt-2 flex items-center gap-2"><input type="file" onChange={e=>setFile(e.target.files?.[0]||null)} /><span className="text-[11px] text-gray-500">(optional)</span></div>
+        <div className="mt-3 text-right"><button onClick={async()=>{ try{ let imgMeta:any = undefined; if(file){ const up:any = await api('POST','/files/upload',{ project_id: projectId, client_id:null, employee_id:null, category_id:'project-report', original_name:file.name, content_type: file.type||'application/octet-stream' }); await fetch(up.upload_url, { method:'PUT', headers:{ 'Content-Type': file.type||'application/octet-stream', 'x-ms-blob-type': 'BlockBlob' }, body: file }); const conf:any = await api('POST','/files/confirm',{ key: up.key, size_bytes: file.size, checksum_sha256:'na', content_type: file.type||'application/octet-stream' }); imgMeta = { file_object_id: conf.id, original_name: file.name, content_type: file.type||'application/octet-stream' }; }
+          await api('POST', `/projects/${projectId}/reports`, { category_id: category||null, description: desc||null, images: imgMeta? { attachments:[imgMeta] } : undefined }); setCategory(''); setDesc(''); setFile(null); await onRefresh(); toast.success('Report created'); }catch(_e){ toast.error('Failed'); } }} className="px-3 py-2 rounded bg-brand-red text-white">Create Report</button></div>
       </div>
       <div className="md:col-span-2 rounded-xl border bg-white divide-y">
         {items.length? items.map(r=> (
-          <div key={r.id} className="p-3 text-sm flex items-start justify-between">
-            <div>
-              <div className="text-gray-800 whitespace-pre-wrap">{r.description||''}</div>
-              <div className="text-[11px] text-gray-500">{r.category_id||''}</div>
+          <div key={r.id} className="p-3 text-sm">
+            <div className="flex items-start justify-between">
+              <div className="flex items-start gap-2">
+                <img src={avatar} className="w-6 h-6 rounded-full" />
+                <div>
+                  <div className="text-gray-800 whitespace-pre-wrap">{r.description||''}</div>
+                  <div className="text-[11px] text-gray-500">{(r as any).created_at? String((r as any).created_at).slice(0,19).replace('T',' ') : ''} · {r.category_id||''}</div>
+                  {r.images?.attachments?.length? (
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {r.images.attachments.map((a:any, i:number)=> (
+                        <a key={i} href={`/files/${a.file_object_id}/download`} target="_blank" className="text-[11px] underline">{a.original_name||'attachment'}</a>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+              <button onClick={async()=>{ if(!confirm('Delete this report?')) return; try{ await api('DELETE', `/projects/${projectId}/reports/${r.id}`); await onRefresh(); toast.success('Deleted'); }catch(_e){ toast.error('Failed'); } }} className="px-2 py-1 rounded bg-gray-100">Delete</button>
             </div>
-            <button onClick={async()=>{ if(!confirm('Delete this report?')) return; try{ await api('DELETE', `/projects/${projectId}/reports/${r.id}`); await onRefresh(); toast.success('Deleted'); }catch(_e){ toast.error('Failed'); } }} className="px-2 py-1 rounded bg-gray-100">Delete</button>
           </div>
         )) : <div className="p-3 text-sm text-gray-600">No reports yet</div>}
       </div>
@@ -353,6 +375,135 @@ function EmployeeSelect({ label, value, onChange, employees }:{ label:string, va
   );
 }
 
+function TimesheetTab({ projectId }:{ projectId:string }){
+  const [month, setMonth] = useState<string>(new Date().toISOString().slice(0,7));
+  const [userFilter, setUserFilter] = useState<string>('');
+  const qs = useMemo(()=>{
+    const p = new URLSearchParams();
+    if (month) p.set('month', month);
+    if (userFilter) p.set('user_id', userFilter);
+    const s = p.toString();
+    return s? ('?'+s): '';
+  }, [month, userFilter]);
+  const { data, refetch } = useQuery({ queryKey:['timesheet', projectId, qs], queryFn: ()=> api<any[]>(`GET`, `/projects/${projectId}/timesheet${qs}`) });
+  const entries = data||[];
+  const [workDate, setWorkDate] = useState<string>(new Date().toISOString().slice(0,10));
+  const [hours, setHours] = useState<string>('8');
+  const [notes, setNotes] = useState<string>('');
+  const minutesTotal = (entries||[]).reduce((acc:number, e:any)=> acc + Number(e.minutes||0), 0);
+  const hoursTotal = (minutesTotal/60).toFixed(1);
+  const { data:employees } = useQuery({ queryKey:['employees'], queryFn: ()=>api<any[]>('GET','/employees') });
+  const csvExport = async()=>{
+    try{
+      const qs = new URLSearchParams();
+      if (month) qs.set('month', month);
+      if (userFilter) qs.set('user_id', userFilter);
+      const rows:any[] = await api('GET', `/projects/${projectId}/timesheet?${qs.toString()}`);
+      const header = ['Date','User','Hours','Notes'];
+      const csv = [header.join(',')].concat(rows.map(r=> [r.work_date, JSON.stringify(r.user_name||''), (r.minutes/60).toFixed(2), JSON.stringify(r.notes||'')].join(','))).join('\n');
+      const blob = new Blob([csv], { type:'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href = url; a.download = `timesheet_${projectId}_${month||'all'}.csv`; a.click(); URL.revokeObjectURL(url);
+    }catch(_e){ toast.error('Export failed'); }
+  };
+  return (
+    <div className="grid md:grid-cols-3 gap-4">
+      <div className="rounded-xl border bg-white p-4">
+        <h4 className="font-semibold mb-2">Add Time Entry</h4>
+        <div className="grid gap-2 text-sm">
+          <div><label className="text-xs text-gray-600">Date</label><input type="date" className="w-full border rounded px-3 py-2" value={workDate} onChange={e=>setWorkDate(e.target.value)} /></div>
+          <div><label className="text-xs text-gray-600">Hours</label><input className="w-full border rounded px-3 py-2" value={hours} onChange={e=>setHours(e.target.value)} /></div>
+          <div><label className="text-xs text-gray-600">Notes</label><input className="w-full border rounded px-3 py-2" value={notes} onChange={e=>setNotes(e.target.value)} /></div>
+        </div>
+        <div className="mt-3 text-right"><button onClick={async()=>{ try{ const mins = Math.round(Number(hours||'0')*60); await api('POST', `/projects/${projectId}/timesheet`, { work_date: workDate, minutes: mins, notes }); setNotes(''); await refetch(); toast.success('Saved'); }catch(_e){ toast.error('Failed'); } }} className="px-3 py-2 rounded bg-brand-red text-white">Add</button></div>
+      </div>
+      <div className="md:col-span-2 rounded-xl border bg-white">
+        <div className="p-3 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2"><label className="text-xs text-gray-600">Month</label><input type="month" className="border rounded px-2 py-1" value={month} onChange={e=>{ setMonth(e.target.value); }} /></div>
+          <div className="flex items-center gap-2"><label className="text-xs text-gray-600">Employee</label><select className="border rounded px-2 py-1 text-sm" value={userFilter} onChange={e=>setUserFilter(e.target.value)}><option value="">All</option>{(employees||[]).map((emp:any)=> <option key={emp.id} value={emp.id}>{emp.name||emp.username}</option>)}</select></div>
+          <div className="flex items-center gap-3">
+            <div className="text-sm text-gray-700">Total: {hoursTotal}h</div>
+            <button onClick={csvExport} className="px-2 py-1 rounded bg-gray-100 text-sm">Export CSV</button>
+          </div>
+        </div>
+        <div className="border-t divide-y">
+          {entries.length? entries.map((e:any)=> (
+            <div key={e.id} className="px-3 py-2 text-sm flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                {e.user_avatar_file_id? <img src={`/files/${e.user_avatar_file_id}/thumbnail?w=64`} className="w-6 h-6 rounded-full"/> : <span className="w-6 h-6 rounded-full bg-gray-200 inline-block"/>}
+                <div className="w-24 text-gray-700 truncate">{e.user_name||''}</div>
+                <div className="w-12 text-gray-600">{String(e.work_date).slice(5,10)}</div>
+                <div className="w-14 font-medium">{(e.minutes/60).toFixed(2)}h</div>
+                <div className="text-gray-600">{e.notes||''}</div>
+              </div>
+              <div className="flex items-center gap-2">
+                <button onClick={async()=>{ const val = prompt('New hours', (e.minutes/60).toFixed(2)); if(val==null) return; const mins = Math.round(Number(val||'0')*60); try{ await api('PATCH', `/projects/${projectId}/timesheet/${e.id}`, { minutes: mins }); await refetch(); }catch(_e){ toast.error('Not authorized'); } }} className="px-2 py-1 rounded bg-gray-100">Edit</button>
+                <button onClick={async()=>{ if(!confirm('Delete entry?')) return; await api('DELETE', `/projects/${projectId}/timesheet/${e.id}`); await refetch(); }} className="px-2 py-1 rounded bg-gray-100">Delete</button>
+              </div>
+            </div>
+          )) : <div className="p-3 text-sm text-gray-600">No time entries</div>}
+        </div>
+      </div>
+      <TimeAudit projectId={projectId} month={month} />
+    </div>
+  );
+}
+
+function TimeAudit({ projectId, month }:{ projectId:string, month:string }){
+  const [offset, setOffset] = useState<number>(0);
+  const limit = 50;
+  const qs = (()=>{ const p = new URLSearchParams(); if(month) p.set('month', month); p.set('limit', String(limit)); p.set('offset', String(offset)); const s=p.toString(); return s? ('?'+s): ''; })();
+  const { data, refetch, isFetching } = useQuery({ queryKey:['timesheetLogs', projectId, month, offset], queryFn: ()=> api<any[]>('GET', `/projects/${projectId}/timesheet/logs${qs}`) });
+  const logs = data||[];
+  return (
+    <div className="md:col-span-3 mt-4 rounded-xl border bg-white">
+      <div className="p-3 font-semibold flex items-center justify-between">Audit Log {isFetching && <span className="text-[11px] text-gray-500">Loading...</span>}</div>
+      <div className="border-t divide-y">
+        {logs.length? logs.map((l:any)=> {
+          const ch = l.changes||{};
+          const before = ch.before||{}; const after = ch.after||{};
+          const bMin = typeof before.minutes==='number'? (before.minutes/60).toFixed(2): null;
+          const aMin = typeof after.minutes==='number'? (after.minutes/60).toFixed(2): null;
+          return (
+            <div key={l.id} className="px-3 py-2 text-sm">
+              <div className="flex items-start gap-2">
+                {l.user_avatar_file_id? <img src={`/files/${l.user_avatar_file_id}/thumbnail?w=64`} className="w-6 h-6 rounded-full"/> : <span className="w-6 h-6 rounded-full bg-gray-200 inline-block"/>}
+                <div className="flex-1 min-w-0">
+                  <div className="text-[11px] text-gray-500">{String(l.timestamp||'').slice(0,19).replace('T',' ')} · {l.user_name||''}</div>
+                  <div className="text-gray-800 capitalize">{l.action}</div>
+                  {(l.action==='update' && (before||after)) && (
+                    <div className="mt-1 grid grid-cols-3 gap-2 text-[11px] text-gray-700">
+                      <div>
+                        <div className="text-gray-500">Date</div>
+                        <div>{(before.work_date||'') ? String(before.work_date).slice(0,10) : '-' } → {(after.work_date||'') ? String(after.work_date).slice(0,10) : '-'}</div>
+                      </div>
+                      <div>
+                        <div className="text-gray-500">Hours</div>
+                        <div>{bMin??'-'} → {aMin??'-'}</div>
+                      </div>
+                      <div className="col-span-3 md:col-span-1">
+                        <div className="text-gray-500">Notes</div>
+                        <div className="truncate" title={`${before.notes||''} → ${after.notes||''}`}>{(before.notes||'-') + ' → ' + (after.notes||'-')}</div>
+                      </div>
+                    </div>
+                  )}
+                  {(l.action!=='update' && l.changes) && (
+                    <div className="mt-1 text-[11px] text-gray-700">{JSON.stringify(l.changes)}</div>
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        }) : <div className="p-3 text-sm text-gray-600">No changes yet</div>}
+      </div>
+      <div className="p-3 text-right">
+        <button onClick={()=>{ setOffset(o=> Math.max(0, o - limit)); refetch(); }} disabled={offset<=0} className="px-2 py-1 rounded bg-gray-100 text-sm mr-2 disabled:opacity-50">Prev</button>
+        <button onClick={()=>{ setOffset(o=> o + limit); refetch(); }} className="px-2 py-1 rounded bg-gray-100 text-sm">Load more</button>
+      </div>
+    </div>
+  );
+}
+
 function ProjectQuickEdit({ projectId, proj, settings }:{ projectId:string, proj:any, settings:any }){
   const [status, setStatus] = useState<string>(proj?.status_label||'');
   const [divs, setDivs] = useState<string[]>(Array.isArray(proj?.division_ids)? proj.division_ids : []);
@@ -401,6 +552,32 @@ function ProjectQuickEdit({ projectId, proj, settings }:{ projectId:string, proj
           <button onClick={async()=>{ try{ await api('PATCH', `/projects/${projectId}`, { status_label: status||null, division_ids: divs, progress, estimator_id: estimator||null, onsite_lead_id: lead||null }); toast.success('Saved'); location.reload(); }catch(_e){ toast.error('Failed to save'); } }} className="px-3 py-2 rounded bg-brand-red text-white">Save</button>
         </div>
       </div>
+    </div>
+  );
+}
+
+function ProjectGeneralForm({ projectId, proj, onSaved }:{ projectId:string, proj:any, onSaved: ()=>void }){
+  const [name, setName] = useState<string>(proj?.name||'');
+  const [code, setCode] = useState<string>(proj?.code||'');
+  const [city, setCity] = useState<string>(proj?.address_city||'');
+  const [province, setProvince] = useState<string>(proj?.address_province||'');
+  const [country, setCountry] = useState<string>(proj?.address_country||'');
+  const [desc, setDesc] = useState<string>(proj?.description||'');
+  const [start, setStart] = useState<string>((proj?.date_start||'').slice(0,10));
+  const [eta, setEta] = useState<string>((proj?.date_eta||'').slice(0,10));
+  const [end, setEnd] = useState<string>((proj?.date_end||'').slice(0,10));
+  return (
+    <div className="grid md:grid-cols-2 gap-4">
+      <div><label className="text-xs text-gray-600">Name</label><input className="w-full border rounded px-3 py-2" value={name} onChange={e=>setName(e.target.value)} /></div>
+      <div><label className="text-xs text-gray-600">Code</label><input className="w-full border rounded px-3 py-2" value={code} onChange={e=>setCode(e.target.value)} /></div>
+      <div><label className="text-xs text-gray-600">City</label><input className="w-full border rounded px-3 py-2" value={city} onChange={e=>setCity(e.target.value)} /></div>
+      <div><label className="text-xs text-gray-600">Province/State</label><input className="w-full border rounded px-3 py-2" value={province} onChange={e=>setProvince(e.target.value)} /></div>
+      <div><label className="text-xs text-gray-600">Country</label><input className="w-full border rounded px-3 py-2" value={country} onChange={e=>setCountry(e.target.value)} /></div>
+      <div className="md:col-span-2"><label className="text-xs text-gray-600">Description</label><textarea rows={6} className="w-full border rounded px-3 py-2" value={desc} onChange={e=>setDesc(e.target.value)} /></div>
+      <div><label className="text-xs text-gray-600">Start date</label><input type="date" className="w-full border rounded px-3 py-2" value={start} onChange={e=>setStart(e.target.value)} /></div>
+      <div><label className="text-xs text-gray-600">ETA</label><input type="date" className="w-full border rounded px-3 py-2" value={eta} onChange={e=>setEta(e.target.value)} /></div>
+      <div><label className="text-xs text-gray-600">End date</label><input type="date" className="w-full border rounded px-3 py-2" value={end} onChange={e=>setEnd(e.target.value)} /></div>
+      <div className="md:col-span-2 text-right"><button onClick={async()=>{ try{ await api('PATCH', `/projects/${projectId}`, { name, code, address_city: city, address_province: province, address_country: country, description: desc, date_start: start||null, date_eta: eta||null, date_end: end||null }); toast.success('Saved'); onSaved(); }catch(_e){ toast.error('Failed to save'); } }} className="px-4 py-2 rounded bg-brand-red text-white">Save</button></div>
     </div>
   );
 }
