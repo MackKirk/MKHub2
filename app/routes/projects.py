@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
+from sqlalchemy import func, extract
 from typing import List, Optional
 
 from ..db import get_db
@@ -418,6 +419,30 @@ def list_time_logs(project_id: str, month: Optional[str] = None, user_id: Option
             "user_name": getattr(u,'username', None),
             "user_avatar_file_id": str(getattr(ep,'profile_photo_file_id')) if (ep and getattr(ep,'profile_photo_file_id', None)) else None,
             "changes": r.changes or None,
+        })
+    return out
+
+
+# ---- Timesheet summary (across projects) ----
+@router.get("/timesheet/summary")
+def timesheet_summary(month: Optional[str] = None, user_id: Optional[str] = None, db: Session = Depends(get_db), _=Depends(require_permissions("timesheet:read"))):
+    q = db.query(ProjectTimeEntry.user_id, func.sum(ProjectTimeEntry.minutes).label("minutes"))
+    if month:
+        try:
+            from datetime import datetime
+            dt = datetime.strptime(month+"-01", "%Y-%m-%d").date()
+            y = dt.year; m = dt.month
+            q = q.filter(extract('year', ProjectTimeEntry.work_date) == y, extract('month', ProjectTimeEntry.work_date) == m)
+        except Exception:
+            pass
+    if user_id:
+        q = q.filter(ProjectTimeEntry.user_id == user_id)
+    rows = q.group_by(ProjectTimeEntry.user_id).all()
+    out = []
+    for uid, minutes in rows:
+        out.append({
+            "user_id": str(uid),
+            "minutes": int(minutes or 0),
         })
     return out
 

@@ -6,6 +6,10 @@ type User = { id:string, username:string, email?:string, name?:string, roles?:st
 
 export default function Users(){
   const { data, isLoading } = useQuery({ queryKey:['users'], queryFn: ()=>api<User[]>('GET','/users') });
+  const month = new Date().toISOString().slice(0,7);
+  const { data:summary } = useQuery({ queryKey:['timesheetSummary', month], queryFn: ()=> api<any[]>('GET', `/projects/timesheet/summary?month=${encodeURIComponent(month)}`) });
+  const minsByUser: Record<string, number> = {};
+  (summary||[]).forEach((r:any)=>{ minsByUser[String(r.user_id)]=Number(r.minutes||0); });
   const arr = data||[];
   return (
     <div>
@@ -18,6 +22,7 @@ export default function Users(){
               <div className="font-semibold truncate">{u.name||u.username}</div>
               <div className="text-sm text-gray-600 truncate">{u.email||''}</div>
               <div className="text-[11px] text-gray-500 truncate">{(u.roles||[]).join(', ')}</div>
+              <div className="text-[11px] text-gray-700">This month: {((minsByUser[u.id]||0)/60).toFixed(1)}h</div>
             </div>
           </Link>
         ))}
