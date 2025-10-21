@@ -5,7 +5,7 @@ import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
 import ImagePicker from '@/components/ImagePicker';
 
-type Project = { id:string, code?:string, name?:string, client_id?:string, address_city?:string, address_province?:string, address_country?:string, description?:string, status_id?:string, division_id?:string, estimator_id?:string, onsite_lead_id?:string, date_start?:string, date_eta?:string, date_end?:string, cost_estimated?:number, cost_actual?:number, service_value?:number };
+type Project = { id:string, code?:string, name?:string, client_id?:string, address_city?:string, address_province?:string, address_country?:string, description?:string, status_id?:string, division_id?:string, estimator_id?:string, onsite_lead_id?:string, date_start?:string, date_eta?:string, date_end?:string, cost_estimated?:number, cost_actual?:number, service_value?:number, progress?:number };
 type ProjectFile = { id:string, file_object_id:string, is_image?:boolean, content_type?:string, category?:string, original_name?:string, uploaded_at?:string };
 type Update = { id:string, timestamp?:string, text?:string, images?:any };
 type Report = { id:string, category_id?:string, division_id?:string, description?:string, images?:any, status?:string };
@@ -13,6 +13,7 @@ type Report = { id:string, category_id?:string, division_id?:string, description
 export default function ProjectDetail(){
   const { id } = useParams();
   const { data:proj, isLoading } = useQuery({ queryKey:['project', id], queryFn: ()=>api<Project>('GET', `/projects/${id}`) });
+  const { data:settings } = useQuery({ queryKey:['settings'], queryFn: ()=>api<any>('GET','/settings') });
   const { data:files, refetch: refetchFiles } = useQuery({ queryKey:['projectFiles', id], queryFn: ()=>api<ProjectFile[]>('GET', `/projects/${id}/files`) });
   const { data:updates, refetch: refetchUpdates } = useQuery({ queryKey:['projectUpdates', id], queryFn: ()=>api<Update[]>('GET', `/projects/${id}/updates`) });
   const { data:reports, refetch: refetchReports } = useQuery({ queryKey:['projectReports', id], queryFn: ()=>api<Report[]>('GET', `/projects/${id}/reports`) });
@@ -26,25 +27,28 @@ export default function ProjectDetail(){
   return (
     <div>
       <div className="rounded-xl border bg-white overflow-hidden">
-        <div className="h-48 relative bg-gray-100">
-          <img className="w-full h-full object-cover" src={cover} />
-          <button onClick={()=>setPickerOpen(true)} className="absolute right-3 top-3 text-xs px-2 py-1 rounded bg-black/70 text-white">Change cover</button>
-        </div>
-        <div className="p-4">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <div className="text-2xl font-extrabold">{proj?.name||'Project'}</div>
-              <div className="text-sm text-gray-600">{proj?.code||''} · {proj?.address_city||''} {proj?.address_province||''}</div>
+        <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] rounded-t-xl p-5 text-white">
+          <div className="flex gap-4 items-stretch min-h-[220px]">
+            <div className="w-[260px] relative group">
+              <img src={cover} className="w-full h-full object-cover rounded-xl border-2 border-brand-red" />
+              <button onClick={()=>setPickerOpen(true)} className="absolute inset-0 rounded-xl bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white">✏️ Change</button>
             </div>
-            <div className="flex items-center gap-2">
-              <span className="text-[11px] bg-gray-100 border rounded-full px-2">{proj?.status_id||'Estimating'}</span>
-              <span className="text-[11px] bg-gray-100 border rounded-full px-2">{proj?.division_id||'Division'}</span>
+            <div className="flex-1 flex flex-col justify-start">
+              <div className="text-3xl font-extrabold">{proj?.name||'Project'}</div>
+              <div className="text-sm opacity-90 mt-1">{proj?.code||''} · {proj?.address_city||''} {proj?.address_province||''} {proj?.address_country||''}</div>
+              <div className="mt-2 flex items-center gap-3">
+                {(() => { const statusLabel = String((proj as any)?.status_label||'').trim(); const color = ((settings||{}).project_statuses||[]).find((s:any)=>s.label===statusLabel)?.value || '#e5e7eb'; return (<span className="px-2 py-0.5 rounded-full border text-black" style={{ backgroundColor: color }}>{statusLabel||'—'}</span>); })()}
+                <div className="flex items-center gap-2">
+                  <div className="h-2 w-40 bg-white/40 rounded-full overflow-hidden"><div className="h-full bg-black" style={{ width: `${Math.max(0,Math.min(100,Number(proj?.progress||0)))}%` }} /></div>
+                  <span className="text-sm">{Math.max(0,Math.min(100,Number(proj?.progress||0)))}%</span>
+                </div>
+              </div>
+              <div className="mt-auto flex gap-3">
+                {(['overview','updates','reports','files','photos'] as const).map(k=> (
+                  <button key={k} onClick={()=>setTab(k)} className={`px-4 py-2 rounded-full ${tab===k?'bg-black text-white':'bg-white text-black'}`}>{k[0].toUpperCase()+k.slice(1)}</button>
+                ))}
+              </div>
             </div>
-          </div>
-          <div className="mt-4 flex gap-2 flex-wrap">
-            {(['overview','updates','reports','files','photos'] as const).map(k=> (
-              <button key={k} onClick={()=>setTab(k)} className={`px-4 py-2 rounded-full text-sm ${tab===k? 'bg-black text-white':'bg-white border'}`}>{k[0].toUpperCase()+k.slice(1)}</button>
-            ))}
           </div>
         </div>
       </div>
@@ -59,11 +63,7 @@ export default function ProjectDetail(){
                   <div className="text-sm text-gray-700">{proj?.client_id||'-'}</div>
                   <div className="text-sm text-gray-500">{proj?.address_city||''} {proj?.address_province||''} {proj?.address_country||''}</div>
                 </div>
-                <div className="rounded-xl border bg-white p-4">
-                  <h4 className="font-semibold mb-2">Team</h4>
-                  <div className="text-sm text-gray-700">Estimator: {proj?.estimator_id||'-'}</div>
-                  <div className="text-sm text-gray-700">On-site lead: {proj?.onsite_lead_id||'-'}</div>
-                </div>
+                <ProjectQuickEdit projectId={String(id)} proj={proj||{}} settings={settings||{}} />
                 <div className="rounded-xl border bg-white p-4">
                   <h4 className="font-semibold mb-2">Dates & Costs</h4>
                   <div className="text-sm text-gray-700">Start: {(proj?.date_start||'').slice(0,10)||'-'}</div>
@@ -72,6 +72,10 @@ export default function ProjectDetail(){
                   <div className="text-sm text-gray-700 mt-1">Estimated: {proj?.cost_estimated ?? '-'}</div>
                   <div className="text-sm text-gray-700">Actual: {proj?.cost_actual ?? '-'}</div>
                   <div className="text-sm text-gray-700">Service: {proj?.service_value ?? '-'}</div>
+                </div>
+                <div className="md:col-span-3 rounded-xl border bg-white p-4">
+                  <h4 className="font-semibold mb-2">Schedule</h4>
+                  <div className="text-sm text-gray-600">(Calendar view placeholder) Define milestones and production expectations here.</div>
                 </div>
                 <div className="md:col-span-3 rounded-xl border bg-white p-4">
                   <h4 className="font-semibold mb-2">Description</h4>
@@ -273,6 +277,57 @@ function PhotosTab({ files }:{ files: ProjectFile[] }){
           </div>
         </div>
       )) : <div className="text-sm text-gray-600">No photos</div>}
+    </div>
+  );
+}
+
+function ProjectQuickEdit({ projectId, proj, settings }:{ projectId:string, proj:any, settings:any }){
+  const [status, setStatus] = useState<string>(proj?.status_label||'');
+  const [divs, setDivs] = useState<string[]>(Array.isArray(proj?.division_ids)? proj.division_ids : []);
+  const [progress, setProgress] = useState<number>(Number(proj?.progress||0));
+  const [estimator, setEstimator] = useState<string>(proj?.estimator_id||'');
+  const [lead, setLead] = useState<string>(proj?.onsite_lead_id||'');
+  const statuses = (settings?.project_statuses||[]) as any[];
+  const divisions = (settings?.divisions||[]) as any[];
+  const toggleDiv = (id:string)=> setDivs(prev=> prev.includes(id)? prev.filter(x=>x!==id) : [...prev, id]);
+  return (
+    <div className="rounded-xl border bg-white p-4">
+      <h4 className="font-semibold mb-2">Quick Edit</h4>
+      <div className="grid grid-cols-2 gap-3 text-sm">
+        <div>
+          <label className="text-xs text-gray-600">Status</label>
+          <select className="w-full border rounded px-2 py-1.5" value={status} onChange={e=>setStatus(e.target.value)}>
+            <option value="">Select...</option>
+            {statuses.map((s:any)=> <option key={s.label} value={s.label}>{s.label}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="text-xs text-gray-600">Progress</label>
+          <div className="flex items-center gap-2"><input type="range" min={0} max={100} value={progress} onChange={e=>setProgress(Number(e.target.value||0))} className="flex-1" /><span className="w-10 text-right">{progress}%</span></div>
+        </div>
+        <div className="col-span-2">
+          <label className="text-xs text-gray-600">Divisions</label>
+          <div className="flex flex-wrap gap-2 mt-1">
+            {divisions.map((d:any)=>{
+              const id = String(d.id||d.label||d.value);
+              const active = divs.includes(id);
+              const style:any = active? { backgroundColor: d.meta?.color||'#eef2f7' } : {};
+              return <button key={id} onClick={()=>toggleDiv(id)} className={`px-2 py-1 rounded-full border text-xs ${active? '':'bg-white'}`} style={style}>{d.meta?.abbr||d.label}</button>;
+            })}
+          </div>
+        </div>
+        <div>
+          <label className="text-xs text-gray-600">Estimator</label>
+          <input className="w-full border rounded px-2 py-1.5" value={estimator} onChange={e=>setEstimator(e.target.value)} />
+        </div>
+        <div>
+          <label className="text-xs text-gray-600">On-site lead</label>
+          <input className="w-full border rounded px-2 py-1.5" value={lead} onChange={e=>setLead(e.target.value)} />
+        </div>
+        <div className="col-span-2 text-right">
+          <button onClick={async()=>{ try{ await api('PATCH', `/projects/${projectId}`, { status_label: status||null, division_ids: divs, progress, estimator_id: estimator||null, onsite_lead_id: lead||null }); toast.success('Saved'); location.reload(); }catch(_e){ toast.error('Failed to save'); } }} className="px-3 py-2 rounded bg-brand-red text-white">Save</button>
+        </div>
+      </div>
     </div>
   );
 }

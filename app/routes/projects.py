@@ -45,6 +45,9 @@ def list_projects(client: Optional[str] = None, site: Optional[str] = None, stat
             "created_at": p.created_at.isoformat() if getattr(p, 'created_at', None) else None,
             "date_start": p.date_start.isoformat() if getattr(p, 'date_start', None) else None,
             "date_end": p.date_end.isoformat() if getattr(p, 'date_end', None) else None,
+            "progress": getattr(p, 'progress', None),
+            "status_label": getattr(p, 'status_label', None),
+            "division_ids": getattr(p, 'division_ids', None),
         }
         for p in query.order_by(Project.created_at.desc()).limit(100).all()
     ]
@@ -67,11 +70,14 @@ def get_project(project_id: str, db: Session = Depends(get_db)):
         "description": getattr(p, 'description', None),
         "status_id": getattr(p, 'status_id', None),
         "division_id": getattr(p, 'division_id', None),
+        "status_label": getattr(p, 'status_label', None),
+        "division_ids": getattr(p, 'division_ids', None),
         "estimator_id": getattr(p, 'estimator_id', None),
         "onsite_lead_id": getattr(p, 'onsite_lead_id', None),
         "date_start": p.date_start.isoformat() if getattr(p, 'date_start', None) else None,
         "date_eta": getattr(p, 'date_eta', None).isoformat() if getattr(p, 'date_eta', None) else None,
         "date_end": p.date_end.isoformat() if getattr(p, 'date_end', None) else None,
+        "progress": getattr(p, 'progress', None),
         "cost_estimated": getattr(p, 'cost_estimated', None),
         "cost_actual": getattr(p, 'cost_actual', None),
         "service_value": getattr(p, 'service_value', None),

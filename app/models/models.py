@@ -138,6 +138,9 @@ class Project(Base):
     address_country: Mapped[Optional[str]] = mapped_column(String(100))
     division_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
     status_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
+    # UI-friendly fields
+    status_label: Mapped[Optional[str]] = mapped_column(String(100))
+    division_ids: Mapped[Optional[list]] = mapped_column(JSON)
     estimator_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
     onsite_lead_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
     date_start: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))

@@ -15,11 +15,13 @@ def get_settings_bundle(db: Session = Depends(get_db)):
     out = {}
     for lst in rows:
         items = db.query(SettingItem).filter(SettingItem.list_id == lst.id).order_by(SettingItem.sort_index.asc()).all()
-        out[lst.name] = [{"id": str(i.id), "label": i.label, "value": i.value, "sort_index": i.sort_index} for i in items]
+        out[lst.name] = [{"id": str(i.id), "label": i.label, "value": i.value, "sort_index": i.sort_index, "meta": i.meta or None} for i in items]
     # convenience aliases
     out.setdefault("client_types", [])
     out.setdefault("client_statuses", [])
     out.setdefault("payment_terms", [])
+    out.setdefault("divisions", [])
+    out.setdefault("project_statuses", [])
     return out
 
 
@@ -29,7 +31,7 @@ def list_settings(list_name: str, db: Session = Depends(get_db)):
     if not lst:
         return []
     items = db.query(SettingItem).filter(SettingItem.list_id == lst.id).order_by(SettingItem.sort_index.asc()).all()
-    return [{"id": str(i.id), "label": i.label, "value": i.value, "sort_index": i.sort_index} for i in items]
+    return [{"id": str(i.id), "label": i.label, "value": i.value, "sort_index": i.sort_index, "meta": i.meta or None} for i in items]
 
 
 @router.post("/{list_name}")
