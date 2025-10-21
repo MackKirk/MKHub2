@@ -5,7 +5,7 @@ from typing import List, Optional
 
 from ..db import get_db
 from ..models.models import Project, ClientFile, FileObject, ProjectUpdate, ProjectReport, ProjectTimeEntry, ProjectTimeEntryLog, User, EmployeeProfile, Client, ClientSite
-from ..auth.security import get_current_user, require_permissions
+from ..auth.security import get_current_user, require_permissions, can_approve_timesheet
 
 
 router = APIRouter(prefix="/projects", tags=["projects"])
@@ -267,7 +267,7 @@ def list_timesheet(project_id: str, month: Optional[str] = None, user_id: Option
             pass
     if user_id:
         q = q.filter(ProjectTimeEntry.user_id == user_id)
-    rows = q.order_by(ProjectTimeEntry.work_date.asc()).all()
+    rows = q.order_by(ProjectTimeEntry.work_date.asc(), ProjectTimeEntry.start_time.asc()).all()
     out = []
     for r,u,ep in rows:
         out.append({
@@ -282,6 +282,9 @@ def list_timesheet(project_id: str, month: Optional[str] = None, user_id: Option
             "minutes": r.minutes,
             "notes": r.notes,
             "created_at": r.created_at.isoformat() if getattr(r,'created_at', None) else None,
+            "is_approved": bool(getattr(r,'is_approved', False)),
+            "approved_at": getattr(r,'approved_at', None).isoformat() if getattr(r,'approved_at', None) else None,
+            "approved_by": str(getattr(r,'approved_by', None)) if getattr(r,'approved_by', None) else None,
         })
     return out
 
@@ -324,7 +327,7 @@ def create_time_entry(project_id: str, payload: dict, db: Session = Depends(get_
     db.commit()
     db.refresh(row)
     # log
-    log = ProjectTimeEntryLog(entry_id=row.id, project_id=row.project_id, user_id=user.id, action="create", changes={"minutes": row.minutes, "work_date": row.work_date.isoformat(), "notes": row.notes or None})
+    log = ProjectTimeEntryLog(entry_id=row.id, project_id=row.project_id, user_id=user.id, action="create", changes={"minutes": row.minutes, "work_date": row.work_date.isoformat(), "notes": row.notes or None, "start_time": start_time, "end_time": end_time})
     db.add(log)
     db.commit()
     return {"id": str(row.id)}
@@ -336,7 +339,7 @@ def update_time_entry(project_id: str, entry_id: str, payload: dict, db: Session
     if not row:
         from fastapi import HTTPException
         raise HTTPException(status_code=404, detail="Not found")
-    before = {"work_date": row.work_date.isoformat(), "minutes": row.minutes, "notes": row.notes}
+    before = {"work_date": row.work_date.isoformat(), "minutes": row.minutes, "notes": row.notes, "start_time": getattr(row,'start_time', None).isoformat() if getattr(row,'start_time', None) else None, "end_time": getattr(row,'end_time', None).isoformat() if getattr(row,'end_time', None) else None, "is_approved": bool(getattr(row,'is_approved', False))}
     work_date = payload.get("work_date")
     minutes = payload.get("minutes")
     notes = payload.get("notes")
@@ -368,7 +371,7 @@ def update_time_entry(project_id: str, entry_id: str, payload: dict, db: Session
         except Exception:
             pass
     db.commit()
-    after = {"work_date": row.work_date.isoformat(), "minutes": row.minutes, "notes": row.notes}
+    after = {"work_date": row.work_date.isoformat(), "minutes": row.minutes, "notes": row.notes, "start_time": getattr(row,'start_time', None).isoformat() if getattr(row,'start_time', None) else None, "end_time": getattr(row,'end_time', None).isoformat() if getattr(row,'end_time', None) else None, "is_approved": bool(getattr(row,'is_approved', False))}
     db.add(ProjectTimeEntryLog(entry_id=row.id, project_id=row.project_id, user_id=user.id, action="update", changes={"before": before, "after": after}))
     db.commit()
     return {"status":"ok"}
@@ -443,6 +446,64 @@ def timesheet_summary(month: Optional[str] = None, user_id: Optional[str] = None
         out.append({
             "user_id": str(uid),
             "minutes": int(minutes or 0),
+        })
+    return out
+
+
+@router.patch("/{project_id}/timesheet/{entry_id}/approve")
+def approve_time_entry(project_id: str, entry_id: str, approved: bool = True, db: Session = Depends(get_db), user=Depends(get_current_user)):
+    # Gate: must have timesheet:approve or be in supervisor chain of the entry's user
+    row = db.query(ProjectTimeEntry).filter(ProjectTimeEntry.id == entry_id, ProjectTimeEntry.project_id == project_id).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Not found")
+    if not can_approve_timesheet(user, str(row.user_id), db):
+        raise HTTPException(status_code=403, detail="Forbidden")
+    from datetime import datetime, timezone
+    row.is_approved = bool(approved)
+    if row.is_approved:
+        row.approved_at = datetime.now(timezone.utc)
+        row.approved_by = user.id
+        action = "approve"
+    else:
+        row.approved_at = None
+        row.approved_by = None
+        action = "unapprove"
+    db.commit()
+    db.add(ProjectTimeEntryLog(entry_id=row.id, project_id=row.project_id, user_id=user.id, action=action, changes=None))
+    db.commit()
+    return {"status": "ok", "is_approved": row.is_approved}
+
+
+# ---- Timesheet: list across all projects for a user ----
+@router.get("/timesheet/user")
+def timesheet_by_user(month: Optional[str] = None, user_id: Optional[str] = None, db: Session = Depends(get_db), _=Depends(require_permissions("timesheet:read"))):
+    q = db.query(ProjectTimeEntry, Project).join(Project, Project.id == ProjectTimeEntry.project_id)
+    if month:
+        try:
+            from datetime import datetime
+            dt = datetime.strptime(month+"-01", "%Y-%m-%d").date()
+            y = dt.year; m = dt.month
+            q = q.filter(extract('year', ProjectTimeEntry.work_date) == y, extract('month', ProjectTimeEntry.work_date) == m)
+        except Exception:
+            pass
+    if user_id:
+        q = q.filter(ProjectTimeEntry.user_id == user_id)
+    rows = q.order_by(ProjectTimeEntry.work_date.asc(), ProjectTimeEntry.start_time.asc()).all()
+    out = []
+    for r,p in rows:
+        out.append({
+            "id": str(r.id),
+            "project_id": str(r.project_id),
+            "project_name": getattr(p,'name', None),
+            "project_code": getattr(p,'code', None),
+            "user_id": str(r.user_id),
+            "work_date": r.work_date.isoformat(),
+            "start_time": getattr(r,'start_time', None).isoformat() if getattr(r,'start_time', None) else None,
+            "end_time": getattr(r,'end_time', None).isoformat() if getattr(r,'end_time', None) else None,
+            "minutes": r.minutes,
+            "notes": r.notes,
+            "created_at": r.created_at.isoformat() if getattr(r,'created_at', None) else None,
+            "is_approved": bool(getattr(r,'is_approved', False)),
         })
     return out
 

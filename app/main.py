@@ -24,6 +24,7 @@ from .routes.inventory import router as inventory_router
 from .routes.integrations import router as integrations_router
 from .routes.proposals import router as proposals_router
 from .routes.users import router as users_router
+from .routes.reviews import router as reviews_router
 
 
 def create_app() -> FastAPI:
@@ -57,6 +58,7 @@ def create_app() -> FastAPI:
     app.include_router(inventory_router)
     app.include_router(proposals_router)
     app.include_router(users_router)
+    app.include_router(reviews_router)
     # Legacy UI redirects to new React routes (exact paths)
     legacy_map = {
         "/ui/login.html": "/login",
@@ -221,11 +223,17 @@ def create_app() -> FastAPI:
                                        "minutes INTEGER NOT NULL DEFAULT 0,\n"
                                        "notes VARCHAR(1000),\n"
                                        "created_at TIMESTAMPTZ DEFAULT NOW(),\n"
-                                       "created_by UUID\n"
+                                       "created_by UUID,\n"
+                                       "is_approved BOOLEAN DEFAULT FALSE,\n"
+                                       "approved_at TIMESTAMPTZ,\n"
+                                       "approved_by UUID\n"
                                        ")"))
                     # Ensure new columns exist for older DBs
                     conn.execute(text("ALTER TABLE project_time_entries ADD COLUMN IF NOT EXISTS start_time TIME"))
                     conn.execute(text("ALTER TABLE project_time_entries ADD COLUMN IF NOT EXISTS end_time TIME"))
+                    conn.execute(text("ALTER TABLE project_time_entries ADD COLUMN IF NOT EXISTS is_approved BOOLEAN DEFAULT FALSE"))
+                    conn.execute(text("ALTER TABLE project_time_entries ADD COLUMN IF NOT EXISTS approved_at TIMESTAMPTZ"))
+                    conn.execute(text("ALTER TABLE project_time_entries ADD COLUMN IF NOT EXISTS approved_by UUID"))
                     conn.execute(text("CREATE TABLE IF NOT EXISTS project_time_entry_logs (\n"
                                        "id UUID PRIMARY KEY,\n"
                                        "entry_id UUID NOT NULL REFERENCES project_time_entries(id) ON DELETE CASCADE,\n"
@@ -241,6 +249,51 @@ def create_app() -> FastAPI:
                     conn.execute(text("ALTER TABLE projects ADD COLUMN IF NOT EXISTS status_label VARCHAR(100)"))
                     conn.execute(text("ALTER TABLE projects ADD COLUMN IF NOT EXISTS division_ids JSONB"))
                     conn.execute(text("ALTER TABLE projects ADD COLUMN IF NOT EXISTS site_id UUID"))
+                    # Employee reviews
+                    conn.execute(text("CREATE TABLE IF NOT EXISTS review_templates (\n"
+                                       "id UUID PRIMARY KEY,\n"
+                                       "name VARCHAR(255) NOT NULL,\n"
+                                       "version INTEGER DEFAULT 1,\n"
+                                       "is_active BOOLEAN DEFAULT TRUE,\n"
+                                       "created_at TIMESTAMPTZ DEFAULT NOW()\n"
+                                       ")"))
+                    conn.execute(text("CREATE TABLE IF NOT EXISTS review_template_questions (\n"
+                                       "id UUID PRIMARY KEY,\n"
+                                       "template_id UUID NOT NULL REFERENCES review_templates(id) ON DELETE CASCADE,\n"
+                                       "order_index INTEGER DEFAULT 0,\n"
+                                       "key VARCHAR(100) NOT NULL,\n"
+                                       "label VARCHAR(1000) NOT NULL,\n"
+                                       "type VARCHAR(50) NOT NULL,\n"
+                                       "options JSONB,\n"
+                                       "required BOOLEAN DEFAULT FALSE\n"
+                                       ")"))
+                    conn.execute(text("CREATE TABLE IF NOT EXISTS review_cycles (\n"
+                                       "id UUID PRIMARY KEY,\n"
+                                       "name VARCHAR(255) NOT NULL,\n"
+                                       "period_start TIMESTAMPTZ,\n"
+                                       "period_end TIMESTAMPTZ,\n"
+                                       "template_id UUID NOT NULL REFERENCES review_templates(id) ON DELETE RESTRICT,\n"
+                                       "status VARCHAR(50) DEFAULT 'draft'\n"
+                                       ")"))
+                    conn.execute(text("CREATE TABLE IF NOT EXISTS review_assignments (\n"
+                                       "id UUID PRIMARY KEY,\n"
+                                       "cycle_id UUID NOT NULL REFERENCES review_cycles(id) ON DELETE CASCADE,\n"
+                                       "reviewee_user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,\n"
+                                       "reviewer_user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,\n"
+                                       "status VARCHAR(50) DEFAULT 'pending',\n"
+                                       "due_date TIMESTAMPTZ,\n"
+                                       "created_at TIMESTAMPTZ DEFAULT NOW()\n"
+                                       ")"))
+                    conn.execute(text("CREATE TABLE IF NOT EXISTS review_answers (\n"
+                                       "id UUID PRIMARY KEY,\n"
+                                       "assignment_id UUID NOT NULL REFERENCES review_assignments(id) ON DELETE CASCADE,\n"
+                                       "question_key VARCHAR(100) NOT NULL,\n"
+                                       "question_label_snapshot VARCHAR(1000) NOT NULL,\n"
+                                       "answer_json JSONB,\n"
+                                       "score INTEGER,\n"
+                                       "commented_at TIMESTAMPTZ,\n"
+                                       "updated_at TIMESTAMPTZ DEFAULT NOW()\n"
+                                       ")"))
         except Exception:
             pass
         # Removed bootstrap admin creation: admins should be granted via roles after onboarding

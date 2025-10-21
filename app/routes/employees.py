@@ -5,6 +5,8 @@ from typing import Optional, List
 from ..db import get_db
 from ..models.models import User, EmployeeProfile
 from ..auth.security import get_current_user
+from ..routes.projects import require_permissions  # reuse permission dep
+from ..services.hierarchy import get_manager_chain, get_direct_reports
 
 
 router = APIRouter(prefix="/employees", tags=["employees"])
@@ -36,4 +38,18 @@ def list_employees(q: Optional[str] = None, db: Session = Depends(get_db), _=Dep
             "profile_photo_file_id": str(getattr(ep, 'profile_photo_file_id')) if (ep and getattr(ep, 'profile_photo_file_id', None)) else None,
         })
     return out
+
+
+@router.get("/{user_id}/hierarchy")
+def employee_hierarchy(user_id: str, db: Session = Depends(get_db), _=Depends(get_current_user)):
+    chain = get_manager_chain(user_id, db)
+    return {
+        "manager_chain": chain,
+        "direct_reports": get_direct_reports(user_id, db),
+    }
+
+
+@router.get("/reports")
+def employee_reports(manager_id: str, db: Session = Depends(get_db), _=Depends(get_current_user)):
+    return get_direct_reports(manager_id, db)
 

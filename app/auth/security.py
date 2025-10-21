@@ -134,3 +134,49 @@ def require_permissions(*required_permissions: str):
 
     return _dep
 
+
+def _has_permission(user: User, perm: str) -> bool:
+    # Admin role bypass
+    if any((getattr(r, 'name', None) or '').lower() == 'admin' for r in user.roles):
+        return True
+    perm_map = {}
+    for r in user.roles:
+        if getattr(r, 'permissions', None):
+            try:
+                perm_map.update(r.permissions)
+            except Exception:
+                pass
+    if getattr(user, 'permissions_override', None):
+        try:
+            perm_map.update(user.permissions_override)
+        except Exception:
+            pass
+    return bool(perm_map.get(perm))
+
+
+def can_approve_timesheet(approver: User, target_user_id: str, db: Session) -> bool:
+    """Returns True if approver can approve target user's timesheet.
+    Criteria: has timesheet:approve OR is in the manager chain of target (direct or indirect).
+    """
+    # Permission path
+    if _has_permission(approver, "timesheet:approve"):
+        return True
+    # Supervisor chain path
+    try:
+        import uuid as _uuid
+        from ..models.models import EmployeeProfile
+        target = db.query(EmployeeProfile).filter(EmployeeProfile.user_id == _uuid.UUID(str(target_user_id))).first()
+        visited = set()
+        depth = 0
+        while target and getattr(target, 'manager_user_id', None) and depth < 8:
+            mgr_id = str(getattr(target, 'manager_user_id'))
+            if not mgr_id or mgr_id in visited:
+                break
+            if str(approver.id) == mgr_id:
+                return True
+            visited.add(mgr_id)
+            depth += 1
+            target = db.query(EmployeeProfile).filter(EmployeeProfile.user_id == _uuid.UUID(mgr_id)).first()
+    except Exception:
+        return False
+    return False

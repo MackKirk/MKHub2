@@ -5,6 +5,7 @@ import { api } from '@/lib/api';
 
 export default function AppShell({ children }: PropsWithChildren){
   const { data:meProfile } = useQuery({ queryKey:['me-profile'], queryFn: ()=>api<any>('GET','/auth/me/profile') });
+  const { data:me } = useQuery({ queryKey:['me'], queryFn: ()=>api<any>('GET','/auth/me') });
   const displayName = (meProfile?.profile?.preferred_name) || ([meProfile?.profile?.first_name, meProfile?.profile?.last_name].filter(Boolean).join(' ') || meProfile?.user?.username || 'User');
   const avatarId = meProfile?.profile?.profile_photo_file_id;
   const avatarUrl = avatarId ? `/files/${avatarId}/thumbnail?w=96` : '/ui/assets/login/logo-light.svg';
@@ -27,6 +28,9 @@ export default function AppShell({ children }: PropsWithChildren){
           <div className="mt-2 text-[11px] uppercase text-gray-400 px-1">Settings</div>
           <a href="/ui/invite.html" className="px-3 py-2 rounded">Invite Users</a>
           <NavLink to="/users" className={({isActive})=>`px-3 py-2 rounded ${isActive?'bg-brand-red':''}`}>Users</NavLink>
+          {((me?.roles||[]).includes('admin') || (me?.permissions||[]).includes('reviews:admin')) && (
+            <NavLink to="/reviews/admin" className={({isActive})=>`px-3 py-2 rounded ${isActive?'bg-brand-red':''}`}>Reviews Admin</NavLink>
+          )}
           <NavLink to="/settings" className={({isActive})=>`px-3 py-2 rounded ${isActive?'bg-brand-red':''}`}>System Settings</NavLink>
         </nav>
       </aside>
@@ -39,8 +43,9 @@ export default function AppShell({ children }: PropsWithChildren){
               <img src={avatarUrl} className="w-10 h-10 rounded-full border-2 border-brand-red object-cover"/>
             </button>
             {open && (
-              <div className="absolute right-0 mt-2 w-48 rounded-lg border bg-white text-black shadow-lg z-50">
+              <div className="absolute right-0 mt-2 w-56 rounded-lg border bg-white text-black shadow-lg z-50">
                 <Link to="/profile" onClick={()=>setOpen(false)} className="block px-3 py-2 hover:bg-gray-50">My Information</Link>
+                <Link to="/reviews/my" onClick={()=>setOpen(false)} className="block px-3 py-2 hover:bg-gray-50">My Reviews</Link>
                 <button onClick={()=>{ localStorage.removeItem('user_token'); location.href='/login'; }} className="w-full text-left px-3 py-2 hover:bg-gray-50">Logout</button>
               </div>
             )}

@@ -21,6 +21,8 @@ import ProjectDetail from './pages/ProjectDetail';
 import SystemSettings from './pages/SystemSettings';
 import Users from './pages/Users';
 import UserInfo from './pages/UserInfo';
+import ReviewsAdmin from './pages/ReviewsAdmin';
+import MyReviews from './pages/MyReviews';
 import UserDetail from './pages/UserDetail';
 import LogHours from './pages/LogHours';
 
@@ -52,6 +54,8 @@ export default function App(){
           <Route path="/log-hours" element={<AppShell><LogHours/></AppShell>} />
           <Route path="/users" element={<AppShell><Users/></AppShell>} />
           <Route path="/users/:userId" element={<AppShell><UserInfo/></AppShell>} />
+          <Route path="/reviews/admin" element={<AppShell><ReviewsAdmin/></AppShell>} />
+          <Route path="/reviews/my" element={<AppShell><MyReviews/></AppShell>} />
           <Route path="/users/:id" element={<AppShell><UserDetail/></AppShell>} />
         </Route>
         <Route path="*" element={<Navigate to={getToken()? '/home':'/login'} replace />} />

@@ -11,6 +11,8 @@ export default function UserInfo(){
   const [tab, setTab] = useState<typeof tabParam | 'personal'>(tabParam || 'personal');
 
   const { data, isLoading } = useQuery({ queryKey:['userProfile', userId], queryFn: ()=> api<any>('GET', `/auth/users/${userId}/profile`) });
+  const { data:me } = useQuery({ queryKey:['me'], queryFn: ()=> api<any>('GET','/auth/me') });
+  const canEdit = !!(me?.roles?.includes('admin') || (me?.permissions||[]).includes('users:write'));
   const p = data?.profile || {};
 
   return (
@@ -37,8 +39,8 @@ export default function UserInfo(){
         <div className="p-5">
           {isLoading? <div className="h-24 animate-pulse bg-gray-100 rounded"/> : (
             <>
-              {tab==='personal' && <SectionGrid p={p} keys={['preferred_name','phone','mobile_phone','gender','marital_status','date_of_birth','nationality','address_line1','address_line2','city','province','postal_code','country']} />}
-              {tab==='job' && <SectionGrid p={p} keys={['hire_date','termination_date','job_title','division','work_email','work_phone','manager_user_id','pay_rate','pay_type','employment_type']} />}
+              {tab==='personal' && <EditableGrid p={p} editable={canEdit} userId={String(userId)} fields={[['Preferred name','preferred_name'],['Phone','phone'],['Mobile phone','mobile_phone'],['Gender','gender'],['Marital status','marital_status'],['Date of birth','date_of_birth'],['Nationality','nationality'],['Address line 1','address_line1'],['Address line 2','address_line2'],['City','city'],['Province/State','province'],['Postal code','postal_code'],['Country','country']]} />}
+              {tab==='job' && <EditableGrid p={p} editable={canEdit} userId={String(userId)} fields={[['Hire date','hire_date'],['Termination date','termination_date'],['Job title','job_title'],['Division','division'],['Work email','work_email'],['Work phone','work_phone'],['Manager user id','manager_user_id'],['Pay rate','pay_rate'],['Pay type','pay_type'],['Employment type','employment_type']]} />}
               {tab==='emergency' && <SectionGrid p={p} keys={['sin_number','work_permit_status','visa_status','emergency_contact_name','emergency_contact_relationship','emergency_contact_phone']} />}
               {tab==='docs' && <div className="text-sm text-gray-600">Documents section coming soon.</div>}
               {tab==='timesheet' && <TimesheetBlock userId={String(userId)} />}
@@ -59,13 +61,33 @@ function LabelVal({label, value}:{label:string, value:any}){
   );
 }
 
-function SectionGrid({p, keys}:{p:any, keys:string[]}){
-  const label: Record<string,string> = {
-    preferred_name:'Preferred name', phone:'Phone', mobile_phone:'Mobile phone', gender:'Gender', marital_status:'Marital status', date_of_birth:'Date of birth', nationality:'Nationality', address_line1:'Address line 1', address_line2:'Address line 2', city:'City', province:'Province/State', postal_code:'Postal code', country:'Country', hire_date:'Hire date', termination_date:'Termination date', job_title:'Job title', division:'Division', work_email:'Work email', work_phone:'Work phone', manager_user_id:'Manager user id', pay_rate:'Pay rate', pay_type:'Pay type', employment_type:'Employment type', sin_number:'SIN/SSN', work_permit_status:'Work permit status', visa_status:'Visa status', emergency_contact_name:'Emergency contact name', emergency_contact_relationship:'Emergency contact relationship', emergency_contact_phone:'Emergency contact phone'
+function EditableGrid({p, fields, editable, userId}:{p:any, fields:[string,string][], editable:boolean, userId:string}){
+  const [form, setForm] = useState<any>(()=>({ ...p }));
+  const save = async()=>{
+    try{
+      await api('PUT', `/auth/users/${encodeURIComponent(userId)}/profile`, form);
+      toast.success('Saved');
+    }catch(_e){ toast.error('Failed to save'); }
   };
   return (
-    <div className="grid md:grid-cols-2 gap-4">
-      {keys.map(k=> <LabelVal key={k} label={label[k]||k} value={p[k]} />)}
+    <div>
+      <div className="grid md:grid-cols-2 gap-4">
+        {fields.map(([label,key])=> (
+          <div key={key}>
+            <div className="text-sm text-gray-600">{label}</div>
+            {editable ? (
+              <input value={form[key]||''} onChange={e=> setForm((s:any)=>({ ...s, [key]: e.target.value }))} className="w-full rounded-lg border px-3 py-2"/>
+            ) : (
+              <div className="font-medium break-words">{String(p[key]??'')}</div>
+            )}
+          </div>
+        ))}
+      </div>
+      {editable && (
+        <div className="mt-4 text-right">
+          <button onClick={save} className="px-4 py-2 rounded bg-brand-red text-white">Save</button>
+        </div>
+      )}
     </div>
   );
 }
@@ -80,7 +102,15 @@ function TimesheetBlock({ userId }:{ userId:string }){
   const [notes, setNotes] = useState<string>('');
   const { data:projects } = useQuery({ queryKey:['projects-all'], queryFn: ()=> api<any[]>('GET','/projects') });
   const qs = useMemo(()=>{ const p = new URLSearchParams(); if(month) p.set('month', month); if(userId) p.set('user_id', userId); const s=p.toString(); return s? ('?'+s): ''; }, [month, userId]);
-  const { data:entries, refetch } = useQuery({ queryKey:['user-timesheet-view', projectId, qs], queryFn: ()=> projectId? api<any[]>('GET', `/projects/${projectId}/timesheet${qs}`) : Promise.resolve([]) });
+  const { data:entries, refetch } = useQuery({
+    queryKey:['user-timesheet-view', projectId, qs],
+    queryFn: ()=> {
+      if(projectId==='_all_') return api<any[]>('GET', `/projects/timesheet/user${qs}`);
+      if(projectId) return api<any[]>('GET', `/projects/${projectId}/timesheet${qs}`);
+      return Promise.resolve([]);
+    }
+  });
+  const canApprove = !!(me?.roles?.includes('admin') || (me?.permissions||[]).includes('timesheet:approve'));
 
   const submit = async()=>{
     try{
@@ -102,6 +132,7 @@ function TimesheetBlock({ userId }:{ userId:string }){
         <label className="text-xs text-gray-600 ml-3">Project</label>
         <select className="border rounded px-2 py-1" value={projectId} onChange={e=>setProjectId(e.target.value)}>
           <option value="">Select...</option>
+          <option value="_all_">All projects</option>
           {(projects||[]).map((p:any)=> <option key={p.id} value={p.id}>{p.code? `${p.code} — `:''}{p.name||'Project'}</option>)}
         </select>
         <button onClick={()=>setShowModal(true)} className="ml-auto px-3 py-2 rounded bg-brand-red text-white">Register time</button>
@@ -111,8 +142,20 @@ function TimesheetBlock({ userId }:{ userId:string }){
           <div key={e.id} className="px-3 py-2 text-sm flex items-center gap-3">
             <div className="w-24 text-gray-600">{String(e.work_date).slice(0,10)}</div>
             <div className="w-28 text-gray-700">{(e.start_time||'--:--')} - {(e.end_time||'--:--')}</div>
-            <div className="w-16 font-medium">{(e.minutes/60).toFixed(2)}h</div>
-            <div className="text-gray-600">{e.notes||''}</div>
+            <div className="w-20 font-medium">{(e.minutes/60).toFixed(2)}h</div>
+            <div className="flex-1 text-gray-600 truncate">{e.project_code? `${e.project_code} — `:''}{e.project_name||''} {e.notes? '· '+e.notes:''}</div>
+            <div className="flex items-center gap-2">
+              <div title={e.is_approved? 'Approved':'Pending'} className="text-lg">{e.is_approved? '✅':'⚪'}</div>
+              {canApprove && (
+                <button onClick={async()=>{
+                  try{
+                    const pid = e.project_id || projectId;
+                    await api('PATCH', `/projects/${encodeURIComponent(pid)}/timesheet/${encodeURIComponent(e.id)}/approve?approved=${String(!e.is_approved)}`);
+                    await refetch();
+                  }catch(_err){ toast.error('Failed to toggle approval'); }
+                }} className="px-2 py-1 rounded border text-xs">{e.is_approved? 'Unapprove':'Approve'}</button>
+              )}
+            </div>
           </div>
         )) : <div className="px-3 py-3 text-sm text-gray-600">No entries</div>}
       </div>
