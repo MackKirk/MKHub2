@@ -206,6 +206,9 @@ def create_app() -> FastAPI:
                                        "created_at TIMESTAMPTZ DEFAULT NOW(),\n"
                                        "created_by UUID\n"
                                        ")"))
+                    # Ensure new columns exist for older DBs
+                    conn.execute(text("ALTER TABLE project_time_entries ADD COLUMN IF NOT EXISTS start_time TIME"))
+                    conn.execute(text("ALTER TABLE project_time_entries ADD COLUMN IF NOT EXISTS end_time TIME"))
                     conn.execute(text("CREATE TABLE IF NOT EXISTS project_time_entry_logs (\n"
                                        "id UUID PRIMARY KEY,\n"
                                        "entry_id UUID NOT NULL REFERENCES project_time_entries(id) ON DELETE CASCADE,\n"
@@ -220,6 +223,7 @@ def create_app() -> FastAPI:
                     conn.execute(text("ALTER TABLE projects ADD COLUMN IF NOT EXISTS progress INTEGER"))
                     conn.execute(text("ALTER TABLE projects ADD COLUMN IF NOT EXISTS status_label VARCHAR(100)"))
                     conn.execute(text("ALTER TABLE projects ADD COLUMN IF NOT EXISTS division_ids JSONB"))
+                    conn.execute(text("ALTER TABLE projects ADD COLUMN IF NOT EXISTS site_id UUID"))
         except Exception:
             pass
         # Removed bootstrap admin creation: admins should be granted via roles after onboarding

@@ -135,6 +135,7 @@ class Project(Base):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     slug: Mapped[Optional[str]] = mapped_column(String(255), index=True)
     client_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
+    site_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
     address_city: Mapped[Optional[str]] = mapped_column(String(100))
     address_province: Mapped[Optional[str]] = mapped_column(String(100))
     address_country: Mapped[Optional[str]] = mapped_column(String(100))

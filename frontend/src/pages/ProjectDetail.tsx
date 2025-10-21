@@ -1,4 +1,4 @@
-import { useParams } from 'react-router-dom';
+import { useParams, Link } from 'react-router-dom';
 import { useMemo, useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
@@ -35,7 +35,13 @@ export default function ProjectDetail(){
             </div>
             <div className="flex-1 flex flex-col justify-start">
               <div className="text-3xl font-extrabold">{proj?.name||'Project'}</div>
-              <div className="text-sm opacity-90 mt-1">{proj?.code||''} · {proj?.address_city||''} {proj?.address_province||''} {proj?.address_country||''}</div>
+              <div className="text-sm opacity-90 mt-1">{proj?.code||''} · {proj?.client_display_name||''}</div>
+              <div className="text-sm opacity-90">
+                {proj?.site_id ? (
+                  <Link to={`/customers/${encodeURIComponent(String(proj?.client_id||''))}/sites/${encodeURIComponent(String(proj?.site_id||''))}`} className="underline">Site: {proj?.site_name||proj?.site_id}</Link>
+                ) : ''}
+              </div>
+              <div className="text-sm opacity-90">{proj?.site_address_line1||''} {proj?.site_city||''} {proj?.site_province||''} {proj?.site_country||''}</div>
               <div className="mt-2 flex items-center gap-3">
                 {(() => { const statusLabel = String((proj as any)?.status_label||'').trim(); const color = ((settings||{}).project_statuses||[]).find((s:any)=>s.label===statusLabel)?.value || '#e5e7eb'; return (<span className="px-2 py-0.5 rounded-full border text-black" style={{ backgroundColor: color }}>{statusLabel||'—'}</span>); })()}
                 <div className="flex items-center gap-2">

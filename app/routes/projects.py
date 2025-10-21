@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from typing import List, Optional
 
 from ..db import get_db
-from ..models.models import Project, ClientFile, FileObject, ProjectUpdate, ProjectReport, ProjectTimeEntry, ProjectTimeEntryLog, User, EmployeeProfile
+from ..models.models import Project, ClientFile, FileObject, ProjectUpdate, ProjectReport, ProjectTimeEntry, ProjectTimeEntryLog, User, EmployeeProfile, Client, ClientSite
 from ..auth.security import get_current_user, require_permissions
 
 
@@ -59,12 +59,15 @@ def get_project(project_id: str, db: Session = Depends(get_db)):
     p = db.query(Project).filter(Project.id == project_id).first()
     if not p:
         raise HTTPException(status_code=404, detail="Not found")
+    client = db.query(Client).filter(Client.id == p.client_id).first() if getattr(p,'client_id',None) else None
+    site = db.query(ClientSite).filter(ClientSite.id == getattr(p,'site_id',None)).first() if getattr(p,'site_id',None) else None
     return {
         "id": str(p.id),
         "code": p.code,
         "name": p.name,
         "slug": p.slug,
         "client_id": str(p.client_id) if p.client_id else None,
+        "client_display_name": getattr(client,'display_name', None) or getattr(client,'name', None),
         "address_city": getattr(p, 'address_city', None),
         "address_province": getattr(p, 'address_province', None),
         "address_country": getattr(p, 'address_country', None),
@@ -73,6 +76,12 @@ def get_project(project_id: str, db: Session = Depends(get_db)):
         "division_id": getattr(p, 'division_id', None),
         "status_label": getattr(p, 'status_label', None),
         "division_ids": getattr(p, 'division_ids', None),
+        "site_id": str(getattr(p,'site_id', None)) if getattr(p,'site_id', None) else None,
+        "site_name": getattr(site, 'site_name', None),
+        "site_address_line1": getattr(site, 'site_address_line1', None),
+        "site_city": getattr(site, 'site_city', None),
+        "site_province": getattr(site, 'site_province', None),
+        "site_country": getattr(site, 'site_country', None),
         "estimator_id": getattr(p, 'estimator_id', None),
         "onsite_lead_id": getattr(p, 'onsite_lead_id', None),
         "date_start": p.date_start.isoformat() if getattr(p, 'date_start', None) else None,
