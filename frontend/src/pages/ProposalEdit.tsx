@@ -14,6 +14,11 @@ export default function ProposalEdit(){
   const clientId = String(p?.client_id||'');
   const siteId = String(p?.site_id||'');
   const projectId = String(p?.project_id||'');
+  type Client = { id:string, name?:string, display_name?:string, address_line1?:string, city?:string, province?:string, country?:string };
+  type Site = { id:string, site_name?:string, site_address_line1?:string, site_city?:string, site_province?:string, site_country?:string };
+  const { data:client } = useQuery({ queryKey:['client', clientId], queryFn: ()=> clientId? api<Client>('GET', `/clients/${clientId}`): Promise.resolve(null) });
+  const { data:sites } = useQuery({ queryKey:['sites', clientId], queryFn: ()=> clientId? api<Site[]>('GET', `/clients/${clientId}/sites`): Promise.resolve([]) });
+  const site = (sites||[]).find(s=> String(s.id)===String(siteId));
 
   const [coverTitle, setCoverTitle] = useState('');
   const [orderNumber, setOrderNumber] = useState('');
@@ -98,11 +103,31 @@ export default function ProposalEdit(){
     <div>
       <h1 className="text-2xl font-bold mb-3">Edit Proposal</h1>
       {isLoading? <div className="h-24 bg-gray-100 animate-pulse rounded"/> : (
-        <div className="rounded-xl border bg-white p-4 space-y-3">
-          <div className="grid md:grid-cols-2 gap-3">
-            <div><label className="text-xs text-gray-600">Document Type</label><input className="w-full border rounded px-3 py-2" value={coverTitle} onChange={e=>setCoverTitle(e.target.value)} /></div>
-            <div><label className="text-xs text-gray-600">Order Number</label><input className="w-full border rounded px-3 py-2" value={orderNumber} onChange={e=>setOrderNumber(e.target.value)} /></div>
-            <div><label className="text-xs text-gray-600">Date</label><input type="date" className="w-full border rounded px-3 py-2" value={date} onChange={e=>setDate(e.target.value)} /></div>
+        <div className="rounded-xl border bg-white p-4 space-y-4">
+          <div className="grid md:grid-cols-2 gap-4">
+            <div>
+              <div className="text-sm font-semibold mb-2">Company Info</div>
+              <div className="space-y-2 text-sm">
+                <div><label className="text-xs text-gray-600">Document Type</label><input className="w-full border rounded px-3 py-2" value={coverTitle} onChange={e=>setCoverTitle(e.target.value)} /></div>
+                <div><label className="text-xs text-gray-600">Order Number</label><input className="w-full border rounded px-3 py-2" value={orderNumber} onChange={e=>setOrderNumber(e.target.value)} /></div>
+                <div><label className="text-xs text-gray-600">Company Name</label><input className="w-full border rounded px-3 py-2" value={(client?.display_name||client?.name||'')} readOnly /></div>
+                <div><label className="text-xs text-gray-600">Company Address</label><input className="w-full border rounded px-3 py-2" value={(site? [site.site_address_line1, site.site_city, site.site_province, site.site_country] : [client?.address_line1, client?.city, client?.province, client?.country]).filter(Boolean).join(', ')} readOnly /></div>
+                <div><label className="text-xs text-gray-600">Date</label><input type="date" className="w-full border rounded px-3 py-2" value={date} onChange={e=>setDate(e.target.value)} /></div>
+              </div>
+            </div>
+            <div>
+              <div className="text-sm font-semibold mb-2">Project Details</div>
+              <div className="space-y-2 text-sm">
+                <div><label className="text-xs text-gray-600">Created For</label><input className="w-full border rounded px-3 py-2" value={createdFor} onChange={e=>setCreatedFor(e.target.value)} /></div>
+                <div className="grid grid-cols-3 gap-2">
+                  <div><label className="text-xs text-gray-600">Primary Name</label><input className="w-full border rounded px-3 py-2" value={primary.name||''} onChange={e=>setPrimary(v=>({ ...v, name: e.target.value }))} /></div>
+                  <div><label className="text-xs text-gray-600">Phone</label><input className="w-full border rounded px-3 py-2" value={primary.phone||''} onChange={e=>setPrimary(v=>({ ...v, phone: e.target.value }))} /></div>
+                  <div><label className="text-xs text-gray-600">Email</label><input className="w-full border rounded px-3 py-2" value={primary.email||''} onChange={e=>setPrimary(v=>({ ...v, email: e.target.value }))} /></div>
+                </div>
+                <div><label className="text-xs text-gray-600">Type</label><input className="w-full border rounded px-3 py-2" value={typeOfProject} onChange={e=>setTypeOfProject(e.target.value)} /></div>
+                <div><label className="text-xs text-gray-600">Other Notes</label><input className="w-full border rounded px-3 py-2" value={otherNotes} onChange={e=>setOtherNotes(e.target.value)} /></div>
+              </div>
+            </div>
           </div>
           <div className="grid md:grid-cols-3 gap-3">
             <div><label className="text-xs text-gray-600">Created For</label><input className="w-full border rounded px-3 py-2" value={createdFor} onChange={e=>setCreatedFor(e.target.value)} /></div>
