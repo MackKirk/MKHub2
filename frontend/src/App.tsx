@@ -26,6 +26,7 @@ import MyReviews from './pages/MyReviews';
 import ReviewsCompare from './pages/ReviewsCompare';
 import UserDetail from './pages/UserDetail';
 import LogHours from './pages/LogHours';
+import ProposalNew from './pages/ProposalNew';
 
 import { getToken } from './lib/api';
 function Home(){ return <Navigate to={getToken()? '/home':'/login'} replace />; }
@@ -49,6 +50,7 @@ export default function App(){
           <Route path="/inventory/products" element={<AppShell><InventoryProducts/></AppShell>} />
           <Route path="/inventory/orders" element={<AppShell><InventoryOrders/></AppShell>} />
           <Route path="/proposals" element={<AppShell><Proposals/></AppShell>} />
+          <Route path="/proposals/new" element={<AppShell><ProposalNew/></AppShell>} />
           <Route path="/projects" element={<AppShell><Projects/></AppShell>} />
           <Route path="/projects/:id" element={<AppShell><ProjectDetail/></AppShell>} />
           <Route path="/settings" element={<AppShell><SystemSettings/></AppShell>} />

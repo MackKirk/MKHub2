@@ -18,7 +18,7 @@ export default function ProjectDetail(){
   const { data:files, refetch: refetchFiles } = useQuery({ queryKey:['projectFiles', id], queryFn: ()=>api<ProjectFile[]>('GET', `/projects/${id}/files`) });
   const { data:updates, refetch: refetchUpdates } = useQuery({ queryKey:['projectUpdates', id], queryFn: ()=>api<Update[]>('GET', `/projects/${id}/updates`) });
   const { data:reports, refetch: refetchReports } = useQuery({ queryKey:['projectReports', id], queryFn: ()=>api<Report[]>('GET', `/projects/${id}/reports`) });
-  const { data:proposals } = useQuery({ queryKey:['projectProposals', id], queryFn: ()=>api<Proposal[]>('GET', `/proposals?project_id=${id}`) });
+  const { data:proposals } = useQuery({ queryKey:['projectProposals', id], queryFn: ()=>api<Proposal[]>('GET', `/proposals?project_id=${encodeURIComponent(String(id||''))}`) });
   const [tab, setTab] = useState<'overview'|'general'|'reports'|'timesheet'|'files'|'photos'|'proposals'>('overview');
   const [pickerOpen, setPickerOpen] = useState(false);
   const cover = useMemo(()=>{
@@ -319,7 +319,7 @@ function ProjectProposalsTab({ projectId, clientId, siteId, proposals }:{ projec
   return (
     <div className="rounded-xl border bg-white overflow-hidden">
       <div className="p-3 flex justify-end">
-        <button onClick={()=>{ window.location.href = `/ui/proposal-auto.html?client_id=${encodeURIComponent(clientId)}${siteId?`&site_id=${encodeURIComponent(siteId)}`:''}&project_id=${encodeURIComponent(projectId)}`; }} className="px-3 py-2 rounded bg-brand-red text-white">New Proposal</button>
+        <button onClick={()=>{ window.location.href = `/proposals/new?client_id=${encodeURIComponent(clientId)}${siteId?`&site_id=${encodeURIComponent(siteId)}`:''}&project_id=${encodeURIComponent(projectId)}`; }} className="px-3 py-2 rounded bg-brand-red text-white">New Proposal</button>
       </div>
       <table className="w-full text-sm">
         <thead className="bg-gray-50"><tr><th className="text-left p-2">Title</th><th className="text-left p-2">Order</th><th className="text-left p-2">Created</th></tr></thead>
