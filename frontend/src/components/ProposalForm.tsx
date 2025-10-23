@@ -43,6 +43,7 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
   const [sectionPicker, setSectionPicker] = useState<{ secId:string, index?: number }|null>(null);
   const [coverPreview, setCoverPreview] = useState<string>('');
   const [page2Preview, setPage2Preview] = useState<string>('');
+  const newImageId = ()=> 'img_'+Math.random().toString(36).slice(2);
 
   // prefill from initial (edit)
   useEffect(()=>{
@@ -62,10 +63,9 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
     setCosts(dc.map((c:any)=> ({ label: String(c.label||''), amount: String(c.value ?? c.amount ?? '') })));
     setTerms(String(d.terms_text||''));
     const loaded = Array.isArray(d.sections)? JSON.parse(JSON.stringify(d.sections)) : [];
-    const genId = ()=> 'img_'+Math.random().toString(36).slice(2);
     const normalized = loaded.map((sec:any)=>{
       if (sec?.type==='images'){
-        const imgs = (sec.images||[]).map((im:any)=> ({ image_id: im.image_id || genId(), file_object_id: String(im.file_object_id||''), caption: String(im.caption||'') }));
+        const imgs = (sec.images||[]).map((im:any)=> ({ image_id: im.image_id || newImageId(), file_object_id: String(im.file_object_id||''), caption: String(im.caption||'') }));
         return { type:'images', title: String(sec.title||''), images: imgs };
       }
       return { type:'text', title: String(sec.title||''), text: String(sec.text||'') };
@@ -354,10 +354,11 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
               if (!isTarget) return x;
               const imgs = Array.isArray(x.images)? [...x.images] : [];
               if (typeof sectionPicker.index === 'number'){ // replace specific
-                imgs[sectionPicker.index] = { ...(imgs[sectionPicker.index]||{}), file_object_id: fileObjectId };
+                const prev = imgs[sectionPicker.index] || {};
+                imgs[sectionPicker.index] = { image_id: (prev.image_id||newImageId()), file_object_id: fileObjectId, caption: prev.caption||'' };
                 return { ...x, images: imgs };
               }
-              return { ...x, images: [...imgs, { file_object_id: fileObjectId, caption: '' }] };
+              return { ...x, images: [...imgs, { image_id: newImageId(), file_object_id: fileObjectId, caption: '' }] };
             }));
           }catch(e){ toast.error('Failed to add image'); }
           setSectionPicker(null);
