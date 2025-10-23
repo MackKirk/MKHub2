@@ -322,10 +322,10 @@ function ProjectProposalsTab({ projectId, clientId, siteId, proposals }:{ projec
         <button onClick={()=>{ window.location.href = `/proposals/new?client_id=${encodeURIComponent(clientId)}${siteId?`&site_id=${encodeURIComponent(siteId)}`:''}&project_id=${encodeURIComponent(projectId)}`; }} className="px-3 py-2 rounded bg-brand-red text-white">New Proposal</button>
       </div>
       <table className="w-full text-sm">
-        <thead className="bg-gray-50"><tr><th className="text-left p-2">Title</th><th className="text-left p-2">Order</th><th className="text-left p-2">Created</th></tr></thead>
+        <thead className="bg-gray-50"><tr><th className="text-left p-2">Title</th><th className="text-left p-2">Order</th><th className="text-left p-2">Created</th><th className="text-left p-2">Actions</th></tr></thead>
         <tbody>
           {(proposals||[]).map(p=> (
-            <tr key={p.id} className="border-t"><td className="p-2">{p.title||'Proposal'}</td><td className="p-2">{p.order_number||''}</td><td className="p-2">{(p.created_at||'').slice(0,10)}</td></tr>
+            <tr key={p.id} className="border-t"><td className="p-2">{p.title||'Proposal'}</td><td className="p-2">{p.order_number||''}</td><td className="p-2">{(p.created_at||'').slice(0,10)}</td><td className="p-2"><a className="underline" href={`/proposals/${encodeURIComponent(p.id)}/edit`}>Open</a></td></tr>
           ))}
           {(!proposals||!proposals.length) && <tr><td colSpan={3} className="p-3 text-gray-600">No proposals</td></tr>}
         </tbody>

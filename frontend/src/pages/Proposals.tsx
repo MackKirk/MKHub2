@@ -14,7 +14,7 @@ export default function Proposals(){
           <thead className="bg-gray-50"><tr><th className="p-2 text-left">Title</th><th className="p-2 text-left">Order</th><th className="p-2 text-left">Created</th><th className="p-2 text-left">Actions</th></tr></thead>
           <tbody>
             {isLoading? <tr><td colSpan={4} className="p-4"><div className="h-6 bg-gray-100 animate-pulse rounded"/></td></tr> : (data||[]).map(p=> (
-              <tr key={p.id} className="border-t"><td className="p-2">{p.title||'Proposal'}</td><td className="p-2">{p.order_number||''}</td><td className="p-2">{(p.created_at||'').slice(0,10)}</td><td className="p-2"><Link to={`/proposals/${encodeURIComponent(p.id)}`} className="underline">Open</Link></td></tr>
+              <tr key={p.id} className="border-t"><td className="p-2">{p.title||'Proposal'}</td><td className="p-2">{p.order_number||''}</td><td className="p-2">{(p.created_at||'').slice(0,10)}</td><td className="p-2"><Link to={`/proposals/${encodeURIComponent(p.id)}/edit`} className="underline">Open</Link></td></tr>
             ))}
           </tbody>
         </table>
