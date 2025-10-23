@@ -112,6 +112,16 @@ def create_app() -> FastAPI:
             Base.metadata.create_all(bind=engine)
         # Lightweight dev-time migrations (PostgreSQL): add missing columns safely
         try:
+            # SQLite lightweight migrations for local dev
+            if settings.database_url.startswith("sqlite:///./"):
+                try:
+                    with engine.begin() as conn:
+                        try:
+                            conn.execute(text("ALTER TABLE proposals ADD COLUMN project_id TEXT"))
+                        except Exception:
+                            pass
+                except Exception:
+                    pass
             if settings.database_url.startswith("postgres"):
                 with engine.begin() as conn:
                     conn.execute(text("ALTER TABLE employee_profiles ADD COLUMN IF NOT EXISTS profile_photo_file_id UUID"))
@@ -191,6 +201,7 @@ def create_app() -> FastAPI:
                                        ")"))
                     conn.execute(text("CREATE TABLE IF NOT EXISTS proposals (\n"
                                        "id UUID PRIMARY KEY,\n"
+                                       "project_id UUID,\n"
                                        "client_id UUID,\n"
                                        "site_id UUID,\n"
                                        "order_number VARCHAR(20),\n"
@@ -198,6 +209,8 @@ def create_app() -> FastAPI:
                                        "data JSONB,\n"
                                        "created_at TIMESTAMPTZ DEFAULT NOW()\n"
                                        ")"))
+                    # Ensure new column exists for older DBs
+                    conn.execute(text("ALTER TABLE proposals ADD COLUMN IF NOT EXISTS project_id UUID"))
                     # Ensure employee notes table exists
                     conn.execute(text("CREATE TABLE IF NOT EXISTS employee_notes (\n"
                                        "id UUID PRIMARY KEY,\n"

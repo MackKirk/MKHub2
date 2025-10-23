@@ -9,6 +9,7 @@ type Project = { id:string, code?:string, name?:string, client_id?:string, addre
 type ProjectFile = { id:string, file_object_id:string, is_image?:boolean, content_type?:string, category?:string, original_name?:string, uploaded_at?:string };
 type Update = { id:string, timestamp?:string, text?:string, images?:any };
 type Report = { id:string, category_id?:string, division_id?:string, description?:string, images?:any, status?:string };
+type Proposal = { id:string, title?:string, order_number?:string, created_at?:string };
 
 export default function ProjectDetail(){
   const { id } = useParams();
@@ -17,7 +18,8 @@ export default function ProjectDetail(){
   const { data:files, refetch: refetchFiles } = useQuery({ queryKey:['projectFiles', id], queryFn: ()=>api<ProjectFile[]>('GET', `/projects/${id}/files`) });
   const { data:updates, refetch: refetchUpdates } = useQuery({ queryKey:['projectUpdates', id], queryFn: ()=>api<Update[]>('GET', `/projects/${id}/updates`) });
   const { data:reports, refetch: refetchReports } = useQuery({ queryKey:['projectReports', id], queryFn: ()=>api<Report[]>('GET', `/projects/${id}/reports`) });
-  const [tab, setTab] = useState<'overview'|'general'|'reports'|'timesheet'|'files'|'photos'>('overview');
+  const { data:proposals } = useQuery({ queryKey:['projectProposals', id], queryFn: ()=>api<Proposal[]>('GET', `/proposals?project_id=${id}`) });
+  const [tab, setTab] = useState<'overview'|'general'|'reports'|'timesheet'|'files'|'photos'|'proposals'>('overview');
   const [pickerOpen, setPickerOpen] = useState(false);
   const cover = useMemo(()=>{
     const img = (files||[]).find(f=> String(f.category||'')==='project-cover-derived') || (files||[]).find(f=> (f.is_image===true) || String(f.content_type||'').startsWith('image/'));
@@ -50,7 +52,7 @@ export default function ProjectDetail(){
                 </div>
               </div>
               <div className="mt-auto flex gap-3">
-                {(['overview','general','reports','timesheet','files','photos'] as const).map(k=> (
+                {(['overview','general','reports','timesheet','files','photos','proposals'] as const).map(k=> (
                   <button key={k} onClick={()=>setTab(k)} className={`px-4 py-2 rounded-full ${tab===k?'bg-black text-white':'bg-white text-black'}`}>{k[0].toUpperCase()+k.slice(1)}</button>
                 ))}
               </div>
@@ -108,6 +110,10 @@ export default function ProjectDetail(){
 
             {tab==='photos' && (
               <PhotosTab files={(files||[]).filter(f=> (f.is_image===true) || String(f.content_type||'').startsWith('image/'))} />
+            )}
+
+            {tab==='proposals' && (
+              <ProjectProposalsTab projectId={String(id)} clientId={String(proj?.client_id||'')} siteId={String(proj?.site_id||'')} proposals={proposals||[]} />
             )}
           </>
         )}
@@ -305,6 +311,25 @@ function PhotosTab({ files }:{ files: ProjectFile[] }){
           </div>
         </div>
       )) : <div className="text-sm text-gray-600">No photos</div>}
+    </div>
+  );
+}
+
+function ProjectProposalsTab({ projectId, clientId, siteId, proposals }:{ projectId:string, clientId:string, siteId?:string, proposals: Proposal[] }){
+  return (
+    <div className="rounded-xl border bg-white overflow-hidden">
+      <div className="p-3 flex justify-end">
+        <button onClick={()=>{ window.location.href = `/ui/proposal-auto.html?client_id=${encodeURIComponent(clientId)}${siteId?`&site_id=${encodeURIComponent(siteId)}`:''}&project_id=${encodeURIComponent(projectId)}`; }} className="px-3 py-2 rounded bg-brand-red text-white">New Proposal</button>
+      </div>
+      <table className="w-full text-sm">
+        <thead className="bg-gray-50"><tr><th className="text-left p-2">Title</th><th className="text-left p-2">Order</th><th className="text-left p-2">Created</th></tr></thead>
+        <tbody>
+          {(proposals||[]).map(p=> (
+            <tr key={p.id} className="border-t"><td className="p-2">{p.title||'Proposal'}</td><td className="p-2">{p.order_number||''}</td><td className="p-2">{(p.created_at||'').slice(0,10)}</td></tr>
+          ))}
+          {(!proposals||!proposals.length) && <tr><td colSpan={3} className="p-3 text-gray-600">No proposals</td></tr>}
+        </tbody>
+      </table>
     </div>
   );
 }

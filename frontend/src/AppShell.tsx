@@ -29,7 +29,10 @@ export default function AppShell({ children }: PropsWithChildren){
           <a href="/ui/invite.html" className="px-3 py-2 rounded">Invite Users</a>
           <NavLink to="/users" className={({isActive})=>`px-3 py-2 rounded ${isActive?'bg-brand-red':''}`}>Users</NavLink>
           {((me?.roles||[]).includes('admin') || (me?.permissions||[]).includes('reviews:admin')) && (
-            <NavLink to="/reviews/admin" className={({isActive})=>`px-3 py-2 rounded ${isActive?'bg-brand-red':''}`}>Reviews Admin</NavLink>
+            <>
+              <NavLink to="/reviews/admin" className={({isActive})=>`px-3 py-2 rounded ${isActive?'bg-brand-red':''}`}>Reviews Admin</NavLink>
+              <NavLink to="/reviews/compare" className={({isActive})=>`px-3 py-2 rounded ${isActive?'bg-brand-red':''}`}>Reviews Compare</NavLink>
+            </>
           )}
           <NavLink to="/settings" className={({isActive})=>`px-3 py-2 rounded ${isActive?'bg-brand-red':''}`}>System Settings</NavLink>
         </nav>

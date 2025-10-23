@@ -326,6 +326,8 @@ def save_proposal(payload: dict = Body(...), db: Session = Depends(get_db)):
         p = db.query(Proposal).filter(Proposal.id == pid).first()
         if not p:
             raise HTTPException(status_code=404, detail='Proposal not found')
+        # Allow updating scope relations
+        p.project_id = payload.get('project_id') or p.project_id
         p.client_id = payload.get('client_id') or p.client_id
         p.site_id = payload.get('site_id') or p.site_id
         p.order_number = payload.get('order_number') or p.order_number
@@ -335,6 +337,7 @@ def save_proposal(payload: dict = Body(...), db: Session = Depends(get_db)):
         return {"id": str(p.id)}
     else:
         p = Proposal(
+            project_id=payload.get('project_id'),
             client_id=payload.get('client_id'),
             site_id=payload.get('site_id'),
             order_number=payload.get('order_number'),
@@ -347,8 +350,10 @@ def save_proposal(payload: dict = Body(...), db: Session = Depends(get_db)):
 
 
 @router.get("")
-def list_proposals(client_id: Optional[str] = Query(None), site_id: Optional[str] = Query(None), db: Session = Depends(get_db)):
+def list_proposals(client_id: Optional[str] = Query(None), site_id: Optional[str] = Query(None), project_id: Optional[str] = Query(None), db: Session = Depends(get_db)):
     q = db.query(Proposal)
+    if project_id:
+        q = q.filter(Proposal.project_id == project_id)
     if client_id:
         q = q.filter(Proposal.client_id == client_id)
     if site_id:
@@ -356,6 +361,7 @@ def list_proposals(client_id: Optional[str] = Query(None), site_id: Optional[str
     rows = q.order_by(Proposal.created_at.desc()).limit(100).all()
     return [{
         "id": str(r.id),
+        "project_id": str(r.project_id) if getattr(r, 'project_id', None) else None,
         "client_id": str(r.client_id) if r.client_id else None,
         "site_id": str(r.site_id) if r.site_id else None,
         "order_number": r.order_number,
@@ -371,6 +377,7 @@ def get_proposal(proposal_id: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail='Not found')
     return {
         "id": str(p.id),
+        "project_id": str(p.project_id) if getattr(p, 'project_id', None) else None,
         "client_id": str(p.client_id) if p.client_id else None,
         "site_id": str(p.site_id) if p.site_id else None,
         "order_number": p.order_number,

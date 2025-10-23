@@ -24,6 +24,18 @@ export default function ReviewsAdmin(){
               <div className="text-gray-600">Name</div>
               <input className="w-full border rounded px-3 py-2" value={name} onChange={e=>setName(e.target.value)} />
             </div>
+            <div>
+              <div className="text-gray-600">Questions</div>
+              <div className="space-y-2">
+                {questions.map((q,idx)=> (
+                  <div key={idx} className="grid grid-cols-4 gap-2">
+                    <input className="col-span-1 border rounded px-2 py-1" value={q.key} onChange={e=>{ const v=[...questions]; v[idx]={...v[idx], key:e.target.value}; setQuestions(v); }} placeholder="key" />
+                    <input className="col-span-3 border rounded px-2 py-1" value={q.label} onChange={e=>{ const v=[...questions]; v[idx]={...v[idx], label:e.target.value}; setQuestions(v); }} placeholder="label" />
+                  </div>
+                ))}
+                <button onClick={()=> setQuestions(qs=> [...qs, { key:`q${qs.length+1}`, label:'', type:'text', required:false }])} className="px-2 py-1 rounded border text-xs">Add question</button>
+              </div>
+            </div>
             <button onClick={async()=>{
               try{
                 await api('POST','/reviews/templates',{ name, questions });
@@ -90,6 +102,18 @@ export default function ReviewsAdmin(){
                     catch(_e){ toast.error('Failed'); }
                   }} className="px-2 py-1 rounded border text-xs">Assign</button>
                 </div>
+              ))}
+            </div>
+          </div>
+          <div className="mt-4">
+            <div className="font-semibold mb-1">Compare (self vs manager)</div>
+            <div className="text-xs text-gray-600 mb-2">Pick a cycle to view comparisons for all employees</div>
+            <div className="space-x-2">
+              {(cycles||[]).map((c:any)=> (
+                <button key={c.id} onClick={async()=>{
+                  try{ const data = await api<any[]>('GET', `/reviews/cycles/${c.id}/compare`); console.log('compare', data); toast.success(`Loaded ${data.length} comparisons (see console)`); }
+                  catch(_e){ toast.error('Failed'); }
+                }} className="px-3 py-1 rounded border text-xs">{c.name}</button>
               ))}
             </div>
           </div>

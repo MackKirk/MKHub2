@@ -41,3 +41,4 @@ def is_in_chain(manager_id: str, user_id: str, db: Session) -> bool:
     return str(manager_id) in set(get_manager_chain(user_id, db))
 
 
+

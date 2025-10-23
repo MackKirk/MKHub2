@@ -11,6 +11,7 @@
     <form id="proposalForm" enctype="multipart/form-data">
       <input type="hidden" id="client_id" />
       <input type="hidden" id="site_id" />
+      <input type="hidden" id="project_id" />
       <input type="hidden" id="proposal_created_for" name="proposal_created_for" />
       <h3>Company Info</h3>
       <div class="field"><label>Document Type</label><input type="text" name="cover_title" maxlength="22" required></div>
@@ -166,8 +167,10 @@ MKHubUI.initSidebar('home');
 const qp = new URLSearchParams(location.search);
 const clientId = qp.get('client_id') || '';
 const siteId = qp.get('site_id') || '';
+const projectId = qp.get('project_id') || '';
   const clientHidden = document.getElementById('client_id'); if (clientHidden) clientHidden.value = clientId;
   const siteHidden = document.getElementById('site_id'); if (siteHidden) siteHidden.value = siteId;
+  const projectHidden = document.getElementById('project_id'); if (projectHidden) projectHidden.value = projectId;
 
 async function initPrefill(){
   try{
@@ -462,6 +465,7 @@ async function initPrefill(){
         const payload = collectDraft();
         payload.client_id = clientId || null;
         payload.site_id = siteId || null;
+        payload.project_id = projectId || null;
         payload.order_number = document.getElementById('order_number')?.value || null;
         payload.cover_title = document.querySelector('[name="cover_title"]')?.value || 'Proposal';
         if (existingId) payload.id = existingId;

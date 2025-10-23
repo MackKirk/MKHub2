@@ -60,7 +60,7 @@ def list_cycles(db: Session = Depends(get_db), _=Depends(require_permissions("re
 
 
 @router.post("/cycles/{cycle_id}/assign")
-def assign_cycle(cycle_id: str, db: Session = Depends(get_db), _=Depends(require_permissions("reviews:admin"))):
+def assign_cycle(cycle_id: str, include_self: bool = True, db: Session = Depends(get_db), _=Depends(require_permissions("reviews:admin"))):
     c = db.query(ReviewCycle).filter(ReviewCycle.id == cycle_id).first()
     if not c:
         raise HTTPException(status_code=404, detail="Cycle not found")
@@ -76,6 +76,15 @@ def assign_cycle(cycle_id: str, db: Session = Depends(get_db), _=Depends(require
             if exists:
                 continue
             a = ReviewAssignment(cycle_id=c.id, reviewee_user_id=rid, reviewer_user_id=u.id, status="pending", due_date=c.period_end or now)
+            db.add(a)
+            created += 1
+    if include_self:
+        # Self-reviews for all active users
+        for u in users:
+            exists = db.query(ReviewAssignment).filter(ReviewAssignment.cycle_id == c.id, ReviewAssignment.reviewee_user_id == u.id, ReviewAssignment.reviewer_user_id == u.id).first()
+            if exists:
+                continue
+            a = ReviewAssignment(cycle_id=c.id, reviewee_user_id=u.id, reviewer_user_id=u.id, status="pending", due_date=c.period_end or now)
             db.add(a)
             created += 1
     db.commit()
@@ -142,6 +151,65 @@ def my_assignments(status: Optional[str] = None, db: Session = Depends(get_db), 
         except Exception:
             pass
         out.append(rec)
+    return out
+
+
+@router.get("/cycles/{cycle_id}/compare")
+def compare_cycle(cycle_id: str, user_id: Optional[str] = None, db: Session = Depends(get_db), _=Depends(require_permissions("reviews:read"))):
+    # Load template questions for ordering and labels
+    cyc = db.query(ReviewCycle).filter(ReviewCycle.id == cycle_id).first()
+    if not cyc:
+        raise HTTPException(status_code=404, detail="Cycle not found")
+    qs = db.query(ReviewTemplateQuestion).filter(ReviewTemplateQuestion.template_id == cyc.template_id).order_by(ReviewTemplateQuestion.order_index.asc()).all()
+    # Query assignments for this cycle
+    q = db.query(ReviewAssignment).filter(ReviewAssignment.cycle_id == cycle_id)
+    if user_id:
+        q = q.filter(ReviewAssignment.reviewee_user_id == user_id)
+    assigns = q.all()
+    # Group by reviewee
+    from collections import defaultdict
+    by_user = defaultdict(list)
+    for a in assigns:
+        by_user[str(a.reviewee_user_id)].append(a)
+    out = []
+    for rid, arr in by_user.items():
+        # Find self and manager assignment
+        self_a = next((a for a in arr if str(a.reviewee_user_id) == str(a.reviewer_user_id)), None)
+        mgr_a = next((a for a in arr if str(a.reviewee_user_id) != str(a.reviewer_user_id)), None)
+        def answers_for(aid):
+            if not aid:
+                return {}
+            rows = db.query(ReviewAnswer).filter(ReviewAnswer.assignment_id == aid.id).all()
+            return { r.question_key: (r.answer_json or {}).get('value') for r in rows }
+        self_ans = answers_for(self_a)
+        mgr_ans = answers_for(mgr_a)
+        comp = []
+        for qrow in qs:
+            k = qrow.key
+            comp.append({
+                "key": k,
+                "label": qrow.label,
+                "self": self_ans.get(k),
+                "manager": mgr_ans.get(k),
+            })
+        # Resolve display name
+        display_name = None
+        try:
+            rev = db.query(User).filter(User.id == rid).first()
+            display_name = getattr(rev, 'username', None)
+        except Exception:
+            display_name = None
+        out.append({
+            "reviewee_user_id": rid,
+            "reviewee_name": display_name,
+            "self_assignment_id": str(self_a.id) if self_a else None,
+            "manager_assignment_id": str(mgr_a.id) if mgr_a else None,
+            "self_status": getattr(self_a, 'status', None) if self_a else None,
+            "manager_status": getattr(mgr_a, 'status', None) if mgr_a else None,
+            "self_reviewer_id": str(getattr(self_a, 'reviewer_user_id')) if self_a else None,
+            "manager_reviewer_id": str(getattr(mgr_a, 'reviewer_user_id')) if mgr_a else None,
+            "comparison": comp,
+        })
     return out
 
 
