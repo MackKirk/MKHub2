@@ -88,6 +88,8 @@ export default function ProposalNew(){
         terms_text: terms||'',
         additional_costs: costs.map(c=> ({ label: c.label, value: Number(c.amount||'0') })),
         sections,
+        cover_file_object_id: coverFoId||null,
+        page2_file_object_id: page2FoId||null,
       };
       const r:any = await api('POST','/proposals', payload);
       toast.success('Saved');

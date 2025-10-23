@@ -14,6 +14,8 @@ import InventorySuppliers from './pages/InventorySuppliers';
 import InventoryProducts from './pages/InventoryProducts';
 import InventoryOrders from './pages/InventoryOrders';
 import Proposals from './pages/Proposals';
+import ProposalNew from './pages/ProposalNew';
+import ProposalView from './pages/ProposalView';
 import CustomerDetail from './pages/CustomerDetail';
 import SiteDetail from './pages/SiteDetail';
 import Projects from './pages/Projects';
@@ -51,6 +53,7 @@ export default function App(){
           <Route path="/inventory/orders" element={<AppShell><InventoryOrders/></AppShell>} />
           <Route path="/proposals" element={<AppShell><Proposals/></AppShell>} />
           <Route path="/proposals/new" element={<AppShell><ProposalNew/></AppShell>} />
+          <Route path="/proposals/:id" element={<AppShell><ProposalView/></AppShell>} />
           <Route path="/projects" element={<AppShell><Projects/></AppShell>} />
           <Route path="/projects/:id" element={<AppShell><ProjectDetail/></AppShell>} />
           <Route path="/settings" element={<AppShell><SystemSettings/></AppShell>} />
