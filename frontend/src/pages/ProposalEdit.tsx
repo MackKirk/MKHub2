@@ -32,6 +32,8 @@ export default function ProposalEdit(){
   const [page2FoId, setPage2FoId] = useState<string|undefined>(undefined);
   const [pickerFor, setPickerFor] = useState<null|'cover'|'page2'>(null);
   const [sectionPicker, setSectionPicker] = useState<{ secId:string }|null>(null);
+  const [coverPreview, setCoverPreview] = useState<string>('');
+  const [page2Preview, setPage2Preview] = useState<string>('');
 
   const total = useMemo(()=>{ const base = Number(bidPrice||'0'); const extra = costs.reduce((a,c)=> a + Number(c.amount||'0'), 0); return (base+extra).toFixed(2); }, [bidPrice, costs]);
 
@@ -54,6 +56,11 @@ export default function ProposalEdit(){
     setCoverFoId(d.cover_file_object_id||undefined);
     setPage2FoId(d.page2_file_object_id||undefined);
   }, [p?.id]);
+
+  useEffect(()=>{
+    setCoverPreview(coverFoId? `/files/${coverFoId}/thumbnail?w=600` : '');
+    setPage2Preview(page2FoId? `/files/${page2FoId}/thumbnail?w=600` : '');
+  }, [coverFoId, page2FoId]);
 
   const save = async()=>{
     try{
@@ -115,6 +122,21 @@ export default function ProposalEdit(){
             <label className="text-xs text-gray-600">Additional Notes</label>
             <textarea className="w-full border rounded px-3 py-2" rows={3} value={additionalNotes} onChange={e=>setAdditionalNotes(e.target.value)} />
           </div>
+          <div>
+            <h3 className="font-semibold mb-2">Images</h3>
+            <div className="flex items-start gap-6 text-sm">
+              <div>
+                <div className="mb-1">Cover Image</div>
+                <button className="px-3 py-1.5 rounded bg-gray-100" onClick={()=>setPickerFor('cover')}>Choose</button>
+                {coverPreview && <div className="mt-2"><img src={coverPreview} className="w-48 h-36 object-cover rounded border" /></div>}
+              </div>
+              <div>
+                <div className="mb-1">Page 2 Image</div>
+                <button className="px-3 py-1.5 rounded bg-gray-100" onClick={()=>setPickerFor('page2')}>Choose</button>
+                {page2Preview && <div className="mt-2"><img src={page2Preview} className="w-48 h-36 object-cover rounded border" /></div>}
+              </div>
+            </div>
+          </div>
           <div className="grid md:grid-cols-3 gap-3">
             <div><label className="text-xs text-gray-600">Bid Price</label><input className="w-full border rounded px-3 py-2" value={bidPrice} onChange={e=>setBidPrice(e.target.value)} /></div>
             <div className="md:col-span-2"><label className="text-xs text-gray-600">Total</label><div className="w-full border rounded px-3 py-2 bg-gray-50">${total}</div></div>
@@ -136,11 +158,78 @@ export default function ProposalEdit(){
             <label className="text-xs text-gray-600">Terms</label>
             <textarea className="w-full border rounded px-3 py-2" rows={4} value={terms} onChange={e=>setTerms(e.target.value)} />
           </div>
+          <div>
+            <h3 className="font-semibold mb-2">Sections</h3>
+            <div className="space-y-3">
+              {sections.map((s:any, idx:number)=> (
+                <div key={s.id||idx} className="border rounded p-3">
+                  <div className="flex items-center justify-between mb-2">
+                    <input className="w-1/2 border rounded px-3 py-2 text-sm" placeholder="Section title" value={s.title||''} onChange={e=> setSections(arr=> arr.map((x,i)=> i===idx? { ...x, title: e.target.value }: x))} />
+                    <button className="px-2 py-1 rounded bg-gray-100 text-xs" onClick={()=> setSections(arr=> arr.filter((_,i)=> i!==idx))}>Remove</button>
+                  </div>
+                  {s.type==='text' ? (
+                    <textarea className="w-full border rounded px-3 py-2 text-sm" rows={5} placeholder="Section text" value={s.text||''} onChange={e=> setSections(arr=> arr.map((x,i)=> i===idx? { ...x, text: e.target.value }: x))} />
+                  ) : (
+                    <div>
+                      <div className="mb-2"><button className="px-3 py-1.5 rounded bg-gray-100" onClick={()=> setSectionPicker({ secId: s.id||String(idx) })}>+ Add Image</button></div>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                        {(s.images||[]).map((img:any, j:number)=> (
+                          <div key={(img.file_object_id||'')+j} className="border rounded p-2">
+                            {img.file_object_id? (<img src={`/files/${img.file_object_id}/thumbnail?w=400`} className="w-full h-24 object-cover rounded" />) : null}
+                            <input className="mt-2 w-full border rounded px-2 py-1 text-sm" placeholder="Caption" value={img.caption||''} onChange={e=> setSections(arr=> arr.map((x,i)=> i===idx? { ...x, images: (x.images||[]).map((it:any,k:number)=> k===j? { ...it, caption: e.target.value }: it) }: x))} />
+                            <div className="mt-2 text-right"><button className="px-2 py-1 rounded bg-gray-100 text-xs" onClick={()=> setSections(arr=> arr.map((x,i)=> i===idx? { ...x, images: (x.images||[]).filter((_:any,k:number)=> k!==j) }: x))}>Remove</button></div>
+                          </div>
+                        ))}
+                        {!(s.images||[]).length && <div className="text-sm text-gray-600">No images</div>}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+              <div className="flex items-center gap-2">
+                <button className="px-3 py-1.5 rounded bg-gray-100" onClick={()=> setSections(arr=> [...arr, { id: 'sec_'+Math.random().toString(36).slice(2), type:'text', title:'', text:'' }])}>+ Text Section</button>
+                <button className="px-3 py-1.5 rounded bg-gray-100" onClick={()=> setSections(arr=> [...arr, { id: 'sec_'+Math.random().toString(36).slice(2), type:'images', title:'', images: [] }])}>+ Images Section</button>
+              </div>
+            </div>
+          </div>
           <div className="mt-2 flex items-center justify-end gap-2">
             <button className="px-3 py-2 rounded bg-gray-100" onClick={()=> nav(-1)}>Back</button>
             <button className="px-3 py-2 rounded bg-brand-red text-white" onClick={save}>Save</button>
           </div>
         </div>
+      )}
+      {pickerFor && (
+        <ImagePicker isOpen={true} onClose={()=>setPickerFor(null)} clientId={clientId||undefined} targetWidth={pickerFor==='cover'? 566: 540} targetHeight={pickerFor==='cover'? 537: 340} allowEdit={true} onConfirm={async(blob)=>{
+          try{
+            if (!blob){ toast.error('No image'); setPickerFor(null); return; }
+            const cat = pickerFor==='cover'? 'proposal-cover' : 'proposal-page2';
+            const up:any = await api('POST','/files/upload',{ project_id: null, client_id: clientId||null, employee_id: null, category_id: cat, original_name: `${cat}.jpg`, content_type: 'image/jpeg' });
+            await fetch(up.upload_url, { method:'PUT', headers:{ 'Content-Type':'image/jpeg', 'x-ms-blob-type':'BlockBlob' }, body: blob });
+            const conf:any = await api('POST','/files/confirm',{ key: up.key, size_bytes: blob.size, checksum_sha256:'na', content_type:'image/jpeg' });
+            if (pickerFor==='cover'){ setCoverFoId(conf.id); }
+            else { setPage2FoId(conf.id); }
+          }catch(e){ toast.error('Upload failed'); }
+          setPickerFor(null);
+        }} />
+      )}
+      {sectionPicker && (
+        <ImagePicker isOpen={true} onClose={()=>setSectionPicker(null)} clientId={clientId||undefined} targetWidth={260} targetHeight={150} allowEdit={true} onConfirm={async(blob)=>{
+          try{
+            if (!blob){ toast.error('No image'); return; }
+            const up:any = await api('POST','/files/upload',{ project_id: null, client_id: clientId||null, employee_id: null, category_id:'proposal-section', original_name:'section.jpg', content_type: 'image/jpeg' });
+            await fetch(up.upload_url, { method:'PUT', headers:{ 'Content-Type':'image/jpeg', 'x-ms-blob-type':'BlockBlob' }, body: blob });
+            const conf:any = await api('POST','/files/confirm',{ key: up.key, size_bytes: blob.size, checksum_sha256:'na', content_type:'image/jpeg' });
+            const fileObjectId = conf.id;
+            setSections(arr=> arr.map((x:any)=>{
+              if ((x.id||'')===(sectionPicker.secId||'')){
+                const imgs = Array.isArray(x.images)? x.images : [];
+                return { ...x, images: [...imgs, { file_object_id: fileObjectId, caption: '' }] };
+              }
+              return x;
+            }));
+          }catch(e){ toast.error('Failed to add image'); }
+          setSectionPicker(null);
+        }} />
       )}
     </div>
   );
