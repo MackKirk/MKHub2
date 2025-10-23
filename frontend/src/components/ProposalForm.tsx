@@ -40,7 +40,7 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
   const [page2Blob, setPage2Blob] = useState<Blob|null>(null);
   const [page2FoId, setPage2FoId] = useState<string|undefined>(undefined);
   const [pickerFor, setPickerFor] = useState<null|'cover'|'page2'>(null);
-  const [sectionPicker, setSectionPicker] = useState<{ secId:string }|null>(null);
+  const [sectionPicker, setSectionPicker] = useState<{ secId:string, index?: number }|null>(null);
   const [coverPreview, setCoverPreview] = useState<string>('');
   const [page2Preview, setPage2Preview] = useState<string>('');
 
@@ -154,6 +154,36 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
     }catch(e){ toast.error('Generate failed'); }
   };
 
+  // drag helpers
+  const [draggingSection, setDraggingSection] = useState<number|null>(null);
+  const [dragOverSection, setDragOverSection] = useState<number|null>(null);
+  const onSectionDragStart = (idx:number)=> setDraggingSection(idx);
+  const onSectionDragOver = (idx:number)=> setDragOverSection(idx);
+  const onSectionDrop = ()=>{
+    if (draggingSection===null || dragOverSection===null || draggingSection===dragOverSection) { setDraggingSection(null); setDragOverSection(null); return; }
+    setSections(arr=>{
+      const next = [...arr];
+      const [moved] = next.splice(draggingSection,1);
+      next.splice(dragOverSection,0,moved);
+      return next;
+    });
+    setDraggingSection(null); setDragOverSection(null);
+  };
+
+  const onImageDragStart = (secIdx:number, imgIdx:number)=> setSectionPicker({ secId: String(secIdx), index: imgIdx });
+  const onImageDragOver = (e: React.DragEvent)=> e.preventDefault();
+  const onImageDrop = (secIdx:number, targetIdx:number)=>{
+    const picked = sectionPicker; setSectionPicker(null);
+    if (!picked || typeof picked.index!=='number') return;
+    setSections(arr=> arr.map((s:any,i:number)=>{
+      if (i!==secIdx) return s;
+      const imgs = Array.isArray(s.images)? [...s.images]:[];
+      const [moved] = imgs.splice(picked.index,1);
+      imgs.splice(targetIdx,0,moved);
+      return { ...s, images: imgs };
+    }));
+  };
+
   return (
     <div className="rounded-xl border bg-white p-4">
       <h2 className="text-xl font-bold mb-3">{mode==='edit'? 'Edit Proposal':'Create Proposal'}</h2>
@@ -200,7 +230,13 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
           <h3 className="font-semibold mb-2">Sections</h3>
           <div className="space-y-3">
             {sections.map((s:any, idx:number)=> (
-              <div key={s.id||idx} className="border rounded p-3">
+              <div key={s.id||idx}
+                   className={`border rounded p-3 ${dragOverSection===idx? 'ring-2 ring-brand-red':''}`}
+                   draggable
+                   onDragStart={()=> onSectionDragStart(idx)}
+                   onDragOver={(e)=>{ e.preventDefault(); onSectionDragOver(idx); }}
+                   onDrop={onSectionDrop}
+              >
                 <div className="flex items-center justify-between mb-2">
                   <input className="w-1/2 border rounded px-3 py-2 text-sm" placeholder="Section title" value={s.title||''} onChange={e=> setSections(arr=> arr.map((x,i)=> i===idx? { ...x, title: e.target.value }: x))} />
                   <button className="px-2 py-1 rounded bg-gray-100 text-xs" onClick={()=> setSections(arr=> arr.filter((_,i)=> i!==idx))}>Remove</button>
@@ -212,10 +248,18 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
                     <div className="mb-2"><button className="px-3 py-1.5 rounded bg-gray-100" onClick={()=> setSectionPicker({ secId: s.id||String(idx) })}>+ Add Image</button></div>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                       {(s.images||[]).map((img:any, j:number)=> (
-                        <div key={img.file_object_id||j} className="border rounded p-2">
+                        <div key={`${img.file_object_id||''}-${j}`} className="border rounded p-2"
+                             draggable
+                             onDragStart={()=> onImageDragStart(idx, j)}
+                             onDragOver={onImageDragOver}
+                             onDrop={()=> onImageDrop(idx, j)}
+                        >
                           {img.file_object_id? (<img src={`/files/${img.file_object_id}/thumbnail?w=400`} className="w-full h-24 object-cover rounded" />) : null}
                           <input className="mt-2 w-full border rounded px-2 py-1 text-sm" placeholder="Caption" value={img.caption||''} onChange={e=> setSections(arr=> arr.map((x,i)=> i===idx? { ...x, images: (x.images||[]).map((it:any,k:number)=> k===j? { ...it, caption: e.target.value }: it) }: x))} />
-                          <div className="mt-2 text-right"><button className="px-2 py-1 rounded bg-gray-100 text-xs" onClick={()=> setSections(arr=> arr.map((x,i)=> i===idx? { ...x, images: (x.images||[]).filter((_:any,k:number)=> k!==j) }: x))}>Remove</button></div>
+                          <div className="mt-2 flex items-center justify-between">
+                            <button className="px-2 py-1 rounded bg-gray-100 text-xs" onClick={()=> setSectionPicker({ secId: s.id||String(idx), index: j })}>Replace</button>
+                            <button className="px-2 py-1 rounded bg-gray-100 text-xs" onClick={()=> setSections(arr=> arr.map((x,i)=> i===idx? { ...x, images: (x.images||[]).filter((_:any,k:number)=> k!==j) }: x))}>Remove</button>
+                          </div>
                         </div>
                       ))}
                       {!(s.images||[]).length && <div className="text-sm text-gray-600">No images</div>}
@@ -285,12 +329,15 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
             await fetch(up.upload_url, { method:'PUT', headers:{ 'Content-Type':'image/jpeg', 'x-ms-blob-type':'BlockBlob' }, body: blob });
             const conf:any = await api('POST','/files/confirm',{ key: up.key, size_bytes: blob.size, checksum_sha256:'na', content_type:'image/jpeg' });
             const fileObjectId = conf.id;
-            setSections(arr=> arr.map((x:any)=>{
-              if ((x.id||'')===(sectionPicker.secId||'')){
-                const imgs = Array.isArray(x.images)? x.images : [];
-                return { ...x, images: [...imgs, { file_object_id: fileObjectId, caption: '' }] };
+            setSections(arr=> arr.map((x:any, i:number)=>{
+              const isTarget = (String(x.id||'')===String(sectionPicker.secId||'')) || (String(sectionPicker.secId||'')===String(i));
+              if (!isTarget) return x;
+              const imgs = Array.isArray(x.images)? [...x.images] : [];
+              if (typeof sectionPicker.index === 'number'){ // replace specific
+                imgs[sectionPicker.index] = { ...(imgs[sectionPicker.index]||{}), file_object_id: fileObjectId };
+                return { ...x, images: imgs };
               }
-              return x;
+              return { ...x, images: [...imgs, { file_object_id: fileObjectId, caption: '' }] };
             }));
           }catch(e){ toast.error('Failed to add image'); }
           setSectionPicker(null);
