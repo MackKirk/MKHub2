@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
@@ -40,6 +40,9 @@ export default function ProposalNew(){
   const [page2Blob, setPage2Blob] = useState<Blob|null>(null);
   const [page2FoId, setPage2FoId] = useState<string|undefined>(undefined);
   const [pickerFor, setPickerFor] = useState<null|'cover'|'page2'>(null);
+  const [sectionPicker, setSectionPicker] = useState<{ secId:string }|null>(null);
+  const [coverPreview, setCoverPreview] = useState<string>('');
+  const [page2Preview, setPage2Preview] = useState<string>('');
 
   // derive company fields
   const companyName = (client?.display_name || client?.name || '').slice(0,50);
@@ -50,6 +53,17 @@ export default function ProposalNew(){
 
   // init order number from next-code
   useMemo(()=>{ if(!orderNumber && nextCode?.order_number) setOrderNumber(nextCode.order_number); }, [nextCode]);
+
+  useEffect(()=>{
+    // build previews for cover/page2
+    if (coverFoId) setCoverPreview(`/files/${coverFoId}/thumbnail?w=600`);
+    else if (coverBlob) setCoverPreview(URL.createObjectURL(coverBlob));
+    else setCoverPreview('');
+    if (page2FoId) setPage2Preview(`/files/${page2FoId}/thumbnail?w=600`);
+    else if (page2Blob) setPage2Preview(URL.createObjectURL(page2Blob));
+    else setPage2Preview('');
+    return ()=>{};
+  }, [coverFoId, coverBlob, page2FoId, page2Blob]);
 
   const handleSave = async()=>{
     try{
@@ -72,7 +86,7 @@ export default function ProposalNew(){
         bid_price: Number(bidPrice||'0'),
         total: Number(total||'0'),
         terms_text: terms||'',
-        additional_costs: costs,
+        additional_costs: costs.map(c=> ({ label: c.label, value: Number(c.amount||'0') })),
         sections,
       };
       const r:any = await api('POST','/proposals', payload);
@@ -100,7 +114,7 @@ export default function ProposalNew(){
       form.append('bid_price', String(Number(bidPrice||'0')));
       form.append('total', String(Number(total||'0')));
       form.append('terms_text', terms||'');
-      form.append('additional_costs', JSON.stringify(costs.map(c=> ({ label: c.label, amount: Number(c.amount||'0') }))));
+      form.append('additional_costs', JSON.stringify(costs.map(c=> ({ label: c.label, value: Number(c.amount||'0') }))));
       form.append('sections', JSON.stringify(sections));
       if (coverFoId) form.append('cover_file_object_id', coverFoId);
       if (page2FoId) form.append('page2_file_object_id', page2FoId);
@@ -150,10 +164,46 @@ export default function ProposalNew(){
               <div>
                 <div className="mb-1">Cover Image</div>
                 <button className="px-3 py-1.5 rounded bg-gray-100" onClick={()=>setPickerFor('cover')}>Choose</button>
+                {coverPreview && <div className="mt-2"><img src={coverPreview} className="w-48 h-36 object-cover rounded border" /></div>}
               </div>
               <div>
                 <div className="mb-1">Page 2 Image</div>
                 <button className="px-3 py-1.5 rounded bg-gray-100" onClick={()=>setPickerFor('page2')}>Choose</button>
+                {page2Preview && <div className="mt-2"><img src={page2Preview} className="w-48 h-36 object-cover rounded border" /></div>}
+              </div>
+            </div>
+          </div>
+          <div className="md:col-span-2">
+            <h3 className="font-semibold mb-2">Sections</h3>
+            <div className="space-y-3">
+              {sections.map((s:any, idx:number)=> (
+                <div key={s.id||idx} className="border rounded p-3">
+                  <div className="flex items-center justify-between mb-2">
+                    <input className="w-1/2 border rounded px-3 py-2 text-sm" placeholder="Section title" value={s.title||''} onChange={e=> setSections(arr=> arr.map((x,i)=> i===idx? { ...x, title: e.target.value }: x))} />
+                    <button className="px-2 py-1 rounded bg-gray-100 text-xs" onClick={()=> setSections(arr=> arr.filter((_,i)=> i!==idx))}>Remove</button>
+                  </div>
+                  {s.type==='text' ? (
+                    <textarea className="w-full border rounded px-3 py-2 text-sm" rows={5} placeholder="Section text" value={s.text||''} onChange={e=> setSections(arr=> arr.map((x,i)=> i===idx? { ...x, text: e.target.value }: x))} />
+                  ) : (
+                    <div>
+                      <div className="mb-2"><button className="px-3 py-1.5 rounded bg-gray-100" onClick={()=> setSectionPicker({ secId: s.id||String(idx) })}>+ Add Image</button></div>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                        {(s.images||[]).map((img:any, j:number)=> (
+                          <div key={img.file_object_id||j} className="border rounded p-2">
+                            {img.file_object_id? (<img src={`/files/${img.file_object_id}/thumbnail?w=400`} className="w-full h-24 object-cover rounded" />) : null}
+                            <input className="mt-2 w-full border rounded px-2 py-1 text-sm" placeholder="Caption" value={img.caption||''} onChange={e=> setSections(arr=> arr.map((x,i)=> i===idx? { ...x, images: (x.images||[]).map((it:any,k:number)=> k===j? { ...it, caption: e.target.value }: it) }: x))} />
+                            <div className="mt-2 text-right"><button className="px-2 py-1 rounded bg-gray-100 text-xs" onClick={()=> setSections(arr=> arr.map((x,i)=> i===idx? { ...x, images: (x.images||[]).filter((_:any,k:number)=> k!==j) }: x))}>Remove</button></div>
+                          </div>
+                        ))}
+                        {!(s.images||[]).length && <div className="text-sm text-gray-600">No images</div>}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+              <div className="flex items-center gap-2">
+                <button className="px-3 py-1.5 rounded bg-gray-100" onClick={()=> setSections(arr=> [...arr, { id: 'sec_'+Math.random().toString(36).slice(2), type:'text', title:'', text:'' }])}>+ Text Section</button>
+                <button className="px-3 py-1.5 rounded bg-gray-100" onClick={()=> setSections(arr=> [...arr, { id: 'sec_'+Math.random().toString(36).slice(2), type:'images', title:'', images: [] }])}>+ Images Section</button>
               </div>
             </div>
           </div>
@@ -196,6 +246,29 @@ export default function ProposalNew(){
           if (pickerFor==='cover'){ setCoverBlob(blob); setCoverFoId(originalId); }
           else { setPage2Blob(blob); setPage2FoId(originalId); }
           setPickerFor(null);
+        }} />
+      )}
+      {sectionPicker && (
+        <ImagePicker isOpen={true} onClose={()=>setSectionPicker(null)} clientId={clientId||undefined} targetWidth={260} targetHeight={150} allowEdit={true} onConfirm={async(blob, originalId)=>{
+          try{
+            // ensure we have a file_object_id
+            let fileObjectId = originalId;
+            if (!fileObjectId && blob){
+              const up:any = await api('POST','/files/upload',{ project_id: null, client_id: clientId||null, employee_id: null, category_id:'site-docs', original_name:'section.jpg', content_type: 'image/jpeg' });
+              await fetch(up.upload_url, { method:'PUT', headers:{ 'Content-Type':'image/jpeg', 'x-ms-blob-type':'BlockBlob' }, body: blob });
+              const conf:any = await api('POST','/files/confirm',{ key: up.key, size_bytes: blob.size, checksum_sha256:'na', content_type:'image/jpeg' });
+              fileObjectId = conf.id;
+            }
+            if (!fileObjectId){ toast.error('Failed to add image'); return; }
+            setSections(arr=> arr.map((x:any)=>{
+              if ((x.id||'')===(sectionPicker.secId||'')){
+                const imgs = Array.isArray(x.images)? x.images : [];
+                return { ...x, images: [...imgs, { file_object_id: fileObjectId, caption: '' }] };
+              }
+              return x;
+            }));
+          }catch(e){ toast.error('Failed to add image'); }
+          setSectionPicker(null);
         }} />
       )}
     </div>
