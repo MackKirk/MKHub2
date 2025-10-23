@@ -242,24 +242,28 @@ export default function ProposalNew(){
       </div>
 
       {pickerFor && (
-        <ImagePicker isOpen={true} onClose={()=>setPickerFor(null)} clientId={clientId||undefined} targetWidth={pickerFor==='cover'? 566: 540} targetHeight={pickerFor==='cover'? 537: 340} allowEdit={true} onConfirm={(blob, originalId)=>{
-          if (pickerFor==='cover'){ setCoverBlob(blob); setCoverFoId(originalId); }
-          else { setPage2Blob(blob); setPage2FoId(originalId); }
+        <ImagePicker isOpen={true} onClose={()=>setPickerFor(null)} clientId={clientId||undefined} targetWidth={pickerFor==='cover'? 566: 540} targetHeight={pickerFor==='cover'? 537: 340} allowEdit={true} onConfirm={async(blob)=>{
+          try{
+            if (!blob){ toast.error('No image'); setPickerFor(null); return; }
+            const cat = pickerFor==='cover'? 'proposal-cover' : 'proposal-page2';
+            const up:any = await api('POST','/files/upload',{ project_id: null, client_id: clientId||null, employee_id: null, category_id: cat, original_name: `${cat}.jpg`, content_type: 'image/jpeg' });
+            await fetch(up.upload_url, { method:'PUT', headers:{ 'Content-Type':'image/jpeg', 'x-ms-blob-type':'BlockBlob' }, body: blob });
+            const conf:any = await api('POST','/files/confirm',{ key: up.key, size_bytes: blob.size, checksum_sha256:'na', content_type:'image/jpeg' });
+            if (pickerFor==='cover'){ setCoverBlob(blob); setCoverFoId(conf.id); }
+            else { setPage2Blob(blob); setPage2FoId(conf.id); }
+          }catch(e){ toast.error('Upload failed'); }
           setPickerFor(null);
         }} />
       )}
       {sectionPicker && (
-        <ImagePicker isOpen={true} onClose={()=>setSectionPicker(null)} clientId={clientId||undefined} targetWidth={260} targetHeight={150} allowEdit={true} onConfirm={async(blob, originalId)=>{
+        <ImagePicker isOpen={true} onClose={()=>setSectionPicker(null)} clientId={clientId||undefined} targetWidth={260} targetHeight={150} allowEdit={true} onConfirm={async(blob)=>{
           try{
             // ensure we have a file_object_id
-            let fileObjectId = originalId;
-            if (!fileObjectId && blob){
-              const up:any = await api('POST','/files/upload',{ project_id: null, client_id: clientId||null, employee_id: null, category_id:'site-docs', original_name:'section.jpg', content_type: 'image/jpeg' });
-              await fetch(up.upload_url, { method:'PUT', headers:{ 'Content-Type':'image/jpeg', 'x-ms-blob-type':'BlockBlob' }, body: blob });
-              const conf:any = await api('POST','/files/confirm',{ key: up.key, size_bytes: blob.size, checksum_sha256:'na', content_type:'image/jpeg' });
-              fileObjectId = conf.id;
-            }
-            if (!fileObjectId){ toast.error('Failed to add image'); return; }
+            if (!blob){ toast.error('No image'); return; }
+            const up:any = await api('POST','/files/upload',{ project_id: null, client_id: clientId||null, employee_id: null, category_id:'proposal-section', original_name:'section.jpg', content_type: 'image/jpeg' });
+            await fetch(up.upload_url, { method:'PUT', headers:{ 'Content-Type':'image/jpeg', 'x-ms-blob-type':'BlockBlob' }, body: blob });
+            const conf:any = await api('POST','/files/confirm',{ key: up.key, size_bytes: blob.size, checksum_sha256:'na', content_type:'image/jpeg' });
+            const fileObjectId = conf.id;
             setSections(arr=> arr.map((x:any)=>{
               if ((x.id||'')===(sectionPicker.secId||'')){
                 const imgs = Array.isArray(x.images)? x.images : [];
