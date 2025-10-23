@@ -61,7 +61,7 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
     const dc = Array.isArray(d.additional_costs)? d.additional_costs : [];
     setCosts(dc.map((c:any)=> ({ label: String(c.label||''), amount: String(c.value ?? c.amount ?? '') })));
     setTerms(String(d.terms_text||''));
-    setSections(Array.isArray(d.sections)? d.sections : []);
+    setSections(Array.isArray(d.sections)? JSON.parse(JSON.stringify(d.sections)) : []);
     setCoverFoId(d.cover_file_object_id||undefined);
     setPage2FoId(d.page2_file_object_id||undefined);
   }, [initial?.id]);
@@ -86,6 +86,17 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
     return ()=>{};
   }, [coverFoId, coverBlob, page2FoId, page2Blob]);
 
+  const sanitizeSections = (arr:any[])=> (arr||[]).map((sec:any)=>{
+    if (sec?.type==='images'){
+      return {
+        type: 'images',
+        title: String(sec.title||''),
+        images: (sec.images||[]).map((im:any)=> ({ file_object_id: String(im.file_object_id||''), caption: String(im.caption||'') }))
+      };
+    }
+    return { type:'text', title: String(sec?.title||''), text: String(sec?.text||'') };
+  });
+
   const handleSave = async()=>{
     try{
       const payload:any = {
@@ -108,7 +119,7 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
         total: Number(total||'0'),
         terms_text: terms||'',
         additional_costs: costs.map(c=> ({ label: c.label, value: Number(c.amount||'0') })),
-        sections,
+        sections: sanitizeSections(sections),
         cover_file_object_id: coverFoId||null,
         page2_file_object_id: page2FoId||null,
       };
@@ -139,7 +150,7 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
       form.append('total', String(Number(total||'0')));
       form.append('terms_text', terms||'');
       form.append('additional_costs', JSON.stringify(costs.map(c=> ({ label: c.label, value: Number(c.amount||'0') }))));
-      form.append('sections', JSON.stringify(sections));
+      form.append('sections', JSON.stringify(sanitizeSections(sections)));
       if (coverFoId) form.append('cover_file_object_id', coverFoId);
       if (page2FoId) form.append('page2_file_object_id', page2FoId);
       if (coverBlob) form.append('cover_image', coverBlob, 'cover.jpg');

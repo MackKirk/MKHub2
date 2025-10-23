@@ -332,7 +332,12 @@ def save_proposal(payload: dict = Body(...), db: Session = Depends(get_db)):
         p.site_id = payload.get('site_id') or p.site_id
         p.order_number = payload.get('order_number') or p.order_number
         p.title = title
-        p.data = payload
+        # Store only serializable snapshot; avoid mutable references
+        try:
+            import copy as _copy
+            p.data = _copy.deepcopy(payload)
+        except Exception:
+            p.data = payload
         db.commit()
         return {"id": str(p.id)}
     else:
