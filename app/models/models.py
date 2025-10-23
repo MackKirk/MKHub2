@@ -348,6 +348,64 @@ class Proposal(Base):
     data: Mapped[Optional[dict]] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
 
+class ReviewTemplate(Base):
+    __tablename__ = "review_templates"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+
+
+class ReviewTemplateQuestion(Base):
+    __tablename__ = "review_template_questions"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    template_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("review_templates.id", ondelete="CASCADE"))
+    order_index: Mapped[int] = mapped_column(Integer, default=0)
+    key: Mapped[str] = mapped_column(String(100), nullable=False)
+    label: Mapped[str] = mapped_column(String(1000), nullable=False)
+    type: Mapped[str] = mapped_column(String(50), nullable=False)
+    options: Mapped[Optional[dict]] = mapped_column(JSON)
+    required: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+class ReviewCycle(Base):
+    __tablename__ = "review_cycles"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    period_start: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    period_end: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    template_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("review_templates.id", ondelete="RESTRICT"))
+    status: Mapped[str] = mapped_column(String(50), default="draft")
+
+
+class ReviewAssignment(Base):
+    __tablename__ = "review_assignments"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    cycle_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("review_cycles.id", ondelete="CASCADE"))
+    reviewee_user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"))
+    reviewer_user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"))
+    status: Mapped[str] = mapped_column(String(50), default="pending")
+    due_date: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+
+
+class ReviewAnswer(Base):
+    __tablename__ = "review_answers"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    assignment_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("review_assignments.id", ondelete="CASCADE"))
+    question_key: Mapped[str] = mapped_column(String(100), nullable=False)
+    question_label_snapshot: Mapped[str] = mapped_column(String(1000), nullable=False)
+    answer_json: Mapped[Optional[dict]] = mapped_column(JSON)
+    score: Mapped[Optional[int]] = mapped_column(Integer)
+    commented_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+
 class CalendarSource(Base):
     __tablename__ = "calendar_sources"
 
