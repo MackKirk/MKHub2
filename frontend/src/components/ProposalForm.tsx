@@ -61,7 +61,16 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
     const dc = Array.isArray(d.additional_costs)? d.additional_costs : [];
     setCosts(dc.map((c:any)=> ({ label: String(c.label||''), amount: String(c.value ?? c.amount ?? '') })));
     setTerms(String(d.terms_text||''));
-    setSections(Array.isArray(d.sections)? JSON.parse(JSON.stringify(d.sections)) : []);
+    const loaded = Array.isArray(d.sections)? JSON.parse(JSON.stringify(d.sections)) : [];
+    const genId = ()=> 'img_'+Math.random().toString(36).slice(2);
+    const normalized = loaded.map((sec:any)=>{
+      if (sec?.type==='images'){
+        const imgs = (sec.images||[]).map((im:any)=> ({ image_id: im.image_id || genId(), file_object_id: String(im.file_object_id||''), caption: String(im.caption||'') }));
+        return { type:'images', title: String(sec.title||''), images: imgs };
+      }
+      return { type:'text', title: String(sec.title||''), text: String(sec.text||'') };
+    });
+    setSections(normalized);
     setCoverFoId(d.cover_file_object_id||undefined);
     setPage2FoId(d.page2_file_object_id||undefined);
   }, [initial?.id]);
@@ -259,7 +268,7 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
                     <div className="mb-2"><button className="px-3 py-1.5 rounded bg-gray-100" onClick={()=> setSectionPicker({ secId: s.id||String(idx) })}>+ Add Image</button></div>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                       {(s.images||[]).map((img:any, j:number)=> (
-                        <div key={`${img.file_object_id||''}-${j}`} className="border rounded p-2"
+                        <div key={`${img.image_id||img.file_object_id||''}-${j}`} className="border rounded p-2"
                              draggable
                              onDragStart={()=> onImageDragStart(idx, j)}
                              onDragOver={onImageDragOver}
