@@ -173,9 +173,9 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
       };
       const r:any = await api('POST','/proposals', payload);
       toast.success('Saved');
-      const back = projectId? `/projects/${encodeURIComponent(projectId)}` : '/proposals';
-      if (r?.id || initial?.id){ nav(back); }
+      // Stay on page after save; update saved fingerprint so warnings clear
       setLastSavedHash(currentFingerprint);
+      // Optionally, if this was a new proposal and now has id, we could update URL later
     }catch(e){ toast.error('Save failed'); }
   };
 
