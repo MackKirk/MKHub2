@@ -302,6 +302,7 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
         </div>
         <div className="md:col-span-2">
           <h3 className="font-semibold mb-2">Pricing</h3>
+          <div className="text-[12px] text-gray-600 mb-2">If the total is 0, the pricing section will be hidden in the PDF.</div>
           <div className="grid md:grid-cols-3 gap-2 text-sm">
             <div><label className="text-xs text-gray-600">Bid Price</label><input className="w-full border rounded px-3 py-2" value={bidPrice} onChange={e=>setBidPrice(e.target.value)} /></div>
             <div className="md:col-span-2"><label className="text-xs text-gray-600">Total</label><div className="w-full border rounded px-3 py-2 bg-gray-50">${total}</div></div>

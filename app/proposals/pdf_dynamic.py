@@ -222,9 +222,29 @@ def build_dynamic_pages(data, output_path):
                         story.append(table)
             story.append(Spacer(1, 20))
 
-    story.append(YellowLine())
-    story.append(Spacer(1, 20))
-    story.append(PricingTable(data))
+    # --- Pricing (conditional)
+    try:
+        add_costs = data.get("additional_costs") or []
+        sum_costs = 0.0
+        for c in add_costs:
+            try:
+                sum_costs += float(c.get("value") or 0)
+            except Exception:
+                pass
+        bid = float(data.get("bid_price") or 0)
+        total_val = data.get("total")
+        try:
+            total_val = float(total_val)
+        except Exception:
+            total_val = bid + sum_costs
+        show_pricing = (total_val or 0) > 0
+    except Exception:
+        show_pricing = True
+
+    if show_pricing:
+        story.append(YellowLine())
+        story.append(Spacer(1, 20))
+        story.append(PricingTable({ **data, "total": total_val, "additional_costs": add_costs, "bid_price": bid }))
 
     story.append(PageBreak())
     story.append(Paragraph("General Project Terms & Conditions", title_style))
