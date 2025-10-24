@@ -44,15 +44,29 @@ def build_cover_page(c, data):
         overlay = ImageReader(overlay_path)
         c.drawImage(overlay, 39, 304, width=516, height=60, mask="auto")
 
+    # Helper to auto-fit text into a max width
+    def fit_size(text, font="Montserrat-Bold", max_size=17.2, min_size=8.0, max_width=516.0):
+        size = max_size
+        txt = text or ""
+        while size > min_size and stringWidth(txt, font, size) > max_width:
+            size -= 0.8
+        return size
+
     y = 339
     for value in [data.get("company_name", ""), data.get("company_address", "")]:
-        c.setFont("Montserrat-Bold", 17.2)
+        size = fit_size(value, "Montserrat-Bold", 17.2, 8.0, 516.0)
+        c.setFont("Montserrat-Bold", size)
         c.setFillColor(colors.white)
         c.drawCentredString(585/2, y, value)
         y -= 25
 
-    cover_title = data.get("cover_title", "")
-    c.setFont("Montserrat-Bold", 32)
+    cover_title = data.get("cover_title", "") or ""
+    # Fit the main red title within page margins
+    max_width_title = page_width - 80  # 40pt margins
+    size = 32
+    while size > 10 and stringWidth(cover_title, "Montserrat-Bold", size) > max_width_title:
+        size -= 1.0
+    c.setFont("Montserrat-Bold", size)
     c.setFillColor(colors.HexColor("#d62028"))
     c.drawCentredString(page_width/2, 205, cover_title)
 

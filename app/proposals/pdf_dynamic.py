@@ -29,11 +29,9 @@ def draw_template_page3(c, doc, data):
     title = data.get("cover_title", "") or ""
     max_width = 520  # approx available width between margins
     size = 17.2
-    while size > 8:
-        c.setFont("Montserrat-Bold", size)
-        if c.stringWidth(title, "Montserrat-Bold", size) <= max_width:
-            break
+    while size > 8 and c.stringWidth(title, "Montserrat-Bold", size) > max_width:
         size -= 0.8
+    c.setFont("Montserrat-Bold", size)
     c.drawString(40, 784, title)
     c.setFont("Montserrat-Bold", 13)
     c.drawString(40, 762, data.get("company_name", ""))
