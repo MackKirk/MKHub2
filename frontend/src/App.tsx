@@ -2,6 +2,7 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from 'react-hot-toast';
 import { queryClient } from './lib/queryClient';
+import ConfirmProvider from './components/ConfirmProvider';
 import AppShell from './AppShell';
 import Login from './pages/Login';
 import Protected from './lib/protected';
@@ -37,6 +38,7 @@ function Home(){ return <Navigate to={getToken()? '/home':'/login'} replace />; 
 export default function App(){
   return (
     <QueryClientProvider client={queryClient}>
+      <ConfirmProvider>
       <Routes>
         <Route path="/" element={<Home/>} />
         <Route path="/index.html" element={<Home/>} />
@@ -70,6 +72,7 @@ export default function App(){
         <Route path="*" element={<Navigate to={getToken()? '/home':'/login'} replace />} />
       </Routes>
       <Toaster position="top-right" />
+      </ConfirmProvider>
     </QueryClientProvider>
   );
 }

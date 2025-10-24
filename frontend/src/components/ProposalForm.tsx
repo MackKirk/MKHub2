@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
 import ImagePicker from '@/components/ImagePicker';
+import { useConfirm } from '@/components/ConfirmProvider';
 
 type Client = { id:string, name?:string, display_name?:string, address_line1?:string, city?:string, province?:string, country?:string };
 type Site = { id:string, site_name?:string, site_address_line1?:string, site_city?:string, site_province?:string, site_country?:string };
@@ -51,6 +52,7 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
   const [isReady, setIsReady] = useState<boolean>(false);
   const [focusTarget, setFocusTarget] = useState<{ type:'title'|'caption', sectionIndex:number, imageIndex?: number }|null>(null);
   const [activeSectionIndex, setActiveSectionIndex] = useState<number>(-1);
+  const confirm = useConfirm();
 
   // --- Helpers declared early so effects can safely reference them
   const sanitizeSections = (arr:any[])=> (arr||[]).map((sec:any)=>{
@@ -409,7 +411,11 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
                     }}>
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 7h10v10H7V7Zm-2 2v10h10v2H5a2 2 0 0 1-2-2V9h2Zm6-6h8a2 2 0 0 1 2 2v8h-2V5H11V3Z"></path></svg>
                     </button>
-                    <button className="px-2 py-1 rounded text-gray-500 hover:text-red-600" title="Remove section" onClick={()=>{ if (!confirm('Remove this section?')) return; setSections(arr=> arr.filter((_,i)=> i!==idx)); }}>
+                    <button className="px-2 py-1 rounded text-gray-500 hover:text-red-600" title="Remove section" onClick={async()=>{
+                      const ok = await confirm({ title:'Remove section', message:'Are you sure you want to remove this section?' });
+                      if (!ok) return;
+                      setSections(arr=> arr.filter((_,i)=> i!==idx));
+                    }}>
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M9 3h6a1 1 0 0 1 1 1v2h4v2h-1l-1 13a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 8H4V6h4V4a1 1 0 0 1 1-1Zm1 3h4V5h-4v1Zm-2 2 1 12h8l1-12H8Z"></path></svg>
                     </button>
                   </div>
@@ -448,7 +454,11 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
                                   return { ...x, images: imgs };
                                 }));
                               }}>Duplicate</button>
-                              <button className="px-2 py-1 rounded text-gray-500 hover:text-red-600" title="Remove image" onClick={()=>{ if(!confirm('Remove this image?')) return; setSections(arr=> arr.map((x,i)=> i===idx? { ...x, images: (x.images||[]).filter((_:any,k:number)=> k!==j) }: x)); }}>
+                              <button className="px-2 py-1 rounded text-gray-500 hover:text-red-600" title="Remove image" onClick={async()=>{
+                                const ok = await confirm({ title:'Remove image', message:'Are you sure you want to remove this image?' });
+                                if (!ok) return;
+                                setSections(arr=> arr.map((x,i)=> i===idx? { ...x, images: (x.images||[]).filter((_:any,k:number)=> k!==j) }: x));
+                              }}>
                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M9 3h6a1 1 0 0 1 1 1v2h4v2h-1l-1 13a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 8H4V6h4V4a1 1 0 0 1 1-1Zm1 3h4V5h-4v1Zm-2 2 1 12h8l1-12H8Z"></path></svg>
                               </button>
                             </div>
