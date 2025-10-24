@@ -118,10 +118,23 @@ def build_page2(c, data):
     c.setFillColor(colors.white)
     # Auto-fit the small header title at top-left of page 2
     hdr = data.get("cover_title", "") or ""
-    max_width_hdr = 440  # smaller than full width to avoid logo area
+    max_width_hdr = 420  # safe width to avoid logo area
     size_hdr = 17.2
     while size_hdr > 8.0 and stringWidth(hdr, "Montserrat-Bold", size_hdr) > max_width_hdr:
         size_hdr -= 0.8
+    # If still overflowing at min size, truncate with ellipsis
+    if stringWidth(hdr, "Montserrat-Bold", size_hdr) > max_width_hdr:
+        # binary search truncate
+        lo, hi = 0, len(hdr)
+        ell = "…"
+        while lo < hi:
+            mid = (lo+hi)//2
+            txt = hdr[:mid] + ell
+            if stringWidth(txt, "Montserrat-Bold", size_hdr) <= max_width_hdr:
+                lo = mid + 1
+            else:
+                hi = mid
+        hdr = hdr[:max(0, lo-1)] + ell
     c.setFont("Montserrat-Bold", size_hdr)
     c.drawString(40, 784, hdr)
     c.setFont("Montserrat-Bold", 13)
