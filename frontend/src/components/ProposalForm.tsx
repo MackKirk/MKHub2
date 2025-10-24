@@ -44,6 +44,8 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
   const [coverPreview, setCoverPreview] = useState<string>('');
   const [page2Preview, setPage2Preview] = useState<string>('');
   const newImageId = ()=> 'img_'+Math.random().toString(36).slice(2);
+  const [isGenerating, setIsGenerating] = useState<boolean>(false);
+  const [downloadUrl, setDownloadUrl] = useState<string>('');
 
   // prefill from initial (edit)
   useEffect(()=>{
@@ -141,6 +143,9 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
 
   const handleGenerate = async()=>{
     try{
+      setIsGenerating(true);
+      // cleanup previous
+      try{ if (downloadUrl) { URL.revokeObjectURL(downloadUrl); setDownloadUrl(''); } }catch(_e){}
       const form = new FormData();
       form.append('cover_title', coverTitle||'Proposal');
       form.append('order_number', orderNumber||'');
@@ -169,9 +174,10 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
       if (!resp.ok){ toast.error('Generate failed'); return; }
       const blob = await resp.blob();
       const url = URL.createObjectURL(blob);
-      const a = document.createElement('a'); a.href = url; a.download = 'ProjectProposal.pdf'; a.click(); URL.revokeObjectURL(url);
-      toast.success('Generated');
+      setDownloadUrl(url);
+      toast.success('Proposal ready');
     }catch(e){ toast.error('Generate failed'); }
+    finally{ setIsGenerating(false); }
   };
 
   // drag helpers
@@ -323,7 +329,10 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
         <button className="px-3 py-2 rounded bg-gray-100" onClick={()=> nav(-1)}>Back</button>
         <div className="space-x-2">
           <button className="px-3 py-2 rounded bg-gray-100" onClick={handleSave}>Save Proposal</button>
-          <button className="px-3 py-2 rounded bg-brand-red text-white" onClick={handleGenerate}>Generate Proposal</button>
+          <button className="px-3 py-2 rounded bg-brand-red text-white disabled:opacity-60" disabled={isGenerating} onClick={handleGenerate}>{isGenerating? 'Generating…' : 'Generate Proposal'}</button>
+          {downloadUrl && (
+            <a className="px-3 py-2 rounded bg-black text-white" href={downloadUrl} download="ProjectProposal.pdf">Download PDF</a>
+          )}
         </div>
       </div>
 
