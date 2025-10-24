@@ -25,8 +25,16 @@ pdfmetrics.registerFont(TTFont("Montserrat-Bold", os.path.join(fonts_path, "Mont
 
 def draw_template_page3(c, doc, data):
     c.setFillColor(colors.white)
-    c.setFont("Montserrat-Bold", 17.2)
-    c.drawString(40, 784, data.get("cover_title", ""))
+    # Auto-fit cover title into the available width
+    title = data.get("cover_title", "") or ""
+    max_width = 520  # approx available width between margins
+    size = 17.2
+    while size > 8:
+        c.setFont("Montserrat-Bold", size)
+        if c.stringWidth(title, "Montserrat-Bold", size) <= max_width:
+            break
+        size -= 0.8
+    c.drawString(40, 784, title)
     c.setFont("Montserrat-Bold", 13)
     c.drawString(40, 762, data.get("company_name", ""))
 
