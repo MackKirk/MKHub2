@@ -303,7 +303,19 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
                    onDrop={onSectionDrop}
               >
                 <div className="flex items-center justify-between mb-2">
-                  <input className="w-1/2 border rounded px-3 py-2 text-sm" placeholder="Section title" value={s.title||''} onChange={e=> setSections(arr=> arr.map((x,i)=> i===idx? { ...x, title: e.target.value }: x))} />
+                  <div className="flex items-center gap-2">
+                    <span className="inline-flex items-center justify-center w-5 h-5 text-gray-400 hover:text-gray-600 cursor-grab active:cursor-grabbing" title="Drag to reorder" aria-label="Drag handle">
+                      <svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                        <circle cx="6" cy="6" r="1.5"></circle>
+                        <circle cx="10" cy="6" r="1.5"></circle>
+                        <circle cx="14" cy="6" r="1.5"></circle>
+                        <circle cx="6" cy="10" r="1.5"></circle>
+                        <circle cx="10" cy="10" r="1.5"></circle>
+                        <circle cx="14" cy="10" r="1.5"></circle>
+                      </svg>
+                    </span>
+                    <input className="w-1/2 border rounded px-3 py-2 text-sm" placeholder="Section title" value={s.title||''} onChange={e=> setSections(arr=> arr.map((x,i)=> i===idx? { ...x, title: e.target.value }: x))} />
+                  </div>
                   <button className="px-2 py-1 rounded bg-gray-100 text-xs" onClick={()=> setSections(arr=> arr.filter((_,i)=> i!==idx))}>Remove</button>
                 </div>
                 {s.type==='text' ? (
