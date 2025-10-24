@@ -46,6 +46,8 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
   const newImageId = ()=> 'img_'+Math.random().toString(36).slice(2);
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
   const [downloadUrl, setDownloadUrl] = useState<string>('');
+  const [lastSavedHash, setLastSavedHash] = useState<string>('');
+  const [lastGeneratedHash, setLastGeneratedHash] = useState<string>('');
 
   // prefill from initial (edit)
   useEffect(()=>{
@@ -108,6 +110,36 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
     return { type:'text', title: String(sec?.title||''), text: String(sec?.text||'') };
   });
 
+  const currentFingerprint = useMemo(()=>{
+    try{
+      const payload = {
+        coverTitle,
+        orderNumber,
+        date,
+        createdFor,
+        primary,
+        typeOfProject,
+        otherNotes,
+        projectDescription,
+        additionalNotes,
+        bidPrice,
+        costs,
+        terms,
+        sections: sanitizeSections(sections),
+        coverFoId,
+        page2FoId,
+        clientId,
+        siteId,
+        projectId,
+      };
+      return JSON.stringify(payload);
+    }catch(_e){ return Math.random().toString(36); }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [coverTitle, orderNumber, date, createdFor, primary, typeOfProject, otherNotes, projectDescription, additionalNotes, bidPrice, costs, terms, sections, coverFoId, page2FoId, clientId, siteId, projectId]);
+
+  // Initialize hashes on first load of edit/new
+  useEffect(()=>{ if (!lastSavedHash) setLastSavedHash(currentFingerprint); }, [currentFingerprint, lastSavedHash]);
+
   const handleSave = async()=>{
     try{
       const payload:any = {
@@ -138,6 +170,7 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
       toast.success('Saved');
       const back = projectId? `/projects/${encodeURIComponent(projectId)}` : '/proposals';
       if (r?.id || initial?.id){ nav(back); }
+      setLastSavedHash(currentFingerprint);
     }catch(e){ toast.error('Save failed'); }
   };
 
@@ -176,6 +209,7 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
       const url = URL.createObjectURL(blob);
       setDownloadUrl(url);
       toast.success('Proposal ready');
+      setLastGeneratedHash(currentFingerprint);
     }catch(e){ toast.error('Generate failed'); }
     finally{ setIsGenerating(false); }
   };
@@ -326,13 +360,23 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
           <textarea className="w-full border rounded px-3 py-2" value={terms} onChange={e=>setTerms(e.target.value)} />
         </div>
       </div>
-      <div className="mt-4 flex items-center justify-between">
+      {downloadUrl && (currentFingerprint!==lastGeneratedHash) && (
+        <div className="mb-3 p-2 rounded bg-yellow-50 border text-[12px] text-yellow-800">You have made changes since the last PDF was generated. Please click "Generate Proposal" again to update the download.</div>
+      )}
+      {(currentFingerprint!==lastSavedHash) && (
+        <div className="mb-3 p-2 rounded bg-blue-50 border text-[12px] text-blue-800">There are unsaved changes in this proposal. Click "Save Proposal" to persist.</div>
+      )}
+      <div className="mt-2 flex items-center justify-between">
         <button className="px-3 py-2 rounded bg-gray-100" onClick={()=> nav(-1)}>Back</button>
         <div className="space-x-2">
           <button className="px-3 py-2 rounded bg-gray-100" onClick={handleSave}>Save Proposal</button>
           <button className="px-3 py-2 rounded bg-brand-red text-white disabled:opacity-60" disabled={isGenerating} onClick={handleGenerate}>{isGenerating? 'Generating…' : 'Generate Proposal'}</button>
           {downloadUrl && (
-            <a className="px-3 py-2 rounded bg-black text-white" href={downloadUrl} download="ProjectProposal.pdf">Download PDF</a>
+            (currentFingerprint===lastGeneratedHash) ? (
+              <a className="px-3 py-2 rounded bg-black text-white" href={downloadUrl} download="ProjectProposal.pdf">Download PDF</a>
+            ) : (
+              <button className="px-3 py-2 rounded bg-gray-200 text-gray-600 cursor-not-allowed" title="PDF is outdated. Generate again to enable download" disabled>Download PDF</button>
+            )
           )}
         </div>
       </div>
