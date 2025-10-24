@@ -49,6 +49,8 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
   const [lastSavedHash, setLastSavedHash] = useState<string>('');
   const [lastGeneratedHash, setLastGeneratedHash] = useState<string>('');
   const [isReady, setIsReady] = useState<boolean>(false);
+  const [focusTarget, setFocusTarget] = useState<{ type:'title'|'caption', sectionIndex:number, imageIndex?: number }|null>(null);
+  const [activeSectionIndex, setActiveSectionIndex] = useState<number>(-1);
 
   // prefill from initial (edit)
   useEffect(()=>{
@@ -83,6 +85,38 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
 
   // When creating new (no initial), mark ready on mount
   useEffect(()=>{ if (mode==='new') setIsReady(true); }, [mode]);
+
+  // Focus management
+  useEffect(()=>{
+    if (!focusTarget) return;
+    const { type, sectionIndex, imageIndex } = focusTarget;
+    setTimeout(()=>{
+      try{
+        if (type==='title'){
+          const el = document.querySelector<HTMLInputElement>(`input[data-role="section-title"][data-sec="${sectionIndex}"]`);
+          el?.focus(); el?.select();
+        } else {
+          let idx = imageIndex ?? -1;
+          if (idx===-1){
+            const imgs = (sections[sectionIndex]?.images||[]) as any[];
+            idx = Math.max(0, imgs.length-1);
+          }
+          const el = document.querySelector<HTMLInputElement>(`input[data-role="img-caption"][data-sec="${sectionIndex}"][data-img="${idx}"]`);
+          el?.focus(); el?.select();
+        }
+      }catch(_e){}
+      setFocusTarget(null);
+    }, 0);
+  }, [focusTarget, sections]);
+
+  // Warn on unload when unsaved
+  useEffect(()=>{
+    const handler = (e: BeforeUnloadEvent)=>{
+      if (isReady && currentFingerprint!==lastSavedHash){ e.preventDefault(); e.returnValue=''; }
+    };
+    window.addEventListener('beforeunload', handler);
+    return ()=> window.removeEventListener('beforeunload', handler);
+  }, [isReady, currentFingerprint, lastSavedHash]);
 
   // derive company fields
   const companyName = (client?.display_name || client?.name || '').slice(0,50);
@@ -250,13 +284,53 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
   };
 
   return (
-    <div className="rounded-xl border bg-white p-4">
+    <div className="rounded-xl border bg-white p-4" onKeyDown={(e)=>{
+      const tgt = e.target as HTMLElement;
+      if (!e.altKey) return;
+      if (e.key==='ArrowUp' || e.key==='ArrowDown'){
+        e.preventDefault();
+        const dir = e.key==='ArrowUp'? -1 : 1;
+        // If in caption input, reorder images
+        if (tgt && tgt.getAttribute('data-role')==='img-caption'){
+          const sec = parseInt(tgt.getAttribute('data-sec')||'-1');
+          const img = parseInt(tgt.getAttribute('data-img')||'-1');
+          if (sec>=0 && img>=0){
+            setSections(arr=> arr.map((s:any,i:number)=>{
+              if (i!==sec) return s;
+              const imgs = Array.isArray(s.images)? [...s.images]:[];
+              const ni = img + dir; if (ni<0 || ni>=imgs.length) return s;
+              const tmp = imgs[img]; imgs[img]=imgs[ni]; imgs[ni]=tmp;
+              setTimeout(()=> setFocusTarget({ type:'caption', sectionIndex: sec, imageIndex: ni }), 0);
+              return { ...s, images: imgs };
+            }));
+          }
+          return;
+        }
+        // If in section title, reorder sections
+        if (tgt && tgt.getAttribute('data-role')==='section-title'){
+          const sec = parseInt(tgt.getAttribute('data-sec')||'-1');
+          if (sec>=0){
+            setSections(arr=>{
+              const next=[...arr];
+              const ni = sec + dir; if (ni<0 || ni>=next.length) return arr;
+              const tmp = next[sec]; next[sec]=next[ni]; next[ni]=tmp;
+              setTimeout(()=> setFocusTarget({ type:'title', sectionIndex: ni }), 0);
+              return next;
+            });
+          }
+        }
+      }
+    }}>
       <h2 className="text-xl font-bold mb-3">{mode==='edit'? 'Edit Proposal':'Create Proposal'}</h2>
       <div className="grid md:grid-cols-2 gap-4">
         <div>
           <h3 className="font-semibold mb-2">Company Info</h3>
           <div className="space-y-2 text-sm">
-            <div><label className="text-xs text-gray-600">Document Type</label><input className="w-full border rounded px-3 py-2" value={coverTitle} onChange={e=>setCoverTitle(e.target.value)} maxLength={44} /></div>
+            <div>
+              <label className="text-xs text-gray-600">Document Type</label>
+              <input className="w-full border rounded px-3 py-2" value={coverTitle} onChange={e=>setCoverTitle(e.target.value)} maxLength={44} aria-label="Document Type" />
+              <div className="mt-1 text-[11px] text-gray-500">{coverTitle.length}/44 characters</div>
+            </div>
             <div><label className="text-xs text-gray-600">Order Number</label><input className="w-full border rounded px-3 py-2" value={orderNumber} onChange={e=>setOrderNumber(e.target.value)} placeholder={nextCode?.order_number||''} /></div>
             <div><label className="text-xs text-gray-600">Company Name</label><input className="w-full border rounded px-3 py-2" value={companyName} readOnly /></div>
             <div><label className="text-xs text-gray-600">Company Address</label><input className="w-full border rounded px-3 py-2" value={companyAddress} readOnly /></div>
@@ -303,8 +377,8 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
                    onDrop={onSectionDrop}
               >
                 <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-2">
-                    <span className="inline-flex items-center justify-center w-5 h-5 text-gray-400 hover:text-gray-600 cursor-grab active:cursor-grabbing" title="Drag to reorder" aria-label="Drag handle">
+                  <div className="flex items-center gap-2 w-full">
+                    <span className="inline-flex items-center justify-center w-5 h-5 text-gray-400 hover:text-gray-600 cursor-grab active:cursor-grabbing" title="Drag to reorder section" aria-label="Drag section handle">
                       <svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
                         <circle cx="6" cy="6" r="1.5"></circle>
                         <circle cx="10" cy="6" r="1.5"></circle>
@@ -314,9 +388,25 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
                         <circle cx="14" cy="10" r="1.5"></circle>
                       </svg>
                     </span>
-                    <input className="w-1/2 border rounded px-3 py-2 text-sm" placeholder="Section title" value={s.title||''} onChange={e=> setSections(arr=> arr.map((x,i)=> i===idx? { ...x, title: e.target.value }: x))} />
+                    <input data-role="section-title" data-sec={idx} onFocus={()=> setActiveSectionIndex(idx)} className="flex-1 min-w-[240px] border rounded px-3 py-2 text-sm" placeholder="Section title" value={s.title||''} onChange={e=> setSections(arr=> arr.map((x,i)=> i===idx? { ...x, title: e.target.value }: x))} />
                   </div>
-                  <button className="px-2 py-1 rounded bg-gray-100 text-xs" onClick={()=> setSections(arr=> arr.filter((_,i)=> i!==idx))}>Remove</button>
+                  <div className="flex items-center gap-1">
+                    <button className="px-2 py-1 rounded text-gray-500 hover:text-gray-700" title="Duplicate section" onClick={()=>{
+                      setSections(arr=>{
+                        const copy = JSON.parse(JSON.stringify(arr[idx]||{}));
+                        copy.id = 'sec_'+Math.random().toString(36).slice(2);
+                        if (Array.isArray(copy.images)) copy.images = copy.images.map((im:any)=> ({ ...im, image_id: 'img_'+Math.random().toString(36).slice(2) }));
+                        const next=[...arr]; next.splice(idx+1,0,copy);
+                        setTimeout(()=> setFocusTarget({ type:'title', sectionIndex: idx+1 }), 0);
+                        return next;
+                      });
+                    }}>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 7h10v10H7V7Zm-2 2v10h10v2H5a2 2 0 0 1-2-2V9h2Zm6-6h8a2 2 0 0 1 2 2v8h-2V5H11V3Z"></path></svg>
+                    </button>
+                    <button className="px-2 py-1 rounded text-gray-500 hover:text-red-600" title="Remove section" onClick={()=>{ if (!confirm('Remove this section?')) return; setSections(arr=> arr.filter((_,i)=> i!==idx)); }}>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M9 3h6a1 1 0 0 1 1 1v2h4v2h-1l-1 13a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 8H4V6h4V4a1 1 0 0 1 1-1Zm1 3h4V5h-4v1Zm-2 2 1 12h8l1-12H8Z"></path></svg>
+                    </button>
+                  </div>
                 </div>
                 {s.type==='text' ? (
                   <textarea className="w-full border rounded px-3 py-2 text-sm" rows={5} placeholder="Section text" value={s.text||''} onChange={e=> setSections(arr=> arr.map((x,i)=> i===idx? { ...x, text: e.target.value }: x))} />
@@ -326,17 +416,39 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                       {(s.images||[]).map((img:any, j:number)=> (
                         <div key={`${img.image_id||img.file_object_id||''}-${j}`} className="border rounded p-2"
-                             draggable
-                             onDragStart={()=> onImageDragStart(idx, j)}
                              onDragOver={onImageDragOver}
                              onDrop={()=> onImageDrop(idx, j)}
                         >
-                          {img.file_object_id? (<img src={`/files/${img.file_object_id}/thumbnail?w=400`} className="w-full h-24 object-cover rounded" />) : null}
-                          <input className="mt-2 w-full border rounded px-2 py-1 text-sm" placeholder="Caption" value={img.caption||''} onChange={e=> setSections(arr=> arr.map((x,i)=> i===idx? { ...x, images: (x.images||[]).map((it:any,k:number)=> k===j? { ...it, caption: e.target.value }: it) }: x))} />
-                          <div className="mt-2 flex items-center justify-between">
-                            <button className="px-2 py-1 rounded bg-gray-100 text-xs" onClick={()=> setSectionPicker({ secId: s.id||String(idx), index: j })}>Replace</button>
-                            <button className="px-2 py-1 rounded bg-gray-100 text-xs" onClick={()=> setSections(arr=> arr.map((x,i)=> i===idx? { ...x, images: (x.images||[]).filter((_:any,k:number)=> k!==j) }: x))}>Remove</button>
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="inline-flex items-center justify-center w-5 h-5 text-gray-400 hover:text-gray-600 cursor-grab active:cursor-grabbing" title="Drag to reorder image" aria-label="Drag image handle" draggable onDragStart={()=> onImageDragStart(idx, j)}>
+                              <svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                                <circle cx="6" cy="6" r="1.5"></circle>
+                                <circle cx="10" cy="6" r="1.5"></circle>
+                                <circle cx="14" cy="6" r="1.5"></circle>
+                                <circle cx="6" cy="10" r="1.5"></circle>
+                                <circle cx="10" cy="10" r="1.5"></circle>
+                                <circle cx="14" cy="10" r="1.5"></circle>
+                              </svg>
+                            </span>
+                            <div className="ml-auto flex items-center gap-2">
+                              <button className="px-2 py-1 rounded bg-gray-100 text-xs" title="Replace image" onClick={()=> setSectionPicker({ secId: s.id||String(idx), index: j })}>Replace</button>
+                              <button className="px-2 py-1 rounded bg-gray-100 text-xs" title="Duplicate image" onClick={()=>{
+                                setSections(arr=> arr.map((x,i)=>{
+                                  if (i!==idx) return x;
+                                  const imgs = Array.isArray(x.images)? [...x.images]:[];
+                                  const clone = { ...(imgs[j]||{}), image_id: 'img_'+Math.random().toString(36).slice(2) };
+                                  imgs.splice(j+1,0,clone);
+                                  setTimeout(()=> setFocusTarget({ type:'caption', sectionIndex: idx, imageIndex: j+1 }), 0);
+                                  return { ...x, images: imgs };
+                                }));
+                              }}>Duplicate</button>
+                              <button className="px-2 py-1 rounded text-gray-500 hover:text-red-600" title="Remove image" onClick={()=>{ if(!confirm('Remove this image?')) return; setSections(arr=> arr.map((x,i)=> i===idx? { ...x, images: (x.images||[]).filter((_:any,k:number)=> k!==j) }: x)); }}>
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M9 3h6a1 1 0 0 1 1 1v2h4v2h-1l-1 13a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 8H4V6h4V4a1 1 0 0 1 1-1Zm1 3h4V5h-4v1Zm-2 2 1 12h8l1-12H8Z"></path></svg>
+                              </button>
+                            </div>
                           </div>
+                          {img.file_object_id? (<img src={`/files/${img.file_object_id}/thumbnail?w=400`} className="w-full h-24 object-cover rounded" />) : null}
+                          <input data-role="img-caption" data-sec={idx} data-img={j} className="mt-2 w-full border rounded px-2 py-1 text-sm" placeholder="Caption" value={img.caption||''} onChange={e=> setSections(arr=> arr.map((x,i)=> i===idx? { ...x, images: (x.images||[]).map((it:any,k:number)=> k===j? { ...it, caption: e.target.value }: it) }: x))} />
                         </div>
                       ))}
                       {!(s.images||[]).length && <div className="text-sm text-gray-600">No images</div>}
