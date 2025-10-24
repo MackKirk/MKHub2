@@ -288,6 +288,7 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
     }));
   };
 
+  const renderFingerprint = computeFingerprint();
   return (
     <div className="rounded-xl border bg-white p-4" onKeyDown={(e)=>{
       const tgt = e.target as HTMLElement;
@@ -494,10 +495,10 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
           <textarea className="w-full border rounded px-3 py-2" value={terms} onChange={e=>setTerms(e.target.value)} />
         </div>
       </div>
-      {downloadUrl && (currentFingerprint!==lastGeneratedHash) && (
+      {downloadUrl && (renderFingerprint!==lastGeneratedHash) && (
         <div className="mb-3 p-2 rounded bg-yellow-50 border text-[12px] text-yellow-800">You have made changes since the last PDF was generated. Please click "Generate Proposal" again to update the download.</div>
       )}
-      {(isReady && currentFingerprint!==lastSavedHash) && (
+      {(isReady && renderFingerprint!==lastSavedHash) && (
         <div className="mb-3 p-2 rounded bg-blue-50 border text-[12px] text-blue-800">There are unsaved changes in this proposal. Click "Save Proposal" to persist.</div>
       )}
       <div className="mt-2 flex items-center justify-between">
@@ -506,7 +507,7 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
           <button className="px-3 py-2 rounded bg-gray-100" onClick={handleSave}>Save Proposal</button>
           <button className="px-3 py-2 rounded bg-brand-red text-white disabled:opacity-60" disabled={isGenerating} onClick={handleGenerate}>{isGenerating? 'Generating…' : 'Generate Proposal'}</button>
           {downloadUrl && (
-            (currentFingerprint===lastGeneratedHash) ? (
+            (renderFingerprint===lastGeneratedHash) ? (
               <a className="px-3 py-2 rounded bg-black text-white" href={downloadUrl} download="ProjectProposal.pdf">Download PDF</a>
             ) : (
               <button className="px-3 py-2 rounded bg-gray-200 text-gray-600 cursor-not-allowed" title="PDF is outdated. Generate again to enable download" disabled>Download PDF</button>
