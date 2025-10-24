@@ -116,8 +116,14 @@ def build_page2(c, data):
         c.drawImage(bg, 0, 0, width=page_width, height=page_height)
 
     c.setFillColor(colors.white)
-    c.setFont("Montserrat-Bold", 17.2)
-    c.drawString(40, 784, data.get("cover_title", ""))
+    # Auto-fit the small header title at top-left of page 2
+    hdr = data.get("cover_title", "") or ""
+    max_width_hdr = 440  # smaller than full width to avoid logo area
+    size_hdr = 17.2
+    while size_hdr > 8.0 and stringWidth(hdr, "Montserrat-Bold", size_hdr) > max_width_hdr:
+        size_hdr -= 0.8
+    c.setFont("Montserrat-Bold", size_hdr)
+    c.drawString(40, 784, hdr)
     c.setFont("Montserrat-Bold", 13)
     c.drawString(40, 762, data.get("company_name", ""))
 
