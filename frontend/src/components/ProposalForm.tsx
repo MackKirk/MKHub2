@@ -149,6 +149,7 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
     return { type:'text', title: String(sec?.title||''), text: String(sec?.text||'') };
   });
 
+  // Fingerprint of current form state (must be declared before effects that depend on it)
   const currentFingerprint = useMemo(()=>{
     try{
       const payload = {
@@ -175,6 +176,8 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
     }catch(_e){ return Math.random().toString(36); }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [coverTitle, orderNumber, date, createdFor, primary, typeOfProject, otherNotes, projectDescription, additionalNotes, bidPrice, costs, terms, sections, coverFoId, page2FoId, clientId, siteId, projectId]);
+
+  
 
   // Initialize saved hash only after fields are populated (isReady)
   useEffect(()=>{ if (isReady && !lastSavedHash) setLastSavedHash(currentFingerprint); }, [isReady, currentFingerprint, lastSavedHash]);
