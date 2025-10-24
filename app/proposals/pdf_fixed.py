@@ -118,9 +118,9 @@ def build_page2(c, data):
     c.setFillColor(colors.white)
     # Auto-fit the small header title at top-left of page 2
     hdr = data.get("cover_title", "") or ""
-    max_width_hdr = 420  # safe width to avoid logo area
+    max_width_hdr = 360  # tighter width to avoid logo/edge
     size_hdr = 17.2
-    while size_hdr > 8.0 and stringWidth(hdr, "Montserrat-Bold", size_hdr) > max_width_hdr:
+    while size_hdr > 6.0 and stringWidth(hdr, "Montserrat-Bold", size_hdr) > max_width_hdr:
         size_hdr -= 0.8
     # If still overflowing at min size, truncate with ellipsis
     if stringWidth(hdr, "Montserrat-Bold", size_hdr) > max_width_hdr:
