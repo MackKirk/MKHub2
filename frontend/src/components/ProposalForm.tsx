@@ -52,6 +52,44 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
   const [focusTarget, setFocusTarget] = useState<{ type:'title'|'caption', sectionIndex:number, imageIndex?: number }|null>(null);
   const [activeSectionIndex, setActiveSectionIndex] = useState<number>(-1);
 
+  // --- Helpers declared early so effects can safely reference them
+  const sanitizeSections = (arr:any[])=> (arr||[]).map((sec:any)=>{
+    if (sec?.type==='images'){
+      return {
+        type: 'images',
+        title: String(sec.title||''),
+        images: (sec.images||[]).map((im:any)=> ({ file_object_id: String(im.file_object_id||''), caption: String(im.caption||'') }))
+      };
+    }
+    return { type:'text', title: String(sec?.title||''), text: String(sec?.text||'') };
+  });
+
+  const computeFingerprint = ()=>{
+    try{
+      const payload = {
+        coverTitle,
+        orderNumber,
+        date,
+        createdFor,
+        primary,
+        typeOfProject,
+        otherNotes,
+        projectDescription,
+        additionalNotes,
+        bidPrice,
+        costs,
+        terms,
+        sections: sanitizeSections(sections),
+        coverFoId,
+        page2FoId,
+        clientId,
+        siteId,
+        projectId,
+      };
+      return JSON.stringify(payload);
+    }catch(_e){ return Math.random().toString(36); }
+  };
+
   // prefill from initial (edit)
   useEffect(()=>{
     if (!initial) return;
@@ -112,11 +150,12 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
   // Warn on unload when unsaved
   useEffect(()=>{
     const handler = (e: BeforeUnloadEvent)=>{
-      if (isReady && currentFingerprint!==lastSavedHash){ e.preventDefault(); e.returnValue=''; }
+      const fp = computeFingerprint();
+      if (isReady && fp!==lastSavedHash){ e.preventDefault(); e.returnValue=''; }
     };
     window.addEventListener('beforeunload', handler);
     return ()=> window.removeEventListener('beforeunload', handler);
-  }, [isReady, currentFingerprint, lastSavedHash]);
+  }, [isReady, lastSavedHash, coverTitle, orderNumber, date, createdFor, primary, typeOfProject, otherNotes, projectDescription, additionalNotes, bidPrice, costs, terms, sections, coverFoId, page2FoId, clientId, siteId, projectId]);
 
   // derive company fields
   const companyName = (client?.display_name || client?.name || '').slice(0,50);
@@ -138,49 +177,12 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
     return ()=>{};
   }, [coverFoId, coverBlob, page2FoId, page2Blob]);
 
-  const sanitizeSections = (arr:any[])=> (arr||[]).map((sec:any)=>{
-    if (sec?.type==='images'){
-      return {
-        type: 'images',
-        title: String(sec.title||''),
-        images: (sec.images||[]).map((im:any)=> ({ file_object_id: String(im.file_object_id||''), caption: String(im.caption||'') }))
-      };
-    }
-    return { type:'text', title: String(sec?.title||''), text: String(sec?.text||'') };
-  });
-
-  // Fingerprint of current form state (must be declared before effects that depend on it)
-  const currentFingerprint = useMemo(()=>{
-    try{
-      const payload = {
-        coverTitle,
-        orderNumber,
-        date,
-        createdFor,
-        primary,
-        typeOfProject,
-        otherNotes,
-        projectDescription,
-        additionalNotes,
-        bidPrice,
-        costs,
-        terms,
-        sections: sanitizeSections(sections),
-        coverFoId,
-        page2FoId,
-        clientId,
-        siteId,
-        projectId,
-      };
-      return JSON.stringify(payload);
-    }catch(_e){ return Math.random().toString(36); }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [coverTitle, orderNumber, date, createdFor, primary, typeOfProject, otherNotes, projectDescription, additionalNotes, bidPrice, costs, terms, sections, coverFoId, page2FoId, clientId, siteId, projectId]);
+  
 
   
 
   // Initialize saved hash only after fields are populated (isReady)
-  useEffect(()=>{ if (isReady && !lastSavedHash) setLastSavedHash(currentFingerprint); }, [isReady, currentFingerprint, lastSavedHash]);
+  useEffect(()=>{ if (isReady && !lastSavedHash) setLastSavedHash(computeFingerprint()); }, [isReady, lastSavedHash, coverTitle, orderNumber, date, createdFor, primary, typeOfProject, otherNotes, projectDescription, additionalNotes, bidPrice, costs, terms, sections, coverFoId, page2FoId, clientId, siteId, projectId]);
 
   const handleSave = async()=>{
     try{
@@ -211,7 +213,7 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
       const r:any = await api('POST','/proposals', payload);
       toast.success('Saved');
       // Stay on page after save; update saved fingerprint so warnings clear
-      setLastSavedHash(currentFingerprint);
+      setLastSavedHash(computeFingerprint());
       // Optionally, if this was a new proposal and now has id, we could update URL later
     }catch(e){ toast.error('Save failed'); }
   };
@@ -251,7 +253,7 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
       const url = URL.createObjectURL(blob);
       setDownloadUrl(url);
       toast.success('Proposal ready');
-      setLastGeneratedHash(currentFingerprint);
+      setLastGeneratedHash(computeFingerprint());
     }catch(e){ toast.error('Generate failed'); }
     finally{ setIsGenerating(false); }
   };
