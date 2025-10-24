@@ -48,6 +48,7 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
   const [downloadUrl, setDownloadUrl] = useState<string>('');
   const [lastSavedHash, setLastSavedHash] = useState<string>('');
   const [lastGeneratedHash, setLastGeneratedHash] = useState<string>('');
+  const [isReady, setIsReady] = useState<boolean>(false);
 
   // prefill from initial (edit)
   useEffect(()=>{
@@ -77,7 +78,11 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
     setSections(normalized);
     setCoverFoId(d.cover_file_object_id||undefined);
     setPage2FoId(d.page2_file_object_id||undefined);
+    setIsReady(true);
   }, [initial?.id]);
+
+  // When creating new (no initial), mark ready on mount
+  useEffect(()=>{ if (mode==='new') setIsReady(true); }, [mode]);
 
   // derive company fields
   const companyName = (client?.display_name || client?.name || '').slice(0,50);
@@ -137,8 +142,8 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [coverTitle, orderNumber, date, createdFor, primary, typeOfProject, otherNotes, projectDescription, additionalNotes, bidPrice, costs, terms, sections, coverFoId, page2FoId, clientId, siteId, projectId]);
 
-  // Initialize hashes on first load of edit/new
-  useEffect(()=>{ if (!lastSavedHash) setLastSavedHash(currentFingerprint); }, [currentFingerprint, lastSavedHash]);
+  // Initialize saved hash only after fields are populated (isReady)
+  useEffect(()=>{ if (isReady && !lastSavedHash) setLastSavedHash(currentFingerprint); }, [isReady, currentFingerprint, lastSavedHash]);
 
   const handleSave = async()=>{
     try{
@@ -363,7 +368,7 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
       {downloadUrl && (currentFingerprint!==lastGeneratedHash) && (
         <div className="mb-3 p-2 rounded bg-yellow-50 border text-[12px] text-yellow-800">You have made changes since the last PDF was generated. Please click "Generate Proposal" again to update the download.</div>
       )}
-      {(currentFingerprint!==lastSavedHash) && (
+      {(isReady && currentFingerprint!==lastSavedHash) && (
         <div className="mb-3 p-2 rounded bg-blue-50 border text-[12px] text-blue-800">There are unsaved changes in this proposal. Click "Save Proposal" to persist.</div>
       )}
       <div className="mt-2 flex items-center justify-between">
