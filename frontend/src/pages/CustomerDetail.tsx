@@ -1,7 +1,7 @@
 import { useParams, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, ReactNode } from 'react';
 import toast from 'react-hot-toast';
 import ImagePicker from '@/components/ImagePicker';
 
@@ -18,6 +18,7 @@ export default function CustomerDetail(){
   const { data:sites } = useQuery({ queryKey:['clientSites', id], queryFn: ()=>api<Site[]>('GET', `/clients/${id}/sites`) });
   const { data:files, refetch: refetchFiles } = useQuery({ queryKey:['clientFiles', id], queryFn: ()=>api<ClientFile[]>('GET', `/clients/${id}/files`) });
   const { data:settings } = useQuery({ queryKey:['settings'], queryFn: ()=>api<any>('GET','/settings') });
+  const leadSources = (settings?.lead_sources||[]) as any[];
   const { data:projects } = useQuery({ queryKey:['clientProjects', id], queryFn: ()=>api<Project[]>('GET', `/projects?client=${encodeURIComponent(String(id||''))}`) });
   const { data:contacts } = useQuery({ queryKey:['clientContacts', id], queryFn: ()=>api<Contact[]>('GET', `/clients/${id}/contacts`) });
   const primaryContact = (contacts||[]).find(c=>c.is_primary) || (contacts||[])[0];
@@ -48,6 +49,8 @@ export default function CustomerDetail(){
     return m;
   }, [files]);
   const c = client || {} as Client;
+  const isDisplayValid = useMemo(()=> String(form.display_name||'').trim().length>0, [form.display_name]);
+  const isLegalValid = useMemo(()=> String(form.legal_name||'').trim().length>0, [form.legal_name]);
 
   return (
     <div>
@@ -136,58 +139,101 @@ export default function CustomerDetail(){
               )}
               {tab==='general' && (
                 <div className="space-y-8">
+                  {/* Company */}
+                  <div className="flex items-center gap-2">
+                    <h4 className="font-semibold">Company</h4>
+                    <span className="text-gray-500 text-xs cursor-help" title="Core company identity details.">?</span>
+                  </div>
                   <div className="grid md:grid-cols-2 gap-4">
-                    <Field label="Display name *"><input className="w-full border rounded px-3 py-2" value={form.display_name||''} onChange={e=>set('display_name', e.target.value)} /></Field>
-                    <Field label="Legal name"><input className="w-full border rounded px-3 py-2" value={form.legal_name||''} onChange={e=>set('legal_name', e.target.value)} /></Field>
-                    <Field label="Code"><input className="w-full border rounded px-3 py-2" value={form.code||''} readOnly /></Field>
-                    <Field label="Type">
+                    <Field label={<><span>Display name</span> <span className="text-red-600">*</span></>} tooltip="Public name shown across the app.">
+                      <>
+                        <input className={`w-full border rounded px-3 py-2 ${!isDisplayValid? 'border-red-500' : ''}`} value={form.display_name||''} onChange={e=>set('display_name', e.target.value)} />
+                        {!isDisplayValid && <div className="text-[11px] text-red-600 mt-1">Required</div>}
+                      </>
+                    </Field>
+                    <Field label={<><span>Legal name</span> <span className="text-red-600">*</span></>} tooltip="Registered legal entity name.">
+                      <>
+                        <input className={`w-full border rounded px-3 py-2 ${!isLegalValid? 'border-red-500' : ''}`} value={form.legal_name||''} onChange={e=>set('legal_name', e.target.value)} />
+                        {!isLegalValid && <div className="text-[11px] text-red-600 mt-1">Required</div>}
+                      </>
+                    </Field>
+                    {/* Code hidden for users */}
+                    {/* <Field label="Code"><input className="w-full border rounded px-3 py-2" value={form.code||''} readOnly /></Field> */}
+                    <Field label="Type" tooltip="Customer classification.">
                       <select className="w-full border rounded px-3 py-2" value={form.client_type||''} onChange={e=>set('client_type', e.target.value)}>
                         <option value="">Select...</option>
                         {(settings?.client_types||[]).map((t:any)=> <option key={t.value||t.label} value={t.label}>{t.label}</option>)}
                       </select>
                     </Field>
-                    <Field label="Status">
+                    <Field label="Status" tooltip="Relationship status.">
                       <select className="w-full border rounded px-3 py-2" value={form.client_status||''} onChange={e=>set('client_status', e.target.value)}>
                         <option value="">Select...</option>
                         {(settings?.client_statuses||[]).map((t:any)=> <option key={t.value||t.label} value={t.label}>{t.label}</option>)}
                       </select>
                     </Field>
-                    <Field label="Lead source"><input className="w-full border rounded px-3 py-2" value={form.lead_source||''} onChange={e=>set('lead_source', e.target.value)} /></Field>
-                    <Field label="Billing email"><input className="w-full border rounded px-3 py-2" value={form.billing_email||''} onChange={e=>set('billing_email', e.target.value)} /></Field>
-                    <Field label="PO required">
+                    <Field label="Lead source" tooltip="Where did this lead originate?">
+                      <select className="w-full border rounded px-3 py-2" value={form.lead_source||''} onChange={e=>set('lead_source', e.target.value)}>
+                        <option value="">Select...</option>
+                        {leadSources.map((ls:any)=>{
+                          const val = ls?.value ?? ls?.id ?? ls?.label ?? ls?.name ?? String(ls);
+                          const label = ls?.label ?? ls?.name ?? String(ls);
+                          return <option key={String(val)} value={String(val)}>{label}</option>;
+                        })}
+                      </select>
+                    </Field>
+                    <Field label="Tax number" tooltip="Tax/VAT identifier used for invoicing."><input className="w-full border rounded px-3 py-2" value={form.tax_number||''} onChange={e=>set('tax_number', e.target.value)} /></Field>
+                  </div>
+                  {/* Address */}
+                  <div className="flex items-center gap-2">
+                    <h4 className="font-semibold">Address</h4>
+                    <span className="text-gray-500 text-xs cursor-help" title="Primary mailing and location address.">?</span>
+                  </div>
+                  <div className="grid md:grid-cols-2 gap-4">
+                    <Field label="Address 1" tooltip="Street address line 1."><input className="w-full border rounded px-3 py-2" value={form.address_line1||''} onChange={e=>set('address_line1', e.target.value)} /></Field>
+                    <Field label="Address 2" tooltip="Apartment, suite, unit, building, floor, etc."><input className="w-full border rounded px-3 py-2" value={form.address_line2||''} onChange={e=>set('address_line2', e.target.value)} /></Field>
+                    <Field label="Country" tooltip="Country or region."><input className="w-full border rounded px-3 py-2" value={form.country||''} onChange={e=>set('country', e.target.value)} /></Field>
+                    <Field label="Province/State" tooltip="State, province, or region."><input className="w-full border rounded px-3 py-2" value={form.province||''} onChange={e=>set('province', e.target.value)} /></Field>
+                    <Field label="City" tooltip="City or locality."><input className="w-full border rounded px-3 py-2" value={form.city||''} onChange={e=>set('city', e.target.value)} /></Field>
+                    <Field label="Postal code" tooltip="ZIP or postal code."><input className="w-full border rounded px-3 py-2" value={form.postal_code||''} onChange={e=>set('postal_code', e.target.value)} /></Field>
+                  </div>
+                  {/* Billing */}
+                  <div className="flex items-center gap-2 mt-4">
+                    <h4 className="font-semibold">Billing</h4>
+                    <span className="text-gray-500 text-xs cursor-help" title="Preferences used for invoices and payments.">?</span>
+                  </div>
+                  <div className="grid md:grid-cols-2 gap-4">
+                    <Field label="Billing email" tooltip="Email used for invoice delivery."><input className="w-full border rounded px-3 py-2" value={form.billing_email||''} onChange={e=>set('billing_email', e.target.value)} /></Field>
+                    <Field label="PO required" tooltip="Whether a purchase order is required before invoicing.">
                       <select className="w-full border rounded px-3 py-2" value={form.po_required||'false'} onChange={e=>set('po_required', e.target.value)}><option value="false">No</option><option value="true">Yes</option></select>
                     </Field>
-                    <Field label="Tax number"><input className="w-full border rounded px-3 py-2" value={form.tax_number||''} onChange={e=>set('tax_number', e.target.value)} /></Field>
                   </div>
-
+                  {/* Billing Address */}
+                  <div className="flex items-center gap-2 mt-2">
+                    <h4 className="font-semibold">Billing Address</h4>
+                    <span className="text-gray-500 text-xs cursor-help" title="Address used on invoices; can differ from company address.">?</span>
+                  </div>
                   <div className="grid md:grid-cols-2 gap-4">
-                    <Field label="Address 1"><input className="w-full border rounded px-3 py-2" value={form.address_line1||''} onChange={e=>set('address_line1', e.target.value)} /></Field>
-                    <Field label="Address 2"><input className="w-full border rounded px-3 py-2" value={form.address_line2||''} onChange={e=>set('address_line2', e.target.value)} /></Field>
-                    <Field label="Country"><input className="w-full border rounded px-3 py-2" value={form.country||''} onChange={e=>set('country', e.target.value)} /></Field>
-                    <Field label="Province/State"><input className="w-full border rounded px-3 py-2" value={form.province||''} onChange={e=>set('province', e.target.value)} /></Field>
-                    <Field label="City"><input className="w-full border rounded px-3 py-2" value={form.city||''} onChange={e=>set('city', e.target.value)} /></Field>
-                    <Field label="Postal code"><input className="w-full border rounded px-3 py-2" value={form.postal_code||''} onChange={e=>set('postal_code', e.target.value)} /></Field>
-                    <div className="md:col-span-2 border-t pt-3 text-sm">
+                    <div className="md:col-span-2 text-sm">
                       <label className="inline-flex items-center gap-2"><input type="checkbox" checked={!!form.billing_same_as_address} onChange={e=>set('billing_same_as_address', e.target.checked)} /> Billing address is the same as Address</label>
                     </div>
-                    <Field label="Billing Address 1"><input disabled={!!form.billing_same_as_address} className="w-full border rounded px-3 py-2" value={form.billing_address_line1||''} onChange={e=>set('billing_address_line1', e.target.value)} /></Field>
-                    <Field label="Billing Address 2"><input disabled={!!form.billing_same_as_address} className="w-full border rounded px-3 py-2" value={form.billing_address_line2||''} onChange={e=>set('billing_address_line2', e.target.value)} /></Field>
-                    <Field label="Billing Country"><input disabled={!!form.billing_same_as_address} className="w-full border rounded px-3 py-2" value={form.billing_country||''} onChange={e=>set('billing_country', e.target.value)} /></Field>
-                    <Field label="Billing Province/State"><input disabled={!!form.billing_same_as_address} className="w-full border rounded px-3 py-2" value={form.billing_province||''} onChange={e=>set('billing_province', e.target.value)} /></Field>
-                    <Field label="Billing City"><input disabled={!!form.billing_same_as_address} className="w-full border rounded px-3 py-2" value={form.billing_city||''} onChange={e=>set('billing_city', e.target.value)} /></Field>
-                    <Field label="Billing Postal code"><input disabled={!!form.billing_same_as_address} className="w-full border rounded px-3 py-2" value={form.billing_postal_code||''} onChange={e=>set('billing_postal_code', e.target.value)} /></Field>
+                    <Field label="Billing Address 1" tooltip="Street address for billing."><input disabled={!!form.billing_same_as_address} className="w-full border rounded px-3 py-2" value={form.billing_address_line1||''} onChange={e=>set('billing_address_line1', e.target.value)} /></Field>
+                    <Field label="Billing Address 2" tooltip="Apartment, suite, unit, building, floor, etc."><input disabled={!!form.billing_same_as_address} className="w-full border rounded px-3 py-2" value={form.billing_address_line2||''} onChange={e=>set('billing_address_line2', e.target.value)} /></Field>
+                    <Field label="Billing Country" tooltip="Country or region for billing."><input disabled={!!form.billing_same_as_address} className="w-full border rounded px-3 py-2" value={form.billing_country||''} onChange={e=>set('billing_country', e.target.value)} /></Field>
+                    <Field label="Billing Province/State" tooltip="State, province, or region."><input disabled={!!form.billing_same_as_address} className="w-full border rounded px-3 py-2" value={form.billing_province||''} onChange={e=>set('billing_province', e.target.value)} /></Field>
+                    <Field label="Billing City" tooltip="City or locality for billing."><input disabled={!!form.billing_same_as_address} className="w-full border rounded px-3 py-2" value={form.billing_city||''} onChange={e=>set('billing_city', e.target.value)} /></Field>
+                    <Field label="Billing Postal code" tooltip="ZIP or postal code for billing."><input disabled={!!form.billing_same_as_address} className="w-full border rounded px-3 py-2" value={form.billing_postal_code||''} onChange={e=>set('billing_postal_code', e.target.value)} /></Field>
                   </div>
 
-                  <div className="grid md:grid-cols-2 gap-4">
-                    <Field label="Language"><input className="w-full border rounded px-3 py-2" value={form.preferred_language||''} onChange={e=>set('preferred_language', e.target.value)} /></Field>
-                    <Field label="Preferred channels (comma-separated)"><input className="w-full border rounded px-3 py-2" value={form.preferred_channels||''} onChange={e=>set('preferred_channels', e.target.value)} /></Field>
-                    <Field label="Marketing opt-in"><select className="w-full border rounded px-3 py-2" value={form.marketing_opt_in||'false'} onChange={e=>set('marketing_opt_in', e.target.value)}><option value="false">No</option><option value="true">Yes</option></select></Field>
-                    <Field label="Invoice delivery"><input className="w-full border rounded px-3 py-2" value={form.invoice_delivery_method||''} onChange={e=>set('invoice_delivery_method', e.target.value)} /></Field>
-                    <Field label="Statement delivery"><input className="w-full border rounded px-3 py-2" value={form.statement_delivery_method||''} onChange={e=>set('statement_delivery_method', e.target.value)} /></Field>
-                    <Field label="CC emails for invoices"><input className="w-full border rounded px-3 py-2" value={form.cc_emails_for_invoices||''} onChange={e=>set('cc_emails_for_invoices', e.target.value)} /></Field>
-                    <Field label="CC emails for estimates"><input className="w-full border rounded px-3 py-2" value={form.cc_emails_for_estimates||''} onChange={e=>set('cc_emails_for_estimates', e.target.value)} /></Field>
-                    <Field label="Do not contact"><select className="w-full border rounded px-3 py-2" value={form.do_not_contact||'false'} onChange={e=>set('do_not_contact', e.target.value)}><option value="false">No</option><option value="true">Yes</option></select></Field>
-                    <div className="md:col-span-2"><Field label="Reason"><input className="w-full border rounded px-3 py-2" value={form.do_not_contact_reason||''} onChange={e=>set('do_not_contact_reason', e.target.value)} /></Field></div>
+                  {/* Communications and Preferences */}
+                  <Field label="Language" tooltip="Preferred communication language."><input className="w-full border rounded px-3 py-2" value={form.preferred_language||''} onChange={e=>set('preferred_language', e.target.value)} /></Field>
+                  <Field label="Preferred channels (comma-separated)" tooltip="E.g. email, phone, SMS."><input className="w-full border rounded px-3 py-2" value={form.preferred_channels||''} onChange={e=>set('preferred_channels', e.target.value)} /></Field>
+                  <Field label="Marketing opt-in" tooltip="Consent to receive marketing communications."><select className="w-full border rounded px-3 py-2" value={form.marketing_opt_in||'false'} onChange={e=>set('marketing_opt_in', e.target.value)}><option value="false">No</option><option value="true">Yes</option></select></Field>
+                  <Field label="Invoice delivery" tooltip="How invoices are delivered."><input className="w-full border rounded px-3 py-2" value={form.invoice_delivery_method||''} onChange={e=>set('invoice_delivery_method', e.target.value)} /></Field>
+                  <Field label="Statement delivery" tooltip="How statements are delivered."><input className="w-full border rounded px-3 py-2" value={form.statement_delivery_method||''} onChange={e=>set('statement_delivery_method', e.target.value)} /></Field>
+                  <Field label="CC emails for invoices" tooltip="Comma-separated additional recipients for invoices."><input className="w-full border rounded px-3 py-2" value={form.cc_emails_for_invoices||''} onChange={e=>set('cc_emails_for_invoices', e.target.value)} /></Field>
+                  <Field label="CC emails for estimates" tooltip="Comma-separated additional recipients for estimates."><input className="w-full border rounded px-3 py-2" value={form.cc_emails_for_estimates||''} onChange={e=>set('cc_emails_for_estimates', e.target.value)} /></Field>
+                  <Field label="Do not contact" tooltip="Suppress all non-essential communications."><select className="w-full border rounded px-3 py-2" value={form.do_not_contact||'false'} onChange={e=>set('do_not_contact', e.target.value)}><option value="false">No</option><option value="true">Yes</option></select></Field>
+                  <div className="md:col-span-2"><Field label="Reason" tooltip="Reason for not contacting."><input className="w-full border rounded px-3 py-2" value={form.do_not_contact_reason||''} onChange={e=>set('do_not_contact_reason', e.target.value)} /></Field></div>
                   </div>
 
                   <div className="md:col-span-2">
@@ -242,7 +288,9 @@ export default function CustomerDetail(){
                         // final
                         description: form.description||null,
                       };
-                      try{ await api('PATCH', `/clients/${id}`, payload); toast.success('Saved'); setDirty(false); }catch(e){ toast.error('Save failed'); }
+                        const reqOk = String(form.display_name||'').trim().length>0 && String(form.legal_name||'').trim().length>0;
+                        if(!reqOk){ toast.error('Display name and Legal name are required'); return; }
+                        try{ await api('PATCH', `/clients/${id}`, payload); toast.success('Saved'); setDirty(false); }catch(e){ toast.error('Save failed'); }
                         }} className="px-5 py-2 rounded-xl bg-gradient-to-r from-brand-red to-[#ee2b2b] text-white font-semibold disabled:opacity-50">Save</button>
                       </div>
                     </div>
@@ -356,10 +404,13 @@ export default function CustomerDetail(){
   );
 }
 
-function Field({label, children}:{label:string, children:any}){
+function Field({label, tooltip, children}:{label:ReactNode, tooltip?:string, children:any}){
   return (
     <div className="space-y-2">
-      <label className="text-sm text-gray-600">{label}</label>
+      <label className="text-sm text-gray-600 flex items-center gap-1">
+        <span>{label}</span>
+        {tooltip && <span className="text-gray-500 text-[11px] px-1 cursor-help" title={tooltip}>?</span>}
+      </label>
       {children}
     </div>
   );
