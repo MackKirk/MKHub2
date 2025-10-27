@@ -50,7 +50,7 @@ export default function Projects(){
             toast.success('Cover updated');
             setPickerOpen(null);
           }catch(e){ toast.error('Failed to update cover'); setPickerOpen(null); }
-        }} targetHeight={800} />
+        }} />
       )}
       {newOpen && (
         <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center">

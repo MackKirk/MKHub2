@@ -236,8 +236,8 @@ export default function CustomerDetail(){
                   <div className="md:col-span-2"><Field label="Reason" tooltip="Reason for not contacting."><input className="w-full border rounded px-3 py-2" value={form.do_not_contact_reason||''} onChange={e=>set('do_not_contact_reason', e.target.value)} /></Field></div>
                   </div>
 
-                  <div className="md:col-span-2">
-                    <Field label="Description">
+                  <div className="mt-4">
+                    <Field label="Description" tooltip="Additional notes about this customer.">
                       <textarea rows={6} className="w-full border rounded px-3 py-2 resize-y" value={form.description||''} onChange={e=>set('description', e.target.value)} />
                     </Field>
                   </div>
