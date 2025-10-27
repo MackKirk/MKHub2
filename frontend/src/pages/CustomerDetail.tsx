@@ -225,23 +225,25 @@ export default function CustomerDetail(){
                   </div>
 
                   {/* Communications and Preferences */}
-                  <Field label="Language" tooltip="Preferred communication language."><input className="w-full border rounded px-3 py-2" value={form.preferred_language||''} onChange={e=>set('preferred_language', e.target.value)} /></Field>
-                  <Field label="Preferred channels (comma-separated)" tooltip="E.g. email, phone, SMS."><input className="w-full border rounded px-3 py-2" value={form.preferred_channels||''} onChange={e=>set('preferred_channels', e.target.value)} /></Field>
-                  <Field label="Marketing opt-in" tooltip="Consent to receive marketing communications."><select className="w-full border rounded px-3 py-2" value={form.marketing_opt_in||'false'} onChange={e=>set('marketing_opt_in', e.target.value)}><option value="false">No</option><option value="true">Yes</option></select></Field>
-                  <Field label="Invoice delivery" tooltip="How invoices are delivered."><input className="w-full border rounded px-3 py-2" value={form.invoice_delivery_method||''} onChange={e=>set('invoice_delivery_method', e.target.value)} /></Field>
-                  <Field label="Statement delivery" tooltip="How statements are delivered."><input className="w-full border rounded px-3 py-2" value={form.statement_delivery_method||''} onChange={e=>set('statement_delivery_method', e.target.value)} /></Field>
-                  <Field label="CC emails for invoices" tooltip="Comma-separated additional recipients for invoices."><input className="w-full border rounded px-3 py-2" value={form.cc_emails_for_invoices||''} onChange={e=>set('cc_emails_for_invoices', e.target.value)} /></Field>
-                  <Field label="CC emails for estimates" tooltip="Comma-separated additional recipients for estimates."><input className="w-full border rounded px-3 py-2" value={form.cc_emails_for_estimates||''} onChange={e=>set('cc_emails_for_estimates', e.target.value)} /></Field>
-                  <Field label="Do not contact" tooltip="Suppress all non-essential communications."><select className="w-full border rounded px-3 py-2" value={form.do_not_contact||'false'} onChange={e=>set('do_not_contact', e.target.value)}><option value="false">No</option><option value="true">Yes</option></select></Field>
-                  <div className="md:col-span-2"><Field label="Reason" tooltip="Reason for not contacting."><input className="w-full border rounded px-3 py-2" value={form.do_not_contact_reason||''} onChange={e=>set('do_not_contact_reason', e.target.value)} /></Field></div>
+                  <div className="grid md:grid-cols-2 gap-4">
+                    <Field label="Language" tooltip="Preferred communication language."><input className="w-full border rounded px-3 py-2" value={form.preferred_language||''} onChange={e=>set('preferred_language', e.target.value)} /></Field>
+                    <Field label="Preferred channels (comma-separated)" tooltip="E.g. email, phone, SMS."><input className="w-full border rounded px-3 py-2" value={form.preferred_channels||''} onChange={e=>set('preferred_channels', e.target.value)} /></Field>
+                    <Field label="Marketing opt-in" tooltip="Consent to receive marketing communications."><select className="w-full border rounded px-3 py-2" value={form.marketing_opt_in||'false'} onChange={e=>set('marketing_opt_in', e.target.value)}><option value="false">No</option><option value="true">Yes</option></select></Field>
+                    <Field label="Invoice delivery" tooltip="How invoices are delivered."><input className="w-full border rounded px-3 py-2" value={form.invoice_delivery_method||''} onChange={e=>set('invoice_delivery_method', e.target.value)} /></Field>
+                    <Field label="Statement delivery" tooltip="How statements are delivered."><input className="w-full border rounded px-3 py-2" value={form.statement_delivery_method||''} onChange={e=>set('statement_delivery_method', e.target.value)} /></Field>
+                    <Field label="CC emails for invoices" tooltip="Comma-separated additional recipients for invoices."><input className="w-full border rounded px-3 py-2" value={form.cc_emails_for_invoices||''} onChange={e=>set('cc_emails_for_invoices', e.target.value)} /></Field>
+                    <Field label="CC emails for estimates" tooltip="Comma-separated additional recipients for estimates."><input className="w-full border rounded px-3 py-2" value={form.cc_emails_for_estimates||''} onChange={e=>set('cc_emails_for_estimates', e.target.value)} /></Field>
+                    <Field label="Do not contact" tooltip="Suppress all non-essential communications."><select className="w-full border rounded px-3 py-2" value={form.do_not_contact||'false'} onChange={e=>set('do_not_contact', e.target.value)}><option value="false">No</option><option value="true">Yes</option></select></Field>
+                    <div className="md:col-span-2"><Field label="Reason" tooltip="Reason for not contacting."><input className="w-full border rounded px-3 py-2" value={form.do_not_contact_reason||''} onChange={e=>set('do_not_contact_reason', e.target.value)} /></Field></div>
                   </div>
-
                   <div className="mt-4">
                     <label className="text-sm text-gray-600 flex items-center gap-1">
                       <span>Description</span>
                       <span className="text-gray-500 text-[11px] px-1 cursor-help" title="Additional notes about this customer.">?</span>
                     </label>
                     <textarea rows={6} className="w-full border rounded px-3 py-2 resize-y" value={form.description||''} onChange={e=>set('description', e.target.value)} />
+                  </div>
+
                   </div>
 
                   <div className="h-16" />
@@ -292,7 +294,7 @@ export default function CustomerDetail(){
                       };
                         const reqOk = String(form.display_name||'').trim().length>0 && String(form.legal_name||'').trim().length>0;
                         if(!reqOk){ toast.error('Display name and Legal name are required'); return; }
-                        try{ await api('PATCH', `/clients/${id}`, payload); toast.success('Saved'); setDirty(false); }catch(e){ toast.error('Save failed'); }
+                      try{ await api('PATCH', `/clients/${id}`, payload); toast.success('Saved'); setDirty(false); }catch(e){ toast.error('Save failed'); }
                         }} className="px-5 py-2 rounded-xl bg-gradient-to-r from-brand-red to-[#ee2b2b] text-white font-semibold disabled:opacity-50">Save</button>
                       </div>
                     </div>
