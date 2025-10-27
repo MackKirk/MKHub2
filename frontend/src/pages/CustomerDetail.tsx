@@ -237,9 +237,11 @@ export default function CustomerDetail(){
                   </div>
 
                   <div className="mt-4">
-                    <Field label="Description" tooltip="Additional notes about this customer.">
-                      <textarea rows={6} className="w-full border rounded px-3 py-2 resize-y" value={form.description||''} onChange={e=>set('description', e.target.value)} />
-                    </Field>
+                    <label className="text-sm text-gray-600 flex items-center gap-1">
+                      <span>Description</span>
+                      <span className="text-gray-500 text-[11px] px-1 cursor-help" title="Additional notes about this customer.">?</span>
+                    </label>
+                    <textarea rows={6} className="w-full border rounded px-3 py-2 resize-y" value={form.description||''} onChange={e=>set('description', e.target.value)} />
                   </div>
 
                   <div className="h-16" />
