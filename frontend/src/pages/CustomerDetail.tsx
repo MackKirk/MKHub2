@@ -244,8 +244,6 @@ export default function CustomerDetail(){
                     <textarea rows={6} className="w-full border rounded px-3 py-2 resize-y" value={form.description||''} onChange={e=>set('description', e.target.value)} />
                   </div>
 
-                  </div>
-
                   <div className="h-16" />
                   <div className="fixed left-60 right-0 bottom-0 z-40">
                     <div className="px-4">
