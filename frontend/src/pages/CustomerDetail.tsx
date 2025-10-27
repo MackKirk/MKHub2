@@ -36,7 +36,7 @@ export default function CustomerDetail(){
     client_type: (client as any).client_type||'', client_status: (client as any).client_status||'', lead_source:(client as any).lead_source||'',
     billing_email:(client as any).billing_email||'', po_required: (client as any).po_required? 'true':'false', tax_number:(client as any).tax_number||'', description:(client as any).description||'',
     address_line1: client.address_line1||'', address_line2: client.address_line2||'', country:(client as any).country||'', province:(client as any).province||'', city:(client as any).city||'', postal_code: client.postal_code||'',
-    billing_same_as_address: (client as any).billing_same_as_address? true:false,
+    billing_same_as_address: ((client as any).billing_same_as_address === false) ? false : true,
     billing_address_line1: (client as any).billing_address_line1||'', billing_address_line2:(client as any).billing_address_line2||'', billing_country:(client as any).billing_country||'', billing_province:(client as any).billing_province||'', billing_city:(client as any).billing_city||'', billing_postal_code:(client as any).billing_postal_code||'',
     preferred_language:(client as any).preferred_language||'', preferred_channels: ((client as any).preferred_channels||[]).join(', '),
     marketing_opt_in: (client as any).marketing_opt_in? 'true':'false', invoice_delivery_method:(client as any).invoice_delivery_method||'', statement_delivery_method:(client as any).statement_delivery_method||'',
@@ -144,11 +144,8 @@ export default function CustomerDetail(){
                   {/* Company */}
                   <div className="flex items-center gap-2">
                     <h4 className="font-semibold">Company</h4>
-                    <span className="relative group inline-block">
-                      <span className="w-4 h-4 rounded-full bg-gradient-to-br from-[#7f1010] to-[#a31414] text-white inline-flex items-center justify-center text-[10px]">?</span>
-                      <span className="absolute left-1/2 -translate-x-1/2 mt-2 hidden group-hover:block whitespace-nowrap bg-black text-white text-xs px-2 py-1 rounded shadow z-20">Core company identity details.</span>
-                    </span>
                   </div>
+                  <div className="text-xs text-gray-500 -mt-2 mb-2">Core company identity details.</div>
                   <div className="grid md:grid-cols-2 gap-4">
                     <Field label={<><span>Display name</span> <span className="text-red-600">*</span></>} tooltip="Public name shown across the app.">
                       <>
@@ -191,27 +188,21 @@ export default function CustomerDetail(){
                   {/* Address */}
                   <div className="flex items-center gap-2">
                     <h4 className="font-semibold">Address</h4>
-                    <span className="relative group inline-block">
-                      <span className="w-4 h-4 rounded-full bg-gradient-to-br from-[#7f1010] to-[#a31414] text-white inline-flex items-center justify-center text-[10px]">?</span>
-                      <span className="absolute left-1/2 -translate-x-1/2 mt-2 hidden group-hover:block whitespace-nowrap bg-black text-white text-xs px-2 py-1 rounded shadow z-20">Primary mailing and location address.</span>
-                    </span>
                   </div>
+                  <div className="text-xs text-gray-500 -mt-2 mb-2">Primary mailing and location address.</div>
                   <div className="grid md:grid-cols-2 gap-4">
-                    <Field label="Address 1" tooltip="Street address line 1."><input className="w-full border rounded px-3 py-2" value={form.address_line1||''} onChange={e=>set('address_line1', e.target.value)} /></Field>
-                    <Field label="Address 2" tooltip="Apartment, suite, unit, building, floor, etc."><input className="w-full border rounded px-3 py-2" value={form.address_line2||''} onChange={e=>set('address_line2', e.target.value)} /></Field>
-                    <Field label="Country" tooltip="Country or region."><input className="w-full border rounded px-3 py-2" value={form.country||''} onChange={e=>set('country', e.target.value)} /></Field>
-                    <Field label="Province/State" tooltip="State, province, or region."><input className="w-full border rounded px-3 py-2" value={form.province||''} onChange={e=>set('province', e.target.value)} /></Field>
-                    <Field label="City" tooltip="City or locality."><input className="w-full border rounded px-3 py-2" value={form.city||''} onChange={e=>set('city', e.target.value)} /></Field>
-                    <Field label="Postal code" tooltip="ZIP or postal code."><input className="w-full border rounded px-3 py-2" value={form.postal_code||''} onChange={e=>set('postal_code', e.target.value)} /></Field>
+                    <Field label="Address 1"><input className="w-full border rounded px-3 py-2" value={form.address_line1||''} onChange={e=>set('address_line1', e.target.value)} /></Field>
+                    <Field label="Address 2"><input className="w-full border rounded px-3 py-2" value={form.address_line2||''} onChange={e=>set('address_line2', e.target.value)} /></Field>
+                    <Field label="Country"><input className="w-full border rounded px-3 py-2" value={form.country||''} onChange={e=>set('country', e.target.value)} /></Field>
+                    <Field label="Province/State"><input className="w-full border rounded px-3 py-2" value={form.province||''} onChange={e=>set('province', e.target.value)} /></Field>
+                    <Field label="City"><input className="w-full border rounded px-3 py-2" value={form.city||''} onChange={e=>set('city', e.target.value)} /></Field>
+                    <Field label="Postal code"><input className="w-full border rounded px-3 py-2" value={form.postal_code||''} onChange={e=>set('postal_code', e.target.value)} /></Field>
                   </div>
                   {/* Billing */}
                   <div className="flex items-center gap-2 mt-4">
                     <h4 className="font-semibold">Billing</h4>
-                    <span className="relative group inline-block">
-                      <span className="w-4 h-4 rounded-full bg-gradient-to-br from-[#7f1010] to-[#a31414] text-white inline-flex items-center justify-center text-[10px]">?</span>
-                      <span className="absolute left-1/2 -translate-x-1/2 mt-2 hidden group-hover:block whitespace-nowrap bg-black text-white text-xs px-2 py-1 rounded shadow z-20">Preferences used for invoices and payments.</span>
-                    </span>
                   </div>
+                  <div className="text-xs text-gray-500 -mt-2 mb-2">Preferences used for invoices and payments.</div>
                   <div className="grid md:grid-cols-2 gap-4">
                     <Field label="Billing email" tooltip="Email used for invoice delivery."><input className="w-full border rounded px-3 py-2" value={form.billing_email||''} onChange={e=>set('billing_email', e.target.value)} /></Field>
                     <Field label="PO required" tooltip="Whether a purchase order is required before invoicing.">
@@ -235,17 +226,17 @@ export default function CustomerDetail(){
                     )}
                   </div>
 
-                  {/* Communications and Preferences */}
-                  <div className="grid md:grid-cols-2 gap-4">
-                    <Field label="Language" tooltip="Preferred communication language."><input className="w-full border rounded px-3 py-2" value={form.preferred_language||''} onChange={e=>set('preferred_language', e.target.value)} /></Field>
-                    <Field label="Preferred channels (comma-separated)" tooltip="E.g. email, phone, SMS."><input className="w-full border rounded px-3 py-2" value={form.preferred_channels||''} onChange={e=>set('preferred_channels', e.target.value)} /></Field>
-                    <Field label="Marketing opt-in" tooltip="Consent to receive marketing communications."><select className="w-full border rounded px-3 py-2" value={form.marketing_opt_in||'false'} onChange={e=>set('marketing_opt_in', e.target.value)}><option value="false">No</option><option value="true">Yes</option></select></Field>
-                    <Field label="Invoice delivery" tooltip="How invoices are delivered."><input className="w-full border rounded px-3 py-2" value={form.invoice_delivery_method||''} onChange={e=>set('invoice_delivery_method', e.target.value)} /></Field>
-                    <Field label="Statement delivery" tooltip="How statements are delivered."><input className="w-full border rounded px-3 py-2" value={form.statement_delivery_method||''} onChange={e=>set('statement_delivery_method', e.target.value)} /></Field>
-                    <Field label="CC emails for invoices" tooltip="Comma-separated additional recipients for invoices."><input className="w-full border rounded px-3 py-2" value={form.cc_emails_for_invoices||''} onChange={e=>set('cc_emails_for_invoices', e.target.value)} /></Field>
-                    <Field label="CC emails for estimates" tooltip="Comma-separated additional recipients for estimates."><input className="w-full border rounded px-3 py-2" value={form.cc_emails_for_estimates||''} onChange={e=>set('cc_emails_for_estimates', e.target.value)} /></Field>
-                    <Field label="Do not contact" tooltip="Suppress all non-essential communications."><select className="w-full border rounded px-3 py-2" value={form.do_not_contact||'false'} onChange={e=>set('do_not_contact', e.target.value)}><option value="false">No</option><option value="true">Yes</option></select></Field>
-                    <div className="md:col-span-2"><Field label="Reason" tooltip="Reason for not contacting."><input className="w-full border rounded px-3 py-2" value={form.do_not_contact_reason||''} onChange={e=>set('do_not_contact_reason', e.target.value)} /></Field></div>
+                  {/* Communications and Preferences (hidden per request) */}
+                  <div className="grid md:grid-cols-2 gap-4 hidden">
+                    <Field label="Language"><input className="w-full border rounded px-3 py-2" value={form.preferred_language||''} onChange={e=>set('preferred_language', e.target.value)} /></Field>
+                    <Field label="Preferred channels (comma-separated)"><input className="w-full border rounded px-3 py-2" value={form.preferred_channels||''} onChange={e=>set('preferred_channels', e.target.value)} /></Field>
+                    <Field label="Marketing opt-in"><select className="w-full border rounded px-3 py-2" value={form.marketing_opt_in||'false'} onChange={e=>set('marketing_opt_in', e.target.value)}><option value="false">No</option><option value="true">Yes</option></select></Field>
+                    <Field label="Invoice delivery"><input className="w-full border rounded px-3 py-2" value={form.invoice_delivery_method||''} onChange={e=>set('invoice_delivery_method', e.target.value)} /></Field>
+                    <Field label="Statement delivery"><input className="w-full border rounded px-3 py-2" value={form.statement_delivery_method||''} onChange={e=>set('statement_delivery_method', e.target.value)} /></Field>
+                    <Field label="CC emails for invoices"><input className="w-full border rounded px-3 py-2" value={form.cc_emails_for_invoices||''} onChange={e=>set('cc_emails_for_invoices', e.target.value)} /></Field>
+                    <Field label="CC emails for estimates"><input className="w-full border rounded px-3 py-2" value={form.cc_emails_for_estimates||''} onChange={e=>set('cc_emails_for_estimates', e.target.value)} /></Field>
+                    <Field label="Do not contact"><select className="w-full border rounded px-3 py-2" value={form.do_not_contact||'false'} onChange={e=>set('do_not_contact', e.target.value)}><option value="false">No</option><option value="true">Yes</option></select></Field>
+                    <div className="md:col-span-2"><Field label="Reason"><input className="w-full border rounded px-3 py-2" value={form.do_not_contact_reason||''} onChange={e=>set('do_not_contact_reason', e.target.value)} /></Field></div>
                   </div>
                   <div className="mt-4">
                     <label className="text-sm text-gray-600 flex items-center gap-1">
