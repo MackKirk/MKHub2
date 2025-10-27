@@ -23,8 +23,9 @@ export default function Login(){
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-brand-black to-[#1a1a1c]">
-      <div className="w-[960px] max-w-[94vw] grid grid-cols-2 rounded-xl shadow-hero overflow-hidden bg-white">
+    <div className="min-h-screen relative flex items-center justify-center" style={{ backgroundImage: 'url(/ui/assets/login/background.jpg)', backgroundSize: 'cover', backgroundPosition: 'center', backgroundRepeat: 'no-repeat' }}>
+      <div className="absolute inset-0 bg-black/40" />
+      <div className="relative z-10 w-[960px] max-w-[94vw] grid grid-cols-2 rounded-xl shadow-hero overflow-hidden bg-white">
         <aside className="bg-gradient-to-br from-[#7f1010] to-[#a31414] text-white p-8 flex flex-col justify-between">
           <div>
             <div className="flex items-center gap-2 font-bold"><img src="/ui/assets/login/logo-light.svg" className="h-7"/> MKHub</div>
