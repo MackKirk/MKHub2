@@ -23,7 +23,7 @@ export default function CustomerNew(){
   const [contact, setContact] = useState<any>({ name:'', email:'', phone:'', is_primary:true });
   const contactValid = useMemo(()=> !!(String(contact.name||'').trim() || String(contact.email||'').trim() || String(contact.phone||'').trim()), [contact]);
   const [step, setStep] = useState<number>(1);
-  const next = ()=> setStep(s=> Math.min(4, s+1));
+  const next = ()=> setStep(s=> Math.min(2, s+1));
   const prev = ()=> setStep(s=> Math.max(1, s-1));
   const formatPhone = (v:string)=>{
     const d = String(v||'').replace(/\D+/g,'').slice(0,11);
@@ -42,13 +42,13 @@ export default function CustomerNew(){
       </div>
       <div className="rounded-xl border bg-white p-4">
         <div className="mb-4 flex items-center gap-2 text-sm">
-          {[1,2,3,4].map(i=> (
+          {[1,2].map(i=> (
             <div key={i} className={`flex-1 h-2 rounded ${step>=i?'bg-brand-red':'bg-gray-200'}`} title={`Step ${i}`}></div>
           ))}
         </div>
         {step===1 && (
           <div className="grid md:grid-cols-2 gap-3">
-            <div className="md:col-span-2"><label className="text-xs text-gray-600">Display name</label><input className="w-full border rounded px-3 py-2" value={form.display_name} onChange={e=>setForm((s:any)=>({...s, display_name: e.target.value}))} /></div>
+            <div className="md:col-span-2"><label className="text-xs text-gray-600">Display name *</label><input className="w-full border rounded px-3 py-2" value={form.display_name} onChange={e=>setForm((s:any)=>({...s, display_name: e.target.value}))} /></div>
             <div><label className="text-xs text-gray-600">Legal name</label><input className="w-full border rounded px-3 py-2" value={form.legal_name} onChange={e=>setForm((s:any)=>({...s, legal_name: e.target.value}))} /></div>
             <div>
               <label className="text-xs text-gray-600">Status</label>
@@ -64,18 +64,6 @@ export default function CustomerNew(){
             </div>
             <div><label className="text-xs text-gray-600">Email</label><input className="w-full border rounded px-3 py-2" value={form.email} onChange={e=>setForm((s:any)=>({...s, email: e.target.value}))} /></div>
             <div><label className="text-xs text-gray-600">Phone</label><input className="w-full border rounded px-3 py-2" value={form.phone} onChange={e=>setForm((s:any)=>({...s, phone: formatPhone(e.target.value)}))} /></div>
-            <div>
-              <label className="text-xs text-gray-600">Estimator</label>
-              <select className="w-full border rounded px-3 py-2" value={form.estimator_id||''} onChange={e=> setForm((s:any)=> ({...s, estimator_id: e.target.value||null}))}>
-                <option value="">Select...</option>
-                {(employees||[]).map((emp:any)=> <option key={emp.id} value={emp.id}>{emp.name||emp.username}</option>)}
-              </select>
-            </div>
-            <div className="flex items-center gap-2"><input id="po" type="checkbox" checked={!!form.po_required} onChange={e=> setForm((s:any)=> ({...s, po_required: !!e.target.checked}))} /><label htmlFor="po" className="text-xs text-gray-600">PO Required</label></div>
-          </div>
-        )}
-        {step===2 && (
-          <div className="grid md:grid-cols-2 gap-3">
             <div className="md:col-span-2"><label className="text-xs text-gray-600">Address line 1</label><input className="w-full border rounded px-3 py-2" value={form.address_line1} onChange={e=>setForm((s:any)=>({...s, address_line1: e.target.value}))} /></div>
             <div className="md:col-span-2"><label className="text-xs text-gray-600">Address line 2</label><input className="w-full border rounded px-3 py-2" value={form.address_line2} onChange={e=>setForm((s:any)=>({...s, address_line2: e.target.value}))} /></div>
             <div><label className="text-xs text-gray-600">City</label><input className="w-full border rounded px-3 py-2" value={form.city} onChange={e=>setForm((s:any)=>({...s, city: e.target.value}))} /></div>
@@ -91,34 +79,23 @@ export default function CustomerNew(){
             </div>
             <div><label className="text-xs text-gray-600">Tax number</label><input className="w-full border rounded px-3 py-2" value={form.tax_number} onChange={e=>setForm((s:any)=>({...s, tax_number: e.target.value}))} /></div>
             <div><label className="text-xs text-gray-600">Lead source</label><input className="w-full border rounded px-3 py-2" value={form.lead_source} onChange={e=>setForm((s:any)=>({...s, lead_source: e.target.value}))} /></div>
+            <div>
+              <label className="text-xs text-gray-600">Estimator</label>
+              <select className="w-full border rounded px-3 py-2" value={form.estimator_id||''} onChange={e=> setForm((s:any)=> ({...s, estimator_id: e.target.value||null}))}>
+                <option value="">Select...</option>
+                {(employees||[]).map((emp:any)=> <option key={emp.id} value={emp.id}>{emp.name||emp.username}</option>)}
+              </select>
+            </div>
+            <div className="flex items-center gap-2"><input id="po" type="checkbox" checked={!!form.po_required} onChange={e=> setForm((s:any)=> ({...s, po_required: !!e.target.checked}))} /><label htmlFor="po" className="text-xs text-gray-600">PO Required</label></div>
+            <div className="md:col-span-2"><label className="text-xs text-gray-600">Description</label><textarea rows={4} className="w-full border rounded px-3 py-2 resize-y" value={form.description} onChange={e=>setForm((s:any)=>({...s, description: e.target.value}))} /></div>
           </div>
         )}
-        {step===3 && (
+        {step===2 && (
           <div className="grid md:grid-cols-2 gap-3">
-            <div className="md:col-span-2 text-sm text-gray-700">Primary Contact (required)</div>
+            <div className="md:col-span-2 text-sm text-gray-700">Primary Contact (at least one field required)</div>
             <div className="md:col-span-2"><label className="text-xs text-gray-600">Name</label><input className="w-full border rounded px-3 py-2" value={contact.name} onChange={e=>setContact((s:any)=>({...s, name: e.target.value}))} /></div>
             <div><label className="text-xs text-gray-600">Email</label><input className="w-full border rounded px-3 py-2" value={contact.email} onChange={e=>setContact((s:any)=>({...s, email: e.target.value}))} /></div>
             <div><label className="text-xs text-gray-600">Phone</label><input className="w-full border rounded px-3 py-2" value={contact.phone} onChange={e=>setContact((s:any)=>({...s, phone: formatPhone(e.target.value)}))} /></div>
-          </div>
-        )}
-        {step===4 && (
-          <div className="space-y-3 text-sm text-gray-800">
-            <div className="font-semibold">Review</div>
-            <div className="rounded border p-3">
-              <div className="text-gray-600 mb-1">Company</div>
-              <div><strong>{form.display_name||'-'}</strong> · {form.client_type||'-'} · {form.client_status||'-'}</div>
-              <div>{form.email||''} {form.phone? ` · ${form.phone}`:''}</div>
-            </div>
-            <div className="rounded border p-3">
-              <div className="text-gray-600 mb-1">Address</div>
-              <div>{[form.address_line1, form.address_line2].filter(Boolean).join(', ')}</div>
-              <div>{[form.city, form.province, form.country, form.postal_code].filter(Boolean).join(', ')}</div>
-            </div>
-            <div className="rounded border p-3">
-              <div className="text-gray-600 mb-1">Primary Contact</div>
-              <div><strong>{contact.name||'-'}</strong></div>
-              <div>{[contact.email, contact.phone].filter(Boolean).join(' · ')}</div>
-            </div>
           </div>
         )}
         <div className="mt-4 flex items-center justify-between">
