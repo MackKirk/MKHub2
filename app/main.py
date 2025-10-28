@@ -139,6 +139,7 @@ def create_app() -> FastAPI:
                             conn.execute(text("ALTER TABLE suppliers ADD COLUMN address_line2 TEXT"))
                         except Exception:
                             pass
+                        # city column already exists or will be added
                         try:
                             conn.execute(text("ALTER TABLE suppliers ADD COLUMN city TEXT"))
                         except Exception:
@@ -387,6 +388,7 @@ def create_app() -> FastAPI:
                     conn.execute(text("ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS website VARCHAR(255)"))
                     conn.execute(text("ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS address_line1 VARCHAR(255)"))
                     conn.execute(text("ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS address_line2 VARCHAR(255)"))
+                    conn.execute(text("ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS city VARCHAR(100)"))
                     conn.execute(text("ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS province VARCHAR(100)"))
                     conn.execute(text("ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS postal_code VARCHAR(50)"))
                     conn.execute(text("ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS country VARCHAR(100)"))

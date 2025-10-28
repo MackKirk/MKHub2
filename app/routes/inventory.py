@@ -102,12 +102,12 @@ def create_supplier(body: dict, db: Session = Depends(get_db)):
         # Log the incoming data
         print(f"Creating supplier with data: {body}")
         
-        # Only use fields that actually exist in the request
-        row = Supplier(name=body.get('name', ''))
-        if 'email' in body and body.get('email'):
-            row.email = body['email']
-        if 'phone' in body and body.get('phone'):
-            row.phone = body['phone']
+        # Create supplier with all default values, only override with provided fields
+        row = Supplier(
+            name=body.get('name', ''),
+            email=body.get('email') if body.get('email') else None,
+            phone=body.get('phone') if body.get('phone') else None,
+        )
         
         db.add(row)
         db.commit()
