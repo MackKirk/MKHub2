@@ -20,10 +20,27 @@ type Supplier = {
   created_at?: string;
 };
 
+// Helper function to format phone numbers
+const formatPhone = (phone: string | undefined): string => {
+  if (!phone) return '-';
+  // Remove all non-numeric characters
+  const cleaned = phone.replace(/\D/g, '');
+  // Format as (XXX) XXX-XXXX for North American numbers
+  if (cleaned.length === 10) {
+    return `(${cleaned.slice(0, 3)}) ${cleaned.slice(3, 6)}-${cleaned.slice(6)}`;
+  } else if (cleaned.length === 11 && cleaned[0] === '1') {
+    // Handle 11-digit numbers starting with 1
+    return `+1 (${cleaned.slice(1, 4)}) ${cleaned.slice(4, 7)}-${cleaned.slice(7)}`;
+  }
+  // Return original if can't format
+  return phone;
+};
+
 export default function InventorySuppliers() {
   const queryClient = useQueryClient();
   const [q, setQ] = useState('');
   const [open, setOpen] = useState(false);
+  const [viewing, setViewing] = useState<Supplier | null>(null);
   const [editing, setEditing] = useState<Supplier | null>(null);
   
   // Form fields
@@ -38,10 +55,6 @@ export default function InventorySuppliers() {
   const [province, setProvince] = useState('');
   const [postalCode, setPostalCode] = useState('');
   const [country, setCountry] = useState('');
-  
-  // Address autocomplete
-  const [addressSuggestions, setAddressSuggestions] = useState<any[]>([]);
-  const [showSuggestions, setShowSuggestions] = useState(false);
 
   const { data, isLoading, isFetching } = useQuery({
     queryKey: ['suppliers', q],
@@ -97,65 +110,29 @@ export default function InventorySuppliers() {
     setPostalCode('');
     setCountry('');
     setEditing(null);
-    setAddressSuggestions([]);
-    setShowSuggestions(false);
-  };
-  
-  // Address autocomplete using Nominatim (OpenStreetMap)
-  const handleAddressChange = async (value: string) => {
-    setAddressLine1(value);
-    
-    if (value.length > 3) {
-      try {
-        const response = await fetch(
-          `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(value)}&limit=5&addressdetails=1`,
-          {
-            headers: {
-              'User-Agent': 'MKHub2' // Required by Nominatim
-            }
-          }
-        );
-        const data = await response.json();
-        setAddressSuggestions(data);
-        setShowSuggestions(data.length > 0);
-      } catch (error) {
-        console.error('Address autocomplete error:', error);
-        setAddressSuggestions([]);
-        setShowSuggestions(false);
-      }
-    } else {
-      setAddressSuggestions([]);
-      setShowSuggestions(false);
-    }
-  };
-  
-  const selectAddress = (place: any) => {
-    // Parse Nominatim response
-    const addr = place.address || {};
-    setAddressLine1(place.display_name.split(',')[0] || '');
-    setCity(addr.city || addr.town || addr.village || addr.city_district || '');
-    setProvince(addr.state || addr.region || '');
-    setPostalCode(addr.postcode || '');
-    setCountry(addr.country || '');
-    setAddressSuggestions([]);
-    setShowSuggestions(false);
+    setViewing(null);
   };
 
-  const openEditModal = (supplier: Supplier) => {
-    setEditing(supplier);
-    setName(supplier.name);
-    setLegalName(supplier.legal_name || '');
-    setEmail(supplier.email || '');
-    setPhone(supplier.phone || '');
-    setWebsite(supplier.website || '');
-    // Load address fields from supplier object
-    setAddressLine1((supplier as any).address_line1 || '');
-    setAddressLine2((supplier as any).address_line2 || '');
-    setCity(supplier.city || '');
-    setProvince(supplier.province || '');
-    setPostalCode((supplier as any).postal_code || '');
-    setCountry(supplier.country || '');
+  const openViewModal = (supplier: Supplier) => {
+    setViewing(supplier);
     setOpen(true);
+  };
+  
+  const openEditModal = () => {
+    if (!viewing) return;
+    setEditing(viewing);
+    setName(viewing.name);
+    setLegalName(viewing.legal_name || '');
+    setEmail(viewing.email || '');
+    setPhone(viewing.phone || '');
+    setWebsite(viewing.website || '');
+    setAddressLine1((viewing as any).address_line1 || '');
+    setAddressLine2((viewing as any).address_line2 || '');
+    setCity(viewing.city || '');
+    setProvince(viewing.province || '');
+    setPostalCode((viewing as any).postal_code || '');
+    setCountry(viewing.country || '');
+    setViewing(null);
   };
 
   const handleSubmit = () => {
@@ -222,48 +199,36 @@ export default function InventorySuppliers() {
               <th className="p-3 text-left">Phone</th>
               <th className="p-3 text-left">City</th>
               <th className="p-3 text-left">Province</th>
-              <th className="p-3 text-right">Actions</th>
             </tr>
           </thead>
           <tbody>
             {isLoading ? (
               <tr>
-                <td colSpan={6} className="p-4">
+                <td colSpan={5} className="p-4">
                   <div className="h-6 bg-gray-100 animate-pulse rounded" />
                 </td>
               </tr>
             ) : !Array.isArray(rows) || !rows.length ? (
               <tr>
-                <td colSpan={6} className="p-4 text-gray-600 text-center">
+                <td colSpan={5} className="p-4 text-gray-600 text-center">
                   No suppliers yet
                 </td>
               </tr>
             ) : (
               rows.map((s) => (
                 <tr key={s.id} className="border-t hover:bg-gray-50">
-                  <td className="p-3 font-medium">{s.name}</td>
-                  <td className="p-3 text-gray-600">{s.email || '-'}</td>
-                  <td className="p-3 text-gray-600">{s.phone || '-'}</td>
-                  <td className="p-3 text-gray-600">{s.city || '-'}</td>
-                  <td className="p-3 text-gray-600">{s.province || '-'}</td>
-                  <td className="p-3 text-right">
+                  <td className="p-3">
                     <button
-                      onClick={() => openEditModal(s)}
-                      className="px-2 py-1 rounded text-blue-600 hover:bg-blue-50"
+                      onClick={() => openViewModal(s)}
+                      className="font-medium text-blue-600 hover:text-blue-800 hover:underline"
                     >
-                      Edit
-                    </button>
-                    <button
-                      onClick={() => {
-                        if (confirm('Delete this supplier?')) {
-                          deleteMut.mutate(s.id);
-                        }
-                      }}
-                      className="px-2 py-1 rounded text-red-600 hover:bg-red-50"
-                    >
-                      Delete
+                      {s.name}
                     </button>
                   </td>
+                  <td className="p-3 text-gray-600">{s.email || '-'}</td>
+                  <td className="p-3 text-gray-600">{formatPhone(s.phone)}</td>
+                  <td className="p-3 text-gray-600">{s.city || '-'}</td>
+                  <td className="p-3 text-gray-600">{s.province || '-'}</td>
                 </tr>
               ))
             )}
@@ -276,7 +241,7 @@ export default function InventorySuppliers() {
           <div className="w-[700px] max-w-[95vw] max-h-[90vh] bg-white rounded-xl overflow-hidden flex flex-col">
             <div className="px-6 py-4 border-b flex items-center justify-between bg-gray-50">
               <div className="font-semibold text-lg">
-                {editing ? 'Edit Supplier' : 'New Supplier'}
+                {editing ? 'Edit Supplier' : viewing ? 'Supplier Details' : 'New Supplier'}
               </div>
               <button
                 onClick={() => {
@@ -289,7 +254,59 @@ export default function InventorySuppliers() {
               </button>
             </div>
             <div className="p-6 overflow-y-auto">
-              <div className="grid grid-cols-2 gap-4">
+              {viewing && !editing ? (
+                // View mode - display supplier details
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="col-span-2">
+                      <label className="text-xs font-semibold text-gray-700">Name</label>
+                      <div className="mt-1 text-gray-900">{viewing.name}</div>
+                    </div>
+                    <div className="col-span-2">
+                      <label className="text-xs font-semibold text-gray-700">Legal Name</label>
+                      <div className="mt-1 text-gray-600">{viewing.legal_name || '-'}</div>
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold text-gray-700">Email</label>
+                      <div className="mt-1 text-gray-600">{viewing.email || '-'}</div>
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold text-gray-700">Phone</label>
+                      <div className="mt-1 text-gray-600">{formatPhone(viewing.phone)}</div>
+                    </div>
+                    <div className="col-span-2">
+                      <label className="text-xs font-semibold text-gray-700">Website</label>
+                      <div className="mt-1 text-gray-600">{viewing.website || '-'}</div>
+                    </div>
+                    <div className="col-span-2">
+                      <label className="text-xs font-semibold text-gray-700">Address Line 1</label>
+                      <div className="mt-1 text-gray-600">{(viewing as any).address_line1 || '-'}</div>
+                    </div>
+                    <div className="col-span-2">
+                      <label className="text-xs font-semibold text-gray-700">Address Line 2</label>
+                      <div className="mt-1 text-gray-600">{(viewing as any).address_line2 || '-'}</div>
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold text-gray-700">City</label>
+                      <div className="mt-1 text-gray-600">{viewing.city || '-'}</div>
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold text-gray-700">Province</label>
+                      <div className="mt-1 text-gray-600">{viewing.province || '-'}</div>
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold text-gray-700">Postal Code</label>
+                      <div className="mt-1 text-gray-600">{(viewing as any).postal_code || '-'}</div>
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold text-gray-700">Country</label>
+                      <div className="mt-1 text-gray-600">{viewing.country || '-'}</div>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                // Edit/Create mode - form inputs
+                <div className="grid grid-cols-2 gap-4">
                 <div className="col-span-2">
                   <label className="text-xs font-semibold text-gray-700">Name *</label>
                   <input
@@ -335,30 +352,15 @@ export default function InventorySuppliers() {
                     onChange={(e) => setWebsite(e.target.value)}
                   />
                 </div>
-                <div className="col-span-2 relative">
-                  <label className="text-xs font-semibold text-gray-700">Address Line 1 (with autocomplete)</label>
+                <div className="col-span-2">
+                  <label className="text-xs font-semibold text-gray-700">Address Line 1</label>
                   <input
                     type="text"
-                    placeholder="Start typing address..."
+                    placeholder="Enter street address..."
                     className="w-full border rounded px-3 py-2 mt-1"
                     value={addressLine1}
-                    onChange={(e) => handleAddressChange(e.target.value)}
-                    onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
-                    onFocus={() => addressSuggestions.length > 0 && setShowSuggestions(true)}
+                    onChange={(e) => setAddressLine1(e.target.value)}
                   />
-                  {showSuggestions && addressSuggestions.length > 0 && (
-                    <div className="absolute z-10 w-full mt-1 bg-white border rounded shadow-lg max-h-60 overflow-y-auto">
-                      {addressSuggestions.map((sug, idx) => (
-                        <div
-                          key={idx}
-                          className="px-3 py-2 hover:bg-gray-100 cursor-pointer border-b last:border-b-0"
-                          onClick={() => selectAddress(sug)}
-                        >
-                          {sug.display_name}
-                        </div>
-                      ))}
-                    </div>
-                  )}
                 </div>
                 <div className="col-span-2">
                   <label className="text-xs font-semibold text-gray-700">Address Line 2</label>
@@ -406,24 +408,61 @@ export default function InventorySuppliers() {
                   />
                 </div>
               </div>
+              )}
             </div>
             <div className="px-6 py-4 border-t bg-gray-50 flex justify-end gap-2">
-              <button
-                onClick={() => {
-                  setOpen(false);
-                  resetForm();
-                }}
-                className="px-4 py-2 rounded bg-gray-200 hover:bg-gray-300"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleSubmit}
-                disabled={createMut.isPending || updateMut.isPending}
-                className="px-4 py-2 rounded bg-brand-red text-white hover:bg-brand-red-dark disabled:opacity-50"
-              >
-                {editing ? 'Update' : 'Create'}
-              </button>
+              {viewing && !editing ? (
+                // View mode buttons
+                <>
+                  <button
+                    onClick={() => {
+                      if (confirm('Delete this supplier?')) {
+                        deleteMut.mutate(viewing.id);
+                        setOpen(false);
+                        resetForm();
+                      }
+                    }}
+                    className="px-4 py-2 rounded bg-red-600 text-white hover:bg-red-700"
+                  >
+                    Delete
+                  </button>
+                  <button
+                    onClick={openEditModal}
+                    className="px-4 py-2 rounded bg-blue-600 text-white hover:bg-blue-700"
+                  >
+                    Edit
+                  </button>
+                  <button
+                    onClick={() => {
+                      setOpen(false);
+                      resetForm();
+                    }}
+                    className="px-4 py-2 rounded bg-gray-200 hover:bg-gray-300"
+                  >
+                    Close
+                  </button>
+                </>
+              ) : (
+                // Edit/Create mode buttons
+                <>
+                  <button
+                    onClick={() => {
+                      setOpen(false);
+                      resetForm();
+                    }}
+                    className="px-4 py-2 rounded bg-gray-200 hover:bg-gray-300"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleSubmit}
+                    disabled={createMut.isPending || updateMut.isPending}
+                    className="px-4 py-2 rounded bg-brand-red text-white hover:bg-brand-red-dark disabled:opacity-50"
+                  >
+                    {editing ? 'Update' : 'Create'}
+                  </button>
+                </>
+              )}
             </div>
           </div>
         </div>

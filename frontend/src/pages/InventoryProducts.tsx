@@ -22,6 +22,7 @@ export default function InventoryProducts(){
   const categories = useMemo(()=> Array.from(new Set(rows.map(r=> r.category||'').filter(Boolean))), [rows]);
 
   const [open, setOpen] = useState(false);
+  const [viewing, setViewing] = useState<Material|null>(null);
   const [editing, setEditing] = useState<Material|null>(null);
   const [name, setName] = useState('');
   const [newSupplier, setNewSupplier] = useState('');
@@ -79,21 +80,33 @@ export default function InventoryProducts(){
     reader.readAsDataURL(f);
   };
 
-  const handleEdit = (p: Material)=>{
-    setEditing(p);
-    setName(p.name);
-    setNewSupplier(p.supplier_name||'');
-    setNewCategory(p.category||'');
-    setUnit(p.unit||'');
-    setPrice(p.price?.toString()||'');
-    setDesc(p.description||'');
-    setUnitType((p.unit_type as any)||'unitary');
-    setUnitsPerPackage(p.units_per_package?.toString()||'');
-    setCovSqs(p.coverage_sqs?.toString()||'');
-    setCovFt2(p.coverage_ft2?.toString()||'');
-    setCovM2(p.coverage_m2?.toString()||'');
-    setImageDataUrl(p.image_base64||'');
+  const openViewModal = (p: Material) => {
+    setViewing(p);
     setOpen(true);
+  };
+
+  const openEditModal = () => {
+    if (!viewing) return;
+    setEditing(viewing);
+    setName(viewing.name);
+    setNewSupplier(viewing.supplier_name||'');
+    setNewCategory(viewing.category||'');
+    setUnit(viewing.unit||'');
+    setPrice(viewing.price?.toString()||'');
+    setDesc(viewing.description||'');
+    setUnitType((viewing.unit_type as any)||'unitary');
+    setUnitsPerPackage(viewing.units_per_package?.toString()||'');
+    setCovSqs(viewing.coverage_sqs?.toString()||'');
+    setCovFt2(viewing.coverage_ft2?.toString()||'');
+    setCovM2(viewing.coverage_m2?.toString()||'');
+    setImageDataUrl(viewing.image_base64||'');
+    setViewing(null);
+  };
+
+  // Legacy handleEdit - not used anymore, keeping for compatibility
+  const handleEdit = (p: Material)=>{
+    openViewModal(p);
+    openEditModal();
   };
 
   const handleDelete = async (id: number)=>{
@@ -120,8 +133,9 @@ export default function InventoryProducts(){
     setAddRelatedResults([]);
   };
 
-  const resetModal = ()=>{
+  const resetModal = ()=>{  
     setEditing(null);
+    setViewing(null);
     setOpen(false);
     setName(''); setNewSupplier(''); setNewCategory(''); setUnit(''); setPrice(''); setDesc('');
     setUnitsPerPackage(''); setCovSqs(''); setCovFt2(''); setCovM2(''); setUnitType('unitary'); setImageDataUrl('');
@@ -189,35 +203,60 @@ export default function InventoryProducts(){
             <th className="p-2 text-left">Price</th>
             <th className="p-2 text-left">Updated</th>
             <th className="p-2 text-left">Related</th>
-            <th className="p-2 text-left">Actions</th>
           </tr></thead>
           <tbody>
-            {isLoading? <tr><td colSpan={9} className="p-4"><div className="h-6 bg-gray-100 animate-pulse rounded"/></td></tr> : rows.map(p=> (
+            {isLoading? <tr><td colSpan={8} className="p-4"><div className="h-6 bg-gray-100 animate-pulse rounded"/></td></tr> : rows.map(p=> (
               <tr key={p.id} className="border-t">
                 <td className="p-2">{p.id}</td>
-                <td className="p-2">{p.name}</td>
+                <td className="p-2">
+                  <button onClick={()=> openViewModal(p)} className="font-medium text-blue-600 hover:text-blue-800 hover:underline">{p.name}</button>
+                </td>
                 <td className="p-2">{p.supplier_name||''}</td>
                 <td className="p-2">{p.category||''}</td>
                 <td className="p-2">{p.unit||''}</td>
                 <td className="p-2">{typeof p.price==='number'? `$${p.price.toFixed(2)}`: ''}</td>
                 <td className="p-2">{(p.last_updated||'').slice(0,10)}</td>
                 <td className="p-2"><button onClick={()=> handleViewRelated(p.id)} className="text-brand-red underline">{relatedCounts[p.id]||0} related</button></td>
-                <td className="p-2">
-                  <button onClick={()=> handleEdit(p)} className="px-2 py-1 rounded bg-gray-100 text-xs mr-1">Edit</button>
-                  <button onClick={()=> handleDelete(p.id)} className="px-2 py-1 rounded bg-red-100 text-xs">Delete</button>
-                </td>
               </tr>
             ))}
-            {!isLoading && rows.length===0 && <tr><td colSpan={9} className="p-3 text-gray-600">No products found</td></tr>}
+            {!isLoading && rows.length===0 && <tr><td colSpan={8} className="p-3 text-gray-600">No products found</td></tr>}
           </tbody>
         </table>
       </div>
 
       {open && (
         <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center">
-          <div className="w-[700px] max-w-[95vw] bg-white rounded-xl overflow-hidden">
-            <div className="px-4 py-3 border-b flex items-center justify-between"><div className="font-semibold">{editing? 'Edit Product' : 'New Product'}</div><button onClick={resetModal} className="px-3 py-1 rounded bg-gray-100">Close</button></div>
+          <div className="w-[700px] max-w-[95vw] bg-white rounded-xl overflow-hidden flex flex-col">
+            <div className="px-4 py-3 border-b flex items-center justify-between bg-gray-50">
+              <div className="font-semibold">{editing? 'Edit Product' : viewing? 'Product Details' : 'New Product'}</div>
+              <button onClick={resetModal} className="px-3 py-1 rounded bg-gray-100">Close</button>
+            </div>
             <div className="p-4 grid grid-cols-2 gap-3 max-h-[85vh] overflow-y-auto">
+              {viewing && !editing ? (
+                // View mode - display product details (read-only)
+                <>
+                  <div className="col-span-2"><label className="text-xs font-semibold text-gray-700">Name</label><div className="mt-1 text-gray-900">{viewing.name}</div></div>
+                  <div><label className="text-xs font-semibold text-gray-700">Supplier</label><div className="mt-1 text-gray-600">{viewing.supplier_name||'-'}</div></div>
+                  <div><label className="text-xs font-semibold text-gray-700">Category</label><div className="mt-1 text-gray-600">{viewing.category||'-'}</div></div>
+                  <div><label className="text-xs font-semibold text-gray-700">Sell Unit</label><div className="mt-1 text-gray-600">{viewing.unit||'-'}</div></div>
+                  <div><label className="text-xs font-semibold text-gray-700">Price</label><div className="mt-1 text-gray-600">{typeof viewing.price==='number'? `$${viewing.price.toFixed(2)}`: '-'}</div></div>
+                  <div className="col-span-2"><label className="text-xs font-semibold text-gray-700">Unit Type</label><div className="mt-1 text-gray-600">{viewing.unit_type||'-'}</div></div>
+                  {viewing.units_per_package && <div className="col-span-2"><label className="text-xs font-semibold text-gray-700">Units per Package</label><div className="mt-1 text-gray-600">{viewing.units_per_package}</div></div>}
+                  {(viewing.coverage_sqs || viewing.coverage_ft2 || viewing.coverage_m2) && (
+                    <div className="col-span-2"><label className="text-xs font-semibold text-gray-700">Coverage Area</label>
+                      <div className="grid grid-cols-3 gap-2 mt-1">
+                        <div><div className="text-gray-600">SQS: {viewing.coverage_sqs||'-'}</div></div>
+                        <div><div className="text-gray-600">ft²: {viewing.coverage_ft2||'-'}</div></div>
+                        <div><div className="text-gray-600">m²: {viewing.coverage_m2||'-'}</div></div>
+                      </div>
+                    </div>
+                  )}
+                  <div className="col-span-2"><label className="text-xs font-semibold text-gray-700">Description</label><div className="mt-1 text-gray-600 whitespace-pre-wrap">{viewing.description||'-'}</div></div>
+                  {viewing.image_base64 && <div className="col-span-2"><label className="text-xs font-semibold text-gray-700">Product Image</label><img src={viewing.image_base64} className="mt-2 w-48 border rounded" alt="Product" /></div>}
+                </>
+              ) : (
+                // Edit/Create mode - form inputs
+                <>
               <div className="col-span-2"><label className="text-xs text-gray-600">Name</label><input className="w-full border rounded px-3 py-2" value={name} onChange={e=>setName(e.target.value)} /></div>
               <div>
                 <label className="text-xs text-gray-600">Supplier</label>
@@ -284,6 +323,47 @@ export default function InventoryProducts(){
                   }catch(_e){ toast.error('Failed'); }
                 }} className="px-4 py-2 rounded bg-brand-red text-white">{editing? 'Update' : 'Create'}</button>
               </div>
+                </>
+              )}
+            </div>
+            <div className="px-4 py-3 border-t bg-gray-50 flex justify-end gap-2">
+              {viewing && !editing ? (
+                // View mode buttons
+                <>
+                  <button onClick={()=> { if(confirm('Delete this product?')) handleDelete(viewing.id); }} className="px-4 py-2 rounded bg-red-600 text-white hover:bg-red-700">Delete</button>
+                  <button onClick={()=> handleAddRelated(viewing.id)} className="px-4 py-2 rounded bg-brand-red text-white">Add Related</button>
+                  <button onClick={openEditModal} className="px-4 py-2 rounded bg-blue-600 text-white hover:bg-blue-700">Edit</button>
+                  <button onClick={resetModal} className="px-4 py-2 rounded bg-gray-200 hover:bg-gray-300">Close</button>
+                </>
+              ) : (
+                // Edit/Create mode buttons
+                <>
+                  <button onClick={resetModal} className="px-4 py-2 rounded bg-gray-200 hover:bg-gray-300">Cancel</button>
+                  <button onClick={async()=>{
+                    if(!name.trim()){ toast.error('Name required'); return; }
+                    try{
+                      const payload = {
+                        name,
+                        supplier_name: newSupplier||null,
+                        category: newCategory||null,
+                        unit: unit||null,
+                        price: price? Number(price) : 0,
+                        description: desc||null,
+                        unit_type: unitType,
+                        units_per_package: unitType==='multiple'? (unitsPerPackage? Number(unitsPerPackage): null) : null,
+                        coverage_sqs: unitType==='coverage'? (covSqs? Number(covSqs): null) : null,
+                        coverage_ft2: unitType==='coverage'? (covFt2? Number(covFt2): null) : null,
+                        coverage_m2: unitType==='coverage'? (covM2? Number(covM2): null) : null,
+                        image_base64: imageDataUrl || null,
+                      };
+                      if(editing){ await api('PUT', `/estimate/products/${editing.id}`, payload); toast.success('Updated'); }
+                      else{ await api('POST','/estimate/products', payload); toast.success('Created'); }
+                      resetModal();
+                      await refetch();
+                    }catch(_e){ toast.error('Failed'); }
+                  }} className="px-4 py-2 rounded bg-brand-red text-white">{editing? 'Update' : 'Create'}</button>
+                </>
+              )}
             </div>
           </div>
         </div>

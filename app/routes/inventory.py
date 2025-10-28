@@ -191,12 +191,38 @@ def update_supplier(supplier_id: uuid.UUID, body: dict, db: Session = Depends(ge
 
 @router.delete("/suppliers/{supplier_id}")
 def delete_supplier(supplier_id: uuid.UUID, db: Session = Depends(get_db)):
-    row = db.query(Supplier).filter(Supplier.id == supplier_id).first()
-    if not row:
-        raise HTTPException(status_code=404, detail="Supplier not found")
-    db.delete(row)
-    db.commit()
-    return {"message": "Supplier deleted successfully"}
+    import traceback
+    try:
+        print(f"DELETE SUPPLIER - Attempting to delete: {supplier_id}")
+        row = db.query(Supplier).filter(Supplier.id == supplier_id).first()
+        if not row:
+            print(f"Supplier not found: {supplier_id}")
+            raise HTTPException(status_code=404, detail="Supplier not found")
+        
+        print(f"Found supplier: {row.name}")
+        
+        # Manually delete contacts first to avoid relationship issues
+        contacts = db.query(SupplierContact).filter(SupplierContact.supplier_id == supplier_id).all()
+        for contact in contacts:
+            db.delete(contact)
+            print(f"Deleted contact: {contact.id}")
+        
+        db.delete(row)
+        db.commit()
+        print("Supplier deleted successfully")
+        return {"message": "Supplier deleted successfully"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        error_msg = str(e)
+        tb = traceback.format_exc()
+        print("=" * 80)
+        print("DELETE SUPPLIER - ERROR")
+        print(f"Error: {error_msg}")
+        print(f"Traceback:\n{tb}")
+        print("=" * 80)
+        raise HTTPException(status_code=500, detail=f"Failed to delete supplier: {error_msg}")
 
 
 @router.get("/suppliers/{supplier_id}")
