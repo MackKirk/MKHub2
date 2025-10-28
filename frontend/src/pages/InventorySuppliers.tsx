@@ -149,10 +149,17 @@ export default function InventorySuppliers() {
     reader.onload = async (e) => {
       const imageBase64 = e.target?.result as string;
       try {
-        await api('PUT', `/inventory/suppliers/${viewing.id}`, {
+        // Get the updated supplier data from the backend
+        const updatedSupplier = await api<Supplier>('PUT', `/inventory/suppliers/${viewing.id}`, {
           image_base64: imageBase64
         });
+        
+        // Update the viewing state with the full updated supplier
+        setViewing(updatedSupplier);
+        
+        // Invalidate queries to refresh the list
         queryClient.invalidateQueries({ queryKey: ['suppliers'] });
+        
         toast.success('Image updated');
       } catch (error) {
         toast.error('Failed to update image');
