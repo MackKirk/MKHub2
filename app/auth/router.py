@@ -914,8 +914,9 @@ def delete_folder(user_id: str, folder_id: str, db: Session = Depends(get_db), _
         fid = uuid.UUID(folder_id)
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid folder")
-    # prevent delete if documents exist
-    has_docs = db.query(EmployeeDocument).filter(EmployeeDocument.user_id == user_id, EmployeeDocument.folder_id == fid).first()
+    # prevent delete if documents exist (doc_type carries folder tag)
+    tag = f"folder:{folder_id}"
+    has_docs = db.query(EmployeeDocument).filter(EmployeeDocument.user_id == user_id, EmployeeDocument.doc_type == tag).first()
     if has_docs:
         raise HTTPException(status_code=400, detail="Folder not empty")
     db.query(EmployeeFolder).filter(and_(EmployeeFolder.user_id == user_id, EmployeeFolder.id == fid)).delete()
