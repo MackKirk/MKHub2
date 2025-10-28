@@ -200,6 +200,13 @@ def delete_supplier(supplier_id: uuid.UUID, db: Session = Depends(get_db)):
             raise HTTPException(status_code=404, detail="Supplier not found")
         
         print(f"Found supplier: {row.name}")
+        
+        # Manually delete contacts first to avoid relationship issues
+        contacts = db.query(SupplierContact).filter(SupplierContact.supplier_id == supplier_id).all()
+        for contact in contacts:
+            db.delete(contact)
+            print(f"Deleted contact: {contact.id}")
+        
         db.delete(row)
         db.commit()
         print("Supplier deleted successfully")
