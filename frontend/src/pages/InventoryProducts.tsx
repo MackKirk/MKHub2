@@ -114,6 +114,7 @@ export default function InventoryProducts(){
     try{
       await api('DELETE', `/estimate/products/${id}`);
       toast.success('Deleted');
+      resetModal(); // Close modal after deletion
       await refetch();
     }catch(_e){ toast.error('Failed'); }
   };
@@ -175,6 +176,10 @@ export default function InventoryProducts(){
     try{
       await api('DELETE', `/estimate/related/${a}/${b}`);
       toast.success('Relation removed');
+      // Update related counts
+      const counts = await api<Record<string, number>>('GET', `/estimate/related/count?ids=${productIds}`);
+      if(counts) setRelatedCounts(counts);
+      // Reload the related list
       if(viewRelated) handleViewRelated(viewRelated);
       await refetch();
     }catch(_e){ toast.error('Failed'); }
@@ -314,7 +319,7 @@ export default function InventoryProducts(){
               {viewing && !editing ? (
                 // View mode buttons
                 <>
-                  <button onClick={()=> { if(confirm('Delete this product?')) handleDelete(viewing.id); }} className="px-4 py-2 rounded bg-red-600 text-white hover:bg-red-700">Delete</button>
+                  <button onClick={()=> handleDelete(viewing.id)} className="px-4 py-2 rounded bg-red-600 text-white hover:bg-red-700">Delete</button>
                   <button onClick={()=> handleAddRelated(viewing.id)} className="px-4 py-2 rounded bg-brand-red text-white">Add Related</button>
                   <button onClick={openEditModal} className="px-4 py-2 rounded bg-blue-600 text-white hover:bg-blue-700">Edit</button>
                   <button onClick={resetModal} className="px-4 py-2 rounded bg-gray-200 hover:bg-gray-300">Close</button>
