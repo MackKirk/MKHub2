@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
 import GeoSelect from '@/components/GeoSelect';
+import { useConfirm } from '@/components/ConfirmProvider';
 
 function UserLabel({ id, fallback }:{ id:string, fallback:string }){
   const { data } = useQuery({ queryKey:['user-prof-opt', id], queryFn: ()=> api<any>('GET', `/auth/users/${id}/profile`), enabled: !!id });
@@ -627,6 +628,7 @@ function TimesheetBlock({ userId }:{ userId:string }){
 
 
 function UserDocuments({ userId, canEdit }:{ userId:string, canEdit:boolean }){
+  const confirm = useConfirm();
   const { data:folders, refetch: refetchFolders } = useQuery({ queryKey:['user-folders', userId], queryFn: ()=> api<any[]>('GET', `/auth/users/${encodeURIComponent(userId)}/folders`) });
   const [activeFolderId, setActiveFolderId] = useState<string>('all');
   const { data:docs, refetch } = useQuery({ queryKey:['user-docs', userId, activeFolderId], queryFn: ()=> {
@@ -647,6 +649,22 @@ function UserDocuments({ userId, canEdit }:{ userId:string, canEdit:boolean }){
   const [inlineRenameFolderName, setInlineRenameFolderName] = useState<string>('');
   const [selectMode, setSelectMode] = useState<boolean>(false);
   const [selectedDocIds, setSelectedDocIds] = useState<Set<string>>(new Set());
+  const [preview, setPreview] = useState<{ url:string, title:string, ext:string }|null>(null);
+
+  const fileExt = (name?:string)=>{
+    const n = String(name||'').toLowerCase();
+    const m = n.match(/\.([a-z0-9]+)$/); return m? m[1] : '';
+  };
+  const fileIcon = (ext:string)=>{
+    if(['png','jpg','jpeg','webp','gif','bmp','svg','heic','heif'].includes(ext)) return '🖼️';
+    if(ext==='pdf') return '📕';
+    if(['doc','docx','odt','rtf'].includes(ext)) return '📘';
+    if(['xls','xlsx','csv'].includes(ext)) return '📗';
+    if(['ppt','pptx','key'].includes(ext)) return '📙';
+    if(['zip','rar','7z','tar','gz'].includes(ext)) return '🗜️';
+    if(['txt','md','json','xml','yaml','yml'].includes(ext)) return '📄';
+    return '📁';
+  };
 
   const upload = async()=>{
     try{
@@ -671,7 +689,12 @@ function UserDocuments({ userId, canEdit }:{ userId:string, canEdit:boolean }){
     }catch(_e){ /* noop per-file */ }
   };
 
-  const del = async(id:string)=>{ try{ await api('DELETE', `/auth/users/${encodeURIComponent(userId)}/documents/${encodeURIComponent(id)}`); await refetch(); }catch(_e){ toast.error('Delete failed'); } };
+  const del = async(id:string, title?:string)=>{
+    const ok = await confirm({ title:'Delete file', message:`Are you sure you want to delete "${title||'file'}"?` });
+    if(!ok) return;
+    try{ await api('DELETE', `/auth/users/${encodeURIComponent(userId)}/documents/${encodeURIComponent(id)}`); await refetch(); }
+    catch(_e){ toast.error('Delete failed'); }
+  };
   const createFolder = async()=>{
     try{
       const name = newFolderName.trim(); if(!name){ toast.error('Folder name required'); return; }
@@ -734,7 +757,7 @@ function UserDocuments({ userId, canEdit }:{ userId:string, canEdit:boolean }){
           <div className="grid md:grid-cols-4 gap-3">
             {topFolders.map((f:any)=> (
               <div key={f.id}
-                   className="rounded-lg border p-4 bg-white hover:bg-gray-50 select-none group"
+                   className="relative rounded-lg border p-3 h-28 bg-white hover:bg-gray-50 select-none group flex flex-col items-center justify-center"
                    onClick={(e)=>{
                      // avoid triggering when clicking action buttons
                      const target = e.target as HTMLElement; if(target.closest('.folder-actions')) return; setActiveFolderId(f.id);
@@ -749,8 +772,8 @@ function UserDocuments({ userId, canEdit }:{ userId:string, canEdit:boolean }){
                      }
                      if(e.dataTransfer.files?.length){ const arr=Array.from(e.dataTransfer.files); for(const file of arr){ await uploadToFolder(f.id, file); } toast.success('Uploaded'); }
                    }}>
-                <div className="text-3xl">📁</div>
-                <div className="mt-2 font-medium truncate" title={f.name}>
+                 <div className="text-4xl">📁</div>
+                 <div className="mt-1 text-sm font-medium truncate text-center w-full" title={f.name}>
                   {inlineRenameFolderId===f.id ? (
                     <input autoFocus className="border rounded px-2 py-1 w-full"
                            value={inlineRenameFolderName}
@@ -761,9 +784,9 @@ function UserDocuments({ userId, canEdit }:{ userId:string, canEdit:boolean }){
                   ) : f.name}
                 </div>
                 {canEdit && (
-                  <div className="folder-actions opacity-0 group-hover:opacity-100 transition-opacity mt-2 flex gap-2">
-                    <button className="text-xs px-2 py-1 rounded border" onClick={()=> { setInlineRenameFolderId(f.id); setInlineRenameFolderName(f.name); }}>Rename</button>
-                    <button className="text-xs px-2 py-1 rounded border text-red-600" onClick={()=> removeFolder(f.id)}>Delete</button>
+                  <div className="folder-actions absolute right-2 top-2 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
+                    <button title="Rename" className="p-1 rounded hover:bg-gray-100" onClick={()=> { setInlineRenameFolderId(f.id); setInlineRenameFolderName(f.name); }}>✏️</button>
+                    <button title="Delete" className="p-1 rounded hover:bg-gray-100 text-red-600" onClick={()=> removeFolder(f.id)}>🗑️</button>
                   </div>
                 )}
               </div>
@@ -794,7 +817,7 @@ function UserDocuments({ userId, canEdit }:{ userId:string, canEdit:boolean }){
               <div className="grid md:grid-cols-4 gap-3">
                 {childFolders.map((f:any)=> (
                   <div key={f.id}
-                       className="rounded-lg border p-4 bg-white hover:bg-gray-50 select-none group"
+                       className="relative rounded-lg border p-3 h-28 bg-white hover:bg-gray-50 select-none group flex flex-col items-center justify-center"
                        onClick={(e)=>{ const t=e.target as HTMLElement; if(t.closest('.folder-actions')) return; setActiveFolderId(f.id); }}
                        onDragOver={(e)=>{ e.preventDefault(); }}
                        onDrop={async(e)=>{ e.preventDefault();
@@ -806,8 +829,8 @@ function UserDocuments({ userId, canEdit }:{ userId:string, canEdit:boolean }){
                          }
                          if(e.dataTransfer.files?.length){ const arr=Array.from(e.dataTransfer.files); for(const file of arr){ await uploadToFolder(f.id, file); } toast.success('Uploaded'); }
                        }}>
-                    <div className="text-3xl">📁</div>
-                    <div className="mt-2 font-medium truncate" title={f.name}>
+                    <div className="text-4xl">📁</div>
+                    <div className="mt-1 text-sm font-medium truncate text-center w-full" title={f.name}>
                       {inlineRenameFolderId===f.id ? (
                         <input autoFocus className="border rounded px-2 py-1 w-full"
                                value={inlineRenameFolderName}
@@ -818,9 +841,9 @@ function UserDocuments({ userId, canEdit }:{ userId:string, canEdit:boolean }){
                       ) : f.name}
                     </div>
                     {canEdit && (
-                      <div className="folder-actions opacity-0 group-hover:opacity-100 transition-opacity mt-2 flex gap-2">
-                        <button className="text-xs px-2 py-1 rounded border" onClick={()=> { setInlineRenameFolderId(f.id); setInlineRenameFolderName(f.name); }}>Rename</button>
-                        <button className="text-xs px-2 py-1 rounded border text-red-600" onClick={()=> removeFolder(f.id)}>Delete</button>
+                      <div className="folder-actions absolute right-2 top-2 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
+                        <button title="Rename" className="p-1 rounded hover:bg-gray-100" onClick={()=> { setInlineRenameFolderId(f.id); setInlineRenameFolderName(f.name); }}>✏️</button>
+                        <button title="Delete" className="p-1 rounded hover:bg-gray-100 text-red-600" onClick={()=> removeFolder(f.id)}>🗑️</button>
                       </div>
                     )}
                   </div>
@@ -867,17 +890,25 @@ function UserDocuments({ userId, canEdit }:{ userId:string, canEdit:boolean }){
                       setSelectedDocIds(prev=>{ const next = new Set(prev); if(e.target.checked) next.add(d.id); else next.delete(d.id); return next; });
                     }} />
                   )}
-                  <img className="w-12 h-12 rounded object-cover border" src={d.file_id? `/files/${d.file_id}/thumbnail?w=96`:'/ui/assets/login/logo-light.svg'} />
-                  <div className="flex-1 min-w-0">
-                    <div className="font-medium truncate">{d.title||'Document'}</div>
+                  <div className="w-12 h-12 rounded border bg-white flex items-center justify-center text-2xl select-none">
+                    {fileIcon(fileExt(d.title))}
+                  </div>
+                  <div className="flex-1 min-w-0" onClick={async()=>{
+                    try{
+                      const r:any = await api('GET', `/files/${encodeURIComponent(d.file_id)}/download`);
+                      const ext = fileExt(d.title);
+                      setPreview({ url: r.download_url||'', title: d.title||'Preview', ext });
+                    }catch(_e){ toast.error('Preview not available'); }
+                  }}>
+                    <div className="font-medium truncate cursor-pointer hover:underline">{d.title||'Document'}</div>
                     <div className="text-xs text-gray-600 truncate">{(folders||[]).find((x:any)=>x.id===d.folder_id)?.name || '—'}</div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <a className="text-sm underline" href={`/files/${d.file_id}/download`} target="_blank">Download</a>
+                  <div className="ml-auto flex items-center gap-2">
+                    <a title="Download" className="p-2 rounded hover:bg-gray-100" href={`/files/${d.file_id}/download`} target="_blank">⬇️</a>
                     {canEdit && <>
-                      <button onClick={()=> setRenameDoc({ id: d.id, title: d.title||'' })} className="text-sm">Rename</button>
-                      <button onClick={()=> setMoveDoc({ id: d.id })} className="text-sm">Move</button>
-                      <button onClick={()=>del(d.id)} className="text-sm text-red-600">Delete</button>
+                      <button title="Rename" onClick={()=> setRenameDoc({ id: d.id, title: d.title||'' })} className="p-2 rounded hover:bg-gray-100">✏️</button>
+                      <button title="Move" onClick={()=> setMoveDoc({ id: d.id })} className="p-2 rounded hover:bg-gray-100">📁</button>
+                      <button title="Delete" onClick={()=>del(d.id, d.title)} className="p-2 rounded hover:bg-gray-100 text-red-600">🗑️</button>
                     </>}
                   </div>
                 </div>
@@ -979,6 +1010,26 @@ function UserDocuments({ userId, canEdit }:{ userId:string, canEdit:boolean }){
             <div className="mt-4 flex justify-end gap-2">
               <button onClick={()=>setRenameDoc(null)} className="px-3 py-2 rounded border">Cancel</button>
               <button onClick={doRenameDoc} className="px-3 py-2 rounded bg-brand-red text-white">Save</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {preview && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" onClick={()=> setPreview(null)}>
+          <div className="bg-white rounded-xl w-[92vw] h-[88vh] p-3 relative" onClick={(e)=> e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-2">
+              <div className="font-semibold truncate mr-4">{preview.title}</div>
+              <button onClick={()=> setPreview(null)} className="px-3 py-1.5 rounded border">Close</button>
+            </div>
+            <div className="w-full h-[calc(100%-40px)] border rounded overflow-hidden bg-gray-50">
+              {['png','jpg','jpeg','webp','gif','bmp','svg'].includes(preview.ext) ? (
+                <img src={preview.url} className="w-full h-full object-contain" />
+              ) : preview.ext==='pdf' ? (
+                <iframe src={preview.url} className="w-full h-full" />
+              ) : (
+                <div className="p-6 text-sm text-gray-600">Preview not available. <a className="underline" href={preview.url} target="_blank">Download</a></div>
+              )}
             </div>
           </div>
         </div>
