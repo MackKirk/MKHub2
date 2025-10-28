@@ -143,12 +143,15 @@ export default function InventoryProducts(){
 
   const searchRelatedProducts = async (txt: string)=>{
     setAddRelatedSearch(txt);
-    if(!txt.trim()){ setAddRelatedResults([]); return; }
+    // Auto-complete search as user types
     try{
-      const params = new URLSearchParams(); params.set('q', txt);
+      const params = new URLSearchParams();
+      if(txt.trim()){ params.set('q', txt); }
       const results = await api<any[]>('GET', `/estimate/products/search?${params.toString()}`);
-      setAddRelatedResults(results.filter(r=> r.id !== addRelatedTarget));
-    }catch(_e){ }
+      // Filter out the current product and products already related
+      const filtered = results.filter(r=> r.id !== addRelatedTarget && r.id !== viewing?.id);
+      setAddRelatedResults(filtered);
+    }catch(_e){ setAddRelatedResults([]); }
   };
 
   const createRelation = async (productA: number, productB: number)=>{
@@ -156,8 +159,14 @@ export default function InventoryProducts(){
       await api('POST', `/estimate/related/${productA}`, { related_id: productB });
       toast.success('Relation created');
       setAddRelatedOpen(false);
+      // Update the current viewing product's related list
+      if(viewing){
+        const updatedRels = await api<any[]>('GET', `/estimate/related/${viewing.id}`);
+        // Update related counts
+        const counts = await api<Record<string, number>>('GET', `/estimate/related/count?ids=${productIds}`);
+        if(counts) setRelatedCounts(counts);
+      }
       await refetch();
-      if(viewRelated) handleViewRelated(viewRelated);
     }catch(_e){ toast.error('Failed'); }
   };
 
@@ -298,31 +307,6 @@ export default function InventoryProducts(){
                 <input type="file" accept="image/*" onChange={e=> onFileChange(e.target.files?.[0]||null)} />
                 {imageDataUrl && <img src={imageDataUrl} className="mt-2 w-32 border rounded" alt="Preview" />}
               </div>
-              <div className="col-span-2 text-right">
-                <button onClick={async()=>{
-                  if(!name.trim()){ toast.error('Name required'); return; }
-                  try{
-                    const payload = {
-                      name,
-                      supplier_name: newSupplier||null,
-                      category: newCategory||null,
-                      unit: unit||null,
-                      price: price? Number(price) : 0,
-                      description: desc||null,
-                      unit_type: unitType,
-                      units_per_package: unitType==='multiple'? (unitsPerPackage? Number(unitsPerPackage): null) : null,
-                      coverage_sqs: unitType==='coverage'? (covSqs? Number(covSqs): null) : null,
-                      coverage_ft2: unitType==='coverage'? (covFt2? Number(covFt2): null) : null,
-                      coverage_m2: unitType==='coverage'? (covM2? Number(covM2): null) : null,
-                      image_base64: imageDataUrl || null,
-                    };
-                    if(editing){ await api('PUT', `/estimate/products/${editing.id}`, payload); toast.success('Updated'); }
-                    else{ await api('POST','/estimate/products', payload); toast.success('Created'); }
-                    resetModal();
-                    await refetch();
-                  }catch(_e){ toast.error('Failed'); }
-                }} className="px-4 py-2 rounded bg-brand-red text-white">{editing? 'Update' : 'Create'}</button>
-              </div>
                 </>
               )}
             </div>
@@ -372,9 +356,11 @@ export default function InventoryProducts(){
       {viewRelated!==null && (
         <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center">
           <div className="w-[600px] max-w-[95vw] bg-white rounded-xl overflow-hidden">
-            <div className="px-4 py-3 border-b flex items-center justify-between"><div className="font-semibold">Related Products</div><button onClick={()=> setViewRelated(null)} className="px-3 py-1 rounded bg-gray-100">Close</button></div>
+            <div className="px-6 py-4 border-b flex items-center justify-between bg-gray-50">
+              <div className="font-semibold text-lg">Related Products</div>
+              <button onClick={()=> setViewRelated(null)} className="px-3 py-1 rounded bg-gray-200 hover:bg-gray-300">Close</button>
+            </div>
             <div className="p-4">
-              <div className="mb-3 text-right"><button onClick={()=> handleAddRelated(viewRelated)} className="px-3 py-2 rounded bg-brand-red text-white">Add Related</button></div>
               <div className="border rounded divide-y">
                 {Array.isArray(relatedList) && relatedList.length? relatedList.map((r:any,i:number)=> (
                   <div key={i} className="px-3 py-2 flex items-center justify-between">
@@ -393,20 +379,37 @@ export default function InventoryProducts(){
 
       {addRelatedOpen && (
         <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center">
-          <div className="w-[600px] max-w-[95vw] bg-white rounded-xl overflow-hidden">
-            <div className="px-4 py-3 border-b flex items-center justify-between"><div className="font-semibold">Add Related Product</div><button onClick={()=> setAddRelatedOpen(false)} className="px-3 py-1 rounded bg-gray-100">Close</button></div>
+          <div className="w-[600px] max-w-[95vw] bg-white rounded-xl overflow-hidden flex flex-col">
+            <div className="px-6 py-4 border-b flex items-center justify-between bg-gray-50">
+              <div className="font-semibold text-lg">Add Related Product</div>
+              <button onClick={()=> setAddRelatedOpen(false)} className="px-3 py-1 rounded bg-gray-200 hover:bg-gray-300">Close</button>
+            </div>
             <div className="p-4">
-              <div className="mb-3"><input className="w-full border rounded px-3 py-2" placeholder="Search products..." value={addRelatedSearch} onChange={e=> searchRelatedProducts(e.target.value)} /></div>
-              <div className="border rounded divide-y max-h-64 overflow-y-auto">
-                {Array.isArray(addRelatedResults) && addRelatedResults.length? addRelatedResults.map(r=> (
-                  <div key={r.id} className="px-3 py-2 flex items-center justify-between hover:bg-gray-50 cursor-pointer" onClick={()=> createRelation(addRelatedTarget!, r.id)}>
-                    <div>
+              <input 
+                className="w-full border rounded px-3 py-2 mb-3" 
+                placeholder="Search products..." 
+                value={addRelatedSearch} 
+                onChange={e=> searchRelatedProducts(e.target.value)} 
+                autoFocus
+              />
+              <div className="border rounded divide-y max-h-96 overflow-y-auto">
+                {Array.isArray(addRelatedResults) && addRelatedResults.length > 0 ? addRelatedResults.map(r=> (
+                  <div 
+                    key={r.id} 
+                    className="px-3 py-2 flex items-center justify-between hover:bg-gray-50 cursor-pointer" 
+                    onClick={()=> createRelation(addRelatedTarget!, r.id)}
+                  >
+                    <div className="flex-1">
                       <div className="font-medium">{r.name}</div>
                       <div className="text-xs text-gray-500">{r.supplier_name||''} · ${Number(r.price||0).toFixed(2)}</div>
                     </div>
                   </div>
-                )): null}
-                {(!addRelatedSearch || !addRelatedResults.length) && <div className="p-3 text-gray-600">Start typing to search</div>}
+                )) : addRelatedResults.length === 0 && !addRelatedSearch && (
+                  <div className="p-3 text-gray-600">No products available</div>
+                )}
+                {addRelatedSearch && addRelatedResults.length === 0 && (
+                  <div className="p-3 text-gray-600">No products found</div>
+                )}
               </div>
             </div>
           </div>
