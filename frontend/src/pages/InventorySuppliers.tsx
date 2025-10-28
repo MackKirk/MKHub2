@@ -231,70 +231,57 @@ export default function InventorySuppliers() {
         />
       </div>
 
-      <div className="rounded-xl border bg-white overflow-hidden">
-        <table className="w-full text-sm">
-          <thead className="bg-gray-50">
-            <tr>
-              <th className="p-3 text-left">
-                <button onClick={() => handleSort('name')} className="font-semibold hover:text-blue-600 flex items-center gap-1">
-                  Name {sortColumn === 'name' && (sortDirection === 'asc' ? '↑' : '↓')}
-                </button>
-              </th>
-              <th className="p-3 text-left">
-                <button onClick={() => handleSort('email')} className="font-semibold hover:text-blue-600 flex items-center gap-1">
-                  Email {sortColumn === 'email' && (sortDirection === 'asc' ? '↑' : '↓')}
-                </button>
-              </th>
-              <th className="p-3 text-left">
-                <button onClick={() => handleSort('phone')} className="font-semibold hover:text-blue-600 flex items-center gap-1">
-                  Phone {sortColumn === 'phone' && (sortDirection === 'asc' ? '↑' : '↓')}
-                </button>
-              </th>
-              <th className="p-3 text-left">
-                <button onClick={() => handleSort('city')} className="font-semibold hover:text-blue-600 flex items-center gap-1">
-                  City {sortColumn === 'city' && (sortDirection === 'asc' ? '↑' : '↓')}
-                </button>
-              </th>
-              <th className="p-3 text-left">
-                <button onClick={() => handleSort('province')} className="font-semibold hover:text-blue-600 flex items-center gap-1">
-                  Province {sortColumn === 'province' && (sortDirection === 'asc' ? '↑' : '↓')}
-                </button>
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {isLoading ? (
-              <tr>
-                <td colSpan={5} className="p-4">
-                  <div className="h-6 bg-gray-100 animate-pulse rounded" />
-                </td>
-              </tr>
-            ) : !Array.isArray(rows) || !rows.length ? (
-              <tr>
-                <td colSpan={5} className="p-4 text-gray-600 text-center">
-                  No suppliers yet
-                </td>
-              </tr>
-            ) : (
-              rows.map((s) => (
-                <tr key={s.id} className="border-t hover:bg-gray-50">
-                  <td className="p-3">
-                    <button
-                      onClick={() => openViewModal(s)}
-                      className="font-medium text-blue-600 hover:text-blue-800 hover:underline"
-                    >
-                      {s.name}
-                    </button>
-                  </td>
-                  <td className="p-3 text-gray-600">{s.email || '-'}</td>
-                  <td className="p-3 text-gray-600">{formatPhone(s.phone)}</td>
-                  <td className="p-3 text-gray-600">{s.city || '-'}</td>
-                  <td className="p-3 text-gray-600">{s.province || '-'}</td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
+      <div className="rounded-xl border bg-white">
+        {isLoading ? (
+          <div className="p-4">
+            <div className="h-6 bg-gray-100 animate-pulse rounded" />
+          </div>
+        ) : !Array.isArray(rows) || !rows.length ? (
+          <div className="p-4 text-gray-600 text-center">
+            No suppliers yet
+          </div>
+        ) : (
+          <div className="divide-y">
+            {rows.map((s) => (
+              <div
+                key={s.id}
+                className="p-3 flex items-center justify-between hover:bg-gray-50 cursor-pointer"
+                onClick={() => openViewModal(s)}
+              >
+                <div className="flex items-center gap-3 min-w-0">
+                  <img
+                    src="/ui/assets/login/logo-light.svg"
+                    className="w-12 h-12 rounded-lg border object-cover"
+                    alt={s.name}
+                  />
+                  <div className="min-w-0">
+                    <div className="font-medium text-base">{s.name}</div>
+                    {(s as any).address_line1 && (
+                      <div className="text-xs text-gray-700">{String((s as any).address_line1)}</div>
+                    )}
+                    <div className="text-xs text-gray-600">
+                      {[s.city, s.province].filter(Boolean).join(', ')}
+                    </div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3 text-sm" onClick={(e) => e.stopPropagation()}>
+                  {s.email && (
+                    <>
+                      <span className="text-gray-600">Email:</span>
+                      <span className="px-2 py-0.5 rounded-full border text-gray-700 bg-gray-50">{s.email}</span>
+                    </>
+                  )}
+                  {s.phone && (
+                    <>
+                      <span className="text-gray-600">Phone:</span>
+                      <span className="px-2 py-0.5 rounded-full border text-gray-700 bg-gray-50">{formatPhone(s.phone)}</span>
+                    </>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {open && (

@@ -260,64 +260,63 @@ export default function InventoryProducts(){
         {(q||supplier||category) && <button onClick={()=>{ setQ(''); setSupplier(''); setCategory(''); refetch(); }} className="px-3 py-2 rounded bg-gray-100">Clear</button>}
       </div>
 
-      <div className="rounded-xl border bg-white overflow-hidden">
-        <table className="w-full text-sm">
-          <thead className="bg-gray-50"><tr>
-            <th className="p-2 text-left">
-              <button onClick={() => handleSort('id')} className="font-semibold hover:text-blue-600 flex items-center gap-1">
-                ID {sortColumn === 'id' && (sortDirection === 'asc' ? '↑' : '↓')}
-              </button>
-            </th>
-            <th className="p-2 text-left">
-              <button onClick={() => handleSort('name')} className="font-semibold hover:text-blue-600 flex items-center gap-1">
-                Name {sortColumn === 'name' && (sortDirection === 'asc' ? '↑' : '↓')}
-              </button>
-            </th>
-            <th className="p-2 text-left">
-              <button onClick={() => handleSort('supplier_name')} className="font-semibold hover:text-blue-600 flex items-center gap-1">
-                Supplier {sortColumn === 'supplier_name' && (sortDirection === 'asc' ? '↑' : '↓')}
-              </button>
-            </th>
-            <th className="p-2 text-left">
-              <button onClick={() => handleSort('category')} className="font-semibold hover:text-blue-600 flex items-center gap-1">
-                Category {sortColumn === 'category' && (sortDirection === 'asc' ? '↑' : '↓')}
-              </button>
-            </th>
-            <th className="p-2 text-left">
-              <button onClick={() => handleSort('unit')} className="font-semibold hover:text-blue-600 flex items-center gap-1">
-                Unit {sortColumn === 'unit' && (sortDirection === 'asc' ? '↑' : '↓')}
-              </button>
-            </th>
-            <th className="p-2 text-left">
-              <button onClick={() => handleSort('price')} className="font-semibold hover:text-blue-600 flex items-center gap-1">
-                Price {sortColumn === 'price' && (sortDirection === 'asc' ? '↑' : '↓')}
-              </button>
-            </th>
-            <th className="p-2 text-left">
-              <button onClick={() => handleSort('last_updated')} className="font-semibold hover:text-blue-600 flex items-center gap-1">
-                Updated {sortColumn === 'last_updated' && (sortDirection === 'asc' ? '↑' : '↓')}
-              </button>
-            </th>
-            <th className="p-2 text-left">Related</th>
-          </tr></thead>
-          <tbody>
-            {isLoading? <tr><td colSpan={8} className="p-4"><div className="h-6 bg-gray-100 animate-pulse rounded"/></td></tr> : rows.map(p=> (
-              <tr key={p.id} className="border-t">
-                <td className="p-2">{p.id}</td>
-                <td className="p-2">
-                  <button onClick={()=> openViewModal(p)} className="font-medium text-blue-600 hover:text-blue-800 hover:underline">{p.name}</button>
-                </td>
-                <td className="p-2">{p.supplier_name||''}</td>
-                <td className="p-2">{p.category||''}</td>
-                <td className="p-2">{p.unit||''}</td>
-                <td className="p-2">{typeof p.price==='number'? `$${p.price.toFixed(2)}`: ''}</td>
-                <td className="p-2">{(p.last_updated||'').slice(0,10)}</td>
-                <td className="p-2"><button onClick={()=> handleViewRelated(p.id)} className="text-brand-red underline">{relatedCounts[p.id]||0} related</button></td>
-              </tr>
+      <div className="rounded-xl border bg-white">
+        {isLoading ? (
+          <div className="p-4">
+            <div className="h-6 bg-gray-100 animate-pulse rounded" />
+          </div>
+        ) : !rows.length ? (
+          <div className="p-4 text-gray-600 text-center">
+            No products found
+          </div>
+        ) : (
+          <div className="divide-y">
+            {rows.map(p => (
+              <div
+                key={p.id}
+                className="p-3 flex items-center justify-between hover:bg-gray-50 cursor-pointer"
+                onClick={() => openViewModal(p)}
+              >
+                <div className="flex items-center gap-3 min-w-0">
+                  <img
+                    src={p.image_base64 || '/ui/assets/login/logo-light.svg'}
+                    className="w-12 h-12 rounded-lg border object-cover"
+                    alt={p.name}
+                  />
+                  <div className="min-w-0">
+                    <div className="font-medium text-base">{p.name}</div>
+                    <div className="text-xs text-gray-700">
+                      {p.supplier_name && <span className="font-medium">{p.supplier_name}</span>}
+                      {p.category && (
+                        <>
+                          {p.supplier_name && ' · '}
+                          <span>{p.category}</span>
+                        </>
+                      )}
+                    </div>
+                    <div className="text-xs text-gray-600">
+                      {p.unit && <span>{p.unit}</span>}
+                      {typeof p.price === 'number' && (
+                        <>
+                          {p.unit && ' · '}
+                          <span className="font-medium text-brand-red">${p.price.toFixed(2)}</span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3 text-sm" onClick={(e) => e.stopPropagation()}>
+                  <button
+                    onClick={() => handleViewRelated(p.id)}
+                    className="px-3 py-1.5 rounded bg-brand-red text-white"
+                  >
+                    {relatedCounts[p.id] || 0} Related
+                  </button>
+                </div>
+              </div>
             ))}
-            {!isLoading && rows.length===0 && <tr><td colSpan={8} className="p-3 text-gray-600">No products found</td></tr>}
-          </tbody>
-        </table>
+          </div>
+        )}
       </div>
 
       {open && (
