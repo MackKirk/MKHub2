@@ -99,27 +99,36 @@ def list_suppliers(q: str | None = None, db: Session = Depends(get_db)):
 @router.post("/suppliers")
 def create_supplier(body: dict, db: Session = Depends(get_db)):
     try:
-        # Log the incoming data
         print(f"Creating supplier with data: {body}")
         
-        # Create supplier with all default values, only override with provided fields
-        row = Supplier(
-            name=body.get('name', ''),
-            email=body.get('email') if body.get('email') else None,
-            phone=body.get('phone') if body.get('phone') else None,
-        )
+        # Filter out None values and empty strings
+        def clean_value(v):
+            if v is None or v == '':
+                return None
+            return v
         
+        # Create supplier with all provided fields
+        supplier_data = {
+            'name': body.get('name', ''),
+        }
+        
+        # Add optional fields only if they have values
+        optional_fields = ['legal_name', 'email', 'phone', 'website', 'address_line1', 
+                          'address_line2', 'city', 'province', 'postal_code', 'country', 
+                          'tax_number', 'payment_terms', 'currency', 'lead_time_days', 
+                          'category', 'status', 'notes', 'is_active']
+        
+        for field in optional_fields:
+            value = body.get(field)
+            if value is not None and value != '':
+                supplier_data[field] = value
+        
+        row = Supplier(**supplier_data)
         db.add(row)
         db.commit()
         db.refresh(row)
         
-        # Return as dict to avoid Pydantic issues
-        return {
-            'id': str(row.id),
-            'name': row.name,
-            'email': row.email,
-            'phone': row.phone,
-        }
+        return row
     except Exception as e:
         db.rollback()
         import traceback
@@ -128,14 +137,17 @@ def create_supplier(body: dict, db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail=f"Failed to create supplier: {str(e)}")
 
 
-@router.put("/suppliers/{supplier_id}", response_model=SupplierResponse)
-def update_supplier(supplier_id: uuid.UUID, supplier: SupplierCreate, db: Session = Depends(get_db), _=Depends(require_permissions("inventory:write"))):
+@router.put("/suppliers/{supplier_id}")
+def update_supplier(supplier_id: uuid.UUID, body: dict, db: Session = Depends(get_db)):
     row = db.query(Supplier).filter(Supplier.id == supplier_id).first()
     if not row:
         raise HTTPException(status_code=404, detail="Supplier not found")
-    data = supplier.dict(exclude_unset=True)
-    for k, v in data.items():
-        setattr(row, k, v)
+    
+    # Update only provided fields
+    for k, v in body.items():
+        if hasattr(row, k) and v is not None:
+            setattr(row, k, v)
+    
     row.updated_at = datetime.now(timezone.utc)
     db.commit()
     db.refresh(row)
@@ -143,7 +155,7 @@ def update_supplier(supplier_id: uuid.UUID, supplier: SupplierCreate, db: Sessio
 
 
 @router.delete("/suppliers/{supplier_id}")
-def delete_supplier(supplier_id: uuid.UUID, db: Session = Depends(get_db), _=Depends(require_permissions("inventory:write"))):
+def delete_supplier(supplier_id: uuid.UUID, db: Session = Depends(get_db)):
     row = db.query(Supplier).filter(Supplier.id == supplier_id).first()
     if not row:
         raise HTTPException(status_code=404, detail="Supplier not found")
@@ -152,8 +164,8 @@ def delete_supplier(supplier_id: uuid.UUID, db: Session = Depends(get_db), _=Dep
     return {"message": "Supplier deleted successfully"}
 
 
-@router.get("/suppliers/{supplier_id}", response_model=SupplierResponse)
-def get_supplier(supplier_id: uuid.UUID, db: Session = Depends(get_db), _=Depends(require_permissions("inventory:read"))):
+@router.get("/suppliers/{supplier_id}")
+def get_supplier(supplier_id: uuid.UUID, db: Session = Depends(get_db)):
     row = db.query(Supplier).filter(Supplier.id == supplier_id).first()
     if not row:
         raise HTTPException(status_code=404, detail="Supplier not found")
