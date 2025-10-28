@@ -101,23 +101,19 @@ export default function InventorySuppliers() {
     setShowSuggestions(false);
   };
   
-  // Address autocomplete using Nominatim (OpenStreetMap)
+  // Address autocomplete using MapBox
   const handleAddressChange = async (value: string) => {
     setAddressLine1(value);
     
-    if (value.length > 3) {
+    if (value.length > 4) {
       try {
+        // Using MapBox Geocoding API (public access token)
         const response = await fetch(
-          `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(value)}&limit=5&addressdetails=1`,
-          {
-            headers: {
-              'User-Agent': 'MKHub2' // Required by Nominatim
-            }
-          }
+          `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(value)}.json?access_token=pk.eyJ1IjoibWFwYm94IiwiYSI6ImNpejY4NXVycTA2emYycXBndHRqcmZ3N3gifQ.rJcFIG214AriISLbB6B5aw&limit=5`
         );
         const data = await response.json();
-        setAddressSuggestions(data);
-        setShowSuggestions(data.length > 0);
+        setAddressSuggestions(data.features || []);
+        setShowSuggestions((data.features || []).length > 0);
       } catch (error) {
         console.error('Address autocomplete error:', error);
         setAddressSuggestions([]);
@@ -130,13 +126,27 @@ export default function InventorySuppliers() {
   };
   
   const selectAddress = (place: any) => {
-    // Parse Nominatim response
-    const addr = place.address || {};
-    setAddressLine1(place.display_name.split(',')[0] || '');
-    setCity(addr.city || addr.town || addr.village || addr.city_district || '');
-    setProvince(addr.state || addr.region || '');
-    setPostalCode(addr.postcode || '');
-    setCountry(addr.country || '');
+    // Parse MapBox response
+    const context = place.context || [];
+    
+    // Extract address components from context
+    let cityValue = '';
+    let provinceValue = '';
+    let postalCodeValue = '';
+    let countryValue = '';
+    
+    context.forEach((item: any) => {
+      if (item.id.startsWith('place')) cityValue = item.text;
+      if (item.id.startsWith('region')) provinceValue = item.text;
+      if (item.id.startsWith('postcode')) postalCodeValue = item.text;
+      if (item.id.startsWith('country')) countryValue = item.text;
+    });
+    
+    setAddressLine1(place.place_name.split(',')[0] || '');
+    setCity(cityValue);
+    setProvince(provinceValue);
+    setPostalCode(postalCodeValue);
+    setCountry(countryValue);
     setAddressSuggestions([]);
     setShowSuggestions(false);
   };
@@ -336,7 +346,7 @@ export default function InventorySuppliers() {
                   />
                 </div>
                 <div className="col-span-2 relative">
-                  <label className="text-xs font-semibold text-gray-700">Address Line 1 (with autocomplete)</label>
+                  <label className="text-xs font-semibold text-gray-700">Address Line 1</label>
                   <input
                     type="text"
                     placeholder="Start typing address..."
@@ -354,7 +364,7 @@ export default function InventorySuppliers() {
                           className="px-3 py-2 hover:bg-gray-100 cursor-pointer border-b last:border-b-0"
                           onClick={() => selectAddress(sug)}
                         >
-                          {sug.display_name}
+                          {sug.place_name}
                         </div>
                       ))}
                     </div>
