@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
 import { useConfirm } from '@/components/ConfirmProvider';
+import ImagePicker from '@/components/ImagePicker';
 
 type Supplier = {
   id: string;
@@ -60,8 +61,7 @@ export default function InventorySuppliers() {
   const [province, setProvince] = useState('');
   const [postalCode, setPostalCode] = useState('');
   const [country, setCountry] = useState('');
-  const [imageDataUrl, setImageDataUrl] = useState('');
-  const [fileInputRef, setFileInputRef] = useState<HTMLInputElement | null>(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
 
   const { data, isLoading, isFetching } = useQuery({
     queryKey: ['suppliers', q],
@@ -116,7 +116,6 @@ export default function InventorySuppliers() {
     setProvince('');
     setPostalCode('');
     setCountry('');
-    setImageDataUrl('');
     setEditing(null);
     setViewing(null);
   };
@@ -140,24 +139,10 @@ export default function InventorySuppliers() {
     setProvince(viewing.province || '');
     setPostalCode((viewing as any).postal_code || '');
     setCountry(viewing.country || '');
-    setImageDataUrl(viewing.image_base64 || '');
     setViewing(null);
   };
 
-  const onFileChange = (file: File | null) => {
-    if (!file) {
-      setImageDataUrl('');
-      return;
-    }
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const result = e.target?.result as string;
-      setImageDataUrl(result);
-    };
-    reader.readAsDataURL(file);
-  };
-
-  const updateSupplierImage = async (file: File) => {
+  const handleImageUpdate = async (blob: Blob) => {
     if (!viewing) return;
     
     const reader = new FileReader();
@@ -165,7 +150,6 @@ export default function InventorySuppliers() {
       const imageBase64 = e.target?.result as string;
       try {
         await api('PUT', `/inventory/suppliers/${viewing.id}`, {
-          ...viewing,
           image_base64: imageBase64
         });
         queryClient.invalidateQueries({ queryKey: ['suppliers'] });
@@ -174,7 +158,7 @@ export default function InventorySuppliers() {
         toast.error('Failed to update image');
       }
     };
-    reader.readAsDataURL(file);
+    reader.readAsDataURL(blob);
   };
 
   const handleSubmit = () => {
@@ -341,22 +325,8 @@ export default function InventorySuppliers() {
                     >
                       ×
                     </button>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      ref={setFileInputRef}
-                      style={{ display: 'none' }}
-                      onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        if (file) {
-                          onFileChange(file);
-                          // Save the image immediately
-                          updateSupplierImage(file);
-                        }
-                      }}
-                    />
                     <button
-                      onClick={() => fileInputRef?.click()}
+                      onClick={() => setPickerOpen(true)}
                       className="w-24 h-24 rounded-xl border-4 border-white shadow-lg overflow-hidden hover:border-white/80 transition-all relative group"
                     >
                       <img 
@@ -587,6 +557,20 @@ export default function InventorySuppliers() {
             </div>
           </div>
         </div>
+      )}
+
+      {pickerOpen && (
+        <ImagePicker 
+          isOpen={true} 
+          onClose={() => setPickerOpen(false)} 
+          targetWidth={800} 
+          targetHeight={800} 
+          allowEdit={true}
+          onConfirm={async (blob) => {
+            await handleImageUpdate(blob);
+            setPickerOpen(false);
+          }} 
+        />
       )}
     </div>
   );
