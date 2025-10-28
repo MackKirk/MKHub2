@@ -812,15 +812,21 @@ def list_documents(user_id: str, folder_id: Optional[str] = None, db: Session = 
     from ..models.models import EmployeeDocument
     q = db.query(EmployeeDocument).filter(EmployeeDocument.user_id == user_id)
     if folder_id:
-        try:
-            q = q.filter(EmployeeDocument.folder_id == uuid.UUID(folder_id))
-        except Exception:
-            q = q.filter(EmployeeDocument.folder_id == None)  # invalid id -> no results
+        # Backward-compatible: store folder relation in doc_type as tag 'folder:<id>'
+        tag = f"folder:{folder_id}"
+        q = q.filter(EmployeeDocument.doc_type == tag)
     rows = q.all()
     def _row(d):
+        # Derive folder id from doc_type tag if present
+        fid = None
+        try:
+            if (d.doc_type or '').startswith('folder:'):
+                fid = d.doc_type.split(':',1)[1]
+        except Exception:
+            fid = None
         return {
             "id": str(d.id),
-            "folder_id": str(d.folder_id) if getattr(d, 'folder_id', None) else None,
+            "folder_id": fid,
             "doc_type": d.doc_type,
             "title": d.title,
             "number": d.number,
@@ -844,10 +850,11 @@ def create_document(user_id: str, payload: dict = Body(...), db: Session = Depen
             return datetime.strptime(s, "%Y-%m-%d").replace(tzinfo=timezone.utc)
         except Exception:
             return None
+    # Save folder link as doc_type tag for compatibility without migrations
+    folder_id = payload.get("folder_id")
     d = EmployeeDocument(
         user_id=user_id,
-        doc_type=payload.get("doc_type") or "other",
-        folder_id=payload.get("folder_id"),
+        doc_type=(f"folder:{folder_id}" if folder_id else (payload.get("doc_type") or "other")),
         title=payload.get("title"),
         number=payload.get("number"),
         issuing_country=payload.get("issuing_country"),
@@ -946,10 +953,8 @@ def update_document(user_id: str, doc_id: str, payload: dict = Body(...), db: Se
         raise HTTPException(status_code=404, detail="Not found")
     # only allow safe fields update here
     if "folder_id" in payload:
-        try:
-            d.folder_id = uuid.UUID(str(payload.get("folder_id"))) if payload.get("folder_id") else None
-        except Exception:
-            d.folder_id = None
+        fid = payload.get("folder_id")
+        d.doc_type = f"folder:{fid}" if fid else (d.doc_type or None)
     if "title" in payload:
         d.title = payload.get("title")
     if "notes" in payload:
