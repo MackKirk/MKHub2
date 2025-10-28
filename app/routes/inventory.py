@@ -174,10 +174,14 @@ def update_supplier(supplier_id: uuid.UUID, body: dict, db: Session = Depends(ge
     if not row:
         raise HTTPException(status_code=404, detail="Supplier not found")
     
-    # Update only provided fields
+    # Update only provided fields (allow empty strings to clear fields)
     for k, v in body.items():
-        if hasattr(row, k) and v is not None:
-            setattr(row, k, v)
+        if hasattr(row, k):
+            # Convert empty strings to None for optional fields, except for 'name' which is required
+            if k != 'name' and v == '':
+                setattr(row, k, None)
+            elif v is not None:
+                setattr(row, k, v)
     
     row.updated_at = datetime.now(timezone.utc)
     db.commit()

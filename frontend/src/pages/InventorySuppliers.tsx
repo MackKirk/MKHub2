@@ -9,10 +9,13 @@ type Supplier = {
   legal_name?: string;
   email?: string;
   phone?: string;
+  website?: string;
+  address_line1?: string;
+  address_line2?: string;
   city?: string;
   province?: string;
+  postal_code?: string;
   country?: string;
-  website?: string;
   is_active?: boolean;
   created_at?: string;
 };
@@ -35,6 +38,10 @@ export default function InventorySuppliers() {
   const [province, setProvince] = useState('');
   const [postalCode, setPostalCode] = useState('');
   const [country, setCountry] = useState('');
+  
+  // Address autocomplete
+  const [addressSuggestions, setAddressSuggestions] = useState<any[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
 
   const { data, isLoading, isFetching } = useQuery({
     queryKey: ['suppliers', q],
@@ -90,6 +97,48 @@ export default function InventorySuppliers() {
     setPostalCode('');
     setCountry('');
     setEditing(null);
+    setAddressSuggestions([]);
+    setShowSuggestions(false);
+  };
+  
+  // Address autocomplete using Nominatim (OpenStreetMap)
+  const handleAddressChange = async (value: string) => {
+    setAddressLine1(value);
+    
+    if (value.length > 3) {
+      try {
+        const response = await fetch(
+          `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(value)}&limit=5&addressdetails=1`,
+          {
+            headers: {
+              'User-Agent': 'MKHub2' // Required by Nominatim
+            }
+          }
+        );
+        const data = await response.json();
+        setAddressSuggestions(data);
+        setShowSuggestions(data.length > 0);
+      } catch (error) {
+        console.error('Address autocomplete error:', error);
+        setAddressSuggestions([]);
+        setShowSuggestions(false);
+      }
+    } else {
+      setAddressSuggestions([]);
+      setShowSuggestions(false);
+    }
+  };
+  
+  const selectAddress = (place: any) => {
+    // Parse Nominatim response
+    const addr = place.address || {};
+    setAddressLine1(place.display_name.split(',')[0] || '');
+    setCity(addr.city || addr.town || addr.village || addr.city_district || '');
+    setProvince(addr.state || addr.region || '');
+    setPostalCode(addr.postcode || '');
+    setCountry(addr.country || '');
+    setAddressSuggestions([]);
+    setShowSuggestions(false);
   };
 
   const openEditModal = (supplier: Supplier) => {
@@ -99,8 +148,12 @@ export default function InventorySuppliers() {
     setEmail(supplier.email || '');
     setPhone(supplier.phone || '');
     setWebsite(supplier.website || '');
+    // Load address fields from supplier object
+    setAddressLine1((supplier as any).address_line1 || '');
+    setAddressLine2((supplier as any).address_line2 || '');
     setCity(supplier.city || '');
     setProvince(supplier.province || '');
+    setPostalCode((supplier as any).postal_code || '');
     setCountry(supplier.country || '');
     setOpen(true);
   };
@@ -282,14 +335,30 @@ export default function InventorySuppliers() {
                     onChange={(e) => setWebsite(e.target.value)}
                   />
                 </div>
-                <div className="col-span-2">
-                  <label className="text-xs font-semibold text-gray-700">Address Line 1</label>
+                <div className="col-span-2 relative">
+                  <label className="text-xs font-semibold text-gray-700">Address Line 1 (with autocomplete)</label>
                   <input
                     type="text"
+                    placeholder="Start typing address..."
                     className="w-full border rounded px-3 py-2 mt-1"
                     value={addressLine1}
-                    onChange={(e) => setAddressLine1(e.target.value)}
+                    onChange={(e) => handleAddressChange(e.target.value)}
+                    onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
+                    onFocus={() => addressSuggestions.length > 0 && setShowSuggestions(true)}
                   />
+                  {showSuggestions && addressSuggestions.length > 0 && (
+                    <div className="absolute z-10 w-full mt-1 bg-white border rounded shadow-lg max-h-60 overflow-y-auto">
+                      {addressSuggestions.map((sug, idx) => (
+                        <div
+                          key={idx}
+                          className="px-3 py-2 hover:bg-gray-100 cursor-pointer border-b last:border-b-0"
+                          onClick={() => selectAddress(sug)}
+                        >
+                          {sug.display_name}
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
                 <div className="col-span-2">
                   <label className="text-xs font-semibold text-gray-700">Address Line 2</label>
