@@ -157,8 +157,8 @@ export default function InventorySuppliers() {
         // Update the viewing state with the full updated supplier
         setViewing(updatedSupplier);
         
-        // Invalidate queries to refresh the list
-        queryClient.invalidateQueries({ queryKey: ['suppliers'] });
+        // Force refetch to refresh the list
+        await queryClient.refetchQueries({ queryKey: ['suppliers'] });
         
         toast.success('Image updated');
       } catch (error) {

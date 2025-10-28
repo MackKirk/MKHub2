@@ -170,23 +170,46 @@ def create_supplier(body: dict, db: Session = Depends(get_db)):
 
 @router.put("/suppliers/{supplier_id}")
 def update_supplier(supplier_id: uuid.UUID, body: dict, db: Session = Depends(get_db)):
-    row = db.query(Supplier).filter(Supplier.id == supplier_id).first()
-    if not row:
-        raise HTTPException(status_code=404, detail="Supplier not found")
-    
-    # Update only provided fields (allow empty strings to clear fields)
-    for k, v in body.items():
-        if hasattr(row, k):
-            # Convert empty strings to None for optional fields, except for 'name' which is required
-            if k != 'name' and v == '':
-                setattr(row, k, None)
-            elif v is not None:
-                setattr(row, k, v)
-    
-    row.updated_at = datetime.now(timezone.utc)
-    db.commit()
-    db.refresh(row)
-    return row
+    import traceback
+    try:
+        print(f"UPDATE SUPPLIER - Attempting to update: {supplier_id}")
+        print(f"Body received: {list(body.keys())}")
+        
+        row = db.query(Supplier).filter(Supplier.id == supplier_id).first()
+        if not row:
+            raise HTTPException(status_code=404, detail="Supplier not found")
+        
+        # Update only provided fields (allow empty strings to clear fields)
+        for k, v in body.items():
+            if hasattr(row, k):
+                # Convert empty strings to None for optional fields, except for 'name' which is required
+                if k != 'name' and v == '':
+                    setattr(row, k, None)
+                elif v is not None:
+                    # Log if this is the image_base64 field
+                    if k == 'image_base64':
+                        print(f"Setting image_base64 (length: {len(str(v))})")
+                    setattr(row, k, v)
+        
+        row.updated_at = datetime.now(timezone.utc)
+        db.commit()
+        db.refresh(row)
+        
+        # Check if image_base64 was set
+        print(f"After update, image_base64 is set: {hasattr(row, 'image_base64') and row.image_base64 is not None}")
+        print(f"Image length in DB: {len(str(row.image_base64)) if hasattr(row, 'image_base64') and row.image_base64 else 0}")
+        
+        return row
+    except Exception as e:
+        db.rollback()
+        error_msg = str(e)
+        tb = traceback.format_exc()
+        print("=" * 80)
+        print("UPDATE SUPPLIER - ERROR")
+        print(f"Error: {error_msg}")
+        print(f"Traceback:\n{tb}")
+        print("=" * 80)
+        raise HTTPException(status_code=500, detail=f"Failed to update supplier: {error_msg}")
 
 
 @router.delete("/suppliers/{supplier_id}")
