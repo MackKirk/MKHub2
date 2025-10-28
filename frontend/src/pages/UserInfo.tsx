@@ -21,6 +21,7 @@ export default function UserInfo(){
 
   const { data, isLoading } = useQuery({ queryKey:['userProfile', userId], queryFn: ()=> api<any>('GET', `/auth/users/${userId}/profile`) });
   const { data:me } = useQuery({ queryKey:['me'], queryFn: ()=> api<any>('GET','/auth/me') });
+  const { data:settings } = useQuery({ queryKey:['settings'], queryFn: ()=> api<any>('GET','/settings') });
   const canEdit = !!(me?.roles?.includes('admin') || (me?.permissions||[]).includes('users:write'));
   const canSelfEdit = me && userId && String(me.id) === String(userId);
   const p = data?.profile || {};
@@ -104,7 +105,7 @@ export default function UserInfo(){
             <img className="w-[120px] h-[120px] object-cover rounded-xl border-2 border-brand-red" src={p.profile_photo_file_id? `/files/${p.profile_photo_file_id}/thumbnail?w=240`:'/ui/assets/login/logo-light.svg'} />
             <div className="flex-1">
               <div className="text-3xl font-extrabold">{p.first_name||u?.username} {p.last_name||''}</div>
-              <div className="text-sm opacity-90 mt-1">{p.job_title||u?.email||''}</div>
+              <div className="text-sm opacity-90 mt-1">{p.job_title||u?.email||''}{p.division? ` — ${p.division}`:''}</div>
               <div className="grid md:grid-cols-3 gap-2 text-xs mt-3">
                 <div><span className="opacity-80">Phone:</span> <span className="font-semibold">{p.phone||'—'}</span></div>
                 <div><span className="opacity-80">Work email:</span> <span className="font-semibold">{p.work_email||'—'}</span></div>
@@ -160,12 +161,12 @@ export default function UserInfo(){
                   <div>
                     <div className="flex items-center gap-2"><h4 className="font-semibold">Employment Details</h4></div>
                     <div className="text-xs text-gray-500 mt-0.5 mb-2">Dates and employment attributes.</div>
-                    <JobSection type="employment" p={p} editable={canEdit} userId={String(userId)} collectChanges={collectChanges} usersOptions={usersOptions||[]} />
+                    <JobSection type="employment" p={p} editable={canEdit} userId={String(userId)} collectChanges={collectChanges} usersOptions={usersOptions||[]} settings={settings} />
                   </div>
                   <div>
                     <div className="flex items-center gap-2"><h4 className="font-semibold">Organization</h4></div>
                     <div className="text-xs text-gray-500 mt-0.5 mb-2">Reporting and work contacts.</div>
-                    <JobSection type="organization" p={p} editable={canEdit} userId={String(userId)} collectChanges={collectChanges} usersOptions={usersOptions||[]} />
+                    <JobSection type="organization" p={p} editable={canEdit} userId={String(userId)} collectChanges={collectChanges} usersOptions={usersOptions||[]} settings={settings} />
                   </div>
                 </div>
               )}
@@ -404,7 +405,7 @@ function EducationSection({ userId, canEdit }:{ userId:string, canEdit:boolean }
   );
 }
 
-function JobSection({ type, p, editable, userId, collectChanges, usersOptions }:{ type:'employment'|'organization', p:any, editable:boolean, userId:string, collectChanges: (kv:Record<string,any>)=>void, usersOptions:any[] }){
+function JobSection({ type, p, editable, userId, collectChanges, usersOptions, settings }:{ type:'employment'|'organization', p:any, editable:boolean, userId:string, collectChanges: (kv:Record<string,any>)=>void, usersOptions:any[], settings:any }){
   const isEditable = !!editable;
   const [form, setForm] = useState<any>(()=>({
     hire_date: p.hire_date||'',
@@ -432,11 +433,29 @@ function JobSection({ type, p, editable, userId, collectChanges, usersOptions }:
         </div>
         <div>
           <div className="text-sm text-gray-600">Employment type</div>
-          {isEditable? <input className="w-full rounded-lg border px-3 py-2" value={form.employment_type} onChange={e=>onField('employment_type', e.target.value)} /> : <div className="font-medium">{String(p.employment_type||'')}</div>}
+          {isEditable? (
+            (settings?.employment_types?.length ? (
+              <select className="w-full rounded-lg border px-3 py-2" value={form.employment_type} onChange={e=>onField('employment_type', e.target.value)}>
+                <option value="">Select...</option>
+                {settings.employment_types.map((it:any)=> <option key={it.id} value={it.label}>{it.label}</option>)}
+              </select>
+            ) : (
+              <input className="w-full rounded-lg border px-3 py-2" value={form.employment_type} onChange={e=>onField('employment_type', e.target.value)} />
+            ))
+          ) : <div className="font-medium">{String(p.employment_type||'')}</div>}
         </div>
         <div>
           <div className="text-sm text-gray-600">Pay type</div>
-          {isEditable? <input className="w-full rounded-lg border px-3 py-2" value={form.pay_type} onChange={e=>onField('pay_type', e.target.value)} /> : <div className="font-medium">{String(p.pay_type||'')}</div>}
+          {isEditable? (
+            (settings?.pay_types?.length ? (
+              <select className="w-full rounded-lg border px-3 py-2" value={form.pay_type} onChange={e=>onField('pay_type', e.target.value)}>
+                <option value="">Select...</option>
+                {settings.pay_types.map((it:any)=> <option key={it.id} value={it.label}>{it.label}</option>)}
+              </select>
+            ) : (
+              <input className="w-full rounded-lg border px-3 py-2" value={form.pay_type} onChange={e=>onField('pay_type', e.target.value)} />
+            ))
+          ) : <div className="font-medium">{String(p.pay_type||'')}</div>}
         </div>
         <div>
           <div className="text-sm text-gray-600">Pay rate</div>
@@ -459,7 +478,16 @@ function JobSection({ type, p, editable, userId, collectChanges, usersOptions }:
     <div className="grid md:grid-cols-2 gap-4">
       <div>
         <div className="text-sm text-gray-600">Division</div>
-        {isEditable? <input className="w-full rounded-lg border px-3 py-2" value={form.division} onChange={e=>onField('division', e.target.value)} /> : <div className="font-medium">{String(p.division||'')}</div>}
+        {isEditable? (
+          (settings?.divisions?.length ? (
+            <select className="w-full rounded-lg border px-3 py-2" value={form.division} onChange={e=>onField('division', e.target.value)}>
+              <option value="">Select...</option>
+              {settings.divisions.map((it:any)=> <option key={it.id} value={it.label}>{it.label}</option>)}
+            </select>
+          ) : (
+            <input className="w-full rounded-lg border px-3 py-2" value={form.division} onChange={e=>onField('division', e.target.value)} />
+          ))
+        ) : <div className="font-medium">{String(p.division||'')}</div>}
       </div>
       <div>
         <div className="text-sm text-gray-600">Supervisor</div>
