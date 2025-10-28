@@ -52,6 +52,7 @@ class SupplierBase(BaseModel):
     status: Optional[str] = None
     notes: Optional[str] = None
     is_active: Optional[bool] = True
+    image_base64: Optional[str] = None
 
     @field_validator("email", "phone", "website", "address_line1", "address_line2", "city", "province", "postal_code", "country", "tax_number", "payment_terms", "currency", "category", "status", "notes", mode="before")
     @classmethod

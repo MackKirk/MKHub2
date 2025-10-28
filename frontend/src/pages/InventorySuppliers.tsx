@@ -157,8 +157,8 @@ export default function InventorySuppliers() {
         // Update the viewing state with the full updated supplier
         setViewing(updatedSupplier);
         
-        // Invalidate queries to refresh the list
-        queryClient.invalidateQueries({ queryKey: ['suppliers'] });
+        // Force refetch to refresh the list
+        await queryClient.refetchQueries({ queryKey: ['suppliers'] });
         
         toast.success('Image updated');
       } catch (error) {
@@ -407,7 +407,29 @@ export default function InventorySuppliers() {
                 </div>
               ) : (
                 // Edit/Create mode - form inputs
-                <div className="p-6 grid grid-cols-2 gap-4">
+                <div className="space-y-6">
+                  {/* Edit Header */}
+                  <div className="bg-gradient-to-br from-blue-600 to-blue-700 p-6">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h2 className="text-2xl font-extrabold text-white">
+                          {editing ? 'Edit Supplier' : 'New Supplier'}
+                        </h2>
+                        {editing && (
+                          <p className="text-sm text-white/80 mt-1">
+                            Update supplier information
+                          </p>
+                        )}
+                        {!editing && (
+                          <p className="text-sm text-white/80 mt-1">
+                            Add a new supplier to your inventory
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div className="p-6 grid grid-cols-2 gap-4">
                 <div className="col-span-2">
                   <label className="text-xs font-semibold text-gray-700">Name *</label>
                   <input
@@ -508,6 +530,7 @@ export default function InventorySuppliers() {
                     onChange={(e) => setCountry(e.target.value)}
                   />
                 </div>
+                  </div>
               </div>
               )}
             </div>
