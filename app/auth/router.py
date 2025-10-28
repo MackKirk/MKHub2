@@ -808,12 +808,19 @@ def delete_education(user_id: str, eid: str, db: Session = Depends(get_db), _=De
 
 
 @router.get("/users/{user_id}/documents")
-def list_documents(user_id: str, db: Session = Depends(get_db), _=Depends(require_permissions("users:read"))):
+def list_documents(user_id: str, folder_id: Optional[str] = None, db: Session = Depends(get_db), _=Depends(require_permissions("users:read"))):
     from ..models.models import EmployeeDocument
-    rows = db.query(EmployeeDocument).filter(EmployeeDocument.user_id == user_id).all()
+    q = db.query(EmployeeDocument).filter(EmployeeDocument.user_id == user_id)
+    if folder_id:
+        try:
+            q = q.filter(EmployeeDocument.folder_id == uuid.UUID(folder_id))
+        except Exception:
+            q = q.filter(EmployeeDocument.folder_id == None)  # invalid id -> no results
+    rows = q.all()
     def _row(d):
         return {
             "id": str(d.id),
+            "folder_id": str(d.folder_id) if getattr(d, 'folder_id', None) else None,
             "doc_type": d.doc_type,
             "title": d.title,
             "number": d.number,
@@ -840,6 +847,7 @@ def create_document(user_id: str, payload: dict = Body(...), db: Session = Depen
     d = EmployeeDocument(
         user_id=user_id,
         doc_type=payload.get("doc_type") or "other",
+        folder_id=payload.get("folder_id"),
         title=payload.get("title"),
         number=payload.get("number"),
         issuing_country=payload.get("issuing_country"),
@@ -860,6 +868,51 @@ def delete_document(user_id: str, doc_id: str, db: Session = Depends(get_db), _=
     db.query(EmployeeDocument).filter(and_(EmployeeDocument.user_id == user_id, EmployeeDocument.id == doc_id)).delete()
     db.commit()
     return {"status": "ok"}
+
+
+# ===== Employee Folders =====
+@router.get("/users/{user_id}/folders")
+def list_folders(user_id: str, db: Session = Depends(get_db), _=Depends(require_permissions("users:read"))):
+    from ..models.models import EmployeeFolder
+    rows = db.query(EmployeeFolder).filter(EmployeeFolder.user_id == user_id).order_by(EmployeeFolder.sort_index.asc(), EmployeeFolder.name.asc()).all()
+    return [{
+        "id": str(f.id),
+        "name": f.name,
+        "parent_id": str(f.parent_id) if getattr(f, 'parent_id', None) else None,
+        "sort_index": f.sort_index,
+    } for f in rows]
+
+
+@router.post("/users/{user_id}/folders")
+def create_folder(user_id: str, name: str = Body(...), parent_id: Optional[str] = Body(None), db: Session = Depends(get_db), user: User = Depends(require_permissions("users:write"))):
+    from ..models.models import EmployeeFolder
+    fid = None
+    try:
+        fid = uuid.UUID(parent_id) if parent_id else None
+    except Exception:
+        fid = None
+    f = EmployeeFolder(user_id=user_id, name=(name or "").strip(), parent_id=fid, created_by=user.id)
+    if not f.name:
+        raise HTTPException(status_code=400, detail="Folder name required")
+    db.add(f)
+    db.commit()
+    return {"id": str(f.id)}
+
+
+@router.delete("/users/{user_id}/folders/{folder_id}")
+def delete_folder(user_id: str, folder_id: str, db: Session = Depends(get_db), _=Depends(require_permissions("users:write"))):
+    from ..models.models import EmployeeFolder, EmployeeDocument
+    try:
+        fid = uuid.UUID(folder_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid folder")
+    # prevent delete if documents exist
+    has_docs = db.query(EmployeeDocument).filter(EmployeeDocument.user_id == user_id, EmployeeDocument.folder_id == fid).first()
+    if has_docs:
+        raise HTTPException(status_code=400, detail="Folder not empty")
+    db.query(EmployeeFolder).filter(and_(EmployeeFolder.user_id == user_id, EmployeeFolder.id == fid)).delete()
+    db.commit()
+    return {"status":"ok"}
 
 
 # ===== Employee Notes =====

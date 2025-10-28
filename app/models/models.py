@@ -558,11 +558,24 @@ class EmployeeDependent(Base):
     birth_date: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
 
 
+class EmployeeFolder(Base):
+    __tablename__ = "employee_folders"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    parent_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("employee_folders.id", ondelete="SET NULL"))
+    sort_index: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    created_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
+
 class EmployeeDocument(Base):
     __tablename__ = "employee_documents"
 
     id: Mapped[uuid.UUID] = uuid_pk()
     user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    # Optional folder hierarchy
+    folder_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("employee_folders.id", ondelete="SET NULL"))
     # Generic document typing
     doc_type: Mapped[str] = mapped_column(String(100))  # e.g., passport, driver_license, bc_registration
     title: Mapped[Optional[str]] = mapped_column(String(255))

@@ -627,49 +627,59 @@ function TimesheetBlock({ userId }:{ userId:string }){
 
 
 function UserDocuments({ userId, canEdit }:{ userId:string, canEdit:boolean }){
-  const { data:docs, refetch } = useQuery({ queryKey:['user-docs', userId], queryFn: ()=> api<any[]>('GET', `/auth/users/${encodeURIComponent(userId)}/documents`) });
-  const folders = useMemo(()=>{
-    const set = new Set<string>();
-    (docs||[]).forEach((d:any)=> { if(d.doc_type) set.add(d.doc_type); });
-    return ['All', ...Array.from(set)];
-  }, [docs]);
-  const [active, setActive] = useState<string>('All');
-  const list = useMemo(()=> (active==='All'? (docs||[]) : (docs||[]).filter((d:any)=> d.doc_type===active)), [docs, active]);
+  const { data:folders, refetch: refetchFolders } = useQuery({ queryKey:['user-folders', userId], queryFn: ()=> api<any[]>('GET', `/auth/users/${encodeURIComponent(userId)}/folders`) });
+  const [activeFolderId, setActiveFolderId] = useState<string>('all');
+  const { data:docs, refetch } = useQuery({ queryKey:['user-docs', userId, activeFolderId], queryFn: ()=> {
+    const qs = activeFolderId!=='all'? (`?folder_id=${encodeURIComponent(activeFolderId)}`): '';
+    return api<any[]>('GET', `/auth/users/${encodeURIComponent(userId)}/documents${qs}`);
+  }});
   const [showUpload, setShowUpload] = useState(false);
   const [fileObj, setFileObj] = useState<File|null>(null);
-  const [folderName, setFolderName] = useState<string>('');
   const [title, setTitle] = useState<string>('');
-  const effFolder = folderName || (active!=='All'? active : '');
+  const [showNewFolder, setShowNewFolder] = useState(false);
+  const [newFolderName, setNewFolderName] = useState('');
 
   const upload = async()=>{
     try{
       if(!fileObj){ toast.error('Select a file'); return; }
+      if(activeFolderId==='all'){ toast.error('Select a folder first'); return; }
       const name = fileObj.name; const type = fileObj.type || 'application/octet-stream';
       const up = await api('POST','/files/upload',{ original_name: name, content_type: type, project_id: null, client_id: null, category_id: userId });
       await fetch(up.upload_url, { method:'PUT', headers:{ 'Content-Type': type }, body: fileObj });
       const conf = await api('POST','/files/confirm',{ key: up.key, size_bytes: fileObj.size, content_type: type });
-      await api('POST', `/auth/users/${encodeURIComponent(userId)}/documents`, { doc_type: effFolder || 'General', title: title || name, file_id: conf.id });
-      toast.success('Uploaded'); setShowUpload(false); setFileObj(null); setTitle(''); if(folderName){ setActive(folderName); setFolderName(''); } await refetch();
+      await api('POST', `/auth/users/${encodeURIComponent(userId)}/documents`, { folder_id: activeFolderId, title: title || name, file_id: conf.id });
+      toast.success('Uploaded'); setShowUpload(false); setFileObj(null); setTitle(''); await refetch();
     }catch(_e){ toast.error('Upload failed'); }
   };
 
   const del = async(id:string)=>{ try{ await api('DELETE', `/auth/users/${encodeURIComponent(userId)}/documents/${encodeURIComponent(id)}`); await refetch(); }catch(_e){ toast.error('Delete failed'); } };
+  const createFolder = async()=>{
+    try{
+      const name = newFolderName.trim(); if(!name){ toast.error('Folder name required'); return; }
+      const r = await api('POST', `/auth/users/${encodeURIComponent(userId)}/folders`, { name });
+      toast.success('Folder created'); setShowNewFolder(false); setNewFolderName(''); await refetchFolders(); setActiveFolderId(r.id);
+    }catch(_e){ toast.error('Failed to create folder'); }
+  };
 
   return (
     <div>
       <div className="flex items-center gap-2 mb-3">
-        {folders.map((f)=> (
-          <button key={f} onClick={()=>setActive(f)} className={`px-3 py-1.5 rounded-lg text-sm ${active===f? 'bg-black text-white':'bg-white border'}`}>{f}</button>
+        <button onClick={()=> setActiveFolderId('all')} className={`px-3 py-1.5 rounded-lg text-sm ${activeFolderId==='all'? 'bg-black text-white':'bg-white border'}`}>All files</button>
+        {(folders||[]).map((f:any)=> (
+          <button key={f.id} onClick={()=> setActiveFolderId(f.id)} className={`px-3 py-1.5 rounded-lg text-sm ${activeFolderId===f.id? 'bg-black text-white':'bg-white border'}`}>{f.name}</button>
         ))}
-        {canEdit && <button onClick={()=> setShowUpload(true)} className="ml-auto px-3 py-2 rounded-lg bg-brand-red text-white">Add file</button>}
+        {canEdit && <>
+          <button onClick={()=> setShowNewFolder(true)} className="ml-auto px-3 py-2 rounded-lg border">New folder</button>
+          <button onClick={()=> setShowUpload(true)} className="px-3 py-2 rounded-lg bg-brand-red text-white">Add file</button>
+        </>}
       </div>
       <div className="grid md:grid-cols-3 gap-3">
-        {list.map((d:any)=> (
+        {(docs||[]).map((d:any)=> (
           <div key={d.id} className="rounded-lg border p-3 flex items-center gap-3">
             <img className="w-12 h-12 rounded object-cover border" src={d.file_id? `/files/${d.file_id}/thumbnail?w=96`:'/ui/assets/login/logo-light.svg'} />
             <div className="flex-1 min-w-0">
               <div className="font-medium truncate">{d.title||'Document'}</div>
-              <div className="text-xs text-gray-600 truncate">{d.doc_type||'General'}</div>
+              <div className="text-xs text-gray-600 truncate">{(folders||[]).find((x:any)=>x.id===d.folder_id)?.name || '—'}</div>
             </div>
             <div className="flex items-center gap-2">
               <a className="text-sm underline" href={`/files/${d.file_id}/download`} target="_blank">Download</a>
@@ -677,7 +687,7 @@ function UserDocuments({ userId, canEdit }:{ userId:string, canEdit:boolean }){
             </div>
           </div>
         ))}
-        {!list.length && <div className="text-sm text-gray-600">No documents</div>}
+        {!(docs||[]).length && <div className="text-sm text-gray-600">No documents</div>}
       </div>
 
       {showUpload && (
@@ -687,13 +697,10 @@ function UserDocuments({ userId, canEdit }:{ userId:string, canEdit:boolean }){
             <div className="space-y-3">
               <div>
                 <div className="text-xs text-gray-600">Folder</div>
-                <div className="flex gap-2">
-                  <select className="border rounded px-3 py-2 flex-1" value={active==='All'? '': active} onChange={e=> setActive(e.target.value||'All')}>
-                    <option value="">(New folder)</option>
-                    {folders.filter(f=>f!=='All').map(f=> <option key={f} value={f}>{f}</option>)}
-                  </select>
-                  <input className="border rounded px-3 py-2 flex-1" placeholder="New folder name" value={folderName} onChange={e=> setFolderName(e.target.value)} />
-                </div>
+                <select className="border rounded px-3 py-2 w-full" value={activeFolderId==='all'? '': activeFolderId} onChange={e=> setActiveFolderId(e.target.value||'all')}>
+                  <option value="">Select a folder</option>
+                  {(folders||[]).map((f:any)=> <option key={f.id} value={f.id}>{f.name}</option>)}
+                </select>
               </div>
               <div>
                 <div className="text-xs text-gray-600">Title</div>
@@ -707,6 +714,22 @@ function UserDocuments({ userId, canEdit }:{ userId:string, canEdit:boolean }){
             <div className="mt-4 flex justify-end gap-2">
               <button onClick={()=>setShowUpload(false)} className="px-3 py-2 rounded border">Cancel</button>
               <button onClick={upload} className="px-3 py-2 rounded bg-brand-red text-white">Upload</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showNewFolder && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl w-full max-w-sm p-4">
+            <div className="text-lg font-semibold mb-2">New folder</div>
+            <div>
+              <div className="text-xs text-gray-600">Folder name</div>
+              <input className="border rounded px-3 py-2 w-full" value={newFolderName} onChange={e=> setNewFolderName(e.target.value)} placeholder="e.g., Hiring pack" />
+            </div>
+            <div className="mt-4 flex justify-end gap-2">
+              <button onClick={()=>setShowNewFolder(false)} className="px-3 py-2 rounded border">Cancel</button>
+              <button onClick={createFolder} className="px-3 py-2 rounded bg-brand-red text-white">Create</button>
             </div>
           </div>
         </div>
