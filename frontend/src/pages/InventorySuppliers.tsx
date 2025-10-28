@@ -61,6 +61,7 @@ export default function InventorySuppliers() {
   const [postalCode, setPostalCode] = useState('');
   const [country, setCountry] = useState('');
   const [imageDataUrl, setImageDataUrl] = useState('');
+  const [fileInputRef, setFileInputRef] = useState<HTMLInputElement | null>(null);
 
   const { data, isLoading, isFetching } = useQuery({
     queryKey: ['suppliers', q],
@@ -156,6 +157,26 @@ export default function InventorySuppliers() {
     reader.readAsDataURL(file);
   };
 
+  const updateSupplierImage = async (file: File) => {
+    if (!viewing) return;
+    
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      const imageBase64 = e.target?.result as string;
+      try {
+        await api('PUT', `/inventory/suppliers/${viewing.id}`, {
+          ...viewing,
+          image_base64: imageBase64
+        });
+        queryClient.invalidateQueries({ queryKey: ['suppliers'] });
+        toast.success('Image updated');
+      } catch (error) {
+        toast.error('Failed to update image');
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
   const handleSubmit = () => {
     if (!name.trim()) {
       toast.error('Name is required');
@@ -174,7 +195,6 @@ export default function InventorySuppliers() {
       province: province.trim() || undefined,
       postal_code: postalCode.trim() || undefined,
       country: country.trim() || undefined,
-      image_base64: imageDataUrl || undefined,
       is_active: true,
     };
 
@@ -321,11 +341,33 @@ export default function InventorySuppliers() {
                     >
                       ×
                     </button>
-                    <img 
-                      src={viewing.image_base64 || '/ui/assets/login/logo-light.svg'} 
-                      className="w-24 h-24 rounded-xl border-4 border-white object-cover shadow-lg" 
-                      alt={viewing.name}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      ref={setFileInputRef}
+                      style={{ display: 'none' }}
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          onFileChange(file);
+                          // Save the image immediately
+                          updateSupplierImage(file);
+                        }
+                      }}
                     />
+                    <button
+                      onClick={() => fileInputRef?.click()}
+                      className="w-24 h-24 rounded-xl border-4 border-white shadow-lg overflow-hidden hover:border-white/80 transition-all relative group"
+                    >
+                      <img 
+                        src={viewing.image_base64 || '/ui/assets/login/logo-light.svg'} 
+                        className="w-full h-full object-cover" 
+                        alt={viewing.name}
+                      />
+                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white font-semibold text-sm transition-opacity">
+                        ✏️ Change
+                      </div>
+                    </button>
                     <div className="flex-1">
                       <h2 className="text-3xl font-extrabold text-white">{viewing.name}</h2>
                       {viewing.legal_name && (
@@ -488,18 +530,6 @@ export default function InventorySuppliers() {
                     value={country}
                     onChange={(e) => setCountry(e.target.value)}
                   />
-                </div>
-                <div className="col-span-2">
-                  <label className="text-xs font-semibold text-gray-700">Supplier Image</label>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={(e) => onFileChange(e.target.files?.[0] || null)}
-                    className="w-full border rounded px-3 py-2 mt-1"
-                  />
-                  {imageDataUrl && (
-                    <img src={imageDataUrl} className="mt-2 w-48 border rounded object-cover" alt="Preview" />
-                  )}
                 </div>
               </div>
               )}
