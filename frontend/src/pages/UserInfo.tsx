@@ -5,6 +5,14 @@ import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
 import GeoSelect from '@/components/GeoSelect';
 
+function UserLabel({ id, fallback }:{ id:string, fallback:string }){
+  const { data } = useQuery({ queryKey:['user-prof-opt', id], queryFn: ()=> api<any>('GET', `/auth/users/${id}/profile`), enabled: !!id });
+  const fn = data?.profile?.preferred_name || data?.profile?.first_name || '';
+  const ln = data?.profile?.last_name || '';
+  const label = `${fn} ${ln}`.trim() || fallback;
+  return <>{label}</>;
+}
+
 export default function UserInfo(){
   const { userId } = useParams();
   const [sp] = useSearchParams();
@@ -36,6 +44,8 @@ export default function UserInfo(){
     const row = (usersOptions||[]).find((x:any)=> String(x.id)===String(p.manager_user_id));
     return row? (row.username || row.email) : '';
   }, [usersOptions, p?.manager_user_id, supervisorProfile]);
+
+  
 
   function calcAge(dob?: string){
     if(!dob) return '';
@@ -108,7 +118,13 @@ export default function UserInfo(){
           </div>
           <div className="mt-4 flex items-center gap-2">
             {['personal','job','emergency','docs','timesheet'].map((k)=> (
-              <button key={k} onClick={()=>setTab(k as any)} className={`px-4 py-2 rounded-full ${tab===k?'bg-black text-white':'bg-white text-black border'}`}>{String(k).replace(/^./,s=>s.toUpperCase())}</button>
+              <button
+                key={k}
+                onClick={()=>setTab(k as any)}
+                className={`px-4 py-2 rounded-lg shadow-sm ${tab===k? 'bg-black text-white' : 'bg-white text-black border'}`}
+              >
+                {String(k).replace(/^./,s=>s.toUpperCase())}
+              </button>
             ))}
           </div>
         </div>
@@ -120,7 +136,7 @@ export default function UserInfo(){
                   <div>
                     <div className="flex items-center gap-2"><h4 className="font-semibold">Basic information</h4></div>
                     <div className="text-xs text-gray-500 mt-0.5 mb-2">Core personal details.</div>
-                    <EditableGrid p={p} editable={canEdit} selfEdit={!!canSelfEdit} userId={String(userId)} collectChanges={collectChanges} inlineSave={false} fields={[['Preferred name','preferred_name'],['Gender','gender'],['Marital status','marital_status'],['Date of birth','date_of_birth'],['Nationality','nationality']]} />
+                    <EditableGrid p={p} editable={canEdit} selfEdit={!!canSelfEdit} userId={String(userId)} collectChanges={collectChanges} inlineSave={false} fields={[['First name','first_name'],['Last name','last_name'],['Preferred name','preferred_name'],['Gender','gender'],['Marital status','marital_status'],['Date of birth','date_of_birth'],['Nationality','nationality']]} />
                   </div>
                   <div>
                     <div className="flex items-center gap-2"><h4 className="font-semibold">Address</h4></div>
@@ -450,7 +466,9 @@ function JobSection({ type, p, editable, userId, collectChanges, usersOptions }:
         {isEditable? (
           <select className="w-full rounded-lg border px-3 py-2" value={form.manager_user_id} onChange={e=>onField('manager_user_id', e.target.value)}>
             <option value="">Select...</option>
-            {(usersOptions||[]).map((u:any)=> <option key={u.id} value={u.id}>{u.username||u.email}</option>)}
+            {(usersOptions||[]).map((u:any)=> (
+              <option key={u.id} value={u.id}><UserLabel id={u.id} fallback={u.username||u.email} /></option>
+            ))}
           </select>
         ) : (
           <div className="font-medium">{supervisor||'—'}</div>
