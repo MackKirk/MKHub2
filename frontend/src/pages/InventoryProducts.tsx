@@ -2,10 +2,12 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { useMemo, useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
+import { useConfirm } from '@/components/ConfirmProvider';
 
 type Material = { id:number, name:string, supplier_name?:string, category?:string, unit?:string, price?:number, last_updated?:string, unit_type?:string, units_per_package?:number, coverage_sqs?:number, coverage_ft2?:number, coverage_m2?:number, description?:string, image_base64?:string };
 
 export default function InventoryProducts(){
+  const confirm = useConfirm();
   const [q, setQ] = useState('');
   const [supplier, setSupplier] = useState('');
   const [category, setCategory] = useState('');
@@ -150,7 +152,13 @@ export default function InventoryProducts(){
   };
 
   const handleDelete = async (id: number)=>{
-    if(!confirm('Delete this product?')) return;
+    const ok = await confirm({ 
+      title: 'Delete product', 
+      message: 'Are you sure you want to delete this product? This action cannot be undone.',
+      confirmText: 'Delete',
+      cancelText: 'Cancel'
+    });
+    if (!ok) return;
     try{
       await api('DELETE', `/estimate/products/${id}`);
       toast.success('Deleted');
@@ -212,7 +220,13 @@ export default function InventoryProducts(){
   };
 
   const deleteRelation = async (a: number, b: number)=>{
-    if(!confirm('Remove this relation?')) return;
+    const ok = await confirm({ 
+      title: 'Remove relation', 
+      message: 'Are you sure you want to remove this relation between products?',
+      confirmText: 'Remove',
+      cancelText: 'Cancel'
+    });
+    if (!ok) return;
     try{
       await api('DELETE', `/estimate/related/${a}/${b}`);
       toast.success('Relation removed');
