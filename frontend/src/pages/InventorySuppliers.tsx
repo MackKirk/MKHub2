@@ -1,45 +1,360 @@
-import { useQuery } from '@tanstack/react-query';
+import { useState, useMemo } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
-import { useState } from 'react';
 import toast from 'react-hot-toast';
 
-type Supplier = { id:string, name:string, legal_name?:string, email?:string, phone?:string, city?:string, province?:string, country?:string };
+type Supplier = {
+  id: string;
+  name: string;
+  legal_name?: string;
+  email?: string;
+  phone?: string;
+  city?: string;
+  province?: string;
+  country?: string;
+  website?: string;
+  is_active?: boolean;
+  created_at?: string;
+};
 
-export default function InventorySuppliers(){
-  const { data, refetch, isLoading, error } = useQuery({ 
-    queryKey:['suppliers'], 
-    queryFn: async()=> await api<any[]>('GET','/inventory/suppliers'),
-    retry: false,
-  });
+export default function InventorySuppliers() {
+  const queryClient = useQueryClient();
+  const [q, setQ] = useState('');
   const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState<Supplier | null>(null);
+  
+  // Form fields
   const [name, setName] = useState('');
+  const [legalName, setLegalName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
+  const [website, setWebsite] = useState('');
+  const [addressLine1, setAddressLine1] = useState('');
+  const [addressLine2, setAddressLine2] = useState('');
+  const [city, setCity] = useState('');
+  const [province, setProvince] = useState('');
+  const [postalCode, setPostalCode] = useState('');
+  const [country, setCountry] = useState('');
+
+  const { data, isLoading, isFetching } = useQuery({
+    queryKey: ['suppliers', q],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (q) params.set('q', q);
+      const path = params.toString() ? `/inventory/suppliers?${params.toString()}` : '/inventory/suppliers';
+      return await api<Supplier[]>('GET', path);
+    },
+  });
+
+  const createMut = useMutation({
+    mutationFn: async (data: any) => api('POST', '/inventory/suppliers', data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['suppliers'] });
+      toast.success('Supplier created');
+      setOpen(false);
+      resetForm();
+    },
+    onError: () => toast.error('Failed to create supplier'),
+  });
+
+  const updateMut = useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: any }) => api('PUT', `/inventory/suppliers/${id}`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['suppliers'] });
+      toast.success('Supplier updated');
+      setOpen(false);
+      resetForm();
+    },
+    onError: () => toast.error('Failed to update supplier'),
+  });
+
+  const deleteMut = useMutation({
+    mutationFn: async (id: string) => api('DELETE', `/inventory/suppliers/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['suppliers'] });
+      toast.success('Supplier deleted');
+    },
+    onError: () => toast.error('Failed to delete supplier'),
+  });
+
+  const resetForm = () => {
+    setName('');
+    setLegalName('');
+    setEmail('');
+    setPhone('');
+    setWebsite('');
+    setAddressLine1('');
+    setAddressLine2('');
+    setCity('');
+    setProvince('');
+    setPostalCode('');
+    setCountry('');
+    setEditing(null);
+  };
+
+  const openEditModal = (supplier: Supplier) => {
+    setEditing(supplier);
+    setName(supplier.name);
+    setLegalName(supplier.legal_name || '');
+    setEmail(supplier.email || '');
+    setPhone(supplier.phone || '');
+    setWebsite(supplier.website || '');
+    setCity(supplier.city || '');
+    setProvince(supplier.province || '');
+    setCountry(supplier.country || '');
+    setOpen(true);
+  };
+
+  const handleSubmit = () => {
+    if (!name.trim()) {
+      toast.error('Name is required');
+      return;
+    }
+    
+    const data = {
+      name: name.trim(),
+      legal_name: legalName.trim() || undefined,
+      email: email.trim() || undefined,
+      phone: phone.trim() || undefined,
+      website: website.trim() || undefined,
+      address_line1: addressLine1.trim() || undefined,
+      address_line2: addressLine2.trim() || undefined,
+      city: city.trim() || undefined,
+      province: province.trim() || undefined,
+      postal_code: postalCode.trim() || undefined,
+      country: country.trim() || undefined,
+      is_active: true,
+    };
+
+    if (editing) {
+      updateMut.mutate({ id: editing.id, data });
+    } else {
+      createMut.mutate(data);
+    }
+  };
+
+  const rows = data || [];
+
   return (
     <div>
-      <div className="mb-3 flex items-center justify-between">
+      <div className="mb-4 flex items-center justify-between">
         <h1 className="text-2xl font-bold">Suppliers</h1>
-        <button onClick={()=>setOpen(true)} className="px-3 py-2 rounded bg-brand-red text-white">New Supplier</button>
+        <button
+          onClick={() => {
+            resetForm();
+            setOpen(true);
+          }}
+          className="px-4 py-2 rounded bg-brand-red text-white hover:bg-brand-red-dark"
+        >
+          New Supplier
+        </button>
       </div>
+
+      <div className="mb-4">
+        <input
+          type="text"
+          placeholder="Search suppliers..."
+          className="w-full max-w-md px-4 py-2 border rounded-lg"
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+        />
+      </div>
+
       <div className="rounded-xl border bg-white overflow-hidden">
         <table className="w-full text-sm">
-          <thead className="bg-gray-50"><tr><th className="p-2 text-left">Name</th><th className="p-2 text-left">Email</th><th className="p-2 text-left">Phone</th><th className="p-2 text-left">City</th></tr></thead>
+          <thead className="bg-gray-50">
+            <tr>
+              <th className="p-3 text-left">Name</th>
+              <th className="p-3 text-left">Email</th>
+              <th className="p-3 text-left">Phone</th>
+              <th className="p-3 text-left">City</th>
+              <th className="p-3 text-left">Province</th>
+              <th className="p-3 text-right">Actions</th>
+            </tr>
+          </thead>
           <tbody>
-            {isLoading? <tr><td colSpan={4} className="p-4"><div className="h-6 bg-gray-100 animate-pulse rounded"/></td></tr> : Array.isArray(data) && data.length? data.map(s=> (
-              <tr key={s.id} className="border-t"><td className="p-2">{s.name}</td><td className="p-2">{s.email||''}</td><td className="p-2">{s.phone||''}</td><td className="p-2">{s.city||''}</td></tr>
-            )) : (!isLoading && !Array.isArray(data)) ? <tr><td colSpan={4} className="p-4 text-red-600">Error loading suppliers</td></tr> : <tr><td colSpan={4} className="p-3 text-gray-600">No suppliers yet</td></tr>}
+            {isLoading ? (
+              <tr>
+                <td colSpan={6} className="p-4">
+                  <div className="h-6 bg-gray-100 animate-pulse rounded" />
+                </td>
+              </tr>
+            ) : !Array.isArray(rows) || !rows.length ? (
+              <tr>
+                <td colSpan={6} className="p-4 text-gray-600 text-center">
+                  No suppliers yet
+                </td>
+              </tr>
+            ) : (
+              rows.map((s) => (
+                <tr key={s.id} className="border-t hover:bg-gray-50">
+                  <td className="p-3 font-medium">{s.name}</td>
+                  <td className="p-3 text-gray-600">{s.email || '-'}</td>
+                  <td className="p-3 text-gray-600">{s.phone || '-'}</td>
+                  <td className="p-3 text-gray-600">{s.city || '-'}</td>
+                  <td className="p-3 text-gray-600">{s.province || '-'}</td>
+                  <td className="p-3 text-right">
+                    <button
+                      onClick={() => openEditModal(s)}
+                      className="px-2 py-1 rounded text-blue-600 hover:bg-blue-50"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      onClick={() => {
+                        if (confirm('Delete this supplier?')) {
+                          deleteMut.mutate(s.id);
+                        }
+                      }}
+                      className="px-2 py-1 rounded text-red-600 hover:bg-red-50"
+                    >
+                      Delete
+                    </button>
+                  </td>
+                </tr>
+              ))
+            )}
           </tbody>
         </table>
       </div>
+
       {open && (
         <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center">
-          <div className="w-[600px] max-w-[95vw] bg-white rounded-xl overflow-hidden">
-            <div className="px-4 py-3 border-b flex items-center justify-between"><div className="font-semibold">New Supplier</div><button onClick={()=>setOpen(false)} className="px-3 py-1 rounded bg-gray-100">Close</button></div>
-            <div className="p-4 grid grid-cols-2 gap-3">
-              <div className="col-span-2"><label className="text-xs text-gray-600">Name</label><input className="w-full border rounded px-3 py-2" value={name} onChange={e=>setName(e.target.value)} /></div>
-              <div><label className="text-xs text-gray-600">Email</label><input className="w-full border rounded px-3 py-2" value={email} onChange={e=>setEmail(e.target.value)} /></div>
-              <div><label className="text-xs text-gray-600">Phone</label><input className="w-full border rounded px-3 py-2" value={phone} onChange={e=>setPhone(e.target.value)} /></div>
-              <div className="col-span-2 text-right"><button onClick={async()=>{ if(!name){ toast.error('Name required'); return; } try{ await api('POST','/inventory/suppliers', { name, email, phone }); toast.success('Supplier created'); setOpen(false); setName(''); setEmail(''); setPhone(''); refetch(); }catch(_e){ toast.error('Failed'); } }} className="px-4 py-2 rounded bg-brand-red text-white">Create</button></div>
+          <div className="w-[700px] max-w-[95vw] max-h-[90vh] bg-white rounded-xl overflow-hidden flex flex-col">
+            <div className="px-6 py-4 border-b flex items-center justify-between bg-gray-50">
+              <div className="font-semibold text-lg">
+                {editing ? 'Edit Supplier' : 'New Supplier'}
+              </div>
+              <button
+                onClick={() => {
+                  setOpen(false);
+                  resetForm();
+                }}
+                className="px-3 py-1 rounded bg-gray-200 hover:bg-gray-300"
+              >
+                Close
+              </button>
+            </div>
+            <div className="p-6 overflow-y-auto">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="col-span-2">
+                  <label className="text-xs font-semibold text-gray-700">Name *</label>
+                  <input
+                    type="text"
+                    className="w-full border rounded px-3 py-2 mt-1"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                  />
+                </div>
+                <div className="col-span-2">
+                  <label className="text-xs font-semibold text-gray-700">Legal Name</label>
+                  <input
+                    type="text"
+                    className="w-full border rounded px-3 py-2 mt-1"
+                    value={legalName}
+                    onChange={(e) => setLegalName(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-gray-700">Email</label>
+                  <input
+                    type="email"
+                    className="w-full border rounded px-3 py-2 mt-1"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-gray-700">Phone</label>
+                  <input
+                    type="text"
+                    className="w-full border rounded px-3 py-2 mt-1"
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                  />
+                </div>
+                <div className="col-span-2">
+                  <label className="text-xs font-semibold text-gray-700">Website</label>
+                  <input
+                    type="url"
+                    className="w-full border rounded px-3 py-2 mt-1"
+                    value={website}
+                    onChange={(e) => setWebsite(e.target.value)}
+                  />
+                </div>
+                <div className="col-span-2">
+                  <label className="text-xs font-semibold text-gray-700">Address Line 1</label>
+                  <input
+                    type="text"
+                    className="w-full border rounded px-3 py-2 mt-1"
+                    value={addressLine1}
+                    onChange={(e) => setAddressLine1(e.target.value)}
+                  />
+                </div>
+                <div className="col-span-2">
+                  <label className="text-xs font-semibold text-gray-700">Address Line 2</label>
+                  <input
+                    type="text"
+                    className="w-full border rounded px-3 py-2 mt-1"
+                    value={addressLine2}
+                    onChange={(e) => setAddressLine2(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-gray-700">City</label>
+                  <input
+                    type="text"
+                    className="w-full border rounded px-3 py-2 mt-1"
+                    value={city}
+                    onChange={(e) => setCity(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-gray-700">Province</label>
+                  <input
+                    type="text"
+                    className="w-full border rounded px-3 py-2 mt-1"
+                    value={province}
+                    onChange={(e) => setProvince(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-gray-700">Postal Code</label>
+                  <input
+                    type="text"
+                    className="w-full border rounded px-3 py-2 mt-1"
+                    value={postalCode}
+                    onChange={(e) => setPostalCode(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-gray-700">Country</label>
+                  <input
+                    type="text"
+                    className="w-full border rounded px-3 py-2 mt-1"
+                    value={country}
+                    onChange={(e) => setCountry(e.target.value)}
+                  />
+                </div>
+              </div>
+            </div>
+            <div className="px-6 py-4 border-t bg-gray-50 flex justify-end gap-2">
+              <button
+                onClick={() => {
+                  setOpen(false);
+                  resetForm();
+                }}
+                className="px-4 py-2 rounded bg-gray-200 hover:bg-gray-300"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSubmit}
+                disabled={createMut.isPending || updateMut.isPending}
+                className="px-4 py-2 rounded bg-brand-red text-white hover:bg-brand-red-dark disabled:opacity-50"
+              >
+                {editing ? 'Update' : 'Create'}
+              </button>
             </div>
           </div>
         </div>
@@ -47,5 +362,3 @@ export default function InventorySuppliers(){
     </div>
   );
 }
-
-
