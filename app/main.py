@@ -309,7 +309,22 @@ def create_app() -> FastAPI:
                                        "commented_at TIMESTAMPTZ,\n"
                                        "updated_at TIMESTAMPTZ DEFAULT NOW()\n"
                                        ")"))
-                    # Ensure suppliers table has created_at and updated_at
+                    # Ensure suppliers table has all required columns
+                    conn.execute(text("ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS legal_name VARCHAR(255)"))
+                    conn.execute(text("ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS website VARCHAR(255)"))
+                    conn.execute(text("ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS address_line1 VARCHAR(255)"))
+                    conn.execute(text("ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS address_line2 VARCHAR(255)"))
+                    conn.execute(text("ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS province VARCHAR(100)"))
+                    conn.execute(text("ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS postal_code VARCHAR(50)"))
+                    conn.execute(text("ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS country VARCHAR(100)"))
+                    conn.execute(text("ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS tax_number VARCHAR(100)"))
+                    conn.execute(text("ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS payment_terms VARCHAR(100)"))
+                    conn.execute(text("ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS currency VARCHAR(10)"))
+                    conn.execute(text("ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS lead_time_days INTEGER"))
+                    conn.execute(text("ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS category VARCHAR(100)"))
+                    conn.execute(text("ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS status VARCHAR(50)"))
+                    conn.execute(text("ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS notes VARCHAR(2000)"))
+                    conn.execute(text("ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT TRUE"))
                     conn.execute(text("ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW()"))
                     conn.execute(text("ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ"))
         except Exception:
