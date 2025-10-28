@@ -835,6 +835,7 @@ def list_documents(user_id: str, folder_id: Optional[str] = None, db: Session = 
             "expiry_date": d.expiry_date.isoformat() if d.expiry_date else None,
             "notes": d.notes,
             "file_id": str(d.file_id) if getattr(d, 'file_id', None) else None,
+            "created_at": d.created_at.isoformat() if getattr(d, 'created_at', None) else None,
         }
     return [_row(d) for d in rows]
 

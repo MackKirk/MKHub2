@@ -882,18 +882,18 @@ function UserDocuments({ userId, canEdit }:{ userId:string, canEdit:boolean }){
                 <button className="px-3 py-1.5 rounded border" onClick={()=> setSelectedDocIds(new Set())}>Clear</button>
               </div>
             )}
-            <div className="grid md:grid-cols-3 gap-3">
+            <div className="rounded-lg border overflow-hidden bg-white">
               {(docs||[]).map((d:any)=> (
-                <div key={d.id} className={`rounded-lg border p-3 flex items-center gap-3 ${selectMode && selectedDocIds.has(d.id)? 'ring-2 ring-brand-red':''}`} draggable={canEdit}
+                <div key={d.id} className={`flex items-center gap-3 px-3 py-2 hover:bg-gray-50 ${selectMode && selectedDocIds.has(d.id)? 'bg-red-50':''}`} draggable={canEdit}
                      onDragStart={(e)=>{ try{ e.dataTransfer.setData('application/x-mkhub-doc', d.id); e.dataTransfer.effectAllowed='move'; }catch(_){} }}>
                   {selectMode && (
-                    <input type="checkbox" className="mr-2" checked={selectedDocIds.has(d.id)} onChange={(e)=>{
+                    <input type="checkbox" className="mr-1" checked={selectedDocIds.has(d.id)} onChange={(e)=>{
                       setSelectedDocIds(prev=>{ const next = new Set(prev); if(e.target.checked) next.add(d.id); else next.delete(d.id); return next; });
                     }} />
                   )}
                   {(()=>{ const ext=fileExt(d.title).toUpperCase(); const s=extStyle(ext);
                     return (
-                      <div className={`w-12 h-16 rounded-xl ${s.bg} ${s.txt} flex items-center justify-center text-[11px] font-extrabold select-none`}>{ext||'FILE'}</div>
+                      <div className={`w-10 h-12 rounded-lg ${s.bg} ${s.txt} flex items-center justify-center text-[10px] font-extrabold select-none`}>{ext||'FILE'}</div>
                     ); })()}
                   <div className="flex-1 min-w-0" onClick={async()=>{
                     try{
@@ -903,9 +903,9 @@ function UserDocuments({ userId, canEdit }:{ userId:string, canEdit:boolean }){
                     }catch(_e){ toast.error('Preview not available'); }
                   }}>
                     <div className="font-medium truncate cursor-pointer hover:underline">{d.title||'Document'}</div>
-                    <div className="text-xs text-gray-600 truncate">{(folders||[]).find((x:any)=>x.id===d.folder_id)?.name || '—'}</div>
+                    <div className="text-[11px] text-gray-600 truncate">Uploaded {String(d.created_at||'').slice(0,10)}</div>
                   </div>
-                  <div className="ml-auto flex items-center gap-2">
+                  <div className="ml-auto flex items-center gap-1">
                     <a title="Download" className="p-2 rounded hover:bg-gray-100" href={`/files/${d.file_id}/download`} target="_blank">⬇️</a>
                     {canEdit && <>
                       <button title="Rename" onClick={()=> setRenameDoc({ id: d.id, title: d.title||'' })} className="p-2 rounded hover:bg-gray-100">✏️</button>
@@ -915,7 +915,7 @@ function UserDocuments({ userId, canEdit }:{ userId:string, canEdit:boolean }){
                   </div>
                 </div>
               ))}
-              {!(docs||[]).length && <div className="text-sm text-gray-600">No documents in this folder</div>}
+              {!(docs||[]).length && <div className="px-3 py-3 text-sm text-gray-600">No documents in this folder</div>}
             </div>
           </div>
         </>
