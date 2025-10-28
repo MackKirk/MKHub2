@@ -13,6 +13,7 @@ export default function UserInfo(){
   const { data, isLoading } = useQuery({ queryKey:['userProfile', userId], queryFn: ()=> api<any>('GET', `/auth/users/${userId}/profile`) });
   const { data:me } = useQuery({ queryKey:['me'], queryFn: ()=> api<any>('GET','/auth/me') });
   const canEdit = !!(me?.roles?.includes('admin') || (me?.permissions||[]).includes('users:write'));
+  const canSelfEdit = me && userId && String(me.id) === String(userId);
   const p = data?.profile || {};
 
   return (
@@ -39,8 +40,8 @@ export default function UserInfo(){
         <div className="p-5">
           {isLoading? <div className="h-24 animate-pulse bg-gray-100 rounded"/> : (
             <>
-              {tab==='personal' && <EditableGrid p={p} editable={canEdit} userId={String(userId)} fields={[['Preferred name','preferred_name'],['Phone','phone'],['Mobile phone','mobile_phone'],['Gender','gender'],['Marital status','marital_status'],['Date of birth','date_of_birth'],['Nationality','nationality'],['Address line 1','address_line1'],['Address line 2','address_line2'],['City','city'],['Province/State','province'],['Postal code','postal_code'],['Country','country']]} />}
-              {tab==='job' && <EditableGrid p={p} editable={canEdit} userId={String(userId)} fields={[['Hire date','hire_date'],['Termination date','termination_date'],['Job title','job_title'],['Division','division'],['Work email','work_email'],['Work phone','work_phone'],['Manager user id','manager_user_id'],['Pay rate','pay_rate'],['Pay type','pay_type'],['Employment type','employment_type']]} />}
+              {tab==='personal' && <EditableGrid p={p} editable={canEdit} selfEdit={!!canSelfEdit} userId={String(userId)} fields={[['Preferred name','preferred_name'],['Phone','phone'],['Mobile phone','mobile_phone'],['Gender','gender'],['Marital status','marital_status'],['Date of birth','date_of_birth'],['Nationality','nationality'],['Address line 1','address_line1'],['Address line 2','address_line2'],['City','city'],['Province/State','province'],['Postal code','postal_code'],['Country','country']]} />}
+              {tab==='job' && <EditableGrid p={p} editable={canEdit} selfEdit={false} userId={String(userId)} fields={[['Hire date','hire_date'],['Termination date','termination_date'],['Job title','job_title'],['Division','division'],['Work email','work_email'],['Work phone','work_phone'],['Manager user id','manager_user_id'],['Pay rate','pay_rate'],['Pay type','pay_type'],['Employment type','employment_type']]} />}
               {tab==='emergency' && <SectionGrid p={p} keys={['sin_number','work_permit_status','visa_status','emergency_contact_name','emergency_contact_relationship','emergency_contact_phone']} />}
               {tab==='docs' && <div className="text-sm text-gray-600">Documents section coming soon.</div>}
               {tab==='timesheet' && <TimesheetBlock userId={String(userId)} />}
@@ -61,21 +62,28 @@ function LabelVal({label, value}:{label:string, value:any}){
   );
 }
 
-function EditableGrid({p, fields, editable, userId}:{p:any, fields:[string,string][], editable:boolean, userId:string}){
+function EditableGrid({p, fields, editable, selfEdit, userId}:{p:any, fields:[string,string][], editable:boolean, selfEdit:boolean, userId:string}){
   const [form, setForm] = useState<any>(()=>({ ...p }));
   const save = async()=>{
     try{
-      await api('PUT', `/auth/users/${encodeURIComponent(userId)}/profile`, form);
+      if (editable) {
+        await api('PUT', `/auth/users/${encodeURIComponent(userId)}/profile`, form);
+      } else if (selfEdit) {
+        await api('PUT', `/auth/me/profile`, form);
+      } else {
+        throw new Error('Not allowed');
+      }
       toast.success('Saved');
     }catch(_e){ toast.error('Failed to save'); }
   };
+  const isEditable = !!(editable || selfEdit);
   return (
     <div>
       <div className="grid md:grid-cols-2 gap-4">
         {fields.map(([label,key])=> (
           <div key={key}>
             <div className="text-sm text-gray-600">{label}</div>
-            {editable ? (
+            {isEditable ? (
               <input value={form[key]||''} onChange={e=> setForm((s:any)=>({ ...s, [key]: e.target.value }))} className="w-full rounded-lg border px-3 py-2"/>
             ) : (
               <div className="font-medium break-words">{String(p[key]??'')}</div>
@@ -83,7 +91,7 @@ function EditableGrid({p, fields, editable, userId}:{p:any, fields:[string,strin
           </div>
         ))}
       </div>
-      {editable && (
+      {isEditable && (
         <div className="mt-4 text-right">
           <button onClick={save} className="px-4 py-2 rounded bg-brand-red text-white">Save</button>
         </div>
