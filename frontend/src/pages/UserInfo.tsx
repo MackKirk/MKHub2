@@ -655,15 +655,16 @@ function UserDocuments({ userId, canEdit }:{ userId:string, canEdit:boolean }){
     const n = String(name||'').toLowerCase();
     const m = n.match(/\.([a-z0-9]+)$/); return m? m[1] : '';
   };
-  const fileIcon = (ext:string)=>{
-    if(['png','jpg','jpeg','webp','gif','bmp','svg','heic','heif'].includes(ext)) return '🖼️';
-    if(ext==='pdf') return '📕';
-    if(['doc','docx','odt','rtf'].includes(ext)) return '📘';
-    if(['xls','xlsx','csv'].includes(ext)) return '📗';
-    if(['ppt','pptx','key'].includes(ext)) return '📙';
-    if(['zip','rar','7z','tar','gz'].includes(ext)) return '🗜️';
-    if(['txt','md','json','xml','yaml','yml'].includes(ext)) return '📄';
-    return '📁';
+  const extStyle = (ext:string)=>{
+    const e = ext.toLowerCase();
+    if(e==='pdf') return { bg:'bg-[#e74c3c]', txt:'text-white' };
+    if(['xls','xlsx','csv'].includes(e)) return { bg:'bg-[#27ae60]', txt:'text-white' };
+    if(['doc','docx','odt','rtf'].includes(e)) return { bg:'bg-[#2980b9]', txt:'text-white' };
+    if(['ppt','pptx','key'].includes(e)) return { bg:'bg-[#d35400]', txt:'text-white' };
+    if(['png','jpg','jpeg','webp','gif','bmp','svg','heic','heif'].includes(e)) return { bg:'bg-[#8e44ad]', txt:'text-white' };
+    if(['zip','rar','7z','tar','gz'].includes(e)) return { bg:'bg-[#34495e]', txt:'text-white' };
+    if(['txt','md','json','xml','yaml','yml'].includes(e)) return { bg:'bg-[#16a085]', txt:'text-white' };
+    return { bg:'bg-gray-300', txt:'text-gray-800' };
   };
 
   const upload = async()=>{
@@ -672,8 +673,8 @@ function UserDocuments({ userId, canEdit }:{ userId:string, canEdit:boolean }){
       if(activeFolderId==='all'){ toast.error('Select a folder first'); return; }
       const name = fileObj.name; const type = fileObj.type || 'application/octet-stream';
       const up = await api('POST','/files/upload',{ original_name: name, content_type: type, employee_id: userId, project_id: null, client_id: null, category_id: userId });
-      await fetch(up.upload_url, { method:'PUT', headers:{ 'Content-Type': type }, body: fileObj });
-      const conf = await api('POST','/files/confirm',{ key: up.key, size_bytes: fileObj.size, checksum_sha256: '', content_type: type });
+      await fetch(up.upload_url, { method:'PUT', headers:{ 'Content-Type': type, 'x-ms-blob-type':'BlockBlob' }, body: fileObj });
+      const conf = await api('POST','/files/confirm',{ key: up.key, size_bytes: fileObj.size, checksum_sha256: 'na', content_type: type });
       await api('POST', `/auth/users/${encodeURIComponent(userId)}/documents`, { folder_id: activeFolderId, title: title || name, file_id: conf.id });
       toast.success('Uploaded'); setShowUpload(false); setFileObj(null); setTitle(''); await refetch();
     }catch(_e){ toast.error('Upload failed'); }
@@ -683,8 +684,8 @@ function UserDocuments({ userId, canEdit }:{ userId:string, canEdit:boolean }){
     try{
       const name = file.name; const type = file.type || 'application/octet-stream';
       const up = await api('POST','/files/upload',{ original_name: name, content_type: type, employee_id: userId, project_id: null, client_id: null, category_id: userId });
-      await fetch(up.upload_url, { method:'PUT', headers:{ 'Content-Type': type }, body: file });
-      const conf = await api('POST','/files/confirm',{ key: up.key, size_bytes: file.size, checksum_sha256: '', content_type: type });
+      await fetch(up.upload_url, { method:'PUT', headers:{ 'Content-Type': type, 'x-ms-blob-type':'BlockBlob' }, body: file });
+      const conf = await api('POST','/files/confirm',{ key: up.key, size_bytes: file.size, checksum_sha256: 'na', content_type: type });
       await api('POST', `/auth/users/${encodeURIComponent(userId)}/documents`, { folder_id: folderId, title: name, file_id: conf.id });
     }catch(_e){ /* noop per-file */ }
   };
@@ -890,9 +891,10 @@ function UserDocuments({ userId, canEdit }:{ userId:string, canEdit:boolean }){
                       setSelectedDocIds(prev=>{ const next = new Set(prev); if(e.target.checked) next.add(d.id); else next.delete(d.id); return next; });
                     }} />
                   )}
-                  <div className="w-12 h-12 rounded border bg-white flex items-center justify-center text-2xl select-none">
-                    {fileIcon(fileExt(d.title))}
-                  </div>
+                  {(()=>{ const ext=fileExt(d.title).toUpperCase(); const s=extStyle(ext);
+                    return (
+                      <div className={`w-12 h-16 rounded-xl ${s.bg} ${s.txt} flex items-center justify-center text-[11px] font-extrabold select-none`}>{ext||'FILE'}</div>
+                    ); })()}
                   <div className="flex-1 min-w-0" onClick={async()=>{
                     try{
                       const r:any = await api('GET', `/files/${encodeURIComponent(d.file_id)}/download`);
