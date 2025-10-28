@@ -574,8 +574,6 @@ class EmployeeDocument(Base):
 
     id: Mapped[uuid.UUID] = uuid_pk()
     user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), index=True)
-    # Optional folder hierarchy
-    folder_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("employee_folders.id", ondelete="SET NULL"))
     # Generic document typing
     doc_type: Mapped[str] = mapped_column(String(100))  # e.g., passport, driver_license, bc_registration
     title: Mapped[Optional[str]] = mapped_column(String(255))
