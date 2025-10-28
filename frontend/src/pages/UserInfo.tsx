@@ -95,13 +95,13 @@ export default function UserInfo(){
             </div>
             <div className="flex gap-2"></div>
           </div>
-        </div>
-        <div className="p-5">
-          <div className="mb-4 flex items-center gap-2">
+          <div className="mt-4 flex items-center gap-2">
             {['personal','job','emergency','docs','timesheet'].map((k)=> (
               <button key={k} onClick={()=>setTab(k as any)} className={`px-4 py-2 rounded-full ${tab===k?'bg-black text-white':'bg-white text-black border'}`}>{String(k).replace(/^./,s=>s.toUpperCase())}</button>
             ))}
           </div>
+        </div>
+        <div className="p-5">
           {isLoading? <div className="h-24 animate-pulse bg-gray-100 rounded"/> : (
             <>
               {tab==='personal' && (
