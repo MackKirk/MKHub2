@@ -96,9 +96,14 @@ export default function UserInfo(){
 
   return (
     <div>
-      <div className="mb-3 flex items-center gap-3">
-        <img className="w-10 h-10 rounded-full border-2 border-brand-red object-cover" src={p.profile_photo_file_id? `/files/${p.profile_photo_file_id}/thumbnail?w=64`:'/ui/assets/login/logo-light.svg'} />
-        <h2 className="text-xl font-extrabold">User Information</h2>
+      <div className="mb-3 rounded-xl border bg-gradient-to-br from-[#7f1010] to-[#a31414] text-white p-4 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <img className="w-10 h-10 rounded-full border-2 border-brand-red object-cover" src={p.profile_photo_file_id? `/files/${p.profile_photo_file_id}/thumbnail?w=64`:'/ui/assets/login/logo-light.svg'} />
+          <div>
+            <div className="text-2xl font-extrabold">User Information</div>
+            <div className="text-sm opacity-90">Personal details, employment, and documents.</div>
+          </div>
+        </div>
       </div>
       <div className="rounded-xl border shadow-hero bg-white">
         <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] rounded-t-xl p-5 text-white">
@@ -134,7 +139,7 @@ export default function UserInfo(){
           {isLoading? <div className="h-24 animate-pulse bg-gray-100 rounded"/> : (
             <>
               {tab==='personal' && (
-                <div className="space-y-6">
+                <div className="space-y-6 pb-24">
                   <div>
                     <div className="flex items-center gap-2"><h4 className="font-semibold">Basic information</h4></div>
                     <div className="text-xs text-gray-500 mt-0.5 mb-2">Core personal details.</div>
@@ -702,7 +707,7 @@ function UserDocuments({ userId, canEdit }:{ userId:string, canEdit:boolean }){
       const body:any = { name };
       if(newFolderParentId) body.parent_id = newFolderParentId;
       const r = await api('POST', `/auth/users/${encodeURIComponent(userId)}/folders`, body);
-      toast.success('Folder created'); setShowNewFolder(false); setNewFolderName(''); setNewFolderParentId(null); await refetchFolders(); setActiveFolderId(r.id);
+      toast.success('Folder created'); setShowNewFolder(false); setNewFolderName(''); setNewFolderParentId(null); await refetchFolders();
     }catch(_e){ toast.error('Failed to create folder'); }
   };
 
@@ -755,7 +760,7 @@ function UserDocuments({ userId, canEdit }:{ userId:string, canEdit:boolean }){
             <div className="text-sm font-semibold">Folders</div>
             {canEdit && <button onClick={()=> { setNewFolderParentId(null); setShowNewFolder(true); }} className="ml-auto px-3 py-2 rounded-lg border">New folder</button>}
           </div>
-          <div className="grid md:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-2">
             {topFolders.map((f:any)=> (
               <div key={f.id}
                    className="relative rounded-lg border p-3 h-28 bg-white hover:bg-gray-50 select-none group flex flex-col items-center justify-center"
@@ -798,7 +803,14 @@ function UserDocuments({ userId, canEdit }:{ userId:string, canEdit:boolean }){
       ) : (
         <>
           <div className="mb-3 flex items-center gap-2">
-            <button onClick={()=> setActiveFolderId('all')} className="px-3 py-2 rounded-lg border">← All folders</button>
+            <button title="Home" onClick={()=> setActiveFolderId('all')} className="px-2 py-2 rounded-lg border">🏠</button>
+            <button
+              title="Up one level"
+              onClick={()=>{
+                if (breadcrumb.length>1){ setActiveFolderId(breadcrumb[breadcrumb.length-2].id); } else { setActiveFolderId('all'); }
+              }}
+              className="px-2 py-2 rounded-lg border"
+            >⬆️</button>
             <div className="text-sm font-semibold flex gap-2 items-center">
               {breadcrumb.map((f:any, idx:number)=> (
                 <span key={f.id} className="flex items-center gap-2">
@@ -812,110 +824,112 @@ function UserDocuments({ userId, canEdit }:{ userId:string, canEdit:boolean }){
               <button onClick={()=> setShowUpload(true)} className="px-3 py-2 rounded-lg bg-brand-red text-white">Add file</button>
             </>}
           </div>
-          {childFolders.length>0 && (
-            <div className="mb-3">
-              <div className="text-xs text-gray-600 mb-1">Subfolders</div>
-              <div className="grid md:grid-cols-4 gap-3">
-                {childFolders.map((f:any)=> (
-                  <div key={f.id}
-                       className="relative rounded-lg border p-3 h-28 bg-white hover:bg-gray-50 select-none group flex flex-col items-center justify-center"
-                       onClick={(e)=>{ const t=e.target as HTMLElement; if(t.closest('.folder-actions')) return; setActiveFolderId(f.id); }}
-                       onDragOver={(e)=>{ e.preventDefault(); }}
-                       onDrop={async(e)=>{ e.preventDefault();
-                         const movedDocId = e.dataTransfer.getData('application/x-mkhub-doc');
-                         if(movedDocId){
-                           try{ await api('PUT', `/auth/users/${encodeURIComponent(userId)}/documents/${encodeURIComponent(movedDocId)}`, { folder_id: f.id }); toast.success('Moved'); if(activeFolderId===f.id){ await refetch(); } else { setActiveFolderId(f.id); } }
-                           catch(_e){ toast.error('Failed to move'); }
-                           return;
-                         }
-                         if(e.dataTransfer.files?.length){ const arr=Array.from(e.dataTransfer.files); for(const file of arr){ await uploadToFolder(f.id, file); } toast.success('Uploaded'); }
-                       }}>
-                    <div className="text-4xl">📁</div>
-                    <div className="mt-1 text-sm font-medium truncate text-center w-full" title={f.name}>
-                      {inlineRenameFolderId===f.id ? (
-                        <input autoFocus className="border rounded px-2 py-1 w-full"
-                               value={inlineRenameFolderName}
-                               onChange={e=> setInlineRenameFolderName(e.target.value)}
-                               onBlur={async()=>{ if(inlineRenameFolderName.trim()){ await api('PUT', `/auth/users/${encodeURIComponent(userId)}/folders/${encodeURIComponent(f.id)}`, { name: inlineRenameFolderName.trim() }); await refetchFolders(); } setInlineRenameFolderId(null); }}
-                               onKeyDown={async(e)=>{ if(e.key==='Enter'){ (e.target as HTMLInputElement).blur(); } if(e.key==='Escape'){ setInlineRenameFolderId(null); } }}
-                        />
-                      ) : f.name}
-                    </div>
-                    {canEdit && (
-                      <div className="folder-actions absolute right-2 top-2 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
-                        <button title="Rename" className="p-1 rounded hover:bg-gray-100" onClick={()=> { setInlineRenameFolderId(f.id); setInlineRenameFolderName(f.name); }}>✏️</button>
-                        <button title="Delete" className="p-1 rounded hover:bg-gray-100 text-red-600" onClick={()=> removeFolder(f.id)}>🗑️</button>
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
           <div
-            className={`rounded-lg border p-4 ${isDragging? 'ring-2 ring-brand-red':''}`}
+            className={`rounded-lg border ${isDragging? 'ring-2 ring-brand-red':''}`}
             onDragEnter={(e)=>{ e.preventDefault(); setIsDragging(true); }}
             onDragOver={(e)=>{ e.preventDefault(); setIsDragging(true); }}
             onDragLeave={(e)=>{ e.preventDefault(); setIsDragging(false); }}
             onDrop={async(e)=>{ e.preventDefault(); setIsDragging(false); const files = Array.from(e.dataTransfer.files||[]); if(!files.length) return; for(const file of files){ await uploadToFolder(activeFolderId, file as File); } toast.success('Uploaded'); await refetch(); }}
           >
-            <div className="mb-3 flex items-center gap-2">
-              <div className="text-xs text-gray-600">Drag & drop files here to upload into this folder</div>
-              {canEdit && <button className="ml-auto text-sm px-3 py-1.5 rounded border" onClick={()=> { setSelectMode(s=> !s); if(selectMode) setSelectedDocIds(new Set()); }}>{selectMode? 'Done':'Select'}</button>}
-            </div>
-            {selectMode && selectedDocIds.size>0 && (
-              <div className="mb-3 flex items-center gap-2">
-                <div className="text-sm">{selectedDocIds.size} selected</div>
-                <select id="bulk-move-target" className="border rounded px-2 py-1">
-                  <option value="" disabled selected>Select destination</option>
-                  {(folders||[]).map((f:any)=> <option key={f.id} value={f.id}>{f.name}</option>)}
-                </select>
-                <button className="px-3 py-1.5 rounded bg-brand-red text-white" onClick={async()=>{
-                  const sel = (document.getElementById('bulk-move-target') as HTMLSelectElement);
-                  const dest = sel?.value || '';
-                  if(!dest){ toast.error('Select destination folder'); return; }
-                  try{
-                    for(const id of Array.from(selectedDocIds)){ await api('PUT', `/auth/users/${encodeURIComponent(userId)}/documents/${encodeURIComponent(id)}`, { folder_id: dest }); }
-                    toast.success('Moved'); setSelectedDocIds(new Set()); await refetch();
-                  }catch(_e){ toast.error('Failed'); }
-                }}>Move</button>
-                <button className="px-3 py-1.5 rounded border" onClick={()=> setSelectedDocIds(new Set())}>Clear</button>
-              </div>
-            )}
-            <div className="rounded-lg border overflow-hidden bg-white">
-              {(docs||[]).map((d:any)=> (
-                <div key={d.id} className={`flex items-center gap-3 px-3 py-2 hover:bg-gray-50 ${selectMode && selectedDocIds.has(d.id)? 'bg-red-50':''}`} draggable={canEdit}
-                     onDragStart={(e)=>{ try{ e.dataTransfer.setData('application/x-mkhub-doc', d.id); e.dataTransfer.effectAllowed='move'; }catch(_){} }}>
-                  {selectMode && (
-                    <input type="checkbox" className="mr-1" checked={selectedDocIds.has(d.id)} onChange={(e)=>{
-                      setSelectedDocIds(prev=>{ const next = new Set(prev); if(e.target.checked) next.add(d.id); else next.delete(d.id); return next; });
-                    }} />
-                  )}
-                  {(()=>{ const ext=fileExt(d.title).toUpperCase(); const s=extStyle(ext);
-                    return (
-                      <div className={`w-10 h-12 rounded-lg ${s.bg} ${s.txt} flex items-center justify-center text-[10px] font-extrabold select-none`}>{ext||'FILE'}</div>
-                    ); })()}
-                  <div className="flex-1 min-w-0" onClick={async()=>{
-                    try{
-                      const r:any = await api('GET', `/files/${encodeURIComponent(d.file_id)}/download`);
-                      const ext = fileExt(d.title);
-                      setPreview({ url: r.download_url||'', title: d.title||'Preview', ext });
-                    }catch(_e){ toast.error('Preview not available'); }
-                  }}>
-                    <div className="font-medium truncate cursor-pointer hover:underline">{d.title||'Document'}</div>
-                    <div className="text-[11px] text-gray-600 truncate">Uploaded {String(d.created_at||'').slice(0,10)}</div>
-                  </div>
-                  <div className="ml-auto flex items-center gap-1">
-                    <a title="Download" className="p-2 rounded hover:bg-gray-100" href={`/files/${d.file_id}/download`} target="_blank">⬇️</a>
-                    {canEdit && <>
-                      <button title="Rename" onClick={()=> setRenameDoc({ id: d.id, title: d.title||'' })} className="p-2 rounded hover:bg-gray-100">✏️</button>
-                      <button title="Move" onClick={()=> setMoveDoc({ id: d.id })} className="p-2 rounded hover:bg-gray-100">📁</button>
-                      <button title="Delete" onClick={()=>del(d.id, d.title)} className="p-2 rounded hover:bg-gray-100 text-red-600">🗑️</button>
-                    </>}
+            <div className="p-4">
+              {childFolders.length>0 && (
+                <div className="mb-3">
+                  <div className="text-xs text-gray-600 mb-1">Subfolders</div>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-2">
+                    {childFolders.map((f:any)=> (
+                      <div key={f.id}
+                           className="relative rounded-lg border p-3 h-28 bg-white hover:bg-gray-50 select-none group flex flex-col items-center justify-center"
+                           onClick={(e)=>{ const t=e.target as HTMLElement; if(t.closest('.folder-actions')) return; setActiveFolderId(f.id); }}
+                           onDragOver={(e)=>{ e.preventDefault(); }}
+                           onDrop={async(e)=>{ e.preventDefault();
+                             const movedDocId = e.dataTransfer.getData('application/x-mkhub-doc');
+                             if(movedDocId){
+                               try{ await api('PUT', `/auth/users/${encodeURIComponent(userId)}/documents/${encodeURIComponent(movedDocId)}`, { folder_id: f.id }); toast.success('Moved'); if(activeFolderId===f.id){ await refetch(); } else { setActiveFolderId(f.id); } }
+                               catch(_e){ toast.error('Failed to move'); }
+                               return;
+                             }
+                             if(e.dataTransfer.files?.length){ const arr=Array.from(e.dataTransfer.files); for(const file of arr){ await uploadToFolder(f.id, file); } toast.success('Uploaded'); }
+                           }}>
+                        <div className="text-4xl">📁</div>
+                        <div className="mt-1 text-sm font-medium truncate text-center w-full" title={f.name}>
+                          {inlineRenameFolderId===f.id ? (
+                            <input autoFocus className="border rounded px-2 py-1 w-full"
+                                   value={inlineRenameFolderName}
+                                   onChange={e=> setInlineRenameFolderName(e.target.value)}
+                                   onBlur={async()=>{ if(inlineRenameFolderName.trim()){ await api('PUT', `/auth/users/${encodeURIComponent(userId)}/folders/${encodeURIComponent(f.id)}`, { name: inlineRenameFolderName.trim() }); await refetchFolders(); } setInlineRenameFolderId(null); }}
+                                   onKeyDown={async(e)=>{ if(e.key==='Enter'){ (e.target as HTMLInputElement).blur(); } if(e.key==='Escape'){ setInlineRenameFolderId(null); } }}
+                            />
+                          ) : f.name}
+                        </div>
+                        {canEdit && (
+                          <div className="folder-actions absolute right-2 top-2 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
+                            <button title="Rename" className="p-1 rounded hover:bg-gray-100" onClick={()=> { setInlineRenameFolderId(f.id); setInlineRenameFolderName(f.name); }}>✏️</button>
+                            <button title="Delete" className="p-1 rounded hover:bg-gray-100 text-red-600" onClick={()=> removeFolder(f.id)}>🗑️</button>
+                          </div>
+                        )}
+                      </div>
+                    ))}
                   </div>
                 </div>
-              ))}
-              {!(docs||[]).length && <div className="px-3 py-3 text-sm text-gray-600">No documents in this folder</div>}
+              )}
+              <div className="mb-3 flex items-center gap-2">
+                <div className="text-xs text-gray-600">Drag & drop files anywhere below to upload into this folder</div>
+                {canEdit && <button className="ml-auto text-sm px-3 py-1.5 rounded border" onClick={()=> { setSelectMode(s=> !s); if(selectMode) setSelectedDocIds(new Set()); }}>{selectMode? 'Done':'Select'}</button>}
+              </div>
+              {selectMode && selectedDocIds.size>0 && (
+                <div className="mb-3 flex items-center gap-2">
+                  <div className="text-sm">{selectedDocIds.size} selected</div>
+                  <select id="bulk-move-target" className="border rounded px-2 py-1">
+                    <option value="" disabled selected>Select destination</option>
+                    {(folders||[]).map((f:any)=> <option key={f.id} value={f.id}>{f.name}</option>)}
+                  </select>
+                  <button className="px-3 py-1.5 rounded bg-brand-red text-white" onClick={async()=>{
+                    const sel = (document.getElementById('bulk-move-target') as HTMLSelectElement);
+                    const dest = sel?.value || '';
+                    if(!dest){ toast.error('Select destination folder'); return; }
+                    try{
+                      for(const id of Array.from(selectedDocIds)){ await api('PUT', `/auth/users/${encodeURIComponent(userId)}/documents/${encodeURIComponent(id)}`, { folder_id: dest }); }
+                      toast.success('Moved'); setSelectedDocIds(new Set()); await refetch();
+                    }catch(_e){ toast.error('Failed'); }
+                  }}>Move</button>
+                  <button className="px-3 py-1.5 rounded border" onClick={()=> setSelectedDocIds(new Set())}>Clear</button>
+                </div>
+              )}
+              <div className="rounded-lg border overflow-hidden bg-white">
+                {(docs||[]).map((d:any)=> (
+                  <div key={d.id} className={`flex items-center gap-3 px-3 py-2 hover:bg-gray-50 ${selectMode && selectedDocIds.has(d.id)? 'bg-red-50':''}`} draggable={canEdit}
+                       onDragStart={(e)=>{ try{ e.dataTransfer.setData('application/x-mkhub-doc', d.id); e.dataTransfer.effectAllowed='move'; }catch(_){} }}>
+                    {selectMode && (
+                      <input type="checkbox" className="mr-1" checked={selectedDocIds.has(d.id)} onChange={(e)=>{
+                        setSelectedDocIds(prev=>{ const next = new Set(prev); if(e.target.checked) next.add(d.id); else next.delete(d.id); return next; });
+                      }} />
+                    )}
+                    {(()=>{ const ext=fileExt(d.title).toUpperCase(); const s=extStyle(ext);
+                      return (
+                        <div className={`w-10 h-12 rounded-lg ${s.bg} ${s.txt} flex items-center justify-center text-[10px] font-extrabold select-none`}>{ext||'FILE'}</div>
+                      ); })()}
+                    <div className="flex-1 min-w-0" onClick={async()=>{
+                      try{
+                        const r:any = await api('GET', `/files/${encodeURIComponent(d.file_id)}/download`);
+                        const ext = fileExt(d.title);
+                        setPreview({ url: r.download_url||'', title: d.title||'Preview', ext });
+                      }catch(_e){ toast.error('Preview not available'); }
+                    }}>
+                      <div className="font-medium truncate cursor-pointer hover:underline">{d.title||'Document'}</div>
+                      <div className="text-[11px] text-gray-600 truncate">Uploaded {String(d.created_at||'').slice(0,10)}</div>
+                    </div>
+                    <div className="ml-auto flex items-center gap-1">
+                      <a title="Download" className="p-2 rounded hover:bg-gray-100" href={`/files/${d.file_id}/download`} target="_blank">⬇️</a>
+                      {canEdit && <>
+                        <button title="Rename" onClick={()=> setRenameDoc({ id: d.id, title: d.title||'' })} className="p-2 rounded hover:bg-gray-100">✏️</button>
+                        <button title="Move" onClick={()=> setMoveDoc({ id: d.id })} className="p-2 rounded hover:bg-gray-100">📁</button>
+                        <button title="Delete" onClick={()=>del(d.id, d.title)} className="p-2 rounded hover:bg-gray-100 text-red-600">🗑️</button>
+                      </>}
+                    </div>
+                  </div>
+                ))}
+                {!(docs||[]).length && <div className="px-3 py-3 text-sm text-gray-600">No documents in this folder</div>}
+              </div>
             </div>
           </div>
         </>

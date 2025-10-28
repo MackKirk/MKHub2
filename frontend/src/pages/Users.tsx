@@ -13,7 +13,12 @@ export default function Users(){
   const arr = data||[];
   return (
     <div>
-      <div className="mb-3 flex items-center justify-between"><h1 className="text-2xl font-bold">Users</h1></div>
+      <div className="mb-3 rounded-xl border bg-gradient-to-br from-[#7f1010] to-[#a31414] text-white p-4 flex items-center justify-between">
+        <div>
+          <div className="text-2xl font-extrabold">Users</div>
+          <div className="text-sm opacity-90">Manage employees, roles, and access.</div>
+        </div>
+      </div>
       <div className="grid md:grid-cols-4 gap-4">
         {isLoading? <div className="h-24 bg-gray-100 animate-pulse rounded"/> : arr.map(u=> (
           <Link key={u.id} to={`/users/${encodeURIComponent(u.id)}`} className="rounded-xl border bg-white p-4 flex items-center gap-3">
