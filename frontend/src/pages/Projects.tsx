@@ -19,6 +19,10 @@ export default function Projects(){
   const [clientId, setClientId] = useState('');
   return (
     <div>
+      <div className="mb-3 rounded-xl border bg-gradient-to-br from-[#7f1010] to-[#a31414] text-white p-4">
+        <div className="text-2xl font-extrabold">Projects</div>
+        <div className="text-sm opacity-90">List, search and manage projects.</div>
+      </div>
       <div className="mb-3 rounded-xl border bg-white p-3 flex items-end gap-2">
         <div className="flex-1 max-w-[420px]"><label className="text-xs text-gray-600">Search</label><input className="w-full border rounded px-3 py-2" placeholder="code/name" value={q} onChange={e=>setQ(e.target.value)} onKeyDown={e=>{ if(e.key==='Enter') refetch(); }} /></div>
         <button onClick={()=>refetch()} className="px-3 py-2 rounded bg-brand-red text-white">Apply</button>

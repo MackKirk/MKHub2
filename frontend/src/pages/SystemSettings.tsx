@@ -18,8 +18,9 @@ export default function SystemSettings(){
   const getEdit = (it: Item): Item => edits[it.id] || it;
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">System Settings</h1>
+      <div className="mb-1 rounded-xl border bg-gradient-to-br from-[#7f1010] to-[#a31414] text-white p-4">
+        <div className="text-2xl font-extrabold">System Settings</div>
+        <div className="text-sm opacity-90">Manage application lists, statuses, and divisions.</div>
       </div>
       <div className="grid md:grid-cols-3 gap-4">
         <div className="rounded-xl border bg-white p-3">

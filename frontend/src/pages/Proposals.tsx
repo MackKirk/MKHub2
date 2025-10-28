@@ -8,7 +8,10 @@ export default function Proposals(){
   const { data, isLoading } = useQuery({ queryKey:['proposals'], queryFn: ()=>api<Proposal[]>('GET','/proposals') });
   return (
     <div>
-      <h1 className="text-2xl font-bold mb-3">Proposals</h1>
+      <div className="mb-3 rounded-xl border bg-gradient-to-br from-[#7f1010] to-[#a31414] text-white p-4">
+        <div className="text-2xl font-extrabold">Proposals</div>
+        <div className="text-sm opacity-90">Create, edit and track proposals.</div>
+      </div>
       <div className="rounded-xl border bg-white overflow-hidden">
         <table className="w-full text-sm">
           <thead className="bg-gray-50"><tr><th className="p-2 text-left">Title</th><th className="p-2 text-left">Order</th><th className="p-2 text-left">Created</th><th className="p-2 text-left">Actions</th></tr></thead>

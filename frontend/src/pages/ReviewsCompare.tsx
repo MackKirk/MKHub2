@@ -20,7 +20,10 @@ export default function ReviewsCompare(){
 
   return (
     <div className="max-w-[1200px]">
-      <h1 className="text-2xl font-bold mb-3">Reviews Comparison</h1>
+      <div className="mb-3 rounded-xl border bg-gradient-to-br from-[#7f1010] to-[#a31414] text-white p-4">
+        <div className="text-2xl font-extrabold">Reviews Comparison</div>
+        <div className="text-sm opacity-90">Compare self vs manager responses by cycle.</div>
+      </div>
       <div className="flex items-center gap-2 mb-3 flex-wrap">
         <span className="text-sm text-gray-600">Cycle</span>
         <select className="border rounded px-2 py-1" value={cycleId} onChange={e=> setCycleId(e.target.value)}>

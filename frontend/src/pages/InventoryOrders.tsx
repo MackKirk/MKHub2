@@ -7,7 +7,10 @@ export default function InventoryOrders(){
   const { data, isLoading } = useQuery({ queryKey:['invOrders'], queryFn: ()=>api<Order[]>('GET','/inventory/orders') });
   return (
     <div>
-      <h1 className="text-2xl font-bold mb-3">Orders</h1>
+      <div className="mb-3 rounded-xl border bg-gradient-to-br from-[#7f1010] to-[#a31414] text-white p-4">
+        <div className="text-2xl font-extrabold">Orders</div>
+        <div className="text-sm opacity-90">Purchase orders and delivery status.</div>
+      </div>
       <div className="rounded-xl border bg-white overflow-hidden">
         <table className="w-full text-sm">
           <thead className="bg-gray-50"><tr><th className="p-2 text-left">Code</th><th className="p-2 text-left">Status</th><th className="p-2 text-left">Date</th><th className="p-2 text-left">Delivered</th><th className="p-2 text-left">Email</th></tr></thead>

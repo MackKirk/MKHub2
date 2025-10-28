@@ -1,7 +1,10 @@
 export default function Home(){
   return (
     <div className="space-y-4">
-      <h1 className="text-2xl font-bold">Home</h1>
+      <div className="mb-3 rounded-xl border bg-gradient-to-br from-[#7f1010] to-[#a31414] text-white p-4">
+        <div className="text-2xl font-extrabold">Home</div>
+        <div className="text-sm opacity-90">Overview, quick links and shortcuts.</div>
+      </div>
       <div className="grid md:grid-cols-3 gap-4">
         <div className="rounded-xl border bg-white p-4">
           <h3 className="font-semibold mb-2">Inbox</h3>

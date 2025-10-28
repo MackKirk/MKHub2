@@ -15,7 +15,10 @@ export default function ReviewsAdmin(){
 
   return (
     <div className="max-w-5xl">
-      <h1 className="text-2xl font-bold mb-3">Reviews Admin</h1>
+      <div className="mb-3 rounded-xl border bg-gradient-to-br from-[#7f1010] to-[#a31414] text-white p-4">
+        <div className="text-2xl font-extrabold">Reviews Admin</div>
+        <div className="text-sm opacity-90">Templates, cycles and assignments.</div>
+      </div>
       <div className="grid md:grid-cols-2 gap-6">
         <div className="rounded-xl border bg-white p-4">
           <div className="font-semibold mb-2">Create Template</div>
