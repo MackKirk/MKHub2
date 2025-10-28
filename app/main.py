@@ -404,6 +404,7 @@ def create_app() -> FastAPI:
                     conn.execute(text("ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT TRUE"))
                     conn.execute(text("ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW()"))
                     conn.execute(text("ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ"))
+                    conn.execute(text("ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS image_base64 TEXT"))
                     # Ensure supplier_contacts table has all required columns
                     conn.execute(text("ALTER TABLE supplier_contacts ADD COLUMN IF NOT EXISTS title VARCHAR(100)"))
                     conn.execute(text("ALTER TABLE supplier_contacts ADD COLUMN IF NOT EXISTS notes VARCHAR(1000)"))

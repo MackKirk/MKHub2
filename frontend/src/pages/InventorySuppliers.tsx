@@ -19,6 +19,7 @@ type Supplier = {
   country?: string;
   is_active?: boolean;
   created_at?: string;
+  image_base64?: string;
 };
 
 // Helper function to format phone numbers
@@ -59,6 +60,7 @@ export default function InventorySuppliers() {
   const [province, setProvince] = useState('');
   const [postalCode, setPostalCode] = useState('');
   const [country, setCountry] = useState('');
+  const [imageDataUrl, setImageDataUrl] = useState('');
 
   const { data, isLoading, isFetching } = useQuery({
     queryKey: ['suppliers', q],
@@ -113,6 +115,7 @@ export default function InventorySuppliers() {
     setProvince('');
     setPostalCode('');
     setCountry('');
+    setImageDataUrl('');
     setEditing(null);
     setViewing(null);
   };
@@ -136,7 +139,21 @@ export default function InventorySuppliers() {
     setProvince(viewing.province || '');
     setPostalCode((viewing as any).postal_code || '');
     setCountry(viewing.country || '');
+    setImageDataUrl(viewing.image_base64 || '');
     setViewing(null);
+  };
+
+  const onFileChange = (file: File | null) => {
+    if (!file) {
+      setImageDataUrl('');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const result = e.target?.result as string;
+      setImageDataUrl(result);
+    };
+    reader.readAsDataURL(file);
   };
 
   const handleSubmit = () => {
@@ -157,6 +174,7 @@ export default function InventorySuppliers() {
       province: province.trim() || undefined,
       postal_code: postalCode.trim() || undefined,
       country: country.trim() || undefined,
+      image_base64: imageDataUrl || undefined,
       is_active: true,
     };
 
@@ -250,7 +268,7 @@ export default function InventorySuppliers() {
               >
                 <div className="flex items-center gap-3 min-w-0">
                   <img
-                    src="/ui/assets/login/logo-light.svg"
+                    src={s.image_base64 || '/ui/assets/login/logo-light.svg'}
                     className="w-12 h-12 rounded-lg border object-cover"
                     alt={s.name}
                   />
@@ -286,75 +304,125 @@ export default function InventorySuppliers() {
 
       {open && (
         <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center">
-          <div className="w-[700px] max-w-[95vw] max-h-[90vh] bg-white rounded-xl overflow-hidden flex flex-col">
-            <div className="px-6 py-4 border-b flex items-center justify-between bg-gray-50">
-              <div className="font-semibold text-lg">
-                {editing ? 'Edit Supplier' : viewing ? 'Supplier Details' : 'New Supplier'}
+          <div className="w-[900px] max-w-[95vw] max-h-[90vh] bg-white rounded-xl overflow-hidden flex flex-col">
+            {!viewing && (
+              <div className="px-6 py-4 border-b flex items-center justify-between bg-gray-50">
+                <div className="font-semibold text-lg">
+                  {editing ? 'Edit Supplier' : 'New Supplier'}
+                </div>
+                <button
+                  onClick={() => {
+                    setOpen(false);
+                    resetForm();
+                  }}
+                  className="px-3 py-1 rounded bg-gray-200 hover:bg-gray-300"
+                >
+                  Close
+                </button>
               </div>
-              <button
-                onClick={() => {
-                  setOpen(false);
-                  resetForm();
-                }}
-                className="px-3 py-1 rounded bg-gray-200 hover:bg-gray-300"
-              >
-                Close
-              </button>
-            </div>
-            <div className="p-6 overflow-y-auto">
+            )}
+            {viewing && !editing && (
+              <div className="px-6 py-4 border-b flex items-center justify-between bg-gray-50">
+                <div className="font-semibold text-lg">Supplier Details</div>
+                <button
+                  onClick={() => {
+                    setOpen(false);
+                    resetForm();
+                  }}
+                  className="px-3 py-1 rounded bg-gray-200 hover:bg-gray-300"
+                >
+                  Close
+                </button>
+              </div>
+            )}
+            {editing && (
+              <div className="px-6 py-4 border-b flex items-center justify-between bg-gray-50">
+                <div className="font-semibold text-lg">Edit Supplier</div>
+                <button
+                  onClick={() => {
+                    setOpen(false);
+                    resetForm();
+                  }}
+                  className="px-3 py-1 rounded bg-gray-200 hover:bg-gray-300"
+                >
+                  Close
+                </button>
+              </div>
+            )}
+            <div className="overflow-y-auto">
               {viewing && !editing ? (
                 // View mode - display supplier details
-                <div className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="col-span-2">
-                      <label className="text-xs font-semibold text-gray-700">Name</label>
-                      <div className="mt-1 text-gray-900">{viewing.name}</div>
+                <div className="space-y-6">
+                  {/* Profile Header */}
+                  <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] p-6 flex items-center gap-6">
+                    <img 
+                      src={viewing.image_base64 || '/ui/assets/login/logo-light.svg'} 
+                      className="w-24 h-24 rounded-xl border-4 border-white object-cover shadow-lg" 
+                      alt={viewing.name}
+                    />
+                    <div className="flex-1">
+                      <h2 className="text-3xl font-extrabold text-white">{viewing.name}</h2>
+                      {viewing.legal_name && (
+                        <p className="text-sm opacity-90 text-white mt-1">{viewing.legal_name}</p>
+                      )}
+                      <div className="flex items-center gap-4 mt-3 text-sm">
+                        {viewing.email && (
+                          <div className="flex items-center gap-2">
+                            <span className="text-white/80">📧</span>
+                            <span className="text-white">{viewing.email}</span>
+                          </div>
+                        )}
+                        {viewing.phone && (
+                          <div className="flex items-center gap-2">
+                            <span className="text-white/80">📞</span>
+                            <span className="text-white">{formatPhone(viewing.phone)}</span>
+                          </div>
+                        )}
+                      </div>
                     </div>
-                    <div className="col-span-2">
-                      <label className="text-xs font-semibold text-gray-700">Legal Name</label>
-                      <div className="mt-1 text-gray-600">{viewing.legal_name || '-'}</div>
+                  </div>
+
+                  {/* General Information */}
+                  <div className="px-6 pb-6 space-y-4">
+                    <div className="grid grid-cols-2 gap-4">
+                      {/* Website Card */}
+                      {viewing.website && (
+                        <div className="bg-white border rounded-lg p-4">
+                          <div className="text-xs font-semibold text-gray-600 mb-1">Website</div>
+                          <a href={viewing.website} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+                            {viewing.website}
+                          </a>
+                        </div>
+                      )}
+
+                      {/* Legal Name Card */}
+                      {viewing.legal_name && (
+                        <div className="bg-white border rounded-lg p-4">
+                          <div className="text-xs font-semibold text-gray-600 mb-1">Legal Name</div>
+                          <div className="text-gray-900">{viewing.legal_name}</div>
+                        </div>
+                      )}
                     </div>
-                    <div>
-                      <label className="text-xs font-semibold text-gray-700">Email</label>
-                      <div className="mt-1 text-gray-600">{viewing.email || '-'}</div>
-                    </div>
-                    <div>
-                      <label className="text-xs font-semibold text-gray-700">Phone</label>
-                      <div className="mt-1 text-gray-600">{formatPhone(viewing.phone)}</div>
-                    </div>
-                    <div className="col-span-2">
-                      <label className="text-xs font-semibold text-gray-700">Website</label>
-                      <div className="mt-1 text-gray-600">{viewing.website || '-'}</div>
-                    </div>
-                    <div className="col-span-2">
-                      <label className="text-xs font-semibold text-gray-700">Address Line 1</label>
-                      <div className="mt-1 text-gray-600">{(viewing as any).address_line1 || '-'}</div>
-                    </div>
-                    <div className="col-span-2">
-                      <label className="text-xs font-semibold text-gray-700">Address Line 2</label>
-                      <div className="mt-1 text-gray-600">{(viewing as any).address_line2 || '-'}</div>
-                    </div>
-                    <div>
-                      <label className="text-xs font-semibold text-gray-700">City</label>
-                      <div className="mt-1 text-gray-600">{viewing.city || '-'}</div>
-                    </div>
-                    <div>
-                      <label className="text-xs font-semibold text-gray-700">Province</label>
-                      <div className="mt-1 text-gray-600">{viewing.province || '-'}</div>
-                    </div>
-                    <div>
-                      <label className="text-xs font-semibold text-gray-700">Postal Code</label>
-                      <div className="mt-1 text-gray-600">{(viewing as any).postal_code || '-'}</div>
-                    </div>
-                    <div>
-                      <label className="text-xs font-semibold text-gray-700">Country</label>
-                      <div className="mt-1 text-gray-600">{viewing.country || '-'}</div>
-                    </div>
+
+                    {/* Address Card */}
+                    {((viewing as any).address_line1 || viewing.city || viewing.province || (viewing as any).postal_code || viewing.country) && (
+                      <div className="bg-white border rounded-lg p-4">
+                        <div className="text-sm font-semibold text-gray-900 mb-3">📍 Address</div>
+                        <div className="space-y-1 text-gray-700">
+                          {(viewing as any).address_line1 && <div>{(viewing as any).address_line1}</div>}
+                          {(viewing as any).address_line2 && <div>{(viewing as any).address_line2}</div>}
+                          <div>
+                            {[viewing.city, viewing.province, (viewing as any).postal_code].filter(Boolean).join(', ')}
+                          </div>
+                          {viewing.country && <div>{viewing.country}</div>}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               ) : (
                 // Edit/Create mode - form inputs
-                <div className="grid grid-cols-2 gap-4">
+                <div className="p-6 grid grid-cols-2 gap-4">
                 <div className="col-span-2">
                   <label className="text-xs font-semibold text-gray-700">Name *</label>
                   <input
@@ -454,6 +522,18 @@ export default function InventorySuppliers() {
                     value={country}
                     onChange={(e) => setCountry(e.target.value)}
                   />
+                </div>
+                <div className="col-span-2">
+                  <label className="text-xs font-semibold text-gray-700">Supplier Image</label>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => onFileChange(e.target.files?.[0] || null)}
+                    className="w-full border rounded px-3 py-2 mt-1"
+                  />
+                  {imageDataUrl && (
+                    <img src={imageDataUrl} className="mt-2 w-48 border rounded object-cover" alt="Preview" />
+                  )}
                 </div>
               </div>
               )}

@@ -644,6 +644,7 @@ class Supplier(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
     updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    image_base64: Mapped[Optional[str]] = mapped_column(String)
 
     contacts = relationship("SupplierContact", back_populates="supplier", cascade="all, delete-orphan")
 
