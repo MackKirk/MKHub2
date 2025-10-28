@@ -296,7 +296,7 @@ export default function InventoryProducts(){
             <div className="p-4">
               <div className="mb-3 text-right"><button onClick={()=> handleAddRelated(viewRelated)} className="px-3 py-2 rounded bg-brand-red text-white">Add Related</button></div>
               <div className="border rounded divide-y">
-                {relatedList.length? relatedList.map((r:any,i:number)=> (
+                {Array.isArray(relatedList) && relatedList.length? relatedList.map((r:any,i:number)=> (
                   <div key={i} className="px-3 py-2 flex items-center justify-between">
                     <div>
                       <div className="font-medium">{r.name}</div>
@@ -318,15 +318,15 @@ export default function InventoryProducts(){
             <div className="p-4">
               <div className="mb-3"><input className="w-full border rounded px-3 py-2" placeholder="Search products..." value={addRelatedSearch} onChange={e=> searchRelatedProducts(e.target.value)} /></div>
               <div className="border rounded divide-y max-h-64 overflow-y-auto">
-                {addRelatedResults.map(r=> (
+                {Array.isArray(addRelatedResults) && addRelatedResults.length? addRelatedResults.map(r=> (
                   <div key={r.id} className="px-3 py-2 flex items-center justify-between hover:bg-gray-50 cursor-pointer" onClick={()=> createRelation(addRelatedTarget!, r.id)}>
                     <div>
                       <div className="font-medium">{r.name}</div>
                       <div className="text-xs text-gray-500">{r.supplier_name||''} · ${Number(r.price||0).toFixed(2)}</div>
                     </div>
                   </div>
-                ))}
-                {!addRelatedSearch && <div className="p-3 text-gray-600">Start typing to search</div>}
+                )): null}
+                {(!addRelatedSearch || !addRelatedResults.length) && <div className="p-3 text-gray-600">Start typing to search</div>}
               </div>
             </div>
           </div>

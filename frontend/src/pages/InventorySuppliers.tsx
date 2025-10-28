@@ -6,7 +6,7 @@ import toast from 'react-hot-toast';
 type Supplier = { id:string, name:string, legal_name?:string, email?:string, phone?:string, city?:string, province?:string, country?:string };
 
 export default function InventorySuppliers(){
-  const { data, refetch, isLoading } = useQuery({ queryKey:['suppliers'], queryFn: ()=>api<Supplier[]>('GET','/inventory/suppliers') });
+  const { data, refetch, isLoading, error } = useQuery({ queryKey:['suppliers'], queryFn: async()=> await api<any[]>('GET','/inventory/suppliers') });
   const [open, setOpen] = useState(false);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -17,6 +17,7 @@ export default function InventorySuppliers(){
         <h1 className="text-2xl font-bold">Suppliers</h1>
         <button onClick={()=>setOpen(true)} className="px-3 py-2 rounded bg-brand-red text-white">New Supplier</button>
       </div>
+      {error && <div className="mb-3 p-3 bg-red-100 text-red-800 rounded">{String(error)}</div>}
       <div className="rounded-xl border bg-white overflow-hidden">
         <table className="w-full text-sm">
           <thead className="bg-gray-50"><tr><th className="p-2 text-left">Name</th><th className="p-2 text-left">Email</th><th className="p-2 text-left">Phone</th><th className="p-2 text-left">City</th></tr></thead>
