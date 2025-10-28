@@ -309,6 +309,9 @@ def create_app() -> FastAPI:
                                        "commented_at TIMESTAMPTZ,\n"
                                        "updated_at TIMESTAMPTZ DEFAULT NOW()\n"
                                        ")"))
+                    # Ensure suppliers table has created_at and updated_at
+                    conn.execute(text("ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW()"))
+                    conn.execute(text("ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ"))
         except Exception:
             pass
         # Removed bootstrap admin creation: admins should be granted via roles after onboarding
