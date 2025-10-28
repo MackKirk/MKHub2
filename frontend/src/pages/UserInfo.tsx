@@ -638,6 +638,15 @@ function UserDocuments({ userId, canEdit }:{ userId:string, canEdit:boolean }){
   const [title, setTitle] = useState<string>('');
   const [showNewFolder, setShowNewFolder] = useState(false);
   const [newFolderName, setNewFolderName] = useState('');
+  const [newFolderParentId, setNewFolderParentId] = useState<string| null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const [renameFolder, setRenameFolder] = useState<{id:string, name:string}|null>(null);
+  const [moveDoc, setMoveDoc] = useState<{id:string}|null>(null);
+  const [renameDoc, setRenameDoc] = useState<{id:string, title:string}|null>(null);
+  const [inlineRenameFolderId, setInlineRenameFolderId] = useState<string| null>(null);
+  const [inlineRenameFolderName, setInlineRenameFolderName] = useState<string>('');
+  const [selectMode, setSelectMode] = useState<boolean>(false);
+  const [selectedDocIds, setSelectedDocIds] = useState<Set<string>>(new Set());
 
   const upload = async()=>{
     try{
@@ -652,43 +661,232 @@ function UserDocuments({ userId, canEdit }:{ userId:string, canEdit:boolean }){
     }catch(_e){ toast.error('Upload failed'); }
   };
 
+  const uploadToFolder = async(folderId:string, file: File)=>{
+    try{
+      const name = file.name; const type = file.type || 'application/octet-stream';
+      const up = await api('POST','/files/upload',{ original_name: name, content_type: type, project_id: null, client_id: null, category_id: userId });
+      await fetch(up.upload_url, { method:'PUT', headers:{ 'Content-Type': type }, body: file });
+      const conf = await api('POST','/files/confirm',{ key: up.key, size_bytes: file.size, content_type: type });
+      await api('POST', `/auth/users/${encodeURIComponent(userId)}/documents`, { folder_id: folderId, title: name, file_id: conf.id });
+    }catch(_e){ /* noop per-file */ }
+  };
+
   const del = async(id:string)=>{ try{ await api('DELETE', `/auth/users/${encodeURIComponent(userId)}/documents/${encodeURIComponent(id)}`); await refetch(); }catch(_e){ toast.error('Delete failed'); } };
   const createFolder = async()=>{
     try{
       const name = newFolderName.trim(); if(!name){ toast.error('Folder name required'); return; }
-      const r = await api('POST', `/auth/users/${encodeURIComponent(userId)}/folders`, { name });
-      toast.success('Folder created'); setShowNewFolder(false); setNewFolderName(''); await refetchFolders(); setActiveFolderId(r.id);
+      const body:any = { name };
+      if(newFolderParentId) body.parent_id = newFolderParentId;
+      const r = await api('POST', `/auth/users/${encodeURIComponent(userId)}/folders`, body);
+      toast.success('Folder created'); setShowNewFolder(false); setNewFolderName(''); setNewFolderParentId(null); await refetchFolders(); setActiveFolderId(r.id);
     }catch(_e){ toast.error('Failed to create folder'); }
   };
 
+  const doRenameFolder = async()=>{
+    try{
+      if(!renameFolder) return; const nm = (renameFolder.name||'').trim(); if(!nm){ toast.error('Folder name required'); return; }
+      await api('PUT', `/auth/users/${encodeURIComponent(userId)}/folders/${encodeURIComponent(renameFolder.id)}`, { name: nm });
+      toast.success('Renamed'); setRenameFolder(null); await refetchFolders();
+    }catch(_e){ toast.error('Failed to rename'); }
+  };
+
+  const removeFolder = async(id:string)=>{
+    try{ await api('DELETE', `/auth/users/${encodeURIComponent(userId)}/folders/${encodeURIComponent(id)}`); toast.success('Folder deleted'); if(activeFolderId===id) setActiveFolderId('all'); await refetchFolders(); }
+    catch(e:any){ toast.error(e?.detail||'Cannot delete folder'); }
+  };
+
+  const doMoveDoc = async()=>{
+    try{
+      if(!moveDoc) return; if(activeFolderId==='all'){ toast.error('Open a folder to move into another'); return; }
+      const target = (document.getElementById('move-target') as HTMLSelectElement)?.value || '';
+      if(!target){ toast.error('Select destination folder'); return; }
+      await api('PUT', `/auth/users/${encodeURIComponent(userId)}/documents/${encodeURIComponent(moveDoc.id)}`, { folder_id: target });
+      setMoveDoc(null); await refetch();
+    }catch(_e){ toast.error('Failed to move'); }
+  };
+
+  const doRenameDoc = async()=>{
+    try{
+      if(!renameDoc) return; const t = (renameDoc.title||'').trim(); if(!t){ toast.error('Title required'); return; }
+      await api('PUT', `/auth/users/${encodeURIComponent(userId)}/documents/${encodeURIComponent(renameDoc.id)}`, { title: t });
+      toast.success('Renamed'); setRenameDoc(null); await refetch();
+    }catch(_e){ toast.error('Failed to rename'); }
+  };
+
+  const topFolders = useMemo(()=> (folders||[]).filter((f:any)=> !f.parent_id), [folders]);
+  const childFolders = useMemo(()=> (folders||[]).filter((f:any)=> f.parent_id===activeFolderId), [folders, activeFolderId]);
+  const breadcrumb = useMemo(()=>{
+    if(activeFolderId==='all') return [] as any[];
+    const map = new Map<string, any>(); (folders||[]).forEach((f:any)=> map.set(f.id, f));
+    const path: any[] = []; let cur = map.get(activeFolderId);
+    while(cur){ path.unshift(cur); cur = cur.parent_id? map.get(cur.parent_id): null; }
+    return path;
+  }, [folders, activeFolderId]);
+
   return (
     <div>
-      <div className="flex items-center gap-2 mb-3">
-        <button onClick={()=> setActiveFolderId('all')} className={`px-3 py-1.5 rounded-lg text-sm ${activeFolderId==='all'? 'bg-black text-white':'bg-white border'}`}>All files</button>
-        {(folders||[]).map((f:any)=> (
-          <button key={f.id} onClick={()=> setActiveFolderId(f.id)} className={`px-3 py-1.5 rounded-lg text-sm ${activeFolderId===f.id? 'bg-black text-white':'bg-white border'}`}>{f.name}</button>
-        ))}
-        {canEdit && <>
-          <button onClick={()=> setShowNewFolder(true)} className="ml-auto px-3 py-2 rounded-lg border">New folder</button>
-          <button onClick={()=> setShowUpload(true)} className="px-3 py-2 rounded-lg bg-brand-red text-white">Add file</button>
-        </>}
-      </div>
-      <div className="grid md:grid-cols-3 gap-3">
-        {(docs||[]).map((d:any)=> (
-          <div key={d.id} className="rounded-lg border p-3 flex items-center gap-3">
-            <img className="w-12 h-12 rounded object-cover border" src={d.file_id? `/files/${d.file_id}/thumbnail?w=96`:'/ui/assets/login/logo-light.svg'} />
-            <div className="flex-1 min-w-0">
-              <div className="font-medium truncate">{d.title||'Document'}</div>
-              <div className="text-xs text-gray-600 truncate">{(folders||[]).find((x:any)=>x.id===d.folder_id)?.name || '—'}</div>
+      {activeFolderId==='all' ? (
+        <>
+          <div className="mb-3 flex items-center gap-2">
+            <div className="text-sm font-semibold">Folders</div>
+            {canEdit && <button onClick={()=> { setNewFolderParentId(null); setShowNewFolder(true); }} className="ml-auto px-3 py-2 rounded-lg border">New folder</button>}
+          </div>
+          <div className="grid md:grid-cols-4 gap-3">
+            {topFolders.map((f:any)=> (
+              <div key={f.id}
+                   className="rounded-lg border p-4 bg-white hover:bg-gray-50 select-none group"
+                   onClick={(e)=>{
+                     // avoid triggering when clicking action buttons
+                     const target = e.target as HTMLElement; if(target.closest('.folder-actions')) return; setActiveFolderId(f.id);
+                   }}
+                   onDragOver={(e)=>{ e.preventDefault(); }}
+                   onDrop={async(e)=>{ e.preventDefault();
+                     const movedDocId = e.dataTransfer.getData('application/x-mkhub-doc');
+                     if(movedDocId){
+                       try{ await api('PUT', `/auth/users/${encodeURIComponent(userId)}/documents/${encodeURIComponent(movedDocId)}`, { folder_id: f.id }); toast.success('Moved'); if(activeFolderId===f.id){ await refetch(); } else { setActiveFolderId(f.id); } }
+                       catch(_e){ toast.error('Failed to move'); }
+                       return;
+                     }
+                     if(e.dataTransfer.files?.length){ const arr=Array.from(e.dataTransfer.files); for(const file of arr){ await uploadToFolder(f.id, file); } toast.success('Uploaded'); }
+                   }}>
+                <div className="text-3xl">📁</div>
+                <div className="mt-2 font-medium truncate" title={f.name}>
+                  {inlineRenameFolderId===f.id ? (
+                    <input autoFocus className="border rounded px-2 py-1 w-full"
+                           value={inlineRenameFolderName}
+                           onChange={e=> setInlineRenameFolderName(e.target.value)}
+                           onBlur={async()=>{ if(inlineRenameFolderName.trim()){ await api('PUT', `/auth/users/${encodeURIComponent(userId)}/folders/${encodeURIComponent(f.id)}`, { name: inlineRenameFolderName.trim() }); await refetchFolders(); } setInlineRenameFolderId(null); }}
+                           onKeyDown={async(e)=>{ if(e.key==='Enter'){ (e.target as HTMLInputElement).blur(); } if(e.key==='Escape'){ setInlineRenameFolderId(null); } }}
+                    />
+                  ) : f.name}
+                </div>
+                {canEdit && (
+                  <div className="folder-actions opacity-0 group-hover:opacity-100 transition-opacity mt-2 flex gap-2">
+                    <button className="text-xs px-2 py-1 rounded border" onClick={()=> { setInlineRenameFolderId(f.id); setInlineRenameFolderName(f.name); }}>Rename</button>
+                    <button className="text-xs px-2 py-1 rounded border text-red-600" onClick={()=> removeFolder(f.id)}>Delete</button>
+                  </div>
+                )}
+              </div>
+            ))}
+            {!topFolders.length && <div className="text-sm text-gray-600">No folders yet</div>}
+          </div>
+        </>
+      ) : (
+        <>
+          <div className="mb-3 flex items-center gap-2">
+            <button onClick={()=> setActiveFolderId('all')} className="px-3 py-2 rounded-lg border">← All folders</button>
+            <div className="text-sm font-semibold flex gap-2 items-center">
+              {breadcrumb.map((f:any, idx:number)=> (
+                <span key={f.id} className="flex items-center gap-2">
+                  {idx>0 && <span className="opacity-60">/</span>}
+                  <button className="underline" onClick={()=> setActiveFolderId(f.id)}>{f.name}</button>
+                </span>
+              ))}
             </div>
-            <div className="flex items-center gap-2">
-              <a className="text-sm underline" href={`/files/${d.file_id}/download`} target="_blank">Download</a>
-              {canEdit && <button onClick={()=>del(d.id)} className="text-sm text-red-600">Delete</button>}
+            {canEdit && <>
+              <button onClick={()=> { setNewFolderParentId(activeFolderId); setShowNewFolder(true); }} className="ml-auto px-3 py-2 rounded-lg border">New subfolder</button>
+              <button onClick={()=> setShowUpload(true)} className="px-3 py-2 rounded-lg bg-brand-red text-white">Add file</button>
+            </>}
+          </div>
+          {childFolders.length>0 && (
+            <div className="mb-3">
+              <div className="text-xs text-gray-600 mb-1">Subfolders</div>
+              <div className="grid md:grid-cols-4 gap-3">
+                {childFolders.map((f:any)=> (
+                  <div key={f.id}
+                       className="rounded-lg border p-4 bg-white hover:bg-gray-50 select-none group"
+                       onClick={(e)=>{ const t=e.target as HTMLElement; if(t.closest('.folder-actions')) return; setActiveFolderId(f.id); }}
+                       onDragOver={(e)=>{ e.preventDefault(); }}
+                       onDrop={async(e)=>{ e.preventDefault();
+                         const movedDocId = e.dataTransfer.getData('application/x-mkhub-doc');
+                         if(movedDocId){
+                           try{ await api('PUT', `/auth/users/${encodeURIComponent(userId)}/documents/${encodeURIComponent(movedDocId)}`, { folder_id: f.id }); toast.success('Moved'); if(activeFolderId===f.id){ await refetch(); } else { setActiveFolderId(f.id); } }
+                           catch(_e){ toast.error('Failed to move'); }
+                           return;
+                         }
+                         if(e.dataTransfer.files?.length){ const arr=Array.from(e.dataTransfer.files); for(const file of arr){ await uploadToFolder(f.id, file); } toast.success('Uploaded'); }
+                       }}>
+                    <div className="text-3xl">📁</div>
+                    <div className="mt-2 font-medium truncate" title={f.name}>
+                      {inlineRenameFolderId===f.id ? (
+                        <input autoFocus className="border rounded px-2 py-1 w-full"
+                               value={inlineRenameFolderName}
+                               onChange={e=> setInlineRenameFolderName(e.target.value)}
+                               onBlur={async()=>{ if(inlineRenameFolderName.trim()){ await api('PUT', `/auth/users/${encodeURIComponent(userId)}/folders/${encodeURIComponent(f.id)}`, { name: inlineRenameFolderName.trim() }); await refetchFolders(); } setInlineRenameFolderId(null); }}
+                               onKeyDown={async(e)=>{ if(e.key==='Enter'){ (e.target as HTMLInputElement).blur(); } if(e.key==='Escape'){ setInlineRenameFolderId(null); } }}
+                        />
+                      ) : f.name}
+                    </div>
+                    {canEdit && (
+                      <div className="folder-actions opacity-0 group-hover:opacity-100 transition-opacity mt-2 flex gap-2">
+                        <button className="text-xs px-2 py-1 rounded border" onClick={()=> { setInlineRenameFolderId(f.id); setInlineRenameFolderName(f.name); }}>Rename</button>
+                        <button className="text-xs px-2 py-1 rounded border text-red-600" onClick={()=> removeFolder(f.id)}>Delete</button>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          <div
+            className={`rounded-lg border p-4 ${isDragging? 'ring-2 ring-brand-red':''}`}
+            onDragEnter={(e)=>{ e.preventDefault(); setIsDragging(true); }}
+            onDragOver={(e)=>{ e.preventDefault(); setIsDragging(true); }}
+            onDragLeave={(e)=>{ e.preventDefault(); setIsDragging(false); }}
+            onDrop={async(e)=>{ e.preventDefault(); setIsDragging(false); const files = Array.from(e.dataTransfer.files||[]); if(!files.length) return; for(const file of files){ await uploadToFolder(activeFolderId, file as File); } toast.success('Uploaded'); await refetch(); }}
+          >
+            <div className="mb-3 flex items-center gap-2">
+              <div className="text-xs text-gray-600">Drag & drop files here to upload into this folder</div>
+              {canEdit && <button className="ml-auto text-sm px-3 py-1.5 rounded border" onClick={()=> { setSelectMode(s=> !s); if(selectMode) setSelectedDocIds(new Set()); }}>{selectMode? 'Done':'Select'}</button>}
+            </div>
+            {selectMode && selectedDocIds.size>0 && (
+              <div className="mb-3 flex items-center gap-2">
+                <div className="text-sm">{selectedDocIds.size} selected</div>
+                <select id="bulk-move-target" className="border rounded px-2 py-1">
+                  <option value="" disabled selected>Select destination</option>
+                  {(folders||[]).map((f:any)=> <option key={f.id} value={f.id}>{f.name}</option>)}
+                </select>
+                <button className="px-3 py-1.5 rounded bg-brand-red text-white" onClick={async()=>{
+                  const sel = (document.getElementById('bulk-move-target') as HTMLSelectElement);
+                  const dest = sel?.value || '';
+                  if(!dest){ toast.error('Select destination folder'); return; }
+                  try{
+                    for(const id of Array.from(selectedDocIds)){ await api('PUT', `/auth/users/${encodeURIComponent(userId)}/documents/${encodeURIComponent(id)}`, { folder_id: dest }); }
+                    toast.success('Moved'); setSelectedDocIds(new Set()); await refetch();
+                  }catch(_e){ toast.error('Failed'); }
+                }}>Move</button>
+                <button className="px-3 py-1.5 rounded border" onClick={()=> setSelectedDocIds(new Set())}>Clear</button>
+              </div>
+            )}
+            <div className="grid md:grid-cols-3 gap-3">
+              {(docs||[]).map((d:any)=> (
+                <div key={d.id} className={`rounded-lg border p-3 flex items-center gap-3 ${selectMode && selectedDocIds.has(d.id)? 'ring-2 ring-brand-red':''}`} draggable={canEdit}
+                     onDragStart={(e)=>{ try{ e.dataTransfer.setData('application/x-mkhub-doc', d.id); e.dataTransfer.effectAllowed='move'; }catch(_){} }}>
+                  {selectMode && (
+                    <input type="checkbox" className="mr-2" checked={selectedDocIds.has(d.id)} onChange={(e)=>{
+                      setSelectedDocIds(prev=>{ const next = new Set(prev); if(e.target.checked) next.add(d.id); else next.delete(d.id); return next; });
+                    }} />
+                  )}
+                  <img className="w-12 h-12 rounded object-cover border" src={d.file_id? `/files/${d.file_id}/thumbnail?w=96`:'/ui/assets/login/logo-light.svg'} />
+                  <div className="flex-1 min-w-0">
+                    <div className="font-medium truncate">{d.title||'Document'}</div>
+                    <div className="text-xs text-gray-600 truncate">{(folders||[]).find((x:any)=>x.id===d.folder_id)?.name || '—'}</div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <a className="text-sm underline" href={`/files/${d.file_id}/download`} target="_blank">Download</a>
+                    {canEdit && <>
+                      <button onClick={()=> setRenameDoc({ id: d.id, title: d.title||'' })} className="text-sm">Rename</button>
+                      <button onClick={()=> setMoveDoc({ id: d.id })} className="text-sm">Move</button>
+                      <button onClick={()=>del(d.id)} className="text-sm text-red-600">Delete</button>
+                    </>}
+                  </div>
+                </div>
+              ))}
+              {!(docs||[]).length && <div className="text-sm text-gray-600">No documents in this folder</div>}
             </div>
           </div>
-        ))}
-        {!(docs||[]).length && <div className="text-sm text-gray-600">No documents</div>}
-      </div>
+        </>
+      )}
 
       {showUpload && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
@@ -722,7 +920,7 @@ function UserDocuments({ userId, canEdit }:{ userId:string, canEdit:boolean }){
       {showNewFolder && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
           <div className="bg-white rounded-xl w-full max-w-sm p-4">
-            <div className="text-lg font-semibold mb-2">New folder</div>
+            <div className="text-lg font-semibold mb-2">{newFolderParentId? 'New subfolder':'New folder'}</div>
             <div>
               <div className="text-xs text-gray-600">Folder name</div>
               <input className="border rounded px-3 py-2 w-full" value={newFolderName} onChange={e=> setNewFolderName(e.target.value)} placeholder="e.g., Hiring pack" />
@@ -730,6 +928,57 @@ function UserDocuments({ userId, canEdit }:{ userId:string, canEdit:boolean }){
             <div className="mt-4 flex justify-end gap-2">
               <button onClick={()=>setShowNewFolder(false)} className="px-3 py-2 rounded border">Cancel</button>
               <button onClick={createFolder} className="px-3 py-2 rounded bg-brand-red text-white">Create</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {renameFolder && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl w-full max-w-sm p-4">
+            <div className="text-lg font-semibold mb-2">Rename folder</div>
+            <div>
+              <div className="text-xs text-gray-600">Folder name</div>
+              <input className="border rounded px-3 py-2 w-full" value={renameFolder.name} onChange={e=> setRenameFolder({ id: renameFolder.id, name: e.target.value })} />
+            </div>
+            <div className="mt-4 flex justify-end gap-2">
+              <button onClick={()=>setRenameFolder(null)} className="px-3 py-2 rounded border">Cancel</button>
+              <button onClick={doRenameFolder} className="px-3 py-2 rounded bg-brand-red text-white">Save</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {moveDoc && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl w-full max-w-sm p-4">
+            <div className="text-lg font-semibold mb-2">Move file</div>
+            <div>
+              <div className="text-xs text-gray-600">Destination folder</div>
+              <select id="move-target" className="border rounded px-3 py-2 w-full" defaultValue="">
+                <option value="" disabled>Select...</option>
+                {(folders||[]).map((f:any)=> <option key={f.id} value={f.id}>{f.name}</option>)}
+              </select>
+            </div>
+            <div className="mt-4 flex justify-end gap-2">
+              <button onClick={()=>setMoveDoc(null)} className="px-3 py-2 rounded border">Cancel</button>
+              <button onClick={doMoveDoc} className="px-3 py-2 rounded bg-brand-red text-white">Move</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {renameDoc && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl w-full max-w-sm p-4">
+            <div className="text-lg font-semibold mb-2">Rename file</div>
+            <div>
+              <div className="text-xs text-gray-600">Title</div>
+              <input className="border rounded px-3 py-2 w-full" value={renameDoc.title} onChange={e=> setRenameDoc({ id: renameDoc.id, title: e.target.value })} />
+            </div>
+            <div className="mt-4 flex justify-end gap-2">
+              <button onClick={()=>setRenameDoc(null)} className="px-3 py-2 rounded border">Cancel</button>
+              <button onClick={doRenameDoc} className="px-3 py-2 rounded bg-brand-red text-white">Save</button>
             </div>
           </div>
         </div>
