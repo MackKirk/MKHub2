@@ -653,9 +653,9 @@ function UserDocuments({ userId, canEdit }:{ userId:string, canEdit:boolean }){
       if(!fileObj){ toast.error('Select a file'); return; }
       if(activeFolderId==='all'){ toast.error('Select a folder first'); return; }
       const name = fileObj.name; const type = fileObj.type || 'application/octet-stream';
-      const up = await api('POST','/files/upload',{ original_name: name, content_type: type, project_id: null, client_id: null, category_id: userId });
+      const up = await api('POST','/files/upload',{ original_name: name, content_type: type, employee_id: userId, project_id: null, client_id: null, category_id: userId });
       await fetch(up.upload_url, { method:'PUT', headers:{ 'Content-Type': type }, body: fileObj });
-      const conf = await api('POST','/files/confirm',{ key: up.key, size_bytes: fileObj.size, content_type: type });
+      const conf = await api('POST','/files/confirm',{ key: up.key, size_bytes: fileObj.size, checksum_sha256: '', content_type: type });
       await api('POST', `/auth/users/${encodeURIComponent(userId)}/documents`, { folder_id: activeFolderId, title: title || name, file_id: conf.id });
       toast.success('Uploaded'); setShowUpload(false); setFileObj(null); setTitle(''); await refetch();
     }catch(_e){ toast.error('Upload failed'); }
@@ -664,9 +664,9 @@ function UserDocuments({ userId, canEdit }:{ userId:string, canEdit:boolean }){
   const uploadToFolder = async(folderId:string, file: File)=>{
     try{
       const name = file.name; const type = file.type || 'application/octet-stream';
-      const up = await api('POST','/files/upload',{ original_name: name, content_type: type, project_id: null, client_id: null, category_id: userId });
+      const up = await api('POST','/files/upload',{ original_name: name, content_type: type, employee_id: userId, project_id: null, client_id: null, category_id: userId });
       await fetch(up.upload_url, { method:'PUT', headers:{ 'Content-Type': type }, body: file });
-      const conf = await api('POST','/files/confirm',{ key: up.key, size_bytes: file.size, content_type: type });
+      const conf = await api('POST','/files/confirm',{ key: up.key, size_bytes: file.size, checksum_sha256: '', content_type: type });
       await api('POST', `/auth/users/${encodeURIComponent(userId)}/documents`, { folder_id: folderId, title: name, file_id: conf.id });
     }catch(_e){ /* noop per-file */ }
   };
