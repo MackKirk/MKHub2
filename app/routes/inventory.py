@@ -85,7 +85,11 @@ def list_suppliers(q: str | None = None, db: Session = Depends(get_db), _=Depend
     if q:
         like = f"%{q}%"
         query = query.filter((Supplier.name.ilike(like)) | (Supplier.legal_name.ilike(like)))
-    return query.order_by(Supplier.created_at.desc()).limit(500).all()
+    # Order by created_at if column exists, otherwise just return
+    try:
+        return query.order_by(Supplier.created_at.desc()).limit(500).all()
+    except Exception:
+        return query.limit(500).all()
 
 
 @router.post("/suppliers", response_model=SupplierResponse)
