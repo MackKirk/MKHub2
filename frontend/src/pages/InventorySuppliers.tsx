@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
+import { useConfirm } from '@/components/ConfirmProvider';
 
 type Supplier = {
   id: string;
@@ -38,6 +39,7 @@ const formatPhone = (phone: string | undefined): string => {
 
 export default function InventorySuppliers() {
   const queryClient = useQueryClient();
+  const confirm = useConfirm();
   const [q, setQ] = useState('');
   const [open, setOpen] = useState(false);
   const [viewing, setViewing] = useState<Supplier | null>(null);
@@ -474,8 +476,14 @@ export default function InventorySuppliers() {
                 // View mode buttons
                 <>
                   <button
-                    onClick={() => {
-                      if (confirm('Delete this supplier?')) {
+                    onClick={async () => {
+                      const ok = await confirm({ 
+                        title: 'Delete supplier', 
+                        message: 'Are you sure you want to delete this supplier? This action cannot be undone.',
+                        confirmText: 'Delete',
+                        cancelText: 'Cancel'
+                      });
+                      if (ok) {
                         deleteMut.mutate(viewing.id);
                         setOpen(false);
                         resetForm();

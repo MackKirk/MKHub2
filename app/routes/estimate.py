@@ -94,20 +94,45 @@ def update_product(product_id: int, body: MaterialIn, db: Session = Depends(get_
 
 @router.delete("/products/{product_id}")
 def delete_product(product_id: int, db: Session = Depends(get_db), _=Depends(require_permissions("inventory:write"))):
-    row = db.query(Material).filter(Material.id == product_id).first()
-    if not row:
-        raise HTTPException(status_code=404, detail="Product not found")
-    
-    # Delete all relationships before deleting the product
-    relations = db.query(RelatedProduct).filter(
-        (RelatedProduct.product_a_id == product_id) | (RelatedProduct.product_b_id == product_id)
-    ).all()
-    for rel in relations:
-        db.delete(rel)
-    
-    db.delete(row)
-    db.commit()
-    return {"status": "ok"}
+    import traceback
+    try:
+        row = db.query(Material).filter(Material.id == product_id).first()
+        if not row:
+            raise HTTPException(status_code=404, detail="Product not found")
+        
+        print(f"DELETE PRODUCT - Attempting to delete: {product_id}")
+        
+        # Delete all relationships before deleting the product
+        relations = db.query(RelatedProduct).filter(
+            (RelatedProduct.product_a_id == product_id) | (RelatedProduct.product_b_id == product_id)
+        ).all()
+        
+        print(f"Found {len(relations)} relations to delete")
+        for rel in relations:
+            db.delete(rel)
+            print(f"Deleted relation: {rel.id}")
+        
+        # Commit the relation deletions
+        db.commit()
+        
+        # Now delete the product
+        db.delete(row)
+        db.commit()
+        
+        print("Product deleted successfully")
+        return {"status": "ok"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        error_msg = str(e)
+        tb = traceback.format_exc()
+        print("=" * 80)
+        print("DELETE PRODUCT - ERROR")
+        print(f"Error: {error_msg}")
+        print(f"Traceback:\n{tb}")
+        print("=" * 80)
+        raise HTTPException(status_code=500, detail=f"Failed to delete product: {error_msg}")
 
 
 # Related products
