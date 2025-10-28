@@ -915,6 +915,49 @@ def delete_folder(user_id: str, folder_id: str, db: Session = Depends(get_db), _
     return {"status":"ok"}
 
 
+@router.put("/users/{user_id}/folders/{folder_id}")
+def update_folder(user_id: str, folder_id: str, name: str = Body(None), parent_id: Optional[str] = Body(None), db: Session = Depends(get_db), _=Depends(require_permissions("users:write"))):
+    from ..models.models import EmployeeFolder
+    try:
+        fid = uuid.UUID(folder_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid folder")
+    f = db.query(EmployeeFolder).filter(and_(EmployeeFolder.user_id == user_id, EmployeeFolder.id == fid)).first()
+    if not f:
+        raise HTTPException(status_code=404, detail="Not found")
+    if name is not None:
+        f.name = (name or "").strip()
+        if not f.name:
+            raise HTTPException(status_code=400, detail="Folder name required")
+    if parent_id is not None:
+        try:
+            f.parent_id = uuid.UUID(parent_id) if parent_id else None
+        except Exception:
+            f.parent_id = None
+    db.commit()
+    return {"status": "ok"}
+
+
+@router.put("/users/{user_id}/documents/{doc_id}")
+def update_document(user_id: str, doc_id: str, payload: dict = Body(...), db: Session = Depends(get_db), _=Depends(require_permissions("users:write"))):
+    from ..models.models import EmployeeDocument
+    d = db.query(EmployeeDocument).filter(and_(EmployeeDocument.user_id == user_id, EmployeeDocument.id == doc_id)).first()
+    if not d:
+        raise HTTPException(status_code=404, detail="Not found")
+    # only allow safe fields update here
+    if "folder_id" in payload:
+        try:
+            d.folder_id = uuid.UUID(str(payload.get("folder_id"))) if payload.get("folder_id") else None
+        except Exception:
+            d.folder_id = None
+    if "title" in payload:
+        d.title = payload.get("title")
+    if "notes" in payload:
+        d.notes = payload.get("notes")
+    db.commit()
+    return {"status": "ok"}
+
+
 # ===== Employee Notes =====
 @router.get("/users/{user_id}/notes")
 def list_notes(user_id: str, db: Session = Depends(get_db), _=Depends(require_permissions("users:read"))):
