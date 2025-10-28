@@ -64,8 +64,6 @@ export default function GeoSelect({ country, state, city, onChange, labels, requ
         if (alive) setLoadingStates(false);
       }
     })();
-    // reset state/city when country changes
-    onChange({ state: '', city: '' });
   }, [country]);
 
   useEffect(() => {
@@ -98,8 +96,6 @@ export default function GeoSelect({ country, state, city, onChange, labels, requ
         if (alive) setLoadingCities(false);
       }
     })();
-    // reset city when state changes
-    onChange({ city: '' });
   }, [country, state]);
 
   const countryLabel = labels?.country ?? 'Country';

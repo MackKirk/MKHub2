@@ -20,11 +20,22 @@ export default function UserInfo(){
   const [pending, setPending] = useState<any>({});
   const [dirty, setDirty] = useState<boolean>(false);
   const { data:usersOptions } = useQuery({ queryKey:['users-options'], queryFn: ()=> api<any[]>('GET','/auth/users/options') });
+  const { data: supervisorProfile } = useQuery({
+    queryKey: ['supervisor-profile', p?.manager_user_id],
+    queryFn: ()=> api<any>('GET', `/auth/users/${p.manager_user_id}/profile`),
+    enabled: !!p?.manager_user_id,
+  });
   const supervisorName = useMemo(()=>{
+    if (supervisorProfile?.profile) {
+      const fn = supervisorProfile.profile.first_name||'';
+      const ln = supervisorProfile.profile.last_name||'';
+      const full = `${fn} ${ln}`.trim();
+      if (full) return full;
+    }
     if(!p?.manager_user_id) return '';
     const row = (usersOptions||[]).find((x:any)=> String(x.id)===String(p.manager_user_id));
     return row? (row.username || row.email) : '';
-  }, [usersOptions, p?.manager_user_id]);
+  }, [usersOptions, p?.manager_user_id, supervisorProfile]);
 
   function calcAge(dob?: string){
     if(!dob) return '';
@@ -460,7 +471,7 @@ function JobSection({ type, p, editable, userId, collectChanges, usersOptions }:
 function TimesheetBlock({ userId }:{ userId:string }){
   const { data:meSelf } = useQuery({ queryKey:['me'], queryFn: ()=> api<any>('GET','/auth/me') });
   const [month, setMonth] = useState<string>(new Date().toISOString().slice(0,7));
-  const [projectId, setProjectId] = useState<string>('');
+  const [projectId, setProjectId] = useState<string>('_all_');
   const [showModal, setShowModal] = useState<boolean>(false);
   const [workDate, setWorkDate] = useState<string>(new Date().toISOString().slice(0,10));
   const [start, setStart] = useState<string>('');
