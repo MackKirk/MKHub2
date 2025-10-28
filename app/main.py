@@ -385,6 +385,8 @@ def create_app() -> FastAPI:
                                        ")"))
                     # Ensure suppliers table has all required columns
                     conn.execute(text("ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS legal_name VARCHAR(255)"))
+                    conn.execute(text("ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS email VARCHAR(255)"))
+                    conn.execute(text("ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS phone VARCHAR(100)"))
                     conn.execute(text("ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS website VARCHAR(255)"))
                     conn.execute(text("ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS address_line1 VARCHAR(255)"))
                     conn.execute(text("ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS address_line2 VARCHAR(255)"))
