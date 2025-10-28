@@ -120,6 +120,13 @@ export default function InventoryProducts(){
     setAddRelatedResults([]);
   };
 
+  const resetModal = ()=>{
+    setEditing(null);
+    setOpen(false);
+    setName(''); setNewSupplier(''); setNewCategory(''); setUnit(''); setPrice(''); setDesc('');
+    setUnitsPerPackage(''); setCovSqs(''); setCovFt2(''); setCovM2(''); setUnitType('unitary'); setImageDataUrl('');
+  };
+
   const searchRelatedProducts = async (txt: string)=>{
     setAddRelatedSearch(txt);
     if(!txt.trim()){ setAddRelatedResults([]); return; }
@@ -148,13 +155,6 @@ export default function InventoryProducts(){
       if(viewRelated) handleViewRelated(viewRelated);
       await refetch();
     }catch(_e){ toast.error('Failed'); }
-  };
-
-  const resetModal = ()=>{
-    setEditing(null);
-    setOpen(false);
-    setName(''); setNewSupplier(''); setNewCategory(''); setUnit(''); setPrice(''); setDesc('');
-    setUnitsPerPackage(''); setCovSqs(''); setCovFt2(''); setCovM2(''); setUnitType('unitary'); setImageDataUrl('');
   };
 
   return (
@@ -223,7 +223,7 @@ export default function InventoryProducts(){
                 <label className="text-xs text-gray-600">Supplier</label>
                 <input list="supplier-list" className="w-full border rounded px-3 py-2" value={newSupplier} onChange={e=>setNewSupplier(e.target.value)} />
                 <datalist id="supplier-list">
-                  {(supplierOptions||[]).map((s:any)=> (<option key={s.id} value={s.name}></option>))}
+                  {Array.isArray(supplierOptions) && supplierOptions.map((s:any)=> (<option key={s.id} value={s.name}></option>))}
                 </datalist>
               </div>
               <div><label className="text-xs text-gray-600">Category</label><input className="w-full border rounded px-3 py-2" value={newCategory} onChange={e=>setNewCategory(e.target.value)} /></div>
