@@ -20,6 +20,22 @@ type Supplier = {
   created_at?: string;
 };
 
+// Helper function to format phone numbers
+const formatPhone = (phone: string | undefined): string => {
+  if (!phone) return '-';
+  // Remove all non-numeric characters
+  const cleaned = phone.replace(/\D/g, '');
+  // Format as (XXX) XXX-XXXX for North American numbers
+  if (cleaned.length === 10) {
+    return `(${cleaned.slice(0, 3)}) ${cleaned.slice(3, 6)}-${cleaned.slice(6)}`;
+  } else if (cleaned.length === 11 && cleaned[0] === '1') {
+    // Handle 11-digit numbers starting with 1
+    return `+1 (${cleaned.slice(1, 4)}) ${cleaned.slice(4, 7)}-${cleaned.slice(7)}`;
+  }
+  // Return original if can't format
+  return phone;
+};
+
 export default function InventorySuppliers() {
   const queryClient = useQueryClient();
   const [q, setQ] = useState('');
@@ -210,7 +226,7 @@ export default function InventorySuppliers() {
                     </button>
                   </td>
                   <td className="p-3 text-gray-600">{s.email || '-'}</td>
-                  <td className="p-3 text-gray-600">{s.phone || '-'}</td>
+                  <td className="p-3 text-gray-600">{formatPhone(s.phone)}</td>
                   <td className="p-3 text-gray-600">{s.city || '-'}</td>
                   <td className="p-3 text-gray-600">{s.province || '-'}</td>
                 </tr>
@@ -256,7 +272,7 @@ export default function InventorySuppliers() {
                     </div>
                     <div>
                       <label className="text-xs font-semibold text-gray-700">Phone</label>
-                      <div className="mt-1 text-gray-600">{viewing.phone || '-'}</div>
+                      <div className="mt-1 text-gray-600">{formatPhone(viewing.phone)}</div>
                     </div>
                     <div className="col-span-2">
                       <label className="text-xs font-semibold text-gray-700">Website</label>
