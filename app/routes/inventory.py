@@ -115,7 +115,7 @@ def create_supplier(body: dict, db: Session = Depends(get_db)):
         for field in ['legal_name', 'email', 'phone', 'website', 'address_line1', 
                       'address_line2', 'city', 'province', 'postal_code', 'country', 
                       'tax_number', 'payment_terms', 'currency', 'lead_time_days', 
-                      'category', 'status', 'notes', 'is_active']:
+                      'category', 'status', 'notes', 'is_active', 'image_base64']:
             val = body.get(field)
             if val is not None:
                 # Convert to proper type

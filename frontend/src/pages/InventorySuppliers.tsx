@@ -305,56 +305,22 @@ export default function InventorySuppliers() {
       {open && (
         <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center">
           <div className="w-[900px] max-w-[95vw] max-h-[90vh] bg-white rounded-xl overflow-hidden flex flex-col">
-            {!viewing && (
-              <div className="px-6 py-4 border-b flex items-center justify-between bg-gray-50">
-                <div className="font-semibold text-lg">
-                  {editing ? 'Edit Supplier' : 'New Supplier'}
-                </div>
-                <button
-                  onClick={() => {
-                    setOpen(false);
-                    resetForm();
-                  }}
-                  className="px-3 py-1 rounded bg-gray-200 hover:bg-gray-300"
-                >
-                  Close
-                </button>
-              </div>
-            )}
-            {viewing && !editing && (
-              <div className="px-6 py-4 border-b flex items-center justify-between bg-gray-50">
-                <div className="font-semibold text-lg">Supplier Details</div>
-                <button
-                  onClick={() => {
-                    setOpen(false);
-                    resetForm();
-                  }}
-                  className="px-3 py-1 rounded bg-gray-200 hover:bg-gray-300"
-                >
-                  Close
-                </button>
-              </div>
-            )}
-            {editing && (
-              <div className="px-6 py-4 border-b flex items-center justify-between bg-gray-50">
-                <div className="font-semibold text-lg">Edit Supplier</div>
-                <button
-                  onClick={() => {
-                    setOpen(false);
-                    resetForm();
-                  }}
-                  className="px-3 py-1 rounded bg-gray-200 hover:bg-gray-300"
-                >
-                  Close
-                </button>
-              </div>
-            )}
             <div className="overflow-y-auto">
               {viewing && !editing ? (
                 // View mode - display supplier details
                 <div className="space-y-6">
                   {/* Profile Header */}
-                  <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] p-6 flex items-center gap-6">
+                  <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] p-6 flex items-center gap-6 relative">
+                    <button
+                      onClick={() => {
+                        setOpen(false);
+                        resetForm();
+                      }}
+                      className="absolute top-4 right-4 text-white/80 hover:text-white text-2xl font-bold w-8 h-8 flex items-center justify-center rounded hover:bg-white/10"
+                      title="Close"
+                    >
+                      ×
+                    </button>
                     <img 
                       src={viewing.image_base64 || '/ui/assets/login/logo-light.svg'} 
                       className="w-24 h-24 rounded-xl border-4 border-white object-cover shadow-lg" 
@@ -565,15 +531,6 @@ export default function InventorySuppliers() {
                     className="px-4 py-2 rounded bg-blue-600 text-white hover:bg-blue-700"
                   >
                     Edit
-                  </button>
-                  <button
-                    onClick={() => {
-                      setOpen(false);
-                      resetForm();
-                    }}
-                    className="px-4 py-2 rounded bg-gray-200 hover:bg-gray-300"
-                  >
-                    Close
                   </button>
                 </>
               ) : (
