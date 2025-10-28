@@ -94,11 +94,15 @@ def list_suppliers(q: str | None = None, db: Session = Depends(get_db), _=Depend
 
 @router.post("/suppliers", response_model=SupplierResponse)
 def create_supplier(supplier: SupplierCreate, db: Session = Depends(get_db), _=Depends(require_permissions("inventory:write"))):
-    row = Supplier(**supplier.dict(exclude_unset=True))
-    db.add(row)
-    db.commit()
-    db.refresh(row)
-    return row
+    try:
+        row = Supplier(**supplier.dict(exclude_unset=True))
+        db.add(row)
+        db.commit()
+        db.refresh(row)
+        return row
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to create supplier: {str(e)}")
 
 
 @router.put("/suppliers/{supplier_id}", response_model=SupplierResponse)
