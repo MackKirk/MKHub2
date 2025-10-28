@@ -6,7 +6,11 @@ import toast from 'react-hot-toast';
 type Supplier = { id:string, name:string, legal_name?:string, email?:string, phone?:string, city?:string, province?:string, country?:string };
 
 export default function InventorySuppliers(){
-  const { data, refetch, isLoading, error } = useQuery({ queryKey:['suppliers'], queryFn: async()=> await api<any[]>('GET','/inventory/suppliers') });
+  const { data, refetch, isLoading, error } = useQuery({ 
+    queryKey:['suppliers'], 
+    queryFn: async()=> await api<any[]>('GET','/inventory/suppliers'),
+    retry: false,
+  });
   const [open, setOpen] = useState(false);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -22,9 +26,9 @@ export default function InventorySuppliers(){
         <table className="w-full text-sm">
           <thead className="bg-gray-50"><tr><th className="p-2 text-left">Name</th><th className="p-2 text-left">Email</th><th className="p-2 text-left">Phone</th><th className="p-2 text-left">City</th></tr></thead>
           <tbody>
-            {isLoading? <tr><td colSpan={4} className="p-4"><div className="h-6 bg-gray-100 animate-pulse rounded"/></td></tr> : (data||[]).map(s=> (
+            {isLoading? <tr><td colSpan={4} className="p-4"><div className="h-6 bg-gray-100 animate-pulse rounded"/></td></tr> : Array.isArray(data) && data.length? data.map(s=> (
               <tr key={s.id} className="border-t"><td className="p-2">{s.name}</td><td className="p-2">{s.email||''}</td><td className="p-2">{s.phone||''}</td><td className="p-2">{s.city||''}</td></tr>
-            ))}
+            )) : (!isLoading && !Array.isArray(data)) ? <tr><td colSpan={4} className="p-4 text-red-600">Error loading suppliers</td></tr> : <tr><td colSpan={4} className="p-3 text-gray-600">No suppliers yet</td></tr>}
           </tbody>
         </table>
       </div>
