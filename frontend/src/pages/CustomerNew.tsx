@@ -4,6 +4,7 @@ import toast from 'react-hot-toast';
 import { useQuery } from '@tanstack/react-query';
 import { useConfirm } from '@/components/ConfirmProvider';
 import { useNavigate } from 'react-router-dom';
+import GeoSelect from '@/components/GeoSelect';
 
 export default function CustomerNew(){
   const confirm = useConfirm();
@@ -149,9 +150,15 @@ export default function CustomerNew(){
               <div className="grid md:grid-cols-2 gap-3">
                 <div className="md:col-span-2"><label className="text-xs text-gray-600">Address line 1</label><input className="w-full border rounded px-3 py-2" value={form.address_line1} onChange={e=>setForm((s:any)=>({...s, address_line1: e.target.value}))} /></div>
                 <div className="md:col-span-2"><label className="text-xs text-gray-600">Address line 2</label><input className="w-full border rounded px-3 py-2" value={form.address_line2} onChange={e=>setForm((s:any)=>({...s, address_line2: e.target.value}))} /></div>
-                <div><label className="text-xs text-gray-600">City</label><input className="w-full border rounded px-3 py-2" value={form.city} onChange={e=>setForm((s:any)=>({...s, city: e.target.value}))} /></div>
-                <div><label className="text-xs text-gray-600">Province/State</label><input className="w-full border rounded px-3 py-2" value={form.province} onChange={e=>setForm((s:any)=>({...s, province: e.target.value}))} /></div>
-                <div><label className="text-xs text-gray-600">Country</label><input className="w-full border rounded px-3 py-2" value={form.country} onChange={e=>setForm((s:any)=>({...s, country: e.target.value}))} /></div>
+                <div className="md:col-span-2">
+                  <GeoSelect
+                    country={form.country||''}
+                    state={form.province||''}
+                    city={form.city||''}
+                    onChange={(v)=> setForm((s:any)=> ({...s, country: v.country??s.country, province: v.state??s.province, city: v.city??s.city }))}
+                    labels={{ country:'Country', state:'Province/State', city:'City' }}
+                  />
+                </div>
                 <div><label className="text-xs text-gray-600">Postal code</label><input className="w-full border rounded px-3 py-2" value={form.postal_code} onChange={e=>setForm((s:any)=>({...s, postal_code: e.target.value}))} /></div>
               </div>
             </div>
@@ -169,11 +176,17 @@ export default function CustomerNew(){
                 </div>
                 {form.use_diff_billing && (
                   <>
-                    <div><label className="text-xs text-gray-600">Billing Address 1</label><input className="w-full border rounded px-3 py-2" value={form.billing_address_line1||''} onChange={e=>setForm((s:any)=>({...s, billing_address_line1: e.target.value}))} /></div>
-                    <div><label className="text-xs text-gray-600">Billing Address 2</label><input className="w-full border rounded px-3 py-2" value={form.billing_address_line2||''} onChange={e=>setForm((s:any)=>({...s, billing_address_line2: e.target.value}))} /></div>
-                    <div><label className="text-xs text-gray-600">Billing Country</label><input className="w-full border rounded px-3 py-2" value={form.billing_country||''} onChange={e=>setForm((s:any)=>({...s, billing_country: e.target.value}))} /></div>
-                    <div><label className="text-xs text-gray-600">Billing Province/State</label><input className="w-full border rounded px-3 py-2" value={form.billing_province||''} onChange={e=>setForm((s:any)=>({...s, billing_province: e.target.value}))} /></div>
-                    <div><label className="text-xs text-gray-600">Billing City</label><input className="w-full border rounded px-3 py-2" value={form.billing_city||''} onChange={e=>setForm((s:any)=>({...s, billing_city: e.target.value}))} /></div>
+                    <div className="md:col-span-2"><label className="text-xs text-gray-600">Billing Address 1</label><input className="w-full border rounded px-3 py-2" value={form.billing_address_line1||''} onChange={e=>setForm((s:any)=>({...s, billing_address_line1: e.target.value}))} /></div>
+                    <div className="md:col-span-2"><label className="text-xs text-gray-600">Billing Address 2</label><input className="w-full border rounded px-3 py-2" value={form.billing_address_line2||''} onChange={e=>setForm((s:any)=>({...s, billing_address_line2: e.target.value}))} /></div>
+                    <div className="md:col-span-2">
+                      <GeoSelect
+                        country={form.billing_country||''}
+                        state={form.billing_province||''}
+                        city={form.billing_city||''}
+                        onChange={(v)=> setForm((s:any)=> ({...s, billing_country: v.country??s.billing_country, billing_province: v.state??s.billing_province, billing_city: v.city??s.billing_city }))}
+                        labels={{ country:'Billing Country', state:'Billing Province/State', city:'Billing City' }}
+                      />
+                    </div>
                     <div><label className="text-xs text-gray-600">Billing Postal code</label><input className="w-full border rounded px-3 py-2" value={form.billing_postal_code||''} onChange={e=>setForm((s:any)=>({...s, billing_postal_code: e.target.value}))} /></div>
                   </>
                 )}
