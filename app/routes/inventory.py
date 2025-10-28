@@ -98,43 +98,74 @@ def list_suppliers(q: str | None = None, db: Session = Depends(get_db)):
 
 @router.post("/suppliers")
 def create_supplier(body: dict, db: Session = Depends(get_db)):
+    import traceback
     try:
-        print(f"Creating supplier with data: {body}")
+        print("=" * 80)
+        print("CREATE SUPPLIER - START")
+        print(f"Received body: {body}")
         
-        # Filter out None values and empty strings
-        def clean_value(v):
-            if v is None or v == '':
-                return None
-            return v
+        # Basic validation
+        if not body.get('name'):
+            raise HTTPException(status_code=400, detail="Name is required")
         
-        # Create supplier with all provided fields
-        supplier_data = {
-            'name': body.get('name', ''),
-        }
+        # Build minimal supplier
+        supplier_data = {'name': body.get('name').strip()}
         
-        # Add optional fields only if they have values
-        optional_fields = ['legal_name', 'email', 'phone', 'website', 'address_line1', 
-                          'address_line2', 'city', 'province', 'postal_code', 'country', 
-                          'tax_number', 'payment_terms', 'currency', 'lead_time_days', 
-                          'category', 'status', 'notes', 'is_active']
+        # Add only fields that exist and have values
+        for field in ['legal_name', 'email', 'phone', 'website', 'address_line1', 
+                      'address_line2', 'city', 'province', 'postal_code', 'country', 
+                      'tax_number', 'payment_terms', 'currency', 'lead_time_days', 
+                      'category', 'status', 'notes', 'is_active']:
+            val = body.get(field)
+            if val is not None:
+                # Convert to proper type
+                if field == 'lead_time_days' and isinstance(val, str):
+                    try:
+                        val = int(val)
+                    except:
+                        val = None
+                elif field == 'is_active' and isinstance(val, str):
+                    val = val.lower() in ('true', '1', 'yes')
+                
+                if val != '' and val is not None:
+                    supplier_data[field] = val
         
-        for field in optional_fields:
-            value = body.get(field)
-            if value is not None and value != '':
-                supplier_data[field] = value
+        print(f"Supplier data: {supplier_data}")
         
+        # Try to create
         row = Supplier(**supplier_data)
-        db.add(row)
-        db.commit()
-        db.refresh(row)
+        print(f"Created Supplier object: {row}")
         
-        return row
+        db.add(row)
+        print("Added to session")
+        
+        db.commit()
+        print("Committed to database")
+        
+        db.refresh(row)
+        print(f"Refreshed row: {row}")
+        
+        result = {
+            'id': str(row.id),
+            'name': row.name,
+            'legal_name': row.legal_name,
+            'email': row.email,
+            'phone': row.phone,
+        }
+        print(f"Returning: {result}")
+        print("=" * 80)
+        return result
+        
     except Exception as e:
         db.rollback()
-        import traceback
-        print(f"Error creating supplier: {str(e)}")
-        print(traceback.format_exc())
-        raise HTTPException(status_code=500, detail=f"Failed to create supplier: {str(e)}")
+        error_msg = str(e)
+        tb = traceback.format_exc()
+        print("=" * 80)
+        print("CREATE SUPPLIER - ERROR")
+        print(f"Error: {error_msg}")
+        print(f"Traceback:\n{tb}")
+        print("=" * 80)
+        raise HTTPException(status_code=500, detail=f"Failed to create supplier: {error_msg}")
 
 
 @router.put("/suppliers/{supplier_id}")
