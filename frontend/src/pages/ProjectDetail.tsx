@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
 import ImagePicker from '@/components/ImagePicker';
+import EstimateBuilder from '@/components/EstimateBuilder';
 
 type Project = { id:string, code?:string, name?:string, client_id?:string, address_city?:string, address_province?:string, address_country?:string, description?:string, status_id?:string, division_id?:string, estimator_id?:string, onsite_lead_id?:string, date_start?:string, date_eta?:string, date_end?:string, cost_estimated?:number, cost_actual?:number, service_value?:number, progress?:number };
 type ProjectFile = { id:string, file_object_id:string, is_image?:boolean, content_type?:string, category?:string, original_name?:string, uploaded_at?:string };
@@ -19,7 +20,7 @@ export default function ProjectDetail(){
   const { data:updates, refetch: refetchUpdates } = useQuery({ queryKey:['projectUpdates', id], queryFn: ()=>api<Update[]>('GET', `/projects/${id}/updates`) });
   const { data:reports, refetch: refetchReports } = useQuery({ queryKey:['projectReports', id], queryFn: ()=>api<Report[]>('GET', `/projects/${id}/reports`) });
   const { data:proposals } = useQuery({ queryKey:['projectProposals', id], queryFn: ()=>api<Proposal[]>('GET', `/proposals?project_id=${encodeURIComponent(String(id||''))}`) });
-  const [tab, setTab] = useState<'overview'|'general'|'reports'|'timesheet'|'files'|'photos'|'proposals'>('overview');
+  const [tab, setTab] = useState<'overview'|'general'|'reports'|'timesheet'|'files'|'photos'|'proposals'|'estimate'>('overview');
   const [pickerOpen, setPickerOpen] = useState(false);
   const cover = useMemo(()=>{
     const img = (files||[]).find(f=> String(f.category||'')==='project-cover-derived') || (files||[]).find(f=> (f.is_image===true) || String(f.content_type||'').startsWith('image/'));
@@ -52,7 +53,7 @@ export default function ProjectDetail(){
                 </div>
               </div>
               <div className="mt-auto flex gap-3">
-                {(['overview','general','reports','timesheet','files','photos','proposals'] as const).map(k=> (
+                {(['overview','general','reports','timesheet','files','photos','proposals','estimate'] as const).map(k=> (
                   <button key={k} onClick={()=>setTab(k)} className={`px-4 py-2 rounded-full ${tab===k?'bg-black text-white':'bg-white text-black'}`}>{k[0].toUpperCase()+k.slice(1)}</button>
                 ))}
               </div>
@@ -114,6 +115,12 @@ export default function ProjectDetail(){
 
             {tab==='proposals' && (
               <ProjectProposalsTab projectId={String(id)} clientId={String(proj?.client_id||'')} siteId={String(proj?.site_id||'')} proposals={proposals||[]} />
+            )}
+
+            {tab==='estimate' && (
+              <div className="rounded-xl border bg-white p-4">
+                <EstimateBuilder projectId={String(id)} />
+              </div>
             )}
           </>
         )}

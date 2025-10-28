@@ -25,6 +25,7 @@ export default function AppShell({ children }: PropsWithChildren){
           <div className="mt-2 text-[11px] uppercase text-gray-400 px-1">Projects</div>
           <NavLink to="/projects" className={({isActive})=>`px-3 py-2 rounded ${isActive?'bg-brand-red':''}`}>Projects</NavLink>
           <NavLink to="/proposals" className={({isActive})=>`px-3 py-2 rounded ${isActive?'bg-brand-red':''}`}>Proposals</NavLink>
+          <NavLink to="/estimates" className={({isActive})=>`px-3 py-2 rounded ${isActive?'bg-brand-red':''}`}>Estimates</NavLink>
           <div className="mt-2 text-[11px] uppercase text-gray-400 px-1">Settings</div>
           <a href="/ui/invite.html" className="px-3 py-2 rounded">Invite Users</a>
           <NavLink to="/users" className={({isActive})=>`px-3 py-2 rounded ${isActive?'bg-brand-red':''}`}>Users</NavLink>

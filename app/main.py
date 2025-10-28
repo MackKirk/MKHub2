@@ -24,6 +24,7 @@ from .routes.inventory import router as inventory_router
 from .routes.integrations import router as integrations_router
 from .routes.proposals import router as proposals_router
 from .routes.users import router as users_router
+from .routes.estimate import router as estimate_router
 from .routes.reviews import router as reviews_router
 
 
@@ -58,6 +59,7 @@ def create_app() -> FastAPI:
     app.include_router(inventory_router)
     app.include_router(proposals_router)
     app.include_router(users_router)
+    app.include_router(estimate_router)
     app.include_router(reviews_router)
     # Legacy UI redirects to new React routes (exact paths)
     legacy_map = {

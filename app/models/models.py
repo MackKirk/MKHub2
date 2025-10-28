@@ -12,6 +12,7 @@ from sqlalchemy import (
     ForeignKey,
     Table,
     Integer,
+    Float,
     JSON,
     UniqueConstraint,
     BigInteger,
@@ -679,3 +680,62 @@ class InventoryOrderItem(Base):
     quantity: Mapped[int] = mapped_column(Integer, nullable=False)
 
     order = relationship("InventoryOrder", back_populates="items")
+
+
+# =====================
+# Estimate system domain
+# =====================
+
+class Material(Base):
+    __tablename__ = "materials"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False)
+    category = Column(String)
+    supplier_id = Column(Integer)
+    supplier_name = Column(String)
+    unit = Column(String)
+    price = Column(Float)
+    last_updated = Column(DateTime, default=datetime.utcnow)
+    notes = Column(String)
+    description = Column(String)
+    image_base64 = Column(String)
+    unit_type = Column(String)
+    units_per_package = Column(Float)
+    coverage_sqs = Column(Float)
+    coverage_ft2 = Column(Float)
+    coverage_m2 = Column(Float)
+
+
+class Estimate(Base):
+    __tablename__ = "estimates"
+
+    id = Column(Integer, primary_key=True, index=True)
+    project_id = mapped_column(UUID(as_uuid=True))
+    total_cost = Column(Float)
+    markup = Column(Float)
+    created_by = mapped_column(UUID(as_uuid=True))
+    created_at = Column(DateTime, default=datetime.utcnow)
+    version = Column(String)
+    notes = Column(String)
+
+
+class EstimateItem(Base):
+    __tablename__ = "estimate_items"
+
+    id = Column(Integer, primary_key=True, index=True)
+    estimate_id = Column(Integer, ForeignKey("estimates.id"))
+    material_id = Column(Integer, ForeignKey("materials.id"))
+    quantity = Column(Float)
+    unit_price = Column(Float)
+    total_price = Column(Float)
+    section = Column(String)
+
+
+class RelatedProduct(Base):
+    __tablename__ = "related_products"
+
+    id = Column(Integer, primary_key=True, index=True)
+    product_a_id = Column(Integer, ForeignKey("materials.id"), nullable=False)
+    product_b_id = Column(Integer, ForeignKey("materials.id"), nullable=False)
+    __table_args__ = (UniqueConstraint("product_a_id", "product_b_id", name="uq_related_pair"),)
