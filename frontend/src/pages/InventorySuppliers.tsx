@@ -42,6 +42,8 @@ export default function InventorySuppliers() {
   const [open, setOpen] = useState(false);
   const [viewing, setViewing] = useState<Supplier | null>(null);
   const [editing, setEditing] = useState<Supplier | null>(null);
+  const [sortColumn, setSortColumn] = useState<string>('name');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
   
   // Form fields
   const [name, setName] = useState('');
@@ -163,7 +165,44 @@ export default function InventorySuppliers() {
     }
   };
 
-  const rows = data || [];
+  const sortedRows = useMemo(() => {
+    if (!data) return [];
+    const sorted = [...data];
+    
+    sorted.sort((a, b) => {
+      let aVal: any = a[sortColumn as keyof Supplier];
+      let bVal: any = b[sortColumn as keyof Supplier];
+      
+      // Convert to string for comparison
+      aVal = aVal?.toString() || '';
+      bVal = bVal?.toString() || '';
+      
+      // Primary sort
+      let comparison = aVal.localeCompare(bVal);
+      
+      // If equal, secondary sort by name
+      if (comparison === 0) {
+        const aName = a.name?.toString() || '';
+        const bName = b.name?.toString() || '';
+        comparison = aName.localeCompare(bName);
+      }
+      
+      return sortDirection === 'asc' ? comparison : -comparison;
+    });
+    
+    return sorted;
+  }, [data, sortColumn, sortDirection]);
+
+  const handleSort = (column: string) => {
+    if (sortColumn === column) {
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortColumn(column);
+      setSortDirection('asc');
+    }
+  };
+
+  const rows = sortedRows;
 
   return (
     <div>
@@ -194,11 +233,31 @@ export default function InventorySuppliers() {
         <table className="w-full text-sm">
           <thead className="bg-gray-50">
             <tr>
-              <th className="p-3 text-left">Name</th>
-              <th className="p-3 text-left">Email</th>
-              <th className="p-3 text-left">Phone</th>
-              <th className="p-3 text-left">City</th>
-              <th className="p-3 text-left">Province</th>
+              <th className="p-3 text-left">
+                <button onClick={() => handleSort('name')} className="font-semibold hover:text-blue-600 flex items-center gap-1">
+                  Name {sortColumn === 'name' && (sortDirection === 'asc' ? '↑' : '↓')}
+                </button>
+              </th>
+              <th className="p-3 text-left">
+                <button onClick={() => handleSort('email')} className="font-semibold hover:text-blue-600 flex items-center gap-1">
+                  Email {sortColumn === 'email' && (sortDirection === 'asc' ? '↑' : '↓')}
+                </button>
+              </th>
+              <th className="p-3 text-left">
+                <button onClick={() => handleSort('phone')} className="font-semibold hover:text-blue-600 flex items-center gap-1">
+                  Phone {sortColumn === 'phone' && (sortDirection === 'asc' ? '↑' : '↓')}
+                </button>
+              </th>
+              <th className="p-3 text-left">
+                <button onClick={() => handleSort('city')} className="font-semibold hover:text-blue-600 flex items-center gap-1">
+                  City {sortColumn === 'city' && (sortDirection === 'asc' ? '↑' : '↓')}
+                </button>
+              </th>
+              <th className="p-3 text-left">
+                <button onClick={() => handleSort('province')} className="font-semibold hover:text-blue-600 flex items-center gap-1">
+                  Province {sortColumn === 'province' && (sortDirection === 'asc' ? '↑' : '↓')}
+                </button>
+              </th>
             </tr>
           </thead>
           <tbody>

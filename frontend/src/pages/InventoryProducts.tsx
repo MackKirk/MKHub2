@@ -9,6 +9,8 @@ export default function InventoryProducts(){
   const [q, setQ] = useState('');
   const [supplier, setSupplier] = useState('');
   const [category, setCategory] = useState('');
+  const [sortColumn, setSortColumn] = useState<string>('name');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
   const { data, refetch, isLoading, isFetching } = useQuery({
     queryKey:['estimateProducts', q, supplier, category],
     queryFn: async ()=>{
@@ -17,9 +19,47 @@ export default function InventoryProducts(){
       return await api<Material[]>('GET', path);
     }
   });
-  const rows = data||[];
-  const suppliers = useMemo(()=> Array.from(new Set(rows.map(r=> r.supplier_name||'').filter(Boolean))), [rows]);
-  const categories = useMemo(()=> Array.from(new Set(rows.map(r=> r.category||'').filter(Boolean))), [rows]);
+  const rawRows = data||[];
+  const suppliers = useMemo(()=> Array.from(new Set(rawRows.map(r=> r.supplier_name||'').filter(Boolean))), [rawRows]);
+  const categories = useMemo(()=> Array.from(new Set(rawRows.map(r=> r.category||'').filter(Boolean))), [rawRows]);
+
+  const sortedRows = useMemo(() => {
+    const sorted = [...rawRows];
+    
+    sorted.sort((a, b) => {
+      let aVal: any = a[sortColumn as keyof Material];
+      let bVal: any = b[sortColumn as keyof Material];
+      
+      // Convert to string for comparison
+      aVal = aVal?.toString() || '';
+      bVal = bVal?.toString() || '';
+      
+      // Primary sort
+      let comparison = aVal.localeCompare(bVal);
+      
+      // If equal, secondary sort by name
+      if (comparison === 0) {
+        const aName = a.name?.toString() || '';
+        const bName = b.name?.toString() || '';
+        comparison = aName.localeCompare(bName);
+      }
+      
+      return sortDirection === 'asc' ? comparison : -comparison;
+    });
+    
+    return sorted;
+  }, [rawRows, sortColumn, sortDirection]);
+
+  const handleSort = (column: string) => {
+    if (sortColumn === column) {
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortColumn(column);
+      setSortDirection('asc');
+    }
+  };
+
+  const rows = sortedRows;
 
   const [open, setOpen] = useState(false);
   const [viewing, setViewing] = useState<Material|null>(null);
@@ -209,13 +249,41 @@ export default function InventoryProducts(){
       <div className="rounded-xl border bg-white overflow-hidden">
         <table className="w-full text-sm">
           <thead className="bg-gray-50"><tr>
-            <th className="p-2 text-left">ID</th>
-            <th className="p-2 text-left">Name</th>
-            <th className="p-2 text-left">Supplier</th>
-            <th className="p-2 text-left">Category</th>
-            <th className="p-2 text-left">Unit</th>
-            <th className="p-2 text-left">Price</th>
-            <th className="p-2 text-left">Updated</th>
+            <th className="p-2 text-left">
+              <button onClick={() => handleSort('id')} className="font-semibold hover:text-blue-600 flex items-center gap-1">
+                ID {sortColumn === 'id' && (sortDirection === 'asc' ? '↑' : '↓')}
+              </button>
+            </th>
+            <th className="p-2 text-left">
+              <button onClick={() => handleSort('name')} className="font-semibold hover:text-blue-600 flex items-center gap-1">
+                Name {sortColumn === 'name' && (sortDirection === 'asc' ? '↑' : '↓')}
+              </button>
+            </th>
+            <th className="p-2 text-left">
+              <button onClick={() => handleSort('supplier_name')} className="font-semibold hover:text-blue-600 flex items-center gap-1">
+                Supplier {sortColumn === 'supplier_name' && (sortDirection === 'asc' ? '↑' : '↓')}
+              </button>
+            </th>
+            <th className="p-2 text-left">
+              <button onClick={() => handleSort('category')} className="font-semibold hover:text-blue-600 flex items-center gap-1">
+                Category {sortColumn === 'category' && (sortDirection === 'asc' ? '↑' : '↓')}
+              </button>
+            </th>
+            <th className="p-2 text-left">
+              <button onClick={() => handleSort('unit')} className="font-semibold hover:text-blue-600 flex items-center gap-1">
+                Unit {sortColumn === 'unit' && (sortDirection === 'asc' ? '↑' : '↓')}
+              </button>
+            </th>
+            <th className="p-2 text-left">
+              <button onClick={() => handleSort('price')} className="font-semibold hover:text-blue-600 flex items-center gap-1">
+                Price {sortColumn === 'price' && (sortDirection === 'asc' ? '↑' : '↓')}
+              </button>
+            </th>
+            <th className="p-2 text-left">
+              <button onClick={() => handleSort('last_updated')} className="font-semibold hover:text-blue-600 flex items-center gap-1">
+                Updated {sortColumn === 'last_updated' && (sortDirection === 'asc' ? '↑' : '↓')}
+              </button>
+            </th>
             <th className="p-2 text-left">Related</th>
           </tr></thead>
           <tbody>

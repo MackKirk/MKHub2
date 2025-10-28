@@ -97,6 +97,14 @@ def delete_product(product_id: int, db: Session = Depends(get_db), _=Depends(req
     row = db.query(Material).filter(Material.id == product_id).first()
     if not row:
         raise HTTPException(status_code=404, detail="Product not found")
+    
+    # Delete all relationships before deleting the product
+    relations = db.query(RelatedProduct).filter(
+        (RelatedProduct.product_a_id == product_id) | (RelatedProduct.product_b_id == product_id)
+    ).all()
+    for rel in relations:
+        db.delete(rel)
+    
     db.delete(row)
     db.commit()
     return {"status": "ok"}
