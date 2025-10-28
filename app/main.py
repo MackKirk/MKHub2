@@ -122,6 +122,79 @@ def create_app() -> FastAPI:
                             conn.execute(text("ALTER TABLE proposals ADD COLUMN project_id TEXT"))
                         except Exception:
                             pass
+                        # SQLite: Add suppliers columns if missing
+                        try:
+                            conn.execute(text("ALTER TABLE suppliers ADD COLUMN legal_name TEXT"))
+                        except Exception:
+                            pass
+                        try:
+                            conn.execute(text("ALTER TABLE suppliers ADD COLUMN website TEXT"))
+                        except Exception:
+                            pass
+                        try:
+                            conn.execute(text("ALTER TABLE suppliers ADD COLUMN address_line1 TEXT"))
+                        except Exception:
+                            pass
+                        try:
+                            conn.execute(text("ALTER TABLE suppliers ADD COLUMN address_line2 TEXT"))
+                        except Exception:
+                            pass
+                        try:
+                            conn.execute(text("ALTER TABLE suppliers ADD COLUMN city TEXT"))
+                        except Exception:
+                            pass
+                        try:
+                            conn.execute(text("ALTER TABLE suppliers ADD COLUMN province TEXT"))
+                        except Exception:
+                            pass
+                        try:
+                            conn.execute(text("ALTER TABLE suppliers ADD COLUMN postal_code TEXT"))
+                        except Exception:
+                            pass
+                        try:
+                            conn.execute(text("ALTER TABLE suppliers ADD COLUMN country TEXT"))
+                        except Exception:
+                            pass
+                        try:
+                            conn.execute(text("ALTER TABLE suppliers ADD COLUMN tax_number TEXT"))
+                        except Exception:
+                            pass
+                        try:
+                            conn.execute(text("ALTER TABLE suppliers ADD COLUMN payment_terms TEXT"))
+                        except Exception:
+                            pass
+                        try:
+                            conn.execute(text("ALTER TABLE suppliers ADD COLUMN currency TEXT"))
+                        except Exception:
+                            pass
+                        try:
+                            conn.execute(text("ALTER TABLE suppliers ADD COLUMN lead_time_days INTEGER"))
+                        except Exception:
+                            pass
+                        try:
+                            conn.execute(text("ALTER TABLE suppliers ADD COLUMN category TEXT"))
+                        except Exception:
+                            pass
+                        try:
+                            conn.execute(text("ALTER TABLE suppliers ADD COLUMN status TEXT"))
+                        except Exception:
+                            pass
+                        try:
+                            conn.execute(text("ALTER TABLE suppliers ADD COLUMN notes TEXT"))
+                        except Exception:
+                            pass
+                        try:
+                            conn.execute(text("ALTER TABLE suppliers ADD COLUMN is_active INTEGER DEFAULT 1"))
+                        except Exception:
+                            pass
+                        try:
+                            conn.execute(text("ALTER TABLE suppliers ADD COLUMN created_at TEXT DEFAULT CURRENT_TIMESTAMP"))
+                        except Exception:
+                            pass
+                        try:
+                            conn.execute(text("ALTER TABLE suppliers ADD COLUMN updated_at TEXT"))
+                        except Exception:
+                            pass
                 except Exception:
                     pass
             if settings.database_url.startswith("postgres"):

@@ -97,24 +97,18 @@ def list_suppliers(q: str | None = None, db: Session = Depends(get_db)):
 
 
 @router.post("/suppliers")
-def create_supplier(supplier: SupplierCreate, db: Session = Depends(get_db)):
+def create_supplier(body: dict, db: Session = Depends(get_db)):
     try:
         # Log the incoming data
-        data = supplier.dict(exclude_unset=True)
-        print(f"Creating supplier with data: {data}")
+        print(f"Creating supplier with data: {body}")
         
-        # Create minimal supplier with only provided fields
-        row_data = {
-            'name': data.get('name', ''),
-        }
-        if 'email' in data:
-            row_data['email'] = data.get('email')
-        if 'phone' in data:
-            row_data['phone'] = data.get('phone')
-        if 'legal_name' in data:
-            row_data['legal_name'] = data.get('legal_name')
+        # Only use fields that actually exist in the request
+        row = Supplier(name=body.get('name', ''))
+        if 'email' in body and body.get('email'):
+            row.email = body['email']
+        if 'phone' in body and body.get('phone'):
+            row.phone = body['phone']
         
-        row = Supplier(**row_data)
         db.add(row)
         db.commit()
         db.refresh(row)
@@ -123,7 +117,6 @@ def create_supplier(supplier: SupplierCreate, db: Session = Depends(get_db)):
         return {
             'id': str(row.id),
             'name': row.name,
-            'legal_name': row.legal_name,
             'email': row.email,
             'phone': row.phone,
         }
