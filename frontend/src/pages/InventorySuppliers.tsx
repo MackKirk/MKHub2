@@ -62,6 +62,17 @@ export default function InventorySuppliers() {
   const [postalCode, setPostalCode] = useState('');
   const [country, setCountry] = useState('');
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [supplierTab, setSupplierTab] = useState<'overview' | 'contacts'>('overview');
+  const [contacts, setContacts] = useState<any[]>([]);
+  const [contactModalOpen, setContactModalOpen] = useState(false);
+  const [editingContact, setEditingContact] = useState<any | null>(null);
+  
+  // Contact form fields
+  const [contactName, setContactName] = useState('');
+  const [contactEmail, setContactEmail] = useState('');
+  const [contactPhone, setContactPhone] = useState('');
+  const [contactTitle, setContactTitle] = useState('');
+  const [contactNotes, setContactNotes] = useState('');
 
   const { data, isLoading, isFetching } = useQuery({
     queryKey: ['suppliers', q],
@@ -71,6 +82,15 @@ export default function InventorySuppliers() {
       const path = params.toString() ? `/inventory/suppliers?${params.toString()}` : '/inventory/suppliers';
       return await api<Supplier[]>('GET', path);
     },
+  });
+
+  const { data: contactsData, refetch: refetchContacts } = useQuery({
+    queryKey: ['supplierContacts', viewing?.id],
+    queryFn: async () => {
+      if (!viewing?.id) return [];
+      return await api<any[]>('GET', `/inventory/suppliers/${viewing.id}/contacts`);
+    },
+    enabled: !!viewing?.id && supplierTab === 'contacts',
   });
 
   const createMut = useMutation({
@@ -364,52 +384,153 @@ export default function InventorySuppliers() {
                           </div>
                         )}
                       </div>
-                    </div>
-                  </div>
-
-                  {/* General Information */}
-                  <div className="px-6 pb-6 space-y-4">
-                    <div className="grid grid-cols-2 gap-4">
-                      {/* Website Card */}
-                      {viewing.website && (
-                        <div className="bg-white border rounded-lg p-4">
-                          <div className="text-xs font-semibold text-gray-600 mb-1">Website</div>
-                          <a href={viewing.website} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
-                            {viewing.website}
-                          </a>
-                        </div>
-                      )}
-
-                      {/* Legal Name Card */}
-                      {viewing.legal_name && (
-                        <div className="bg-white border rounded-lg p-4">
-                          <div className="text-xs font-semibold text-gray-600 mb-1">Legal Name</div>
-                          <div className="text-gray-900">{viewing.legal_name}</div>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Address Card */}
-                    {((viewing as any).address_line1 || viewing.city || viewing.province || (viewing as any).postal_code || viewing.country) && (
-                      <div className="bg-white border rounded-lg p-4">
-                        <div className="text-sm font-semibold text-gray-900 mb-3">📍 Address</div>
-                        <div className="space-y-1 text-gray-700">
-                          {(viewing as any).address_line1 && <div>{(viewing as any).address_line1}</div>}
-                          {(viewing as any).address_line2 && <div>{(viewing as any).address_line2}</div>}
-                          <div>
-                            {[viewing.city, viewing.province, (viewing as any).postal_code].filter(Boolean).join(', ')}
-                          </div>
-                          {viewing.country && <div>{viewing.country}</div>}
-                        </div>
+                      {/* Tab buttons */}
+                      <div className="flex items-center gap-2 mt-4">
+                        <button
+                          onClick={() => setSupplierTab('overview')}
+                          className={`px-4 py-2 rounded-full ${
+                            supplierTab === 'overview' 
+                              ? 'bg-black text-white' 
+                              : 'bg-white/10 text-white/80 hover:bg-white/20'
+                          }`}
+                        >
+                          Overview
+                        </button>
+                        <button
+                          onClick={() => setSupplierTab('contacts')}
+                          className={`px-4 py-2 rounded-full ${
+                            supplierTab === 'contacts' 
+                              ? 'bg-black text-white' 
+                              : 'bg-white/10 text-white/80 hover:bg-white/20'
+                          }`}
+                        >
+                          Contacts
+                        </button>
                       </div>
-                    )}
+                    </div>
                   </div>
+
+                  {/* Tab Content */}
+                  {supplierTab === 'overview' ? (
+                    <div className="px-6 pb-6 space-y-4">
+                      <div className="grid grid-cols-2 gap-4">
+                        {/* Website Card */}
+                        {viewing.website && (
+                          <div className="bg-white border rounded-lg p-4">
+                            <div className="text-xs font-semibold text-gray-600 mb-1">Website</div>
+                            <a href={viewing.website} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+                              {viewing.website}
+                            </a>
+                          </div>
+                        )}
+
+                        {/* Legal Name Card */}
+                        {viewing.legal_name && (
+                          <div className="bg-white border rounded-lg p-4">
+                            <div className="text-xs font-semibold text-gray-600 mb-1">Legal Name</div>
+                            <div className="text-gray-900">{viewing.legal_name}</div>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Address Card */}
+                      {((viewing as any).address_line1 || viewing.city || viewing.province || (viewing as any).postal_code || viewing.country) && (
+                        <div className="bg-white border rounded-lg p-4">
+                          <div className="text-sm font-semibold text-gray-900 mb-3">📍 Address</div>
+                          <div className="space-y-1 text-gray-700">
+                            {(viewing as any).address_line1 && <div>{(viewing as any).address_line1}</div>}
+                            {(viewing as any).address_line2 && <div>{(viewing as any).address_line2}</div>}
+                            <div>
+                              {[viewing.city, viewing.province, (viewing as any).postal_code].filter(Boolean).join(', ')}
+                            </div>
+                            {viewing.country && <div>{viewing.country}</div>}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="px-6 pb-6">
+                      <div className="flex items-center justify-between mb-4">
+                        <h3 className="text-lg font-semibold">Contacts</h3>
+                        <button
+                          onClick={() => {
+                            setContactModalOpen(true);
+                            setEditingContact(null);
+                            setContactName('');
+                            setContactEmail('');
+                            setContactPhone('');
+                            setContactTitle('');
+                            setContactNotes('');
+                          }}
+                          className="px-4 py-2 rounded bg-brand-red text-white hover:bg-brand-red-dark"
+                        >
+                          + Add Contact
+                        </button>
+                      </div>
+                      <div className="space-y-2">
+                        {contactsData?.length ? (
+                          contactsData.map((contact: any) => (
+                            <div key={contact.id} className="bg-white border rounded-lg p-4 flex items-center justify-between">
+                              <div>
+                                <div className="font-medium text-gray-900">{contact.name}</div>
+                                <div className="text-sm text-gray-600">{contact.email}</div>
+                                <div className="text-sm text-gray-600">{contact.phone}</div>
+                                {contact.title && <div className="text-xs text-gray-500 mt-1">{contact.title}</div>}
+                              </div>
+                              <div className="flex gap-2">
+                                <button
+                                  onClick={() => {
+                                    setEditingContact(contact);
+                                    setContactModalOpen(true);
+                                    setContactName(contact.name || '');
+                                    setContactEmail(contact.email || '');
+                                    setContactPhone(contact.phone || '');
+                                    setContactTitle(contact.title || '');
+                                    setContactNotes(contact.notes || '');
+                                  }}
+                                  className="px-3 py-1 rounded bg-blue-600 text-white text-sm hover:bg-blue-700"
+                                >
+                                  Edit
+                                </button>
+                                <button
+                                  onClick={async () => {
+                                    const ok = await confirm({
+                                      title: 'Delete contact',
+                                      message: 'Are you sure you want to delete this contact?',
+                                      confirmText: 'Delete',
+                                      cancelText: 'Cancel'
+                                    });
+                                    if (ok) {
+                                      try {
+                                        await api('DELETE', `/inventory/contacts/${contact.id}`);
+                                        refetchContacts();
+                                        toast.success('Contact deleted');
+                                      } catch (error) {
+                                        toast.error('Failed to delete contact');
+                                      }
+                                    }
+                                  }}
+                                  className="px-3 py-1 rounded bg-red-600 text-white text-sm hover:bg-red-700"
+                                >
+                                  Delete
+                                </button>
+                              </div>
+                            </div>
+                          ))
+                        ) : (
+                          <div className="text-center py-8 text-gray-500">
+                            No contacts yet. Add a contact to get started.
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </div>
               ) : (
                 // Edit/Create mode - form inputs
                 <div className="space-y-6">
                   {/* Edit Header */}
-                  <div className="bg-gradient-to-br from-blue-600 to-blue-700 p-6">
+                  <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] p-6">
                     <div className="flex items-center justify-between">
                       <div>
                         <h2 className="text-2xl font-extrabold text-white">
@@ -601,6 +722,129 @@ export default function InventorySuppliers() {
             setPickerOpen(false);
           }} 
         />
+      )}
+
+      {contactModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center">
+          <div className="w-[600px] max-w-[95vw] bg-white rounded-xl overflow-hidden flex flex-col max-h-[90vh]">
+            <div className="px-6 py-4 border-b bg-gray-50 flex items-center justify-between">
+              <div className="font-semibold text-lg">
+                {editingContact ? 'Edit Contact' : 'New Contact'}
+              </div>
+              <button
+                onClick={() => {
+                  setContactModalOpen(false);
+                  setEditingContact(null);
+                }}
+                className="px-3 py-1 rounded bg-gray-200 hover:bg-gray-300"
+              >
+                Close
+              </button>
+            </div>
+            <div className="p-6 overflow-y-auto space-y-4">
+              <div>
+                <label className="text-xs font-semibold text-gray-700">Name *</label>
+                <input
+                  type="text"
+                  className="w-full border rounded px-3 py-2 mt-1"
+                  value={contactName}
+                  onChange={(e) => setContactName(e.target.value)}
+                  placeholder="Enter contact name"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-gray-700">Email</label>
+                <input
+                  type="email"
+                  className="w-full border rounded px-3 py-2 mt-1"
+                  value={contactEmail}
+                  onChange={(e) => setContactEmail(e.target.value)}
+                  placeholder="Enter email address"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-gray-700">Phone</label>
+                <input
+                  type="text"
+                  className="w-full border rounded px-3 py-2 mt-1"
+                  value={contactPhone}
+                  onChange={(e) => setContactPhone(e.target.value)}
+                  placeholder="Enter phone number"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-gray-700">Title / Department</label>
+                <input
+                  type="text"
+                  className="w-full border rounded px-3 py-2 mt-1"
+                  value={contactTitle}
+                  onChange={(e) => setContactTitle(e.target.value)}
+                  placeholder="Enter title or department"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-gray-700">Notes</label>
+                <textarea
+                  className="w-full border rounded px-3 py-2 mt-1"
+                  value={contactNotes}
+                  onChange={(e) => setContactNotes(e.target.value)}
+                  placeholder="Enter notes"
+                  rows={3}
+                />
+              </div>
+            </div>
+            <div className="px-6 py-4 border-t bg-gray-50 flex justify-end gap-2">
+              <button
+                onClick={() => {
+                  setContactModalOpen(false);
+                  setEditingContact(null);
+                }}
+                className="px-4 py-2 rounded bg-gray-200 hover:bg-gray-300"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  if (!contactName.trim()) {
+                    toast.error('Name is required');
+                    return;
+                  }
+                  try {
+                    if (editingContact) {
+                      await api('PUT', `/inventory/contacts/${editingContact.id}`, {
+                        name: contactName,
+                        email: contactEmail || undefined,
+                        phone: contactPhone || undefined,
+                        title: contactTitle || undefined,
+                        notes: contactNotes || undefined,
+                        supplier_id: viewing?.id
+                      });
+                      toast.success('Contact updated');
+                    } else {
+                      await api('POST', '/inventory/contacts', {
+                        name: contactName,
+                        email: contactEmail || undefined,
+                        phone: contactPhone || undefined,
+                        title: contactTitle || undefined,
+                        notes: contactNotes || undefined,
+                        supplier_id: viewing?.id
+                      });
+                      toast.success('Contact created');
+                    }
+                    setContactModalOpen(false);
+                    setEditingContact(null);
+                    refetchContacts();
+                  } catch (error) {
+                    toast.error('Failed to save contact');
+                  }
+                }}
+                className="px-4 py-2 rounded bg-brand-red text-white hover:bg-brand-red-dark"
+              >
+                {editingContact ? 'Update' : 'Create'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
