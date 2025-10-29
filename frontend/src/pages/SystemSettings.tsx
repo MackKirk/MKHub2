@@ -36,7 +36,7 @@ export default function SystemSettings(){
     try{
       if(!heroFile){ toast.error('Select an image'); return; }
       const type = heroFile.type || 'image/jpeg';
-      const up = await api('POST','/files/upload',{ original_name: heroFile.name, content_type: type });
+      const up = await api('POST','/files/upload',{ original_name: heroFile.name, content_type: type, project_id: null, client_id: null, employee_id: null, category_id: 'branding-hero' });
       await fetch(up.upload_url, { method:'PUT', headers:{ 'Content-Type': type, 'x-ms-blob-type':'BlockBlob' }, body: heroFile });
       const conf = await api('POST','/files/confirm',{ key: up.key, size_bytes: heroFile.size, checksum_sha256: 'na', content_type: type });
       const url = `/files/${conf.id}/download`;

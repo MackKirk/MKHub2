@@ -113,7 +113,7 @@ export default function UserInfo(){
       </div>
       <div className="rounded-xl border shadow-hero bg-white">
         <div className="rounded-t-xl p-5 text-white relative overflow-hidden" style={{ backgroundImage: `url(${heroBgUrl})`, backgroundSize: 'cover', backgroundPosition: 'center' }}>
-          <div className="absolute inset-0 bg-gradient-to-br from-gray-600/80 to-gray-900/80" />
+          <div className="absolute inset-0 bg-gradient-to-br from-gray-500/50 to-gray-800/60" />
           <div className="relative z-10">
             <div className="flex gap-4 items-center">
               <img className="w-[120px] h-[120px] object-cover rounded-xl border-2 border-brand-red" src={p.profile_photo_file_id? `/files/${p.profile_photo_file_id}/thumbnail?w=240`:'/ui/assets/login/logo-light.svg'} />
