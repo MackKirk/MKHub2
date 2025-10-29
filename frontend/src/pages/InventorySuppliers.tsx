@@ -62,6 +62,7 @@ export default function InventorySuppliers() {
   const [postalCode, setPostalCode] = useState('');
   const [country, setCountry] = useState('');
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [pickerForContact, setPickerForContact] = useState<string | null>(null);
   const [supplierTab, setSupplierTab] = useState<'overview' | 'contacts'>('overview');
   const [contacts, setContacts] = useState<any[]>([]);
   const [contactModalOpen, setContactModalOpen] = useState(false);
@@ -477,7 +478,7 @@ export default function InventorySuppliers() {
                             setContactTitle('');
                             setContactNotes('');
                           }}
-                          className="px-4 py-2 rounded bg-brand-red text-white hover:bg-brand-red-dark"
+                          className="px-4 py-2 rounded-xl bg-gradient-to-r from-brand-red to-[#ee2b2b] text-white font-semibold"
                         >
                           + Add Contact
                         </button>
@@ -485,8 +486,8 @@ export default function InventorySuppliers() {
                       <div className="grid md:grid-cols-2 gap-4">
                         {contactsData?.length ? (
                           contactsData.map((contact: any) => (
-                            <div key={contact.id} className="rounded-xl border bg-white overflow-hidden flex">
-                              <div className="w-28 bg-gray-100 flex items-center justify-center">
+                            <div key={contact.id} className="rounded-xl border bg-white overflow-hidden flex group">
+                              <div className="w-28 bg-gray-100 flex items-center justify-center relative">
                                 {contact.image_base64 ? (
                                   <img 
                                     className="w-20 h-20 object-cover rounded border" 
@@ -504,6 +505,12 @@ export default function InventorySuppliers() {
                                     {(contact.name||'?').slice(0,2).toUpperCase()}
                                   </div>
                                 )}
+                                <button 
+                                  onClick={() => setPickerForContact(contact.id)} 
+                                  className="hidden group-hover:block absolute right-1 bottom-1 text-[11px] px-2 py-0.5 rounded bg-black/70 text-white"
+                                >
+                                  Photo
+                                </button>
                               </div>
                               <div className="flex-1 p-3 text-sm">
                                 <div className="flex items-center justify-between">
@@ -771,6 +778,38 @@ export default function InventorySuppliers() {
           onConfirm={async (blob) => {
             await handleImageUpdate(blob);
             setPickerOpen(false);
+          }} 
+        />
+      )}
+
+      {pickerForContact && viewing && (
+        <ImagePicker 
+          isOpen={true} 
+          onClose={() => setPickerForContact(null)} 
+          targetWidth={400} 
+          targetHeight={400} 
+          allowEdit={true}
+          onConfirm={async (blob) => {
+            try {
+              const reader = new FileReader();
+              reader.onload = async (e) => {
+                const imageBase64 = e.target?.result as string;
+                try {
+                  await api('PUT', `/inventory/contacts/${pickerForContact}`, {
+                    image_base64: imageBase64
+                  });
+                  toast.success('Contact photo updated');
+                  refetchContacts();
+                } catch (error) {
+                  toast.error('Failed to update contact photo');
+                }
+              };
+              reader.readAsDataURL(blob);
+            } catch (error) {
+              toast.error('Failed to process image');
+            } finally {
+              setPickerForContact(null);
+            }
           }} 
         />
       )}
