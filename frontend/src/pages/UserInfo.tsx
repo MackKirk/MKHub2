@@ -47,6 +47,8 @@ export default function UserInfo(){
     return row? (row.username || row.email) : '';
   }, [usersOptions, p?.manager_user_id, supervisorProfile]);
 
+  const heroBgUrl = (settings?.branding?.hero_background_url) || (settings?.hero_background_url) || '/ui/assets/login/background.jpg';
+
   
 
   function calcAge(dob?: string){
@@ -106,7 +108,7 @@ export default function UserInfo(){
         </div>
       </div>
       <div className="rounded-xl border shadow-hero bg-white">
-        <div className="rounded-t-xl p-5 text-white relative overflow-hidden" style={{ backgroundImage: 'url(/ui/assets/login/background.jpg)', backgroundSize: 'cover', backgroundPosition: 'center' }}>
+        <div className="rounded-t-xl p-5 text-white relative overflow-hidden" style={{ backgroundImage: `url(${heroBgUrl})`, backgroundSize: 'cover', backgroundPosition: 'center' }}>
           <div className="absolute inset-0 bg-gradient-to-br from-gray-600/80 to-gray-900/80" />
           <div className="relative z-10">
             <div className="flex gap-4 items-center">
