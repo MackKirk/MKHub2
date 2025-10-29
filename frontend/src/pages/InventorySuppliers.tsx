@@ -106,11 +106,24 @@ export default function InventorySuppliers() {
 
   const updateMut = useMutation({
     mutationFn: async ({ id, data }: { id: string; data: any }) => api('PUT', `/inventory/suppliers/${id}`, data),
-    onSuccess: () => {
+    onSuccess: async (updatedSupplier) => {
       queryClient.invalidateQueries({ queryKey: ['suppliers'] });
       toast.success('Supplier updated');
-      setOpen(false);
-      resetForm();
+      // Set the updated supplier as viewing instead of closing
+      setViewing(updatedSupplier);
+      setEditing(null);
+      // Reset form fields
+      setName('');
+      setLegalName('');
+      setEmail('');
+      setPhone('');
+      setWebsite('');
+      setAddressLine1('');
+      setAddressLine2('');
+      setCity('');
+      setProvince('');
+      setPostalCode('');
+      setCountry('');
     },
     onError: () => toast.error('Failed to update supplier'),
   });
@@ -469,58 +482,87 @@ export default function InventorySuppliers() {
                           + Add Contact
                         </button>
                       </div>
-                      <div className="space-y-2">
+                      <div className="grid md:grid-cols-2 gap-4">
                         {contactsData?.length ? (
                           contactsData.map((contact: any) => (
-                            <div key={contact.id} className="bg-white border rounded-lg p-4 flex items-center justify-between">
-                              <div>
-                                <div className="font-medium text-gray-900">{contact.name}</div>
-                                <div className="text-sm text-gray-600">{contact.email}</div>
-                                <div className="text-sm text-gray-600">{contact.phone}</div>
-                                {contact.title && <div className="text-xs text-gray-500 mt-1">{contact.title}</div>}
+                            <div key={contact.id} className="rounded-xl border bg-white overflow-hidden flex">
+                              <div className="w-28 bg-gray-100 flex items-center justify-center">
+                                {contact.image_base64 ? (
+                                  <img 
+                                    className="w-20 h-20 object-cover rounded border" 
+                                    src={contact.image_base64}
+                                    alt={contact.name}
+                                  />
+                                ) : viewing?.image_base64 ? (
+                                  <img 
+                                    className="w-20 h-20 object-cover rounded border" 
+                                    src={viewing.image_base64}
+                                    alt={contact.name}
+                                  />
+                                ) : (
+                                  <div className="w-20 h-20 rounded bg-gray-200 grid place-items-center text-lg font-bold text-gray-600">
+                                    {(contact.name||'?').slice(0,2).toUpperCase()}
+                                  </div>
+                                )}
                               </div>
-                              <div className="flex gap-2">
-                                <button
-                                  onClick={() => {
-                                    setEditingContact(contact);
-                                    setContactModalOpen(true);
-                                    setContactName(contact.name || '');
-                                    setContactEmail(contact.email || '');
-                                    setContactPhone(contact.phone || '');
-                                    setContactTitle(contact.title || '');
-                                    setContactNotes(contact.notes || '');
-                                  }}
-                                  className="px-3 py-1 rounded bg-blue-600 text-white text-sm hover:bg-blue-700"
-                                >
-                                  Edit
-                                </button>
-                                <button
-                                  onClick={async () => {
-                                    const ok = await confirm({
-                                      title: 'Delete contact',
-                                      message: 'Are you sure you want to delete this contact?',
-                                      confirmText: 'Delete',
-                                      cancelText: 'Cancel'
-                                    });
-                                    if (ok) {
-                                      try {
-                                        await api('DELETE', `/inventory/contacts/${contact.id}`);
-                                        refetchContacts();
-                                        toast.success('Contact deleted');
-                                      } catch (error) {
-                                        toast.error('Failed to delete contact');
-                                      }
-                                    }
-                                  }}
-                                  className="px-3 py-1 rounded bg-red-600 text-white text-sm hover:bg-red-700"
-                                >
-                                  Delete
-                                </button>
+                              <div className="flex-1 p-3 text-sm">
+                                <div className="flex items-center justify-between">
+                                  <div className="font-semibold">{contact.name}</div>
+                                  <div className="flex items-center gap-2">
+                                    <button
+                                      onClick={() => {
+                                        setEditingContact(contact);
+                                        setContactModalOpen(true);
+                                        setContactName(contact.name || '');
+                                        setContactEmail(contact.email || '');
+                                        setContactPhone(contact.phone || '');
+                                        setContactTitle(contact.title || '');
+                                        setContactNotes(contact.notes || '');
+                                      }}
+                                      className="px-2 py-1 rounded bg-gray-100 text-xs"
+                                    >
+                                      Edit
+                                    </button>
+                                    <button
+                                      onClick={async () => {
+                                        const ok = await confirm({
+                                          title: 'Delete contact',
+                                          message: 'Are you sure you want to delete this contact?',
+                                          confirmText: 'Delete',
+                                          cancelText: 'Cancel'
+                                        });
+                                        if (ok) {
+                                          try {
+                                            await api('DELETE', `/inventory/contacts/${contact.id}`);
+                                            refetchContacts();
+                                            toast.success('Contact deleted');
+                                          } catch (error) {
+                                            toast.error('Failed to delete contact');
+                                          }
+                                        }
+                                      }}
+                                      className="px-2 py-1 rounded bg-gray-100 text-xs"
+                                    >
+                                      Delete
+                                    </button>
+                                  </div>
+                                </div>
+                                {contact.title && (
+                                  <div className="text-gray-600 text-xs">{contact.title}</div>
+                                )}
+                                <div className="mt-2">
+                                  <div className="text-[11px] uppercase text-gray-500">Email</div>
+                                  <div className="text-gray-700">{contact.email||'-'}</div>
+                                </div>
+                                <div className="mt-2">
+                                  <div className="text-[11px] uppercase text-gray-500">Phone</div>
+                                  <div className="text-gray-700">{contact.phone||'-'}</div>
+                                </div>
                               </div>
                             </div>
                           ))
                         ) : (
-                          <div className="text-center py-8 text-gray-500">
+                          <div className="col-span-2 text-center py-8 text-gray-500">
                             No contacts yet. Add a contact to get started.
                           </div>
                         )}
@@ -691,8 +733,15 @@ export default function InventorySuppliers() {
                 <>
                   <button
                     onClick={() => {
-                      setOpen(false);
-                      resetForm();
+                      if (editing) {
+                        // If editing, go back to view mode
+                        setEditing(null);
+                        resetForm();
+                      } else {
+                        // If creating new, close modal
+                        setOpen(false);
+                        resetForm();
+                      }
                     }}
                     className="px-4 py-2 rounded bg-gray-200 hover:bg-gray-300"
                   >
