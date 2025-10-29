@@ -106,33 +106,36 @@ export default function UserInfo(){
         </div>
       </div>
       <div className="rounded-xl border shadow-hero bg-white">
-        <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] rounded-t-xl p-5 text-white">
-          <div className="flex gap-4 items-center">
-            <img className="w-[120px] h-[120px] object-cover rounded-xl border-2 border-brand-red" src={p.profile_photo_file_id? `/files/${p.profile_photo_file_id}/thumbnail?w=240`:'/ui/assets/login/logo-light.svg'} />
-            <div className="flex-1">
-              <div className="text-3xl font-extrabold">{p.first_name||u?.username} {p.last_name||''}</div>
-              <div className="text-sm opacity-90 mt-1">{p.job_title||u?.email||''}{p.division? ` — ${p.division}`:''}</div>
-              <div className="grid md:grid-cols-3 gap-2 text-xs mt-3">
-                <div><span className="opacity-80">Phone:</span> <span className="font-semibold">{p.phone||'—'}</span></div>
-                <div><span className="opacity-80">Work email:</span> <span className="font-semibold">{p.work_email||'—'}</span></div>
-                <div><span className="opacity-80">Status:</span> <span className="font-semibold">{u?.is_active? 'Active':'Terminated'}</span></div>
-                <div><span className="opacity-80">Hire date:</span> <span className="font-semibold">{p.hire_date? String(p.hire_date).slice(0,10):'—'}{p.hire_date? ` (${tenure(p.hire_date)})`:''}</span></div>
-                <div><span className="opacity-80">Supervisor:</span> <span className="font-semibold">{supervisorName||'—'}</span></div>
-                <div><span className="opacity-80">Age:</span> <span className="font-semibold">{calcAge(p.date_of_birth)||'—'}</span></div>
+        <div className="rounded-t-xl p-5 text-white relative overflow-hidden" style={{ backgroundImage: 'url(/ui/assets/login/background.jpg)', backgroundSize: 'cover', backgroundPosition: 'center' }}>
+          <div className="absolute inset-0 bg-gradient-to-br from-gray-600/80 to-gray-900/80" />
+          <div className="relative z-10">
+            <div className="flex gap-4 items-center">
+              <img className="w-[120px] h-[120px] object-cover rounded-xl border-2 border-brand-red" src={p.profile_photo_file_id? `/files/${p.profile_photo_file_id}/thumbnail?w=240`:'/ui/assets/login/logo-light.svg'} />
+              <div className="flex-1">
+                <div className="text-3xl font-extrabold">{p.first_name||u?.username} {p.last_name||''}</div>
+                <div className="text-sm opacity-90 mt-1">{p.job_title||u?.email||''}{p.division? ` — ${p.division}`:''}</div>
+                <div className="grid md:grid-cols-3 gap-2 text-xs mt-3">
+                  <div><span className="opacity-80">Phone:</span> <span className="font-semibold">{p.phone||'—'}</span></div>
+                  <div><span className="opacity-80">Work email:</span> <span className="font-semibold">{p.work_email||'—'}</span></div>
+                  <div><span className="opacity-80">Status:</span> <span className="font-semibold">{u?.is_active? 'Active':'Terminated'}</span></div>
+                  <div><span className="opacity-80">Hire date:</span> <span className="font-semibold">{p.hire_date? String(p.hire_date).slice(0,10):'—'}{p.hire_date? ` (${tenure(p.hire_date)})`:''}</span></div>
+                  <div><span className="opacity-80">Supervisor:</span> <span className="font-semibold">{supervisorName||'—'}</span></div>
+                  <div><span className="opacity-80">Age:</span> <span className="font-semibold">{calcAge(p.date_of_birth)||'—'}</span></div>
+                </div>
               </div>
+              <div className="flex gap-2"></div>
             </div>
-            <div className="flex gap-2"></div>
-          </div>
-          <div className="mt-4 flex items-center gap-2">
-            {['personal','job','emergency','docs','timesheet'].map((k)=> (
-              <button
-                key={k}
-                onClick={()=>setTab(k as any)}
-                className={`px-4 py-2 rounded-lg shadow-sm ${tab===k? 'bg-black text-white' : 'bg-white text-black border'}`}
-              >
-                {String(k).replace(/^./,s=>s.toUpperCase())}
-              </button>
-            ))}
+            <div className="mt-4 flex items-center gap-2">
+              {['personal','job','emergency','docs','timesheet'].map((k)=> (
+                <button
+                  key={k}
+                  onClick={()=>setTab(k as any)}
+                  className={`px-4 py-2 rounded-lg shadow-sm ${tab===k? 'bg-black text-white' : 'bg-white text-black border'}`}
+                >
+                  {String(k).replace(/^./,s=>s.toUpperCase())}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
         <div className="p-5">
