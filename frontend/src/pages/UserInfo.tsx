@@ -52,6 +52,20 @@ export default function UserInfo(){
     const hero = branding.find((i:any)=> (i.label||'').toLowerCase()==='hero_background_url' || (i.label||'').toLowerCase()==='hero background');
     return hero?.value || '/ui/assets/login/background.jpg';
   })();
+  const [heroResolvedUrl, setHeroResolvedUrl] = useState<string>('');
+  useEffect(()=>{
+    (async()=>{
+      try{
+        if(!heroBgUrl){ setHeroResolvedUrl('/ui/assets/login/background.jpg'); return; }
+        if(heroBgUrl.startsWith('/files/')){
+          const r:any = await api('GET', heroBgUrl);
+          setHeroResolvedUrl(r.download_url||'/ui/assets/login/background.jpg');
+        } else {
+          setHeroResolvedUrl(heroBgUrl);
+        }
+      }catch{ setHeroResolvedUrl('/ui/assets/login/background.jpg'); }
+    })();
+  }, [heroBgUrl]);
 
   
 
@@ -112,7 +126,7 @@ export default function UserInfo(){
         </div>
       </div>
       <div className="rounded-xl border shadow-hero bg-white">
-        <div className="rounded-t-xl p-5 text-white relative overflow-hidden" style={{ backgroundImage: `url(${heroBgUrl})`, backgroundSize: 'cover', backgroundPosition: 'center' }}>
+        <div className="rounded-t-xl p-5 text-white relative overflow-hidden" style={{ backgroundImage: `url(${heroResolvedUrl||'/ui/assets/login/background.jpg'})`, backgroundSize: 'cover', backgroundPosition: 'center' }}>
           <div className="absolute inset-0 bg-gradient-to-br from-gray-500/50 to-gray-800/60" />
           <div className="relative z-10">
             <div className="flex gap-4 items-center">
