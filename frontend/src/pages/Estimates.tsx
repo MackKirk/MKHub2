@@ -8,8 +8,9 @@ export default function Estimates(){
   const rows = data||[];
   return (
     <div>
-      <div className="mb-3 flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Estimates</h1>
+      <div className="mb-3 rounded-xl border bg-gradient-to-br from-[#7f1010] to-[#a31414] text-white p-4">
+        <div className="text-2xl font-extrabold">Estimates</div>
+        <div className="text-sm opacity-90">Project estimates and pricing summaries.</div>
       </div>
       <div className="rounded-xl border bg-white overflow-hidden">
         <table className="w-full text-sm">

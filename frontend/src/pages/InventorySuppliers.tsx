@@ -257,19 +257,21 @@ export default function InventorySuppliers() {
 
   return (
     <div>
-      <div className="mb-4 flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Suppliers</h1>
+      <div className="mb-3 rounded-xl border bg-gradient-to-br from-[#7f1010] to-[#a31414] text-white p-4 flex items-center justify-between">
+        <div>
+          <div className="text-2xl font-extrabold">Suppliers</div>
+          <div className="text-sm opacity-90">Manage vendors and contact information.</div>
+        </div>
         <button
           onClick={() => {
             resetForm();
             setOpen(true);
           }}
-          className="px-4 py-2 rounded bg-brand-red text-white hover:bg-brand-red-dark"
+          className="px-4 py-2 rounded bg-black text-white"
         >
           New Supplier
         </button>
       </div>
-
       <div className="mb-4">
         <input
           type="text"
