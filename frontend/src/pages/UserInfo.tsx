@@ -47,7 +47,11 @@ export default function UserInfo(){
     return row? (row.username || row.email) : '';
   }, [usersOptions, p?.manager_user_id, supervisorProfile]);
 
-  const heroBgUrl = (settings?.branding?.hero_background_url) || (settings?.hero_background_url) || '/ui/assets/login/background.jpg';
+  const heroBgUrl = (()=>{
+    const branding = (settings?.branding||[]) as any[];
+    const hero = branding.find((i:any)=> (i.label||'').toLowerCase()==='hero_background_url' || (i.label||'').toLowerCase()==='hero background');
+    return hero?.value || '/ui/assets/login/background.jpg';
+  })();
 
   
 

@@ -12,7 +12,7 @@ export default function AppShell({ children }: PropsWithChildren){
   const [open, setOpen] = useState(false);
   return (
     <div className="min-h-screen flex">
-      <aside className="w-60 text-white p-4 bg-gradient-to-b from-gray-900 to-gray-800">
+      <aside className="w-60 text-white p-4 bg-gradient-to-b from-[#0a0a0a] via-[#171717] to-[#2a2a2a]">
         <div className="flex items-center gap-2 mb-4"><img src="/ui/assets/login/logo-light.svg" className="h-8"/><span className="text-sm text-gray-300">MK Hub</span></div>
         <nav className="flex flex-col gap-2">
           <NavLink to="/home" className={({isActive})=>`px-3 py-2 rounded ${isActive?'bg-brand-red':''}`}>Home</NavLink>
@@ -39,7 +39,7 @@ export default function AppShell({ children }: PropsWithChildren){
         </nav>
       </aside>
       <main className="flex-1 min-w-0">
-        <div className="h-14 border-b text-white flex items-center justify-between px-4 bg-gradient-to-r from-gray-900 to-gray-800">
+        <div className="h-14 border-b text-white flex items-center justify-between px-4 bg-gradient-to-r from-[#0a0a0a] via-[#171717] to-[#2a2a2a]">
           <input placeholder="Search" className="w-80 rounded-full px-3 py-1 text-sm bg-[#0c0e11] border border-[#1f242b]"/>
           <div className="relative">
             <button onClick={()=>setOpen(v=>!v)} className="flex items-center gap-3">

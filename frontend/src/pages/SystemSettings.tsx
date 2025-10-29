@@ -16,11 +16,70 @@ export default function SystemSettings(){
   const isColorList = useMemo(()=> sel.toLowerCase().includes('status'), [sel]);
   const isDivisionList = useMemo(()=> sel.toLowerCase().includes('division'), [sel]);
   const getEdit = (it: Item): Item => edits[it.id] || it;
+  const brandingList = (data?.branding||[]) as Item[];
+  const heroItem = brandingList.find(i=> (i.label||'').toLowerCase()==='hero_background_url');
+  const [heroUrlDraft, setHeroUrlDraft] = useState<string>('');
+  const [heroFile, setHeroFile] = useState<File|null>(null);
+  const saveHeroUrl = async(url:string)=>{
+    try{
+      if(heroItem){
+        await api('PUT', `/settings/branding/${encodeURIComponent(heroItem.id)}?label=hero_background_url&value=${encodeURIComponent(url)}`);
+      } else {
+        await api('POST', `/settings/branding?label=hero_background_url&value=${encodeURIComponent(url)}`);
+      }
+      toast.success('Brand image updated');
+      setHeroFile(null); setHeroUrlDraft('');
+      await refetch();
+    }catch(_e){ toast.error('Failed to update'); }
+  };
+  const uploadHero = async()=>{
+    try{
+      if(!heroFile){ toast.error('Select an image'); return; }
+      const type = heroFile.type || 'image/jpeg';
+      const up = await api('POST','/files/upload',{ original_name: heroFile.name, content_type: type });
+      await fetch(up.upload_url, { method:'PUT', headers:{ 'Content-Type': type, 'x-ms-blob-type':'BlockBlob' }, body: heroFile });
+      const conf = await api('POST','/files/confirm',{ key: up.key, size_bytes: heroFile.size, checksum_sha256: 'na', content_type: type });
+      const url = `/files/${conf.id}/download`;
+      await saveHeroUrl(url);
+    }catch(_e){ toast.error('Upload failed'); }
+  };
   return (
     <div className="space-y-4">
       <div className="mb-1 rounded-xl border bg-gradient-to-br from-[#7f1010] to-[#a31414] text-white p-4">
         <div className="text-2xl font-extrabold">System Settings</div>
         <div className="text-sm opacity-90">Manage application lists, statuses, and divisions.</div>
+      </div>
+      <div className="rounded-xl border bg-white p-3">
+        <div className="flex items-center justify-between mb-3">
+          <div>
+            <h4 className="font-semibold">Branding</h4>
+            <div className="text-xs text-gray-600">Hero background image for user pages and banners.</div>
+          </div>
+        </div>
+        <div className="grid md:grid-cols-3 gap-3 items-start">
+          <div className="md:col-span-2">
+            <div className="text-xs text-gray-600 mb-1">Current image</div>
+            <div className="rounded-lg border overflow-hidden bg-gray-50">
+              <img src={(heroItem?.value)||'/ui/assets/login/background.jpg'} className="w-full h-40 object-cover" />
+            </div>
+          </div>
+          <div className="space-y-2">
+            <div>
+              <div className="text-xs text-gray-600 mb-1">Set by URL</div>
+              <div className="flex gap-2">
+                <input className="border rounded px-2 py-1 text-sm flex-1" placeholder="https://..." value={heroUrlDraft} onChange={e=>setHeroUrlDraft(e.target.value)} />
+                <button onClick={()=> heroUrlDraft.trim() && saveHeroUrl(heroUrlDraft.trim())} className="px-3 py-1.5 rounded bg-brand-red text-white">Save</button>
+              </div>
+            </div>
+            <div>
+              <div className="text-xs text-gray-600 mb-1">Or upload image</div>
+              <input type="file" accept="image/*" onChange={e=> setHeroFile(e.target.files?.[0]||null)} />
+              <div className="mt-2 text-right">
+                <button onClick={uploadHero} className="px-3 py-1.5 rounded border">Upload</button>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
       <div className="grid md:grid-cols-3 gap-4">
         <div className="rounded-xl border bg-white p-3">
