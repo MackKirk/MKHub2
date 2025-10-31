@@ -61,9 +61,9 @@ export default function EstimateBuilder({ projectId }:{ projectId:string }){
         <AddSubContractorModal onAdd={(it)=> setItems(prev=> [...prev, it])} />
         <AddShopModal onAdd={(it)=> setItems(prev=> [...prev, it])} />
         <div className="ml-auto flex items-center gap-3 text-sm">
-          <label>Markup (%)</label><input type="number" className="border rounded px-2 py-1 w-20" value={markup} onChange={e=>setMarkup(Number(e.target.value||0))} />
-          <label>PST (%)</label><input type="number" className="border rounded px-2 py-1 w-20" value={pstRate} onChange={e=>setPstRate(Number(e.target.value||0))} />
-          <label>GST (%)</label><input type="number" className="border rounded px-2 py-1 w-20" value={gstRate} onChange={e=>setGstRate(Number(e.target.value||0))} />
+          <label>Markup (%)</label><input type="number" className="border rounded px-2 py-1 w-20" value={markup} min={0} step={1} onChange={e=>setMarkup(Number(e.target.value||0))} />
+          <label>PST (%)</label><input type="number" className="border rounded px-2 py-1 w-20" value={pstRate} min={0} step={1} onChange={e=>setPstRate(Number(e.target.value||0))} />
+          <label>GST (%)</label><input type="number" className="border rounded px-2 py-1 w-20" value={gstRate} min={0} step={1} onChange={e=>setGstRate(Number(e.target.value||0))} />
         </div>
       </div>
 
@@ -174,7 +174,7 @@ export default function EstimateBuilder({ projectId }:{ projectId:string }){
                             <td className="p-2 text-right">${totalValue.toFixed(2)}</td>
                             <td className="p-2 text-right">
                               <input type="number" className="w-16 text-right border rounded px-2 py-1" 
-                                value={itemMarkup} min={0} step={0.1}
+                                value={itemMarkup} min={0} step={1}
                                 onChange={e=>setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, markup: Number(e.target.value)} : item))} />
                             </td>
                             <td className="p-2 text-right">${totalWithMarkup.toFixed(2)}</td>
@@ -187,7 +187,7 @@ export default function EstimateBuilder({ projectId }:{ projectId:string }){
                           </>
                         ) : (
                           <>
-                            <td className="p-2">{it.description||it.name}</td>
+                            <td className="p-2">{it.name}</td>
                             <td className="p-2">
                               {it.item_type === 'labour' && it.labour_journey_type ? (
                                 it.labour_journey_type === 'contract' ? (
@@ -219,7 +219,7 @@ export default function EstimateBuilder({ projectId }:{ projectId:string }){
                             <td className="p-2 text-right">${totalValue.toFixed(2)}</td>
                             <td className="p-2 text-right">
                               <input type="number" className="w-16 text-right border rounded px-2 py-1" 
-                                value={itemMarkup} min={0} step={0.1}
+                                value={itemMarkup} min={0} step={1}
                                 onChange={e=>setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, markup: Number(e.target.value)} : item))} />
                             </td>
                             <td className="p-2 text-right">${totalWithMarkup.toFixed(2)}</td>
@@ -237,7 +237,7 @@ export default function EstimateBuilder({ projectId }:{ projectId:string }){
                 </tbody>
                 <tfoot className="bg-gray-50">
                   <tr>
-                    <td colSpan={!isLabourSection ? 10 : 6} className="p-2 text-right font-semibold">Section Subtotal:</td>
+                    <td colSpan={!isLabourSection ? 10 : 7} className="p-2 text-right font-semibold">Section Subtotal:</td>
                     <td className="p-2 text-right font-bold">${groupedItems[section].reduce((acc, it)=> {
                       const m = it.markup || markup;
                       let itemTotal = 0;
@@ -514,19 +514,21 @@ function AddLabourModal({ onAdd }:{ onAdd:(it: Item)=>void }){
                 <button onClick={()=>{
                   if(!labour.trim()){ toast.error('Please enter a labour name'); return; }
                   const priceValue = Number(price||0);
-                  let desc, qty, unit, journey;
+                  let name, desc, qty, unit, journey;
                   if(showContract){
+                    name = labour;
                     desc = labour;
                     qty = Number(contractNumber||0);
                     unit = contractUnit||'each';
                     journey = qty;
                   }else{
+                    name = labour;
                     desc = `${labour} - ${men} men`;
                     qty = Number(men||0);
                     unit = showHours ? 'hours' : 'days';
                     journey = showHours ? Number(hours||0) : Number(days||0);
                   }
-                  onAdd({ name: desc, unit, quantity: qty, unit_price: priceValue, section: 'Labour', description: desc, item_type: 'labour', taxable: true, labour_journey: journey, labour_men: Number(men||0), labour_journey_type: journeyType });
+                  onAdd({ name, unit, quantity: qty, unit_price: priceValue, section: 'Labour', description: desc, item_type: 'labour', taxable: true, labour_journey: journey, labour_men: Number(men||0), labour_journey_type: journeyType });
                   setOpen(false); setLabour(''); setMen('1'); setDays('1'); setHours('1'); setContractNumber('1'); setContractUnit(''); setPrice('0'); setJourneyType('days');
                 }} className="px-3 py-2 rounded bg-brand-red text-white">Add Labour</button>
               </div>
