@@ -360,12 +360,6 @@ export default function InventoryProducts(){
                             <span className="text-white">{viewing.category}</span>
                           </div>
                         )}
-                        {typeof viewing.price === 'number' && (
-                          <div className="flex items-center gap-2">
-                            <span className="text-white/80">💰</span>
-                            <span className="text-white">${viewing.price.toFixed(2)}</span>
-                          </div>
-                        )}
                       </div>
                     </div>
                   </div>
@@ -383,6 +377,12 @@ export default function InventoryProducts(){
                         <div className="bg-white border rounded-lg p-4">
                           <div className="text-xs font-semibold text-gray-600 mb-1">Unit Type</div>
                           <div className="text-gray-900">{viewing.unit_type}</div>
+                        </div>
+                      )}
+                      {typeof viewing.price === 'number' && (
+                        <div className="bg-white border rounded-lg p-4">
+                          <div className="text-xs font-semibold text-gray-600 mb-1">Price</div>
+                          <div className="text-gray-900 font-semibold text-lg">${viewing.price.toFixed(2)}</div>
                         </div>
                       )}
                     </div>
