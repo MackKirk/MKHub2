@@ -187,12 +187,12 @@ export default function EstimateBuilder({ projectId }:{ projectId:string }){
                           </>
                         ) : (
                           <>
-                            <td className="p-2">{it.name}</td>
+                            <td className="p-2">{it.description||it.name}</td>
                             <td className="p-2">
                               {it.item_type === 'labour' && it.labour_journey_type ? (
                                 it.labour_journey_type === 'contract' ? (
                                   <div className="flex items-center gap-2">
-                                    <input type="number" className="w-16 border rounded px-2 py-1" value={it.labour_journey} min={0} step={0.01} onChange={e=>setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, labour_journey: Number(e.target.value)} : item))} />
+                                    <input type="number" className="w-16 border rounded px-2 py-1" value={it.labour_journey} min={0} step={0.5} onChange={e=>setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, labour_journey: Number(e.target.value)} : item))} />
                                     <span>{it.unit}</span>
                                   </div>
                                 ) : (
