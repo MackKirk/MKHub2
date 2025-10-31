@@ -393,13 +393,13 @@ export default function InventoryProducts(){
                           <div className="text-gray-900">{viewing.unit_type}</div>
                         </div>
                       )}
-                      {typeof viewing.price === 'number' && (
-                        <div className="bg-white border rounded-lg p-4">
-                          <div className="text-xs font-semibold text-gray-600 mb-1">Price</div>
-                          <div className="text-gray-900 font-semibold text-lg">${viewing.price.toFixed(2)}</div>
-                        </div>
-                      )}
                     </div>
+                    {typeof viewing.price === 'number' && (
+                      <div className="bg-white border rounded-lg p-4">
+                        <div className="text-xs font-semibold text-gray-600 mb-1">Price</div>
+                        <div className="text-gray-900 font-semibold text-lg">${viewing.price.toFixed(2)}</div>
+                      </div>
+                    )}
                     {viewing.units_per_package && (
                       <div className="bg-white border rounded-lg p-4">
                         <div className="text-xs font-semibold text-gray-600 mb-1">Units per Package</div>
