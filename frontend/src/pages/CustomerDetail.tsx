@@ -62,8 +62,9 @@ export default function CustomerDetail(){
       </div>
       <div className="rounded-xl border bg-white">
         <div className="relative rounded-t-xl p-5 text-white overflow-hidden" style={{ backgroundImage: 'linear-gradient(135deg, #7f1010, #a31414)' }}>
-          <img src={clientAvatarLarge} alt="" className="pointer-events-none select-none absolute right-0 top-0 h-full w-auto opacity-10 translate-x-6 object-contain" />
-          <div className="flex gap-4 items-stretch min-h-[180px] relative">
+          <img src={clientAvatarLarge} alt="" className="pointer-events-none select-none absolute right-0 top-0 h-[140%] w-auto opacity-15 -translate-x-16 scale-125 object-contain" />
+          <div className="absolute right-0 top-0 bottom-0 w-1/2 bg-gradient-to-l from-transparent via-[#a31414]/20 to-[#7f1010]/70 pointer-events-none" />
+          <div className="flex gap-4 items-stretch min-h-[200px] relative">
             <div className="w-[220px] relative group">
               <img src={clientAvatarLarge} className="w-full h-full object-cover rounded-xl border-2 border-brand-red" />
               <button onClick={()=>setPickerOpen(true)} className="absolute inset-0 rounded-xl bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white">✏️ Change</button>
@@ -103,21 +104,13 @@ export default function CustomerDetail(){
                   </div>
                   <div>
                     <div className="flex items-center justify-between mb-2"><h3 className="font-semibold">Recent Projects</h3><button onClick={()=>setTab('projects')} className="text-sm px-3 py-1.5 rounded bg-brand-red text-white">View all</button></div>
-                    <div className="grid md:grid-cols-4 gap-3">
+                    <div className="grid md:grid-cols-4 gap-2">
                       {(projects||[]).slice(0,4).map(p=> {
                         const pfiles = (files||[]).filter(f=> String((f as any).project_id||'')===String(p.id));
                         const cover = pfiles.find(f=> String(f.category||'')==='project-cover-derived') || pfiles.find(f=> (f.is_image===true) || String(f.content_type||'').startsWith('image/'));
-                        const src = cover? `/files/${cover.file_object_id}/thumbnail?w=600` : '/ui/assets/login/logo-light.svg';
+                        const src = cover? `/files/${cover.file_object_id}/thumbnail?w=400` : '/ui/assets/login/logo-light.svg';
                         return (
-                          <Link to={`/projects/${encodeURIComponent(String(p.id))}`} key={p.id} className="group rounded-xl border overflow-hidden bg-white block">
-                            <div className="aspect-square bg-gray-100">
-                              <img className="w-full h-full object-cover" src={src} />
-                            </div>
-                            <div className="p-2 text-sm">
-                              <div className="font-semibold truncate group-hover:underline">{p.name||'Project'}</div>
-                              <div className="text-gray-600 truncate">{p.code||''}</div>
-                            </div>
-                          </Link>
+                          <ProjectMiniCard key={p.id} project={p as any} coverSrc={src} clientName={c.display_name||c.name||''} />
                         );
                       })}
                       {(!(projects||[]).length) && <div className="text-sm text-gray-600">No projects</div>}
@@ -431,6 +424,52 @@ function Field({label, tooltip, children}:{label:ReactNode, tooltip?:string, chi
       {children}
     </div>
   );
+}
+
+function ProjectMiniCard({ project, coverSrc, clientName }:{ project:any, coverSrc:string, clientName?:string }){
+  const { data:details } = useQuery({ queryKey:['project', project.id], queryFn: ()=> api<any>('GET', `/projects/${encodeURIComponent(String(project.id))}`), staleTime: 60_000 });
+  const { data:reports } = useQuery({ queryKey:['project-reports-count', project.id], queryFn: async()=> { const r = await api<any[]>('GET', `/projects/${encodeURIComponent(String(project.id))}/reports`); return r?.length||0; }, staleTime: 60_000 });
+  const status = (project.status_label || details?.status_label || '') as string;
+  const progress = Math.max(0, Math.min(100, Number(project.progress ?? details?.progress ?? 0)));
+  const start = (project.date_start || details?.date_start || project.created_at || '').slice(0,10);
+  const eta = (details?.date_eta || project.date_end || '').slice(0,10);
+  const est = details?.estimator_id || '';
+  const lead = details?.onsite_lead_id || '';
+  return (
+    <Link to={`/projects/${encodeURIComponent(String(project.id))}`} className="group rounded-lg border overflow-hidden bg-white block">
+      <div className="aspect-[4/3] bg-gray-100">
+        <img className="w-full h-full object-cover" src={coverSrc} />
+      </div>
+      <div className="p-2">
+        <div className="text-xs text-gray-600 truncate">{clientName||''}</div>
+        <div className="font-semibold text-sm truncate group-hover:underline">{project.name||'Project'}</div>
+        <div className="text-xs text-gray-600 truncate">{project.code||''}</div>
+        <div className="mt-1 flex items-center justify-between">
+          <span className="px-2 py-0.5 rounded-full text-[11px] border bg-gray-50 text-gray-800 truncate max-w-[60%]" title={status}>{status||'—'}</span>
+          <span className="text-[11px] text-gray-600">{reports||0} reports</span>
+        </div>
+        <div className="mt-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+          <div className="h-full bg-brand-red" style={{ width: `${progress}%` }} />
+        </div>
+        <div className="mt-1 grid grid-cols-2 gap-2 text-[11px] text-gray-700">
+          <div><span className="opacity-70">Start:</span> {start||'—'}</div>
+          <div><span className="opacity-70">ETA:</span> {eta||'—'}</div>
+        </div>
+        <div className="mt-1 grid grid-cols-2 gap-2 text-[11px] text-gray-700">
+          <div className="truncate" title={est}><span className="opacity-70">Estimator:</span> {est? <UserInline id={est} /> : '—'}</div>
+          <div className="truncate" title={lead}><span className="opacity-70">On-site:</span> {lead? <UserInline id={lead} /> : '—'}</div>
+        </div>
+      </div>
+    </Link>
+  );
+}
+
+function UserInline({ id }:{ id:string }){
+  const { data } = useQuery({ queryKey:['user-inline', id], queryFn: ()=> api<any>('GET', `/auth/users/${encodeURIComponent(String(id))}/profile`), enabled: !!id, staleTime: 300_000 });
+  const fn = data?.profile?.preferred_name || data?.profile?.first_name || '';
+  const ln = data?.profile?.last_name || '';
+  const label = `${fn} ${ln}`.trim() || '';
+  return <span className="font-medium">{label||'—'}</span>;
 }
 
 function FilesCard({ id, files, sites, onRefresh }:{ id:string, files: ClientFile[], sites: Site[], onRefresh: ()=>any }){

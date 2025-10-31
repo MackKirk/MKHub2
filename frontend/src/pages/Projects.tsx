@@ -36,19 +36,9 @@ export default function Projects(){
         <button onClick={()=>refetch()} className="px-3 py-2 rounded bg-brand-red text-white">Apply</button>
         <button onClick={()=>setNewOpen(true)} className="px-3 py-2 rounded bg-black text-white">New Project</button>
       </div>
-      <div className="grid md:grid-cols-3 gap-4">
+      <div className="grid md:grid-cols-4 gap-2">
         {isLoading? <div className="h-32 bg-gray-100 animate-pulse rounded"/> : arr.map(p => (
-          <div key={p.id} className="rounded-xl border bg-white overflow-hidden">
-            <div className="h-28 bg-gray-100 relative">
-              <button onClick={()=>setPickerOpen({ open:true, clientId: p.client_id, projectId: p.id })} className="absolute right-2 top-2 text-xs px-2 py-1 rounded bg-black/70 text-white">Change cover</button>
-            </div>
-            <div className="p-3 text-sm">
-              <div className="font-semibold">{p.name||'Project'}</div>
-              <div className="text-gray-600">{p.code||''}</div>
-              <div className="text-[11px] text-gray-500 mt-1">{(p.date_start||p.created_at||'').slice(0,10)}</div>
-              <div className="mt-3 flex justify-end"><Link to={`/projects/${encodeURIComponent(String(p.id))}`} className="px-3 py-1.5 rounded bg-brand-red text-white">Open</Link></div>
-            </div>
-          </div>
+          <ProjectListCard key={p.id} project={p} />
         ))}
       </div>
       {pickerOpen?.open && (
@@ -86,6 +76,59 @@ export default function Projects(){
       )}
     </div>
   );
+}
+
+function ProjectListCard({ project }:{ project: Project }){
+  const { data:files } = useQuery({ queryKey:['client-files-for-proj-card', project.client_id], queryFn: ()=> project.client_id? api<any[]>('GET', `/clients/${encodeURIComponent(String(project.client_id))}/files`) : Promise.resolve([]), enabled: !!project.client_id, staleTime: 60_000 });
+  const pfiles = useMemo(()=> (files||[]).filter((f:any)=> String((f as any).project_id||'')===String(project.id)), [files, project?.id]);
+  const cover = pfiles.find((f:any)=> String(f.category||'')==='project-cover-derived') || pfiles.find((f:any)=> (f.is_image===true) || String(f.content_type||'').startsWith('image/'));
+  const src = cover? `/files/${cover.file_object_id}/thumbnail?w=400` : '/ui/assets/login/logo-light.svg';
+  const { data:details } = useQuery({ queryKey:['project-detail-card', project.id], queryFn: ()=> api<any>('GET', `/projects/${encodeURIComponent(String(project.id))}`), staleTime: 60_000 });
+  const { data:reports } = useQuery({ queryKey:['project-reports-count-card', project.id], queryFn: async()=> { const r = await api<any[]>('GET', `/projects/${encodeURIComponent(String(project.id))}/reports`); return r?.length||0; }, staleTime: 60_000 });
+  const { data:client } = useQuery({ queryKey:['proj-client', project.client_id], queryFn: ()=> project.client_id? api<any>('GET', `/clients/${encodeURIComponent(String(project.client_id||''))}`): Promise.resolve(null), enabled: !!project.client_id, staleTime: 300_000 });
+  const status = (project as any).status_label || details?.status_label || '';
+  const progress = Math.max(0, Math.min(100, Number((project as any).progress ?? details?.progress ?? 0)));
+  const start = (project.date_start || details?.date_start || project.created_at || '').slice(0,10);
+  const eta = (details?.date_eta || project.date_end || '').slice(0,10);
+  const est = details?.estimator_id || '';
+  const lead = details?.onsite_lead_id || '';
+  const clientName = client?.display_name || client?.name || '';
+  return (
+    <Link to={`/projects/${encodeURIComponent(String(project.id))}`} className="group rounded-lg border overflow-hidden bg-white block">
+      <div className="aspect-[4/3] bg-gray-100 relative">
+        <img className="w-full h-full object-cover" src={src} />
+        <button onClick={(e)=>{ e.preventDefault(); e.stopPropagation(); }} className="absolute right-2 top-2 text-xs px-2 py-1 rounded bg-black/70 text-white" title="Change cover (open project)">Cover</button>
+      </div>
+      <div className="p-2">
+        <div className="text-xs text-gray-600 truncate">{clientName||''}</div>
+        <div className="font-semibold text-sm truncate group-hover:underline">{project.name||'Project'}</div>
+        <div className="text-xs text-gray-600 truncate">{project.code||''}</div>
+        <div className="mt-1 flex items-center justify-between">
+          <span className="px-2 py-0.5 rounded-full text-[11px] border bg-gray-50 text-gray-800 truncate max-w-[60%]" title={status}>{status||'—'}</span>
+          <span className="text-[11px] text-gray-600">{reports||0} reports</span>
+        </div>
+        <div className="mt-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+          <div className="h-full bg-brand-red" style={{ width: `${progress}%` }} />
+        </div>
+        <div className="mt-1 grid grid-cols-2 gap-2 text-[11px] text-gray-700">
+          <div><span className="opacity-70">Start:</span> {start||'—'}</div>
+          <div><span className="opacity-70">ETA:</span> {eta||'—'}</div>
+        </div>
+        <div className="mt-1 grid grid-cols-2 gap-2 text-[11px] text-gray-700">
+          <div className="truncate" title={est}><span className="opacity-70">Estimator:</span> {est? <UserInline id={est} /> : '—'}</div>
+          <div className="truncate" title={lead}><span className="opacity-70">On-site:</span> {lead? <UserInline id={lead} /> : '—'}</div>
+        </div>
+      </div>
+    </Link>
+  );
+}
+
+function UserInline({ id }:{ id:string }){
+  const { data } = useQuery({ queryKey:['user-inline', id], queryFn: ()=> api<any>('GET', `/auth/users/${encodeURIComponent(String(id))}/profile`), enabled: !!id, staleTime: 300_000 });
+  const fn = data?.profile?.preferred_name || data?.profile?.first_name || '';
+  const ln = data?.profile?.last_name || '';
+  const label = `${fn} ${ln}`.trim() || '';
+  return <span className="font-medium">{label||'—'}</span>;
 }
 
 
