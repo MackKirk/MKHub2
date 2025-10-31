@@ -11,7 +11,9 @@ export default function EstimateBuilder({ projectId }:{ projectId:string }){
   const [markup, setMarkup] = useState<number>(5);
   const [pstRate, setPstRate] = useState<number>(7);
   const [gstRate, setGstRate] = useState<number>(5);
-  const sections = ['Roof System','Wood Blocking / Accessories','Flashing','Miscellaneous'];
+  const defaultSections = ['Roof System','Wood Blocking / Accessories','Flashing','Miscellaneous'];
+  const [sectionOrder, setSectionOrder] = useState<string[]>(defaultSections);
+  const [summaryOpen, setSummaryOpen] = useState(false);
 
   const total = useMemo(()=> items.reduce((acc, it)=> acc + (it.quantity * it.unit_price), 0), [items]);
   const pst = useMemo(()=> (total * (pstRate/100)), [total, pstRate]);
@@ -53,6 +55,43 @@ export default function EstimateBuilder({ projectId }:{ projectId:string }){
     return groups;
   }, [items]);
 
+  // Sync section order with items (add new sections that appear in items)
+  useEffect(()=>{
+    const sectionsInItems = new Set<string>();
+    items.forEach(it=> sectionsInItems.add(it.section || 'Miscellaneous'));
+    const existingSections = new Set(sectionOrder);
+    const newSections = Array.from(sectionsInItems).filter(s => !existingSections.has(s));
+    if(newSections.length > 0){
+      setSectionOrder(prev => [...prev, ...newSections]);
+    }
+  }, [items, sectionOrder]);
+
+  // Drag and drop handlers
+  const [draggingSection, setDraggingSection] = useState<string|null>(null);
+  const [dragOverSection, setDragOverSection] = useState<string|null>(null);
+  const onSectionDragStart = (section: string) => setDraggingSection(section);
+  const onSectionDragOver = (e: any, section: string) => {
+    e.preventDefault();
+    setDragOverSection(section);
+  };
+  const onSectionDrop = () => {
+    if (draggingSection === null || dragOverSection === null || draggingSection === dragOverSection) {
+      setDraggingSection(null);
+      setDragOverSection(null);
+      return;
+    }
+    setSectionOrder(arr => {
+      const next = [...arr];
+      const draggedIndex = next.indexOf(draggingSection);
+      const dropIndex = next.indexOf(dragOverSection);
+      const [moved] = next.splice(draggedIndex, 1);
+      next.splice(dropIndex, 0, moved);
+      return next;
+    });
+    setDraggingSection(null);
+    setDragOverSection(null);
+  };
+
   return (
     <div>
       <div className="mb-3 flex items-center gap-2">
@@ -64,17 +103,52 @@ export default function EstimateBuilder({ projectId }:{ projectId:string }){
           <label>Markup (%)</label><input type="number" className="border rounded px-2 py-1 w-20" value={markup} min={0} step={1} onChange={e=>setMarkup(Number(e.target.value||0))} />
           <label>PST (%)</label><input type="number" className="border rounded px-2 py-1 w-20" value={pstRate} min={0} step={1} onChange={e=>setPstRate(Number(e.target.value||0))} />
           <label>GST (%)</label><input type="number" className="border rounded px-2 py-1 w-20" value={gstRate} min={0} step={1} onChange={e=>setGstRate(Number(e.target.value||0))} />
+          <button onClick={()=>setSummaryOpen(true)} className="px-3 py-2 rounded bg-gray-100 hover:bg-gray-200">Summary</button>
         </div>
       </div>
+
+      <SummaryModal 
+        open={summaryOpen}
+        onClose={()=>setSummaryOpen(false)}
+        total={total}
+        pst={pst}
+        subtotal={subtotal}
+        markupValue={markupValue}
+        finalTotal={finalTotal}
+        gstRate={gstRate}
+        grandTotal={grandTotal}
+        onSave={async()=>{
+          try{
+            const payload = { project_id: projectId, markup, items: items.map(it=> ({ material_id: it.material_id, quantity: it.quantity, unit_price: it.unit_price, section: it.section, description: it.description, item_type: it.item_type })) };
+            await api('POST','/estimate/estimates', payload);
+            toast.success('Estimate saved');
+          }catch(_e){ toast.error('Failed to save'); }
+        }}
+      />
 
       {/* Sections grouped display */}
       <div className="space-y-4">
         {Object.keys(groupedItems).length > 0 ? (
-          Object.keys(groupedItems).map(section=> {
+          sectionOrder.filter(section => groupedItems[section] && groupedItems[section].length > 0).map(section => {
             const isLabourSection = ['Labour', 'Sub-Contractors', 'Shop'].includes(section);
             return (
-            <div key={section} className="rounded-xl border overflow-hidden bg-white">
-              <div className="bg-gray-50 px-4 py-2 border-b">
+            <div key={section}
+                 className={`rounded-xl border overflow-hidden bg-white ${dragOverSection === section ? 'ring-2 ring-brand-red' : ''}`}
+                 draggable
+                 onDragStart={() => onSectionDragStart(section)}
+                 onDragOver={(e) => onSectionDragOver(e, section)}
+                 onDrop={onSectionDrop}>
+              <div className="bg-gray-50 px-4 py-2 border-b flex items-center gap-2">
+                <span className="inline-flex items-center justify-center w-5 h-5 text-gray-400 hover:text-gray-600 cursor-grab active:cursor-grabbing" title="Drag to reorder section" aria-label="Drag section handle">
+                  <svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                    <circle cx="6" cy="6" r="1.5"></circle>
+                    <circle cx="10" cy="6" r="1.5"></circle>
+                    <circle cx="14" cy="6" r="1.5"></circle>
+                    <circle cx="6" cy="10" r="1.5"></circle>
+                    <circle cx="10" cy="10" r="1.5"></circle>
+                    <circle cx="14" cy="10" r="1.5"></circle>
+                  </svg>
+                </span>
                 <h3 className="font-semibold text-gray-900">{section}</h3>
               </div>
               <table className="w-full text-sm">
@@ -277,27 +351,39 @@ export default function EstimateBuilder({ projectId }:{ projectId:string }){
           </div>
         )}
       </div>
+    </div>
+  );
+}
 
-      <div className="mt-4 grid md:grid-cols-2 gap-4">
-        <div className="rounded-xl border bg-white p-4">
-          <h4 className="font-semibold mb-2">Summary</h4>
-          <div className="space-y-1 text-sm">
+function SummaryModal({ open, onClose, total, pst, subtotal, markupValue, finalTotal, gstRate, grandTotal, onSave }:{ open:boolean, onClose:()=>void, total:number, pst:number, subtotal:number, markupValue:number, finalTotal:number, gstRate:number, grandTotal:number, onSave:()=>void }){
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open, onClose]);
+
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center">
+      <div className="w-[500px] max-w-[95vw] bg-white rounded-xl overflow-hidden">
+        <div className="px-4 py-3 border-b flex items-center justify-between">
+          <div className="font-semibold">Summary</div>
+          <button onClick={onClose} className="text-gray-500 hover:text-gray-700 text-2xl font-bold w-8 h-8 flex items-center justify-center rounded hover:bg-gray-100" title="Close">×</button>
+        </div>
+        <div className="p-4">
+          <div className="space-y-2 text-sm">
             <div className="flex items-center justify-between"><span>Total Direct Project Costs</span><span>${total.toFixed(2)}</span></div>
             <div className="flex items-center justify-between"><span>PST</span><span>${pst.toFixed(2)}</span></div>
             <div className="flex items-center justify-between"><span>Sub-total</span><span>${subtotal.toFixed(2)}</span></div>
             <div className="flex items-center justify-between"><span>Overhead & Profit (mark-up)</span><span>${markupValue.toFixed(2)}</span></div>
             <div className="flex items-center justify-between font-medium"><span>Total Estimate</span><span>${finalTotal.toFixed(2)}</span></div>
             <div className="flex items-center justify-between"><span>GST</span><span>${(finalTotal*(gstRate/100)).toFixed(2)}</span></div>
-            <div className="flex items-center justify-between font-semibold text-lg"><span>Final Total (with GST)</span><span>${grandTotal.toFixed(2)}</span></div>
+            <div className="flex items-center justify-between font-semibold text-lg border-t pt-2 mt-2"><span>Final Total (with GST)</span><span>${grandTotal.toFixed(2)}</span></div>
           </div>
-          <div className="mt-3 text-right">
-            <button onClick={async()=>{
-              try{
-                const payload = { project_id: projectId, markup, items: items.map(it=> ({ material_id: it.material_id, quantity: it.quantity, unit_price: it.unit_price, section: it.section, description: it.description, item_type: it.item_type })) };
-                await api('POST','/estimate/estimates', payload);
-                toast.success('Estimate saved');
-              }catch(_e){ toast.error('Failed to save'); }
-            }} className="px-3 py-2 rounded bg-brand-red text-white">Save Estimate</button>
+          <div className="mt-4 text-right">
+            <button onClick={onSave} className="px-3 py-2 rounded bg-brand-red text-white">Save Estimate</button>
           </div>
         </div>
       </div>
