@@ -187,7 +187,9 @@ export default function EstimateBuilder({ projectId }:{ projectId:string }){
                           </>
                         ) : (
                           <>
-                            <td className="p-2">{it.description||it.name}</td>
+                            <td className="p-2">
+                              <input type="text" className="w-full border rounded px-2 py-1 bg-gray-50" value={it.description||it.name} readOnly />
+                            </td>
                             <td className="p-2">
                               {it.item_type === 'labour' && it.labour_journey_type ? (
                                 it.labour_journey_type === 'contract' ? (
