@@ -21,6 +21,7 @@ export default function SystemSettings(){
   const [heroUrlDraft, setHeroUrlDraft] = useState<string>('');
   const [heroFile, setHeroFile] = useState<File|null>(null);
   const [heroPreviewUrl, setHeroPreviewUrl] = useState<string>('');
+  const [heroDims, setHeroDims] = useState<{w:number,h:number}|null>(null);
   // Resolve preview URL: if it's a files endpoint, fetch the signed download_url
   useEffect(()=>{
     const val = heroItem?.value||'';
@@ -36,6 +37,15 @@ export default function SystemSettings(){
       }catch{ setHeroPreviewUrl('/ui/assets/login/background.jpg'); }
     })();
   }, [heroItem?.value]);
+  useEffect(()=>{
+    if(!heroPreviewUrl){ setHeroDims(null); return; }
+    try{
+      const im = new Image();
+      im.onload = ()=> setHeroDims({ w: im.naturalWidth||0, h: im.naturalHeight||0 });
+      im.onerror = ()=> setHeroDims(null);
+      im.src = heroPreviewUrl;
+    }catch{ setHeroDims(null); }
+  }, [heroPreviewUrl]);
   const saveHeroUrl = async(url:string)=>{
     try{
       if(heroItem){
@@ -78,6 +88,9 @@ export default function SystemSettings(){
             <div className="rounded-lg border overflow-hidden bg-gray-50">
               <img src={heroPreviewUrl||'/ui/assets/login/background.jpg'} className="w-full h-40 object-cover" />
             </div>
+            <div className="mt-1 text-[11px] text-gray-600">
+              Recommended: at least 2400×1200 px (landscape).{heroDims? ` Current: ${heroDims.w}×${heroDims.h}px.`:''}
+            </div>
           </div>
           <div className="space-y-2">
             <div>
@@ -90,6 +103,7 @@ export default function SystemSettings(){
             <div>
               <div className="text-xs text-gray-600 mb-1">Or upload image</div>
               <input type="file" accept="image/*" onChange={e=> setHeroFile(e.target.files?.[0]||null)} />
+              <div className="text-[11px] text-gray-500 mt-1">Prefer high-resolution JPG/PNG; avoid small images to prevent pixelation.</div>
               <div className="mt-2 text-right">
                 <button onClick={uploadHero} className="px-3 py-1.5 rounded border">Upload</button>
               </div>
