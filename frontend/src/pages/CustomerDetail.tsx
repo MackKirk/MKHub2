@@ -4,6 +4,7 @@ import { api } from '@/lib/api';
 import { useEffect, useMemo, useState, ReactNode } from 'react';
 import toast from 'react-hot-toast';
 import ImagePicker from '@/components/ImagePicker';
+import { useConfirm } from '@/components/ConfirmProvider';
 
 type Client = { id:string, name?:string, display_name?:string, city?:string, province?:string, postal_code?:string, country?:string, address_line1?:string, address_line2?:string, created_at?:string };
 type Site = { id:string, site_name?:string, site_address_line1?:string, site_city?:string, site_province?:string, site_country?:string };
@@ -642,8 +643,8 @@ function CustomerDocuments({ id, files, sites, onRefresh }:{ id:string, files: C
                       const dest = sel?.value || '';
                       if(!dest){ toast.error('Select destination folder'); return; }
                       try{
-                        for(const id of Array.from(selectedDocIds)){
-                          await api('PUT', `/clients/${encodeURIComponent(idOfClient(id, '${id}'))}/documents/${encodeURIComponent(id)}`, { folder_id: dest });
+                        for(const docId of Array.from(selectedDocIds)){
+                          await api('PUT', `/clients/${encodeURIComponent(String(id))}/documents/${encodeURIComponent(String(docId))}`, { folder_id: dest });
                         }
                         toast.success('Moved'); setSelectedDocIds(new Set()); await refetchDocs();
                       }catch(_e){ toast.error('Failed'); }
