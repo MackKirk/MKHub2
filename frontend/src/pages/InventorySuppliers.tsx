@@ -730,7 +730,7 @@ export default function InventorySuppliers() {
                   </button>
                   <button
                     onClick={openEditModal}
-                    className="px-4 py-2 rounded bg-blue-600 text-white hover:bg-blue-700"
+                    className="px-4 py-2 rounded bg-gray-100"
                   >
                     Edit
                   </button>
