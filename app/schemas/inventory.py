@@ -80,6 +80,7 @@ class SupplierContactBase(BaseModel):
     phone: Optional[str] = None
     title: Optional[str] = None
     notes: Optional[str] = None
+    image_base64: Optional[str] = None
 
     @field_validator("email", "phone", mode="before")
     @classmethod

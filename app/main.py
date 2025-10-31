@@ -408,6 +408,7 @@ def create_app() -> FastAPI:
                     # Ensure supplier_contacts table has all required columns
                     conn.execute(text("ALTER TABLE supplier_contacts ADD COLUMN IF NOT EXISTS title VARCHAR(100)"))
                     conn.execute(text("ALTER TABLE supplier_contacts ADD COLUMN IF NOT EXISTS notes VARCHAR(1000)"))
+                    conn.execute(text("ALTER TABLE supplier_contacts ADD COLUMN IF NOT EXISTS image_base64 TEXT"))
         except Exception:
             pass
         # Removed bootstrap admin creation: admins should be granted via roles after onboarding

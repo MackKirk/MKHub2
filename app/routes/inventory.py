@@ -272,14 +272,20 @@ def create_contact(contact: SupplierContactCreate, db: Session = Depends(get_db)
 
 
 @router.put("/contacts/{contact_id}", response_model=SupplierContactResponse)
-def update_contact(contact_id: uuid.UUID, contact: SupplierContactCreate, db: Session = Depends(get_db), _=Depends(require_permissions("inventory:write"))):
+def update_contact(contact_id: uuid.UUID, body: dict, db: Session = Depends(get_db), _=Depends(require_permissions("inventory:write"))):
     row = db.query(SupplierContact).filter(SupplierContact.id == contact_id).first()
     if not row:
         raise HTTPException(status_code=404, detail="Contact not found")
-    row.name = contact.name
-    row.email = contact.email
-    row.phone = contact.phone
-    row.supplier_id = contact.supplier_id
+    
+    # Update only provided fields (allow empty strings to clear fields)
+    for k, v in body.items():
+        if hasattr(row, k):
+            # Convert empty strings to None for optional fields, except for 'name' which is required
+            if k != 'name' and v == '':
+                setattr(row, k, None)
+            elif v is not None:
+                setattr(row, k, v)
+    
     db.commit()
     db.refresh(row)
     return row
