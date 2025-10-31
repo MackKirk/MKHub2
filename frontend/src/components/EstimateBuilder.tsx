@@ -130,9 +130,9 @@ export default function EstimateBuilder({ projectId }:{ projectId:string }){
                     const totalWithMarkup = totalValue * (1 + (itemMarkup/100));
                     return (
                       <tr key={`${section}-${originalIdx}`} className="border-b hover:bg-gray-50">
-                        <td className="p-2">{it.name}</td>
                         {!isLabourSection ? (
                           <>
+                            <td className="p-2">{it.name}</td>
                             <td className="p-2 text-right">
                               <input type="number" className="w-full text-right border rounded px-2 py-1" 
                                 value={it.qty_required||1} min={0} step={1}
@@ -212,9 +212,12 @@ export default function EstimateBuilder({ projectId }:{ projectId:string }){
                               )}
                             </td>
                             <td className="p-2 text-right">
-                              <input type="number" className="w-20 text-right border rounded px-2 py-1" 
-                                value={it.unit_price} min={0} step={0.01}
-                                onChange={e=>setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, unit_price: Number(e.target.value)} : item))} />
+                              <div className="flex items-center justify-end gap-1">
+                                <input type="number" className="w-20 text-right border rounded px-2 py-1" 
+                                  value={it.unit_price} min={0} step={0.01}
+                                  onChange={e=>setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, unit_price: Number(e.target.value)} : item))} />
+                                <span>{it.unit ? `/ ${it.unit}` : ''}</span>
+                              </div>
                             </td>
                             <td className="p-2 text-right">${totalValue.toFixed(2)}</td>
                             <td className="p-2 text-right">
@@ -546,6 +549,7 @@ function AddSubContractorModal({ onAdd }:{ onAdd:(it: Item)=>void }){
   
   // Debris Cartage fields
   const [debrisDesc, setDebrisDesc] = useState('');
+  const [debrisInputType, setDebrisInputType] = useState<'area'|'loads'>('area');
   const [debrisSqs, setDebrisSqs] = useState<string>('0');
   const [debrisSqsPerLoad, setDebrisSqsPerLoad] = useState<string>('0');
   const [debrisLoads, setDebrisLoads] = useState<string>('0');
@@ -645,17 +649,30 @@ function AddSubContractorModal({ onAdd }:{ onAdd:(it: Item)=>void }){
                     <input type="text" className="w-full border rounded px-3 py-2" placeholder="Enter description..." value={debrisDesc} onChange={e=>setDebrisDesc(e.target.value)} />
                   </div>
                   <div>
-                    <label className="text-xs text-gray-600">SQS:</label>
-                    <input type="number" className="w-full border rounded px-3 py-2" value={debrisSqs} min={0} step={0.01} onChange={e=>setDebrisSqs(e.target.value)} />
+                    <label className="text-xs text-gray-600">Input Type:</label>
+                    <select className="w-full border rounded px-3 py-2" value={debrisInputType} onChange={e=>setDebrisInputType(e.target.value as any)}>
+                      <option value="area">Insert Area and Area/Load</option>
+                      <option value="loads">Insert Number of Loads</option>
+                    </select>
                   </div>
-                  <div>
-                    <label className="text-xs text-gray-600">SQS/Load:</label>
-                    <input type="number" className="w-full border rounded px-3 py-2" value={debrisSqsPerLoad} min={0} step={0.01} onChange={e=>setDebrisSqsPerLoad(e.target.value)} />
-                  </div>
-                  <div>
-                    <label className="text-xs text-gray-600">OR Number of Loads (optional):</label>
-                    <input type="number" className="w-full border rounded px-3 py-2" value={debrisLoads} min={0} step={1} placeholder="Leave 0 to calculate" onChange={e=>setDebrisLoads(e.target.value)} />
-                  </div>
+                  {debrisInputType === 'area' && (
+                    <>
+                      <div>
+                        <label className="text-xs text-gray-600">SQS:</label>
+                        <input type="number" className="w-full border rounded px-3 py-2" value={debrisSqs} min={0} step={0.01} onChange={e=>setDebrisSqs(e.target.value)} />
+                      </div>
+                      <div>
+                        <label className="text-xs text-gray-600">SQS/Load:</label>
+                        <input type="number" className="w-full border rounded px-3 py-2" value={debrisSqsPerLoad} min={0} step={0.01} onChange={e=>setDebrisSqsPerLoad(e.target.value)} />
+                      </div>
+                    </>
+                  )}
+                  {debrisInputType === 'loads' && (
+                    <div>
+                      <label className="text-xs text-gray-600">Number of Loads:</label>
+                      <input type="number" className="w-full border rounded px-3 py-2" value={debrisLoads} min={0} step={1} onChange={e=>setDebrisLoads(e.target.value)} />
+                    </div>
+                  )}
                   <div>
                     <label className="text-xs text-gray-600">Price per Load ($):</label>
                     <input type="number" className="w-full border rounded px-3 py-2" value={debrisPricePerLoad} min={0} step={0.01} onChange={e=>setDebrisPricePerLoad(e.target.value)} />
