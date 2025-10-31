@@ -206,7 +206,7 @@ export default function EstimateBuilder({ projectId }:{ projectId:string }){
                                 )
                               ) : (
                                 <div className="flex items-center gap-2">
-                                  <input type="number" className="w-20 border rounded px-2 py-1" value={it.quantity} min={0} step={0.01} onChange={e=>setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, quantity: Number(e.target.value)} : item))} />
+                                  <input type="number" className="w-20 border rounded px-2 py-1" value={it.quantity} min={0} step={1} onChange={e=>setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, quantity: Number(e.target.value)} : item))} />
                                   <span>{it.unit}</span>
                                 </div>
                               )}
