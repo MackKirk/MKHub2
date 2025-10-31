@@ -86,13 +86,12 @@ export default function CustomerDetail(){
         <div className="text-sm opacity-90">Profile, sites, projects, and files for this customer.</div>
       </div>
       <div className="rounded-xl border bg-white">
-        <div className="relative rounded-t-xl p-5 text-white overflow-hidden" style={{ backgroundImage: 'linear-gradient(135deg, #7f1010, #a31414)' }}>
+        <div className="relative rounded-t-xl p-5 text-white overflow-hidden" style={{ backgroundImage: 'linear-gradient(135deg, #6b7280, #1f2937)' }}>
           <img src={clientAvatarLarge} alt="" className="pointer-events-none select-none absolute right-0 top-0 h-[160%] w-auto opacity-15 -translate-x-20 scale-150 object-contain" />
           {overlayResolved && (
             <img src={overlayResolved} alt="" className="pointer-events-none select-none absolute right-0 top-0 h-full w-auto opacity-80"
                  style={{ WebkitMaskImage: 'linear-gradient(to left, black 70%, transparent 100%)', maskImage: 'linear-gradient(to left, black 70%, transparent 100%)' }} />
           )}
-          <div className="absolute right-0 top-0 bottom-0 w-2/3 bg-gradient-to-l from-transparent via-[#a31414]/40 to-[#7f1010]/85 pointer-events-none" />
           <div className="flex gap-4 items-stretch min-h-[210px] relative">
             <div className="w-[220px] relative group">
               <img src={clientAvatarLarge} className="w-full h-full object-cover rounded-xl border-2 border-brand-red" />
