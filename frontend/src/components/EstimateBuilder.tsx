@@ -130,9 +130,9 @@ export default function EstimateBuilder({ projectId }:{ projectId:string }){
                     const totalWithMarkup = totalValue * (1 + (itemMarkup/100));
                     return (
                       <tr key={`${section}-${originalIdx}`} className="border-b hover:bg-gray-50">
-                        <td className="p-2">{it.name}</td>
                         {!isLabourSection ? (
                           <>
+                            <td className="p-2">{it.name}</td>
                             <td className="p-2 text-right">
                               <input type="number" className="w-full text-right border rounded px-2 py-1" 
                                 value={it.qty_required||1} min={0} step={1}
