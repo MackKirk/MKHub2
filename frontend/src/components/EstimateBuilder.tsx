@@ -110,20 +110,8 @@ export default function EstimateBuilder({ projectId }:{ projectId:string }){
       <SummaryModal 
         open={summaryOpen}
         onClose={()=>setSummaryOpen(false)}
-        total={total}
-        pst={pst}
-        subtotal={subtotal}
-        markupValue={markupValue}
-        finalTotal={finalTotal}
-        gstRate={gstRate}
-        grandTotal={grandTotal}
-        onSave={async()=>{
-          try{
-            const payload = { project_id: projectId, markup, items: items.map(it=> ({ material_id: it.material_id, quantity: it.quantity, unit_price: it.unit_price, section: it.section, description: it.description, item_type: it.item_type })) };
-            await api('POST','/estimate/estimates', payload);
-            toast.success('Estimate saved');
-          }catch(_e){ toast.error('Failed to save'); }
-        }}
+        items={items}
+        pstRate={pstRate}
       />
 
       {/* Sections grouped display */}
@@ -351,11 +339,35 @@ export default function EstimateBuilder({ projectId }:{ projectId:string }){
           </div>
         )}
       </div>
+
+      <div className="mt-4 grid md:grid-cols-2 gap-4">
+        <div className="rounded-xl border bg-white p-4">
+          <h4 className="font-semibold mb-2">Summary</h4>
+          <div className="space-y-1 text-sm">
+            <div className="flex items-center justify-between"><span>Total Direct Project Costs</span><span>${total.toFixed(2)}</span></div>
+            <div className="flex items-center justify-between"><span>PST</span><span>${pst.toFixed(2)}</span></div>
+            <div className="flex items-center justify-between"><span>Sub-total</span><span>${subtotal.toFixed(2)}</span></div>
+            <div className="flex items-center justify-between"><span>Overhead & Profit (mark-up)</span><span>${markupValue.toFixed(2)}</span></div>
+            <div className="flex items-center justify-between font-medium"><span>Total Estimate</span><span>${finalTotal.toFixed(2)}</span></div>
+            <div className="flex items-center justify-between"><span>GST</span><span>${(finalTotal*(gstRate/100)).toFixed(2)}</span></div>
+            <div className="flex items-center justify-between font-semibold text-lg"><span>Final Total (with GST)</span><span>${grandTotal.toFixed(2)}</span></div>
+          </div>
+          <div className="mt-3 text-right">
+            <button onClick={async()=>{
+              try{
+                const payload = { project_id: projectId, markup, items: items.map(it=> ({ material_id: it.material_id, quantity: it.quantity, unit_price: it.unit_price, section: it.section, description: it.description, item_type: it.item_type })) };
+                await api('POST','/estimate/estimates', payload);
+                toast.success('Estimate saved');
+              }catch(_e){ toast.error('Failed to save'); }
+            }} className="px-3 py-2 rounded bg-brand-red text-white">Save Estimate</button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
 
-function SummaryModal({ open, onClose, total, pst, subtotal, markupValue, finalTotal, gstRate, grandTotal, onSave }:{ open:boolean, onClose:()=>void, total:number, pst:number, subtotal:number, markupValue:number, finalTotal:number, gstRate:number, grandTotal:number, onSave:()=>void }){
+function SummaryModal({ open, onClose, items, pstRate }:{ open:boolean, onClose:()=>void, items:Item[], pstRate:number }){
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
@@ -363,27 +375,176 @@ function SummaryModal({ open, onClose, total, pst, subtotal, markupValue, finalT
     return () => window.removeEventListener('keydown', onKey);
   }, [open, onClose]);
 
+  // Calculate costs by section
+  const costsBySection = useMemo(() => {
+    const sectionTotals: Record<string, number> = {};
+    items.forEach(it => {
+      const section = it.section || 'Miscellaneous';
+      if (!sectionTotals[section]) sectionTotals[section] = 0;
+      let itemTotal = 0;
+      if (it.item_type === 'labour' && it.labour_journey_type) {
+        if (it.labour_journey_type === 'contract') {
+          itemTotal = it.labour_journey! * it.unit_price;
+        } else {
+          itemTotal = it.labour_journey! * it.labour_men! * it.unit_price;
+        }
+      } else {
+        itemTotal = it.quantity * it.unit_price;
+      }
+      sectionTotals[section] += itemTotal;
+    });
+    return sectionTotals;
+  }, [items]);
+
+  const totalCost = useMemo(() => Object.values(costsBySection).reduce((acc: number, val: number) => acc + val, 0), [costsBySection]);
+  
+  // Calculate labor, materials, sub-contractors, shop totals
+  const laborTotal = useMemo(() => {
+    return items.filter(it => it.item_type === 'labour').reduce((acc, it) => {
+      if (it.labour_journey_type === 'contract') {
+        return acc + (it.labour_journey! * it.unit_price);
+      } else if (it.labour_journey_type) {
+        return acc + (it.labour_journey! * it.labour_men! * it.unit_price);
+      }
+      return acc + (it.quantity * it.unit_price);
+    }, 0);
+  }, [items]);
+
+  const materialTotal = useMemo(() => {
+    return items.filter(it => !['labour', 'sub-contractor', 'shop'].includes(it.item_type || '')).reduce((acc, it) => acc + (it.quantity * it.unit_price), 0);
+  }, [items]);
+
+  const subcontractorTotal = useMemo(() => {
+    return costsBySection['Sub-Contractors'] || 0;
+  }, [costsBySection]);
+
+  const shopTotal = useMemo(() => {
+    return costsBySection['Shop'] || 0;
+  }, [costsBySection]);
+
+  const directCosts = useMemo(() => laborTotal + materialTotal + subcontractorTotal + shopTotal, [laborTotal, materialTotal, subcontractorTotal, shopTotal]);
+  const pst = useMemo(() => directCosts * (pstRate/100), [directCosts, pstRate]);
+  const subtotal = useMemo(() => directCosts + pst, [directCosts, pst]);
+  const markup = useMemo(() => subtotal * 0.35, [subtotal]); // Assuming 35% markup
+  const totalEstimate = useMemo(() => subtotal + markup, [subtotal, markup]);
+  const gst = useMemo(() => totalEstimate * 0.05, [totalEstimate]); // Assuming 5% GST
+  const finalTotal = useMemo(() => totalEstimate + gst, [totalEstimate, gst]);
+
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center">
-      <div className="w-[500px] max-w-[95vw] bg-white rounded-xl overflow-hidden">
-        <div className="px-4 py-3 border-b flex items-center justify-between">
-          <div className="font-semibold">Summary</div>
+    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
+      <div className="w-[800px] max-w-full bg-white rounded-xl overflow-hidden max-h-[90vh] overflow-y-auto">
+        <div className="px-4 py-3 border-b flex items-center justify-between sticky top-0 bg-white z-10">
+          <div className="font-semibold text-lg">Summary and Analysis</div>
           <button onClick={onClose} className="text-gray-500 hover:text-gray-700 text-2xl font-bold w-8 h-8 flex items-center justify-center rounded hover:bg-gray-100" title="Close">×</button>
         </div>
-        <div className="p-4">
-          <div className="space-y-2 text-sm">
-            <div className="flex items-center justify-between"><span>Total Direct Project Costs</span><span>${total.toFixed(2)}</span></div>
-            <div className="flex items-center justify-between"><span>PST</span><span>${pst.toFixed(2)}</span></div>
-            <div className="flex items-center justify-between"><span>Sub-total</span><span>${subtotal.toFixed(2)}</span></div>
-            <div className="flex items-center justify-between"><span>Overhead & Profit (mark-up)</span><span>${markupValue.toFixed(2)}</span></div>
-            <div className="flex items-center justify-between font-medium"><span>Total Estimate</span><span>${finalTotal.toFixed(2)}</span></div>
-            <div className="flex items-center justify-between"><span>GST</span><span>${(finalTotal*(gstRate/100)).toFixed(2)}</span></div>
-            <div className="flex items-center justify-between font-semibold text-lg border-t pt-2 mt-2"><span>Final Total (with GST)</span><span>${grandTotal.toFixed(2)}</span></div>
+        <div className="p-6 space-y-6">
+          {/* Cost Breakdown by Section */}
+          <div className="rounded-xl border bg-white overflow-hidden">
+            <div className="bg-gray-50 px-4 py-2 border-b font-semibold">Cost Breakdown by Section</div>
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 border-b">
+                <tr>
+                  <th className="p-2 text-left">Section</th>
+                  <th className="p-2 text-right">Total</th>
+                  <th className="p-2 text-right">% of Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {Object.keys(costsBySection).sort().map(section => {
+                  const total = costsBySection[section];
+                  const percentage = totalCost > 0 ? (total / totalCost * 100) : 0;
+                  return (
+                    <tr key={section} className="border-b hover:bg-gray-50">
+                      <td className="p-2">{section}</td>
+                      <td className="p-2 text-right">${total.toFixed(2)}</td>
+                      <td className="p-2 text-right">{percentage.toFixed(2)}%</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
-          <div className="mt-4 text-right">
-            <button onClick={onSave} className="px-3 py-2 rounded bg-brand-red text-white">Save Estimate</button>
+
+          {/* Labor Analysis */}
+          {laborTotal > 0 && (
+            <div className="rounded-xl border bg-white overflow-hidden">
+              <div className="bg-gray-50 px-4 py-2 border-b font-semibold">Labor Analysis</div>
+              <div className="px-4 py-2 bg-blue-50 border-b">Total Labor Cost: ${laborTotal.toFixed(2)}</div>
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 border-b">
+                  <tr>
+                    <th className="p-2 text-left">Labor Item</th>
+                    <th className="p-2 text-right">Cost</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {items.filter(it => it.item_type === 'labour').map((it, idx) => {
+                    let itemTotal = 0;
+                    if (it.labour_journey_type === 'contract') {
+                      itemTotal = it.labour_journey! * it.unit_price;
+                    } else if (it.labour_journey_type) {
+                      itemTotal = it.labour_journey! * it.labour_men! * it.unit_price;
+                    } else {
+                      itemTotal = it.quantity * it.unit_price;
+                    }
+                    return (
+                      <tr key={idx} className="border-b hover:bg-gray-50">
+                        <td className="p-2">{it.description || it.name}</td>
+                        <td className="p-2 text-right">${itemTotal.toFixed(2)}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* Material & Supplies Analysis */}
+          {materialTotal > 0 && (
+            <div className="rounded-xl border bg-white overflow-hidden">
+              <div className="bg-gray-50 px-4 py-2 border-b font-semibold">Material & Supplies Analysis</div>
+              <div className="px-4 py-2 bg-blue-50 border-b">Total Material Cost: ${materialTotal.toFixed(2)}</div>
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 border-b">
+                  <tr>
+                    <th className="p-2 text-left">Section</th>
+                    <th className="p-2 text-right">Subtotal</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {Object.keys(costsBySection)
+                    .filter(s => !['Labour', 'Sub-Contractors', 'Shop'].includes(s))
+                    .map(section => {
+                      const total = costsBySection[section];
+                      return (
+                        <tr key={section} className="border-b hover:bg-gray-50">
+                          <td className="p-2">{section}</td>
+                          <td className="p-2 text-right">${total.toFixed(2)}</td>
+                        </tr>
+                      );
+                    })}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* Final Summary */}
+          <div className="rounded-xl border bg-white overflow-hidden">
+            <div className="bg-gray-50 px-4 py-2 border-b font-semibold">Final Summary</div>
+            <div className="p-4 space-y-2 text-sm">
+              <div className="flex items-center justify-between"><span>Total Direct Costs:</span><span className="font-medium">${directCosts.toFixed(2)}</span></div>
+              <div className="flex items-center justify-between"><span>Labor Costs:</span><span className="font-medium">${laborTotal.toFixed(2)}</span></div>
+              <div className="flex items-center justify-between"><span>Material Costs:</span><span className="font-medium">${materialTotal.toFixed(2)}</span></div>
+              <div className="flex items-center justify-between"><span>Sub-Contractors:</span><span className="font-medium">${subcontractorTotal.toFixed(2)}</span></div>
+              <div className="flex items-center justify-between"><span>Shop:</span><span className="font-medium">${shopTotal.toFixed(2)}</span></div>
+              <div className="flex items-center justify-between border-t pt-2"><span>Total PST:</span><span className="font-medium">${pst.toFixed(2)}</span></div>
+              <div className="flex items-center justify-between"><span>Markup:</span><span className="font-medium">${markup.toFixed(2)}</span></div>
+              <div className="flex items-center justify-between"><span>Total Estimate:</span><span className="font-medium">${totalEstimate.toFixed(2)}</span></div>
+              <div className="flex items-center justify-between"><span>GST:</span><span className="font-medium">${gst.toFixed(2)}</span></div>
+              <div className="flex items-center justify-between font-semibold text-lg border-t pt-2"><span>Final Total:</span><span className="font-semibold">${finalTotal.toFixed(2)}</span></div>
+            </div>
           </div>
         </div>
       </div>
