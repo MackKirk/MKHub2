@@ -44,6 +44,13 @@ export default function ImagePicker({
     }
   }, [isOpen]);
 
+  useEffect(() => {
+    if (!isOpen) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [isOpen, onClose]);
+
   useEffect(()=>{
     if (!clientId || !isOpen) return;
     (async()=>{
@@ -166,7 +173,7 @@ export default function ImagePicker({
       <div className="w-[900px] max-w-[95vw] bg-white rounded-xl overflow-hidden">
         <div className="px-4 py-3 border-b flex items-center justify-between">
           <div className="font-semibold">Image Picker</div>
-          <button onClick={onClose} className="px-3 py-1 rounded bg-gray-100">Close</button>
+          <button onClick={onClose} className="text-gray-500 hover:text-gray-700 text-2xl font-bold w-8 h-8 flex items-center justify-center rounded hover:bg-gray-100" title="Close">×</button>
         </div>
         <div className="grid grid-cols-3 gap-0">
           <div className="border-r">

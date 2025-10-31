@@ -1,10 +1,10 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
 
 type Material = { id:number, name:string, supplier_name?:string, unit?:string, price?:number, unit_type?:string, units_per_package?:number, coverage_sqs?:number, coverage_ft2?:number, coverage_m2?:number };
-type Item = { material_id?:number, name:string, unit?:string, quantity:number, unit_price:number, section:string, description?:string, item_type?:string };
+type Item = { material_id?:number, name:string, unit?:string, quantity:number, unit_price:number, section:string, description?:string, item_type?:string, supplier_name?:string, unit_type?:string, qty_required?:number, unit_required?:string, markup?:number, taxable?:boolean, units_per_package?:number, coverage_sqs?:number, coverage_ft2?:number, coverage_m2?:number };
 
 export default function EstimateBuilder({ projectId }:{ projectId:string }){
   const [items, setItems] = useState<Item[]>([]);
@@ -19,6 +19,28 @@ export default function EstimateBuilder({ projectId }:{ projectId:string }){
   const markupValue = useMemo(()=> subtotal * (markup/100), [subtotal, markup]);
   const finalTotal = useMemo(()=> subtotal + markupValue, [subtotal, markupValue]);
   const grandTotal = useMemo(()=> finalTotal * (1 + (gstRate/100)), [finalTotal, gstRate]);
+
+  // Calculate quantity based on qty_required and unit_type
+  const calculateQuantity = (item: Item): number => {
+    if (!item.qty_required || item.qty_required <= 0) return item.quantity || 1;
+    const qty = Number(item.qty_required);
+    
+    if (item.unit_type === 'coverage') {
+      if (item.unit_required === 'SQS' && item.coverage_sqs && item.coverage_sqs > 0) {
+        return Math.ceil(qty / item.coverage_sqs);
+      } else if (item.unit_required === 'ft²' && item.coverage_ft2 && item.coverage_ft2 > 0) {
+        return Math.ceil(qty / item.coverage_ft2);
+      } else if (item.unit_required === 'm²' && item.coverage_m2 && item.coverage_m2 > 0) {
+        return Math.ceil(qty / item.coverage_m2);
+      }
+    } else if (item.unit_type === 'multiple' && item.units_per_package && item.units_per_package > 0) {
+      return Math.ceil(qty / item.units_per_package);
+    } else if (item.unit_type === 'unitary') {
+      return Math.ceil(qty);
+    }
+    
+    return item.quantity || 1;
+  };
 
   // Group items by section
   const groupedItems = useMemo(()=>{
@@ -48,45 +70,142 @@ export default function EstimateBuilder({ projectId }:{ projectId:string }){
       {/* Sections grouped display */}
       <div className="space-y-4">
         {Object.keys(groupedItems).length > 0 ? (
-          Object.keys(groupedItems).map(section=> (
+          Object.keys(groupedItems).map(section=> {
+            const isLabourSection = ['Labour', 'Sub-Contractors', 'Shop'].includes(section);
+            return (
             <div key={section} className="rounded-xl border overflow-hidden bg-white">
               <div className="bg-gray-50 px-4 py-2 border-b">
                 <h3 className="font-semibold text-gray-900">{section}</h3>
               </div>
               <table className="w-full text-sm">
                 <thead className="bg-gray-50 border-b"><tr>
-                  <th className="p-2 text-left">Product / Item</th>
-                  <th className="p-2 text-right">Qty</th>
-                  <th className="p-2 text-right">Unit</th>
-                  <th className="p-2 text-right">Unit Price</th>
-                  <th className="p-2 text-right">Total</th>
-                  <th className="p-2"></th>
+                  {!isLabourSection ? (
+                    <>
+                      <th className="p-2 text-left">Product / Item</th>
+                      <th className="p-2 text-right">Qty Required</th>
+                      <th className="p-2 text-right">Demand Unit</th>
+                      <th className="p-2 text-right">Unit Price</th>
+                      <th className="p-2 text-right">Quantity</th>
+                      <th className="p-2 text-right">Sell Unit</th>
+                      <th className="p-2 text-right">Total</th>
+                      <th className="p-2 text-right">Mkp%</th>
+                      <th className="p-2 text-right">Total (with Mkp)</th>
+                      <th className="p-2 text-center">Taxable</th>
+                      <th className="p-2 text-left">Supplier</th>
+                      <th className="p-2"></th>
+                    </>
+                  ) : (
+                    <>
+                      <th className="p-2 text-left">{section}</th>
+                      <th className="p-2 text-left">Composition</th>
+                      <th className="p-2 text-right">Unit Price</th>
+                      <th className="p-2 text-right">Total</th>
+                      <th className="p-2 text-right">Mkp%</th>
+                      <th className="p-2 text-right">Total (with Mkp)</th>
+                      <th className="p-2 text-center">Taxable</th>
+                      <th className="p-2"></th>
+                    </>
+                  )}
                 </tr></thead>
                 <tbody>
                   {groupedItems[section].map((it, idx)=> {
                     const originalIdx = items.indexOf(it);
+                    const itemMarkup = it.markup || markup;
+                    const totalValue = it.quantity * it.unit_price;
+                    const totalWithMarkup = totalValue * (1 + (itemMarkup/100));
                     return (
                       <tr key={`${section}-${originalIdx}`} className="border-b hover:bg-gray-50">
                         <td className="p-2">{it.name}</td>
-                        <td className="p-2 text-right">{it.quantity}</td>
-                        <td className="p-2 text-right">{it.unit||''}</td>
-                        <td className="p-2 text-right">${it.unit_price.toFixed(2)}</td>
-                        <td className="p-2 text-right">${(it.quantity*it.unit_price).toFixed(2)}</td>
-                        <td className="p-2 text-right"><button onClick={()=> setItems(prev=> prev.filter((_,i)=> i!==originalIdx))} className="px-2 py-1 rounded bg-gray-100 hover:bg-gray-200">Remove</button></td>
+                        {!isLabourSection ? (
+                          <>
+                            <td className="p-2 text-right">
+                              <input type="number" className="w-full text-right border rounded px-2 py-1" 
+                                value={it.qty_required||1} min={0} step={1}
+                                onChange={e=>{
+                                  const newValue = Number(e.target.value);
+                                  const newItem = {...it, qty_required: newValue};
+                                  const calculatedQty = calculateQuantity(newItem);
+                                  setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...newItem, quantity: calculatedQty} : item));
+                                }} />
+                            </td>
+                            <td className="p-2 text-right">
+                              <select className="w-full text-right border rounded px-2 py-1"
+                                value={it.unit_required||''}
+                                onChange={e=>{
+                                  const newValue = e.target.value;
+                                  const newItem = {...it, unit_required: newValue};
+                                  const calculatedQty = calculateQuantity(newItem);
+                                  setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...newItem, quantity: calculatedQty} : item));
+                                }}>
+                                <option value="">—</option>
+                                {it.unit_type === 'coverage' && (
+                                  <>
+                                    <option value="SQS">SQS</option>
+                                    <option value="ft²">ft²</option>
+                                    <option value="m²">m²</option>
+                                  </>
+                                )}
+                                {it.unit_type === 'multiple' && <option value="package">package</option>}
+                                {it.unit_type === 'unitary' && <option value="Each">Each</option>}
+                              </select>
+                            </td>
+                            <td className="p-2 text-right">${it.unit_price.toFixed(2)}</td>
+                            <td className="p-2 text-right">
+                              <input type="number" className="w-full text-right border rounded px-2 py-1" 
+                                value={it.quantity} min={0} step={1}
+                                onChange={e=>setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, quantity: Number(e.target.value)} : item))} />
+                            </td>
+                            <td className="p-2 text-right">{it.unit||''}</td>
+                            <td className="p-2 text-right">${totalValue.toFixed(2)}</td>
+                            <td className="p-2 text-right">
+                              <input type="number" className="w-16 text-right border rounded px-2 py-1" 
+                                value={itemMarkup} min={0} step={0.1}
+                                onChange={e=>setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, markup: Number(e.target.value)} : item))} />
+                            </td>
+                            <td className="p-2 text-right">${totalWithMarkup.toFixed(2)}</td>
+                            <td className="p-2 text-center">
+                              <input type="checkbox" checked={it.taxable!==false} 
+                                onChange={e=>setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, taxable: e.target.checked} : item))} 
+                                className="cursor-pointer" />
+                            </td>
+                            <td className="p-2">{it.supplier_name||''}</td>
+                          </>
+                        ) : (
+                          <>
+                            <td className="p-2">{it.description||it.name}</td>
+                            <td className="p-2 text-right">${it.unit_price.toFixed(2)}</td>
+                            <td className="p-2 text-right">${totalValue.toFixed(2)}</td>
+                            <td className="p-2 text-right">
+                              <input type="number" className="w-16 text-right border rounded px-2 py-1" 
+                                value={itemMarkup} min={0} step={0.1}
+                                onChange={e=>setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, markup: Number(e.target.value)} : item))} />
+                            </td>
+                            <td className="p-2 text-right">${totalWithMarkup.toFixed(2)}</td>
+                            <td className="p-2 text-center">
+                              <input type="checkbox" checked={it.taxable!==false} 
+                                onChange={e=>setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, taxable: e.target.checked} : item))} 
+                                className="cursor-pointer" />
+                            </td>
+                          </>
+                        )}
+                        <td className="p-2"><button onClick={()=> setItems(prev=> prev.filter((_,i)=> i!==originalIdx))} className="px-2 py-1 rounded bg-gray-100 hover:bg-gray-200">Remove</button></td>
                       </tr>
                     );
                   })}
                 </tbody>
                 <tfoot className="bg-gray-50">
                   <tr>
-                    <td colSpan={4} className="p-2 text-right font-semibold">Section Subtotal:</td>
-                    <td className="p-2 text-right font-bold">${groupedItems[section].reduce((acc, it)=> acc + (it.quantity*it.unit_price), 0).toFixed(2)}</td>
+                    <td colSpan={!isLabourSection ? 10 : 6} className="p-2 text-right font-semibold">Section Subtotal:</td>
+                    <td className="p-2 text-right font-bold">${groupedItems[section].reduce((acc, it)=> {
+                      const m = it.markup || markup;
+                      return acc + (it.quantity * it.unit_price * (1 + (m/100)));
+                    }, 0).toFixed(2)}</td>
                     <td></td>
                   </tr>
                 </tfoot>
               </table>
             </div>
-          ))
+          )})
         ) : (
           <div className="rounded-xl border bg-white p-6 text-center text-gray-600">
             No items yet. Add products, labour, sub-contractors or shop items to build your estimate.
@@ -132,6 +251,18 @@ function AddProductModal({ onAdd }:{ onAdd:(it: Item)=>void }){
   }});
   const list = data||[];
 
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open]);
+
+  const resetForm = () => {
+    setQ('');
+    setSelection(null);
+  };
+
   return (
     <>
       <button onClick={()=>setOpen(true)} className="px-3 py-2 rounded bg-gray-100">+ Add Product</button>
@@ -140,7 +271,7 @@ function AddProductModal({ onAdd }:{ onAdd:(it: Item)=>void }){
           <div className="w-[720px] max-w-[95vw] bg-white rounded-xl overflow-hidden">
             <div className="px-4 py-3 border-b flex items-center justify-between">
               <div className="font-semibold">Add Product</div>
-              <button onClick={()=>setOpen(false)} className="px-3 py-1 rounded bg-gray-100">Close</button>
+              <button onClick={()=>setOpen(false)} className="text-gray-500 hover:text-gray-700 text-2xl font-bold w-8 h-8 flex items-center justify-center rounded hover:bg-gray-100" title="Close">×</button>
             </div>
             <div className="p-4 space-y-3">
               <div>
@@ -158,24 +289,54 @@ function AddProductModal({ onAdd }:{ onAdd:(it: Item)=>void }){
                 </div>
               )}
               {selection && (
-                <div className="border rounded p-3 bg-gray-50">
+                <div className="border rounded p-3 bg-gray-50 space-y-2">
                   <div className="font-medium">{selection.name}</div>
                   <div className="text-sm text-gray-600">Supplier: {selection.supplier_name||'N/A'}</div>
-                  <div className="text-sm text-gray-600">Unit: {selection.unit||'-'}</div>
-                  <div className="text-sm text-gray-600">Price: ${Number(selection.price||0).toFixed(2)}</div>
+                  <div className="text-sm text-gray-600">Unit: {selection.unit||'-'} · Price: ${Number(selection.price||0).toFixed(2)}</div>
+                  {selection.unit_type === 'coverage' && (
+                    <div className="text-xs text-gray-600 mt-1">
+                      Coverage: {selection.coverage_sqs ? `${selection.coverage_sqs} SQS · ` : ''}{selection.coverage_ft2 ? `${selection.coverage_ft2} ft² · ` : ''}{selection.coverage_m2 ? `${selection.coverage_m2} m²` : ''}
+                    </div>
+                  )}
+                  {selection.unit_type === 'multiple' && selection.units_per_package && (
+                    <div className="text-xs text-gray-600 mt-1">
+                      {selection.units_per_package} units per package
+                    </div>
+                  )}
                 </div>
               )}
-              <div>
-                <label className="text-xs text-gray-600">Section:</label>
-                <select className="w-full border rounded px-3 py-2" value={section} onChange={e=>setSection(e.target.value)}>
-                  {['Roof System','Wood Blocking / Accessories','Flashing','Miscellaneous'].map(s=> <option key={s} value={s}>{s}</option>)}
-                </select>
-              </div>
+              {selection && (
+                <div>
+                  <label className="text-xs text-gray-600">Section:</label>
+                  <select className="w-full border rounded px-3 py-2" value={section} onChange={e=>setSection(e.target.value)}>
+                    {['Roof System','Wood Blocking / Accessories','Flashing','Miscellaneous'].map(s=> <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </div>
+              )}
               <div className="text-right">
                 <button onClick={()=>{
                   if(!selection){ toast.error('Select a product first'); return; }
-                  onAdd({ material_id: selection.id, name: selection.name, unit: selection.unit, quantity: 1, unit_price: Number(selection.price||0), section, item_type: 'product' });
-                  setOpen(false); setQ(''); setSelection(null);
+                  const defaultUnitRequired = selection.unit_type === 'coverage' ? 'SQS' : selection.unit_type === 'multiple' ? 'package' : 'Each';
+                  onAdd({ 
+                    material_id: selection.id, 
+                    name: selection.name, 
+                    unit: selection.unit, 
+                    quantity: 1, 
+                    unit_price: Number(selection.price||0), 
+                    section, 
+                    item_type: 'product',
+                    supplier_name: selection.supplier_name,
+                    unit_type: selection.unit_type,
+                    units_per_package: selection.units_per_package,
+                    coverage_sqs: selection.coverage_sqs,
+                    coverage_ft2: selection.coverage_ft2,
+                    coverage_m2: selection.coverage_m2,
+                    qty_required: 1,
+                    unit_required: defaultUnitRequired,
+                    taxable: true
+                  });
+                  setOpen(false);
+                  resetForm();
                 }} className="px-3 py-2 rounded bg-brand-red text-white">Add Item</button>
               </div>
             </div>
@@ -230,6 +391,13 @@ function AddLabourModal({ onAdd }:{ onAdd:(it: Item)=>void }){
     return 'Price per Worker ($ per day):';
   }, [journeyType]);
 
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open]);
+
   return (
     <>
       <button onClick={()=>setOpen(true)} className="px-3 py-2 rounded bg-gray-100">+ Add Labour</button>
@@ -238,7 +406,7 @@ function AddLabourModal({ onAdd }:{ onAdd:(it: Item)=>void }){
           <div className="w-[600px] max-w-[95vw] bg-white rounded-xl overflow-hidden">
             <div className="px-4 py-3 border-b flex items-center justify-between">
               <div className="font-semibold">Add Labour</div>
-              <button onClick={()=>setOpen(false)} className="px-3 py-1 rounded bg-gray-100">Close</button>
+              <button onClick={()=>setOpen(false)} className="text-gray-500 hover:text-gray-700 text-2xl font-bold w-8 h-8 flex items-center justify-center rounded hover:bg-gray-100" title="Close">×</button>
             </div>
             <div className="p-4 space-y-3">
               <div>
@@ -300,7 +468,7 @@ function AddLabourModal({ onAdd }:{ onAdd:(it: Item)=>void }){
                     qty = Number(men||0);
                     unit = showHours ? 'hours' : 'days';
                   }
-                  onAdd({ name: desc, unit, quantity: qty, unit_price: totalValue, section: 'Labour', description: desc, item_type: 'labour' });
+                  onAdd({ name: desc, unit, quantity: qty, unit_price: totalValue, section: 'Labour', description: desc, item_type: 'labour', taxable: true });
                   setOpen(false); setLabour(''); setMen('1'); setDays('1'); setHours('1'); setContractNumber('1'); setContractUnit(''); setPrice('0'); setJourneyType('days');
                 }} className="px-3 py-2 rounded bg-brand-red text-white">Add Labour</button>
               </div>
@@ -382,6 +550,13 @@ function AddSubContractorModal({ onAdd }:{ onAdd:(it: Item)=>void }){
     return washroomPeriod === 'days' ? 'Price per Day ($):' : 'Price per Month ($):';
   }, [washroomPeriod]);
 
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open]);
+
   return (
     <>
       <button onClick={()=>setOpen(true)} className="px-3 py-2 rounded bg-gray-100">+ Add Sub-Contractor</button>
@@ -390,7 +565,7 @@ function AddSubContractorModal({ onAdd }:{ onAdd:(it: Item)=>void }){
           <div className="w-[700px] max-w-[95vw] bg-white rounded-xl overflow-hidden">
             <div className="px-4 py-3 border-b flex items-center justify-between">
               <div className="font-semibold">Add Sub-Contractors</div>
-              <button onClick={()=>setOpen(false)} className="px-3 py-1 rounded bg-gray-100">Close</button>
+              <button onClick={()=>setOpen(false)} className="text-gray-500 hover:text-gray-700 text-2xl font-bold w-8 h-8 flex items-center justify-center rounded hover:bg-gray-100" title="Close">×</button>
             </div>
             <div className="p-4 space-y-3">
               <div>
@@ -500,7 +675,7 @@ function AddSubContractorModal({ onAdd }:{ onAdd:(it: Item)=>void }){
                     totalValue = Number(otherPrice||0);
                   }
                   if(!desc){ toast.error('Please fill in the required fields'); return; }
-                  onAdd({ name: desc, unit, quantity: qty, unit_price: totalValue, section: 'Sub-Contractors', description: desc, item_type: 'subcontractor' });
+                  onAdd({ name: desc, unit, quantity: qty, unit_price: totalValue, section: 'Sub-Contractors', description: desc, item_type: 'subcontractor', taxable: true });
                   setOpen(false); setType(''); setDebrisDesc(''); setDebrisSqs('0'); setDebrisSqsPerLoad('0'); setDebrisLoads('0'); setDebrisPricePerLoad('0'); setWashroomPeriod('days'); setWashroomPeriodCount('1'); setWashroomPrice('0'); setOtherDesc(''); setOtherNumber('1'); setOtherUnit(''); setOtherPrice('0');
                 }} className="px-3 py-2 rounded bg-brand-red text-white">Add Sub-Contractors</button>
               </div>
@@ -522,6 +697,13 @@ function AddShopModal({ onAdd }:{ onAdd:(it: Item)=>void }){
   const total = useMemo(()=> Number(quantity||0) * Number(price||0), [quantity, price]);
   const calcText = `${quantity} ${unit} × $${Number(price||0).toFixed(2)} = $${total.toFixed(2)}`;
 
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open]);
+
   return (
     <>
       <button onClick={()=>setOpen(true)} className="px-3 py-2 rounded bg-gray-100">+ Add Shop</button>
@@ -530,7 +712,7 @@ function AddShopModal({ onAdd }:{ onAdd:(it: Item)=>void }){
           <div className="w-[600px] max-w-[95vw] bg-white rounded-xl overflow-hidden">
             <div className="px-4 py-3 border-b flex items-center justify-between">
               <div className="font-semibold">Add Shop</div>
-              <button onClick={()=>setOpen(false)} className="px-3 py-1 rounded bg-gray-100">Close</button>
+              <button onClick={()=>setOpen(false)} className="text-gray-500 hover:text-gray-700 text-2xl font-bold w-8 h-8 flex items-center justify-center rounded hover:bg-gray-100" title="Close">×</button>
             </div>
             <div className="p-4 space-y-3">
               <div>
@@ -555,7 +737,7 @@ function AddShopModal({ onAdd }:{ onAdd:(it: Item)=>void }){
               <div className="text-right">
                 <button onClick={()=>{
                   if(!name.trim()){ toast.error('Please enter a shop name/description'); return; }
-                  onAdd({ name, unit, quantity: Number(quantity||0), unit_price: Number(price||0), section: 'Shop', description: name, item_type: 'shop' });
+                  onAdd({ name, unit, quantity: Number(quantity||0), unit_price: Number(price||0), section: 'Shop', description: name, item_type: 'shop', taxable: true });
                   setOpen(false); setName(''); setQuantity('1'); setUnit(''); setPrice('0');
                 }} className="px-3 py-2 rounded bg-brand-red text-white">Add Shop</button>
               </div>
@@ -566,5 +748,3 @@ function AddShopModal({ onAdd }:{ onAdd:(it: Item)=>void }){
     </>
   );
 }
-
-

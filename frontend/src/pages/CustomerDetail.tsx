@@ -430,6 +430,13 @@ function FilesCard({ id, files, sites, onRefresh }:{ id:string, files: ClientFil
   const [siteId, setSiteId] = useState<string>('');
   const [previewPdf, setPreviewPdf] = useState<{ url:string, name:string }|null>(null);
   const [cat, setCat] = useState<string>('all');
+
+  useEffect(() => {
+    if (!previewPdf) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setPreviewPdf(null); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [previewPdf]);
   const siteMap = useMemo(()=>{
     const m:Record<string, Site> = {};
     (sites||[]).forEach(s=>{ if(s.id) m[String(s.id)] = s; });
@@ -599,7 +606,7 @@ function FilesCard({ id, files, sites, onRefresh }:{ id:string, files: ClientFil
               <div className="font-semibold text-sm truncate pr-2">{previewPdf.name}</div>
               <div className="flex items-center gap-2">
                 <a className="px-2 py-1 rounded bg-gray-100 text-sm" href={previewPdf.url} target="_blank">Download</a>
-                <button onClick={()=>setPreviewPdf(null)} className="px-2 py-1 rounded bg-gray-100 text-sm">Close</button>
+                <button onClick={()=>setPreviewPdf(null)} className="text-gray-500 hover:text-gray-700 text-2xl font-bold w-8 h-8 flex items-center justify-center rounded hover:bg-gray-100" title="Close">×</button>
               </div>
             </div>
             <iframe className="flex-1" src={previewPdf.url} title="PDF Preview"></iframe>
@@ -631,6 +638,14 @@ function ContactsCard({ id }:{ id:string }){
   const [pickerForContact, setPickerForContact] = useState<string|null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [createPhotoBlob, setCreatePhotoBlob] = useState<Blob|null>(null);
+
+  useEffect(() => {
+    if (!createOpen) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { setCreateOpen(false); setCreatePhotoBlob(null); } };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [createOpen]);
+
   const formatPhone = (v:string)=>{
     const d = String(v||'').replace(/\D+/g,'').slice(0,11);
     if (d.length<=3) return d;
@@ -752,7 +767,7 @@ function ContactsCard({ id }:{ id:string }){
       {createOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
           <div className="w-[800px] max-w-[95vw] bg-white rounded-xl overflow-hidden">
-            <div className="px-4 py-3 border-b flex items-center justify-between"><div className="font-semibold">New Contact</div><button onClick={()=>{ setCreateOpen(false); setCreatePhotoBlob(null); }} className="px-3 py-1 rounded bg-gray-100">Close</button></div>
+            <div className="px-4 py-3 border-b flex items-center justify-between"><div className="font-semibold">New Contact</div><button onClick={()=>{ setCreateOpen(false); setCreatePhotoBlob(null); }} className="text-gray-500 hover:text-gray-700 text-2xl font-bold w-8 h-8 flex items-center justify-center rounded hover:bg-gray-100" title="Close">×</button></div>
             <div className="p-4 grid md:grid-cols-5 gap-3 items-start">
               <div className="md:col-span-2">
                 <div className="text-[11px] uppercase text-gray-500 mb-1">Contact Photo</div>

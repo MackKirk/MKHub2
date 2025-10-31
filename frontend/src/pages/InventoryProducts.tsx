@@ -94,6 +94,20 @@ export default function InventoryProducts(){
   const { data: relCounts } = useQuery({ queryKey:['related-counts', productIds], queryFn: async()=> productIds? await api<Record<string, number>>('GET', `/estimate/related/count?ids=${productIds}`) : {}, enabled: !!productIds });
   useEffect(()=> { if(relCounts) setRelatedCounts(relCounts); }, [relCounts]);
 
+  // ESC key handler for modals
+  useEffect(() => {
+    if (!open && viewRelated === null && !addRelatedOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (addRelatedOpen) setAddRelatedOpen(false);
+        else if (viewRelated !== null) setViewRelated(null);
+        else if (open) resetModal();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open, viewRelated, addRelatedOpen]);
+
   const onCoverageChange = (which: 'sqs'|'ft2'|'m2', val: string)=>{
     if(!val){ setCovSqs(''); setCovFt2(''); setCovM2(''); return; }
     const num = Number(val);
@@ -414,7 +428,14 @@ export default function InventoryProducts(){
                 // Edit/Create mode - form inputs
                 <div className="space-y-6">
                   {/* Edit Header */}
-                  <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] p-6">
+                  <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] p-6 relative">
+                    <button
+                      onClick={resetModal}
+                      className="absolute top-4 right-4 text-white/80 hover:text-white text-2xl font-bold w-8 h-8 flex items-center justify-center rounded hover:bg-white/10"
+                      title="Close"
+                    >
+                      ×
+                    </button>
                     <div className="flex items-center justify-between">
                       <div>
                         <h2 className="text-2xl font-extrabold text-white">
@@ -536,7 +557,7 @@ export default function InventoryProducts(){
           <div className="w-[600px] max-w-[95vw] bg-white rounded-xl overflow-hidden">
             <div className="px-6 py-4 border-b flex items-center justify-between bg-gray-50">
               <div className="font-semibold text-lg">Related Products</div>
-              <button onClick={()=> setViewRelated(null)} className="px-3 py-1 rounded bg-gray-200 hover:bg-gray-300">Close</button>
+              <button onClick={()=> setViewRelated(null)} className="text-gray-500 hover:text-gray-700 text-2xl font-bold w-8 h-8 flex items-center justify-center rounded hover:bg-gray-100" title="Close">×</button>
             </div>
             <div className="p-4">
               <div className="border rounded divide-y">
@@ -560,7 +581,7 @@ export default function InventoryProducts(){
           <div className="w-[600px] max-w-[95vw] bg-white rounded-xl overflow-hidden flex flex-col">
             <div className="px-6 py-4 border-b flex items-center justify-between bg-gray-50">
               <div className="font-semibold text-lg">Add Related Product</div>
-              <button onClick={()=> setAddRelatedOpen(false)} className="px-3 py-1 rounded bg-gray-200 hover:bg-gray-300">Close</button>
+              <button onClick={()=> setAddRelatedOpen(false)} className="text-gray-500 hover:text-gray-700 text-2xl font-bold w-8 h-8 flex items-center justify-center rounded hover:bg-gray-100" title="Close">×</button>
             </div>
             <div className="p-4">
               <input 
