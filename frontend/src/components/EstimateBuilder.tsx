@@ -4,7 +4,7 @@ import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
 
 type Material = { id:number, name:string, supplier_name?:string, unit?:string, price?:number, unit_type?:string, units_per_package?:number, coverage_sqs?:number, coverage_ft2?:number, coverage_m2?:number };
-type Item = { material_id?:number, name:string, unit?:string, quantity:number, unit_price:number, section:string, description?:string, item_type?:string, supplier_name?:string, unit_type?:string, qty_required?:number, unit_required?:string, markup?:number, taxable?:boolean, units_per_package?:number, coverage_sqs?:number, coverage_ft2?:number, coverage_m2?:number };
+type Item = { material_id?:number, name:string, unit?:string, quantity:number, unit_price:number, section:string, description?:string, item_type?:string, supplier_name?:string, unit_type?:string, qty_required?:number, unit_required?:string, markup?:number, taxable?:boolean, units_per_package?:number, coverage_sqs?:number, coverage_ft2?:number, coverage_m2?:number, labour_journey?:number, labour_men?:number, labour_journey_type?:'days'|'hours'|'contract' };
 
 export default function EstimateBuilder({ projectId }:{ projectId:string }){
   const [items, setItems] = useState<Item[]>([]);
@@ -82,10 +82,10 @@ export default function EstimateBuilder({ projectId }:{ projectId:string }){
                   {!isLabourSection ? (
                     <>
                       <th className="p-2 text-left">Product / Item</th>
-                      <th className="p-2 text-right">Qty Required</th>
+                      <th className="p-2 text-right">Quantity Required</th>
                       <th className="p-2 text-right">Demand Unit</th>
                       <th className="p-2 text-right">Unit Price</th>
-                      <th className="p-2 text-right">Quantity</th>
+                      <th className="p-2 text-right">Purchase Quantity</th>
                       <th className="p-2 text-right">Sell Unit</th>
                       <th className="p-2 text-right">Total</th>
                       <th className="p-2 text-right">Mkp%</th>
@@ -111,7 +111,22 @@ export default function EstimateBuilder({ projectId }:{ projectId:string }){
                   {groupedItems[section].map((it, idx)=> {
                     const originalIdx = items.indexOf(it);
                     const itemMarkup = it.markup || markup;
-                    const totalValue = it.quantity * it.unit_price;
+                    // Calculate total value based on item type
+                    let totalValue = 0;
+                    if (!isLabourSection) {
+                      totalValue = it.quantity * it.unit_price;
+                    } else {
+                      // For labour/subcontractor/shop, check if it's labour with special calculation
+                      if (it.item_type === 'labour' && it.labour_journey_type) {
+                        if (it.labour_journey_type === 'contract') {
+                          totalValue = it.labour_journey! * it.unit_price;
+                        } else {
+                          totalValue = it.labour_journey! * it.labour_men! * it.unit_price;
+                        }
+                      } else {
+                        totalValue = it.quantity * it.unit_price;
+                      }
+                    }
                     const totalWithMarkup = totalValue * (1 + (itemMarkup/100));
                     return (
                       <tr key={`${section}-${originalIdx}`} className="border-b hover:bg-gray-50">
@@ -173,7 +188,34 @@ export default function EstimateBuilder({ projectId }:{ projectId:string }){
                         ) : (
                           <>
                             <td className="p-2">{it.description||it.name}</td>
-                            <td className="p-2 text-right">${it.unit_price.toFixed(2)}</td>
+                            <td className="p-2">
+                              {it.item_type === 'labour' && it.labour_journey_type ? (
+                                it.labour_journey_type === 'contract' ? (
+                                  <div className="flex items-center gap-2">
+                                    <input type="number" className="w-16 border rounded px-2 py-1" value={it.labour_journey} min={0} step={0.01} onChange={e=>setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, labour_journey: Number(e.target.value)} : item))} />
+                                    <span>{it.unit}</span>
+                                  </div>
+                                ) : (
+                                  <div className="flex items-center gap-2">
+                                    <input type="number" className="w-16 border rounded px-2 py-1" value={it.labour_journey} min={0} step={0.5} onChange={e=>setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, labour_journey: Number(e.target.value)} : item))} />
+                                    <span>{it.unit}</span>
+                                    <span>×</span>
+                                    <input type="number" className="w-14 border rounded px-2 py-1" value={it.labour_men} min={0} step={1} onChange={e=>setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, labour_men: Number(e.target.value)} : item))} />
+                                    <span>men</span>
+                                  </div>
+                                )
+                              ) : (
+                                <div className="flex items-center gap-2">
+                                  <input type="number" className="w-20 border rounded px-2 py-1" value={it.quantity} min={0} step={0.01} onChange={e=>setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, quantity: Number(e.target.value)} : item))} />
+                                  <span>{it.unit}</span>
+                                </div>
+                              )}
+                            </td>
+                            <td className="p-2 text-right">
+                              <input type="number" className="w-20 text-right border rounded px-2 py-1" 
+                                value={it.unit_price} min={0} step={0.01}
+                                onChange={e=>setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, unit_price: Number(e.target.value)} : item))} />
+                            </td>
                             <td className="p-2 text-right">${totalValue.toFixed(2)}</td>
                             <td className="p-2 text-right">
                               <input type="number" className="w-16 text-right border rounded px-2 py-1" 
@@ -198,7 +240,21 @@ export default function EstimateBuilder({ projectId }:{ projectId:string }){
                     <td colSpan={!isLabourSection ? 10 : 6} className="p-2 text-right font-semibold">Section Subtotal:</td>
                     <td className="p-2 text-right font-bold">${groupedItems[section].reduce((acc, it)=> {
                       const m = it.markup || markup;
-                      return acc + (it.quantity * it.unit_price * (1 + (m/100)));
+                      let itemTotal = 0;
+                      if (!isLabourSection) {
+                        itemTotal = it.quantity * it.unit_price;
+                      } else {
+                        if (it.item_type === 'labour' && it.labour_journey_type) {
+                          if (it.labour_journey_type === 'contract') {
+                            itemTotal = it.labour_journey! * it.unit_price;
+                          } else {
+                            itemTotal = it.labour_journey! * it.labour_men! * it.unit_price;
+                          }
+                        } else {
+                          itemTotal = it.quantity * it.unit_price;
+                        }
+                      }
+                      return acc + (itemTotal * (1 + (m/100)));
                     }, 0).toFixed(2)}</td>
                     <td></td>
                   </tr>
@@ -457,18 +513,20 @@ function AddLabourModal({ onAdd }:{ onAdd:(it: Item)=>void }){
               <div className="text-right">
                 <button onClick={()=>{
                   if(!labour.trim()){ toast.error('Please enter a labour name'); return; }
-                  const totalValue = total;
-                  let desc, qty, unit;
+                  const priceValue = Number(price||0);
+                  let desc, qty, unit, journey;
                   if(showContract){
                     desc = labour;
                     qty = Number(contractNumber||0);
                     unit = contractUnit||'each';
+                    journey = qty;
                   }else{
                     desc = `${labour} - ${men} men`;
                     qty = Number(men||0);
                     unit = showHours ? 'hours' : 'days';
+                    journey = showHours ? Number(hours||0) : Number(days||0);
                   }
-                  onAdd({ name: desc, unit, quantity: qty, unit_price: totalValue, section: 'Labour', description: desc, item_type: 'labour', taxable: true });
+                  onAdd({ name: desc, unit, quantity: qty, unit_price: priceValue, section: 'Labour', description: desc, item_type: 'labour', taxable: true, labour_journey: journey, labour_men: Number(men||0), labour_journey_type: journeyType });
                   setOpen(false); setLabour(''); setMen('1'); setDays('1'); setHours('1'); setContractNumber('1'); setContractUnit(''); setPrice('0'); setJourneyType('days');
                 }} className="px-3 py-2 rounded bg-brand-red text-white">Add Labour</button>
               </div>
