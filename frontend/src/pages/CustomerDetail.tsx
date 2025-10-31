@@ -341,7 +341,7 @@ export default function CustomerDetail(){
                 </div>
               )}
               {tab==='files' && (
-                <FilesCard id={String(id)} files={files||[]} sites={sites||[]} onRefresh={refetchFiles} />
+                <CustomerDocuments id={String(id)} files={files||[]} sites={sites||[]} onRefresh={refetchFiles} />
               )}
               {tab==='contacts' && (
                 <ContactsCard id={String(id)} />
@@ -510,85 +510,46 @@ function UserInline({ id }:{ id:string }){
   return <span className="font-medium">{label||'—'}</span>;
 }
 
-function FilesCard({ id, files, sites, onRefresh }:{ id:string, files: ClientFile[], sites: Site[], onRefresh: ()=>any }){
+function CustomerDocuments({ id, files, sites, onRefresh }:{ id:string, files: ClientFile[], sites: Site[], onRefresh: ()=>any }){
+  const confirm = useConfirm();
   const [which, setWhich] = useState<'all'|'client'|'site'>('all');
   const [siteId, setSiteId] = useState<string>('');
-  const [previewPdf, setPreviewPdf] = useState<{ url:string, name:string }|null>(null);
-  const [cat, setCat] = useState<string>('all');
-
-  useEffect(() => {
-    if (!previewPdf) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setPreviewPdf(null); };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [previewPdf]);
-  const siteMap = useMemo(()=>{
-    const m:Record<string, Site> = {};
-    (sites||[]).forEach(s=>{ if(s.id) m[String(s.id)] = s; });
-    return m;
-  }, [sites]);
-  const base = useMemo(()=>{
-    let arr = files||[];
-    if (which==='client') arr = arr.filter(f=>!f.site_id);
-    else if (which==='site') arr = arr.filter(f=> siteId? f.site_id===siteId : !!f.site_id);
-    if (cat && cat !== 'all') arr = arr.filter(f=> String(f.category||'') === cat);
-    return arr;
-  }, [files, which, siteId]);
-  const categories = useMemo(()=>{
-    const set = new Map<string, number>();
-    (files||[]).forEach(f=>{
-      // Count within current which/site context for relevance
-      if (which==='client' && f.site_id) return;
-      if (which==='site' && siteId && f.site_id!==siteId) return;
-      const key = String(f.category||'uncategorized');
-      set.set(key, (set.get(key)||0)+1);
-    });
-    return Array.from(set.entries()).sort((a,b)=> a[0].localeCompare(b[0]));
-  }, [files, which, siteId]);
-  const docs = base.filter(f=> !(f.is_image===true) && !String(f.content_type||'').startsWith('image/'));
+  const siteMap = useMemo(()=>{ const m:Record<string, Site> = {}; (sites||[]).forEach(s=>{ if(s.id) m[String(s.id)] = s; }); return m; }, [sites]);
+  const base = useMemo(()=>{ let arr = files||[]; if (which==='client') arr = arr.filter(f=>!f.site_id); else if (which==='site') arr = arr.filter(f=> siteId? f.site_id===siteId : !!f.site_id); return arr; }, [files, which, siteId]);
   const pics = base.filter(f=> (f.is_image===true) || String(f.content_type||'').startsWith('image/'));
-  const [file, setFile] = useState<File|null>(null);
-  const [docList, setDocList] = useState<ClientFile[]>([]);
   const [picList, setPicList] = useState<ClientFile[]>([]);
-  useEffect(()=>{ setDocList(docs); }, [docs]);
   useEffect(()=>{ setPicList(pics); }, [pics]);
-  const [dragDocId, setDragDocId] = useState<string|null>(null);
-  const onDocDragStart = (id:string)=> setDragDocId(id);
-  const onDocDragOver = (e:React.DragEvent)=> e.preventDefault();
-  const onDocDropOver = (overId:string)=>{
-    if(!dragDocId || dragDocId===overId) return;
-    const curr = [...docList];
-    const from = curr.findIndex(x=> x.id===dragDocId);
-    const to = curr.findIndex(x=> x.id===overId);
-    if(from<0 || to<0) return;
-    const [moved] = curr.splice(from,1);
-    curr.splice(to,0,moved);
-    setDocList(curr);
-  };
-  const saveDocOrder = async()=>{
-    try{
-      const order = docList.map(f=> String(f.id));
-      await api('POST', `/clients/${id}/files/reorder`, order);
-      toast.success('Order saved');
-    }catch(_e){ toast.error('Failed to save order'); }
-  };
-  const fetchDownloadUrl = async (fid:string)=>{
-    try{ const r:any = await api('GET', `/files/${fid}/download`); return String(r.download_url||''); }catch(_e){ toast.error('Download link unavailable'); return ''; }
-  };
-  const openDownload = async (f:ClientFile)=>{ const url = await fetchDownloadUrl(f.file_object_id); if(url) window.open(url, '_blank'); };
-  const iconFor = (f:ClientFile)=>{
-    const name = String(f.original_name||'');
-    const ext = (name.includes('.')? name.split('.').pop() : '').toLowerCase();
-    const ct = String(f.content_type||'').toLowerCase();
-    const is = (x:string)=> ct.includes(x) || ext===x;
-    if (is('pdf')) return { label:'PDF', color:'bg-red-500' };
-    if (['xlsx','xls','csv'].includes(ext) || ct.includes('excel') || ct.includes('spreadsheet')) return { label:'XLS', color:'bg-green-600' };
-    if (['doc','docx'].includes(ext) || ct.includes('word')) return { label:'DOC', color:'bg-blue-600' };
-    if (['ppt','pptx'].includes(ext) || ct.includes('powerpoint')) return { label:'PPT', color:'bg-orange-500' };
-    if (['zip','rar','7z'].includes(ext) || ct.includes('zip')) return { label:'ZIP', color:'bg-gray-700' };
-    if (is('txt')) return { label:'TXT', color:'bg-gray-500' };
-    return { label: (ext||'FILE').toUpperCase().slice(0,4), color:'bg-gray-600' };
-  };
+
+  const { data:folders, refetch: refetchFolders } = useQuery({ queryKey:['client-folders', id], queryFn: ()=> api<any[]>( 'GET', `/clients/${encodeURIComponent(id)}/folders`) });
+  const [activeFolderId, setActiveFolderId] = useState<string>('all');
+  const { data:docs, refetch: refetchDocs } = useQuery({ queryKey:['client-docs', id, activeFolderId], queryFn: ()=>{ const qs = activeFolderId!=='all'? (`?folder_id=${encodeURIComponent(activeFolderId)}`) : ''; return api<any[]>( 'GET', `/clients/${encodeURIComponent(id)}/documents${qs}` ); }});
+  const [showUpload, setShowUpload] = useState(false);
+  const [fileObj, setFileObj] = useState<File|null>(null);
+  const [title, setTitle] = useState<string>('');
+  const [newFolderOpen, setNewFolderOpen] = useState(false);
+  const [newFolderName, setNewFolderName] = useState('');
+  const [newFolderParentId, setNewFolderParentId] = useState<string| null>(null);
+  const [renameFolder, setRenameFolder] = useState<{id:string, name:string}|null>(null);
+  const [renameDoc, setRenameDoc] = useState<{id:string, title:string}|null>(null);
+  const [moveDoc, setMoveDoc] = useState<{id:string}|null>(null);
+  const [previewPdf, setPreviewPdf] = useState<{ url:string, name:string }|null>(null);
+  const [selectMode, setSelectMode] = useState<boolean>(false);
+  const [selectedDocIds, setSelectedDocIds] = useState<Set<string>>(new Set());
+
+  useEffect(()=>{ if (!previewPdf) return; const onKey = (e: KeyboardEvent)=>{ if(e.key==='Escape') setPreviewPdf(null); }; window.addEventListener('keydown', onKey); return ()=> window.removeEventListener('keydown', onKey); }, [previewPdf]);
+
+  const fetchDownloadUrl = async (fid:string)=>{ try{ const r:any = await api('GET', `/files/${fid}/download`); return String(r.download_url||''); }catch(_e){ toast.error('Download link unavailable'); return ''; } };
+
+  const upload = async()=>{ try{ if(!fileObj){ toast.error('Select a file'); return; } if(activeFolderId==='all'){ toast.error('Open a folder first'); return; } const name=fileObj.name; const type=fileObj.type||'application/octet-stream'; const up=await api('POST','/files/upload',{ original_name:name, content_type:type, client_id:id, project_id:null, employee_id:null, category_id:'client-docs' }); await fetch(up.upload_url,{ method:'PUT', headers:{ 'Content-Type':type,'x-ms-blob-type':'BlockBlob' }, body:fileObj }); const conf=await api('POST','/files/confirm',{ key:up.key, size_bytes:fileObj.size, checksum_sha256:'na', content_type:type }); await api('POST', `/clients/${encodeURIComponent(id)}/documents`, { folder_id: activeFolderId, title: title||name, file_id: conf.id }); toast.success('Uploaded'); setShowUpload(false); setFileObj(null); setTitle(''); await refetchDocs(); }catch(_e){ toast.error('Upload failed'); } };
+  const uploadToFolder = async(folderId:string, file: File)=>{ try{ const name=file.name; const type=file.type||'application/octet-stream'; const up=await api('POST','/files/upload',{ original_name:name, content_type:type, client_id:id, project_id:null, employee_id:null, category_id:'client-docs' }); await fetch(up.upload_url,{ method:'PUT', headers:{ 'Content-Type':type,'x-ms-blob-type':'BlockBlob' }, body:file }); const conf=await api('POST','/files/confirm',{ key:up.key, size_bytes:file.size, checksum_sha256:'na', content_type:type }); await api('POST', `/clients/${encodeURIComponent(id)}/documents`, { folder_id: folderId, title: name, file_id: conf.id }); }catch(_e){} };
+  const removeDoc = async(docId:string)=>{ const ok = await confirm({ title:'Delete file', message:'Are you sure you want to delete this file?' }); if(!ok) return; try{ await api('DELETE', `/clients/${encodeURIComponent(id)}/documents/${encodeURIComponent(docId)}`); toast.success('Deleted'); await refetchDocs(); }catch(_e){ toast.error('Delete failed'); } };
+
+  const topFolders = useMemo(()=> (folders||[]).filter((f:any)=> !f.parent_id), [folders]);
+  const childFolders = useMemo(()=> (folders||[]).filter((f:any)=> f.parent_id===activeFolderId), [folders, activeFolderId]);
+  const breadcrumb = useMemo(()=>{ if(activeFolderId==='all') return [] as any[]; const map = new Map<string, any>(); (folders||[]).forEach((f:any)=> map.set(f.id, f)); const path:any[]=[]; let cur=map.get(activeFolderId); while(cur){ path.unshift(cur); cur=cur.parent_id? map.get(cur.parent_id): null; } return path; }, [folders, activeFolderId]);
+  const fileExt = (name?:string)=>{ const n=String(name||'').toLowerCase(); const m=n.match(/\.([a-z0-9]+)$/); return m? m[1] : ''; };
+  const extStyle = (ext:string)=>{ const e=ext.toLowerCase(); if(e==='pdf') return { bg:'bg-[#e74c3c]', txt:'text-white' }; if(['xls','xlsx','csv'].includes(e)) return { bg:'bg-[#27ae60]', txt:'text-white' }; if(['doc','docx','odt','rtf'].includes(e)) return { bg:'bg-[#2980b9]', txt:'text-white' }; if(['ppt','pptx','key'].includes(e)) return { bg:'bg-[#d35400]', txt:'text-white' }; if(['png','jpg','jpeg','webp','gif','bmp','svg','heic','heif'].includes(e)) return { bg:'bg-[#8e44ad]', txt:'text-white' }; if(['zip','rar','7z','tar','gz'].includes(e)) return { bg:'bg-[#34495e]', txt:'text-white' }; if(['txt','md','json','xml','yaml','yml'].includes(e)) return { bg:'bg-[#16a085]', txt:'text-white' }; return { bg:'bg-gray-300', txt:'text-gray-800' }; };
+
   return (
     <div>
       <div className="mb-3 flex items-center gap-2 flex-wrap">
@@ -603,89 +564,238 @@ function FilesCard({ id, files, sites, onRefresh }:{ id:string, files: ClientFil
             {sites.map(s=> <option key={String(s.id)} value={String(s.id)}>{s.site_name||s.site_address_line1||s.id}</option>)}
           </select>
         )}
-        <input type="file" onChange={e=>setFile(e.target.files?.[0]||null)} />
-        <button onClick={async()=>{
-        if(!file) return; try{
-          const targetIsSite = which==='site';
-          const category = targetIsSite ? 'site-docs' : 'client-docs';
-          const up:any = await api('POST','/files/upload',{ project_id:null, client_id:id, employee_id:null, category_id:category, original_name:file.name, content_type: file.type||'application/octet-stream' });
-          const put = await fetch(up.upload_url, { method:'PUT', headers:{ 'Content-Type': file.type||'application/octet-stream', 'x-ms-blob-type': 'BlockBlob' }, body: file });
-          if (!put.ok) throw new Error('upload failed');
-          const conf:any = await api('POST','/files/confirm',{ key: up.key, size_bytes: file.size, checksum_sha256:'na', content_type: file.type||'application/octet-stream' });
-          const qs = targetIsSite ? `&site_id=${encodeURIComponent(siteId)}` : '';
-          await api('POST', `/clients/${id}/files?file_object_id=${encodeURIComponent(conf.id)}&category=${encodeURIComponent(category)}&original_name=${encodeURIComponent(file.name)}${qs}`);
-          toast.success('Uploaded');
-          await onRefresh();
-        }catch(e){ toast.error('Upload failed'); }
-      }} className="px-3 py-2 rounded bg-brand-red text-white">Upload</button></div>
-      <div className="mb-2 flex items-center justify-between">
-        <h4 className="font-semibold">Documents</h4>
-        <div className="flex items-center gap-2">
-          <div className="text-xs text-gray-500">Drag to reorder</div>
-          <button onClick={saveDocOrder} className="px-3 py-1.5 rounded bg-gray-100 text-xs">Save order</button>
-        </div>
       </div>
-      {categories.length>0 && (
-        <div className="mb-2 flex items-center gap-2 flex-wrap">
-          <button onClick={()=>setCat('all')} className={`px-2 py-1 rounded-full text-xs border ${cat==='all'?'bg-black text-white border-black':'bg-white text-gray-700'}`}>All</button>
-          {categories.map(([key,count])=> (
-            <button key={key} onClick={()=>setCat(key)} className={`px-2 py-1 rounded-full text-xs border ${cat===key?'bg-black text-white border-black':'bg-white text-gray-700'}`}>{key} <span className="opacity-60">{count}</span></button>
-          ))}
-        </div>
-      )}
-      <div className="rounded-xl border overflow-hidden">
-        {(docList||[]).length? (
-          <div className="divide-y">
-            {(docList||[]).map(f=>{
-              const icon = iconFor(f);
-              const name = f.original_name || f.file_object_id;
-              const canPreviewPdf = String(f.content_type||'').toLowerCase().includes('pdf') || String(name||'').toLowerCase().endsWith('.pdf');
-              return (
-                <div key={f.id} draggable onDragStart={()=>onDocDragStart(String(f.id))} onDragOver={onDocDragOver} onDrop={()=>onDocDropOver(String(f.id))}
-                  className="flex items-center justify-between px-3 py-2 text-sm bg-white hover:bg-gray-50 cursor-pointer"
-                  onClick={async()=>{ if (canPreviewPdf) { const url = await fetchDownloadUrl(f.file_object_id); if(url) setPreviewPdf({ url, name }); } else { await openDownload(f); } }}>
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className={`w-8 h-8 rounded grid place-items-center text-[10px] font-bold text-white ${icon.color}`}>{icon.label}</div>
-                    <div className="min-w-0">
-                      <div className="truncate font-medium">{name}</div>
-                      <div className="text-[11px] text-gray-500">{(f.uploaded_at||'').slice(0,10)}</div>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <button onClick={async(e)=>{ e.stopPropagation(); await openDownload(f); }} className="px-2 py-1 rounded bg-gray-100">Download</button>
-                    <button onClick={async(e)=>{ e.stopPropagation(); if(!confirm('Delete this file?')) return; try{ await api('DELETE', `/clients/${id}/files/${encodeURIComponent(String(f.id))}`); toast.success('Deleted'); await onRefresh(); }catch(_e){ toast.error('Delete failed'); } }} className="px-2 py-1 rounded bg-gray-100">Delete</button>
+
+      {activeFolderId==='all' ? (
+        <>
+          <div className="mb-2 flex items-center gap-2">
+            <div className="text-sm font-semibold">Folders</div>
+            <button onClick={()=> { setNewFolderParentId(null); setNewFolderOpen(true); }} className="ml-auto px-3 py-2 rounded-lg border">New folder</button>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-2">
+            {topFolders.map((f:any)=> (
+              <div key={f.id} className="relative rounded-lg border p-3 h-28 bg-white hover:bg-gray-50 select-none group flex flex-col items-center justify-center"
+                   onClick={(e)=>{ const t=e.target as HTMLElement; if(t.closest('.folder-actions')) return; setActiveFolderId(f.id); }}
+                   onDragOver={(e)=>{ e.preventDefault(); }}
+                   onDrop={async(e)=>{ e.preventDefault(); if(e.dataTransfer.files?.length){ const arr=Array.from(e.dataTransfer.files); for(const file of arr){ await uploadToFolder(f.id, file as File); } toast.success('Uploaded'); } }}>
+                <div className="text-4xl">📁</div>
+                <div className="mt-1 text-sm font-medium truncate text-center w-full" title={f.name}>{f.name}</div>
+                <div className="folder-actions absolute right-2 top-2 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
+                  <button title="Rename" className="p-1 rounded hover:bg-gray-100" onClick={()=> setRenameFolder({ id: f.id, name: f.name })}>✏️</button>
+                  <button title="Delete" className="p-1 rounded hover:bg-gray-100 text-red-600" onClick={async()=>{ try{ await api('DELETE', `/clients/${encodeURIComponent(id)}/folders/${encodeURIComponent(f.id)}`); toast.success('Deleted'); await refetchFolders(); }catch(e:any){ toast.error(e?.detail||'Cannot delete'); } }}>🗑️</button>
+                </div>
+              </div>
+            ))}
+            {!topFolders.length && <div className="text-sm text-gray-600">No folders yet</div>}
+          </div>
+        </>
+      ) : (
+        <>
+          <div className="mb-3 flex items-center gap-2">
+            <button title="Home" onClick={()=> setActiveFolderId('all')} className="px-2 py-2 rounded-lg border">🏠</button>
+            <div className="text-sm font-semibold flex gap-2 items-center">
+              {breadcrumb.map((f:any, idx:number)=> (
+                <span key={f.id} className="flex items-center gap-2">
+                  {idx>0 && <span className="opacity-60">/</span>}
+                  <button className="underline" onClick={()=> setActiveFolderId(f.id)}>{f.name}</button>
+                </span>
+              ))}
+            </div>
+            <button onClick={()=> { setNewFolderParentId(activeFolderId); setNewFolderOpen(true); }} className="ml-auto px-3 py-2 rounded-lg border">New subfolder</button>
+            <button onClick={()=> setShowUpload(true)} className="px-3 py-2 rounded-lg bg-brand-red text-white">Add file</button>
+            <button className="px-3 py-2 rounded-lg border" onClick={()=> { setSelectMode(s=> !s); if(selectMode) setSelectedDocIds(new Set()); }}>{selectMode? 'Done':'Select'}</button>
+          </div>
+          <div className="rounded-lg border">
+            <div className="p-4">
+              {childFolders.length>0 && (
+                <div className="mb-3">
+                  <div className="text-xs text-gray-600 mb-1">Subfolders</div>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-2">
+                    {childFolders.map((f:any)=> (
+                      <div key={f.id} className="relative rounded-lg border p-3 h-28 bg-white hover:bg-gray-50 select-none group flex flex-col items-center justify-center"
+                           onClick={(e)=>{ const t=e.target as HTMLElement; if(t.closest('.folder-actions')) return; setActiveFolderId(f.id); }}
+                           onDragOver={(e)=>{ e.preventDefault(); }}
+                           onDrop={async(e)=>{ e.preventDefault(); if(e.dataTransfer.files?.length){ const arr=Array.from(e.dataTransfer.files); for(const file of arr){ await uploadToFolder(f.id, file as File); } toast.success('Uploaded'); } }}>
+                        <div className="text-4xl">📁</div>
+                        <div className="mt-1 text-sm font-medium truncate text-center w-full" title={f.name}>{f.name}</div>
+                        <div className="folder-actions absolute right-2 top-2 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
+                          <button title="Rename" className="p-1 rounded hover:bg-gray-100" onClick={()=> setRenameFolder({ id: f.id, name: f.name })}>✏️</button>
+                          <button title="Delete" className="p-1 rounded hover:bg-gray-100 text-red-600" onClick={async()=>{ try{ await api('DELETE', `/clients/${encodeURIComponent(id)}/folders/${encodeURIComponent(f.id)}`); toast.success('Deleted'); await refetchFolders(); }catch(e:any){ toast.error(e?.detail||'Cannot delete'); } }}>🗑️</button>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 </div>
-              );
-            })}
-          </div>
-        ) : <div className="p-3 text-sm text-gray-600 bg-white">No documents</div>}
-      </div>
-      <h4 className="font-semibold mt-4 mb-2">Pictures</h4>
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3">
-        {(picList||[]).map(f=> {
-          const isSite = !!f.site_id;
-          const s = isSite? siteMap[String(f.site_id||'')] : undefined;
-          const tip = isSite? `${s?.site_name||'Site'} — ${[s?.site_address_line1, s?.site_city, s?.site_province].filter(Boolean).join(', ')}` : 'General Customer image';
-          return (
-            <div key={f.id} className="relative group">
-              <img className="w-full h-24 object-cover rounded border" src={`/files/${f.file_object_id}/thumbnail?w=300`} />
-              <div className="absolute right-2 top-2 hidden group-hover:flex gap-1">
-                <button onClick={async(e)=>{ e.stopPropagation(); const url = await fetchDownloadUrl(f.file_object_id); if(url) window.open(url,'_blank'); }} className="bg-black/70 hover:bg-black/80 text-white text-[11px] px-2 py-1 rounded" title="Zoom">🔍</button>
-                <button onClick={async(e)=>{ e.stopPropagation(); if(!confirm('Delete this picture?')) return; try{ await api('DELETE', `/clients/${id}/files/${encodeURIComponent(String(f.id))}`); toast.success('Deleted'); location.reload(); }catch(_e){ toast.error('Delete failed'); } }} className="bg-black/70 hover:bg-black/80 text-white text-[11px] px-2 py-1 rounded" title="Delete">🗑️</button>
+              )}
+
+              <div className="mb-2 flex items-center justify-between">
+                <h4 className="font-semibold">Documents</h4>
+                {selectMode && selectedDocIds.size>0 && (
+                  <div className="flex items-center gap-2">
+                    <div className="text-sm">{selectedDocIds.size} selected</div>
+                    <select id="bulk-move-target-client" className="border rounded px-2 py-1">
+                      <option value="" disabled selected>Select destination</option>
+                      {(folders||[]).map((f:any)=> <option key={f.id} value={f.id}>{f.name}</option>)}
+                    </select>
+                    <button className="px-3 py-1.5 rounded bg-brand-red text-white" onClick={async()=>{
+                      const sel = document.getElementById('bulk-move-target-client') as HTMLSelectElement;
+                      const dest = sel?.value || '';
+                      if(!dest){ toast.error('Select destination folder'); return; }
+                      try{
+                        for(const id of Array.from(selectedDocIds)){
+                          await api('PUT', `/clients/${encodeURIComponent(idOfClient(id, '${id}'))}/documents/${encodeURIComponent(id)}`, { folder_id: dest });
+                        }
+                        toast.success('Moved'); setSelectedDocIds(new Set()); await refetchDocs();
+                      }catch(_e){ toast.error('Failed'); }
+                    }}>Move</button>
+                    <button className="px-3 py-1.5 rounded border" onClick={()=> setSelectedDocIds(new Set())}>Clear</button>
+                  </div>
+                )}
               </div>
-              <div className={`absolute left-2 top-2 text-[10px] font-bold rounded-full w-6 h-6 grid place-items-center ${isSite? 'bg-blue-500 text-white':'bg-green-500 text-white'}`} title={isSite? 'Site image':'Client image'}>
-                {isSite? String((f.site_id||'') as string).slice(0,2).toUpperCase() : 'C'}
-              </div>
-              <div className="absolute inset-x-0 bottom-0 hidden group-hover:flex items-center text-[11px] text-white bg-gradient-to-t from-black/70 to-transparent px-2 py-1">
-                <span className="truncate">{tip}</span>
+              <div className="rounded-lg border overflow-hidden bg-white">
+                {(docs||[]).map((d:any)=>{ const ext=fileExt(d.title).toUpperCase(); const s=extStyle(ext); const checked = selectedDocIds.has(d.id); return (
+                  <div key={d.id} className={`flex items-center gap-3 px-3 py-2 hover:bg-gray-50 ${selectMode && checked? 'bg-red-50':''}`}>
+                    {selectMode && (
+                      <input type="checkbox" className="mr-1" checked={checked} onChange={(e)=>{
+                        setSelectedDocIds(prev=>{ const next = new Set(prev); if(e.target.checked) next.add(d.id); else next.delete(d.id); return next; });
+                      }} />
+                    )}
+                    <div className={`w-10 h-12 rounded-lg ${s.bg} ${s.txt} flex items-center justify-center text-[10px] font-extrabold select-none`}>{ext||'FILE'}</div>
+                    <div className="flex-1 min-w-0" onClick={async()=>{ if(selectMode) return; try{ const r:any = await api('GET', `/files/${encodeURIComponent(d.file_id)}/download`); const url=r.download_url||''; if(url) { if(ext==='PDF') setPreviewPdf({ url, name: d.title||'Preview' }); else window.open(url,'_blank'); } }catch(_e){ toast.error('Preview not available'); } }}>
+                      <div className="font-medium truncate cursor-pointer hover:underline">{d.title||'Document'}</div>
+                      <div className="text-[11px] text-gray-600 truncate">Uploaded {String(d.created_at||'').slice(0,10)}</div>
+                    </div>
+                    <div className="ml-auto flex items-center gap-1">
+                      <a title="Download" className="p-2 rounded hover:bg-gray-100" href={`/files/${encodeURIComponent(d.file_id)}/download`} target="_blank">⬇️</a>
+                      <button title="Rename" onClick={()=> setRenameDoc({ id: d.id, title: d.title||'' })} className="p-2 rounded hover:bg-gray-100">✏️</button>
+                      <button title="Move" onClick={()=> setMoveDoc({ id: d.id })} className="p-2 rounded hover:bg-gray-100">📁</button>
+                      <button title="Delete" onClick={()=> removeDoc(d.id)} className="p-2 rounded hover:bg-gray-100 text-red-600">🗑️</button>
+                    </div>
+                  </div>
+                ); })}
+                {!(docs||[]).length && <div className="px-3 py-3 text-sm text-gray-600">No documents in this folder</div>}
               </div>
             </div>
-          );
-        })}
+          </div>
+        </>
+      )}
+
+      <h4 className="font-semibold mt-4 mb-2">Pictures</h4>
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3">
+        {(picList||[]).map(f=> { const isSite=!!f.site_id; const s=isSite? siteMap[String(f.site_id||'')] : undefined; const tip=isSite? `${s?.site_name||'Site'} — ${[s?.site_address_line1, s?.site_city, s?.site_province].filter(Boolean).join(', ')}` : 'General Customer image'; return (
+          <div key={f.id} className="relative group">
+            <img className="w-full h-24 object-cover rounded border" src={`/files/${f.file_object_id}/thumbnail?w=300`} />
+            <div className="absolute right-2 top-2 hidden group-hover:flex gap-1">
+              <button onClick={async(e)=>{ e.stopPropagation(); const url = await fetchDownloadUrl(String(f.file_object_id)); if(url) window.open(url,'_blank'); }} className="bg-black/70 hover:bg-black/80 text-white text-[11px] px-2 py-1 rounded" title="Zoom">🔍</button>
+            </div>
+            <div className={`absolute left-2 top-2 text-[10px] font-bold rounded-full w-6 h-6 grid place-items-center ${isSite? 'bg-blue-500 text-white':'bg-green-500 text-white'}`} title={isSite? 'Site image':'Client image'}>
+              {isSite? String((f.site_id||'') as string).slice(0,2).toUpperCase() : 'C'}
+            </div>
+            <div className="absolute inset-x-0 bottom-0 hidden group-hover:flex items-center text-[11px] text-white bg-gradient-to-t from-black/70 to-transparent px-2 py-1">
+              <span className="truncate">{tip}</span>
+            </div>
+          </div>
+        ); })}
       </div>
+
+      {showUpload && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl w-full max-w-md p-4">
+            <div className="text-lg font-semibold mb-2">Add file</div>
+            <div className="space-y-3">
+              <div>
+                <div className="text-xs text-gray-600">Folder</div>
+                <select className="border rounded px-3 py-2 w-full" value={activeFolderId==='all'? '': activeFolderId} onChange={e=> setActiveFolderId(e.target.value||'all')}>
+                  <option value="">Select a folder</option>
+                  {(folders||[]).map((f:any)=> <option key={f.id} value={f.id}>{f.name}</option>)}
+                </select>
+              </div>
+              <div>
+                <div className="text-xs text-gray-600">Title</div>
+                <input className="border rounded px-3 py-2 w-full" value={title} onChange={e=> setTitle(e.target.value)} placeholder="Optional title" />
+              </div>
+              <div>
+                <div className="text-xs text-gray-600">File</div>
+                <input type="file" onChange={e=> setFileObj(e.target.files?.[0]||null)} />
+              </div>
+            </div>
+            <div className="mt-4 flex justify-end gap-2">
+              <button onClick={()=>setShowUpload(false)} className="px-3 py-2 rounded border">Cancel</button>
+              <button onClick={upload} className="px-3 py-2 rounded bg-brand-red text-white">Upload</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {newFolderOpen && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl w-full max-w-sm p-4">
+            <div className="text-lg font-semibold mb-2">{newFolderParentId? 'New subfolder':'New folder'}</div>
+            <div>
+              <div className="text-xs text-gray-600">Folder name</div>
+              <input className="border rounded px-3 py-2 w-full" value={newFolderName} onChange={e=> setNewFolderName(e.target.value)} placeholder="e.g., Hiring pack" />
+            </div>
+            <div className="mt-4 flex justify-end gap-2">
+              <button onClick={()=>setNewFolderOpen(false)} className="px-3 py-2 rounded border">Cancel</button>
+              <button onClick={async()=>{ try{ const body:any = { name: (newFolderName||'').trim() }; if(newFolderParentId) body.parent_id = newFolderParentId; if(!body.name){ toast.error('Folder name required'); return; } await api('POST', `/clients/${encodeURIComponent(id)}/folders`, body); toast.success('Folder created'); setNewFolderOpen(false); setNewFolderName(''); setNewFolderParentId(null); await refetchFolders(); }catch(_e){ toast.error('Failed to create folder'); } }} className="px-3 py-2 rounded bg-brand-red text-white">Create</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {renameFolder && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl w-full max-w-sm p-4">
+            <div className="text-lg font-semibold mb-2">Rename folder</div>
+            <div>
+              <div className="text-xs text-gray-600">Folder name</div>
+              <input className="border rounded px-3 py-2 w-full" value={renameFolder.name} onChange={e=> setRenameFolder({ id: renameFolder.id, name: e.target.value })} />
+            </div>
+            <div className="mt-4 flex justify-end gap-2">
+              <button onClick={()=>setRenameFolder(null)} className="px-3 py-2 rounded border">Cancel</button>
+              <button onClick={async()=>{ try{ await api('PUT', `/clients/${encodeURIComponent(id)}/folders/${encodeURIComponent(renameFolder.id)}`, { name: (renameFolder.name||'').trim() }); toast.success('Renamed'); setRenameFolder(null); await refetchFolders(); }catch(_e){ toast.error('Failed to rename'); } }} className="px-3 py-2 rounded bg-brand-red text-white">Save</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {renameDoc && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl w-full max-w-sm p-4">
+            <div className="text-lg font-semibold mb-2">Rename file</div>
+            <div>
+              <div className="text-xs text-gray-600">Title</div>
+              <input className="border rounded px-3 py-2 w-full" value={renameDoc.title} onChange={e=> setRenameDoc({ id: renameDoc.id, title: e.target.value })} />
+            </div>
+            <div className="mt-4 flex justify-end gap-2">
+              <button onClick={()=>setRenameDoc(null)} className="px-3 py-2 rounded border">Cancel</button>
+              <button onClick={async()=>{ try{ await api('PUT', `/clients/${encodeURIComponent(id)}/documents/${encodeURIComponent(renameDoc.id)}`, { title: (renameDoc.title||'').trim() }); toast.success('Renamed'); setRenameDoc(null); await refetchDocs(); }catch(_e){ toast.error('Failed to rename'); } }} className="px-3 py-2 rounded bg-brand-red text-white">Save</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {moveDoc && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl w-full max-w-sm p-4">
+            <div className="text-lg font-semibold mb-2">Move file</div>
+            <div>
+              <div className="text-xs text-gray-600">Destination folder</div>
+              <select id="move-target-client" className="border rounded px-3 py-2 w-full" defaultValue="">
+                <option value="" disabled>Select...</option>
+                {(folders||[]).map((f:any)=> <option key={f.id} value={f.id}>{f.name}</option>)}
+              </select>
+            </div>
+            <div className="mt-4 flex justify-end gap-2">
+              <button onClick={()=>setMoveDoc(null)} className="px-3 py-2 rounded border">Cancel</button>
+              <button onClick={async()=>{ try{ const sel = document.getElementById('move-target-client') as HTMLSelectElement; const dest = sel?.value||''; if(!dest){ toast.error('Select destination'); return; } await api('PUT', `/clients/${encodeURIComponent(id)}/documents/${encodeURIComponent(moveDoc.id)}`, { folder_id: dest }); toast.success('Moved'); setMoveDoc(null); await refetchDocs(); }catch(_e){ toast.error('Failed to move'); } }} className="px-3 py-2 rounded bg-brand-red text-white">Move</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {previewPdf && (
-        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center">
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
           <div className="w-[1000px] max-w-[95vw] h-[85vh] bg-white rounded-xl overflow-hidden shadow-2xl flex flex-col">
             <div className="px-3 py-2 border-b flex items-center justify-between">
               <div className="font-semibold text-sm truncate pr-2">{previewPdf.name}</div>

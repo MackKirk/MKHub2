@@ -1,10 +1,10 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Body
 import uuid
 from sqlalchemy.orm import Session
 from typing import Optional, List
 
 from ..db import get_db
-from ..models.models import Client, ClientContact, ClientSite, ClientFile, FileObject
+from ..models.models import Client, ClientContact, ClientSite, ClientFile, FileObject, ClientFolder, ClientDocument
 import mimetypes
 from ..schemas.clients import (
     ClientCreate, ClientResponse,
@@ -280,4 +280,132 @@ def attach_file(client_id: str, file_object_id: str, category: Optional[str] = N
     db.add(row)
     db.commit()
     return {"id": str(row.id)}
+
+
+# ===== Client Folders & Documents =====
+@router.get("/{client_id}/folders")
+def list_client_folders(client_id: str, db: Session = Depends(get_db), _=Depends(require_permissions("clients:read"))):
+    rows = db.query(ClientFolder).filter(ClientFolder.client_id == client_id).order_by(ClientFolder.sort_index.asc(), ClientFolder.name.asc()).all()
+    return [{
+        "id": str(f.id),
+        "name": f.name,
+        "parent_id": str(f.parent_id) if getattr(f, 'parent_id', None) else None,
+        "sort_index": f.sort_index,
+    } for f in rows]
+
+
+@router.post("/{client_id}/folders")
+def create_client_folder(client_id: str, name: str = Body(...), parent_id: Optional[str] = Body(None), db: Session = Depends(get_db), _=Depends(require_permissions("clients:write"))):
+    pid = None
+    try:
+        pid = uuid.UUID(str(parent_id)) if parent_id else None
+    except Exception:
+        pid = None
+    f = ClientFolder(client_id=client_id, name=(name or '').strip(), parent_id=pid)
+    if not f.name:
+        raise HTTPException(status_code=400, detail="Folder name required")
+    db.add(f)
+    db.commit()
+    return {"id": str(f.id)}
+
+
+@router.put("/{client_id}/folders/{folder_id}")
+def update_client_folder(client_id: str, folder_id: str, name: Optional[str] = Body(None), parent_id: Optional[str] = Body(None), db: Session = Depends(get_db), _=Depends(require_permissions("clients:write"))):
+    try:
+        fid = uuid.UUID(str(folder_id))
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid folder")
+    f = db.query(ClientFolder).filter(ClientFolder.client_id == client_id, ClientFolder.id == fid).first()
+    if not f:
+        raise HTTPException(status_code=404, detail="Not found")
+    if name is not None:
+        f.name = (name or '').strip()
+        if not f.name:
+            raise HTTPException(status_code=400, detail="Folder name required")
+    if parent_id is not None:
+        try:
+            f.parent_id = uuid.UUID(str(parent_id)) if parent_id else None
+        except Exception:
+            f.parent_id = None
+    db.commit()
+    return {"status":"ok"}
+
+
+@router.delete("/{client_id}/folders/{folder_id}")
+def delete_client_folder(client_id: str, folder_id: str, db: Session = Depends(get_db), _=Depends(require_permissions("clients:write"))):
+    try:
+        fid = uuid.UUID(str(folder_id))
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid folder")
+    tag = f"folder:{folder_id}"
+    has_docs = db.query(ClientDocument).filter(ClientDocument.client_id == client_id, ClientDocument.doc_type == tag).first()
+    if has_docs:
+        raise HTTPException(status_code=400, detail="Folder not empty")
+    db.query(ClientFolder).filter(ClientFolder.client_id == client_id, ClientFolder.id == fid).delete()
+    db.commit()
+    return {"status":"ok"}
+
+
+@router.get("/{client_id}/documents")
+def list_client_documents(client_id: str, folder_id: Optional[str] = None, db: Session = Depends(get_db), _=Depends(require_permissions("clients:read"))):
+    q = db.query(ClientDocument).filter(ClientDocument.client_id == client_id)
+    if folder_id:
+        tag = f"folder:{folder_id}"
+        q = q.filter(ClientDocument.doc_type == tag)
+    rows = q.order_by(ClientDocument.created_at.desc()).all()
+    out = []
+    for d in rows:
+        fid = None
+        try:
+            if (d.doc_type or '').startswith('folder:'):
+                fid = d.doc_type.split(':',1)[1]
+        except Exception:
+            fid = None
+        out.append({
+            "id": str(d.id),
+            "folder_id": fid,
+            "title": d.title,
+            "notes": d.notes,
+            "file_id": str(d.file_id) if getattr(d, 'file_id', None) else None,
+            "created_at": d.created_at.isoformat() if getattr(d,'created_at',None) else None,
+        })
+    return out
+
+
+@router.post("/{client_id}/documents")
+def create_client_document(client_id: str, payload: dict = Body(...), db: Session = Depends(get_db), _=Depends(require_permissions("clients:write"))):
+    folder_id = payload.get("folder_id")
+    d = ClientDocument(
+        client_id=client_id,
+        doc_type=(f"folder:{folder_id}" if folder_id else (payload.get("doc_type") or "other")),
+        title=payload.get("title"),
+        notes=payload.get("notes"),
+        file_id=payload.get("file_id"),
+    )
+    db.add(d)
+    db.commit()
+    return {"id": str(d.id)}
+
+
+@router.put("/{client_id}/documents/{doc_id}")
+def update_client_document(client_id: str, doc_id: str, payload: dict = Body(...), db: Session = Depends(get_db), _=Depends(require_permissions("clients:write"))):
+    d = db.query(ClientDocument).filter(ClientDocument.client_id == client_id, ClientDocument.id == doc_id).first()
+    if not d:
+        raise HTTPException(status_code=404, detail="Not found")
+    if "folder_id" in payload:
+        fid = payload.get("folder_id")
+        d.doc_type = f"folder:{fid}" if fid else (d.doc_type or None)
+    if "title" in payload:
+        d.title = payload.get("title")
+    if "notes" in payload:
+        d.notes = payload.get("notes")
+    db.commit()
+    return {"status":"ok"}
+
+
+@router.delete("/{client_id}/documents/{doc_id}")
+def delete_client_document(client_id: str, doc_id: str, db: Session = Depends(get_db), _=Depends(require_permissions("clients:write"))):
+    db.query(ClientDocument).filter(ClientDocument.client_id == client_id, ClientDocument.id == doc_id).delete()
+    db.commit()
+    return {"status":"ok"}
 
