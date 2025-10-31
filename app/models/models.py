@@ -738,11 +738,13 @@ class EstimateItem(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     estimate_id = Column(Integer, ForeignKey("estimates.id"))
-    material_id = Column(Integer, ForeignKey("materials.id"))
+    material_id = Column(Integer, ForeignKey("materials.id"))  # Optional for manual entries
     quantity = Column(Float)
     unit_price = Column(Float)
     total_price = Column(Float)
     section = Column(String)
+    description = Column(String)  # For manual entries (labour, sub-contractors, shop)
+    item_type = Column(String)  # 'product', 'labour', 'subcontractor', 'shop'
 
 
 class RelatedProduct(Base):

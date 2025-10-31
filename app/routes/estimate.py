@@ -209,10 +209,12 @@ def delete_relation(product_a_id: int, product_b_id: int, db: Session = Depends(
 # ===================== Estimates =====================
 
 class EstimateItemIn(BaseModel):
-    material_id: int
+    material_id: Optional[int] = None  # Optional for manual entries
     quantity: float
     unit_price: Optional[float] = None
     section: Optional[str] = None
+    description: Optional[str] = None  # For manual entries
+    item_type: Optional[str] = None  # 'product', 'labour', 'subcontractor', 'shop'
 
 
 class EstimateIn(BaseModel):
@@ -237,14 +239,25 @@ def create_estimate(body: EstimateIn, db: Session = Depends(get_db), _=Depends(r
     db.flush()
     total = 0.0
     for it in body.items:
-        # default to current material price if unit_price not provided
+        # default to current material price if unit_price not provided and material_id exists
         price = it.unit_price
-        if price is None:
+        if price is None and it.material_id is not None:
             m = db.query(Material).filter(Material.id == it.material_id).first()
             price = (m.price or 0.0) if m else 0.0
+        elif price is None:
+            price = 0.0
         line_total = (it.quantity or 0.0) * (price or 0.0)
         total += line_total
-        db.add(EstimateItem(estimate_id=est.id, material_id=it.material_id, quantity=it.quantity, unit_price=price, total_price=line_total, section=it.section or None))
+        db.add(EstimateItem(
+            estimate_id=est.id, 
+            material_id=it.material_id,
+            quantity=it.quantity, 
+            unit_price=price, 
+            total_price=line_total, 
+            section=it.section or None,
+            description=it.description or None,
+            item_type=it.item_type or 'product'
+        ))
     est.total_cost = total
     db.commit()
     db.refresh(est)
