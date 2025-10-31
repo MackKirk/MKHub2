@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
@@ -74,6 +74,23 @@ export default function InventorySuppliers() {
   const [contactPhone, setContactPhone] = useState('');
   const [contactTitle, setContactTitle] = useState('');
   const [contactNotes, setContactNotes] = useState('');
+
+  useEffect(() => {
+    if (!open && !contactModalOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (contactModalOpen) {
+          setContactModalOpen(false);
+          setEditingContact(null);
+        } else if (open) {
+          setOpen(false);
+          resetForm();
+        }
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open, contactModalOpen]);
 
   const { data, isLoading, isFetching } = useQuery({
     queryKey: ['suppliers', q],
@@ -838,9 +855,10 @@ export default function InventorySuppliers() {
                   setContactModalOpen(false);
                   setEditingContact(null);
                 }}
-                className="px-3 py-1 rounded bg-gray-200 hover:bg-gray-300"
+                className="text-gray-500 hover:text-gray-700 text-2xl font-bold w-8 h-8 flex items-center justify-center rounded hover:bg-gray-100"
+                title="Close"
               >
-                Close
+                ×
               </button>
             </div>
             <div className="p-6 overflow-y-auto space-y-4">

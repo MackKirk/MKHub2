@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import ImagePicker from '@/components/ImagePicker';
 import toast from 'react-hot-toast';
 import { Link } from 'react-router-dom';
@@ -17,6 +17,14 @@ export default function Projects(){
   const [newOpen, setNewOpen] = useState(false);
   const [name, setName] = useState('');
   const [clientId, setClientId] = useState('');
+
+  useEffect(() => {
+    if (!newOpen) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setNewOpen(false); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [newOpen]);
+
   return (
     <div>
       <div className="mb-3 rounded-xl border bg-gradient-to-br from-[#7f1010] to-[#a31414] text-white p-4">
@@ -59,7 +67,7 @@ export default function Projects(){
       {newOpen && (
         <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center">
           <div className="w-[600px] max-w-[95vw] bg-white rounded-xl overflow-hidden">
-            <div className="px-4 py-3 border-b flex items-center justify-between"><div className="font-semibold">New Project</div><button onClick={()=>setNewOpen(false)} className="px-3 py-1 rounded bg-gray-100">Close</button></div>
+            <div className="px-4 py-3 border-b flex items-center justify-between"><div className="font-semibold">New Project</div><button onClick={()=>setNewOpen(false)} className="text-gray-500 hover:text-gray-700 text-2xl font-bold w-8 h-8 flex items-center justify-center rounded hover:bg-gray-100" title="Close">×</button></div>
             <div className="p-4 grid gap-3">
               <div>
                 <label className="text-xs text-gray-600">Project Name</label>

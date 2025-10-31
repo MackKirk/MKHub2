@@ -41,10 +41,17 @@ export default function CustomerNew(){
     return `+${d.slice(0,1)} (${d.slice(1,4)}) ${d.slice(4,7)}-${d.slice(7,11)}`;
   };
 
+  useEffect(() => {
+    if (!contactModalOpen) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setContactModalOpen(false); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [contactModalOpen]);
+
   const ContactModal = ()=> contactModalOpen? (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
       <div className="w-[800px] max-w-[95vw] bg-white rounded-xl overflow-hidden">
-        <div className="px-4 py-3 border-b flex items-center justify-between"><div className="font-semibold">New Contact</div><button onClick={()=>{ setContactModalOpen(false); }} className="px-3 py-1 rounded bg-gray-100">Close</button></div>
+        <div className="px-4 py-3 border-b flex items-center justify-between"><div className="font-semibold">New Contact</div><button onClick={()=>{ setContactModalOpen(false); }} className="text-gray-500 hover:text-gray-700 text-2xl font-bold w-8 h-8 flex items-center justify-center rounded hover:bg-gray-100" title="Close">×</button></div>
         <div className="p-4 grid md:grid-cols-5 gap-3 items-start">
           <div className="md:col-span-3 grid grid-cols-2 gap-2">
             <div className="col-span-2">
