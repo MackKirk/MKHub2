@@ -325,8 +325,15 @@ export default function InventoryProducts(){
       {open && (
         <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center">
           <div className="w-[700px] max-w-[95vw] bg-white rounded-xl overflow-hidden flex flex-col">
-            <div className="px-4 py-3 border-b bg-gray-50">
+            <div className="px-4 py-3 border-b bg-gray-50 flex items-center justify-between relative">
               <div className="font-semibold">{editing? 'Edit Product' : viewing? 'Product Details' : 'New Product'}</div>
+              <button 
+                onClick={resetModal}
+                className="absolute right-4 text-gray-500 hover:text-gray-700 text-2xl font-bold w-8 h-8 flex items-center justify-center rounded hover:bg-gray-200"
+                title="Close"
+              >
+                ×
+              </button>
             </div>
             <div className="p-4 grid grid-cols-2 gap-3 max-h-[85vh] overflow-y-auto">
               {viewing && !editing ? (
@@ -402,10 +409,9 @@ export default function InventoryProducts(){
               {viewing && !editing ? (
                 // View mode buttons
                 <>
-                  <button onClick={()=> handleDelete(viewing.id)} className="px-4 py-2 rounded bg-red-600 text-white hover:bg-red-700">Delete</button>
                   <button onClick={()=> handleAddRelated(viewing.id)} className="px-4 py-2 rounded bg-black text-white">Add Related</button>
                   <button onClick={openEditModal} className="px-4 py-2 rounded bg-gray-100">Edit</button>
-                  <button onClick={resetModal} className="px-4 py-2 rounded bg-gray-200 hover:bg-gray-300">Close</button>
+                  <button onClick={()=> handleDelete(viewing.id)} className="px-4 py-2 rounded bg-red-600 text-white hover:bg-red-700">Delete</button>
                 </>
               ) : (
                 // Edit/Create mode buttons

@@ -711,6 +711,12 @@ export default function InventorySuppliers() {
                 // View mode buttons
                 <>
                   <button
+                    onClick={openEditModal}
+                    className="px-4 py-2 rounded bg-gray-100"
+                  >
+                    Edit
+                  </button>
+                  <button
                     onClick={async () => {
                       const ok = await confirm({ 
                         title: 'Delete supplier', 
@@ -728,12 +734,6 @@ export default function InventorySuppliers() {
                   >
                     Delete
                   </button>
-                  <button
-                    onClick={openEditModal}
-                    className="px-4 py-2 rounded bg-gray-100"
-                  >
-                    Edit
-                  </button>
                 </>
               ) : (
                 // Edit/Create mode buttons
@@ -742,8 +742,20 @@ export default function InventorySuppliers() {
                     onClick={() => {
                       if (editing) {
                         // If editing, go back to view mode
+                        setViewing(editing);
                         setEditing(null);
-                        resetForm();
+                        // Reset form fields but keep viewing
+                        setName('');
+                        setLegalName('');
+                        setEmail('');
+                        setPhone('');
+                        setWebsite('');
+                        setAddressLine1('');
+                        setAddressLine2('');
+                        setCity('');
+                        setProvince('');
+                        setPostalCode('');
+                        setCountry('');
                       } else {
                         // If creating new, close modal
                         setOpen(false);
