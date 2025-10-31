@@ -324,50 +324,130 @@ export default function InventoryProducts(){
 
       {open && (
         <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center">
-          <div className="w-[700px] max-w-[95vw] bg-white rounded-xl overflow-hidden flex flex-col">
-            <div className="px-4 py-3 border-b flex items-center justify-between bg-gray-50">
-              <div className="font-semibold">{editing? 'Edit Product' : viewing? 'Product Details' : 'New Product'}</div>
-              <button onClick={resetModal} className="px-3 py-1 rounded bg-gray-100">Close</button>
-            </div>
-            <div className="p-4 grid grid-cols-2 gap-3 max-h-[85vh] overflow-y-auto">
+          <div className="w-[900px] max-w-[95vw] max-h-[90vh] bg-white rounded-xl overflow-hidden flex flex-col">
+            <div className="overflow-y-auto">
               {viewing && !editing ? (
-                // View mode - display product details (read-only)
-                <>
-                  <div className="col-span-2"><label className="text-xs font-semibold text-gray-700">Name</label><div className="mt-1 text-gray-900">{viewing.name}</div></div>
-                  <div><label className="text-xs font-semibold text-gray-700">Supplier</label><div className="mt-1 text-gray-600">{viewing.supplier_name||'-'}</div></div>
-                  <div><label className="text-xs font-semibold text-gray-700">Category</label><div className="mt-1 text-gray-600">{viewing.category||'-'}</div></div>
-                  <div><label className="text-xs font-semibold text-gray-700">Sell Unit</label><div className="mt-1 text-gray-600">{viewing.unit||'-'}</div></div>
-                  <div><label className="text-xs font-semibold text-gray-700">Price</label><div className="mt-1 text-gray-600">{typeof viewing.price==='number'? `$${viewing.price.toFixed(2)}`: '-'}</div></div>
-                  <div className="col-span-2"><label className="text-xs font-semibold text-gray-700">Unit Type</label><div className="mt-1 text-gray-600">{viewing.unit_type||'-'}</div></div>
-                  {viewing.units_per_package && <div className="col-span-2"><label className="text-xs font-semibold text-gray-700">Units per Package</label><div className="mt-1 text-gray-600">{viewing.units_per_package}</div></div>}
-                  {(viewing.coverage_sqs || viewing.coverage_ft2 || viewing.coverage_m2) && (
-                    <div className="col-span-2"><label className="text-xs font-semibold text-gray-700">Coverage Area</label>
-                      <div className="grid grid-cols-3 gap-2 mt-1">
-                        <div><div className="text-gray-600">SQS: {viewing.coverage_sqs||'-'}</div></div>
-                        <div><div className="text-gray-600">ft²: {viewing.coverage_ft2||'-'}</div></div>
-                        <div><div className="text-gray-600">m²: {viewing.coverage_m2||'-'}</div></div>
+                // View mode - display product details
+                <div className="space-y-6">
+                  {/* Product Header */}
+                  <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] p-6 flex items-center gap-6 relative">
+                    <button
+                      onClick={resetModal}
+                      className="absolute top-4 right-4 text-white/80 hover:text-white text-2xl font-bold w-8 h-8 flex items-center justify-center rounded hover:bg-white/10"
+                      title="Close"
+                    >
+                      ×
+                    </button>
+                    <div className="w-24 h-24 rounded-xl border-4 border-white shadow-lg overflow-hidden bg-white flex items-center justify-center">
+                      <img 
+                        src={viewing.image_base64 || '/ui/assets/login/logo-light.svg'} 
+                        className="w-full h-full object-cover" 
+                        alt={viewing.name}
+                      />
+                    </div>
+                    <div className="flex-1">
+                      <h2 className="text-3xl font-extrabold text-white">{viewing.name}</h2>
+                      <div className="flex items-center gap-4 mt-3 text-sm">
+                        {viewing.supplier_name && (
+                          <div className="flex items-center gap-2">
+                            <span className="text-white/80">🏢</span>
+                            <span className="text-white">{viewing.supplier_name}</span>
+                          </div>
+                        )}
+                        {viewing.category && (
+                          <div className="flex items-center gap-2">
+                            <span className="text-white/80">📦</span>
+                            <span className="text-white">{viewing.category}</span>
+                          </div>
+                        )}
                       </div>
                     </div>
-                  )}
-                  <div className="col-span-2"><label className="text-xs font-semibold text-gray-700">Description</label><div className="mt-1 text-gray-600 whitespace-pre-wrap">{viewing.description||'-'}</div></div>
-                  {viewing.image_base64 && <div className="col-span-2"><label className="text-xs font-semibold text-gray-700">Product Image</label><img src={viewing.image_base64} className="mt-2 w-48 border rounded" alt="Product" /></div>}
-                </>
+                  </div>
+
+                  {/* Product Details */}
+                  <div className="px-6 pb-6 space-y-4">
+                    <div className="grid grid-cols-2 gap-4">
+                      {viewing.unit && (
+                        <div className="bg-white border rounded-lg p-4">
+                          <div className="text-xs font-semibold text-gray-600 mb-1">Sell Unit</div>
+                          <div className="text-gray-900">{viewing.unit}</div>
+                        </div>
+                      )}
+                      {viewing.unit_type && (
+                        <div className="bg-white border rounded-lg p-4">
+                          <div className="text-xs font-semibold text-gray-600 mb-1">Unit Type</div>
+                          <div className="text-gray-900">{viewing.unit_type}</div>
+                        </div>
+                      )}
+                      {typeof viewing.price === 'number' && (
+                        <div className="bg-white border rounded-lg p-4">
+                          <div className="text-xs font-semibold text-gray-600 mb-1">Price</div>
+                          <div className="text-gray-900 font-semibold text-lg">${viewing.price.toFixed(2)}</div>
+                        </div>
+                      )}
+                    </div>
+                    {viewing.units_per_package && (
+                      <div className="bg-white border rounded-lg p-4">
+                        <div className="text-xs font-semibold text-gray-600 mb-1">Units per Package</div>
+                        <div className="text-gray-900">{viewing.units_per_package}</div>
+                      </div>
+                    )}
+                    {(viewing.coverage_sqs || viewing.coverage_ft2 || viewing.coverage_m2) && (
+                      <div className="bg-white border rounded-lg p-4">
+                        <div className="text-sm font-semibold text-gray-900 mb-3">📍 Coverage Area</div>
+                        <div className="grid grid-cols-3 gap-2">
+                          <div className="text-gray-700">SQS: {viewing.coverage_sqs||'-'}</div>
+                          <div className="text-gray-700">ft²: {viewing.coverage_ft2||'-'}</div>
+                          <div className="text-gray-700">m²: {viewing.coverage_m2||'-'}</div>
+                        </div>
+                      </div>
+                    )}
+                    {viewing.description && (
+                      <div className="bg-white border rounded-lg p-4">
+                        <div className="text-sm font-semibold text-gray-900 mb-2">Description</div>
+                        <div className="text-gray-700 whitespace-pre-wrap">{viewing.description}</div>
+                      </div>
+                    )}
+                  </div>
+                </div>
               ) : (
                 // Edit/Create mode - form inputs
-                <>
-              <div className="col-span-2"><label className="text-xs text-gray-600">Name</label><input className="w-full border rounded px-3 py-2" value={name} onChange={e=>setName(e.target.value)} /></div>
+                <div className="space-y-6">
+                  {/* Edit Header */}
+                  <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] p-6">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h2 className="text-2xl font-extrabold text-white">
+                          {editing ? 'Edit Product' : 'New Product'}
+                        </h2>
+                        {editing && (
+                          <p className="text-sm text-white/80 mt-1">
+                            Update product information
+                          </p>
+                        )}
+                        {!editing && (
+                          <p className="text-sm text-white/80 mt-1">
+                            Add a new product to your inventory
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div className="p-6 grid grid-cols-2 gap-4">
+              <div className="col-span-2"><label className="text-xs font-semibold text-gray-700">Name *</label><input className="w-full border rounded px-3 py-2 mt-1" value={name} onChange={e=>setName(e.target.value)} /></div>
               <div>
-                <label className="text-xs text-gray-600">Supplier</label>
-                <input list="supplier-list" className="w-full border rounded px-3 py-2" value={newSupplier} onChange={e=>setNewSupplier(e.target.value)} />
+                <label className="text-xs font-semibold text-gray-700">Supplier</label>
+                <input list="supplier-list" className="w-full border rounded px-3 py-2 mt-1" value={newSupplier} onChange={e=>setNewSupplier(e.target.value)} />
                 <datalist id="supplier-list">
                   {Array.isArray(supplierOptions) && supplierOptions.map((s:any)=> (<option key={s.id} value={s.name}></option>))}
                 </datalist>
               </div>
-              <div><label className="text-xs text-gray-600">Category</label><input className="w-full border rounded px-3 py-2" value={newCategory} onChange={e=>setNewCategory(e.target.value)} /></div>
-              <div><label className="text-xs text-gray-600">Sell Unit</label><input className="w-full border rounded px-3 py-2" placeholder="e.g., Roll, Pail (20L), Box" value={unit} onChange={e=>setUnit(e.target.value)} /></div>
-              <div><label className="text-xs text-gray-600">Price ($)</label><input type="number" step="0.01" className="w-full border rounded px-3 py-2" value={price} onChange={e=>setPrice(e.target.value)} /></div>
+              <div><label className="text-xs font-semibold text-gray-700">Category</label><input className="w-full border rounded px-3 py-2 mt-1" value={newCategory} onChange={e=>setNewCategory(e.target.value)} /></div>
+              <div><label className="text-xs font-semibold text-gray-700">Sell Unit</label><input className="w-full border rounded px-3 py-2 mt-1" placeholder="e.g., Roll, Pail (20L), Box" value={unit} onChange={e=>setUnit(e.target.value)} /></div>
+              <div><label className="text-xs font-semibold text-gray-700">Price ($)</label><input type="number" step="0.01" className="w-full border rounded px-3 py-2 mt-1" value={price} onChange={e=>setPrice(e.target.value)} /></div>
               <div className="col-span-2">
-                <label className="text-xs text-gray-600">Unit Type</label>
+                <label className="text-xs font-semibold text-gray-700">Unit Type</label>
                 <div className="flex items-center gap-6 mt-1">
                   <label className="flex items-center gap-2 text-sm"><input type="radio" name="unit-type" checked={unitType==='unitary'} onChange={()=>{ setUnitType('unitary'); setUnitsPerPackage(''); setCovSqs(''); setCovFt2(''); setCovM2(''); }} /> Unitary</label>
                   <label className="flex items-center gap-2 text-sm"><input type="radio" name="unit-type" checked={unitType==='multiple'} onChange={()=>{ setUnitType('multiple'); setCovSqs(''); setCovFt2(''); setCovM2(''); }} /> Multiple</label>
@@ -376,13 +456,13 @@ export default function InventoryProducts(){
               </div>
               {unitType==='multiple' && (
                 <div className="col-span-2">
-                  <label className="text-xs text-gray-600">Units per Package</label>
-                  <input type="number" step="0.01" className="w-full border rounded px-3 py-2" value={unitsPerPackage} onChange={e=>setUnitsPerPackage(e.target.value)} />
+                  <label className="text-xs font-semibold text-gray-700">Units per Package</label>
+                  <input type="number" step="0.01" className="w-full border rounded px-3 py-2 mt-1" value={unitsPerPackage} onChange={e=>setUnitsPerPackage(e.target.value)} />
                 </div>
               )}
               {unitType==='coverage' && (
                 <div className="col-span-2">
-                  <label className="text-xs text-gray-600">Coverage Area</label>
+                  <label className="text-xs font-semibold text-gray-700">Coverage Area</label>
                   <div className="grid grid-cols-3 gap-2 mt-1">
                     <div><input className="w-full border rounded px-3 py-2" placeholder="SQS" value={covSqs} onChange={e=> onCoverageChange('sqs', e.target.value)} /></div>
                     <div><input className="w-full border rounded px-3 py-2" placeholder="ft²" value={covFt2} onChange={e=> onCoverageChange('ft2', e.target.value)} /></div>
@@ -390,28 +470,37 @@ export default function InventoryProducts(){
                   </div>
                 </div>
               )}
-              <div className="col-span-2"><label className="text-xs text-gray-600">Description / Notes</label><textarea className="w-full border rounded px-3 py-2" rows={3} value={desc} onChange={e=>setDesc(e.target.value)} /></div>
+              <div className="col-span-2"><label className="text-xs font-semibold text-gray-700">Description / Notes</label><textarea className="w-full border rounded px-3 py-2 mt-1" rows={3} value={desc} onChange={e=>setDesc(e.target.value)} /></div>
               <div className="col-span-2">
-                <label className="text-xs text-gray-600">Product Image</label>
+                <label className="text-xs font-semibold text-gray-700">Product Image</label>
                 <input type="file" accept="image/*" onChange={e=> onFileChange(e.target.files?.[0]||null)} />
                 {imageDataUrl && <img src={imageDataUrl} className="mt-2 w-32 border rounded" alt="Preview" />}
               </div>
-                </>
+                  </div>
+                </div>
               )}
             </div>
             <div className="px-4 py-3 border-t bg-gray-50 flex justify-end gap-2">
               {viewing && !editing ? (
                 // View mode buttons
                 <>
+                  <button onClick={()=> handleAddRelated(viewing.id)} className="px-4 py-2 rounded bg-black text-white">Add Related</button>
+                  <button onClick={openEditModal} className="px-4 py-2 rounded bg-gray-100">Edit</button>
                   <button onClick={()=> handleDelete(viewing.id)} className="px-4 py-2 rounded bg-red-600 text-white hover:bg-red-700">Delete</button>
-                  <button onClick={()=> handleAddRelated(viewing.id)} className="px-4 py-2 rounded bg-brand-red text-white">Add Related</button>
-                  <button onClick={openEditModal} className="px-4 py-2 rounded bg-blue-600 text-white hover:bg-blue-700">Edit</button>
-                  <button onClick={resetModal} className="px-4 py-2 rounded bg-gray-200 hover:bg-gray-300">Close</button>
                 </>
               ) : (
                 // Edit/Create mode buttons
                 <>
-                  <button onClick={resetModal} className="px-4 py-2 rounded bg-gray-200 hover:bg-gray-300">Cancel</button>
+                  <button onClick={()=>{
+                    if(editing){
+                      setViewing(editing);
+                      setEditing(null);
+                      setName(''); setNewSupplier(''); setNewCategory(''); setUnit(''); setPrice(''); setDesc('');
+                      setUnitsPerPackage(''); setCovSqs(''); setCovFt2(''); setCovM2(''); setUnitType('unitary'); setImageDataUrl('');
+                    }else{
+                      resetModal();
+                    }
+                  }} className="px-4 py-2 rounded bg-gray-200 hover:bg-gray-300">Cancel</button>
                   <button onClick={async()=>{
                     if(!name.trim()){ toast.error('Name required'); return; }
                     try{

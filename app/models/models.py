@@ -659,6 +659,7 @@ class SupplierContact(Base):
     phone: Mapped[Optional[str]] = mapped_column(String(100))
     title: Mapped[Optional[str]] = mapped_column(String(100))
     notes: Mapped[Optional[str]] = mapped_column(String(1000))
+    image_base64: Mapped[Optional[str]] = mapped_column(String)
 
     supplier = relationship("Supplier", back_populates="contacts")
 
