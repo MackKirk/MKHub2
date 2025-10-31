@@ -28,6 +28,7 @@ export default function ImagePicker({
   const [img, setImg] = useState<HTMLImageElement|null>(null);
   const [originalFileObjectId, setOriginalFileObjectId] = useState<string|undefined>(undefined);
   const inputRef = useRef<HTMLInputElement>(null);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
 
   // crop state
   const containerRef = useRef<HTMLDivElement>(null);
@@ -80,6 +81,7 @@ export default function ImagePicker({
     const isHeic = lower.endsWith('.heic') || lower.endsWith('.heif') || String(file.type||'').includes('heic') || String(file.type||'').includes('heif');
     if (isHeic){
       try{
+        setIsLoading(true);
         if (!clientId){ toast.error('HEIC requires a client context'); return; }
         const uniqueName = `heic_${Date.now()}_${Math.random().toString(36).slice(2)}.heic`;
         const up:any = await api('POST','/files/upload',{ project_id: null, client_id: clientId||null, employee_id: null, category_id:'proposal-upload', original_name: uniqueName, content_type: file.type||'image/heic' });
@@ -87,28 +89,30 @@ export default function ImagePicker({
         const conf:any = await api('POST','/files/confirm',{ key: up.key, size_bytes: file.size, checksum_sha256:'na', content_type:file.type||'image/heic' });
         const fileObjectId = conf.id;
         const image = new Image();
-        image.onload = ()=>{ setImg(image); setZoom(1); setTx(0); setTy(0); setOriginalFileObjectId(fileObjectId); };
-        image.onerror = ()=>{ toast.error('Failed to load image'); };
+        image.onload = ()=>{ setImg(image); setZoom(1); setTx(0); setTy(0); setOriginalFileObjectId(fileObjectId); setIsLoading(false); };
+        image.onerror = ()=>{ toast.error('Failed to load image'); setIsLoading(false); };
         image.crossOrigin = 'anonymous';
-        image.src = `/files/${fileObjectId}/thumbnail?w=1200`;
+        image.src = `/files/${fileObjectId}/thumbnail?w=1200&cb=${Date.now()}`;
         return;
-      }catch(_e){ toast.error('HEIC upload failed'); return; }
+      }catch(_e){ toast.error('HEIC upload failed'); setIsLoading(false); return; }
     }
     const url = URL.createObjectURL(file);
     const image = new Image();
-    image.onload = ()=>{ setImg(image); setZoom(1); setTx(0); setTy(0); setOriginalFileObjectId(undefined); };
-    image.onerror = ()=>{ toast.error('Failed to load image'); };
+    setIsLoading(true);
+    image.onload = ()=>{ setImg(image); setZoom(1); setTx(0); setTy(0); setOriginalFileObjectId(undefined); setIsLoading(false); };
+    image.onerror = ()=>{ toast.error('Failed to load image'); setIsLoading(false); };
     image.src = url;
   };
 
   const loadFromFileObject = async (fileObjectId:string)=>{
     try{
       const image = new Image();
-      image.onload = ()=>{ setImg(image); setZoom(1); setTx(0); setTy(0); setOriginalFileObjectId(fileObjectId); };
-      image.onerror = ()=>{ toast.error('Failed to load image'); };
+      setIsLoading(true);
+      image.onload = ()=>{ setImg(image); setZoom(1); setTx(0); setTy(0); setOriginalFileObjectId(fileObjectId); setIsLoading(false); };
+      image.onerror = ()=>{ toast.error('Failed to load image'); setIsLoading(false); };
       image.crossOrigin = 'anonymous';
       // Use thumbnail endpoint to ensure browser-compatible PNG (works for HEIC too)
-      image.src = `/files/${fileObjectId}/thumbnail?w=1200`;
+      image.src = `/files/${fileObjectId}/thumbnail?w=1200&cb=${Date.now()}`;
     }catch(e){ toast.error('Failed to open image'); }
   };
 
@@ -180,7 +184,7 @@ export default function ImagePicker({
             )}
             <div className="p-3 border-t">
               <div className="mb-2 text-sm font-semibold">Upload</div>
-              <input ref={inputRef} type="file" accept="image/*" onChange={(e)=>{ const f=e.target.files?.[0]; if(f) loadFromFile(f); }} />
+              <input ref={inputRef} type="file" accept="image/*,.heic,.heif,image/heic,image/heif" onChange={(e)=>{ const f=e.target.files?.[0]; if(f) loadFromFile(f); }} />
             </div>
           </div>
           <div className="col-span-2">
@@ -190,7 +194,7 @@ export default function ImagePicker({
                 {img && (
                   <img src={img.src} draggable={false} onDragStart={(e)=>e.preventDefault()} style={{ position:'absolute', left: tx, top: ty, width: img.naturalWidth*coverScale*zoom, height: img.naturalHeight*coverScale*zoom, maxWidth:'none', maxHeight:'none', userSelect:'none' }} />
                 )}
-                {!img && <div className="w-full h-full grid place-items-center text-sm text-gray-500">Select or upload an image</div>}
+                {!img && <div className="w-full h-full grid place-items-center text-sm text-gray-500">{isLoading? 'Loading image…' : 'Select or upload an image'}</div>}
                 <div className="absolute inset-0 ring-2 ring-black/70 pointer-events-none" />
               </div>
               <div className="mt-3 flex items-center gap-3">
@@ -198,7 +202,7 @@ export default function ImagePicker({
                 <input type="range" min={1} max={6} step={0.01} disabled={!img || !allowEdit} value={zoom} onChange={(e)=>{ const nz = Math.min(6, Math.max(1, parseFloat(e.target.value||'1'))); const { x, y } = clamp(tx, ty, nz); setZoom(nz); setTx(x); setTy(y); }} />
                 <button disabled={!img || !allowEdit} onClick={()=>{ const { x, y } = clamp(0,0,1); setZoom(1); setTx(x); setTy(y); }} className="px-3 py-1.5 rounded bg-gray-100 disabled:opacity-50">Reset</button>
                 <div className="ml-auto" />
-                <button disabled={!img} onClick={confirm} className="px-4 py-2 rounded bg-brand-red text-white disabled:opacity-50">Confirm</button>
+                <button disabled={!img || isLoading} onClick={confirm} className="px-4 py-2 rounded bg-brand-red text-white disabled:opacity-50">Confirm</button>
               </div>
             </div>
           </div>
