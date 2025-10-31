@@ -134,7 +134,7 @@ export default function EstimateBuilder({ projectId }:{ projectId:string }){
                           <>
                             <td className="p-2">{it.name}</td>
                             <td className="p-2">
-                              <input type="number" className="w-full border rounded px-2 py-1" 
+                              <input type="number" className="w-20 border rounded px-2 py-1" 
                                 value={it.qty_required||1} min={0} step={1}
                                 onChange={e=>{
                                   const newValue = Number(e.target.value);
@@ -144,7 +144,7 @@ export default function EstimateBuilder({ projectId }:{ projectId:string }){
                                 }} />
                             </td>
                             <td className="p-2">
-                              <select className="w-full border rounded px-2 py-1"
+                              <select className="w-20 border rounded px-2 py-1"
                                 value={it.unit_required||''}
                                 onChange={e=>{
                                   const newValue = e.target.value;
@@ -166,7 +166,7 @@ export default function EstimateBuilder({ projectId }:{ projectId:string }){
                             </td>
                             <td className="p-2">${it.unit_price.toFixed(2)}</td>
                             <td className="p-2">
-                              <input type="number" className="w-full border rounded px-2 py-1" 
+                              <input type="number" className="w-20 border rounded px-2 py-1" 
                                 value={it.quantity} min={0} step={1}
                                 onChange={e=>setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, quantity: Number(e.target.value)} : item))} />
                             </td>
@@ -198,7 +198,7 @@ export default function EstimateBuilder({ projectId }:{ projectId:string }){
                                 ) : (
                                   <div className="flex items-center gap-2">
                                     <input type="number" className="w-16 border rounded px-2 py-1" value={it.labour_journey} min={0} step={0.5} onChange={e=>setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, labour_journey: Number(e.target.value)} : item))} />
-                                    <span>{it.unit}</span>
+                                    <span>{it.unit?.endsWith('s') ? it.unit.slice(0, -1) : it.unit}</span>
                                     <span>×</span>
                                     <input type="number" className="w-14 border rounded px-2 py-1" value={it.labour_men} min={0} step={1} onChange={e=>{
                                       const newMen = Number(e.target.value);
@@ -222,7 +222,7 @@ export default function EstimateBuilder({ projectId }:{ projectId:string }){
                                 <input type="number" className="w-20 border rounded px-2 py-1" 
                                   value={it.unit_price} min={0} step={0.01}
                                   onChange={e=>setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, unit_price: Number(e.target.value)} : item))} />
-                                <span>{it.unit ? `per ${it.unit}` : ''}</span>
+                                <span>{it.unit ? `per ${it.unit?.endsWith('s') ? it.unit.slice(0, -1) : it.unit}` : ''}</span>
                               </div>
                             </td>
                             <td className="p-2">${totalValue.toFixed(2)}</td>
