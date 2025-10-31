@@ -96,15 +96,46 @@ export default function EstimateBuilder({ projectId }:{ projectId:string }){
                         <td className="p-2">{it.name}</td>
                         {!isLabourSection ? (
                           <>
-                            <td className="p-2 text-right">{it.qty_required||1}</td>
-                            <td className="p-2 text-right">{it.unit_required||''}</td>
+                            <td className="p-2 text-right">
+                              <input type="number" className="w-full text-right border rounded px-2 py-1" 
+                                value={it.qty_required||1} min={0} step={1}
+                                onChange={e=>setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, qty_required: Number(e.target.value)} : item))} />
+                            </td>
+                            <td className="p-2 text-right">
+                              <select className="w-full text-right border rounded px-2 py-1"
+                                value={it.unit_required||''}
+                                onChange={e=>setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, unit_required: e.target.value} : item))}>
+                                <option value="">—</option>
+                                {it.unit_type === 'coverage' && (
+                                  <>
+                                    <option value="SQS">SQS</option>
+                                    <option value="ft²">ft²</option>
+                                    <option value="m²">m²</option>
+                                  </>
+                                )}
+                                {it.unit_type === 'multiple' && <option value="package">package</option>}
+                                {it.unit_type === 'unitary' && <option value="Each">Each</option>}
+                              </select>
+                            </td>
                             <td className="p-2 text-right">${it.unit_price.toFixed(2)}</td>
-                            <td className="p-2 text-right">{it.quantity}</td>
+                            <td className="p-2 text-right">
+                              <input type="number" className="w-full text-right border rounded px-2 py-1" 
+                                value={it.quantity} min={0} step={1}
+                                onChange={e=>setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, quantity: Number(e.target.value)} : item))} />
+                            </td>
                             <td className="p-2 text-right">{it.unit||''}</td>
                             <td className="p-2 text-right">${totalValue.toFixed(2)}</td>
-                            <td className="p-2 text-right">{itemMarkup}%</td>
+                            <td className="p-2 text-right">
+                              <input type="number" className="w-16 text-right border rounded px-2 py-1" 
+                                value={itemMarkup} min={0} step={0.1}
+                                onChange={e=>setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, markup: Number(e.target.value)} : item))} />
+                            </td>
                             <td className="p-2 text-right">${totalWithMarkup.toFixed(2)}</td>
-                            <td className="p-2 text-center"><input type="checkbox" checked={it.taxable!==false} readOnly className="cursor-pointer" /></td>
+                            <td className="p-2 text-center">
+                              <input type="checkbox" checked={it.taxable!==false} 
+                                onChange={e=>setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, taxable: e.target.checked} : item))} 
+                                className="cursor-pointer" />
+                            </td>
                             <td className="p-2">{it.supplier_name||''}</td>
                           </>
                         ) : (
@@ -112,9 +143,17 @@ export default function EstimateBuilder({ projectId }:{ projectId:string }){
                             <td className="p-2">{it.description||it.name}</td>
                             <td className="p-2 text-right">${it.unit_price.toFixed(2)}</td>
                             <td className="p-2 text-right">${totalValue.toFixed(2)}</td>
-                            <td className="p-2 text-right">{itemMarkup}%</td>
+                            <td className="p-2 text-right">
+                              <input type="number" className="w-16 text-right border rounded px-2 py-1" 
+                                value={itemMarkup} min={0} step={0.1}
+                                onChange={e=>setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, markup: Number(e.target.value)} : item))} />
+                            </td>
                             <td className="p-2 text-right">${totalWithMarkup.toFixed(2)}</td>
-                            <td className="p-2 text-center"><input type="checkbox" checked={it.taxable!==false} readOnly className="cursor-pointer" /></td>
+                            <td className="p-2 text-center">
+                              <input type="checkbox" checked={it.taxable!==false} 
+                                onChange={e=>setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, taxable: e.target.checked} : item))} 
+                                className="cursor-pointer" />
+                            </td>
                           </>
                         )}
                         <td className="p-2"><button onClick={()=> setItems(prev=> prev.filter((_,i)=> i!==originalIdx))} className="px-2 py-1 rounded bg-gray-100 hover:bg-gray-200">Remove</button></td>
@@ -180,14 +219,6 @@ function AddProductModal({ onAdd }:{ onAdd:(it: Item)=>void }){
   }});
   const list = data||[];
 
-  // Demand input fields
-  const [demandType, setDemandType] = useState<'quantity'|'sqs'|'ft2'|'m2'>('quantity');
-  const [demandValue, setDemandValue] = useState<string>('1');
-
-  // Coverage conversion constants
-  const SQS_TO_FT2 = 100;
-  const FT2_TO_M2 = 0.09290304;
-
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
@@ -195,39 +226,9 @@ function AddProductModal({ onAdd }:{ onAdd:(it: Item)=>void }){
     return () => window.removeEventListener('keydown', onKey);
   }, [open]);
 
-  // Calculate quantity based on demand and product properties
-  const calculatedQuantity = useMemo(() => {
-    if (!selection || !demandValue) return 1;
-    const demand = Number(demandValue);
-    if (isNaN(demand) || demand <= 0) return 1;
-
-    // If unit type is coverage, calculate based on coverage area
-    if (selection.unit_type === 'coverage') {
-      if (demandType === 'sqs' && selection.coverage_sqs) {
-        return Math.ceil(demand / selection.coverage_sqs);
-      } else if (demandType === 'ft2' && selection.coverage_ft2) {
-        return Math.ceil(demand / selection.coverage_ft2);
-      } else if (demandType === 'm2' && selection.coverage_m2) {
-        return Math.ceil(demand / selection.coverage_m2);
-      }
-    }
-    
-    // If unit type is multiple, calculate packages needed
-    if (selection.unit_type === 'multiple' && selection.units_per_package) {
-      if (demandType === 'quantity') {
-        return Math.ceil(demand / selection.units_per_package);
-      }
-    }
-
-    // For unitary or if no special calculation needed
-    return demandType === 'quantity' ? demand : 1;
-  }, [selection, demandType, demandValue]);
-
   const resetForm = () => {
     setQ('');
     setSelection(null);
-    setDemandType('quantity');
-    setDemandValue('1');
   };
 
   return (
@@ -273,45 +274,11 @@ function AddProductModal({ onAdd }:{ onAdd:(it: Item)=>void }){
                 </div>
               )}
               {selection && (
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="text-xs text-gray-600">Section:</label>
-                    <select className="w-full border rounded px-3 py-2" value={section} onChange={e=>setSection(e.target.value)}>
-                      {['Roof System','Wood Blocking / Accessories','Flashing','Miscellaneous'].map(s=> <option key={s} value={s}>{s}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="text-xs text-gray-600">Demand Type:</label>
-                    <select className="w-full border rounded px-3 py-2" value={demandType} onChange={e=>setDemandType(e.target.value as any)}>
-                      <option value="quantity">Quantity</option>
-                      {selection.unit_type === 'coverage' && (
-                        <>
-                          <option value="sqs">Area (SQS)</option>
-                          <option value="ft2">Area (ft²)</option>
-                          <option value="m2">Area (m²)</option>
-                        </>
-                      )}
-                    </select>
-                  </div>
-                  <div className="col-span-2">
-                    <label className="text-xs text-gray-600">Demand:</label>
-                    <input 
-                      type="number" 
-                      className="w-full border rounded px-3 py-2" 
-                      value={demandValue} 
-                      onChange={e=>setDemandValue(e.target.value)} 
-                      step={demandType === 'quantity' ? '1' : '0.01'}
-                      placeholder={demandType === 'quantity' ? 'Enter quantity' : `Enter area in ${demandType.toUpperCase()}`}
-                    />
-                  </div>
-                  {(calculatedQuantity !== 1 || demandType !== 'quantity') && (
-                    <div className="col-span-2 bg-blue-50 border border-blue-200 rounded p-3">
-                      <div className="text-xs font-semibold text-blue-900 mb-1">Calculated Quantity:</div>
-                      <div className="text-sm text-blue-800">
-                        {calculatedQuantity} × {selection.unit||'units'} = ${(calculatedQuantity * Number(selection.price||0)).toFixed(2)}
-                      </div>
-                    </div>
-                  )}
+                <div>
+                  <label className="text-xs text-gray-600">Section:</label>
+                  <select className="w-full border rounded px-3 py-2" value={section} onChange={e=>setSection(e.target.value)}>
+                    {['Roof System','Wood Blocking / Accessories','Flashing','Miscellaneous'].map(s=> <option key={s} value={s}>{s}</option>)}
+                  </select>
                 </div>
               )}
               <div className="text-right">
@@ -321,14 +288,12 @@ function AddProductModal({ onAdd }:{ onAdd:(it: Item)=>void }){
                     material_id: selection.id, 
                     name: selection.name, 
                     unit: selection.unit, 
-                    quantity: calculatedQuantity, 
+                    quantity: 1, 
                     unit_price: Number(selection.price||0), 
                     section, 
                     item_type: 'product',
                     supplier_name: selection.supplier_name,
                     unit_type: selection.unit_type,
-                    qty_required: Number(demandValue),
-                    unit_required: demandType === 'quantity' ? 'Each' : demandType === 'sqs' ? 'SQS' : demandType === 'ft2' ? 'ft²' : 'm²',
                     taxable: true
                   });
                   setOpen(false);
