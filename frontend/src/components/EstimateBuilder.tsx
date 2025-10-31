@@ -4,7 +4,7 @@ import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
 
 type Material = { id:number, name:string, supplier_name?:string, unit?:string, price?:number, unit_type?:string, units_per_package?:number, coverage_sqs?:number, coverage_ft2?:number, coverage_m2?:number };
-type Item = { material_id?:number, name:string, unit?:string, quantity:number, unit_price:number, section:string, description?:string, item_type?:string, supplier_name?:string, unit_type?:string, qty_required?:number, unit_required?:string, markup?:number, taxable?:boolean };
+type Item = { material_id?:number, name:string, unit?:string, quantity:number, unit_price:number, section:string, description?:string, item_type?:string, supplier_name?:string, unit_type?:string, qty_required?:number, unit_required?:string, markup?:number, taxable?:boolean, units_per_package?:number, coverage_sqs?:number, coverage_ft2?:number, coverage_m2?:number };
 
 export default function EstimateBuilder({ projectId }:{ projectId:string }){
   const [items, setItems] = useState<Item[]>([]);
@@ -19,6 +19,28 @@ export default function EstimateBuilder({ projectId }:{ projectId:string }){
   const markupValue = useMemo(()=> subtotal * (markup/100), [subtotal, markup]);
   const finalTotal = useMemo(()=> subtotal + markupValue, [subtotal, markupValue]);
   const grandTotal = useMemo(()=> finalTotal * (1 + (gstRate/100)), [finalTotal, gstRate]);
+
+  // Calculate quantity based on qty_required and unit_type
+  const calculateQuantity = (item: Item): number => {
+    if (!item.qty_required || item.qty_required <= 0) return item.quantity || 1;
+    const qty = Number(item.qty_required);
+    
+    if (item.unit_type === 'coverage') {
+      if (item.unit_required === 'SQS' && item.coverage_sqs && item.coverage_sqs > 0) {
+        return Math.ceil(qty / item.coverage_sqs);
+      } else if (item.unit_required === 'ft²' && item.coverage_ft2 && item.coverage_ft2 > 0) {
+        return Math.ceil(qty / item.coverage_ft2);
+      } else if (item.unit_required === 'm²' && item.coverage_m2 && item.coverage_m2 > 0) {
+        return Math.ceil(qty / item.coverage_m2);
+      }
+    } else if (item.unit_type === 'multiple' && item.units_per_package && item.units_per_package > 0) {
+      return Math.ceil(qty / item.units_per_package);
+    } else if (item.unit_type === 'unitary') {
+      return Math.ceil(qty);
+    }
+    
+    return item.quantity || 1;
+  };
 
   // Group items by section
   const groupedItems = useMemo(()=>{
@@ -61,10 +83,10 @@ export default function EstimateBuilder({ projectId }:{ projectId:string }){
                     <>
                       <th className="p-2 text-left">Product / Item</th>
                       <th className="p-2 text-right">Qty Required</th>
-                      <th className="p-2 text-right">Unit</th>
+                      <th className="p-2 text-right">Demand Unit</th>
                       <th className="p-2 text-right">Unit Price</th>
                       <th className="p-2 text-right">Quantity</th>
-                      <th className="p-2 text-right">Unit</th>
+                      <th className="p-2 text-right">Sell Unit</th>
                       <th className="p-2 text-right">Total</th>
                       <th className="p-2 text-right">Mkp%</th>
                       <th className="p-2 text-right">Total (with Mkp)</th>
@@ -99,12 +121,22 @@ export default function EstimateBuilder({ projectId }:{ projectId:string }){
                             <td className="p-2 text-right">
                               <input type="number" className="w-full text-right border rounded px-2 py-1" 
                                 value={it.qty_required||1} min={0} step={1}
-                                onChange={e=>setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, qty_required: Number(e.target.value)} : item))} />
+                                onChange={e=>{
+                                  const newValue = Number(e.target.value);
+                                  const newItem = {...it, qty_required: newValue};
+                                  const calculatedQty = calculateQuantity(newItem);
+                                  setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...newItem, quantity: calculatedQty} : item));
+                                }} />
                             </td>
                             <td className="p-2 text-right">
                               <select className="w-full text-right border rounded px-2 py-1"
                                 value={it.unit_required||''}
-                                onChange={e=>setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, unit_required: e.target.value} : item))}>
+                                onChange={e=>{
+                                  const newValue = e.target.value;
+                                  const newItem = {...it, unit_required: newValue};
+                                  const calculatedQty = calculateQuantity(newItem);
+                                  setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...newItem, quantity: calculatedQty} : item));
+                                }}>
                                 <option value="">—</option>
                                 {it.unit_type === 'coverage' && (
                                   <>
@@ -284,6 +316,7 @@ function AddProductModal({ onAdd }:{ onAdd:(it: Item)=>void }){
               <div className="text-right">
                 <button onClick={()=>{
                   if(!selection){ toast.error('Select a product first'); return; }
+                  const defaultUnitRequired = selection.unit_type === 'coverage' ? 'SQS' : selection.unit_type === 'multiple' ? 'package' : 'Each';
                   onAdd({ 
                     material_id: selection.id, 
                     name: selection.name, 
@@ -294,6 +327,12 @@ function AddProductModal({ onAdd }:{ onAdd:(it: Item)=>void }){
                     item_type: 'product',
                     supplier_name: selection.supplier_name,
                     unit_type: selection.unit_type,
+                    units_per_package: selection.units_per_package,
+                    coverage_sqs: selection.coverage_sqs,
+                    coverage_ft2: selection.coverage_ft2,
+                    coverage_m2: selection.coverage_m2,
+                    qty_required: 1,
+                    unit_required: defaultUnitRequired,
                     taxable: true
                   });
                   setOpen(false);
