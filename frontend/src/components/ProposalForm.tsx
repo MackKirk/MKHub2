@@ -427,7 +427,7 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
                     <div className="mb-2"><button className="px-3 py-1.5 rounded bg-gray-100" onClick={()=> setSectionPicker({ secId: s.id||String(idx) })}>+ Add Image</button></div>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                       {(s.images||[]).map((img:any, j:number)=> (
-                        <div key={`${img.image_id||img.file_object_id||''}-${j}`} className="border rounded p-2"
+                        <div key={`${img.image_id||img.file_object_id||''}-${j}`} className="border rounded p-2 flex flex-col items-center"
                              onDragOver={onImageDragOver}
                              onDrop={()=> onImageDrop(idx, j)}
                         >
@@ -463,7 +463,12 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
                               </button>
                             </div>
                           </div>
-                          {img.file_object_id? (<img src={`/files/${img.file_object_id}/thumbnail?w=400`} className="w-full h-24 object-cover rounded" />) : null}
+                          {img.file_object_id? (
+                            <img
+                              src={`/files/${img.file_object_id}/thumbnail?w=520`}
+                              className="w-[260px] h-[150px] object-cover rounded"
+                            />
+                          ) : null}
                           <input data-role="img-caption" data-sec={idx} data-img={j} className="mt-2 w-full border rounded px-2 py-1 text-sm" placeholder="Caption" value={img.caption||''} onChange={e=> setSections(arr=> arr.map((x,i)=> i===idx? { ...x, images: (x.images||[]).map((it:any,k:number)=> k===j? { ...it, caption: e.target.value }: it) }: x))} />
                         </div>
                       ))}
@@ -527,7 +532,7 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
       </div>
 
       {pickerFor && (
-        <ImagePicker isOpen={true} onClose={()=>setPickerFor(null)} clientId={clientId||undefined} targetWidth={pickerFor==='cover'? 566: 540} targetHeight={pickerFor==='cover'? 537: 340} allowEdit={true} onConfirm={async(blob)=>{
+        <ImagePicker isOpen={true} onClose={()=>setPickerFor(null)} clientId={clientId||undefined} targetWidth={pickerFor==='cover'? 566: 540} targetHeight={pickerFor==='cover'? 537: 340} allowEdit={true} exportScale={2} onConfirm={async(blob)=>{
           try{
             if (!blob){ toast.error('No image'); setPickerFor(null); return; }
             const cat = pickerFor==='cover'? 'proposal-cover' : 'proposal-page2';
@@ -542,7 +547,7 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
         }} />
       )}
       {sectionPicker && (
-        <ImagePicker isOpen={true} onClose={()=>setSectionPicker(null)} clientId={clientId||undefined} targetWidth={260} targetHeight={150} allowEdit={true} onConfirm={async(blob)=>{
+        <ImagePicker isOpen={true} onClose={()=>setSectionPicker(null)} clientId={clientId||undefined} targetWidth={260} targetHeight={150} allowEdit={true} exportScale={2} onConfirm={async(blob)=>{
           try{
             if (!blob){ toast.error('No image'); return; }
             const uniqueName = `section_${Date.now()}_${Math.random().toString(36).slice(2)}.jpg`;

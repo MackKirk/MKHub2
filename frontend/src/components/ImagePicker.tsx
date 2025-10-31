@@ -11,7 +11,8 @@ export default function ImagePicker({
   targetWidth,
   targetHeight,
   allowEdit = true,
-  clientId
+  clientId,
+  exportScale = 2
 }:{
   isOpen:boolean,
   onClose:()=>void,
@@ -19,7 +20,8 @@ export default function ImagePicker({
   targetWidth:number,
   targetHeight:number,
   allowEdit?:boolean,
-  clientId?:string
+  clientId?:string,
+  exportScale?: number
 }){
   const [tab, setTab] = useState<'upload'|'library'>('upload');
   const [files, setFiles] = useState<ClientFile[]>([]);
@@ -73,7 +75,25 @@ export default function ImagePicker({
     return { x: Math.min(0, Math.max(minX, nx)), y: Math.min(0, Math.max(minY, ny)) };
   };
 
-  const loadFromFile = (file: File)=>{
+  const loadFromFile = async (file: File)=>{
+    const lower = (file.name||'').toLowerCase();
+    const isHeic = lower.endsWith('.heic') || lower.endsWith('.heif') || String(file.type||'').includes('heic') || String(file.type||'').includes('heif');
+    if (isHeic){
+      try{
+        if (!clientId){ toast.error('HEIC requires a client context'); return; }
+        const uniqueName = `heic_${Date.now()}_${Math.random().toString(36).slice(2)}.heic`;
+        const up:any = await api('POST','/files/upload',{ project_id: null, client_id: clientId||null, employee_id: null, category_id:'proposal-upload', original_name: uniqueName, content_type: file.type||'image/heic' });
+        await fetch(up.upload_url, { method:'PUT', headers:{ 'Content-Type': file.type||'application/octet-stream', 'x-ms-blob-type':'BlockBlob' }, body: file });
+        const conf:any = await api('POST','/files/confirm',{ key: up.key, size_bytes: file.size, checksum_sha256:'na', content_type:file.type||'image/heic' });
+        const fileObjectId = conf.id;
+        const image = new Image();
+        image.onload = ()=>{ setImg(image); setZoom(1); setTx(0); setTy(0); setOriginalFileObjectId(fileObjectId); };
+        image.onerror = ()=>{ toast.error('Failed to load image'); };
+        image.crossOrigin = 'anonymous';
+        image.src = `/files/${fileObjectId}/thumbnail?w=1200`;
+        return;
+      }catch(_e){ toast.error('HEIC upload failed'); return; }
+    }
     const url = URL.createObjectURL(file);
     const image = new Image();
     image.onload = ()=>{ setImg(image); setZoom(1); setTx(0); setTy(0); setOriginalFileObjectId(undefined); };
@@ -83,13 +103,12 @@ export default function ImagePicker({
 
   const loadFromFileObject = async (fileObjectId:string)=>{
     try{
-      const resp = await fetch(`/files/${fileObjectId}/download`);
-      const j = await resp.json();
       const image = new Image();
       image.onload = ()=>{ setImg(image); setZoom(1); setTx(0); setTy(0); setOriginalFileObjectId(fileObjectId); };
       image.onerror = ()=>{ toast.error('Failed to load image'); };
       image.crossOrigin = 'anonymous';
-      image.src = j.download_url;
+      // Use thumbnail endpoint to ensure browser-compatible PNG (works for HEIC too)
+      image.src = `/files/${fileObjectId}/thumbnail?w=1200`;
     }catch(e){ toast.error('Failed to open image'); }
   };
 
@@ -123,7 +142,8 @@ export default function ImagePicker({
   const confirm = ()=>{
     if(!img){ toast.error('Select an image'); return; }
     const canvas = document.createElement('canvas');
-    canvas.width = targetWidth; canvas.height = targetHeight;
+    const scaleOut = Math.max(1, Number(exportScale||1));
+    canvas.width = Math.round(targetWidth * scaleOut); canvas.height = Math.round(targetHeight * scaleOut);
     const ctx = canvas.getContext('2d')!;
     ctx.fillStyle = '#fff'; ctx.fillRect(0,0,canvas.width,canvas.height);
     const scale = coverScale * zoom;
@@ -133,7 +153,7 @@ export default function ImagePicker({
     const sh = ch / scale;
     // draw scaled to target canvas
     ctx.drawImage(img, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
-    canvas.toBlob((b)=>{ if(b){ onConfirm(b, originalFileObjectId); } }, 'image/jpeg', 0.94);
+    canvas.toBlob((b)=>{ if(b){ onConfirm(b, originalFileObjectId); } }, 'image/jpeg', 0.95);
   };
 
   if(!isOpen) return null;
