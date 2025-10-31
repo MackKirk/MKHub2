@@ -82,14 +82,14 @@ export default function EstimateBuilder({ projectId }:{ projectId:string }){
                   {!isLabourSection ? (
                     <>
                       <th className="p-2 text-left">Product / Item</th>
-                      <th className="p-2 text-right">Quantity Required</th>
-                      <th className="p-2 text-right">Demand Unit</th>
-                      <th className="p-2 text-right">Unit Price</th>
-                      <th className="p-2 text-right">Purchase Quantity</th>
-                      <th className="p-2 text-right">Sell Unit</th>
-                      <th className="p-2 text-right">Total</th>
-                      <th className="p-2 text-right">Mkp%</th>
-                      <th className="p-2 text-right">Total (with Mkp)</th>
+                      <th className="p-2 text-left">Quantity Required</th>
+                      <th className="p-2 text-left">Demand Unit</th>
+                      <th className="p-2 text-left">Unit Price</th>
+                      <th className="p-2 text-left">Purchase Quantity</th>
+                      <th className="p-2 text-left">Sell Unit</th>
+                      <th className="p-2 text-left">Total</th>
+                      <th className="p-2 text-left">Mkp%</th>
+                      <th className="p-2 text-left">Total (with Mkp)</th>
                       <th className="p-2 text-center">Taxable</th>
                       <th className="p-2 text-left">Supplier</th>
                       <th className="p-2"></th>
@@ -98,10 +98,10 @@ export default function EstimateBuilder({ projectId }:{ projectId:string }){
                     <>
                       <th className="p-2 text-left">{section}</th>
                       <th className="p-2 text-left">Composition</th>
-                      <th className="p-2 text-right">Unit Price</th>
-                      <th className="p-2 text-right">Total</th>
-                      <th className="p-2 text-right">Mkp%</th>
-                      <th className="p-2 text-right">Total (with Mkp)</th>
+                      <th className="p-2 text-left">Unit Price</th>
+                      <th className="p-2 text-left">Total</th>
+                      <th className="p-2 text-left">Mkp%</th>
+                      <th className="p-2 text-left">Total (with Mkp)</th>
                       <th className="p-2 text-center">Taxable</th>
                       <th className="p-2"></th>
                     </>
@@ -133,8 +133,8 @@ export default function EstimateBuilder({ projectId }:{ projectId:string }){
                         {!isLabourSection ? (
                           <>
                             <td className="p-2">{it.name}</td>
-                            <td className="p-2 text-right">
-                              <input type="number" className="w-full text-right border rounded px-2 py-1" 
+                            <td className="p-2">
+                              <input type="number" className="w-20 border rounded px-2 py-1" 
                                 value={it.qty_required||1} min={0} step={1}
                                 onChange={e=>{
                                   const newValue = Number(e.target.value);
@@ -143,8 +143,8 @@ export default function EstimateBuilder({ projectId }:{ projectId:string }){
                                   setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...newItem, quantity: calculatedQty} : item));
                                 }} />
                             </td>
-                            <td className="p-2 text-right">
-                              <select className="w-full text-right border rounded px-2 py-1"
+                            <td className="p-2">
+                              <select className="w-20 border rounded px-2 py-1"
                                 value={it.unit_required||''}
                                 onChange={e=>{
                                   const newValue = e.target.value;
@@ -164,20 +164,20 @@ export default function EstimateBuilder({ projectId }:{ projectId:string }){
                                 {it.unit_type === 'unitary' && <option value="Each">Each</option>}
                               </select>
                             </td>
-                            <td className="p-2 text-right">${it.unit_price.toFixed(2)}</td>
-                            <td className="p-2 text-right">
-                              <input type="number" className="w-full text-right border rounded px-2 py-1" 
+                            <td className="p-2">${it.unit_price.toFixed(2)}</td>
+                            <td className="p-2">
+                              <input type="number" className="w-20 border rounded px-2 py-1" 
                                 value={it.quantity} min={0} step={1}
                                 onChange={e=>setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, quantity: Number(e.target.value)} : item))} />
                             </td>
-                            <td className="p-2 text-right">{it.unit||''}</td>
-                            <td className="p-2 text-right">${totalValue.toFixed(2)}</td>
-                            <td className="p-2 text-right">
-                              <input type="number" className="w-16 text-right border rounded px-2 py-1" 
+                            <td className="p-2">{it.unit||''}</td>
+                            <td className="p-2">${totalValue.toFixed(2)}</td>
+                            <td className="p-2">
+                              <input type="number" className="w-16 border rounded px-2 py-1" 
                                 value={itemMarkup} min={0} step={1}
                                 onChange={e=>setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, markup: Number(e.target.value)} : item))} />
                             </td>
-                            <td className="p-2 text-right">${totalWithMarkup.toFixed(2)}</td>
+                            <td className="p-2">${totalWithMarkup.toFixed(2)}</td>
                             <td className="p-2 text-center">
                               <input type="checkbox" checked={it.taxable!==false} 
                                 onChange={e=>setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, taxable: e.target.checked} : item))} 
@@ -198,7 +198,7 @@ export default function EstimateBuilder({ projectId }:{ projectId:string }){
                                 ) : (
                                   <div className="flex items-center gap-2">
                                     <input type="number" className="w-16 border rounded px-2 py-1" value={it.labour_journey} min={0} step={0.5} onChange={e=>setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, labour_journey: Number(e.target.value)} : item))} />
-                                    <span>{it.unit}</span>
+                                    <span>{it.unit?.endsWith('s') ? it.unit.slice(0, -1) : it.unit}</span>
                                     <span>×</span>
                                     <input type="number" className="w-14 border rounded px-2 py-1" value={it.labour_men} min={0} step={1} onChange={e=>{
                                       const newMen = Number(e.target.value);
@@ -222,16 +222,16 @@ export default function EstimateBuilder({ projectId }:{ projectId:string }){
                                 <input type="number" className="w-20 border rounded px-2 py-1" 
                                   value={it.unit_price} min={0} step={0.01}
                                   onChange={e=>setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, unit_price: Number(e.target.value)} : item))} />
-                                <span>{it.unit ? `per ${it.unit}` : ''}</span>
+                                <span>{it.unit ? `per ${it.unit?.endsWith('s') ? it.unit.slice(0, -1) : it.unit}` : ''}</span>
                               </div>
                             </td>
-                            <td className="p-2 text-right">${totalValue.toFixed(2)}</td>
-                            <td className="p-2 text-right">
-                              <input type="number" className="w-16 text-right border rounded px-2 py-1" 
+                            <td className="p-2">${totalValue.toFixed(2)}</td>
+                            <td className="p-2">
+                              <input type="number" className="w-16 border rounded px-2 py-1" 
                                 value={itemMarkup} min={0} step={1}
                                 onChange={e=>setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, markup: Number(e.target.value)} : item))} />
                             </td>
-                            <td className="p-2 text-right">${totalWithMarkup.toFixed(2)}</td>
+                            <td className="p-2">${totalWithMarkup.toFixed(2)}</td>
                             <td className="p-2 text-center">
                               <input type="checkbox" checked={it.taxable!==false} 
                                 onChange={e=>setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, taxable: e.target.checked} : item))} 
@@ -444,9 +444,9 @@ function AddLabourModal({ onAdd }:{ onAdd:(it: Item)=>void }){
     if(showContract){
       return `${contractNumber} ${contractUnit} × $${p} = $${total.toFixed(2)}`;
     }else if(showHours){
-      return `${men} men × ${hours} hours × $${p} = $${total.toFixed(2)}`;
+      return `${men} men × ${hours} hour × $${p} = $${total.toFixed(2)}`;
     }else{
-      return `${men} men × ${days} days × $${p} = $${total.toFixed(2)}`;
+      return `${men} men × ${days} day × $${p} = $${total.toFixed(2)}`;
     }
   }, [men, days, hours, contractNumber, contractUnit, price, total, journeyType]);
 
