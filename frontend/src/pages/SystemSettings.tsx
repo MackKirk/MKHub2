@@ -20,6 +20,22 @@ export default function SystemSettings(){
   const heroItem = brandingList.find(i=> (i.label||'').toLowerCase()==='hero_background_url');
   const [heroUrlDraft, setHeroUrlDraft] = useState<string>('');
   const [heroFile, setHeroFile] = useState<File|null>(null);
+  const [heroPreviewUrl, setHeroPreviewUrl] = useState<string>('');
+  // Resolve preview URL: if it's a files endpoint, fetch the signed download_url
+  useEffect(()=>{
+    const val = heroItem?.value||'';
+    (async()=>{
+      try{
+        if(!val){ setHeroPreviewUrl('/ui/assets/login/background.jpg'); return; }
+        if(val.startsWith('/files/')){
+          const r:any = await api('GET', val);
+          setHeroPreviewUrl(r.download_url||'/ui/assets/login/background.jpg');
+        } else {
+          setHeroPreviewUrl(val);
+        }
+      }catch{ setHeroPreviewUrl('/ui/assets/login/background.jpg'); }
+    })();
+  }, [heroItem?.value]);
   const saveHeroUrl = async(url:string)=>{
     try{
       if(heroItem){
@@ -36,7 +52,7 @@ export default function SystemSettings(){
     try{
       if(!heroFile){ toast.error('Select an image'); return; }
       const type = heroFile.type || 'image/jpeg';
-      const up = await api('POST','/files/upload',{ original_name: heroFile.name, content_type: type });
+      const up = await api('POST','/files/upload',{ original_name: heroFile.name, content_type: type, project_id: null, client_id: null, employee_id: null, category_id: 'branding-hero' });
       await fetch(up.upload_url, { method:'PUT', headers:{ 'Content-Type': type, 'x-ms-blob-type':'BlockBlob' }, body: heroFile });
       const conf = await api('POST','/files/confirm',{ key: up.key, size_bytes: heroFile.size, checksum_sha256: 'na', content_type: type });
       const url = `/files/${conf.id}/download`;
@@ -60,7 +76,7 @@ export default function SystemSettings(){
           <div className="md:col-span-2">
             <div className="text-xs text-gray-600 mb-1">Current image</div>
             <div className="rounded-lg border overflow-hidden bg-gray-50">
-              <img src={(heroItem?.value)||'/ui/assets/login/background.jpg'} className="w-full h-40 object-cover" />
+              <img src={heroPreviewUrl||'/ui/assets/login/background.jpg'} className="w-full h-40 object-cover" />
             </div>
           </div>
           <div className="space-y-2">
