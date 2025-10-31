@@ -571,7 +571,6 @@ function CustomerDocuments({ id, files, sites, onRefresh }:{ id:string, files: C
         <>
           <div className="mb-2 flex items-center gap-2">
             <div className="text-sm font-semibold">Folders</div>
-            <button onClick={()=> { setNewFolderParentId(null); setNewFolderOpen(true); }} className="ml-auto px-3 py-2 rounded-lg border">New folder</button>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-2">
             {topFolders.map((f:any)=> (
@@ -581,10 +580,7 @@ function CustomerDocuments({ id, files, sites, onRefresh }:{ id:string, files: C
                    onDrop={async(e)=>{ e.preventDefault(); if(e.dataTransfer.files?.length){ const arr=Array.from(e.dataTransfer.files); for(const file of arr){ await uploadToFolder(f.id, file as File); } toast.success('Uploaded'); } }}>
                 <div className="text-4xl">📁</div>
                 <div className="mt-1 text-sm font-medium truncate text-center w-full" title={f.name}>{f.name}</div>
-                <div className="folder-actions absolute right-2 top-2 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
-                  <button title="Rename" className="p-1 rounded hover:bg-gray-100" onClick={()=> setRenameFolder({ id: f.id, name: f.name })}>✏️</button>
-                  <button title="Delete" className="p-1 rounded hover:bg-gray-100 text-red-600" onClick={async()=>{ try{ await api('DELETE', `/clients/${encodeURIComponent(id)}/folders/${encodeURIComponent(f.id)}`); toast.success('Deleted'); await refetchFolders(); }catch(e:any){ toast.error(e?.detail||'Cannot delete'); } }}>🗑️</button>
-                </div>
+                
               </div>
             ))}
             {!topFolders.length && <div className="text-sm text-gray-600">No folders yet</div>}
@@ -602,9 +598,7 @@ function CustomerDocuments({ id, files, sites, onRefresh }:{ id:string, files: C
                 </span>
               ))}
             </div>
-            <button onClick={()=> { setNewFolderParentId(activeFolderId); setNewFolderOpen(true); }} className="ml-auto px-3 py-2 rounded-lg border">New subfolder</button>
-            <button onClick={()=> setShowUpload(true)} className="px-3 py-2 rounded-lg bg-brand-red text-white">Add file</button>
-            <button className="px-3 py-2 rounded-lg border" onClick={()=> { setSelectMode(s=> !s); if(selectMode) setSelectedDocIds(new Set()); }}>{selectMode? 'Done':'Select'}</button>
+            
           </div>
           <div className="rounded-lg border">
             <div className="p-4">
@@ -619,10 +613,7 @@ function CustomerDocuments({ id, files, sites, onRefresh }:{ id:string, files: C
                            onDrop={async(e)=>{ e.preventDefault(); if(e.dataTransfer.files?.length){ const arr=Array.from(e.dataTransfer.files); for(const file of arr){ await uploadToFolder(f.id, file as File); } toast.success('Uploaded'); } }}>
                         <div className="text-4xl">📁</div>
                         <div className="mt-1 text-sm font-medium truncate text-center w-full" title={f.name}>{f.name}</div>
-                        <div className="folder-actions absolute right-2 top-2 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
-                          <button title="Rename" className="p-1 rounded hover:bg-gray-100" onClick={()=> setRenameFolder({ id: f.id, name: f.name })}>✏️</button>
-                          <button title="Delete" className="p-1 rounded hover:bg-gray-100 text-red-600" onClick={async()=>{ try{ await api('DELETE', `/clients/${encodeURIComponent(id)}/folders/${encodeURIComponent(f.id)}`); toast.success('Deleted'); await refetchFolders(); }catch(e:any){ toast.error(e?.detail||'Cannot delete'); } }}>🗑️</button>
-                        </div>
+                        
                       </div>
                     ))}
                   </div>
@@ -631,7 +622,7 @@ function CustomerDocuments({ id, files, sites, onRefresh }:{ id:string, files: C
 
               <div className="mb-2 flex items-center justify-between">
                 <h4 className="font-semibold">Documents</h4>
-                {selectMode && selectedDocIds.size>0 && (
+                {false && selectedDocIds.size>0 && (
                   <div className="flex items-center gap-2">
                     <div className="text-sm">{selectedDocIds.size} selected</div>
                     <select id="bulk-move-target-client" className="border rounded px-2 py-1">
@@ -668,9 +659,6 @@ function CustomerDocuments({ id, files, sites, onRefresh }:{ id:string, files: C
                     </div>
                     <div className="ml-auto flex items-center gap-1">
                       <a title="Download" className="p-2 rounded hover:bg-gray-100" href={`/files/${encodeURIComponent(d.file_id)}/download`} target="_blank">⬇️</a>
-                      <button title="Rename" onClick={()=> setRenameDoc({ id: d.id, title: d.title||'' })} className="p-2 rounded hover:bg-gray-100">✏️</button>
-                      <button title="Move" onClick={()=> setMoveDoc({ id: d.id })} className="p-2 rounded hover:bg-gray-100">📁</button>
-                      <button title="Delete" onClick={()=> removeDoc(d.id)} className="p-2 rounded hover:bg-gray-100 text-red-600">🗑️</button>
                     </div>
                   </div>
                 ); })}

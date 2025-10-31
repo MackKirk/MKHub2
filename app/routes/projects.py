@@ -4,7 +4,7 @@ from sqlalchemy import func, extract
 from typing import List, Optional
 
 from ..db import get_db
-from ..models.models import Project, ClientFile, FileObject, ProjectUpdate, ProjectReport, ProjectTimeEntry, ProjectTimeEntryLog, User, EmployeeProfile, Client, ClientSite
+from ..models.models import Project, ClientFile, FileObject, ProjectUpdate, ProjectReport, ProjectTimeEntry, ProjectTimeEntryLog, User, EmployeeProfile, Client, ClientSite, ClientFolder
 from ..auth.security import get_current_user, require_permissions, can_approve_timesheet
 
 
@@ -19,6 +19,26 @@ def create_project(payload: dict, db: Session = Depends(get_db)):
     proj = Project(**payload)
     db.add(proj)
     db.commit()
+    # Auto-create a folder for this project under the site's folder if available, else under client root
+    try:
+        name = (proj.name or str(proj.id) or "project").strip()
+        if name:
+            parent_id = None
+            if getattr(proj, 'site_id', None):
+                # find site folder by site name/address
+                site = db.query(ClientSite).filter(ClientSite.id == proj.site_id).first()
+                if site:
+                    sname = (getattr(site,'site_name', None) or getattr(site,'site_address_line1', None) or str(site.id)).strip()
+                    parent = db.query(ClientFolder).filter(ClientFolder.client_id == proj.client_id, ClientFolder.name == sname, ClientFolder.parent_id == None).first()
+                    if parent:
+                        parent_id = parent.id
+            exists = db.query(ClientFolder).filter(ClientFolder.client_id == proj.client_id, ClientFolder.name == name, ClientFolder.parent_id == parent_id).first()
+            if not exists:
+                f = ClientFolder(client_id=proj.client_id, name=name, parent_id=parent_id)
+                db.add(f)
+                db.commit()
+    except Exception:
+        db.rollback()
     return {"id": str(proj.id)}
 
 

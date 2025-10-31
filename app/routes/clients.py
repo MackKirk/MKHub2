@@ -164,6 +164,17 @@ def create_site(client_id: str, payload: ClientSiteCreate, db: Session = Depends
     db.add(row)
     db.commit()
     db.refresh(row)
+    # Auto-create a top-level folder for this site
+    try:
+        name = (row.site_name or row.site_address_line1 or str(row.id) or "site").strip()
+        if name:
+            exists = db.query(ClientFolder).filter(ClientFolder.client_id == client_id, ClientFolder.name == name, ClientFolder.parent_id == None).first()
+            if not exists:
+                f = ClientFolder(client_id=client_id, name=name)
+                db.add(f)
+                db.commit()
+    except Exception:
+        db.rollback()
     return row
 
 
