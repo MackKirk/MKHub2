@@ -17,11 +17,15 @@ export default function SystemSettings(){
   const isDivisionList = useMemo(()=> sel.toLowerCase().includes('division'), [sel]);
   const getEdit = (it: Item): Item => edits[it.id] || it;
   const brandingList = (data?.branding||[]) as Item[];
-  const heroItem = brandingList.find(i=> (i.label||'').toLowerCase()==='hero_background_url');
+  const heroItem = brandingList.find(i=> ['user_hero_background_url','hero_background_url','user hero background','hero background'].includes(String(i.label||'').toLowerCase()));
+  const overlayItem = brandingList.find(i=> ['customer_hero_overlay_url','hero_overlay_url','customer hero overlay','hero overlay'].includes(String(i.label||'').toLowerCase()));
   const [heroUrlDraft, setHeroUrlDraft] = useState<string>('');
   const [heroFile, setHeroFile] = useState<File|null>(null);
   const [heroPreviewUrl, setHeroPreviewUrl] = useState<string>('');
   const [heroDims, setHeroDims] = useState<{w:number,h:number}|null>(null);
+  const [overlayUrlDraft, setOverlayUrlDraft] = useState<string>('');
+  const [overlayFile, setOverlayFile] = useState<File|null>(null);
+  const [overlayPreviewUrl, setOverlayPreviewUrl] = useState<string>('');
   // Resolve preview URL: if it's a files endpoint, fetch the signed download_url
   useEffect(()=>{
     const val = heroItem?.value||'';
@@ -38,6 +42,20 @@ export default function SystemSettings(){
     })();
   }, [heroItem?.value]);
   useEffect(()=>{
+    const val = overlayItem?.value||'';
+    (async()=>{
+      try{
+        if(!val){ setOverlayPreviewUrl(''); return; }
+        if(val.startsWith('/files/')){
+          const r:any = await api('GET', val);
+          setOverlayPreviewUrl(r.download_url||'');
+        } else {
+          setOverlayPreviewUrl(val);
+        }
+      }catch{ setOverlayPreviewUrl(''); }
+    })();
+  }, [overlayItem?.value]);
+  useEffect(()=>{
     if(!heroPreviewUrl){ setHeroDims(null); return; }
     try{
       const im = new Image();
@@ -49,9 +67,9 @@ export default function SystemSettings(){
   const saveHeroUrl = async(url:string)=>{
     try{
       if(heroItem){
-        await api('PUT', `/settings/branding/${encodeURIComponent(heroItem.id)}?label=hero_background_url&value=${encodeURIComponent(url)}`);
+        await api('PUT', `/settings/branding/${encodeURIComponent(heroItem.id)}?label=user_hero_background_url&value=${encodeURIComponent(url)}`);
       } else {
-        await api('POST', `/settings/branding?label=hero_background_url&value=${encodeURIComponent(url)}`);
+        await api('POST', `/settings/branding?label=user_hero_background_url&value=${encodeURIComponent(url)}`);
       }
       toast.success('Brand image updated');
       setHeroFile(null); setHeroUrlDraft('');
@@ -69,6 +87,29 @@ export default function SystemSettings(){
       await saveHeroUrl(url);
     }catch(_e){ toast.error('Upload failed'); }
   };
+  const saveOverlayUrl = async(url:string)=>{
+    try{
+      if(overlayItem){
+        await api('PUT', `/settings/branding/${encodeURIComponent(overlayItem.id)}?label=customer_hero_overlay_url&value=${encodeURIComponent(url)}`);
+      } else {
+        await api('POST', `/settings/branding?label=customer_hero_overlay_url&value=${encodeURIComponent(url)}`);
+      }
+      toast.success('Overlay updated');
+      setOverlayFile(null); setOverlayUrlDraft('');
+      await refetch();
+    }catch(_e){ toast.error('Failed to update'); }
+  };
+  const uploadOverlay = async()=>{
+    try{
+      if(!overlayFile){ toast.error('Select an overlay image'); return; }
+      const type = overlayFile.type || 'image/png';
+      const up = await api('POST','/files/upload',{ original_name: overlayFile.name, content_type: type, project_id: null, client_id: null, employee_id: null, category_id: 'branding-hero-overlay' });
+      await fetch(up.upload_url, { method:'PUT', headers:{ 'Content-Type': type, 'x-ms-blob-type':'BlockBlob' }, body: overlayFile });
+      const conf = await api('POST','/files/confirm',{ key: up.key, size_bytes: overlayFile.size, checksum_sha256: 'na', content_type: type });
+      const url = `/files/${conf.id}/download`;
+      await saveOverlayUrl(url);
+    }catch(_e){ toast.error('Upload failed'); }
+  };
   return (
     <div className="space-y-4">
       <div className="mb-1 rounded-xl border bg-gradient-to-br from-[#7f1010] to-[#a31414] text-white p-4">
@@ -79,7 +120,7 @@ export default function SystemSettings(){
         <div className="flex items-center justify-between mb-3">
           <div>
             <h4 className="font-semibold">Branding</h4>
-            <div className="text-xs text-gray-600">Hero background image for user pages and banners.</div>
+            <div className="text-xs text-gray-600">User hero background image for user pages and banners.</div>
           </div>
         </div>
         <div className="grid md:grid-cols-3 gap-3 items-start">
@@ -94,18 +135,52 @@ export default function SystemSettings(){
           </div>
           <div className="space-y-2">
             <div>
-              <div className="text-xs text-gray-600 mb-1">Set by URL</div>
+              <div className="text-xs text-gray-600 mb-1">User hero background (URL)</div>
               <div className="flex gap-2">
                 <input className="border rounded px-2 py-1 text-sm flex-1" placeholder="https://..." value={heroUrlDraft} onChange={e=>setHeroUrlDraft(e.target.value)} />
                 <button onClick={()=> heroUrlDraft.trim() && saveHeroUrl(heroUrlDraft.trim())} className="px-3 py-1.5 rounded bg-brand-red text-white">Save</button>
               </div>
             </div>
             <div>
-              <div className="text-xs text-gray-600 mb-1">Or upload image</div>
+              <div className="text-xs text-gray-600 mb-1">Or upload user hero background</div>
               <input type="file" accept="image/*" onChange={e=> setHeroFile(e.target.files?.[0]||null)} />
               <div className="text-[11px] text-gray-500 mt-1">Prefer high-resolution JPG/PNG; avoid small images to prevent pixelation.</div>
               <div className="mt-2 text-right">
                 <button onClick={uploadHero} className="px-3 py-1.5 rounded border">Upload</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div className="mt-6 border-t pt-4">
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <h4 className="font-semibold">Customer hero overlay</h4>
+              <div className="text-xs text-gray-600">Optional overlay placed on the right side to blend the client image (Customer page only).</div>
+            </div>
+          </div>
+          <div className="grid md:grid-cols-3 gap-3 items-start">
+            <div className="md:col-span-2">
+              <div className="text-xs text-gray-600 mb-1">Current customer hero overlay</div>
+              <div className="rounded-lg border overflow-hidden bg-gray-50">
+                {overlayPreviewUrl? <img src={overlayPreviewUrl} className="w-full h-32 object-cover" /> : <div className="h-32 grid place-items-center text-xs text-gray-500">No overlay</div>}
+              </div>
+              <div className="mt-1 text-[11px] text-gray-600">Suggested: 2400×600 px PNG with transparency/gradient on the left.</div>
+            </div>
+            <div className="space-y-2">
+              <div>
+                <div className="text-xs text-gray-600 mb-1">Customer hero overlay (URL)</div>
+                <div className="flex gap-2">
+                  <input className="border rounded px-2 py-1 text-sm flex-1" placeholder="https://..." value={overlayUrlDraft} onChange={e=>setOverlayUrlDraft(e.target.value)} />
+                  <button onClick={()=> overlayUrlDraft.trim() && saveOverlayUrl(overlayUrlDraft.trim())} className="px-3 py-1.5 rounded bg-brand-red text-white">Save</button>
+                </div>
+              </div>
+              <div>
+                <div className="text-xs text-gray-600 mb-1">Or upload customer hero overlay</div>
+                <input type="file" accept="image/*" onChange={e=> setOverlayFile(e.target.files?.[0]||null)} />
+                <div className="text-[11px] text-gray-500 mt-1">PNG preferred for transparency.</div>
+                <div className="mt-2 text-right">
+                  <button onClick={uploadOverlay} className="px-3 py-1.5 rounded border">Upload</button>
+                </div>
               </div>
             </div>
           </div>
