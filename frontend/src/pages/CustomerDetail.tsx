@@ -18,6 +18,31 @@ export default function CustomerDetail(){
   const { data:sites } = useQuery({ queryKey:['clientSites', id], queryFn: ()=>api<Site[]>('GET', `/clients/${id}/sites`) });
   const { data:files, refetch: refetchFiles } = useQuery({ queryKey:['clientFiles', id], queryFn: ()=>api<ClientFile[]>('GET', `/clients/${id}/files`) });
   const { data:settings } = useQuery({ queryKey:['settings'], queryFn: ()=>api<any>('GET','/settings') });
+  const statusColorMap: Record<string,string> = useMemo(()=>{
+    const list = (settings||{}).client_statuses as {label?:string, value?:string}[]|undefined;
+    const m: Record<string,string> = {};
+    (list||[]).forEach(it=>{ const k = String(it.label||'').trim(); const v = String(it.value||'').trim(); if(k){ m[k] = v || ''; } });
+    return m;
+  }, [settings]);
+  const overlayUrl = useMemo(()=>{
+    const branding = (settings?.branding||[]) as any[];
+    const row = branding.find((i:any)=> ['customer_hero_overlay_url','hero_overlay_url','customer hero overlay','hero overlay'].includes(String(i.label||'').toLowerCase()));
+    return row?.value || '';
+  }, [settings]);
+  const [overlayResolved, setOverlayResolved] = useState<string>('');
+  useEffect(()=>{
+    (async()=>{
+      try{
+        if(!overlayUrl){ setOverlayResolved(''); return; }
+        if(overlayUrl.startsWith('/files/')){
+          const r:any = await api('GET', overlayUrl);
+          setOverlayResolved(r.download_url||'');
+        } else {
+          setOverlayResolved(overlayUrl);
+        }
+      }catch{ setOverlayResolved(''); }
+    })();
+  }, [overlayUrl]);
   const leadSources = (settings?.lead_sources||[]) as any[];
   const { data:projects } = useQuery({ queryKey:['clientProjects', id], queryFn: ()=>api<Project[]>('GET', `/projects?client=${encodeURIComponent(String(id||''))}`) });
   const { data:contacts } = useQuery({ queryKey:['clientContacts', id], queryFn: ()=>api<Contact[]>('GET', `/clients/${id}/contacts`) });
@@ -56,22 +81,36 @@ export default function CustomerDetail(){
 
   return (
     <div>
-      <div className="mb-3 flex items-center gap-3">
-        <div className="w-10 h-10 rounded-full bg-gray-200 border"/>
-        <h2 className="text-xl font-extrabold">{c.display_name||c.name||'Customer'}</h2>
+      <div className="mb-3 rounded-xl border bg-gradient-to-br from-[#7f1010] to-[#a31414] text-white p-4">
+        <div className="text-2xl font-extrabold">Customer Information</div>
+        <div className="text-sm opacity-90">Profile, sites, projects, and files for this customer.</div>
       </div>
       <div className="rounded-xl border bg-white">
         <div className="relative rounded-t-xl p-5 text-white overflow-hidden" style={{ backgroundImage: 'linear-gradient(135deg, #7f1010, #a31414)' }}>
-          <img src={clientAvatarLarge} alt="" className="pointer-events-none select-none absolute right-0 top-0 h-[140%] w-auto opacity-15 -translate-x-16 scale-125 object-contain" />
-          <div className="absolute right-0 top-0 bottom-0 w-1/2 bg-gradient-to-l from-transparent via-[#a31414]/20 to-[#7f1010]/70 pointer-events-none" />
-          <div className="flex gap-4 items-stretch min-h-[200px] relative">
+          <img src={clientAvatarLarge} alt="" className="pointer-events-none select-none absolute right-0 top-0 h-[160%] w-auto opacity-15 -translate-x-20 scale-150 object-contain" />
+          {overlayResolved && (
+            <img src={overlayResolved} alt="" className="pointer-events-none select-none absolute right-0 top-0 h-full w-auto opacity-80"
+                 style={{ WebkitMaskImage: 'linear-gradient(to left, black 70%, transparent 100%)', maskImage: 'linear-gradient(to left, black 70%, transparent 100%)' }} />
+          )}
+          <div className="absolute right-0 top-0 bottom-0 w-2/3 bg-gradient-to-l from-transparent via-[#a31414]/40 to-[#7f1010]/85 pointer-events-none" />
+          <div className="flex gap-4 items-stretch min-h-[210px] relative">
             <div className="w-[220px] relative group">
               <img src={clientAvatarLarge} className="w-full h-full object-cover rounded-xl border-2 border-brand-red" />
               <button onClick={()=>setPickerOpen(true)} className="absolute inset-0 rounded-xl bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white">✏️ Change</button>
             </div>
             <div className="flex-1 flex flex-col justify-start">
               <div className="text-3xl font-extrabold">{c.display_name||c.name||id}</div>
-              <div className="text-sm opacity-90 mt-1">{c.city||''} {c.province||''} {c.country||''}</div>
+              <div className="text-sm opacity-90 mt-1">
+                {c.address_line1||''}{(c.address_line1 && (c.city||c.province||c.country))? ' · ':''}{[c.city, c.province, c.country].filter(Boolean).join(', ')}
+              </div>
+              <div className="mt-2 flex items-center gap-2 text-xs">
+                {((c as any).client_type) && (
+                  <span className="px-2 py-0.5 rounded-full bg-white/90 text-gray-900 border">{String((c as any).client_type)}</span>
+                )}
+                {((c as any).client_status) && (
+                  <span className="px-2 py-0.5 rounded-full border" style={{ backgroundColor: statusColorMap[String((c as any).client_status)] || '#eeeeee', color: '#000' }}>{String((c as any).client_status)}</span>
+                )}
+              </div>
               <div className="mt-auto flex gap-2">
                 {(['overview','general','files','contacts','sites','projects'] as const).map(k=> (
                   <button key={k} onClick={()=>setTab(k)} className={`px-4 py-2 rounded-lg border ${tab===k?'bg-black/30 border-white/30 text-white':'bg-white text-black'}`}>{k[0].toUpperCase()+k.slice(1)}</button>

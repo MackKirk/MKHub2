@@ -49,7 +49,7 @@ export default function UserInfo(){
 
   const heroBgUrl = (()=>{
     const branding = (settings?.branding||[]) as any[];
-    const hero = branding.find((i:any)=> (i.label||'').toLowerCase()==='hero_background_url' || (i.label||'').toLowerCase()==='hero background');
+    const hero = branding.find((i:any)=> ['user_hero_background_url','hero_background_url','user hero background','hero background'].includes(String(i.label||'').toLowerCase()));
     return hero?.value || '/ui/assets/login/background.jpg';
   })();
   const [heroResolvedUrl, setHeroResolvedUrl] = useState<string>('');
