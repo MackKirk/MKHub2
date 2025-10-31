@@ -79,29 +79,29 @@ export default function ImagePicker({
   const loadFromFile = async (file: File)=>{
     const lower = (file.name||'').toLowerCase();
     const isHeic = lower.endsWith('.heic') || lower.endsWith('.heif') || String(file.type||'').includes('heic') || String(file.type||'').includes('heif');
-    if (isHeic){
-      try{
-        setIsLoading(true);
-        if (!clientId){ toast.error('HEIC requires a client context'); return; }
-        const uniqueName = `heic_${Date.now()}_${Math.random().toString(36).slice(2)}.heic`;
-        const up:any = await api('POST','/files/upload',{ project_id: null, client_id: clientId||null, employee_id: null, category_id:'proposal-upload', original_name: uniqueName, content_type: file.type||'image/heic' });
-        await fetch(up.upload_url, { method:'PUT', headers:{ 'Content-Type': file.type||'application/octet-stream', 'x-ms-blob-type':'BlockBlob' }, body: file });
-        const conf:any = await api('POST','/files/confirm',{ key: up.key, size_bytes: file.size, checksum_sha256:'na', content_type:file.type||'image/heic' });
-        const fileObjectId = conf.id;
+    try{
+      setIsLoading(true);
+      if (!clientId){
+        // Fallback to local preview if we don't have context to persist
+        const url = URL.createObjectURL(file);
         const image = new Image();
-        image.onload = ()=>{ setImg(image); setZoom(1); setTx(0); setTy(0); setOriginalFileObjectId(fileObjectId); setIsLoading(false); };
+        image.onload = ()=>{ setImg(image); setZoom(1); setTx(0); setTy(0); setOriginalFileObjectId(undefined); setIsLoading(false); };
         image.onerror = ()=>{ toast.error('Failed to load image'); setIsLoading(false); };
-        image.crossOrigin = 'anonymous';
-        image.src = `/files/${fileObjectId}/thumbnail?w=1200&cb=${Date.now()}`;
-        return;
-      }catch(_e){ toast.error('HEIC upload failed'); setIsLoading(false); return; }
-    }
-    const url = URL.createObjectURL(file);
-    const image = new Image();
-    setIsLoading(true);
-    image.onload = ()=>{ setImg(image); setZoom(1); setTx(0); setTy(0); setOriginalFileObjectId(undefined); setIsLoading(false); };
-    image.onerror = ()=>{ toast.error('Failed to load image'); setIsLoading(false); };
-    image.src = url;
+        image.src = url; return;
+      }
+      // Persist original to library first (keeps history and enables HEIC and large previews)
+      const uniqueBase = `${isHeic? 'heic':'upload'}_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+      const originalName = `${uniqueBase}${(file.name && file.name.includes('.'))? file.name.substring(file.name.lastIndexOf('.')) : (isHeic? '.heic': '.bin')}`;
+      const up:any = await api('POST','/files/upload',{ project_id: null, client_id: clientId||null, employee_id: null, category_id:'proposal-upload', original_name: originalName, content_type: file.type||'application/octet-stream' });
+      await fetch(up.upload_url, { method:'PUT', headers:{ 'Content-Type': file.type||'application/octet-stream', 'x-ms-blob-type':'BlockBlob' }, body: file });
+      const conf:any = await api('POST','/files/confirm',{ key: up.key, size_bytes: file.size, checksum_sha256:'na', content_type:file.type||'application/octet-stream' });
+      const fileObjectId = conf.id;
+      const image = new Image();
+      image.onload = ()=>{ setImg(image); setZoom(1); setTx(0); setTy(0); setOriginalFileObjectId(fileObjectId); setIsLoading(false); };
+      image.onerror = ()=>{ toast.error('Failed to load image'); setIsLoading(false); };
+      image.crossOrigin = 'anonymous';
+      image.src = `/files/${fileObjectId}/thumbnail?w=1200&cb=${Date.now()}`;
+    }catch(_e){ toast.error('Upload failed'); setIsLoading(false); }
   };
 
   const loadFromFileObject = async (fileObjectId:string)=>{
