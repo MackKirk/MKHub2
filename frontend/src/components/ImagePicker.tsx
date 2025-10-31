@@ -103,6 +103,20 @@ export default function ImagePicker({
       await fetch(up.upload_url, { method:'PUT', headers:{ 'Content-Type': file.type||'application/octet-stream', 'x-ms-blob-type':'BlockBlob' }, body: file });
       const conf:any = await api('POST','/files/confirm',{ key: up.key, size_bytes: file.size, checksum_sha256:'na', content_type:file.type||'application/octet-stream' });
       const fileObjectId = conf.id;
+      // Attach to client library
+      try{
+        await api('POST', `/clients/${encodeURIComponent(String(clientId))}/files?file_object_id=${encodeURIComponent(fileObjectId)}&category=${encodeURIComponent('proposal-upload')}&original_name=${encodeURIComponent(file.name||'upload')}`);
+        // Refresh library list silently
+        try{
+          const list = await api<ClientFile[]>('GET', `/clients/${clientId}/files`);
+          setFiles((list||[]).filter(f=> {
+            const isImg = (f.is_image===true) || String(f.content_type||'').startsWith('image/');
+            const isDerived = String(f.category||'').toLowerCase().includes('derived');
+            return isImg && !isDerived;
+          }));
+        }catch(_e){}
+      }catch(_e){}
+
       const image = new Image();
       image.onload = ()=>{ setImg(image); setZoom(1); setTx(0); setTy(0); setOriginalFileObjectId(fileObjectId); setIsLoading(false); };
       image.onerror = ()=>{ toast.error('Failed to load image'); setIsLoading(false); };
