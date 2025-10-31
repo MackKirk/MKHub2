@@ -200,7 +200,12 @@ export default function EstimateBuilder({ projectId }:{ projectId:string }){
                                     <input type="number" className="w-16 border rounded px-2 py-1" value={it.labour_journey} min={0} step={0.5} onChange={e=>setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, labour_journey: Number(e.target.value)} : item))} />
                                     <span>{it.unit}</span>
                                     <span>×</span>
-                                    <input type="number" className="w-14 border rounded px-2 py-1" value={it.labour_men} min={0} step={1} onChange={e=>setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, labour_men: Number(e.target.value)} : item))} />
+                                    <input type="number" className="w-14 border rounded px-2 py-1" value={it.labour_men} min={0} step={1} onChange={e=>{
+                                      const newMen = Number(e.target.value);
+                                      const baseName = it.description?.includes(' - ') ? it.description.split(' - ')[0] : it.description || it.name;
+                                      const newDesc = newMen > 0 ? `${baseName} - ${newMen} men` : baseName;
+                                      setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, labour_men: newMen, description: newDesc} : item));
+                                    }} />
                                     <span>men</span>
                                   </div>
                                 )
@@ -211,12 +216,13 @@ export default function EstimateBuilder({ projectId }:{ projectId:string }){
                                 </div>
                               )}
                             </td>
-                            <td className="p-2 text-right">
-                              <div className="flex items-center justify-end gap-1">
-                                <input type="number" className="w-20 text-right border rounded px-2 py-1" 
+                            <td className="p-2 text-left">
+                              <div className="flex items-center gap-1">
+                                <span>$</span>
+                                <input type="number" className="w-20 border rounded px-2 py-1" 
                                   value={it.unit_price} min={0} step={0.01}
                                   onChange={e=>setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, unit_price: Number(e.target.value)} : item))} />
-                                <span>{it.unit ? `/ ${it.unit}` : ''}</span>
+                                <span>{it.unit ? `per ${it.unit}` : ''}</span>
                               </div>
                             </td>
                             <td className="p-2 text-right">${totalValue.toFixed(2)}</td>
@@ -479,8 +485,8 @@ function AddLabourModal({ onAdd }:{ onAdd:(it: Item)=>void }){
               <div>
                 <label className="text-xs text-gray-600">Journey:</label>
                 <select className="w-full border rounded px-3 py-2" value={journeyType} onChange={e=>setJourneyType(e.target.value as any)}>
-                  <option value="days">Days</option>
-                  <option value="hours">Hours</option>
+                  <option value="days">Day</option>
+                  <option value="hours">Hour</option>
                   <option value="contract">Contract</option>
                 </select>
               </div>
@@ -651,7 +657,7 @@ function AddSubContractorModal({ onAdd }:{ onAdd:(it: Item)=>void }){
                   <div>
                     <label className="text-xs text-gray-600">Input Type:</label>
                     <select className="w-full border rounded px-3 py-2" value={debrisInputType} onChange={e=>setDebrisInputType(e.target.value as any)}>
-                      <option value="area">Insert Area and Area/Load</option>
+                      <option value="area">Insert Area (SQS) and Area per Load (SQS/Load)</option>
                       <option value="loads">Insert Number of Loads</option>
                     </select>
                   </div>
@@ -659,11 +665,11 @@ function AddSubContractorModal({ onAdd }:{ onAdd:(it: Item)=>void }){
                     <>
                       <div>
                         <label className="text-xs text-gray-600">SQS:</label>
-                        <input type="number" className="w-full border rounded px-3 py-2" value={debrisSqs} min={0} step={0.01} onChange={e=>setDebrisSqs(e.target.value)} />
+                        <input type="number" className="w-full border rounded px-3 py-2" placeholder="Enter area in SQS" value={debrisSqs} min={0} step={1} onChange={e=>setDebrisSqs(e.target.value)} />
                       </div>
                       <div>
                         <label className="text-xs text-gray-600">SQS/Load:</label>
-                        <input type="number" className="w-full border rounded px-3 py-2" value={debrisSqsPerLoad} min={0} step={0.01} onChange={e=>setDebrisSqsPerLoad(e.target.value)} />
+                        <input type="number" className="w-full border rounded px-3 py-2" placeholdeer="Enter area per load in SQS/Load" value={debrisSqsPerLoad} min={0} step={1} onChange={e=>setDebrisSqsPerLoad(e.target.value)} />
                       </div>
                     </>
                   )}
@@ -675,7 +681,7 @@ function AddSubContractorModal({ onAdd }:{ onAdd:(it: Item)=>void }){
                   )}
                   <div>
                     <label className="text-xs text-gray-600">Price per Load ($):</label>
-                    <input type="number" className="w-full border rounded px-3 py-2" value={debrisPricePerLoad} min={0} step={0.01} onChange={e=>setDebrisPricePerLoad(e.target.value)} />
+                    <input type="number" className="w-full border rounded px-3 py-2" placeholder="Enter price per load ($)" value={debrisPricePerLoad} min={0} step={0.01} onChange={e=>setDebrisPricePerLoad(e.target.value)} />
                   </div>
                 </>
               )}
