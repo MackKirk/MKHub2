@@ -535,7 +535,7 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
         <ImagePicker isOpen={true} onClose={()=>setPickerFor(null)} clientId={clientId||undefined} targetWidth={pickerFor==='cover'? 566: 540} targetHeight={pickerFor==='cover'? 537: 340} allowEdit={true} exportScale={2} onConfirm={async(blob)=>{
           try{
             if (!blob){ toast.error('No image'); setPickerFor(null); return; }
-            const cat = pickerFor==='cover'? 'proposal-cover' : 'proposal-page2';
+            const cat = pickerFor==='cover'? 'proposal-cover-derived' : 'proposal-page2-derived';
             const uniqueName = `${cat}_${Date.now()}_${Math.random().toString(36).slice(2)}.jpg`;
             const up:any = await api('POST','/files/upload',{ project_id: null, client_id: clientId||null, employee_id: null, category_id: cat, original_name: uniqueName, content_type: 'image/jpeg' });
             await fetch(up.upload_url, { method:'PUT', headers:{ 'Content-Type':'image/jpeg', 'x-ms-blob-type':'BlockBlob' }, body: blob });
@@ -551,7 +551,7 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
           try{
             if (!blob){ toast.error('No image'); return; }
             const uniqueName = `section_${Date.now()}_${Math.random().toString(36).slice(2)}.jpg`;
-            const up:any = await api('POST','/files/upload',{ project_id: null, client_id: clientId||null, employee_id: null, category_id:'proposal-section', original_name: uniqueName, content_type: 'image/jpeg' });
+            const up:any = await api('POST','/files/upload',{ project_id: null, client_id: clientId||null, employee_id: null, category_id:'proposal-section-derived', original_name: uniqueName, content_type: 'image/jpeg' });
             await fetch(up.upload_url, { method:'PUT', headers:{ 'Content-Type':'image/jpeg', 'x-ms-blob-type':'BlockBlob' }, body: blob });
             const conf:any = await api('POST','/files/confirm',{ key: up.key, size_bytes: blob.size, checksum_sha256:'na', content_type:'image/jpeg' });
             const fileObjectId = conf.id;
