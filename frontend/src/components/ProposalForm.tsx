@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
 import ImagePicker from '@/components/ImagePicker';
@@ -11,6 +11,7 @@ type Site = { id:string, site_name?:string, site_address_line1?:string, site_cit
 
 export default function ProposalForm({ mode, clientId: clientIdProp, siteId: siteIdProp, projectId: projectIdProp, initial }:{ mode:'new'|'edit', clientId?:string, siteId?:string, projectId?:string, initial?: any }){
   const nav = useNavigate();
+  const queryClient = useQueryClient();
 
   const [clientId] = useState<string>(String(clientIdProp || initial?.client_id || ''));
   const [siteId] = useState<string>(String(siteIdProp || initial?.site_id || ''));
@@ -216,7 +217,17 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
       toast.success('Saved');
       // Stay on page after save; update saved fingerprint so warnings clear
       setLastSavedHash(computeFingerprint());
-      // Optionally, if this was a new proposal and now has id, we could update URL later
+      
+      // If this was a new proposal and now has id, navigate to edit page
+      if (mode === 'new' && r?.id) {
+        // Invalidate proposals list to refresh it
+        queryClient.invalidateQueries({ queryKey: ['proposals'] });
+        // Navigate to edit page
+        nav(`/proposals/${encodeURIComponent(r.id)}/edit`);
+      } else if (mode === 'edit') {
+        // Invalidate proposals list to refresh it
+        queryClient.invalidateQueries({ queryKey: ['proposals'] });
+      }
     }catch(e){ toast.error('Save failed'); }
   };
 
