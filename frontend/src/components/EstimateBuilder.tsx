@@ -6,7 +6,7 @@ import toast from 'react-hot-toast';
 type Material = { id:number, name:string, supplier_name?:string, unit?:string, price?:number, unit_type?:string, units_per_package?:number, coverage_sqs?:number, coverage_ft2?:number, coverage_m2?:number };
 type Item = { material_id?:number, name:string, unit?:string, quantity:number, unit_price:number, section:string, description?:string, item_type?:string, supplier_name?:string, unit_type?:string, qty_required?:number, unit_required?:string, markup?:number, taxable?:boolean, units_per_package?:number, coverage_sqs?:number, coverage_ft2?:number, coverage_m2?:number, labour_journey?:number, labour_men?:number, labour_journey_type?:'days'|'hours'|'contract' };
 
-export default function EstimateBuilder({ projectId }:{ projectId:string }){
+export default function EstimateBuilder({ projectId, estimateId }: { projectId: string, estimateId?: number }){
   const [items, setItems] = useState<Item[]>([]);
   const [markup, setMarkup] = useState<number>(5);
   const [pstRate, setPstRate] = useState<number>(7);
@@ -14,6 +14,52 @@ export default function EstimateBuilder({ projectId }:{ projectId:string }){
   const defaultSections = ['Roof System','Wood Blocking / Accessories','Flashing','Miscellaneous'];
   const [sectionOrder, setSectionOrder] = useState<string[]>(defaultSections);
   const [summaryOpen, setSummaryOpen] = useState(false);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [currentEstimateId, setCurrentEstimateId] = useState<number|undefined>(estimateId);
+
+  // Load estimate data if estimateId is provided
+  const { data: estimateData } = useQuery({
+    queryKey: ['estimate', estimateId],
+    queryFn: () => estimateId ? api<any>('GET', `/estimate/estimates/${estimateId}`) : Promise.resolve(null),
+    enabled: !!estimateId && !!currentEstimateId
+  });
+
+  // Load estimate data on mount
+  useEffect(() => {
+    if (estimateData && currentEstimateId) {
+      const est = estimateData.estimate;
+      const loadedItems = estimateData.items || [];
+      
+      // Restore rates and section order
+      if (estimateData.pst_rate !== undefined) setPstRate(estimateData.pst_rate);
+      if (estimateData.gst_rate !== undefined) setGstRate(estimateData.gst_rate);
+      if (estimateData.section_order) setSectionOrder(estimateData.section_order);
+      if (est.markup !== undefined) setMarkup(est.markup);
+      
+      // Convert loaded items to Item format
+      const formattedItems: Item[] = loadedItems.map((it: any) => ({
+        material_id: it.material_id,
+        name: it.name || it.description || 'Item',
+        unit: it.unit || '',
+        quantity: it.quantity || 0,
+        unit_price: it.unit_price || 0,
+        section: it.section || 'Miscellaneous',
+        description: it.description,
+        item_type: it.item_type || 'product',
+        supplier_name: it.supplier_name,
+        unit_type: it.unit_type,
+        units_per_package: it.units_per_package,
+        coverage_sqs: it.coverage_sqs,
+        coverage_ft2: it.coverage_ft2,
+        coverage_m2: it.coverage_m2,
+        qty_required: it.qty_required,
+        unit_required: it.unit_required,
+        markup: it.markup,
+        taxable: it.taxable !== false
+      }));
+      setItems(formattedItems);
+    }
+  }, [estimateData, currentEstimateId]);
 
   const total = useMemo(()=> items.reduce((acc, it)=> acc + (it.quantity * it.unit_price), 0), [items]);
   const pst = useMemo(()=> (total * (pstRate/100)), [total, pstRate]);
@@ -363,14 +409,136 @@ export default function EstimateBuilder({ projectId }:{ projectId:string }){
             <div className="flex items-center justify-between"><span>GST</span><span>${(finalTotal*(gstRate/100)).toFixed(2)}</span></div>
             <div className="flex items-center justify-between font-semibold text-lg"><span>Final Total (with GST)</span><span>${grandTotal.toFixed(2)}</span></div>
           </div>
-          <div className="mt-3 text-right">
-            <button onClick={async()=>{
-              try{
-                const payload = { project_id: projectId, markup, items: items.map(it=> ({ material_id: it.material_id, quantity: it.quantity, unit_price: it.unit_price, section: it.section, description: it.description, item_type: it.item_type })) };
-                await api('POST','/estimate/estimates', payload);
-                toast.success('Estimate saved');
-              }catch(_e){ toast.error('Failed to save'); }
-            }} className="px-3 py-2 rounded bg-brand-red text-white">Save Estimate</button>
+          <div className="mt-3 text-right flex items-center gap-2 justify-end">
+            <button 
+              onClick={async()=>{
+                try{
+                  setIsLoading(true);
+                  const payload = { 
+                    project_id: projectId, 
+                    markup, 
+                    pst_rate: pstRate,
+                    gst_rate: gstRate,
+                    section_order: sectionOrder,
+                    items: items.map(it=> ({ 
+                      material_id: it.material_id, 
+                      quantity: it.quantity, 
+                      unit_price: it.unit_price, 
+                      section: it.section, 
+                      description: it.description, 
+                      item_type: it.item_type,
+                      name: it.name,
+                      unit: it.unit,
+                      markup: it.markup,
+                      taxable: it.taxable,
+                      qty_required: it.qty_required,
+                      unit_required: it.unit_required,
+                      supplier_name: it.supplier_name,
+                      unit_type: it.unit_type,
+                      units_per_package: it.units_per_package,
+                      coverage_sqs: it.coverage_sqs,
+                      coverage_ft2: it.coverage_ft2,
+                      coverage_m2: it.coverage_m2,
+                      labour_journey: it.labour_journey,
+                      labour_men: it.labour_men,
+                      labour_journey_type: it.labour_journey_type
+                    })) 
+                  };
+                  
+                  if (currentEstimateId) {
+                    // Update existing estimate
+                    await api('PUT', `/estimate/estimates/${currentEstimateId}`, payload);
+                    toast.success('Estimate updated');
+                  } else {
+                    // Create new estimate
+                    const result = await api<any>('POST', '/estimate/estimates', payload);
+                    setCurrentEstimateId(result.id);
+                    toast.success('Estimate saved');
+                  }
+                }catch(_e){ 
+                  toast.error('Failed to save'); 
+                }finally{
+                  setIsLoading(false);
+                }
+              }} 
+              disabled={isLoading}
+              className="px-3 py-2 rounded bg-brand-red text-white disabled:opacity-60">
+              {isLoading ? 'Saving...' : (currentEstimateId ? 'Update Estimate' : 'Save Estimate')}
+            </button>
+            <button
+              onClick={async()=>{
+                try{
+                  setIsLoading(true);
+                  // First ensure estimate is saved
+                  let estimateIdToUse = currentEstimateId;
+                  if (!estimateIdToUse) {
+                    const payload = { 
+                      project_id: projectId, 
+                      markup, 
+                      pst_rate: pstRate,
+                      gst_rate: gstRate,
+                      section_order: sectionOrder,
+                      items: items.map(it=> ({ 
+                        material_id: it.material_id, 
+                        quantity: it.quantity, 
+                        unit_price: it.unit_price, 
+                        section: it.section, 
+                        description: it.description, 
+                        item_type: it.item_type,
+                        name: it.name,
+                        unit: it.unit,
+                        markup: it.markup,
+                        taxable: it.taxable,
+                        qty_required: it.qty_required,
+                        unit_required: it.unit_required,
+                        supplier_name: it.supplier_name,
+                        unit_type: it.unit_type,
+                        units_per_package: it.units_per_package,
+                        coverage_sqs: it.coverage_sqs,
+                        coverage_ft2: it.coverage_ft2,
+                        coverage_m2: it.coverage_m2,
+                        labour_journey: it.labour_journey,
+                        labour_men: it.labour_men,
+                        labour_journey_type: it.labour_journey_type
+                      })) 
+                    };
+                    const result = await api<any>('POST', '/estimate/estimates', payload);
+                    estimateIdToUse = result.id;
+                    setCurrentEstimateId(estimateIdToUse);
+                  }
+                  
+                  // Generate PDF
+                  const token = localStorage.getItem('user_token');
+                  const resp = await fetch(`/estimate/estimates/${estimateIdToUse}/generate`, {
+                    method: 'GET',
+                    headers: token ? { Authorization: `Bearer ${token}` } : {}
+                  });
+                  
+                  if (!resp.ok) {
+                    throw new Error('Failed to generate PDF');
+                  }
+                  
+                  const blob = await resp.blob();
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = url;
+                  a.download = `estimate-${estimateIdToUse}.pdf`;
+                  document.body.appendChild(a);
+                  a.click();
+                  document.body.removeChild(a);
+                  URL.revokeObjectURL(url);
+                  
+                  toast.success('PDF generated and downloaded');
+                }catch(_e){
+                  toast.error('Failed to generate PDF');
+                }finally{
+                  setIsLoading(false);
+                }
+              }}
+              disabled={isLoading || items.length === 0}
+              className="px-3 py-2 rounded bg-gray-700 text-white disabled:opacity-60">
+              {isLoading ? 'Generating...' : 'Generate PDF'}
+            </button>
           </div>
         </div>
       </div>

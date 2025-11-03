@@ -16,6 +16,7 @@ import InventoryProducts from './pages/InventoryProducts';
 import InventoryOrders from './pages/InventoryOrders';
 import Proposals from './pages/Proposals';
 import Estimates from './pages/Estimates';
+import EstimateEdit from './pages/EstimateEdit';
 import ProposalNew from './pages/ProposalNew';
 import ProposalView from './pages/ProposalView';
 import ProposalEdit from './pages/ProposalEdit';
@@ -31,7 +32,6 @@ import MyReviews from './pages/MyReviews';
 import ReviewsCompare from './pages/ReviewsCompare';
 import UserDetail from './pages/UserDetail';
 import LogHours from './pages/LogHours';
-import ProposalNew from './pages/ProposalNew';
 
 import { getToken } from './lib/api';
 function Home(){ return <Navigate to={getToken()? '/home':'/login'} replace />; }
@@ -57,6 +57,7 @@ export default function App(){
           <Route path="/inventory/orders" element={<AppShell><InventoryOrders/></AppShell>} />
           <Route path="/proposals" element={<AppShell><Proposals/></AppShell>} />
           <Route path="/estimates" element={<AppShell><Estimates/></AppShell>} />
+          <Route path="/estimates/:id/edit" element={<AppShell><EstimateEdit/></AppShell>} />
           <Route path="/proposals/new" element={<AppShell><ProposalNew/></AppShell>} />
           <Route path="/proposals/:id" element={<AppShell><ProposalView/></AppShell>} />
           <Route path="/proposals/:id/edit" element={<AppShell><ProposalEdit/></AppShell>} />
