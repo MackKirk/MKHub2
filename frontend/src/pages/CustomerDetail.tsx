@@ -15,6 +15,8 @@ type Contact = { id:string, name?:string, email?:string, phone?:string, is_prima
 export default function CustomerDetail(){
   const { id } = useParams();
   const [tab, setTab] = useState<'overview'|'general'|'files'|'contacts'|'sites'|'projects'>('overview');
+  const [newProjectOpen, setNewProjectOpen] = useState(false);
+  const [newProjectName, setNewProjectName] = useState('');
   const { data:client, isLoading } = useQuery({ queryKey:['client', id], queryFn: ()=>api<Client>('GET', `/clients/${id}`) });
   const { data:sites } = useQuery({ queryKey:['clientSites', id], queryFn: ()=>api<Site[]>('GET', `/clients/${id}/sites`) });
   const { data:files, refetch: refetchFiles } = useQuery({ queryKey:['clientFiles', id], queryFn: ()=>api<ClientFile[]>('GET', `/clients/${id}/files`) });
@@ -44,6 +46,41 @@ export default function CustomerDetail(){
       }catch{ setOverlayResolved(''); }
     })();
   }, [overlayUrl]);
+
+  const handleCreateProject = async () => {
+    if (!newProjectName.trim()) {
+      toast.error('Project name is required');
+      return;
+    }
+    if (!id) {
+      toast.error('Client ID is required');
+      return;
+    }
+    try {
+      const created: any = await api('POST', '/projects', { name: newProjectName.trim(), client_id: id });
+      toast.success('Project created');
+      setNewProjectOpen(false);
+      setNewProjectName('');
+      if (created?.id) {
+        window.location.href = `/projects/${encodeURIComponent(String(created.id))}`;
+      }
+    } catch (e: any) {
+      console.error('Failed to create project:', e);
+      toast.error(e?.response?.data?.detail || 'Failed to create project');
+    }
+  };
+
+  useEffect(() => {
+    if (!newProjectOpen) return;
+    const onKey = (e: KeyboardEvent) => { 
+      if (e.key === 'Escape') {
+        setNewProjectOpen(false);
+        setNewProjectName('');
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [newProjectOpen]);
   const leadSources = (settings?.lead_sources||[]) as any[];
   const { data:projects } = useQuery({ queryKey:['clientProjects', id], queryFn: ()=>api<Project[]>('GET', `/projects?client=${encodeURIComponent(String(id||''))}`) });
   const { data:contacts } = useQuery({ queryKey:['clientContacts', id], queryFn: ()=>api<Contact[]>('GET', `/clients/${id}/contacts`) });
@@ -377,8 +414,40 @@ export default function CustomerDetail(){
                 <div>
                   <div className="mb-3 flex items-center justify-between">
                     <h3 className="font-semibold">Projects</h3>
-                    <button onClick={async()=>{ const nm = prompt('Project name'); if(!nm) return; try{ const created:any = await api('POST','/projects', { name: nm, client_id: id }); toast.success('Project created'); if(created?.id){ location.href = `/projects/${encodeURIComponent(String(created.id))}`; } }catch(_e){ toast.error('Failed to create'); } }} className="px-3 py-1.5 rounded bg-brand-red text-white">New Project</button>
+                    <button onClick={()=>setNewProjectOpen(true)} className="px-3 py-1.5 rounded bg-brand-red text-white">New Project</button>
                   </div>
+                  {newProjectOpen && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+                      <div className="w-[480px] max-w-[95vw] bg-white rounded-lg shadow-lg overflow-hidden">
+                        <div className="px-4 py-3 border-b font-semibold">New Project</div>
+                        <div className="p-4">
+                          <div className="mb-3">
+                            <label className="block text-sm text-gray-700 mb-1">Project Name</label>
+                            <input 
+                              type="text" 
+                              className="w-full border rounded px-3 py-2" 
+                              value={newProjectName} 
+                              onChange={e=>setNewProjectName(e.target.value)}
+                              onKeyDown={(e)=>{
+                                if (e.key === 'Enter') {
+                                  e.preventDefault();
+                                  handleCreateProject();
+                                } else if (e.key === 'Escape') {
+                                  setNewProjectOpen(false);
+                                  setNewProjectName('');
+                                }
+                              }}
+                              autoFocus
+                            />
+                          </div>
+                        </div>
+                        <div className="p-3 flex items-center justify-end gap-2 border-t">
+                          <button className="px-3 py-2 rounded bg-gray-100" onClick={()=>{ setNewProjectOpen(false); setNewProjectName(''); }}>Cancel</button>
+                          <button className="px-3 py-2 rounded bg-brand-red text-white" onClick={handleCreateProject}>Create</button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                   <div className="grid md:grid-cols-3 gap-4">
                     {(projects||[]).map(p=> {
                       const pfiles = (files||[]).filter(f=> String((f as any).project_id||'')===String(p.id));
