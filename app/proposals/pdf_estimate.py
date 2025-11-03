@@ -215,6 +215,8 @@ def build_estimate_dynamic_pages(data, output_path):
                 additional_items += 1
             if data.get("markup", 0) > 0:
                 additional_items += 1
+            if data.get("profit_rate", 0) > 0:
+                additional_items += 1
             if data.get("gst", 0) > 0:
                 additional_items += 1
             self.height = base_height + (additional_items * 20) + 50
@@ -266,10 +268,21 @@ def build_estimate_dynamic_pages(data, output_path):
             if markup > 0:
                 c.setFont("Montserrat-Bold", 11.5)
                 c.setFillColor(colors.black)
-                c.drawString(x_left, y, f"Markup ({markup:.0f}%)")
+                c.drawString(x_left, y, f"Sections Mark-up ({markup:.0f}%)")
                 c.setFont("Montserrat-Bold", 11.5)
                 c.setFillColor(colors.grey)
                 c.drawRightString(x_right, y, f"${markup_value:,.2f}")
+                y -= 20
+
+            profit_rate = self.data.get("profit_rate", 0)
+            profit_value = self.data.get("profit_value", 0)
+            if profit_rate > 0:
+                c.setFont("Montserrat-Bold", 11.5)
+                c.setFillColor(colors.black)
+                c.drawString(x_left, y, f"Profit ({profit_rate:.1f}%)")
+                c.setFont("Montserrat-Bold", 11.5)
+                c.setFillColor(colors.grey)
+                c.drawRightString(x_right, y, f"${profit_value:,.2f}")
                 y -= 20
 
             final_total = self.data.get("final_total", 0)

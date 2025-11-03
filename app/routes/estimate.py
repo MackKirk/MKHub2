@@ -239,6 +239,7 @@ class EstimateIn(BaseModel):
     notes: Optional[str] = None
     pst_rate: Optional[float] = None  # PST rate
     gst_rate: Optional[float] = None  # GST rate
+    profit_rate: Optional[float] = None  # Profit rate
     section_order: Optional[List[str]] = None  # Section order
     items: List[EstimateItemIn] = []
 
@@ -259,6 +260,8 @@ def create_estimate(body: EstimateIn, db: Session = Depends(get_db), _=Depends(r
         ui_state['pst_rate'] = body.pst_rate
     if body.gst_rate is not None:
         ui_state['gst_rate'] = body.gst_rate
+    if body.profit_rate is not None:
+        ui_state['profit_rate'] = body.profit_rate
     if body.section_order:
         ui_state['section_order'] = body.section_order
     notes_json = json.dumps(ui_state) if ui_state else None
@@ -381,6 +384,7 @@ def get_estimate(estimate_id: int, db: Session = Depends(get_db), _=Depends(requ
         "items": items_with_details,
         "pst_rate": ui_state.get("pst_rate"),
         "gst_rate": ui_state.get("gst_rate"),
+        "profit_rate": ui_state.get("profit_rate"),
         "section_order": ui_state.get("section_order")
     }
 
@@ -518,6 +522,7 @@ async def generate_estimate_pdf(estimate_id: int, db: Session = Depends(get_db),
     
     pst_rate = ui_state.get('pst_rate', 7.0)
     gst_rate = ui_state.get('gst_rate', 5.0)
+    profit_rate = ui_state.get('profit_rate', 0.0)
     section_order = ui_state.get('section_order', [])
     
     # Group items by section and get material details
@@ -562,7 +567,8 @@ async def generate_estimate_pdf(estimate_id: int, db: Session = Depends(get_db),
     pst = total * (pst_rate / 100)
     subtotal = total + pst
     markup_value = subtotal * ((est.markup or 0.0) / 100)
-    final_total = subtotal + markup_value
+    profit_value = subtotal * (profit_rate / 100)
+    final_total = subtotal + markup_value + profit_value
     gst = final_total * (gst_rate / 100)
     grand_total = final_total + gst
     
@@ -580,6 +586,8 @@ async def generate_estimate_pdf(estimate_id: int, db: Session = Depends(get_db),
         "subtotal": subtotal,
         "markup": est.markup or 0.0,
         "markup_value": markup_value,
+        "profit_rate": profit_rate,
+        "profit_value": profit_value,
         "final_total": final_total,
         "gst": gst,
         "gst_rate": gst_rate,
