@@ -260,10 +260,26 @@ def build_estimate_dynamic_pages(data, output_path):
                 ])
             
             # Set table column widths based on section type
+            # A4 width: 595.27 points, margins: 40 left + 40 right = 80, available: ~515
+            available_width = 515  # A4[0] - 80 (left + right margins)
             if is_product_section:
-                col_widths = [200, 100, 120, 180]
+                # Product sections: Product/Item, Purchase Quantity, Total (with Mkp), Supplier
+                # Distribute: 50% for Product/Item, 15% for Purchase Quantity, 20% for Total, 15% for Supplier
+                col_widths = [
+                    int(available_width * 0.50),  # Product/Item: ~258
+                    int(available_width * 0.15),  # Purchase Quantity: ~77
+                    int(available_width * 0.20),  # Total (with Mkp): ~103
+                    int(available_width * 0.15)   # Supplier: ~77
+                ]
             else:
-                col_widths = [150, 150, 100, 120]
+                # Labour/Sub-Contractors/Shop/Miscellaneous: Labours, Composition, Unit Price, Total (With mkp)
+                # Distribute: 35% for Labours, 35% for Composition, 15% for Unit Price, 15% for Total
+                col_widths = [
+                    int(available_width * 0.35),  # Labours: ~180
+                    int(available_width * 0.35),  # Composition: ~180
+                    int(available_width * 0.15),  # Unit Price: ~77
+                    int(available_width * 0.15)   # Total (with Mkp): ~77
+                ]
             
             estimate_table = Table(table_data, colWidths=col_widths)
             estimate_table.setStyle(TableStyle([
