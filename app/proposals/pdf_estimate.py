@@ -1,4 +1,5 @@
 import os
+import copy
 from reportlab.lib.pagesizes import A4
 from reportlab.platypus import (
     BaseDocTemplate, Paragraph, Spacer, Frame, PageTemplate, PageBreak, Flowable, KeepTogether,
@@ -340,26 +341,34 @@ def build_estimate_dynamic_pages(data, output_path):
 
 
 async def generate_estimate_pdf(data: dict, output_path: str) -> None:
-    """Generate estimate PDF using same template structure as proposals"""
-    from .pdf_merge import merge_pdfs, apply_templates
+    """Generate estimate PDF starting directly with sections (no cover or page 2)"""
+    from PyPDF2 import PdfWriter, PdfReader
     
-    fixed_pdf = os.path.join(BASE_DIR, "tmp_estimate_fixed.pdf")
+    # Only build dynamic pages with sections (skip fixed pages - cover and page 2)
     dynamic_pdf = os.path.join(BASE_DIR, "tmp_estimate_dynamic.pdf")
-
-    build_estimate_fixed_pages(data, fixed_pdf)
     build_estimate_dynamic_pages(data, dynamic_pdf)
 
-    merged_pdf = os.path.join(BASE_DIR, "tmp_estimate_merged.pdf")
-    merge_pdfs(fixed_pdf, dynamic_pdf, merged_pdf)
-
-    cover_template = os.path.join(BASE_DIR, "assets", "templates", "cover_template.pdf")
+    # Apply template only to dynamic pages (no cover template needed)
     page_template = os.path.join(BASE_DIR, "assets", "templates", "page_template.pdf")
-    apply_templates(merged_pdf, output_path, cover_template, page_template)
+    
+    # Apply page template to all pages
+    reader_content = PdfReader(dynamic_pdf)
+    reader_page = PdfReader(page_template)
+    writer = PdfWriter()
 
-    for f in [fixed_pdf, dynamic_pdf, merged_pdf]:
-        if os.path.exists(f):
-            try:
-                os.remove(f)
-            except:
-                pass
+    for page in reader_content.pages:
+        template_page = reader_page.pages[0]
+        merged = copy.deepcopy(template_page)
+        merged.merge_page(page)
+        writer.add_page(merged)
+
+    with open(output_path, "wb") as f:
+        writer.write(f)
+
+    # Clean up temporary files
+    if os.path.exists(dynamic_pdf):
+        try:
+            os.remove(dynamic_pdf)
+        except:
+            pass
 

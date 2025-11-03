@@ -617,7 +617,7 @@ export default function EstimateBuilder({ projectId, estimateId }: { projectId: 
                 onChange={e=>setProfitRate(Number(e.target.value||0))} 
               />
             </div>
-            <div className="flex items-center justify-between"><span>Profit</span><span>${profitValue.toFixed(2)}</span></div>
+            <div className="flex items-center justify-between"><span>Total Profit</span><span>${profitValue.toFixed(2)}</span></div>
             <div className="flex items-center justify-between font-medium"><span>Total Estimate</span><span>${finalTotal.toFixed(2)}</span></div>
             <div className="flex items-center justify-between"><span>GST</span><span>${gst.toFixed(2)}</span></div>
             <div className="flex items-center justify-between font-semibold text-lg"><span>Final Total (with GST)</span><span>${grandTotal.toFixed(2)}</span></div>
@@ -950,7 +950,7 @@ function SummaryModal({ open, onClose, items, pstRate, gstRate, markup, profitRa
                   onChange={e=>setProfitRate(Number(e.target.value||0))} 
                 />
               </div>
-              <div className="flex items-center justify-between"><span>Profit:</span><span className="font-medium">${profitValue.toFixed(2)}</span></div>
+              <div className="flex items-center justify-between"><span>Total Profit:</span><span className="font-medium">${profitValue.toFixed(2)}</span></div>
               <div className="flex items-center justify-between"><span>Total Estimate:</span><span className="font-medium">${totalEstimate.toFixed(2)}</span></div>
               <div className="flex items-center justify-between"><span>GST:</span><span className="font-medium">${gst.toFixed(2)}</span></div>
               <div className="flex items-center justify-between font-semibold text-lg border-t pt-2"><span>Final Total:</span><span className="font-semibold">${finalTotal.toFixed(2)}</span></div>
