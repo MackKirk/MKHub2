@@ -379,14 +379,25 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
             {sections.map((s:any, idx:number)=> (
               <div key={s.id||idx}
                    className={`border rounded p-3 ${dragOverSection===idx? 'ring-2 ring-brand-red':''}`}
-                   draggable
-                   onDragStart={()=> onSectionDragStart(idx)}
                    onDragOver={(e)=>{ e.preventDefault(); onSectionDragOver(idx); }}
                    onDrop={onSectionDrop}
               >
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2 w-full">
-                    <span className="inline-flex items-center justify-center w-5 h-5 text-gray-400 hover:text-gray-600 cursor-grab active:cursor-grabbing" title="Drag to reorder section" aria-label="Drag section handle">
+                    <span 
+                      className="inline-flex items-center justify-center w-5 h-5 text-gray-400 hover:text-gray-600 cursor-grab active:cursor-grabbing" 
+                      title="Drag to reorder section" 
+                      aria-label="Drag section handle"
+                      draggable
+                      onDragStart={() => {
+                        onSectionDragStart(idx);
+                      }}
+                      onDragEnd={() => {
+                        if (draggingSection === idx) {
+                          setDraggingSection(null);
+                          setDragOverSection(null);
+                        }
+                      }}>
                       <svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
                         <circle cx="6" cy="6" r="1.5"></circle>
                         <circle cx="10" cy="6" r="1.5"></circle>

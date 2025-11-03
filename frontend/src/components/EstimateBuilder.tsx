@@ -122,12 +122,23 @@ export default function EstimateBuilder({ projectId }:{ projectId:string }){
             return (
             <div key={section}
                  className={`rounded-xl border overflow-hidden bg-white ${dragOverSection === section ? 'ring-2 ring-brand-red' : ''}`}
-                 draggable
-                 onDragStart={() => onSectionDragStart(section)}
                  onDragOver={(e) => onSectionDragOver(e, section)}
                  onDrop={onSectionDrop}>
               <div className="bg-gray-50 px-4 py-2 border-b flex items-center gap-2">
-                <span className="inline-flex items-center justify-center w-5 h-5 text-gray-400 hover:text-gray-600 cursor-grab active:cursor-grabbing" title="Drag to reorder section" aria-label="Drag section handle">
+                <span 
+                  className="inline-flex items-center justify-center w-5 h-5 text-gray-400 hover:text-gray-600 cursor-grab active:cursor-grabbing" 
+                  title="Drag to reorder section" 
+                  aria-label="Drag section handle"
+                  draggable
+                  onDragStart={() => {
+                    onSectionDragStart(section);
+                  }}
+                  onDragEnd={() => {
+                    if (draggingSection === section) {
+                      setDraggingSection(null);
+                      setDragOverSection(null);
+                    }
+                  }}>
                   <svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
                     <circle cx="6" cy="6" r="1.5"></circle>
                     <circle cx="10" cy="6" r="1.5"></circle>
