@@ -392,12 +392,20 @@ def get_estimate(estimate_id: int, db: Session = Depends(get_db), _=Depends(requ
                 item_dict["coverage_m2"] = m.coverage_m2
         items_with_details.append(item_dict)
     
+    # Return rates with defaults if not saved
+    # If values were not saved before (old estimates), use defaults
+    pst_rate = ui_state.get("pst_rate")
+    gst_rate = ui_state.get("gst_rate")
+    profit_rate = ui_state.get("profit_rate")
+    
+    # Only return None if explicitly saved as None (not in ui_state means not saved yet)
+    # If key doesn't exist in ui_state, it means it was never saved, so return None to use frontend defaults
     return {
         "estimate": est,
         "items": items_with_details,
-        "pst_rate": ui_state.get("pst_rate"),
-        "gst_rate": ui_state.get("gst_rate"),
-        "profit_rate": ui_state.get("profit_rate"),
+        "pst_rate": pst_rate if "pst_rate" in ui_state else None,
+        "gst_rate": gst_rate if "gst_rate" in ui_state else None,
+        "profit_rate": profit_rate if "profit_rate" in ui_state else None,
         "section_order": ui_state.get("section_order")
     }
 
@@ -410,18 +418,39 @@ def update_estimate(estimate_id: int, body: EstimateIn, db: Session = Depends(ge
     
     # Update estimate fields
     est.markup = body.markup or 0.0
+    
+    # Get existing UI state to preserve existing values if not provided
+    existing_ui_state = {}
+    if est.notes:
+        try:
+            existing_ui_state = json.loads(est.notes)
+        except:
+            pass
+    
     # Store UI state in notes as JSON
     ui_state = {}
     # Always save rates - they're part of the estimate configuration
     # Check if values were provided (not None) - 0 is a valid value
+    # If not provided, preserve existing value if available
     if body.pst_rate is not None:
         ui_state['pst_rate'] = body.pst_rate
+    elif 'pst_rate' in existing_ui_state:
+        ui_state['pst_rate'] = existing_ui_state['pst_rate']
+    
     if body.gst_rate is not None:
         ui_state['gst_rate'] = body.gst_rate
+    elif 'gst_rate' in existing_ui_state:
+        ui_state['gst_rate'] = existing_ui_state['gst_rate']
+    
     if body.profit_rate is not None:
         ui_state['profit_rate'] = body.profit_rate
+    elif 'profit_rate' in existing_ui_state:
+        ui_state['profit_rate'] = existing_ui_state['profit_rate']
+    
     if body.section_order:
         ui_state['section_order'] = body.section_order
+    elif 'section_order' in existing_ui_state:
+        ui_state['section_order'] = existing_ui_state['section_order']
     
     # Delete existing items (but first get old extras to preserve if items match)
     old_items = db.query(EstimateItem).filter(EstimateItem.estimate_id == estimate_id).all()

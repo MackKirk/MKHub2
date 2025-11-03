@@ -32,9 +32,17 @@ export default function EstimateBuilder({ projectId, estimateId }: { projectId: 
       const loadedItems = estimateData.items || [];
       
       // Restore rates and section order
-      if (estimateData.pst_rate !== undefined) setPstRate(estimateData.pst_rate);
-      if (estimateData.gst_rate !== undefined) setGstRate(estimateData.gst_rate);
-      if (estimateData.profit_rate !== undefined) setProfitRate(estimateData.profit_rate);
+      // If values are null/undefined, use defaults (don't set 0 for rates that weren't saved)
+      // Only set if value exists in the saved data (could be 0 if explicitly saved as 0)
+      if (estimateData.pst_rate !== undefined && estimateData.pst_rate !== null) {
+        setPstRate(estimateData.pst_rate);
+      }
+      if (estimateData.gst_rate !== undefined && estimateData.gst_rate !== null) {
+        setGstRate(estimateData.gst_rate);
+      }
+      if (estimateData.profit_rate !== undefined && estimateData.profit_rate !== null) {
+        setProfitRate(estimateData.profit_rate);
+      }
       if (estimateData.section_order) setSectionOrder(estimateData.section_order);
       if (est.markup !== undefined) setMarkup(est.markup);
       
