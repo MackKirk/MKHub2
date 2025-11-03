@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from ..auth.security import require_permissions
 from ..db import get_db
-from ..models.models import Material, RelatedProduct, Estimate, EstimateItem
+from ..models.models import Material, RelatedProduct, Estimate, EstimateItem, Project
 
 
 router = APIRouter(prefix="/estimate", tags=["estimate"])
@@ -393,21 +393,30 @@ def update_estimate(estimate_id: int, body: EstimateIn, db: Session = Depends(ge
 
 
 @router.get("/estimates/{estimate_id}/generate")
-def generate_estimate_pdf(estimate_id: int, db: Session = Depends(get_db), _=Depends(require_permissions("inventory:read"))):
-    from fastapi.responses import FileResponse, StreamingResponse
+async def generate_estimate_pdf(estimate_id: int, db: Session = Depends(get_db), _=Depends(require_permissions("inventory:read"))):
+    from fastapi.responses import FileResponse
     import tempfile
     import os
-    import atexit
-    from reportlab.lib.pagesizes import A4
-    from reportlab.pdfgen import canvas
-    from reportlab.lib import colors
-    from reportlab.pdfbase import pdfmetrics
-    from reportlab.pdfbase.ttfonts import TTFont
-    from reportlab.lib.units import mm
+    import uuid
+    from ..proposals.pdf_estimate import generate_estimate_pdf as generate_pdf
     
     est = db.query(Estimate).filter(Estimate.id == estimate_id).first()
     if not est:
         raise HTTPException(status_code=404, detail="Estimate not found")
+    
+    # Get project info
+    project = db.query(Project).filter(Project.id == est.project_id).first()
+    project_name = project.name if project else str(est.project_id)
+    project_address = ""
+    if project:
+        address_parts = []
+        if project.address_city:
+            address_parts.append(project.address_city)
+        if project.address_province:
+            address_parts.append(project.address_province)
+        if project.address_country:
+            address_parts.append(project.address_country)
+        project_address = ", ".join(address_parts)
     
     items_data = db.query(EstimateItem).filter(EstimateItem.estimate_id == estimate_id).all()
     
@@ -423,13 +432,42 @@ def generate_estimate_pdf(estimate_id: int, db: Session = Depends(get_db), _=Dep
     gst_rate = ui_state.get('gst_rate', 5.0)
     section_order = ui_state.get('section_order', [])
     
-    # Group items by section
+    # Group items by section and get material details
     items_by_section = {}
     for item in items_data:
         section = item.section or 'Miscellaneous'
         if section not in items_by_section:
             items_by_section[section] = []
-        items_by_section[section].append(item)
+        
+        item_dict = {
+            "material_id": item.material_id,
+            "quantity": item.quantity or 0.0,
+            "unit_price": item.unit_price or 0.0,
+            "description": item.description,
+            "name": item.description,
+            "unit": ""
+        }
+        
+        # Get material details if available
+        if item.material_id:
+            material = db.query(Material).filter(Material.id == item.material_id).first()
+            if material:
+                item_dict["name"] = material.name
+                item_dict["unit"] = material.unit or ""
+        
+        items_by_section[section].append(item_dict)
+    
+    # Prepare sections in order
+    ordered_sections = section_order if section_order else sorted(items_by_section.keys())
+    sections_data = []
+    for section_name in ordered_sections:
+        if section_name not in items_by_section:
+            continue
+        sections_data.append({
+            "title": section_name,
+            "section": section_name,
+            "items": items_by_section[section_name]
+        })
     
     # Calculate totals
     total = sum((it.quantity or 0.0) * (it.unit_price or 0.0) for it in items_data)
@@ -440,150 +478,38 @@ def generate_estimate_pdf(estimate_id: int, db: Session = Depends(get_db), _=Dep
     gst = final_total * (gst_rate / 100)
     grand_total = final_total + gst
     
-    # Create temporary file for PDF
-    temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.pdf')
-    temp_path = temp_file.name
-    temp_file.close()
+    # Prepare data for PDF generation
+    estimate_data = {
+        "cover_title": "ESTIMATE",
+        "order_number": str(estimate_id),
+        "company_name": project_name,
+        "company_address": project_address,
+        "date": est.created_at.strftime("%Y-%m-%d") if est.created_at else "",
+        "sections": sections_data,
+        "total": total,
+        "pst": pst,
+        "pst_rate": pst_rate,
+        "subtotal": subtotal,
+        "markup": est.markup or 0.0,
+        "markup_value": markup_value,
+        "final_total": final_total,
+        "gst": gst,
+        "gst_rate": gst_rate,
+        "grand_total": grand_total,
+        "cover_image": None,
+        "page2_image": None
+    }
     
-    # Setup fonts
-    try:
-        fonts_path = os.path.join(os.path.dirname(__file__), '..', 'proposals', 'assets', 'fonts')
-        pdfmetrics.registerFont(TTFont("Montserrat", os.path.join(fonts_path, "Montserrat-Regular.ttf")))
-        pdfmetrics.registerFont(TTFont("Montserrat-Bold", os.path.join(fonts_path, "Montserrat-Bold.ttf")))
-        font_name = "Montserrat"
-        font_bold = "Montserrat-Bold"
-    except:
-        font_name = "Helvetica"
-        font_bold = "Helvetica-Bold"
+    # Create temporary output file
+    file_id = str(uuid.uuid4())
+    output_path = os.path.join(tempfile.gettempdir(), f"estimate_{file_id}.pdf")
     
-    # Create PDF
-    c = canvas.Canvas(temp_path, pagesize=A4)
-    width, height = A4
+    await generate_pdf(estimate_data, output_path)
     
-    # Header
-    c.setFont(font_bold, 20)
-    c.setFillColor(colors.HexColor("#7f1010"))
-    c.drawString(40, height - 50, "ESTIMATE")
-    
-    # Project info
-    c.setFont(font_name, 10)
-    c.setFillColor(colors.black)
-    c.drawString(40, height - 80, f"Project ID: {str(est.project_id)}")
-    c.drawString(40, height - 95, f"Date: {est.created_at.strftime('%Y-%m-%d') if est.created_at else ''}")
-    
-    y = height - 130
-    
-    # Sections in order
-    ordered_sections = section_order if section_order else sorted(items_by_section.keys())
-    
-    for section in ordered_sections:
-        if section not in items_by_section:
-            continue
-        
-        # Section header
-        c.setFont(font_bold, 12)
-        c.setFillColor(colors.HexColor("#7f1010"))
-        c.drawString(40, y, section.upper())
-        y -= 20
-        
-        # Table headers
-        c.setFont(font_bold, 9)
-        c.setFillColor(colors.black)
-        c.drawString(40, y, "Item")
-        c.drawString(200, y, "Qty")
-        c.drawString(250, y, "Unit")
-        c.drawString(300, y, "Unit Price")
-        c.drawString(400, y, "Total")
-        y -= 20
-        
-        c.setStrokeColor(colors.grey)
-        c.line(40, y, width - 40, y)
-        y -= 15
-        
-        # Items
-        c.setFont(font_name, 9)
-        section_total = 0.0
-        for item in items_by_section[section]:
-            name = item.description or (item.material_id and f"Material #{item.material_id}") or "Item"
-            if len(name) > 30:
-                name = name[:27] + "..."
-            c.drawString(40, y, name)
-            c.drawString(200, y, f"{item.quantity:.2f}")
-            unit = ""  # Could get from material if needed
-            c.drawString(250, y, unit)
-            c.drawString(300, y, f"${item.unit_price:.2f}")
-            item_total = (item.quantity or 0.0) * (item.unit_price or 0.0)
-            section_total += item_total
-            c.drawString(400, y, f"${item_total:.2f}")
-            y -= 15
-            
-            if y < 100:
-                c.showPage()
-                y = height - 50
-        
-        # Section subtotal
-        c.setFont(font_bold, 9)
-        c.drawString(350, y, "Section Subtotal:")
-        c.drawString(400, y, f"${section_total:.2f}")
-        y -= 25
-    
-    # Summary
-    y -= 20
-    c.setFont(font_bold, 10)
-    c.drawString(40, y, "SUMMARY")
-    y -= 20
-    
-    c.setFont(font_name, 9)
-    c.drawString(350, y, "Total Direct Costs:")
-    c.drawString(500, y, f"${total:.2f}")
-    y -= 15
-    
-    c.drawString(350, y, f"PST ({pst_rate}%):")
-    c.drawString(500, y, f"${pst:.2f}")
-    y -= 15
-    
-    c.drawString(350, y, "Subtotal:")
-    c.drawString(500, y, f"${subtotal:.2f}")
-    y -= 15
-    
-    c.drawString(350, y, f"Markup ({est.markup or 0:.0f}%):")
-    c.drawString(500, y, f"${markup_value:.2f}")
-    y -= 15
-    
-    c.drawString(350, y, "Total Estimate:")
-    c.drawString(500, y, f"${final_total:.2f}")
-    y -= 15
-    
-    c.drawString(350, y, f"GST ({gst_rate}%):")
-    c.drawString(500, y, f"${gst:.2f}")
-    y -= 20
-    
-    c.setFont(font_bold, 12)
-    c.setFillColor(colors.HexColor("#7f1010"))
-    c.drawString(350, y, "GRAND TOTAL:")
-    c.drawString(500, y, f"${grand_total:.2f}")
-    
-    c.save()
-    
-    # Schedule cleanup
-    def cleanup():
-        try:
-            if os.path.exists(temp_path):
-                os.unlink(temp_path)
-        except:
-            pass
-    
-    atexit.register(cleanup)
-    
-    def generate():
-        with open(temp_path, 'rb') as f:
-            yield from f
-        cleanup()
-    
-    return StreamingResponse(
-        generate(),
+    return FileResponse(
+        output_path,
         media_type="application/pdf",
-        headers={"Content-Disposition": f'attachment; filename="estimate-{estimate_id}.pdf"'}
+        filename=f"estimate-{estimate_id}.pdf"
     )
 
 

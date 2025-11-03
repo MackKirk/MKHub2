@@ -254,12 +254,28 @@ export default function EstimateBuilder({ projectId, estimateId }: { projectId: 
                             <td className="p-2">{it.name}</td>
                             <td className="p-2">
                               <input type="number" className="w-20 border rounded px-2 py-1" 
-                                value={it.qty_required||1} min={0} step={1}
+                                value={it.qty_required ?? ''} min={0} step={1}
                                 onChange={e=>{
-                                  const newValue = Number(e.target.value);
-                                  const newItem = {...it, qty_required: newValue};
-                                  const calculatedQty = calculateQuantity(newItem);
-                                  setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...newItem, quantity: calculatedQty} : item));
+                                  const inputValue = e.target.value;
+                                  if (inputValue === '') {
+                                    // Allow empty field during editing
+                                    setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, qty_required: undefined} : item));
+                                    return;
+                                  }
+                                  const newValue = Number(inputValue);
+                                  if (!isNaN(newValue)) {
+                                    const newItem = {...it, qty_required: newValue};
+                                    const calculatedQty = calculateQuantity(newItem);
+                                    setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...newItem, quantity: calculatedQty} : item));
+                                  }
+                                }}
+                                onBlur={e=>{
+                                  // If empty on blur, set to default value
+                                  if (e.target.value === '' || e.target.value === null) {
+                                    const newItem = {...it, qty_required: 1};
+                                    const calculatedQty = calculateQuantity(newItem);
+                                    setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...newItem, quantity: calculatedQty} : item));
+                                  }
                                 }} />
                             </td>
                             <td className="p-2">
@@ -286,15 +302,45 @@ export default function EstimateBuilder({ projectId, estimateId }: { projectId: 
                             <td className="p-2">${it.unit_price.toFixed(2)}</td>
                             <td className="p-2">
                               <input type="number" className="w-20 border rounded px-2 py-1" 
-                                value={it.quantity} min={0} step={1}
-                                onChange={e=>setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, quantity: Number(e.target.value)} : item))} />
+                                value={it.quantity ?? ''} min={0} step={1}
+                                onChange={e=>{
+                                  const inputValue = e.target.value;
+                                  if (inputValue === '') {
+                                    setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, quantity: 0} : item));
+                                    return;
+                                  }
+                                  const newValue = Number(inputValue);
+                                  if (!isNaN(newValue)) {
+                                    setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, quantity: newValue} : item));
+                                  }
+                                }}
+                                onBlur={e=>{
+                                  if (e.target.value === '' || e.target.value === null) {
+                                    setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, quantity: 0} : item));
+                                  }
+                                }} />
                             </td>
                             <td className="p-2">{it.unit||''}</td>
                             <td className="p-2">${totalValue.toFixed(2)}</td>
                             <td className="p-2">
                               <input type="number" className="w-16 border rounded px-2 py-1" 
-                                value={itemMarkup} min={0} step={1}
-                                onChange={e=>setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, markup: Number(e.target.value)} : item))} />
+                                value={itemMarkup ?? ''} min={0} step={1}
+                                onChange={e=>{
+                                  const inputValue = e.target.value;
+                                  if (inputValue === '') {
+                                    setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, markup: 0} : item));
+                                    return;
+                                  }
+                                  const newValue = Number(inputValue);
+                                  if (!isNaN(newValue)) {
+                                    setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, markup: newValue} : item));
+                                  }
+                                }}
+                                onBlur={e=>{
+                                  if (e.target.value === '' || e.target.value === null) {
+                                    setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, markup: markup} : item));
+                                  }
+                                }} />
                             </td>
                             <td className="p-2">${totalWithMarkup.toFixed(2)}</td>
                             <td className="p-2 text-center">
@@ -311,26 +357,88 @@ export default function EstimateBuilder({ projectId, estimateId }: { projectId: 
                               {it.item_type === 'labour' && it.labour_journey_type ? (
                                 it.labour_journey_type === 'contract' ? (
                                   <div className="flex items-center gap-2">
-                                    <input type="number" className="w-16 border rounded px-2 py-1" value={it.labour_journey} min={0} step={0.5} onChange={e=>setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, labour_journey: Number(e.target.value)} : item))} />
+                                    <input type="number" className="w-16 border rounded px-2 py-1" value={it.labour_journey ?? ''} min={0} step={0.5} 
+                                      onChange={e=>{
+                                        const inputValue = e.target.value;
+                                        if (inputValue === '') {
+                                          setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, labour_journey: 0} : item));
+                                          return;
+                                        }
+                                        const newValue = Number(inputValue);
+                                        if (!isNaN(newValue)) {
+                                          setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, labour_journey: newValue} : item));
+                                        }
+                                      }}
+                                      onBlur={e=>{
+                                        if (e.target.value === '' || e.target.value === null) {
+                                          setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, labour_journey: 0} : item));
+                                        }
+                                      }} />
                                     <span>{it.unit}</span>
                                   </div>
                                 ) : (
                                   <div className="flex items-center gap-2">
-                                    <input type="number" className="w-16 border rounded px-2 py-1" value={it.labour_journey} min={0} step={0.5} onChange={e=>setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, labour_journey: Number(e.target.value)} : item))} />
+                                    <input type="number" className="w-16 border rounded px-2 py-1" value={it.labour_journey ?? ''} min={0} step={0.5} 
+                                      onChange={e=>{
+                                        const inputValue = e.target.value;
+                                        if (inputValue === '') {
+                                          setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, labour_journey: 0} : item));
+                                          return;
+                                        }
+                                        const newValue = Number(inputValue);
+                                        if (!isNaN(newValue)) {
+                                          setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, labour_journey: newValue} : item));
+                                        }
+                                      }}
+                                      onBlur={e=>{
+                                        if (e.target.value === '' || e.target.value === null) {
+                                          setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, labour_journey: 0} : item));
+                                        }
+                                      }} />
                                     <span>{it.unit?.endsWith('s') ? it.unit.slice(0, -1) : it.unit}</span>
                                     <span>×</span>
-                                    <input type="number" className="w-14 border rounded px-2 py-1" value={it.labour_men} min={0} step={1} onChange={e=>{
-                                      const newMen = Number(e.target.value);
-                                      const baseName = it.description?.includes(' - ') ? it.description.split(' - ')[0] : it.description || it.name;
-                                      const newDesc = newMen > 0 ? `${baseName} - ${newMen} men` : baseName;
-                                      setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, labour_men: newMen, description: newDesc} : item));
-                                    }} />
+                                    <input type="number" className="w-14 border rounded px-2 py-1" value={it.labour_men ?? ''} min={0} step={1} 
+                                      onChange={e=>{
+                                        const inputValue = e.target.value;
+                                        if (inputValue === '') {
+                                          setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, labour_men: 0} : item));
+                                          return;
+                                        }
+                                        const newMen = Number(inputValue);
+                                        if (!isNaN(newMen)) {
+                                          const baseName = it.description?.includes(' - ') ? it.description.split(' - ')[0] : it.description || it.name;
+                                          const newDesc = newMen > 0 ? `${baseName} - ${newMen} men` : baseName;
+                                          setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, labour_men: newMen, description: newDesc} : item));
+                                        }
+                                      }}
+                                      onBlur={e=>{
+                                        if (e.target.value === '' || e.target.value === null) {
+                                          const baseName = it.description?.includes(' - ') ? it.description.split(' - ')[0] : it.description || it.name;
+                                          setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, labour_men: 1, description: `${baseName} - 1 men`} : item));
+                                        }
+                                      }} />
                                     <span>men</span>
                                   </div>
                                 )
                               ) : (
                                 <div className="flex items-center gap-2">
-                                  <input type="number" className="w-20 border rounded px-2 py-1" value={it.quantity} min={0} step={1} onChange={e=>setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, quantity: Number(e.target.value)} : item))} />
+                                  <input type="number" className="w-20 border rounded px-2 py-1" value={it.quantity ?? ''} min={0} step={1} 
+                                    onChange={e=>{
+                                      const inputValue = e.target.value;
+                                      if (inputValue === '') {
+                                        setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, quantity: 0} : item));
+                                        return;
+                                      }
+                                      const newValue = Number(inputValue);
+                                      if (!isNaN(newValue)) {
+                                        setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, quantity: newValue} : item));
+                                      }
+                                    }}
+                                    onBlur={e=>{
+                                      if (e.target.value === '' || e.target.value === null) {
+                                        setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, quantity: 0} : item));
+                                      }
+                                    }} />
                                   <span>{it.unit}</span>
                                 </div>
                               )}
@@ -339,16 +447,46 @@ export default function EstimateBuilder({ projectId, estimateId }: { projectId: 
                               <div className="flex items-center gap-1">
                                 <span>$</span>
                                 <input type="number" className="w-20 border rounded px-2 py-1" 
-                                  value={it.unit_price} min={0} step={0.01}
-                                  onChange={e=>setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, unit_price: Number(e.target.value)} : item))} />
+                                  value={it.unit_price ?? ''} min={0} step={0.01}
+                                  onChange={e=>{
+                                    const inputValue = e.target.value;
+                                    if (inputValue === '') {
+                                      setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, unit_price: 0} : item));
+                                      return;
+                                    }
+                                    const newValue = Number(inputValue);
+                                    if (!isNaN(newValue)) {
+                                      setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, unit_price: newValue} : item));
+                                    }
+                                  }}
+                                  onBlur={e=>{
+                                    if (e.target.value === '' || e.target.value === null) {
+                                      setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, unit_price: 0} : item));
+                                    }
+                                  }} />
                                 <span>{it.unit ? `per ${it.unit?.endsWith('s') ? it.unit.slice(0, -1) : it.unit}` : ''}</span>
                               </div>
                             </td>
                             <td className="p-2">${totalValue.toFixed(2)}</td>
                             <td className="p-2">
                               <input type="number" className="w-16 border rounded px-2 py-1" 
-                                value={itemMarkup} min={0} step={1}
-                                onChange={e=>setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, markup: Number(e.target.value)} : item))} />
+                                value={itemMarkup ?? ''} min={0} step={1}
+                                onChange={e=>{
+                                  const inputValue = e.target.value;
+                                  if (inputValue === '') {
+                                    setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, markup: 0} : item));
+                                    return;
+                                  }
+                                  const newValue = Number(inputValue);
+                                  if (!isNaN(newValue)) {
+                                    setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, markup: newValue} : item));
+                                  }
+                                }}
+                                onBlur={e=>{
+                                  if (e.target.value === '' || e.target.value === null) {
+                                    setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, markup: markup} : item));
+                                  }
+                                }} />
                             </td>
                             <td className="p-2">${totalWithMarkup.toFixed(2)}</td>
                             <td className="p-2 text-center">
