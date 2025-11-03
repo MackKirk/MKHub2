@@ -263,11 +263,13 @@ def create_estimate(body: EstimateIn, db: Session = Depends(get_db), _=Depends(r
         ui_state['section_order'] = body.section_order
     notes_json = json.dumps(ui_state) if ui_state else None
     
-    est = Estimate(project_id=body.project_id, markup=body.markup or 0.0, notes=notes_json, created_at=datetime.utcnow())
+    est = Estimate(project_id=body.project_id, markup=body.markup or 0.0, notes=None, created_at=datetime.utcnow())
     db.add(est)
     db.flush()
+    
     total = 0.0
-    for it in body.items:
+    item_extras = {}
+    for idx, it in enumerate(body.items):
         # default to current material price if unit_price not provided and material_id exists
         price = it.unit_price
         if price is None and it.material_id is not None:
@@ -277,7 +279,7 @@ def create_estimate(body: EstimateIn, db: Session = Depends(get_db), _=Depends(r
             price = 0.0
         line_total = (it.quantity or 0.0) * (price or 0.0)
         total += line_total
-        db.add(EstimateItem(
+        estimate_item = EstimateItem(
             estimate_id=est.id, 
             material_id=it.material_id,
             quantity=it.quantity, 
@@ -286,7 +288,29 @@ def create_estimate(body: EstimateIn, db: Session = Depends(get_db), _=Depends(r
             section=it.section or None,
             description=it.description or None,
             item_type=it.item_type or 'product'
-        ))
+        )
+        db.add(estimate_item)
+        db.flush()  # Flush to get the ID
+        
+        # Store extras using item ID
+        extras = {}
+        if it.qty_required is not None:
+            extras['qty_required'] = it.qty_required
+        if it.unit_required:
+            extras['unit_required'] = it.unit_required
+        if it.markup is not None:
+            extras['markup'] = it.markup
+        if it.taxable is not None:
+            extras['taxable'] = it.taxable
+        if extras:
+            item_extras[f'item_{estimate_item.id}'] = extras
+    
+    # Combine UI state and item extras in notes
+    if item_extras:
+        ui_state['item_extras'] = item_extras
+    notes_json = json.dumps(ui_state) if ui_state else None
+    est.notes = notes_json
+    
     est.total_cost = total
     db.commit()
     db.refresh(est)
@@ -308,6 +332,9 @@ def get_estimate(estimate_id: int, db: Session = Depends(get_db), _=Depends(requ
         except:
             pass
     
+    # Get item extras from notes
+    item_extras_map = ui_state.get('item_extras', {})
+    
     # Get material details for items with material_id
     items_with_details = []
     for item in items:
@@ -321,6 +348,20 @@ def get_estimate(estimate_id: int, db: Session = Depends(get_db), _=Depends(requ
             "description": item.description,
             "item_type": item.item_type or 'product'
         }
+        
+        # Get extras for this item (by item ID)
+        item_key = f'item_{item.id}'
+        if item_key in item_extras_map:
+            extras = item_extras_map[item_key]
+            if 'qty_required' in extras:
+                item_dict["qty_required"] = extras['qty_required']
+            if 'unit_required' in extras:
+                item_dict["unit_required"] = extras['unit_required']
+            if 'markup' in extras:
+                item_dict["markup"] = extras['markup']
+            if 'taxable' in extras:
+                item_dict["taxable"] = extras['taxable']
+        
         # If material_id exists, get material details
         if item.material_id:
             m = db.query(Material).filter(Material.id == item.material_id).first()
@@ -360,13 +401,28 @@ def update_estimate(estimate_id: int, body: EstimateIn, db: Session = Depends(ge
         ui_state['gst_rate'] = body.gst_rate
     if body.section_order:
         ui_state['section_order'] = body.section_order
-    est.notes = json.dumps(ui_state) if ui_state else None
     
-    # Delete existing items
+    # Delete existing items (but first get old extras to preserve if items match)
+    old_items = db.query(EstimateItem).filter(EstimateItem.estimate_id == estimate_id).all()
+    old_extras_map = {}
+    if est.notes:
+        try:
+            old_ui_state = json.loads(est.notes)
+            old_extras_map = old_ui_state.get('item_extras', {})
+        except:
+            pass
+    
+    # Map old items by material_id + section + description for matching
+    old_items_map = {}
+    for old_item in old_items:
+        key = f"{old_item.material_id}_{old_item.section}_{old_item.description}"
+        old_items_map[key] = old_item
+    
     db.query(EstimateItem).filter(EstimateItem.estimate_id == estimate_id).delete()
     
-    # Add new items
+    # Add new items and preserve extras where possible
     total = 0.0
+    item_extras = {}
     for it in body.items:
         price = it.unit_price
         if price is None and it.material_id is not None:
@@ -376,7 +432,7 @@ def update_estimate(estimate_id: int, body: EstimateIn, db: Session = Depends(ge
             price = 0.0
         line_total = (it.quantity or 0.0) * (price or 0.0)
         total += line_total
-        db.add(EstimateItem(
+        estimate_item = EstimateItem(
             estimate_id=est.id,
             material_id=it.material_id,
             quantity=it.quantity,
@@ -385,7 +441,39 @@ def update_estimate(estimate_id: int, body: EstimateIn, db: Session = Depends(ge
             section=it.section or None,
             description=it.description or None,
             item_type=it.item_type or 'product'
-        ))
+        )
+        db.add(estimate_item)
+        db.flush()  # Flush to get the ID
+        
+        # Store extras using item ID
+        extras = {}
+        # First try to get from new values
+        if it.qty_required is not None:
+            extras['qty_required'] = it.qty_required
+        if it.unit_required:
+            extras['unit_required'] = it.unit_required
+        if it.markup is not None:
+            extras['markup'] = it.markup
+        if it.taxable is not None:
+            extras['taxable'] = it.taxable
+        
+        # If no new values, try to preserve from old item
+        if not extras:
+            key = f"{it.material_id}_{it.section or ''}_{it.description or ''}"
+            if key in old_items_map:
+                old_item_id = old_items_map[key].id
+                old_key = f'item_{old_item_id}'
+                if old_key in old_extras_map:
+                    extras = old_extras_map[old_key].copy()
+        
+        if extras:
+            item_extras[f'item_{estimate_item.id}'] = extras
+    
+    # Combine UI state and item extras in notes
+    if item_extras:
+        ui_state['item_extras'] = item_extras
+    est.notes = json.dumps(ui_state) if ui_state else None
+    
     est.total_cost = total
     db.commit()
     db.refresh(est)
