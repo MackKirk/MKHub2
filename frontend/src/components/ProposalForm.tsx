@@ -652,6 +652,31 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
       <div className="mt-2 flex items-center justify-between">
         <button className="px-3 py-2 rounded bg-gray-100" onClick={()=> nav(-1)}>Back</button>
         <div className="space-x-2">
+          {mode === 'edit' && (
+            <button 
+              className="px-3 py-2 rounded bg-red-600 text-white hover:bg-red-700" 
+              onClick={async () => {
+                const ok = await confirm({ 
+                  title: 'Delete Proposal', 
+                  message: 'Are you sure you want to delete this proposal? This action cannot be undone.' 
+                });
+                if (!ok) return;
+                try {
+                  if (initial?.id) {
+                    await api('DELETE', `/proposals/${encodeURIComponent(initial.id)}`);
+                    toast.success('Proposal deleted');
+                    queryClient.invalidateQueries({ queryKey: ['proposals'] });
+                    nav(-1);
+                  }
+                } catch (e: any) {
+                  console.error('Failed to delete proposal:', e);
+                  toast.error(e?.response?.data?.detail || 'Failed to delete proposal');
+                }
+              }}
+            >
+              Delete Proposal
+            </button>
+          )}
           <button className="px-3 py-2 rounded bg-gray-100" onClick={handleSave}>Save Proposal</button>
           <button className="px-3 py-2 rounded bg-brand-red text-white disabled:opacity-60" disabled={isGenerating} onClick={handleGenerate}>{isGenerating? 'Generating…' : 'Generate Proposal'}</button>
           {downloadUrl && (
