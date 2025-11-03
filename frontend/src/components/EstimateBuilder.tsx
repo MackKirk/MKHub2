@@ -585,7 +585,26 @@ export default function EstimateBuilder({ projectId, estimateId }: { projectId: 
                                   </div>
                                 )
                               ) : (
-                                <span>{it.quantity ? `${it.quantity.toFixed(2)} ${it.unit || ''}`.trim() : ''}</span>
+                                <div className="flex items-center gap-2">
+                                  <input type="number" className="w-20 border rounded px-2 py-1" value={it.quantity ?? ''} min={0} step={0.01} 
+                                    onChange={e=>{
+                                      const inputValue = e.target.value;
+                                      if (inputValue === '') {
+                                        setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, quantity: 0} : item));
+                                        return;
+                                      }
+                                      const newValue = Number(inputValue);
+                                      if (!isNaN(newValue)) {
+                                        setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, quantity: newValue} : item));
+                                      }
+                                    }}
+                                    onBlur={e=>{
+                                      if (e.target.value === '' || e.target.value === null) {
+                                        setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, quantity: 0} : item));
+                                      }
+                                    }} />
+                                  <span>{it.unit || ''}</span>
+                                </div>
                               )}
                             </td>
                             <td className="p-2 text-left">
