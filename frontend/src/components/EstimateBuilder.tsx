@@ -642,7 +642,14 @@ export default function EstimateBuilder({ projectId, estimateId }: { projectId: 
                                 <span>
                                   {it.item_type === 'labour' && it.labour_journey_type ? (
                                     it.labour_journey_type === 'contract' 
-                                      ? (it.unit ? `per ${it.unit}` : '')
+                                      ? (() => {
+                                          // For contract, check if unit is "each" or "lump sum"
+                                          const unitLower = (it.unit || '').toLowerCase().trim();
+                                          if (unitLower === 'each' || unitLower === 'lump sum') {
+                                            return it.unit || '';
+                                          }
+                                          return it.unit ? `per ${it.unit}` : '';
+                                        })()
                                       : `per ${it.labour_journey_type}`
                                   ) : (
                                     (() => {
@@ -930,7 +937,7 @@ function SummaryModal({ open, onClose, items, pstRate, gstRate, markup, profitRa
   }, [items]);
 
   const materialTotal = useMemo(() => {
-    return items.filter(it => !['labour', 'sub-contractor', 'shop'].includes(it.item_type || '')).reduce((acc, it) => acc + calculateItemTotal(it), 0);
+    return items.filter(it => !['labour', 'sub-contractor', 'shop', 'miscellaneous'].includes(it.item_type || '')).reduce((acc, it) => acc + calculateItemTotal(it), 0);
   }, [items]);
 
   const subcontractorTotal = useMemo(() => {
@@ -941,17 +948,48 @@ function SummaryModal({ open, onClose, items, pstRate, gstRate, markup, profitRa
     return costsBySection['Shop'] || 0;
   }, [costsBySection]);
 
-  const directCosts = useMemo(() => laborTotal + materialTotal + subcontractorTotal + shopTotal, [laborTotal, materialTotal, subcontractorTotal, shopTotal]);
+  const miscellaneousTotal = useMemo(() => {
+    return costsBySection['Miscellaneous'] || 0;
+  }, [costsBySection]);
+
+  // Total of all items (same calculation as main page)
+  const total = useMemo(() => {
+    return items.reduce((acc, it) => {
+      let itemTotal = 0;
+      if (it.item_type === 'labour' && it.labour_journey_type) {
+        if (it.labour_journey_type === 'contract') {
+          itemTotal = (it.labour_journey || 0) * it.unit_price;
+        } else {
+          itemTotal = (it.labour_journey || 0) * (it.labour_men || 0) * it.unit_price;
+        }
+      } else {
+        itemTotal = it.quantity * it.unit_price;
+      }
+      return acc + itemTotal;
+    }, 0);
+  }, [items]);
   
   // Total of taxable items only (for PST calculation)
   const taxableTotal = useMemo(() => {
     return items
       .filter(it => it.taxable !== false) // Only items marked as taxable
-      .reduce((acc, it)=> acc + calculateItemTotal(it), 0);
+      .reduce((acc, it) => {
+        let itemTotal = 0;
+        if (it.item_type === 'labour' && it.labour_journey_type) {
+          if (it.labour_journey_type === 'contract') {
+            itemTotal = (it.labour_journey || 0) * it.unit_price;
+          } else {
+            itemTotal = (it.labour_journey || 0) * (it.labour_men || 0) * it.unit_price;
+          }
+        } else {
+          itemTotal = it.quantity * it.unit_price;
+        }
+        return acc + itemTotal;
+      }, 0);
   }, [items]);
   
   const pst = useMemo(() => taxableTotal * (pstRate/100), [taxableTotal, pstRate]);
-  const subtotal = useMemo(() => directCosts + pst, [directCosts, pst]);
+  const subtotal = useMemo(() => total + pst, [total, pst]);
   const markupValue = useMemo(() => subtotal * (markup/100), [subtotal, markup]);
   const profitValue = useMemo(() => subtotal * (profitRate/100), [subtotal, profitRate]);
   const totalEstimate = useMemo(() => subtotal + markupValue + profitValue, [subtotal, markupValue, profitValue]);
@@ -1062,11 +1100,12 @@ function SummaryModal({ open, onClose, items, pstRate, gstRate, markup, profitRa
           <div className="rounded-xl border bg-white overflow-hidden">
             <div className="bg-gray-50 px-4 py-2 border-b font-semibold">Final Summary</div>
             <div className="p-4 space-y-2 text-sm">
-              <div className="flex items-center justify-between"><span>Total Direct Costs:</span><span className="font-medium">${directCosts.toFixed(2)}</span></div>
+              <div className="flex items-center justify-between"><span>Total Direct Costs:</span><span className="font-medium">${total.toFixed(2)}</span></div>
               <div className="flex items-center justify-between"><span>Labor Costs:</span><span className="font-medium">${laborTotal.toFixed(2)}</span></div>
               <div className="flex items-center justify-between"><span>Material Costs:</span><span className="font-medium">${materialTotal.toFixed(2)}</span></div>
               <div className="flex items-center justify-between"><span>Sub-Contractors:</span><span className="font-medium">${subcontractorTotal.toFixed(2)}</span></div>
               <div className="flex items-center justify-between"><span>Shop:</span><span className="font-medium">${shopTotal.toFixed(2)}</span></div>
+              <div className="flex items-center justify-between"><span>Miscellaneous:</span><span className="font-medium">${miscellaneousTotal.toFixed(2)}</span></div>
               <div className="flex items-center justify-between border-t pt-2"><span>Total PST:</span><span className="font-medium">${pst.toFixed(2)}</span></div>
               <div className="flex items-center justify-between"><span>Sections Mark-up:</span><span className="font-medium">${markupValue.toFixed(2)}</span></div>
               <div className="flex items-center justify-between">
@@ -1083,7 +1122,7 @@ function SummaryModal({ open, onClose, items, pstRate, gstRate, markup, profitRa
               <div className="flex items-center justify-between"><span>Total Profit:</span><span className="font-medium">${profitValue.toFixed(2)}</span></div>
               <div className="flex items-center justify-between"><span>Total Estimate:</span><span className="font-medium">${totalEstimate.toFixed(2)}</span></div>
               <div className="flex items-center justify-between"><span>GST:</span><span className="font-medium">${gst.toFixed(2)}</span></div>
-              <div className="flex items-center justify-between font-semibold text-lg border-t pt-2"><span>Final Total:</span><span className="font-semibold">${finalTotal.toFixed(2)}</span></div>
+              <div className="flex items-center justify-between font-semibold text-lg border-t pt-2"><span>Grand Total:</span><span className="font-semibold">${finalTotal.toFixed(2)}</span></div>
             </div>
           </div>
         </div>

@@ -131,6 +131,8 @@ def build_estimate_dynamic_pages(data, output_path):
     styles = getSampleStyleSheet()
     title_style = ParagraphStyle("TitleRed", parent=styles["Normal"],
         fontName="Montserrat-Bold", fontSize=11.5, textColor=colors.HexColor("#d62028"), spaceAfter=12)
+    summary_title_style = ParagraphStyle("SummaryTitleRed", parent=styles["Normal"],
+        fontName="Montserrat-Bold", fontSize=14, textColor=colors.HexColor("#d62028"), spaceAfter=20)
     user_style = ParagraphStyle("UserGrey", parent=styles["Normal"],
         fontName="Montserrat-Bold", fontSize=9.5, leading=14, textColor=colors.grey)
     item_style = ParagraphStyle("ItemStyle", parent=styles["Normal"],
@@ -138,6 +140,11 @@ def build_estimate_dynamic_pages(data, output_path):
 
     story = []
     sections = data.get("sections", [])
+    
+    # Add "Summary and Analysis" title before sections
+    if sections:
+        story.append(Paragraph("Summary and Analysis", summary_title_style))
+        story.append(Spacer(1, 10))
     
     for sec in sections:
         section_name = sec.get("title", sec.get("section", ""))
