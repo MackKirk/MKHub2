@@ -1,4 +1,4 @@
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useMemo, useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
@@ -323,10 +323,18 @@ function PhotosTab({ files }:{ files: ProjectFile[] }){
 }
 
 function ProjectProposalsTab({ projectId, clientId, siteId, proposals }:{ projectId:string, clientId:string, siteId?:string, proposals: Proposal[] }){
+  const navigate = useNavigate();
+  
   return (
     <div className="rounded-xl border bg-white overflow-hidden">
       <div className="p-3 flex justify-end">
-        <button onClick={()=>{ window.location.href = `/proposals/new?client_id=${encodeURIComponent(clientId)}${siteId?`&site_id=${encodeURIComponent(siteId)}`:''}&project_id=${encodeURIComponent(projectId)}`; }} className="px-3 py-2 rounded bg-brand-red text-white">New Proposal</button>
+        <button onClick={()=>{ 
+          const params = new URLSearchParams();
+          params.set('client_id', clientId);
+          if (siteId) params.set('site_id', siteId);
+          params.set('project_id', projectId);
+          navigate(`/proposals/new?${params.toString()}`);
+        }} className="px-3 py-2 rounded bg-brand-red text-white">New Proposal</button>
       </div>
       <table className="w-full text-sm">
         <thead className="bg-gray-50"><tr><th className="text-left p-2">Title</th><th className="text-left p-2">Order</th><th className="text-left p-2">Created</th><th className="text-left p-2">Actions</th></tr></thead>

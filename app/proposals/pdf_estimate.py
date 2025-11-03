@@ -162,10 +162,21 @@ def build_estimate_dynamic_pages(data, output_path):
             # Items
             for item in items:
                 name = item.get("name") or item.get("description") or "Item"
-                quantity = item.get("quantity", 0)
+                item_type = item.get("item_type", "product")
                 unit = item.get("unit", "")
                 unit_price = item.get("unit_price", 0)
-                item_total = quantity * unit_price
+                
+                # Calculate item total based on item type
+                if item_type == 'labour' and item.get("labour_journey_type"):
+                    if item.get("labour_journey_type") == 'contract':
+                        quantity = item.get("labour_journey", 0)
+                        item_total = quantity * unit_price
+                    else:
+                        quantity = item.get("labour_journey", 0) * item.get("labour_men", 0)
+                        item_total = quantity * unit_price
+                else:
+                    quantity = item.get("quantity", 0)
+                    item_total = quantity * unit_price
                 
                 table_data.append([
                     Paragraph(str(name)[:50], item_style),
@@ -175,8 +186,17 @@ def build_estimate_dynamic_pages(data, output_path):
                     Paragraph(f"${item_total:.2f}", item_style)
                 ])
             
-            # Section subtotal
-            section_total = sum((it.get("quantity", 0) * it.get("unit_price", 0)) for it in items)
+            # Section subtotal - calculate correctly for all item types
+            section_total = 0.0
+            for it in items:
+                item_type = it.get("item_type", "product")
+                if item_type == 'labour' and it.get("labour_journey_type"):
+                    if it.get("labour_journey_type") == 'contract':
+                        section_total += (it.get("labour_journey", 0) or 0) * (it.get("unit_price", 0) or 0.0)
+                    else:
+                        section_total += (it.get("labour_journey", 0) or 0) * (it.get("labour_men", 0) or 0) * (it.get("unit_price", 0) or 0.0)
+                else:
+                    section_total += (it.get("quantity", 0) or 0) * (it.get("unit_price", 0) or 0.0)
             table_data.append([
                 Paragraph("<b>Section Subtotal:</b>", item_style),
                 Paragraph("", item_style),
@@ -209,18 +229,10 @@ def build_estimate_dynamic_pages(data, output_path):
         def __init__(self, data):
             super().__init__()
             self.data = data
-            # Calculate height based on number of items
+            # Calculate height based on number of items - always show all items
             base_height = 120
-            additional_items = 0
-            if data.get("pst", 0) > 0:
-                additional_items += 1
-            if data.get("markup", 0) > 0:
-                additional_items += 1
-            if data.get("profit_rate", 0) > 0:
-                additional_items += 1
-            if data.get("gst", 0) > 0:
-                additional_items += 1
-            self.height = base_height + (additional_items * 20) + 50
+            # Always show: Total Direct Costs, PST, Subtotal, Sections Mark-up, Profit, Total Estimate, GST, Grand Total
+            self.height = base_height + (8 * 20) + 50
         
         def draw(self):
             c = self.canv
@@ -244,17 +256,18 @@ def build_estimate_dynamic_pages(data, output_path):
             c.drawRightString(x_right, y, f"${float(self.data.get('total', 0)):,.2f}")
             y -= 20
 
+            # Always show PST (even if 0)
             pst_rate = self.data.get("pst_rate", 0)
             pst = self.data.get("pst", 0)
-            if pst > 0:
-                c.setFont("Montserrat-Bold", 11.5)
-                c.setFillColor(colors.black)
-                c.drawString(x_left, y, f"PST ({pst_rate}%)")
-                c.setFont("Montserrat-Bold", 11.5)
-                c.setFillColor(colors.grey)
-                c.drawRightString(x_right, y, f"${pst:,.2f}")
-                y -= 20
+            c.setFont("Montserrat-Bold", 11.5)
+            c.setFillColor(colors.black)
+            c.drawString(x_left, y, f"PST ({pst_rate}%)")
+            c.setFont("Montserrat-Bold", 11.5)
+            c.setFillColor(colors.grey)
+            c.drawRightString(x_right, y, f"${pst:,.2f}")
+            y -= 20
 
+            # Always show Subtotal
             subtotal = self.data.get("subtotal", 0)
             c.setFont("Montserrat-Bold", 11.5)
             c.setFillColor(colors.black)
@@ -264,28 +277,29 @@ def build_estimate_dynamic_pages(data, output_path):
             c.drawRightString(x_right, y, f"${subtotal:,.2f}")
             y -= 20
 
+            # Always show Sections Mark-up (even if 0)
             markup = self.data.get("markup", 0)
             markup_value = self.data.get("markup_value", 0)
-            if markup > 0:
-                c.setFont("Montserrat-Bold", 11.5)
-                c.setFillColor(colors.black)
-                c.drawString(x_left, y, f"Sections Mark-up ({markup:.0f}%)")
-                c.setFont("Montserrat-Bold", 11.5)
-                c.setFillColor(colors.grey)
-                c.drawRightString(x_right, y, f"${markup_value:,.2f}")
-                y -= 20
+            c.setFont("Montserrat-Bold", 11.5)
+            c.setFillColor(colors.black)
+            c.drawString(x_left, y, f"Sections Mark-up ({markup:.0f}%)")
+            c.setFont("Montserrat-Bold", 11.5)
+            c.setFillColor(colors.grey)
+            c.drawRightString(x_right, y, f"${markup_value:,.2f}")
+            y -= 20
 
+            # Always show Profit (even if 0)
             profit_rate = self.data.get("profit_rate", 0)
             profit_value = self.data.get("profit_value", 0)
-            if profit_rate > 0:
-                c.setFont("Montserrat-Bold", 11.5)
-                c.setFillColor(colors.black)
-                c.drawString(x_left, y, f"Profit ({profit_rate:.1f}%)")
-                c.setFont("Montserrat-Bold", 11.5)
-                c.setFillColor(colors.grey)
-                c.drawRightString(x_right, y, f"${profit_value:,.2f}")
-                y -= 20
+            c.setFont("Montserrat-Bold", 11.5)
+            c.setFillColor(colors.black)
+            c.drawString(x_left, y, f"Total Profit ({profit_rate:.1f}%)")
+            c.setFont("Montserrat-Bold", 11.5)
+            c.setFillColor(colors.grey)
+            c.drawRightString(x_right, y, f"${profit_value:,.2f}")
+            y -= 20
 
+            # Always show Total Estimate
             final_total = self.data.get("final_total", 0)
             c.setFont("Montserrat-Bold", 11.5)
             c.setFillColor(colors.black)
@@ -295,16 +309,16 @@ def build_estimate_dynamic_pages(data, output_path):
             c.drawRightString(x_right, y, f"${final_total:,.2f}")
             y -= 20
 
+            # Always show GST (even if 0)
             gst_rate = self.data.get("gst_rate", 0)
             gst = self.data.get("gst", 0)
-            if gst > 0:
-                c.setFont("Montserrat-Bold", 11.5)
-                c.setFillColor(colors.black)
-                c.drawString(x_left, y, f"GST ({gst_rate}%)")
-                c.setFont("Montserrat-Bold", 11.5)
-                c.setFillColor(colors.grey)
-                c.drawRightString(x_right, y, f"${gst:,.2f}")
-                y -= 30
+            c.setFont("Montserrat-Bold", 11.5)
+            c.setFillColor(colors.black)
+            c.drawString(x_left, y, f"GST ({gst_rate}%)")
+            c.setFont("Montserrat-Bold", 11.5)
+            c.setFillColor(colors.grey)
+            c.drawRightString(x_right, y, f"${gst:,.2f}")
+            y -= 30
 
             # Grand total line
             c.setStrokeColor(colors.HexColor("#d62028"))
