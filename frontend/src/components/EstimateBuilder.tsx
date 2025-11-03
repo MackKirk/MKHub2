@@ -50,29 +50,40 @@ export default function EstimateBuilder({ projectId, estimateId }: { projectId: 
       if (est.markup !== undefined) setMarkup(est.markup);
       
       // Convert loaded items to Item format
-      const formattedItems: Item[] = loadedItems.map((it: any) => ({
-        material_id: it.material_id,
-        name: it.name || it.description || 'Item',
-        unit: it.unit || '',
-        quantity: it.quantity || 0,
-        unit_price: it.unit_price || 0,
-        section: it.section || 'Miscellaneous',
-        description: it.description,
-        item_type: it.item_type || 'product',
-        supplier_name: it.supplier_name,
-        unit_type: it.unit_type,
-        units_per_package: it.units_per_package,
-        coverage_sqs: it.coverage_sqs,
-        coverage_ft2: it.coverage_ft2,
-        coverage_m2: it.coverage_m2,
-        qty_required: it.qty_required,
-        unit_required: it.unit_required,
-        markup: it.markup,
-        taxable: it.taxable !== false,
-        labour_journey: it.labour_journey,
-        labour_men: it.labour_men,
-        labour_journey_type: it.labour_journey_type
-      }));
+      const formattedItems: Item[] = loadedItems.map((it: any) => {
+        // For labour items, set unit based on labour_journey_type if unit is not provided
+        let unit = it.unit || '';
+        if (it.item_type === 'labour' && it.labour_journey_type && !unit) {
+          if (it.labour_journey_type === 'contract') {
+            unit = 'each'; // Default for contract if not saved
+          } else {
+            unit = it.labour_journey_type; // 'days' or 'hours'
+          }
+        }
+        return {
+          material_id: it.material_id,
+          name: it.name || it.description || 'Item',
+          unit: unit,
+          quantity: it.quantity || 0,
+          unit_price: it.unit_price || 0,
+          section: it.section || 'Miscellaneous',
+          description: it.description,
+          item_type: it.item_type || 'product',
+          supplier_name: it.supplier_name,
+          unit_type: it.unit_type,
+          units_per_package: it.units_per_package,
+          coverage_sqs: it.coverage_sqs,
+          coverage_ft2: it.coverage_ft2,
+          coverage_m2: it.coverage_m2,
+          qty_required: it.qty_required,
+          unit_required: it.unit_required,
+          markup: it.markup,
+          taxable: it.taxable !== false,
+          labour_journey: it.labour_journey,
+          labour_men: it.labour_men,
+          labour_journey_type: it.labour_journey_type
+        };
+      });
       setItems(formattedItems);
       // Update lastAutoSaveRef when estimate is loaded to prevent immediate auto-save
       lastAutoSaveRef.current = Date.now();
@@ -328,7 +339,7 @@ export default function EstimateBuilder({ projectId, estimateId }: { projectId: 
       <div className="space-y-4">
         {Object.keys(groupedItems).length > 0 ? (
           sectionOrder.filter(section => groupedItems[section] && groupedItems[section].length > 0).map(section => {
-            const isLabourSection = ['Labour', 'Sub-Contractors', 'Shop'].includes(section);
+            const isLabourSection = ['Labour', 'Sub-Contractors', 'Shop', 'Miscellaneous'].includes(section);
             return (
             <div key={section}
                  className={`rounded-xl border overflow-hidden bg-white ${dragOverSection === section ? 'ring-2 ring-brand-red' : ''}`}
@@ -538,7 +549,7 @@ export default function EstimateBuilder({ projectId, estimateId }: { projectId: 
                                           setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, labour_journey: 0} : item));
                                         }
                                       }} />
-                                    <span>{it.unit}</span>
+                                    <span>contract</span>
                                   </div>
                                 ) : (
                                   <div className="flex items-center gap-2">
@@ -559,7 +570,7 @@ export default function EstimateBuilder({ projectId, estimateId }: { projectId: 
                                           setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, labour_journey: 0} : item));
                                         }
                                       }} />
-                                    <span>{it.unit?.endsWith('s') ? it.unit.slice(0, -1) : it.unit}</span>
+                                    <span>{it.labour_journey_type}</span>
                                     <span>×</span>
                                     <input type="number" className="w-14 border rounded px-2 py-1" value={it.labour_men ?? ''} min={0} step={1} 
                                       onChange={e=>{
@@ -628,7 +639,15 @@ export default function EstimateBuilder({ projectId, estimateId }: { projectId: 
                                       setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, unit_price: 0} : item));
                                     }
                                   }} />
-                                <span>{it.unit ? `per ${it.unit?.endsWith('s') ? it.unit.slice(0, -1) : it.unit}` : ''}</span>
+                                <span>
+                                  {it.item_type === 'labour' && it.labour_journey_type ? (
+                                    it.labour_journey_type === 'contract' 
+                                      ? (it.unit ? `per ${it.unit}` : '')
+                                      : `per ${it.labour_journey_type}`
+                                  ) : (
+                                    it.unit ? `per ${it.unit?.endsWith('s') ? it.unit.slice(0, -1) : it.unit}` : ''
+                                  )}
+                                </span>
                               </div>
                             </td>
                             <td className="p-2">${totalValue.toFixed(2)}</td>
