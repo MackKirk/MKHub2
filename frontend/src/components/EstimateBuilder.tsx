@@ -68,7 +68,10 @@ export default function EstimateBuilder({ projectId, estimateId }: { projectId: 
         qty_required: it.qty_required,
         unit_required: it.unit_required,
         markup: it.markup,
-        taxable: it.taxable !== false
+        taxable: it.taxable !== false,
+        labour_journey: it.labour_journey,
+        labour_men: it.labour_men,
+        labour_journey_type: it.labour_journey_type
       }));
       setItems(formattedItems);
       // Update lastAutoSaveRef when estimate is loaded to prevent immediate auto-save

@@ -37,6 +37,8 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
   const total = useMemo(()=>{ const base = Number(bidPrice||'0'); const extra = costs.reduce((a,c)=> a + Number(c.amount||'0'), 0); return (base+extra).toFixed(2); }, [bidPrice, costs]);
   const [terms, setTerms] = useState<string>('');
   const [sections, setSections] = useState<any[]>([]);
+  const [companyName, setCompanyName] = useState<string>('');
+  const [companyAddress, setCompanyAddress] = useState<string>('');
   const [coverBlob, setCoverBlob] = useState<Blob|null>(null);
   const [coverFoId, setCoverFoId] = useState<string|undefined>(undefined);
   const [page2Blob, setPage2Blob] = useState<Blob|null>(null);
@@ -92,6 +94,8 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
         clientId,
         siteId,
         projectId,
+        companyName,
+        companyAddress,
       };
       return JSON.stringify(payload);
     }catch(_e){ return Math.random().toString(36); }
@@ -125,6 +129,9 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
     setSections(normalized);
     setCoverFoId(d.cover_file_object_id||undefined);
     setPage2FoId(d.page2_file_object_id||undefined);
+    // Load saved company name and address if available
+    if (d.company_name) setCompanyName(d.company_name);
+    if (d.company_address) setCompanyAddress(d.company_address);
     // Update proposal ID ref for auto-save
     if (initial?.id) {
       proposalIdRef.current = initial.id;
@@ -166,14 +173,38 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
     };
     window.addEventListener('beforeunload', handler);
     return ()=> window.removeEventListener('beforeunload', handler);
-  }, [isReady, lastSavedHash, coverTitle, orderNumber, date, createdFor, primary, typeOfProject, otherNotes, projectDescription, additionalNotes, bidPrice, costs, terms, sections, coverFoId, page2FoId, clientId, siteId, projectId]);
+  }, [isReady, lastSavedHash, coverTitle, orderNumber, date, createdFor, primary, typeOfProject, otherNotes, projectDescription, additionalNotes, bidPrice, costs, terms, sections, coverFoId, page2FoId, clientId, siteId, projectId, companyName, companyAddress]);
 
-  // derive company fields
-  const companyName = (client?.display_name || client?.name || '').slice(0,50);
-  const companyAddress = useMemo(()=>{
-    if (site) return [site.site_address_line1, site.site_city, site.site_province, site.site_country].filter(Boolean).join(', ').slice(0,50);
-    return [client?.address_line1, client?.city, client?.province, client?.country].filter(Boolean).join(', ').slice(0,50);
-  }, [client, site]);
+  // Initialize company fields from client/site or saved data
+  useEffect(() => {
+    if (mode === 'edit' && initial?.data) {
+      // In edit mode, use saved values if available, otherwise derive from client/site
+      const savedCompanyName = initial.data.company_name;
+      const savedCompanyAddress = initial.data.company_address;
+      if (savedCompanyName) {
+        setCompanyName(savedCompanyName);
+      } else {
+        const derivedName = (client?.display_name || client?.name || '').slice(0,50);
+        setCompanyName(derivedName);
+      }
+      if (savedCompanyAddress) {
+        setCompanyAddress(savedCompanyAddress);
+      } else {
+        const derivedAddress = site 
+          ? [site.site_address_line1, site.site_city, site.site_province, site.site_country].filter(Boolean).join(', ').slice(0,50)
+          : [client?.address_line1, client?.city, client?.province, client?.country].filter(Boolean).join(', ').slice(0,50);
+        setCompanyAddress(derivedAddress);
+      }
+    } else {
+      // In new mode, derive from client/site
+      const derivedName = (client?.display_name || client?.name || '').slice(0,50);
+      setCompanyName(derivedName);
+      const derivedAddress = site 
+        ? [site.site_address_line1, site.site_city, site.site_province, site.site_country].filter(Boolean).join(', ').slice(0,50)
+        : [client?.address_line1, client?.city, client?.province, client?.country].filter(Boolean).join(', ').slice(0,50);
+      setCompanyAddress(derivedAddress);
+    }
+  }, [mode, initial, client, site]);
 
   // init order number for new
   useEffect(()=>{ if(mode==='new' && !orderNumber && nextCode?.order_number) setOrderNumber(nextCode.order_number); }, [mode, nextCode]);
@@ -226,6 +257,8 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
         sections: sanitizeSections(sections),
         cover_file_object_id: coverFoId||null,
         page2_file_object_id: page2FoId||null,
+        company_name: companyName||null,
+        company_address: companyAddress||null,
       };
       const r:any = await api('POST','/proposals', payload);
       toast.success('Saved');
@@ -285,6 +318,8 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
         sections: sanitizeSections(sections),
         cover_file_object_id: coverFoId||null,
         page2_file_object_id: page2FoId||null,
+        company_name: companyName||null,
+        company_address: companyAddress||null,
       };
       const r:any = await api('POST','/proposals', payload);
       
@@ -307,7 +342,7 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
     } finally {
       isAutoSavingRef.current = false;
     }
-  }, [clientId, projectId, siteId, coverTitle, orderNumber, date, createdFor, primary, typeOfProject, otherNotes, projectDescription, additionalNotes, bidPrice, costs, total, terms, sections, coverFoId, page2FoId, mode, initial, queryClient, sanitizeSections, computeFingerprint]);
+  }, [clientId, projectId, siteId, coverTitle, orderNumber, date, createdFor, primary, typeOfProject, otherNotes, projectDescription, additionalNotes, bidPrice, costs, total, terms, sections, coverFoId, page2FoId, companyName, companyAddress, mode, initial, queryClient, sanitizeSections, computeFingerprint]);
 
   // Auto-save on changes (debounced)
   useEffect(() => {
@@ -329,7 +364,7 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
         clearTimeout(autoSaveTimeoutRef.current);
       }
     };
-  }, [isReady, clientId, coverTitle, orderNumber, date, createdFor, primary, typeOfProject, otherNotes, projectDescription, additionalNotes, bidPrice, costs, terms, sections, coverFoId, page2FoId, autoSave]);
+  }, [isReady, clientId, coverTitle, orderNumber, date, createdFor, primary, typeOfProject, otherNotes, projectDescription, additionalNotes, bidPrice, costs, terms, sections, coverFoId, page2FoId, companyName, companyAddress, autoSave]);
 
   // Periodic auto-save (every 30 seconds)
   useEffect(() => {
@@ -462,8 +497,8 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
               <div className="mt-1 text-[11px] text-gray-500">{coverTitle.length}/44 characters</div>
             </div>
             <div><label className="text-xs text-gray-600">Order Number</label><input className="w-full border rounded px-3 py-2" value={orderNumber} onChange={e=>setOrderNumber(e.target.value)} placeholder={nextCode?.order_number||''} /></div>
-            <div><label className="text-xs text-gray-600">Company Name</label><input className="w-full border rounded px-3 py-2" value={companyName} readOnly /></div>
-            <div><label className="text-xs text-gray-600">Company Address</label><input className="w-full border rounded px-3 py-2" value={companyAddress} readOnly /></div>
+            <div><label className="text-xs text-gray-600">Company Name</label><input className="w-full border rounded px-3 py-2" value={companyName} onChange={e=>setCompanyName(e.target.value)} maxLength={50} /></div>
+            <div><label className="text-xs text-gray-600">Company Address</label><input className="w-full border rounded px-3 py-2" value={companyAddress} onChange={e=>setCompanyAddress(e.target.value)} maxLength={50} /></div>
             <div><label className="text-xs text-gray-600">Date</label><input type="date" className="w-full border rounded px-3 py-2" value={date} onChange={e=>setDate(e.target.value)} /></div>
           </div>
         </div>

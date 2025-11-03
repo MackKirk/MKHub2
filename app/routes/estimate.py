@@ -384,6 +384,12 @@ def get_estimate(estimate_id: int, db: Session = Depends(get_db), _=Depends(requ
                 item_dict["markup"] = extras['markup']
             if 'taxable' in extras:
                 item_dict["taxable"] = extras['taxable']
+            if 'labour_journey' in extras:
+                item_dict["labour_journey"] = extras['labour_journey']
+            if 'labour_men' in extras:
+                item_dict["labour_men"] = extras['labour_men']
+            if 'labour_journey_type' in extras:
+                item_dict["labour_journey_type"] = extras['labour_journey_type']
         
         # If material_id exists, get material details
         if item.material_id:
