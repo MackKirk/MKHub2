@@ -605,7 +605,7 @@ async def generate_estimate_pdf(estimate_id: int, db: Session = Depends(get_db),
             "item_type": item.item_type or 'product'
         }
         
-        # Get item extras (labour_journey, labour_men, labour_journey_type, etc.)
+        # Get item extras (labour_journey, labour_men, labour_journey_type, qty_required, unit_required, markup, taxable, supplier_name, etc.)
         item_key = f'item_{item.id}'
         if item_key in item_extras_map:
             extras = item_extras_map[item_key]
@@ -615,6 +615,14 @@ async def generate_estimate_pdf(estimate_id: int, db: Session = Depends(get_db),
                 item_dict["labour_men"] = extras['labour_men']
             if 'labour_journey_type' in extras:
                 item_dict["labour_journey_type"] = extras['labour_journey_type']
+            if 'qty_required' in extras:
+                item_dict["qty_required"] = extras['qty_required']
+            if 'unit_required' in extras:
+                item_dict["unit_required"] = extras['unit_required']
+            if 'markup' in extras:
+                item_dict["markup"] = extras['markup']
+            if 'taxable' in extras:
+                item_dict["taxable"] = extras['taxable']
         
         # Get material details if available
         if item.material_id:
@@ -622,6 +630,8 @@ async def generate_estimate_pdf(estimate_id: int, db: Session = Depends(get_db),
             if material:
                 item_dict["name"] = material.name
                 item_dict["unit"] = material.unit or ""
+                if 'supplier_name' not in item_dict:
+                    item_dict["supplier_name"] = material.supplier_name or ""
         
         items_by_section[section].append(item_dict)
     
@@ -639,10 +649,12 @@ async def generate_estimate_pdf(estimate_id: int, db: Session = Depends(get_db),
     
     # Calculate totals considering item types (labour has different calculation)
     total = 0.0
+    taxable_total = 0.0
     for item in items_data:
         item_key = f'item_{item.id}'
         extras = item_extras_map.get(item_key, {})
         item_type = item.item_type or 'product'
+        taxable = extras.get('taxable', True)  # Default to True if not specified
         
         if item_type == 'labour' and extras.get('labour_journey_type'):
             if extras['labour_journey_type'] == 'contract':
@@ -653,7 +665,10 @@ async def generate_estimate_pdf(estimate_id: int, db: Session = Depends(get_db),
             item_total = (item.quantity or 0.0) * (item.unit_price or 0.0)
         
         total += item_total
-    pst = total * (pst_rate / 100)
+        # PST only applies to taxable items
+        if taxable:
+            taxable_total += item_total
+    pst = taxable_total * (pst_rate / 100)
     subtotal = total + pst
     markup_value = subtotal * ((est.markup or 0.0) / 100)
     profit_value = subtotal * (profit_rate / 100)
@@ -663,10 +678,11 @@ async def generate_estimate_pdf(estimate_id: int, db: Session = Depends(get_db),
     
     # Prepare data for PDF generation
     estimate_data = {
-        "cover_title": "ESTIMATE",
+        "cover_title": f"ESTIMATE - {project_name}",
         "order_number": str(estimate_id),
         "company_name": project_name,
         "company_address": project_address,
+        "project_name": project_name,
         "date": est.created_at.strftime("%Y-%m-%d") if est.created_at else "",
         "sections": sections_data,
         "total": total,

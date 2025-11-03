@@ -147,17 +147,43 @@ def build_estimate_dynamic_pages(data, output_path):
             story.append(Paragraph(section_name, title_style))
             story.append(Spacer(1, 6))
         
+        # Determine if this is a labour section (Labour, Sub-Contractors, Shop)
+        is_labour_section = section_name in ['Labour', 'Sub-Contractors', 'Shop']
+        
         # Create table for items
         if items:
             table_data = []
-            # Header
-            table_data.append([
-                Paragraph("<b>Item</b>", item_style),
-                Paragraph("<b>Quantity</b>", item_style),
-                Paragraph("<b>Unit</b>", item_style),
-                Paragraph("<b>Unit Price</b>", item_style),
-                Paragraph("<b>Total</b>", item_style)
-            ])
+            
+            # Get global markup from data
+            global_markup = data.get("markup", 0.0)
+            
+            # Header - different columns for labour vs product sections
+            if is_labour_section:
+                # Labour/Sub-Contractors/Shop columns
+                table_data.append([
+                    Paragraph(f"<b>{section_name}</b>", item_style),
+                    Paragraph("<b>Composition</b>", item_style),
+                    Paragraph("<b>Unit Price</b>", item_style),
+                    Paragraph("<b>Total</b>", item_style),
+                    Paragraph("<b>Mkp%</b>", item_style),
+                    Paragraph("<b>Total (with Mkp)</b>", item_style),
+                    Paragraph("<b>Taxable</b>", item_style)
+                ])
+            else:
+                # Product sections columns
+                table_data.append([
+                    Paragraph("<b>Product / Item</b>", item_style),
+                    Paragraph("<b>Quantity Required</b>", item_style),
+                    Paragraph("<b>Demand Unit</b>", item_style),
+                    Paragraph("<b>Unit Price</b>", item_style),
+                    Paragraph("<b>Purchase Quantity</b>", item_style),
+                    Paragraph("<b>Sell Unit</b>", item_style),
+                    Paragraph("<b>Total</b>", item_style),
+                    Paragraph("<b>Mkp%</b>", item_style),
+                    Paragraph("<b>Total (with Mkp)</b>", item_style),
+                    Paragraph("<b>Taxable</b>", item_style),
+                    Paragraph("<b>Supplier</b>", item_style)
+                ])
             
             # Items
             for item in items:
@@ -165,56 +191,125 @@ def build_estimate_dynamic_pages(data, output_path):
                 item_type = item.get("item_type", "product")
                 unit = item.get("unit", "")
                 unit_price = item.get("unit_price", 0)
+                markup = item.get("markup") if item.get("markup") is not None else global_markup
+                taxable = item.get("taxable", True)
                 
                 # Calculate item total based on item type
                 if item_type == 'labour' and item.get("labour_journey_type"):
                     if item.get("labour_journey_type") == 'contract':
                         quantity = item.get("labour_journey", 0)
                         item_total = quantity * unit_price
+                        composition = f"{quantity:.2f} contract"
                     else:
                         quantity = item.get("labour_journey", 0) * item.get("labour_men", 0)
                         item_total = quantity * unit_price
+                        journey_type = item.get("labour_journey_type", "days")
+                        composition = f"{item.get('labour_journey', 0):.2f} {journey_type} × {item.get('labour_men', 0)} men"
                 else:
                     quantity = item.get("quantity", 0)
                     item_total = quantity * unit_price
+                    composition = ""
                 
-                table_data.append([
-                    Paragraph(str(name)[:50], item_style),
-                    Paragraph(f"{quantity:.2f}", item_style),
-                    Paragraph(str(unit)[:10], item_style),
-                    Paragraph(f"${unit_price:.2f}", item_style),
-                    Paragraph(f"${item_total:.2f}", item_style)
-                ])
+                # Calculate total with markup
+                total_with_markup = item_total * (1 + (markup / 100))
+                
+                # Format taxable
+                taxable_text = "Yes" if taxable else "No"
+                
+                if is_labour_section:
+                    # Labour/Sub-Contractors/Shop row
+                    table_data.append([
+                        Paragraph(str(name)[:40], item_style),
+                        Paragraph(str(composition)[:30], item_style),
+                        Paragraph(f"${unit_price:.2f}", item_style),
+                        Paragraph(f"${item_total:.2f}", item_style),
+                        Paragraph(f"{markup:.1f}%", item_style),
+                        Paragraph(f"${total_with_markup:.2f}", item_style),
+                        Paragraph(taxable_text, item_style)
+                    ])
+                else:
+                    # Product row
+                    qty_required = item.get("qty_required", "")
+                    unit_required = item.get("unit_required", "")
+                    supplier_name = item.get("supplier_name", "")
+                    
+                    table_data.append([
+                        Paragraph(str(name)[:40], item_style),
+                        Paragraph(str(qty_required) if qty_required else "", item_style),
+                        Paragraph(str(unit_required)[:10], item_style),
+                        Paragraph(f"${unit_price:.2f}", item_style),
+                        Paragraph(f"{quantity:.2f}", item_style),
+                        Paragraph(str(unit)[:10], item_style),
+                        Paragraph(f"${item_total:.2f}", item_style),
+                        Paragraph(f"{markup:.1f}%", item_style),
+                        Paragraph(f"${total_with_markup:.2f}", item_style),
+                        Paragraph(taxable_text, item_style),
+                        Paragraph(str(supplier_name)[:30], item_style)
+                    ])
             
             # Section subtotal - calculate correctly for all item types
             section_total = 0.0
+            section_total_with_markup = 0.0
             for it in items:
                 item_type = it.get("item_type", "product")
+                item_markup = it.get("markup") if it.get("markup") is not None else global_markup
+                
                 if item_type == 'labour' and it.get("labour_journey_type"):
                     if it.get("labour_journey_type") == 'contract':
-                        section_total += (it.get("labour_journey", 0) or 0) * (it.get("unit_price", 0) or 0.0)
+                        item_total = (it.get("labour_journey", 0) or 0) * (it.get("unit_price", 0) or 0.0)
                     else:
-                        section_total += (it.get("labour_journey", 0) or 0) * (it.get("labour_men", 0) or 0) * (it.get("unit_price", 0) or 0.0)
+                        item_total = (it.get("labour_journey", 0) or 0) * (it.get("labour_men", 0) or 0) * (it.get("unit_price", 0) or 0.0)
                 else:
-                    section_total += (it.get("quantity", 0) or 0) * (it.get("unit_price", 0) or 0.0)
-            table_data.append([
-                Paragraph("<b>Section Subtotal:</b>", item_style),
-                Paragraph("", item_style),
-                Paragraph("", item_style),
-                Paragraph("", item_style),
-                Paragraph(f"<b>${section_total:.2f}</b>", item_style)
-            ])
+                    item_total = (it.get("quantity", 0) or 0) * (it.get("unit_price", 0) or 0.0)
+                
+                section_total += item_total
+                section_total_with_markup += item_total * (1 + (item_markup / 100))
             
-            estimate_table = Table(table_data, colWidths=[200, 80, 60, 100, 100])
+            # Add section subtotal row
+            if is_labour_section:
+                table_data.append([
+                    Paragraph("<b>Section Subtotal:</b>", item_style),
+                    Paragraph("", item_style),
+                    Paragraph("", item_style),
+                    Paragraph(f"<b>${section_total:.2f}</b>", item_style),
+                    Paragraph("", item_style),
+                    Paragraph(f"<b>${section_total_with_markup:.2f}</b>", item_style),
+                    Paragraph("", item_style)
+                ])
+            else:
+                table_data.append([
+                    Paragraph("<b>Section Subtotal:</b>", item_style),
+                    Paragraph("", item_style),
+                    Paragraph("", item_style),
+                    Paragraph("", item_style),
+                    Paragraph("", item_style),
+                    Paragraph("", item_style),
+                    Paragraph(f"<b>${section_total:.2f}</b>", item_style),
+                    Paragraph("", item_style),
+                    Paragraph(f"<b>${section_total_with_markup:.2f}</b>", item_style),
+                    Paragraph("", item_style),
+                    Paragraph("", item_style)
+                ])
+            
+            # Set table column widths based on section type
+            if is_labour_section:
+                col_widths = [120, 120, 80, 80, 60, 100, 60]
+            else:
+                col_widths = [120, 70, 70, 70, 70, 60, 70, 50, 90, 50, 100]
+            
+            estimate_table = Table(table_data, colWidths=col_widths)
             estimate_table.setStyle(TableStyle([
                 ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#f0f0f0")),
                 ("TEXTCOLOR", (0, 0), (-1, -1), colors.black),
-                ("ALIGN", (1, 0), (-1, -1), "RIGHT"),
-                ("ALIGN", (0, 0), (0, -1), "LEFT"),
+                ("ALIGN", (2, 0), (-1, -1), "RIGHT"),
+                ("ALIGN", (0, 0), (1, -1), "LEFT"),
                 ("FONTNAME", (0, 0), (-1, 0), "Montserrat-Bold"),
-                ("FONTSIZE", (0, 0), (-1, 0), 9),
-                ("BOTTOMPADDING", (0, 0), (-1, 0), 12),
-                ("TOPPADDING", (0, 0), (-1, 0), 12),
+                ("FONTSIZE", (0, 0), (-1, 0), 8),
+                ("BOTTOMPADDING", (0, 0), (-1, 0), 8),
+                ("TOPPADDING", (0, 0), (-1, 0), 8),
+                ("FONTSIZE", (0, 1), (-1, -2), 8),
+                ("FONTSIZE", (0, -1), (-1, -1), 9),
+                ("FONTNAME", (0, -1), (-1, -1), "Montserrat-Bold"),
                 ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
                 ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
             ]))

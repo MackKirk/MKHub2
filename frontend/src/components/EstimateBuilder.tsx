@@ -300,6 +300,7 @@ export default function EstimateBuilder({ projectId, estimateId }: { projectId: 
         <AddProductModal onAdd={(it)=> setItems(prev=> [...prev, it])} />
         <AddLabourModal onAdd={(it)=> setItems(prev=> [...prev, it])} />
         <AddSubContractorModal onAdd={(it)=> setItems(prev=> [...prev, it])} />
+        <AddMiscellaneousModal onAdd={(it)=> setItems(prev=> [...prev, it])} />
         <AddShopModal onAdd={(it)=> setItems(prev=> [...prev, it])} />
         <div className="ml-auto flex items-center gap-3 text-sm">
           <label>Markup (%)</label><input type="number" className="border rounded px-2 py-1 w-20" value={markup} min={0} step={1} onChange={e=>setMarkup(Number(e.target.value||0))} />
@@ -1515,6 +1516,68 @@ function AddSubContractorModal({ onAdd }:{ onAdd:(it: Item)=>void }){
                   onAdd({ name: desc, unit, quantity: qty, unit_price: totalValue, section: 'Sub-Contractors', description: desc, item_type: 'subcontractor', taxable: true });
                   setOpen(false); setType(''); setDebrisDesc(''); setDebrisSqs('0'); setDebrisSqsPerLoad('0'); setDebrisLoads('0'); setDebrisPricePerLoad('0'); setWashroomPeriod('days'); setWashroomPeriodCount('1'); setWashroomPrice('0'); setOtherDesc(''); setOtherNumber('1'); setOtherUnit(''); setOtherPrice('0');
                 }} className="px-3 py-2 rounded bg-brand-red text-white">Add Sub-Contractors</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+function AddMiscellaneousModal({ onAdd }:{ onAdd:(it: Item)=>void }){
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState('');
+  const [quantity, setQuantity] = useState<string>('1');
+  const [unit, setUnit] = useState('');
+  const [price, setPrice] = useState<string>('0');
+
+  const total = useMemo(()=> Number(quantity||0) * Number(price||0), [quantity, price]);
+  const calcText = `${quantity} ${unit} × $${Number(price||0).toFixed(2)} = $${total.toFixed(2)}`;
+
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open]);
+
+  return (
+    <>
+      <button onClick={()=>setOpen(true)} className="px-3 py-2 rounded bg-gray-100">+ Add Miscellaneous</button>
+      {open && (
+        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center">
+          <div className="w-[600px] max-w-[95vw] bg-white rounded-xl overflow-hidden">
+            <div className="px-4 py-3 border-b flex items-center justify-between">
+              <div className="font-semibold">Add Miscellaneous</div>
+              <button onClick={()=>setOpen(false)} className="text-gray-500 hover:text-gray-700 text-2xl font-bold w-8 h-8 flex items-center justify-center rounded hover:bg-gray-100" title="Close">×</button>
+            </div>
+            <div className="p-4 space-y-3">
+              <div>
+                <label className="text-xs text-gray-600">Name/Description:</label>
+                <input type="text" className="w-full border rounded px-3 py-2" placeholder="Enter miscellaneous name or description..." value={name} onChange={e=>setName(e.target.value)} />
+              </div>
+              <div>
+                <label className="text-xs text-gray-600">Quantity:</label>
+                <div className="flex gap-2 items-center">
+                  <input type="number" className="w-28 border rounded px-3 py-2" value={quantity} min={0} step={0.01} onChange={e=>setQuantity(e.target.value)} />
+                  <input type="text" className="flex-1 border rounded px-3 py-2" placeholder="Unit (e.g., each, sqs)" value={unit} onChange={e=>setUnit(e.target.value)} />
+                </div>
+              </div>
+              <div>
+                <label className="text-xs text-gray-600">Price per Unit ($):</label>
+                <input type="number" className="w-full border rounded px-3 py-2" value={price} min={0} step={0.01} onChange={e=>setPrice(e.target.value)} />
+              </div>
+              <div className="bg-gray-100 p-3 rounded">
+                <strong>Total Preview:</strong>
+                <div className="mt-1 text-sm text-gray-600">{calcText}</div>
+              </div>
+              <div className="text-right">
+                <button onClick={()=>{
+                  if(!name.trim()){ toast.error('Please enter a miscellaneous name/description'); return; }
+                  onAdd({ name, unit, quantity: Number(quantity||0), unit_price: Number(price||0), section: 'Miscellaneous', description: name, item_type: 'miscellaneous', taxable: true });
+                  setOpen(false); setName(''); setQuantity('1'); setUnit(''); setPrice('0');
+                }} className="px-3 py-2 rounded bg-brand-red text-white">Add Miscellaneous</button>
               </div>
             </div>
           </div>
