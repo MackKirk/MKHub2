@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
@@ -17,6 +17,9 @@ export default function EstimateBuilder({ projectId, estimateId }: { projectId: 
   const [summaryOpen, setSummaryOpen] = useState(false);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [currentEstimateId, setCurrentEstimateId] = useState<number|undefined>(estimateId);
+  const autoSaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isAutoSavingRef = useRef<boolean>(false);
+  const lastAutoSaveRef = useRef<number>(0);
 
   // Load estimate data if estimateId is provided
   const { data: estimateData } = useQuery({
@@ -68,6 +71,8 @@ export default function EstimateBuilder({ projectId, estimateId }: { projectId: 
         taxable: it.taxable !== false
       }));
       setItems(formattedItems);
+      // Update lastAutoSaveRef when estimate is loaded to prevent immediate auto-save
+      lastAutoSaveRef.current = Date.now();
     }
   }, [estimateData, currentEstimateId]);
 
@@ -126,6 +131,98 @@ export default function EstimateBuilder({ projectId, estimateId }: { projectId: 
   const finalTotal = useMemo(()=> subtotal + markupValue + profitValue, [subtotal, markupValue, profitValue]);
   const gst = useMemo(()=> finalTotal * (gstRate/100), [finalTotal, gstRate]);
   const grandTotal = useMemo(()=> finalTotal + gst, [finalTotal, gst]);
+
+  // Auto-save function (silent save without toast)
+  const autoSave = useCallback(async () => {
+    // Don't auto-save if already saving or if no projectId
+    if (isAutoSavingRef.current || !projectId) return;
+    
+    // Don't auto-save if less than 3 seconds since last save
+    const now = Date.now();
+    if (now - lastAutoSaveRef.current < 3000) return;
+
+    try {
+      isAutoSavingRef.current = true;
+      const payload = { 
+        project_id: projectId, 
+        markup, 
+        pst_rate: pstRate,
+        gst_rate: gstRate,
+        profit_rate: profitRate,
+        section_order: sectionOrder,
+        items: items.map(it=> ({ 
+          material_id: it.material_id, 
+          quantity: it.quantity, 
+          unit_price: it.unit_price, 
+          section: it.section, 
+          description: it.description, 
+          item_type: it.item_type,
+          name: it.name,
+          unit: it.unit,
+          markup: it.markup,
+          taxable: it.taxable,
+          qty_required: it.qty_required,
+          unit_required: it.unit_required,
+          supplier_name: it.supplier_name,
+          unit_type: it.unit_type,
+          units_per_package: it.units_per_package,
+          coverage_sqs: it.coverage_sqs,
+          coverage_ft2: it.coverage_ft2,
+          coverage_m2: it.coverage_m2,
+          labour_journey: it.labour_journey,
+          labour_men: it.labour_men,
+          labour_journey_type: it.labour_journey_type
+        })) 
+      };
+      
+      if (currentEstimateId) {
+        // Update existing estimate
+        await api('PUT', `/estimate/estimates/${currentEstimateId}`, payload);
+      } else {
+        // Create new estimate
+        const result = await api<any>('POST', '/estimate/estimates', payload);
+        setCurrentEstimateId(result.id);
+      }
+      lastAutoSaveRef.current = Date.now();
+    } catch (e) {
+      // Silent fail for auto-save
+    } finally {
+      isAutoSavingRef.current = false;
+    }
+  }, [projectId, markup, pstRate, gstRate, profitRate, sectionOrder, items, currentEstimateId]);
+
+  // Auto-save on changes (debounced)
+  useEffect(() => {
+    // Only auto-save if estimate is loaded or if we have items
+    if (!projectId || (items.length === 0 && !currentEstimateId)) return;
+
+    // Clear existing timeout
+    if (autoSaveTimeoutRef.current) {
+      clearTimeout(autoSaveTimeoutRef.current);
+    }
+
+    // Set new timeout for auto-save (2 seconds after last change)
+    autoSaveTimeoutRef.current = setTimeout(() => {
+      autoSave();
+    }, 2000);
+
+    return () => {
+      if (autoSaveTimeoutRef.current) {
+        clearTimeout(autoSaveTimeoutRef.current);
+      }
+    };
+  }, [items, markup, pstRate, gstRate, profitRate, sectionOrder, projectId, currentEstimateId, autoSave]);
+
+  // Periodic auto-save (every 30 seconds)
+  useEffect(() => {
+    if (!projectId || (items.length === 0 && !currentEstimateId)) return;
+
+    const interval = setInterval(() => {
+      autoSave();
+    }, 30000); // 30 seconds
+
+    return () => clearInterval(interval);
+  }, [projectId, items.length, currentEstimateId, autoSave]);
 
   // Calculate quantity based on qty_required and unit_type
   const calculateQuantity = (item: Item): number => {
