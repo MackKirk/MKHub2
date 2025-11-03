@@ -246,10 +246,88 @@ class EstimateIn(BaseModel):
 
 @router.get("/estimates")
 def list_estimates(project_id: Optional[uuid.UUID] = None, db: Session = Depends(get_db), _=Depends(require_permissions("inventory:read"))):
+    from ..models.models import Project, Client
     q = db.query(Estimate)
     if project_id:
         q = q.filter(Estimate.project_id == project_id)
-    return q.order_by(Estimate.created_at.desc()).limit(500).all()
+    estimates = q.order_by(Estimate.created_at.desc()).limit(500).all()
+    
+    # Enrich with project and client information
+    result = []
+    for est in estimates:
+        est_dict = {
+            "id": est.id,
+            "project_id": str(est.project_id) if est.project_id else None,
+            "total_cost": est.total_cost,
+            "markup": est.markup,
+            "created_at": est.created_at.isoformat() if est.created_at else None,
+            "project_name": None,
+            "client_name": None,
+            "grand_total": None
+        }
+        
+        # Get project information
+        if est.project_id:
+            project = db.query(Project).filter(Project.id == est.project_id).first()
+            if project:
+                est_dict["project_name"] = project.name
+                # Get client information
+                if project.client_id:
+                    client = db.query(Client).filter(Client.id == project.client_id).first()
+                    if client:
+                        est_dict["client_name"] = client.display_name or client.name
+        
+        # Calculate grand total from notes if available
+        if est.notes:
+            try:
+                import json
+                ui_state = json.loads(est.notes)
+                # Get rates from UI state
+                pst_rate = ui_state.get('pst_rate', 7.0)
+                gst_rate = ui_state.get('gst_rate', 5.0)
+                profit_rate = ui_state.get('profit_rate', 0.0)
+                markup = est.markup or 0.0
+                
+                # Get items to calculate taxable total
+                items = db.query(EstimateItem).filter(EstimateItem.estimate_id == est.id).all()
+                item_extras_map = ui_state.get('item_extras', {})
+                
+                # Calculate total and taxable total
+                total = 0.0
+                taxable_total = 0.0
+                for item in items:
+                    # Calculate item total based on item type
+                    if item.item_type == 'labour' and item_extras_map.get(f'item_{item.id}', {}).get('labour_journey_type'):
+                        extras = item_extras_map.get(f'item_{item.id}', {})
+                        if extras.get('labour_journey_type') == 'contract':
+                            item_total = (extras.get('labour_journey', 0) or 0) * (item.unit_price or 0.0)
+                        else:
+                            item_total = (extras.get('labour_journey', 0) or 0) * (extras.get('labour_men', 0) or 0) * (item.unit_price or 0.0)
+                    else:
+                        item_total = (item.quantity or 0.0) * (item.unit_price or 0.0)
+                    
+                    total += item_total
+                    # PST only applies to taxable items
+                    if item_extras_map.get(f'item_{item.id}', {}).get('taxable', True) is not False:
+                        taxable_total += item_total
+                
+                # Calculate PST, subtotal, markup, profit, total estimate, GST, grand total
+                pst = taxable_total * (pst_rate / 100)
+                subtotal = total + pst
+                markup_value = subtotal * (markup / 100)
+                profit_value = subtotal * (profit_rate / 100)
+                final_total = subtotal + markup_value + profit_value
+                gst = final_total * (gst_rate / 100)
+                grand_total = final_total + gst
+                
+                est_dict["grand_total"] = grand_total
+            except Exception as e:
+                # If calculation fails, use total_cost as fallback
+                est_dict["grand_total"] = est.total_cost
+        
+        result.append(est_dict)
+    
+    return result
 
 
 @router.post("/estimates")

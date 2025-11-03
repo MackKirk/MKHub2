@@ -390,8 +390,12 @@ export default function EstimateBuilder({ projectId, estimateId }: { projectId: 
                     </>
                   ) : (
                     <>
-                      <th className="p-2 text-left">{section}</th>
-                      <th className="p-2 text-left">Composition</th>
+                      <th className="p-2 text-left">
+                        {['Sub-Contractors', 'Shop', 'Miscellaneous'].includes(section) ? 'Product / Item' : section}
+                      </th>
+                      <th className="p-2 text-left">
+                        {['Sub-Contractors', 'Shop', 'Miscellaneous'].includes(section) ? 'Quantity Required' : 'Composition'}
+                      </th>
                       <th className="p-2 text-left">Unit Price</th>
                       <th className="p-2 text-left">Total</th>
                       <th className="p-2 text-left">Mkp%</th>
@@ -643,14 +647,25 @@ export default function EstimateBuilder({ projectId, estimateId }: { projectId: 
                                   {it.item_type === 'labour' && it.labour_journey_type ? (
                                     it.labour_journey_type === 'contract' 
                                       ? (() => {
-                                          // For contract, check if unit is "each" or "lump sum"
+                                          // For contract, check if unit is "each" or "lump sum" (no "per")
                                           const unitLower = (it.unit || '').toLowerCase().trim();
                                           if (unitLower === 'each' || unitLower === 'lump sum') {
                                             return it.unit || '';
                                           }
-                                          return it.unit ? `per ${it.unit}` : '';
+                                          // For "sqs", keep as is (show "per sqs")
+                                          if (unitLower === 'sqs') {
+                                            return it.unit ? `per ${it.unit}` : '';
+                                          }
+                                          // Convert to singular for display (except sqs)
+                                          const unitSingular = it.unit?.endsWith('s') ? it.unit.slice(0, -1) : it.unit;
+                                          return unitSingular ? `per ${unitSingular}` : '';
                                         })()
-                                      : `per ${it.labour_journey_type}`
+                                      : (() => {
+                                          // For days/hours, convert to singular if needed
+                                          const journeyType = it.labour_journey_type;
+                                          const singular = journeyType?.endsWith('s') ? journeyType.slice(0, -1) : journeyType;
+                                          return `per ${singular}`;
+                                        })()
                                   ) : (
                                     (() => {
                                       // For subcontractor, shop, and miscellaneous
@@ -659,9 +674,15 @@ export default function EstimateBuilder({ projectId, estimateId }: { projectId: 
                                         if (unitLower === 'each' || unitLower === 'lump sum') {
                                           return it.unit || '';
                                         }
+                                        // Keep "sqs" as is, convert others to singular for display
+                                        if (unitLower === 'sqs') {
+                                          return it.unit ? `per ${it.unit}` : '';
+                                        }
+                                        const unitSingular = it.unit?.endsWith('s') ? it.unit.slice(0, -1) : it.unit;
+                                        return unitSingular ? `per ${unitSingular}` : '';
                                       }
-                                      // For other cases, show "per unit"
-                                      return it.unit ? `per ${it.unit?.endsWith('s') ? it.unit.slice(0, -1) : it.unit}` : '';
+                                      // For other cases (products), show "per unit" as is
+                                      return it.unit ? `per ${it.unit}` : '';
                                     })()
                                   )}
                                 </span>
