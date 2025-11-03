@@ -256,6 +256,8 @@ def list_estimates(project_id: Optional[uuid.UUID] = None, db: Session = Depends
 def create_estimate(body: EstimateIn, db: Session = Depends(get_db), _=Depends(require_permissions("inventory:write"))):
     # Store UI state in notes as JSON
     ui_state = {}
+    # Always save rates - they're part of the estimate configuration
+    # Check if values were provided (not None) - 0 is a valid value
     if body.pst_rate is not None:
         ui_state['pst_rate'] = body.pst_rate
     if body.gst_rate is not None:
@@ -266,7 +268,7 @@ def create_estimate(body: EstimateIn, db: Session = Depends(get_db), _=Depends(r
         ui_state['section_order'] = body.section_order
     notes_json = json.dumps(ui_state) if ui_state else None
     
-    est = Estimate(project_id=body.project_id, markup=body.markup or 0.0, notes=None, created_at=datetime.utcnow())
+    est = Estimate(project_id=body.project_id, markup=body.markup or 0.0, notes=notes_json, created_at=datetime.utcnow())
     db.add(est)
     db.flush()
     
@@ -309,6 +311,17 @@ def create_estimate(body: EstimateIn, db: Session = Depends(get_db), _=Depends(r
             item_extras[f'item_{estimate_item.id}'] = extras
     
     # Combine UI state and item extras in notes
+    # Make sure ui_state is recreated to preserve the initial values
+    if not ui_state:
+        ui_state = {}
+        if body.pst_rate is not None:
+            ui_state['pst_rate'] = body.pst_rate
+        if body.gst_rate is not None:
+            ui_state['gst_rate'] = body.gst_rate
+        if body.profit_rate is not None:
+            ui_state['profit_rate'] = body.profit_rate
+        if body.section_order:
+            ui_state['section_order'] = body.section_order
     if item_extras:
         ui_state['item_extras'] = item_extras
     notes_json = json.dumps(ui_state) if ui_state else None
@@ -399,10 +412,14 @@ def update_estimate(estimate_id: int, body: EstimateIn, db: Session = Depends(ge
     est.markup = body.markup or 0.0
     # Store UI state in notes as JSON
     ui_state = {}
+    # Always save rates - they're part of the estimate configuration
+    # Check if values were provided (not None) - 0 is a valid value
     if body.pst_rate is not None:
         ui_state['pst_rate'] = body.pst_rate
     if body.gst_rate is not None:
         ui_state['gst_rate'] = body.gst_rate
+    if body.profit_rate is not None:
+        ui_state['profit_rate'] = body.profit_rate
     if body.section_order:
         ui_state['section_order'] = body.section_order
     
