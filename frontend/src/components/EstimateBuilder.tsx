@@ -549,7 +549,7 @@ export default function EstimateBuilder({ projectId, estimateId }: { projectId: 
                                           setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, labour_journey: 0} : item));
                                         }
                                       }} />
-                                    <span>contract</span>
+                                    <span>{it.unit || ''}</span>
                                   </div>
                                 ) : (
                                   <div className="flex items-center gap-2">
@@ -645,7 +645,17 @@ export default function EstimateBuilder({ projectId, estimateId }: { projectId: 
                                       ? (it.unit ? `per ${it.unit}` : '')
                                       : `per ${it.labour_journey_type}`
                                   ) : (
-                                    it.unit ? `per ${it.unit?.endsWith('s') ? it.unit.slice(0, -1) : it.unit}` : ''
+                                    (() => {
+                                      // For subcontractor, shop, and miscellaneous
+                                      if (['subcontractor', 'shop', 'miscellaneous'].includes(it.item_type || '')) {
+                                        const unitLower = (it.unit || '').toLowerCase().trim();
+                                        if (unitLower === 'each' || unitLower === 'lump sum') {
+                                          return it.unit || '';
+                                        }
+                                      }
+                                      // For other cases, show "per unit"
+                                      return it.unit ? `per ${it.unit?.endsWith('s') ? it.unit.slice(0, -1) : it.unit}` : '';
+                                    })()
                                   )}
                                 </span>
                               </div>
