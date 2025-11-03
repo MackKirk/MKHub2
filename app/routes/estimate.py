@@ -314,6 +314,9 @@ def create_estimate(body: EstimateIn, db: Session = Depends(get_db), _=Depends(r
             extras['labour_men'] = it.labour_men
         if it.labour_journey_type:
             extras['labour_journey_type'] = it.labour_journey_type
+        # Store unit for subcontractor, shop, and miscellaneous items (for composition display)
+        if it.unit:
+            extras['unit'] = it.unit
         if extras:
             item_extras[f'item_{estimate_item.id}'] = extras
     
@@ -390,13 +393,18 @@ def get_estimate(estimate_id: int, db: Session = Depends(get_db), _=Depends(requ
                 item_dict["labour_men"] = extras['labour_men']
             if 'labour_journey_type' in extras:
                 item_dict["labour_journey_type"] = extras['labour_journey_type']
+            # Get unit from extras for subcontractor, shop, and miscellaneous items
+            if 'unit' in extras:
+                item_dict["unit"] = extras['unit']
         
         # If material_id exists, get material details
         if item.material_id:
             m = db.query(Material).filter(Material.id == item.material_id).first()
             if m:
                 item_dict["name"] = m.name
-                item_dict["unit"] = m.unit
+                # Only set unit from material if not already set from extras (for non-product items)
+                if 'unit' not in item_dict:
+                    item_dict["unit"] = m.unit
                 item_dict["supplier_name"] = m.supplier_name
                 item_dict["unit_type"] = m.unit_type
                 item_dict["units_per_package"] = m.units_per_package
@@ -526,6 +534,9 @@ def update_estimate(estimate_id: int, body: EstimateIn, db: Session = Depends(ge
             extras['labour_men'] = it.labour_men
         if it.labour_journey_type:
             extras['labour_journey_type'] = it.labour_journey_type
+        # Store unit for subcontractor, shop, and miscellaneous items (for composition display)
+        if it.unit:
+            extras['unit'] = it.unit
         
         # If no new values, try to preserve from old item
         if not extras:
@@ -611,7 +622,7 @@ async def generate_estimate_pdf(estimate_id: int, db: Session = Depends(get_db),
             "item_type": item.item_type or 'product'
         }
         
-        # Get item extras (labour_journey, labour_men, labour_journey_type, qty_required, unit_required, markup, taxable, supplier_name, etc.)
+        # Get item extras (labour_journey, labour_men, labour_journey_type, qty_required, unit_required, markup, taxable, supplier_name, unit, etc.)
         item_key = f'item_{item.id}'
         if item_key in item_extras_map:
             extras = item_extras_map[item_key]
@@ -629,13 +640,18 @@ async def generate_estimate_pdf(estimate_id: int, db: Session = Depends(get_db),
                 item_dict["markup"] = extras['markup']
             if 'taxable' in extras:
                 item_dict["taxable"] = extras['taxable']
+            # Get unit from extras for subcontractor, shop, and miscellaneous items
+            if 'unit' in extras:
+                item_dict["unit"] = extras['unit']
         
         # Get material details if available
         if item.material_id:
             material = db.query(Material).filter(Material.id == item.material_id).first()
             if material:
                 item_dict["name"] = material.name
-                item_dict["unit"] = material.unit or ""
+                # Only set unit from material if not already set from extras (for non-product items)
+                if 'unit' not in item_dict or not item_dict.get("unit"):
+                    item_dict["unit"] = material.unit or ""
                 if 'supplier_name' not in item_dict:
                     item_dict["supplier_name"] = material.supplier_name or ""
         

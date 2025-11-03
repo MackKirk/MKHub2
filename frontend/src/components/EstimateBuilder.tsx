@@ -603,7 +603,11 @@ export default function EstimateBuilder({ projectId, estimateId }: { projectId: 
                                         setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, quantity: 0} : item));
                                       }
                                     }} />
-                                  <span>{it.unit}</span>
+                                  <input type="text" className="w-20 border rounded px-2 py-1" value={it.unit || ''} 
+                                    placeholder="unit"
+                                    onChange={e=>{
+                                      setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, unit: e.target.value} : item));
+                                    }} />
                                 </div>
                               )}
                             </td>
