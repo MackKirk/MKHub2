@@ -4,6 +4,7 @@ import { api } from '@/lib/api';
 import { useEffect, useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
 import GeoSelect from '@/components/GeoSelect';
+import ImagePicker from '@/components/ImagePicker';
 
 type Site = {
   id:string,
@@ -25,14 +26,14 @@ export default function SiteDetail(){
   const nav = useNavigate();
   const { data:sites } = useQuery({ queryKey:['clientSites', customerId], queryFn: ()=>api<Site[]>('GET', `/clients/${customerId}/sites`) });
   const { data:files } = useQuery({ queryKey:['clientFilesForSiteHeader', customerId], queryFn: ()=> api<ClientFile[]>('GET', `/clients/${customerId}/files`), enabled: !!customerId });
-  const s = (sites||[]).find(x=> String(x.id)===String(siteId)) || {} as Site;
-  const [form, setForm] = useState<any>({ ...s });
+  const s = useMemo(()=> (sites||[]).find(x=> String(x.id)===String(siteId)) || null, [sites, siteId]);
+  const [form, setForm] = useState<any>(()=> s? { ...s } : { site_name:'', site_address_line1:'', site_address_line2:'', site_city:'', site_province:'', site_postal_code:'', site_country:'', site_notes:'' });
   const setField = (k:string, v:any)=> setForm((prev:any)=> ({ ...prev, [k]: v }));
   const qc = useQueryClient();
-  const isNew = String(siteId||'') === 'new' || !s?.id;
+  const isNew = String(siteId||'') === 'new' || !(s && (s as any).id);
 
-  // keep form in sync when data loads
-  useEffect(()=>{ setForm({ ...s }); }, [s]);
+  // keep form in sync only when an existing site loads/changes
+  useEffect(()=>{ if(s && (s as any).id){ setForm({ ...s }); } }, [s && (s as any).id]);
 
   // ESC to close
   useEffect(()=>{
@@ -48,6 +49,8 @@ export default function SiteDetail(){
     return img? `/files/${img.file_object_id}/thumbnail?w=600` : '/ui/assets/login/logo-light.svg';
   }, [files, siteId]);
 
+  const [coverPickerOpen, setCoverPickerOpen] = useState(false);
+
   return (
     <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center">
       <div className="w-[900px] max-w-[95vw] max-h-[90vh] bg-white rounded-xl overflow-hidden flex flex-col">
@@ -59,8 +62,17 @@ export default function SiteDetail(){
           >
             ×
           </button>
-          <div className="w-24 h-24 rounded-xl border-4 border-white shadow-lg overflow-hidden bg-white flex items-center justify-center">
+          <div className="w-24 h-24 rounded-xl border-4 border-white shadow-lg overflow-hidden bg-white flex items-center justify-center relative">
             <img src={previewSrc} className="w-full h-full object-cover" alt={form.site_name||'Site'} />
+            {!isNew && (
+              <button
+                onClick={()=> setCoverPickerOpen(true)}
+                className="absolute bottom-1 right-1 text-[11px] px-2 py-0.5 rounded bg-black/60 text-white hover:bg-black/70"
+                title="Change cover"
+              >
+                Change
+              </button>
+            )}
           </div>
           <div className="flex-1 min-w-0">
             <div className="text-3xl font-extrabold text-white truncate">{form.site_name||'Site'}</div>
@@ -121,6 +133,18 @@ export default function SiteDetail(){
         </div>
       </div>
     </div>
+    {coverPickerOpen && (
+      <ImagePicker isOpen={true} onClose={()=>setCoverPickerOpen(false)} clientId={String(customerId)} targetWidth={1200} targetHeight={400} allowEdit={true} onConfirm={async(blob)=>{
+        try{
+          const up:any = await api('POST','/files/upload',{ project_id:null, client_id:customerId, employee_id:null, category_id:'site-cover-derived', original_name:'site-cover.jpg', content_type:'image/jpeg' });
+          await fetch(up.upload_url, { method:'PUT', headers:{ 'Content-Type':'image/jpeg', 'x-ms-blob-type':'BlockBlob' }, body: blob });
+          const conf:any = await api('POST','/files/confirm',{ key:up.key, size_bytes: blob.size, checksum_sha256:'na', content_type:'image/jpeg' });
+          await api('POST', `/clients/${customerId}/files?file_object_id=${encodeURIComponent(conf.id)}&category=site-cover-derived&original_name=site-cover.jpg&site_id=${encodeURIComponent(String(siteId||''))}`);
+          toast.success('Cover updated');
+          setCoverPickerOpen(false);
+        }catch(e){ toast.error('Failed to update cover'); setCoverPickerOpen(false); }
+      }} />
+    )}
   );
 }
 
