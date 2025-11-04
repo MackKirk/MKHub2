@@ -4,7 +4,7 @@ import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
 import { useConfirm } from '@/components/ConfirmProvider';
 
-type Material = { id:number, name:string, supplier_name?:string, unit?:string, price?:number, unit_type?:string, units_per_package?:number, coverage_sqs?:number, coverage_ft2?:number, coverage_m2?:number };
+type Material = { id:number, name:string, supplier_name?:string, category?:string, unit?:string, price?:number, last_updated?:string, unit_type?:string, units_per_package?:number, coverage_sqs?:number, coverage_ft2?:number, coverage_m2?:number, description?:string, image_base64?:string };
 type Item = { material_id?:number, name:string, unit?:string, quantity:number, unit_price:number, section:string, description?:string, item_type?:string, supplier_name?:string, unit_type?:string, qty_required?:number, unit_required?:string, markup?:number, taxable?:boolean, units_per_package?:number, coverage_sqs?:number, coverage_ft2?:number, coverage_m2?:number, labour_journey?:number, labour_men?:number, labour_journey_type?:'days'|'hours'|'contract' };
 
 export default function EstimateBuilder({ projectId, estimateId, statusLabel, settings }: { projectId: string, estimateId?: number, statusLabel?: string, settings?: any }){
@@ -19,6 +19,7 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
   const [summaryOpen, setSummaryOpen] = useState(false);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [currentEstimateId, setCurrentEstimateId] = useState<number|undefined>(estimateId);
+  const [viewingProductId, setViewingProductId] = useState<number | null>(null);
   const autoSaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isAutoSavingRef = useRef<boolean>(false);
   const lastAutoSaveRef = useRef<number>(0);
@@ -75,6 +76,18 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
     queryKey: ['estimate', currentEstimateId],
     queryFn: () => currentEstimateId ? api<any>('GET', `/estimate/estimates/${currentEstimateId}`) : Promise.resolve(null),
     enabled: !!currentEstimateId
+  });
+
+  // Load product data when viewing a product
+  const { data: viewingProduct } = useQuery({
+    queryKey: ['product', viewingProductId],
+    queryFn: async () => {
+      if (!viewingProductId) return null;
+      // Fetch all products and find by ID
+      const products = await api<Material[]>('GET', '/estimate/products');
+      return products.find(p => p.id === viewingProductId) || null;
+    },
+    enabled: !!viewingProductId
   });
 
   // Load estimate data on mount
@@ -429,6 +442,28 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
       setItems(prev => prev.filter((_, i) => i !== index));
     }
   }, [confirm, canEdit]);
+
+  // Handle remove section with confirmation
+  const handleRemoveSection = useCallback(async (section: string) => {
+    if (!canEdit) {
+      toast.error('Editing is restricted for this project status');
+      return;
+    }
+    
+    const sectionItems = groupedItems[section] || [];
+    const itemCount = sectionItems.length;
+    
+    const ok = await confirm({
+      title: 'Remove section',
+      message: `Are you sure you want to remove the section "${section}" and all its ${itemCount} item${itemCount !== 1 ? 's' : ''}? This action cannot be undone.`,
+      confirmText: 'Remove',
+      cancelText: 'Cancel'
+    });
+    
+    if (ok) {
+      setItems(prev => prev.filter(item => item.section !== section));
+    }
+  }, [confirm, canEdit, groupedItems]);
   
   return (
     <div>
@@ -460,6 +495,14 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
         markup={markup}
         profitRate={profitRate}
       />
+
+      {/* Product View Modal */}
+      {viewingProduct && viewingProductId && (
+        <ProductViewModal 
+          product={viewingProduct}
+          onClose={() => setViewingProductId(null)}
+        />
+      )}
 
       {/* Sections grouped display */}
       <div className="space-y-4">
@@ -496,6 +539,18 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
                   </svg>
                 </span>
                 <h3 className="font-semibold text-gray-900">{section}</h3>
+                <button 
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleRemoveSection(section);
+                  }} 
+                  className="ml-auto px-2 py-1 rounded text-gray-500 hover:text-red-600" 
+                  title="Remove section"
+                  disabled={!canEdit}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                    <path d="M9 3h6a1 1 0 0 1 1 1v2h4v2h-1l-1 13a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 8H4V6h4V4a1 1 0 0 1 1-1Zm1 3h4V5h-4v1Zm-2 2 1 12h8l1-12H8Z"></path>
+                  </svg>
+                </button>
               </div>
               <table className="w-full text-sm">
                 <thead className="bg-gray-50 border-b"><tr>
@@ -556,7 +611,19 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
                       <tr key={`${section}-${originalIdx}`} className="border-b hover:bg-gray-50">
                         {!isLabourSection ? (
                           <>
-                            <td className="p-2">{it.name}</td>
+                            <td className="p-2">
+                              {it.item_type === 'product' && it.material_id ? (
+                                <button
+                                  onClick={() => setViewingProductId(it.material_id!)}
+                                  className="text-left cursor-pointer"
+                                  title="View product details"
+                                >
+                                  {it.name}
+                                </button>
+                              ) : (
+                                <span>{it.name}</span>
+                              )}
+                            </td>
                             <td className="p-2">
                               <input type="number" className="w-20 border rounded px-2 py-1" 
                                 value={it.qty_required ?? ''} min={0} step={1}
@@ -843,7 +910,16 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
                             </td>
                           </>
                         )}
-                        <td className="p-2"><button onClick={()=> handleRemoveItem(originalIdx, it.name || it.description || 'this item')} className="px-2 py-1 rounded bg-gray-100 hover:bg-gray-200">Remove</button></td>
+                        <td className="p-2">
+                          <button 
+                            onClick={()=> handleRemoveItem(originalIdx, it.name || it.description || 'this item')} 
+                            className="px-2 py-1 rounded text-gray-500 hover:text-red-600" 
+                            title="Remove item">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                              <path d="M9 3h6a1 1 0 0 1 1 1v2h4v2h-1l-1 13a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 8H4V6h4V4a1 1 0 0 1 1-1Zm1 3h4V5h-4v1Zm-2 2 1 12h8l1-12H8Z"></path>
+                            </svg>
+                          </button>
+                        </td>
                       </tr>
                     );
                   })}
@@ -1264,6 +1340,103 @@ function SummaryModal({ open, onClose, items, pstRate, gstRate, markup, profitRa
               <div className="flex items-center justify-between"><span>GST:</span><span className="font-medium">${gst.toFixed(2)}</span></div>
               <div className="flex items-center justify-between font-semibold text-lg border-t pt-2"><span>Grand Total:</span><span className="font-semibold">${finalTotal.toFixed(2)}</span></div>
             </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ProductViewModal({ product, onClose }: { product: Material, onClose: () => void }){
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center">
+      <div className="w-[900px] max-w-[95vw] max-h-[90vh] bg-white rounded-xl overflow-hidden flex flex-col">
+        <div className="overflow-y-auto">
+          {/* Product Header */}
+          <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] p-6 flex items-center gap-6 relative">
+            <button
+              onClick={onClose}
+              className="absolute top-4 right-4 text-white/80 hover:text-white text-2xl font-bold w-8 h-8 flex items-center justify-center rounded hover:bg-white/10"
+              title="Close"
+            >
+              ×
+            </button>
+            <div className="w-24 h-24 rounded-xl border-4 border-white shadow-lg overflow-hidden bg-white flex items-center justify-center">
+              <img 
+                src={product.image_base64 || '/ui/assets/login/logo-light.svg'} 
+                className="w-full h-full object-cover" 
+                alt={product.name}
+              />
+            </div>
+                    <div className="flex-1">
+                      <h2 className="text-3xl font-extrabold text-white">{product.name}</h2>
+                      <div className="flex items-center gap-4 mt-3 text-sm">
+                        {product.supplier_name && (
+                          <div className="flex items-center gap-2">
+                            <span className="text-white/80">🏢</span>
+                            <span className="text-white">{product.supplier_name}</span>
+                          </div>
+                        )}
+                        {product.category && (
+                          <div className="flex items-center gap-2">
+                            <span className="text-white/80">📦</span>
+                            <span className="text-white">{product.category}</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+          </div>
+
+          {/* Product Details */}
+          <div className="px-6 pb-6 space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              {product.unit && (
+                <div className="bg-white border rounded-lg p-4">
+                  <div className="text-xs font-semibold text-gray-600 mb-1">Sell Unit</div>
+                  <div className="text-gray-900">{product.unit}</div>
+                </div>
+              )}
+              {product.unit_type && (
+                <div className="bg-white border rounded-lg p-4">
+                  <div className="text-xs font-semibold text-gray-600 mb-1">Unit Type</div>
+                  <div className="text-gray-900">{product.unit_type}</div>
+                </div>
+              )}
+            </div>
+            {typeof product.price === 'number' && (
+              <div className="bg-white border rounded-lg p-4">
+                <div className="text-xs font-semibold text-gray-600 mb-1">Price</div>
+                <div className="text-gray-900 font-semibold text-lg">${product.price.toFixed(2)}</div>
+              </div>
+            )}
+            {product.units_per_package && (
+              <div className="bg-white border rounded-lg p-4">
+                <div className="text-xs font-semibold text-gray-600 mb-1">Units per Package</div>
+                <div className="text-gray-900">{product.units_per_package}</div>
+              </div>
+            )}
+            {(product.coverage_sqs || product.coverage_ft2 || product.coverage_m2) && (
+              <div className="bg-white border rounded-lg p-4">
+                <div className="text-sm font-semibold text-gray-900 mb-3">📍 Coverage Area</div>
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="text-gray-700">SQS: {product.coverage_sqs||'-'}</div>
+                  <div className="text-gray-700">ft²: {product.coverage_ft2||'-'}</div>
+                  <div className="text-gray-700">m²: {product.coverage_m2||'-'}</div>
+                </div>
+              </div>
+            )}
+            {product.description && (
+              <div className="bg-white border rounded-lg p-4">
+                <div className="text-sm font-semibold text-gray-900 mb-2">Description</div>
+                <div className="text-gray-700 whitespace-pre-wrap">{product.description}</div>
+              </div>
+            )}
           </div>
         </div>
       </div>
