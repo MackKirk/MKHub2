@@ -20,11 +20,13 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [currentEstimateId, setCurrentEstimateId] = useState<number|undefined>(estimateId);
   const [viewingProductId, setViewingProductId] = useState<number | null>(null);
+  const [editingSectionName, setEditingSectionName] = useState<string | null>(null);
+  const [editingSectionNameValue, setEditingSectionNameValue] = useState<string>('');
+  const [sectionNames, setSectionNames] = useState<Record<string, string>>({});
+  const [addingToSection, setAddingToSection] = useState<{section: string, type: 'product' | 'labour' | 'subcontractor' | 'miscellaneous' | 'shop'} | null>(null);
   const autoSaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isAutoSavingRef = useRef<boolean>(false);
   const lastAutoSaveRef = useRef<number>(0);
-  const [dirty, setDirty] = useState(false);
-  const savedStateRef = useRef<{ items: Item[], markup: number, pstRate: number, gstRate: number, profitRate: number, sectionOrder: string[] } | null>(null);
   
   // Check if editing is allowed based on status
   const canEdit = useMemo(()=>{
@@ -48,13 +50,12 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
     return allowEdit === true || allowEdit === 'true' || allowEdit === 1;
   }, [statusLabel, settings]);
   
-  // Show warning if editing is restricted (only after settings have loaded to avoid false positives)
+  // Show warning if editing is restricted
   useEffect(() => {
-    // Only show warning if settings is defined (has loaded) and editing is actually restricted
-    if (settings !== undefined && !canEdit && statusLabel) {
+    if (!canEdit && statusLabel) {
       toast.error(`Editing is restricted for projects with status "${statusLabel}"`, { duration: 5000 });
     }
-  }, [canEdit, statusLabel, settings]);
+  }, [canEdit, statusLabel]);
 
   // Fetch estimate by project_id if only projectId is provided
   const { data: projectEstimates } = useQuery({
@@ -152,32 +153,8 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
       setItems(formattedItems);
       // Update lastAutoSaveRef when estimate is loaded to prevent immediate auto-save
       lastAutoSaveRef.current = Date.now();
-      // Initialize saved state reference for dirty tracking
-      savedStateRef.current = {
-        items: formattedItems,
-        markup: est.markup !== undefined ? est.markup : markup,
-        pstRate: estimateData.pst_rate !== undefined && estimateData.pst_rate !== null ? estimateData.pst_rate : pstRate,
-        gstRate: estimateData.gst_rate !== undefined && estimateData.gst_rate !== null ? estimateData.gst_rate : gstRate,
-        profitRate: estimateData.profit_rate !== undefined && estimateData.profit_rate !== null ? estimateData.profit_rate : profitRate,
-        sectionOrder: estimateData.section_order || sectionOrder
-      };
-      setDirty(false);
     }
   }, [estimateData, currentEstimateId]);
-
-  // Track dirty state by comparing current state with saved state
-  useEffect(() => {
-    if (!savedStateRef.current) return;
-    const saved = savedStateRef.current;
-    // Deep comparison of items
-    const itemsChanged = JSON.stringify(items) !== JSON.stringify(saved.items);
-    const markupChanged = markup !== saved.markup;
-    const pstRateChanged = pstRate !== saved.pstRate;
-    const gstRateChanged = gstRate !== saved.gstRate;
-    const profitRateChanged = profitRate !== saved.profitRate;
-    const sectionOrderChanged = JSON.stringify(sectionOrder) !== JSON.stringify(saved.sectionOrder);
-    setDirty(itemsChanged || markupChanged || pstRateChanged || gstRateChanged || profitRateChanged || sectionOrderChanged);
-  }, [items, markup, pstRate, gstRate, profitRate, sectionOrder]);
 
   // Calculate item total based on item type
   const calculateItemTotal = (it: Item): number => {
@@ -288,16 +265,6 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
         setCurrentEstimateId(result.id);
       }
       lastAutoSaveRef.current = Date.now();
-      // Update saved state reference and reset dirty flag
-      savedStateRef.current = {
-        items: [...items],
-        markup,
-        pstRate,
-        gstRate,
-        profitRate,
-        sectionOrder: [...sectionOrder]
-      };
-      setDirty(false);
     } catch (e) {
       // Silent fail for auto-save
     } finally {
@@ -305,70 +272,12 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
     }
   }, [projectId, markup, pstRate, gstRate, profitRate, sectionOrder, items, currentEstimateId, canEdit]);
 
-  // Manual save function
-  const handleManualSave = useCallback(async () => {
-    if (!dirty || !projectId || !canEdit) return;
-    
-    try {
-      isAutoSavingRef.current = true;
-      const payload = { 
-        project_id: projectId, 
-        markup, 
-        pst_rate: pstRate,
-        gst_rate: gstRate,
-        profit_rate: profitRate,
-        section_order: sectionOrder,
-        items: items.map(it=> ({ 
-          material_id: it.material_id, 
-          quantity: it.quantity, 
-          unit_price: it.unit_price, 
-          section: it.section, 
-          description: it.description, 
-          item_type: it.item_type,
-          name: it.name,
-          unit: it.unit,
-          markup: it.markup,
-          taxable: it.taxable,
-          qty_required: it.qty_required,
-          unit_required: it.unit_required,
-          supplier_name: it.supplier_name,
-          unit_type: it.unit_type,
-          units_per_package: it.units_per_package,
-          coverage_sqs: it.coverage_sqs,
-          coverage_ft2: it.coverage_ft2,
-          coverage_m2: it.coverage_m2,
-          labour_journey: it.labour_journey,
-          labour_men: it.labour_men,
-          labour_journey_type: it.labour_journey_type
-        })) 
-      };
-      
-      if (currentEstimateId) {
-        // Update existing estimate
-        await api('PUT', `/estimate/estimates/${currentEstimateId}`, payload);
-      } else {
-        // Create new estimate
-        const result = await api<any>('POST', '/estimate/estimates', payload);
-        setCurrentEstimateId(result.id);
-      }
-      lastAutoSaveRef.current = Date.now();
-      // Update saved state reference and reset dirty flag
-      savedStateRef.current = {
-        items: [...items],
-        markup,
-        pstRate,
-        gstRate,
-        profitRate,
-        sectionOrder: [...sectionOrder]
-      };
-      setDirty(false);
-      toast.success('Saved');
-    } catch (e) {
-      toast.error('Save failed');
-    } finally {
-      isAutoSavingRef.current = false;
+  // Show warning if editing is restricted
+  useEffect(() => {
+    if (!canEdit && statusLabel) {
+      toast.error(`Editing is restricted for projects with status "${statusLabel}"`, { duration: 5000 });
     }
-  }, [dirty, projectId, canEdit, markup, pstRate, gstRate, profitRate, sectionOrder, items, currentEstimateId]);
+  }, [canEdit, statusLabel]);
 
   // Auto-save on changes (debounced)
   useEffect(() => {
@@ -466,42 +375,6 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
       return acc + sectionTotal;
     }, 0);
   }, [groupedItems, markup]);
-
-  // Helper function to calculate section subtotal
-  const calculateSectionSubtotal = useCallback((sectionName: string): number => {
-    const sectionItems = groupedItems[sectionName] || [];
-    const isLabourSection = ['Labour', 'Sub-Contractors', 'Shop', 'Miscellaneous'].includes(sectionName);
-    return sectionItems.reduce((sum, it) => {
-      const m = it.markup !== undefined && it.markup !== null ? it.markup : markup;
-      let itemTotal = 0;
-      if (!isLabourSection) {
-        itemTotal = it.quantity * it.unit_price;
-      } else {
-        if (it.item_type === 'labour' && it.labour_journey_type) {
-          if (it.labour_journey_type === 'contract') {
-            itemTotal = (it.labour_journey || 0) * it.unit_price;
-          } else {
-            itemTotal = (it.labour_journey || 0) * (it.labour_men || 0) * it.unit_price;
-          }
-        } else {
-          itemTotal = it.quantity * it.unit_price;
-        }
-      }
-      return sum + (itemTotal * (1 + (m/100)));
-    }, 0);
-  }, [groupedItems, markup]);
-
-  // Calculate specific section costs
-  const totalProductsCosts = useMemo(() => {
-    return Object.keys(groupedItems)
-      .filter(section => !['Labour', 'Sub-Contractors', 'Shop', 'Miscellaneous'].includes(section))
-      .reduce((acc, section) => acc + calculateSectionSubtotal(section), 0);
-  }, [groupedItems, calculateSectionSubtotal]);
-
-  const totalLabourCosts = useMemo(() => calculateSectionSubtotal('Labour'), [calculateSectionSubtotal]);
-  const totalSubContractorsCosts = useMemo(() => calculateSectionSubtotal('Sub-Contractors'), [calculateSectionSubtotal]);
-  const totalShopCosts = useMemo(() => calculateSectionSubtotal('Shop'), [calculateSectionSubtotal]);
-  const totalMiscellaneousCosts = useMemo(() => calculateSectionSubtotal('Miscellaneous'), [calculateSectionSubtotal]);
 
   // Calculate Sections Mark-up as the difference between total with markup and total without markup
   const markupValue = useMemo(() => {
@@ -605,11 +478,61 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
         </div>
       )}
       <div className="sticky top-0 z-30 bg-white/95 backdrop-blur mb-3 py-3 border-b flex items-center gap-2">
-        <AddProductModal onAdd={(it)=> setItems(prev=> [...prev, it])} disabled={!canEdit} defaultMarkup={markup} />
-        <AddLabourModal onAdd={(it)=> setItems(prev=> [...prev, it])} disabled={!canEdit} defaultMarkup={markup} />
-        <AddSubContractorModal onAdd={(it)=> setItems(prev=> [...prev, it])} disabled={!canEdit} defaultMarkup={markup} />
-        <AddMiscellaneousModal onAdd={(it)=> setItems(prev=> [...prev, it])} disabled={!canEdit} defaultMarkup={markup} />
-        <AddShopModal onAdd={(it)=> setItems(prev=> [...prev, it])} disabled={!canEdit} defaultMarkup={markup} />
+        <button 
+          onClick={() => {
+            if (!canEdit) return;
+            const newSection = `Product Section ${Date.now()}`;
+            setSectionOrder(prev => [...prev, newSection]);
+            setSectionNames(prev => ({ ...prev, [newSection]: 'Product Section' }));
+          }}
+          disabled={!canEdit}
+          className="px-3 py-2 rounded bg-gray-100 hover:bg-gray-200 disabled:opacity-60">
+          + Add Product
+        </button>
+        <button 
+          onClick={() => {
+            if (!canEdit) return;
+            const newSection = `Labour Section ${Date.now()}`;
+            setSectionOrder(prev => [...prev, newSection]);
+            setSectionNames(prev => ({ ...prev, [newSection]: 'Labour Section' }));
+          }}
+          disabled={!canEdit}
+          className="px-3 py-2 rounded bg-gray-100 hover:bg-gray-200 disabled:opacity-60">
+          + Add Labour
+        </button>
+        <button 
+          onClick={() => {
+            if (!canEdit) return;
+            const newSection = `Sub-Contractor Section ${Date.now()}`;
+            setSectionOrder(prev => [...prev, newSection]);
+            setSectionNames(prev => ({ ...prev, [newSection]: 'Sub-Contractor Section' }));
+          }}
+          disabled={!canEdit}
+          className="px-3 py-2 rounded bg-gray-100 hover:bg-gray-200 disabled:opacity-60">
+          + Add Sub-Contractor
+        </button>
+        <button 
+          onClick={() => {
+            if (!canEdit) return;
+            const newSection = `Miscellaneous Section ${Date.now()}`;
+            setSectionOrder(prev => [...prev, newSection]);
+            setSectionNames(prev => ({ ...prev, [newSection]: 'Miscellaneous Section' }));
+          }}
+          disabled={!canEdit}
+          className="px-3 py-2 rounded bg-gray-100 hover:bg-gray-200 disabled:opacity-60">
+          + Add Miscellaneous
+        </button>
+        <button 
+          onClick={() => {
+            if (!canEdit) return;
+            const newSection = `Shop Section ${Date.now()}`;
+            setSectionOrder(prev => [...prev, newSection]);
+            setSectionNames(prev => ({ ...prev, [newSection]: 'Shop Section' }));
+          }}
+          disabled={!canEdit}
+          className="px-3 py-2 rounded bg-gray-100 hover:bg-gray-200 disabled:opacity-60">
+          + Add Shop
+        </button>
         <div className="ml-auto flex items-center gap-3 text-sm">
           <label>Markup (%)</label><input type="number" className="border rounded px-2 py-1 w-20" value={markup} min={0} step={1} onChange={e=>setMarkup(Number(e.target.value||0))} disabled={!canEdit} />
           <label>PST (%)</label><input type="number" className="border rounded px-2 py-1 w-20" value={pstRate} min={0} step={1} onChange={e=>setPstRate(Number(e.target.value||0))} disabled={!canEdit} />
@@ -635,11 +558,96 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
         />
       )}
 
+      {/* Add Item to Section Modals */}
+      {addingToSection && (
+        (() => {
+          const { section, type } = addingToSection;
+          if (type === 'product') {
+            return (
+              <AddProductModal
+                onAdd={(it) => {
+                  setItems(prev => [...prev, { ...it, section }]);
+                  setAddingToSection(null);
+                }}
+                disabled={!canEdit}
+                defaultMarkup={markup}
+                open={true}
+                onClose={() => setAddingToSection(null)}
+                section={section}
+              />
+            );
+          } else if (type === 'labour') {
+            return (
+              <AddLabourModal
+                onAdd={(it) => {
+                  setItems(prev => [...prev, { ...it, section }]);
+                  setAddingToSection(null);
+                }}
+                disabled={!canEdit}
+                defaultMarkup={markup}
+                open={true}
+                onClose={() => setAddingToSection(null)}
+                section={section}
+              />
+            );
+          } else if (type === 'subcontractor') {
+            return (
+              <AddSubContractorModal
+                onAdd={(it) => {
+                  setItems(prev => [...prev, { ...it, section }]);
+                  setAddingToSection(null);
+                }}
+                disabled={!canEdit}
+                defaultMarkup={markup}
+                open={true}
+                onClose={() => setAddingToSection(null)}
+                section={section}
+              />
+            );
+          } else if (type === 'miscellaneous') {
+            return (
+              <AddMiscellaneousModal
+                onAdd={(it) => {
+                  setItems(prev => [...prev, { ...it, section }]);
+                  setAddingToSection(null);
+                }}
+                disabled={!canEdit}
+                defaultMarkup={markup}
+                open={true}
+                onClose={() => setAddingToSection(null)}
+                section={section}
+              />
+            );
+          } else if (type === 'shop') {
+            return (
+              <AddShopModal
+                onAdd={(it) => {
+                  setItems(prev => [...prev, { ...it, section }]);
+                  setAddingToSection(null);
+                }}
+                disabled={!canEdit}
+                defaultMarkup={markup}
+                open={true}
+                onClose={() => setAddingToSection(null)}
+                section={section}
+              />
+            );
+          }
+          return null;
+        })()
+      )}
+
       {/* Sections grouped display */}
       <div className="space-y-4">
-        {Object.keys(groupedItems).length > 0 ? (
-          sectionOrder.filter(section => groupedItems[section] && groupedItems[section].length > 0).map(section => {
-            const isLabourSection = ['Labour', 'Sub-Contractors', 'Shop', 'Miscellaneous'].includes(section);
+        {sectionOrder.length > 0 ? (
+          sectionOrder.map(section => {
+            const sectionItems = groupedItems[section] || [];
+            const isNewSection = section.startsWith('Product Section') || section.startsWith('Labour Section') || section.startsWith('Sub-Contractor Section') || section.startsWith('Miscellaneous Section') || section.startsWith('Shop Section');
+            // Only show empty sections if they are newly created sections, or if they have items
+            if (sectionItems.length === 0 && !isNewSection && !['Labour', 'Sub-Contractors', 'Shop', 'Miscellaneous'].includes(section)) {
+              return null;
+            }
+            const isLabourSection = ['Labour', 'Sub-Contractors', 'Shop', 'Miscellaneous'].includes(section) || isNewSection && (section.startsWith('Labour Section') || section.startsWith('Sub-Contractor Section') || section.startsWith('Shop Section') || section.startsWith('Miscellaneous Section'));
             return (
             <div key={section}
                  className={`rounded-xl border overflow-hidden bg-white ${dragOverSection === section ? 'ring-2 ring-brand-red' : ''}`}
@@ -669,7 +677,74 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
                     <circle cx="14" cy="10" r="1.5"></circle>
                   </svg>
                 </span>
-                <h3 className="font-semibold text-gray-900">{section}</h3>
+                {editingSectionName === section ? (
+                  <input
+                    type="text"
+                    value={editingSectionNameValue}
+                    onChange={(e) => setEditingSectionNameValue(e.target.value)}
+                    onBlur={() => {
+                      if (editingSectionNameValue.trim()) {
+                        setSectionNames(prev => ({ ...prev, [section]: editingSectionNameValue.trim() }));
+                      }
+                      setEditingSectionName(null);
+                      setEditingSectionNameValue('');
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        if (editingSectionNameValue.trim()) {
+                          setSectionNames(prev => ({ ...prev, [section]: editingSectionNameValue.trim() }));
+                        }
+                        setEditingSectionName(null);
+                        setEditingSectionNameValue('');
+                      } else if (e.key === 'Escape') {
+                        setEditingSectionName(null);
+                        setEditingSectionNameValue('');
+                      }
+                    }}
+                    className="font-semibold text-gray-900 border rounded px-2 py-1"
+                    autoFocus
+                  />
+                ) : (
+                  <h3 className="font-semibold text-gray-900">{sectionNames[section] || section}</h3>
+                )}
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setEditingSectionName(section);
+                    setEditingSectionNameValue(sectionNames[section] || section);
+                  }}
+                  className="px-2 py-1 rounded text-gray-500 hover:text-blue-600"
+                  title="Edit section name"
+                  disabled={!canEdit}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                  </svg>
+                </button>
+                {(() => {
+                  const sectionType = section.startsWith('Product Section') ? 'product' :
+                                    section.startsWith('Labour Section') ? 'labour' :
+                                    section.startsWith('Sub-Contractor Section') ? 'subcontractor' :
+                                    section.startsWith('Miscellaneous Section') ? 'miscellaneous' :
+                                    section.startsWith('Shop Section') ? 'shop' :
+                                    ['Labour', 'Sub-Contractors', 'Shop', 'Miscellaneous'].includes(section) ? 
+                                      (section === 'Labour' ? 'labour' : section === 'Sub-Contractors' ? 'subcontractor' : section === 'Shop' ? 'shop' : 'miscellaneous') :
+                                    'product';
+                  return (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setAddingToSection({ section, type: sectionType as 'product' | 'labour' | 'subcontractor' | 'miscellaneous' | 'shop' });
+                      }}
+                      className="px-2 py-1 rounded text-brand-red hover:bg-red-50"
+                      title="Add item to section"
+                      disabled={!canEdit}>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M12 4v16m8-8H4"></path>
+                      </svg>
+                    </button>
+                  );
+                })()}
                 <button 
                   onClick={(e) => {
                     e.stopPropagation();
@@ -718,7 +793,14 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
                   )}
                 </tr></thead>
                 <tbody>
-                  {groupedItems[section].map((it, idx)=> {
+                  {sectionItems.length === 0 ? (
+                    <tr>
+                      <td colSpan={!isLabourSection ? 12 : 8} className="p-4 text-center text-gray-500">
+                        No items yet. Click the + button to add items to this section.
+                      </td>
+                    </tr>
+                  ) : (
+                    sectionItems.map((it, idx)=> {
                     const originalIdx = items.indexOf(it);
                     const itemMarkup = it.markup !== undefined && it.markup !== null ? it.markup : markup;
                     // Calculate total value based on item type
@@ -1053,12 +1135,13 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
                         </td>
                       </tr>
                     );
-                  })}
+                  })
+                  )}
                 </tbody>
                 <tfoot className="bg-gray-50">
                   <tr>
                     <td colSpan={!isLabourSection ? 10 : 7} className="p-2 text-right font-semibold">Section Subtotal:</td>
-                    <td className="p-2 text-right font-bold">${groupedItems[section].reduce((acc, it)=> {
+                    <td className="p-2 text-right font-bold">${sectionItems.reduce((acc, it)=> {
                       const m = it.markup !== undefined && it.markup !== null ? it.markup : markup;
                       let itemTotal = 0;
                       if (!isLabourSection) {
@@ -1089,153 +1172,170 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
         )}
       </div>
 
-      {/* Summary Title Card */}
-      <div className="mt-4">
-        <div className="rounded-xl border bg-gradient-to-br from-[#7f1010] to-[#a31414] p-4">
-          <h4 className="font-semibold text-white">Summary</h4>
-        </div>
-      </div>
-
       <div className="mt-4 grid md:grid-cols-2 gap-4">
-        {/* Left Card */}
         <div className="rounded-xl border bg-white p-4">
+          <h4 className="font-semibold mb-2">Summary</h4>
           <div className="space-y-1 text-sm">
-            <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span>Total Products Costs</span><span>${totalProductsCosts.toFixed(2)}</span></div>
-            <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span>Total Labour Costs</span><span>${totalLabourCosts.toFixed(2)}</span></div>
-            <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span>Total Sub-Contractors Costs</span><span>${totalSubContractorsCosts.toFixed(2)}</span></div>
-            <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span>Total Shop Costs</span><span>${totalShopCosts.toFixed(2)}</span></div>
-            <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span>Total Miscellaneous Costs</span><span>${totalMiscellaneousCosts.toFixed(2)}</span></div>
-            <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span className="font-bold">Total Direct Project Costs</span><span className="font-bold">${totalWithMarkup.toFixed(2)}</span></div>
-            <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span>PST ({pstRate}%)</span><span>${pst.toFixed(2)}</span></div>
-            <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span className="font-bold">Sub-total</span><span className="font-bold">${subtotal.toFixed(2)}</span></div>
-          </div>
-        </div>
-        {/* Right Card */}
-        <div className="rounded-xl border bg-white p-4">
-          <div className="space-y-1 text-sm">
-            <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span>Sections Mark-up</span><span>${markupValue.toFixed(2)}</span></div>
-            <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1">
+            <div className="flex items-center justify-between"><span>Total Direct Project Costs</span><span>${totalWithMarkup.toFixed(2)}</span></div>
+            <div className="flex items-center justify-between"><span>PST</span><span>${pst.toFixed(2)}</span></div>
+            <div className="flex items-center justify-between"><span>Sub-total</span><span>${subtotal.toFixed(2)}</span></div>
+            <div className="flex items-center justify-between"><span>Sections Mark-up</span><span>${markupValue.toFixed(2)}</span></div>
+            <div className="flex items-center justify-between">
               <span>Profit (%)</span>
               <input 
                 type="number" 
                 className="border rounded px-2 py-1 w-20 text-right" 
                 value={profitRate} 
                 min={0} 
-                step={1}
+                step={0.1}
                 onChange={e=>setProfitRate(Number(e.target.value||0))} 
               />
             </div>
-            <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span className="font-bold">Total Profit</span><span className="font-bold">${profitValue.toFixed(2)}</span></div>
-            <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span className="font-bold">Total Estimate</span><span className="font-bold">${finalTotal.toFixed(2)}</span></div>
-            <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span>GST ({gstRate}%)</span><span>${gst.toFixed(2)}</span></div>
-            <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1 text-lg"><span className="font-bold">Final Total (with GST)</span><span className="font-bold">${grandTotal.toFixed(2)}</span></div>
+            <div className="flex items-center justify-between"><span>Total Profit</span><span>${profitValue.toFixed(2)}</span></div>
+            <div className="flex items-center justify-between font-medium"><span>Total Estimate</span><span>${finalTotal.toFixed(2)}</span></div>
+            <div className="flex items-center justify-between"><span>GST</span><span>${gst.toFixed(2)}</span></div>
+            <div className="flex items-center justify-between font-semibold text-lg"><span>Final Total (with GST)</span><span>${grandTotal.toFixed(2)}</span></div>
+          </div>
+          <div className="mt-3 text-right flex items-center gap-2 justify-end">
+            <button 
+              onClick={async()=>{
+                try{
+                  setIsLoading(true);
+                  const payload = { 
+                    project_id: projectId, 
+                    markup, 
+                    pst_rate: pstRate,
+                    gst_rate: gstRate,
+                    profit_rate: profitRate,
+                    section_order: sectionOrder,
+                    items: items.map(it=> ({ 
+                      material_id: it.material_id, 
+                      quantity: it.quantity, 
+                      unit_price: it.unit_price, 
+                      section: it.section, 
+                      description: it.description, 
+                      item_type: it.item_type,
+                      name: it.name,
+                      unit: it.unit,
+                      markup: it.markup,
+                      taxable: it.taxable,
+                      qty_required: it.qty_required,
+                      unit_required: it.unit_required,
+                      supplier_name: it.supplier_name,
+                      unit_type: it.unit_type,
+                      units_per_package: it.units_per_package,
+                      coverage_sqs: it.coverage_sqs,
+                      coverage_ft2: it.coverage_ft2,
+                      coverage_m2: it.coverage_m2,
+                      labour_journey: it.labour_journey,
+                      labour_men: it.labour_men,
+                      labour_journey_type: it.labour_journey_type
+                    })) 
+                  };
+                  
+                  if (currentEstimateId) {
+                    // Update existing estimate
+                    await api('PUT', `/estimate/estimates/${currentEstimateId}`, payload);
+                    toast.success('Estimate updated');
+                  } else {
+                    // Create new estimate
+                    const result = await api<any>('POST', '/estimate/estimates', payload);
+                    setCurrentEstimateId(result.id);
+                    toast.success('Estimate saved');
+                  }
+                }catch(_e){ 
+                  toast.error('Failed to save'); 
+                }finally{
+                  setIsLoading(false);
+                }
+              }} 
+              disabled={isLoading || !canEdit}
+              className="px-3 py-2 rounded bg-brand-red text-white disabled:opacity-60">
+              {isLoading ? 'Saving...' : (currentEstimateId ? 'Update Estimate' : 'Save Estimate')}
+            </button>
+            <button
+              onClick={()=>setSummaryOpen(true)}
+              className="px-3 py-2 rounded bg-gray-100 hover:bg-gray-200">
+              Analysis
+            </button>
+            <button
+              onClick={async()=>{
+                try{
+                  setIsLoading(true);
+                  // First ensure estimate is saved
+                  let estimateIdToUse = currentEstimateId;
+                  if (!estimateIdToUse) {
+                    const payload = { 
+                      project_id: projectId, 
+                      markup, 
+                      pst_rate: pstRate,
+                      gst_rate: gstRate,
+                      profit_rate: profitRate,
+                      section_order: sectionOrder,
+                      items: items.map(it=> ({ 
+                        material_id: it.material_id, 
+                        quantity: it.quantity, 
+                        unit_price: it.unit_price, 
+                        section: it.section, 
+                        description: it.description, 
+                        item_type: it.item_type,
+                        name: it.name,
+                        unit: it.unit,
+                        markup: it.markup,
+                        taxable: it.taxable,
+                        qty_required: it.qty_required,
+                        unit_required: it.unit_required,
+                        supplier_name: it.supplier_name,
+                        unit_type: it.unit_type,
+                        units_per_package: it.units_per_package,
+                        coverage_sqs: it.coverage_sqs,
+                        coverage_ft2: it.coverage_ft2,
+                        coverage_m2: it.coverage_m2,
+                        labour_journey: it.labour_journey,
+                        labour_men: it.labour_men,
+                        labour_journey_type: it.labour_journey_type
+                      })) 
+                    };
+                    const result = await api<any>('POST', '/estimate/estimates', payload);
+                    estimateIdToUse = result.id;
+                    setCurrentEstimateId(estimateIdToUse);
+                  }
+                  
+                  // Generate PDF
+                  const token = localStorage.getItem('user_token');
+                  const resp = await fetch(`/estimate/estimates/${estimateIdToUse}/generate`, {
+                    method: 'GET',
+                    headers: token ? { Authorization: `Bearer ${token}` } : {}
+                  });
+                  
+                  if (!resp.ok) {
+                    throw new Error('Failed to generate PDF');
+                  }
+                  
+                  const blob = await resp.blob();
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = url;
+                  a.download = `estimate-${estimateIdToUse}.pdf`;
+                  document.body.appendChild(a);
+                  a.click();
+                  document.body.removeChild(a);
+                  URL.revokeObjectURL(url);
+                  
+                  toast.success('PDF generated and downloaded');
+                }catch(_e){
+                  toast.error('Failed to generate PDF');
+                }finally{
+                  setIsLoading(false);
+                }
+              }}
+              disabled={isLoading || items.length === 0}
+              className="px-3 py-2 rounded bg-gray-700 text-white disabled:opacity-60">
+              {isLoading ? 'Generating...' : 'Generate PDF'}
+            </button>
           </div>
         </div>
       </div>
-
-      {/* Spacer to prevent fixed bar from overlapping content */}
-      <div className="h-24" />
-
-      {/* Fixed Unsaved Changes bar */}
-      {canEdit && (
-        <div className="fixed left-60 right-0 bottom-0 z-40">
-          <div className="px-4">
-            <div className="mx-auto max-w-[1400px] rounded-t-xl border bg-white/95 backdrop-blur p-3 flex items-center justify-between shadow-[0_-6px_16px_rgba(0,0,0,0.08)]">
-              <div className={dirty ? 'text-[12px] text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5' : 'text-[12px] text-green-700 bg-green-50 border border-green-200 rounded-full px-2 py-0.5'}>
-                {dirty ? 'Unsaved changes' : 'All changes saved'}
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={()=>setSummaryOpen(true)}
-                  className="px-3 py-2 rounded bg-gray-100 hover:bg-gray-200">
-                  Analysis
-                </button>
-                <button
-                  onClick={async()=>{
-                    try{
-                      setIsLoading(true);
-                      // First ensure estimate is saved
-                      let estimateIdToUse = currentEstimateId;
-                      if (!estimateIdToUse) {
-                        const payload = { 
-                          project_id: projectId, 
-                          markup, 
-                          pst_rate: pstRate,
-                          gst_rate: gstRate,
-                          profit_rate: profitRate,
-                          section_order: sectionOrder,
-                          items: items.map(it=> ({ 
-                            material_id: it.material_id, 
-                            quantity: it.quantity, 
-                            unit_price: it.unit_price, 
-                            section: it.section, 
-                            description: it.description, 
-                            item_type: it.item_type,
-                            name: it.name,
-                            unit: it.unit,
-                            markup: it.markup,
-                            taxable: it.taxable,
-                            qty_required: it.qty_required,
-                            unit_required: it.unit_required,
-                            supplier_name: it.supplier_name,
-                            unit_type: it.unit_type,
-                            units_per_package: it.units_per_package,
-                            coverage_sqs: it.coverage_sqs,
-                            coverage_ft2: it.coverage_ft2,
-                            coverage_m2: it.coverage_m2,
-                            labour_journey: it.labour_journey,
-                            labour_men: it.labour_men,
-                            labour_journey_type: it.labour_journey_type
-                          })) 
-                        };
-                        const result = await api<any>('POST', '/estimate/estimates', payload);
-                        estimateIdToUse = result.id;
-                        setCurrentEstimateId(estimateIdToUse);
-                      }
-                      
-                      // Generate PDF
-                      const token = localStorage.getItem('user_token');
-                      const resp = await fetch(`/estimate/estimates/${estimateIdToUse}/generate`, {
-                        method: 'GET',
-                        headers: token ? { Authorization: `Bearer ${token}` } : {}
-                      });
-                      
-                      if (!resp.ok) {
-                        throw new Error('Failed to generate PDF');
-                      }
-                      
-                      const blob = await resp.blob();
-                      const url = URL.createObjectURL(blob);
-                      const a = document.createElement('a');
-                      a.href = url;
-                      a.download = `estimate-${estimateIdToUse}.pdf`;
-                      document.body.appendChild(a);
-                      a.click();
-                      document.body.removeChild(a);
-                      URL.revokeObjectURL(url);
-                      
-                      toast.success('PDF generated and downloaded');
-                    }catch(_e){
-                      toast.error('Failed to generate PDF');
-                    }finally{
-                      setIsLoading(false);
-                    }
-                  }}
-                  disabled={isLoading || items.length === 0}
-                  className="px-3 py-2 rounded bg-gray-700 text-white disabled:opacity-60">
-                  {isLoading ? 'Generating...' : 'Generate PDF'}
-                </button>
-                <button 
-                  disabled={!dirty} 
-                  onClick={handleManualSave}
-                  className="px-5 py-2 rounded-xl bg-gradient-to-r from-brand-red to-[#ee2b2b] text-white font-semibold disabled:opacity-50">
-                  Save
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
@@ -1342,12 +1442,12 @@ function SummaryModal({ open, onClose, items, pstRate, gstRate, markup, profitRa
 
   return (
     <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
-      <div className="w-[800px] max-w-full bg-white rounded-xl overflow-hidden max-h-[90vh] flex flex-col">
-        <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] p-6 flex items-center gap-6 relative flex-shrink-0">
-          <div className="font-semibold text-lg text-white">Summary and Analysis</div>
-          <button onClick={onClose} className="ml-auto text-white hover:text-gray-200 text-2xl font-bold w-8 h-8 flex items-center justify-center rounded hover:bg-white/20" title="Close">×</button>
+      <div className="w-[800px] max-w-full bg-white rounded-xl overflow-hidden max-h-[90vh] overflow-y-auto">
+        <div className="px-4 py-3 border-b flex items-center justify-between sticky top-0 bg-white z-10">
+          <div className="font-semibold text-lg">Summary and Analysis</div>
+          <button onClick={onClose} className="text-gray-500 hover:text-gray-700 text-2xl font-bold w-8 h-8 flex items-center justify-center rounded hover:bg-gray-100" title="Close">×</button>
         </div>
-        <div className="p-6 space-y-6 overflow-y-auto flex-1">
+        <div className="p-6 space-y-6">
           {/* Cost Breakdown by Section */}
           <div className="rounded-xl border bg-white overflow-hidden">
             <div className="bg-gray-50 px-4 py-2 border-b font-semibold">Cost Breakdown by Section</div>
@@ -1560,16 +1660,24 @@ function ProductViewModal({ product, onClose }: { product: Material, onClose: ()
   );
 }
 
-function AddProductModal({ onAdd, disabled, defaultMarkup }: { onAdd:(it: Item)=>void, disabled?: boolean, defaultMarkup?: number }){
-  const [open, setOpen] = useState(false);
+function AddProductModal({ onAdd, disabled, defaultMarkup, open: openProp, onClose: onCloseProp, section: sectionProp }: { onAdd:(it: Item)=>void, disabled?: boolean, defaultMarkup?: number, open?: boolean, onClose?: ()=>void, section?: string }){
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = openProp !== undefined ? openProp : internalOpen;
+  const setOpen = onCloseProp ? (val: boolean) => { if (!val && onCloseProp) onCloseProp(); if (openProp === undefined) setInternalOpen(val); } : setInternalOpen;
   const [q, setQ] = useState('');
-  const [section, setSection] = useState('Roof System');
+  const [section, setSection] = useState(sectionProp || 'Roof System');
   const [selection, setSelection] = useState<Material|null>(null);
   const { data } = useQuery({ queryKey:['mat-search', q], queryFn: async()=>{
     const params = new URLSearchParams(); if(q) params.set('q', q);
     return await api<Material[]>('GET', params.toString()? `/estimate/products/search?${params.toString()}` : '/estimate/products');
   }});
   const list = data||[];
+
+  useEffect(() => {
+    if (sectionProp) {
+      setSection(sectionProp);
+    }
+  }, [sectionProp]);
 
   useEffect(() => {
     if (!open) return;
@@ -1585,7 +1693,9 @@ function AddProductModal({ onAdd, disabled, defaultMarkup }: { onAdd:(it: Item)=
 
   return (
     <>
-      <button onClick={()=>setOpen(true)} className="px-3 py-2 rounded bg-gray-100" disabled={disabled}>+ Add Product</button>
+      {openProp === undefined && (
+        <button onClick={()=>setOpen(true)} className="px-3 py-2 rounded bg-gray-100" disabled={disabled}>+ Add Product</button>
+      )}
       {open && (
         <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center">
           <div className="w-[720px] max-w-[95vw] bg-white rounded-xl overflow-hidden">
@@ -1625,7 +1735,7 @@ function AddProductModal({ onAdd, disabled, defaultMarkup }: { onAdd:(it: Item)=
                   )}
                 </div>
               )}
-              {selection && (
+              {selection && !sectionProp && (
                 <div>
                   <label className="text-xs text-gray-600">Section:</label>
                   <select className="w-full border rounded px-3 py-2" value={section} onChange={e=>setSection(e.target.value)}>
@@ -1668,8 +1778,10 @@ function AddProductModal({ onAdd, disabled, defaultMarkup }: { onAdd:(it: Item)=
   );
 }
 
-function AddLabourModal({ onAdd, disabled, defaultMarkup }: { onAdd:(it: Item)=>void, disabled?: boolean, defaultMarkup?: number }){
-  const [open, setOpen] = useState(false);
+function AddLabourModal({ onAdd, disabled, defaultMarkup, open: openProp, onClose: onCloseProp, section: sectionProp }: { onAdd:(it: Item)=>void, disabled?: boolean, defaultMarkup?: number, open?: boolean, onClose?: ()=>void, section?: string }){
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = openProp !== undefined ? openProp : internalOpen;
+  const setOpen = onCloseProp ? (val: boolean) => { if (!val && onCloseProp) onCloseProp(); if (openProp === undefined) setInternalOpen(val); } : setInternalOpen;
   const [labour, setLabour] = useState('');
   const [men, setMen] = useState<string>('1');
   const [journeyType, setJourneyType] = useState<'days'|'hours'|'contract'>('days');
@@ -1721,7 +1833,9 @@ function AddLabourModal({ onAdd, disabled, defaultMarkup }: { onAdd:(it: Item)=>
 
   return (
     <>
-      <button onClick={()=>setOpen(true)} className="px-3 py-2 rounded bg-gray-100" disabled={disabled}>+ Add Labour</button>
+      {openProp === undefined && (
+        <button onClick={()=>setOpen(true)} className="px-3 py-2 rounded bg-gray-100" disabled={disabled}>+ Add Labour</button>
+      )}
       {open && (
         <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center">
           <div className="w-[600px] max-w-[95vw] bg-white rounded-xl overflow-hidden">
@@ -1793,7 +1907,7 @@ function AddLabourModal({ onAdd, disabled, defaultMarkup }: { onAdd:(it: Item)=>
                     unit = showHours ? 'hours' : 'days';
                     journey = showHours ? Number(hours||0) : Number(days||0);
                   }
-                  onAdd({ name, unit, quantity: qty, unit_price: priceValue, section: 'Labour', description: desc, item_type: 'labour', markup: defaultMarkup ?? 5, taxable: true, labour_journey: journey, labour_men: Number(men||0), labour_journey_type: journeyType });
+                  onAdd({ name, unit, quantity: qty, unit_price: priceValue, section: sectionProp || 'Labour', description: desc, item_type: 'labour', markup: defaultMarkup ?? 5, taxable: true, labour_journey: journey, labour_men: Number(men||0), labour_journey_type: journeyType });
                   setOpen(false); setLabour(''); setMen('1'); setDays('1'); setHours('1'); setContractNumber('1'); setContractUnit(''); setPrice('0'); setJourneyType('days');
                 }} className="px-3 py-2 rounded bg-brand-red text-white">Add Labour</button>
               </div>
@@ -1805,8 +1919,10 @@ function AddLabourModal({ onAdd, disabled, defaultMarkup }: { onAdd:(it: Item)=>
   );
 }
 
-function AddSubContractorModal({ onAdd, disabled, defaultMarkup }: { onAdd:(it: Item)=>void, disabled?: boolean, defaultMarkup?: number }){
-  const [open, setOpen] = useState(false);
+function AddSubContractorModal({ onAdd, disabled, defaultMarkup, open: openProp, onClose: onCloseProp, section: sectionProp }: { onAdd:(it: Item)=>void, disabled?: boolean, defaultMarkup?: number, open?: boolean, onClose?: ()=>void, section?: string }){
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = openProp !== undefined ? openProp : internalOpen;
+  const setOpen = onCloseProp ? (val: boolean) => { if (!val && onCloseProp) onCloseProp(); if (openProp === undefined) setInternalOpen(val); } : setInternalOpen;
   const [type, setType] = useState<'debris-cartage'|'portable-washroom'|'other'|''>('');
   
   // Debris Cartage fields
@@ -1885,7 +2001,9 @@ function AddSubContractorModal({ onAdd, disabled, defaultMarkup }: { onAdd:(it: 
 
   return (
     <>
-      <button onClick={()=>setOpen(true)} className="px-3 py-2 rounded bg-gray-100" disabled={disabled}>+ Add Sub-Contractor</button>
+      {openProp === undefined && (
+        <button onClick={()=>setOpen(true)} className="px-3 py-2 rounded bg-gray-100" disabled={disabled}>+ Add Sub-Contractor</button>
+      )}
       {open && (
         <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center">
           <div className="w-[700px] max-w-[95vw] bg-white rounded-xl overflow-hidden">
@@ -2014,7 +2132,7 @@ function AddSubContractorModal({ onAdd, disabled, defaultMarkup }: { onAdd:(it: 
                     totalValue = Number(otherPrice||0);
                   }
                   if(!desc){ toast.error('Please fill in the required fields'); return; }
-                  onAdd({ name: desc, unit, quantity: qty, unit_price: totalValue, section: 'Sub-Contractors', description: desc, item_type: 'subcontractor', markup: defaultMarkup ?? 5, taxable: true });
+                  onAdd({ name: desc, unit, quantity: qty, unit_price: totalValue, section: sectionProp || 'Sub-Contractors', description: desc, item_type: 'subcontractor', markup: defaultMarkup ?? 5, taxable: true });
                   setOpen(false); setType(''); setDebrisDesc(''); setDebrisSqs('0'); setDebrisSqsPerLoad('0'); setDebrisLoads('0'); setDebrisPricePerLoad('0'); setWashroomPeriod('days'); setWashroomPeriodCount('1'); setWashroomPrice('0'); setOtherDesc(''); setOtherNumber('1'); setOtherUnit(''); setOtherPrice('0');
                 }} className="px-3 py-2 rounded bg-brand-red text-white">Add Sub-Contractors</button>
               </div>
@@ -2026,8 +2144,10 @@ function AddSubContractorModal({ onAdd, disabled, defaultMarkup }: { onAdd:(it: 
   );
 }
 
-function AddMiscellaneousModal({ onAdd, disabled, defaultMarkup }: { onAdd:(it: Item)=>void, disabled?: boolean, defaultMarkup?: number }){
-  const [open, setOpen] = useState(false);
+function AddMiscellaneousModal({ onAdd, disabled, defaultMarkup, open: openProp, onClose: onCloseProp, section: sectionProp }: { onAdd:(it: Item)=>void, disabled?: boolean, defaultMarkup?: number, open?: boolean, onClose?: ()=>void, section?: string }){
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = openProp !== undefined ? openProp : internalOpen;
+  const setOpen = onCloseProp ? (val: boolean) => { if (!val && onCloseProp) onCloseProp(); if (openProp === undefined) setInternalOpen(val); } : setInternalOpen;
   const [name, setName] = useState('');
   const [quantity, setQuantity] = useState<string>('1');
   const [unit, setUnit] = useState('');
@@ -2045,7 +2165,9 @@ function AddMiscellaneousModal({ onAdd, disabled, defaultMarkup }: { onAdd:(it: 
 
   return (
     <>
-      <button onClick={()=>setOpen(true)} className="px-3 py-2 rounded bg-gray-100" disabled={disabled}>+ Add Miscellaneous</button>
+      {openProp === undefined && (
+        <button onClick={()=>setOpen(true)} className="px-3 py-2 rounded bg-gray-100" disabled={disabled}>+ Add Miscellaneous</button>
+      )}
       {open && (
         <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center">
           <div className="w-[600px] max-w-[95vw] bg-white rounded-xl overflow-hidden">
@@ -2076,7 +2198,7 @@ function AddMiscellaneousModal({ onAdd, disabled, defaultMarkup }: { onAdd:(it: 
               <div className="text-right">
                 <button onClick={()=>{
                   if(!name.trim()){ toast.error('Please enter a miscellaneous name/description'); return; }
-                  onAdd({ name, unit, quantity: Number(quantity||0), unit_price: Number(price||0), section: 'Miscellaneous', description: name, item_type: 'miscellaneous', markup: defaultMarkup ?? 5, taxable: true });
+                  onAdd({ name, unit, quantity: Number(quantity||0), unit_price: Number(price||0), section: sectionProp || 'Miscellaneous', description: name, item_type: 'miscellaneous', markup: defaultMarkup ?? 5, taxable: true });
                   setOpen(false); setName(''); setQuantity('1'); setUnit(''); setPrice('0');
                 }} className="px-3 py-2 rounded bg-brand-red text-white">Add Miscellaneous</button>
               </div>
@@ -2088,8 +2210,10 @@ function AddMiscellaneousModal({ onAdd, disabled, defaultMarkup }: { onAdd:(it: 
   );
 }
 
-function AddShopModal({ onAdd, disabled, defaultMarkup }: { onAdd:(it: Item)=>void, disabled?: boolean, defaultMarkup?: number }){
-  const [open, setOpen] = useState(false);
+function AddShopModal({ onAdd, disabled, defaultMarkup, open: openProp, onClose: onCloseProp, section: sectionProp }: { onAdd:(it: Item)=>void, disabled?: boolean, defaultMarkup?: number, open?: boolean, onClose?: ()=>void, section?: string }){
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = openProp !== undefined ? openProp : internalOpen;
+  const setOpen = onCloseProp ? (val: boolean) => { if (!val && onCloseProp) onCloseProp(); if (openProp === undefined) setInternalOpen(val); } : setInternalOpen;
   const [name, setName] = useState('');
   const [quantity, setQuantity] = useState<string>('1');
   const [unit, setUnit] = useState('');
@@ -2107,7 +2231,9 @@ function AddShopModal({ onAdd, disabled, defaultMarkup }: { onAdd:(it: Item)=>vo
 
   return (
     <>
-      <button onClick={()=>setOpen(true)} className="px-3 py-2 rounded bg-gray-100" disabled={disabled}>+ Add Shop</button>
+      {openProp === undefined && (
+        <button onClick={()=>setOpen(true)} className="px-3 py-2 rounded bg-gray-100" disabled={disabled}>+ Add Shop</button>
+      )}
       {open && (
         <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center">
           <div className="w-[600px] max-w-[95vw] bg-white rounded-xl overflow-hidden">
@@ -2138,7 +2264,7 @@ function AddShopModal({ onAdd, disabled, defaultMarkup }: { onAdd:(it: Item)=>vo
               <div className="text-right">
                 <button onClick={()=>{
                   if(!name.trim()){ toast.error('Please enter a shop name/description'); return; }
-                  onAdd({ name, unit, quantity: Number(quantity||0), unit_price: Number(price||0), section: 'Shop', description: name, item_type: 'shop', markup: defaultMarkup ?? 5, taxable: true });
+                  onAdd({ name, unit, quantity: Number(quantity||0), unit_price: Number(price||0), section: sectionProp || 'Shop', description: name, item_type: 'shop', markup: defaultMarkup ?? 5, taxable: true });
                   setOpen(false); setName(''); setQuantity('1'); setUnit(''); setPrice('0');
                 }} className="px-3 py-2 rounded bg-brand-red text-white">Add Shop</button>
               </div>
