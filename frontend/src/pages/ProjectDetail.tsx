@@ -6,6 +6,7 @@ import toast from 'react-hot-toast';
 import ImagePicker from '@/components/ImagePicker';
 import EstimateBuilder from '@/components/EstimateBuilder';
 import ProposalForm from '@/components/ProposalForm';
+import { useConfirm } from '@/components/ConfirmProvider';
 
 type Project = { id:string, code?:string, name?:string, client_id?:string, client_display_name?:string, address_city?:string, address_province?:string, address_country?:string, description?:string, status_id?:string, division_id?:string, estimator_id?:string, onsite_lead_id?:string, contact_id?:string, contact_name?:string, contact_email?:string, contact_phone?:string, date_start?:string, date_eta?:string, date_end?:string, cost_estimated?:number, cost_actual?:number, service_value?:number, progress?:number };
 type ProjectFile = { id:string, file_object_id:string, is_image?:boolean, content_type?:string, category?:string, original_name?:string, uploaded_at?:string };
@@ -15,6 +16,8 @@ type Proposal = { id:string, title?:string, order_number?:string, created_at?:st
 
 export default function ProjectDetail(){
   const location = useLocation();
+  const nav = useNavigate();
+  const confirm = useConfirm();
   const { id } = useParams();
   const { data:proj, isLoading } = useQuery({ queryKey:['project', id], queryFn: ()=>api<Project>('GET', `/projects/${id}`) });
   const { data:settings } = useQuery({ queryKey:['settings'], queryFn: ()=>api<any>('GET','/settings') });
@@ -80,19 +83,41 @@ export default function ProjectDetail(){
               <button onClick={()=>setPickerOpen(true)} className="absolute inset-0 rounded-xl bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white">✏️ Change</button>
             </div>
             <div className="flex-1 flex flex-col justify-start">
-              <div className="text-3xl font-extrabold">{proj?.name||'Project'}</div>
-              <div className="text-sm opacity-90 mt-1">{proj?.code||''} · {proj?.client_id ? (<Link className="underline" to={`/customers/${encodeURIComponent(String(proj?.client_id||''))}`}>{proj?.client_display_name||''}</Link>): (proj?.client_display_name||'')}</div>
-              <div className="text-sm opacity-90">
-                {proj?.site_id ? (
-                  <Link to={`/customers/${encodeURIComponent(String(proj?.client_id||''))}/sites/${encodeURIComponent(String(proj?.site_id||''))}`} state={{ backgroundLocation: location }} className="underline">{(proj?.site_name||proj?.site_id)}{(proj?.site_address_line1||proj?.site_city||proj?.site_province||proj?.site_country)? ` (${[proj?.site_address_line1, proj?.site_city, proj?.site_province, proj?.site_country].filter(Boolean).join(', ')})` : ''}</Link>
-                ) : ''}
-              </div>
-              <div className="mt-2 flex items-center gap-3">
-                {(() => { const statusLabel = String((proj as any)?.status_label||'').trim(); const color = ((settings||{}).project_statuses||[]).find((s:any)=>s.label===statusLabel)?.value || '#e5e7eb'; return (<span className="px-2 py-0.5 rounded-full border text-black" style={{ backgroundColor: color }}>{statusLabel||'—'}</span>); })()}
-                <div className="flex items-center gap-2">
-                  <div className="h-2 w-40 bg-white/40 rounded-full overflow-hidden"><div className="h-full bg-black" style={{ width: `${Math.max(0,Math.min(100,Number(proj?.progress||0)))}%` }} /></div>
-                  <span className="text-sm">{Math.max(0,Math.min(100,Number(proj?.progress||0)))}%</span>
+              <div className="flex items-start justify-between">
+                <div className="flex-1">
+                  <div className="text-3xl font-extrabold">{proj?.name||'Project'}</div>
+                  <div className="text-sm opacity-90 mt-1">{proj?.code||''} · {proj?.client_id ? (<Link className="underline" to={`/customers/${encodeURIComponent(String(proj?.client_id||''))}`}>{proj?.client_display_name||''}</Link>): (proj?.client_display_name||'')}</div>
+                  <div className="text-sm opacity-90">
+                    {proj?.site_id ? (
+                      <Link to={`/customers/${encodeURIComponent(String(proj?.client_id||''))}/sites/${encodeURIComponent(String(proj?.site_id||''))}`} state={{ backgroundLocation: location }} className="underline">{(proj?.site_name||proj?.site_id)}{(proj?.site_address_line1||proj?.site_city||proj?.site_province||proj?.site_country)? ` (${[proj?.site_address_line1, proj?.site_city, proj?.site_province, proj?.site_country].filter(Boolean).join(', ')})` : ''}</Link>
+                    ) : ''}
+                  </div>
+                  <div className="mt-2 flex items-center gap-3">
+                    {(() => { const statusLabel = String((proj as any)?.status_label||'').trim(); const color = ((settings||{}).project_statuses||[]).find((s:any)=>s.label===statusLabel)?.value || '#e5e7eb'; return (<span className="px-2 py-0.5 rounded-full border text-black" style={{ backgroundColor: color }}>{statusLabel||'—'}</span>); })()}
+                    <div className="flex items-center gap-2">
+                      <div className="h-2 w-40 bg-white/40 rounded-full overflow-hidden"><div className="h-full bg-black" style={{ width: `${Math.max(0,Math.min(100,Number(proj?.progress||0)))}%` }} /></div>
+                      <span className="text-sm">{Math.max(0,Math.min(100,Number(proj?.progress||0)))}%</span>
+                    </div>
+                  </div>
                 </div>
+                <button onClick={async()=>{
+                  const ok = await confirm({ 
+                    title: 'Delete Project', 
+                    message: `Are you sure you want to delete "${proj?.name||'this project'}"? This action cannot be undone. All related data (updates, reports, timesheets) will also be deleted.`,
+                    confirmText: 'Delete',
+                    cancelText: 'Cancel'
+                  });
+                  if (!ok) return;
+                  try{
+                    await api('DELETE', `/projects/${encodeURIComponent(String(id||''))}`);
+                    toast.success('Project deleted');
+                    if(proj?.client_id){
+                      nav(`/customers/${encodeURIComponent(String(proj?.client_id))}`);
+                    } else {
+                      nav('/projects');
+                    }
+                  }catch(_e){ toast.error('Failed to delete project'); }
+                }} className="px-4 py-2 rounded bg-red-600 hover:bg-red-700 text-white text-sm">Delete Project</button>
               </div>
               <div className="mt-auto flex gap-3">
                 {(['overview','general','reports','timesheet','files','photos','proposal','estimate'] as const).map(k=> (
