@@ -23,6 +23,8 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
   const autoSaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isAutoSavingRef = useRef<boolean>(false);
   const lastAutoSaveRef = useRef<number>(0);
+  const [dirty, setDirty] = useState(false);
+  const savedStateRef = useRef<{items: Item[], markup: number, pstRate: number, gstRate: number, profitRate: number, sectionOrder: string[]} | null>(null);
   
   // Check if editing is allowed based on status
   const canEdit = useMemo(()=>{
@@ -149,6 +151,20 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
       setItems(formattedItems);
       // Update lastAutoSaveRef when estimate is loaded to prevent immediate auto-save
       lastAutoSaveRef.current = Date.now();
+      // Save the initial state to compare against
+      savedStateRef.current = {
+        items: formattedItems,
+        markup: est.markup !== undefined ? est.markup : 5,
+        pstRate: estimateData.pst_rate !== undefined && estimateData.pst_rate !== null ? estimateData.pst_rate : 7,
+        gstRate: estimateData.gst_rate !== undefined && estimateData.gst_rate !== null ? estimateData.gst_rate : 5,
+        profitRate: estimateData.profit_rate !== undefined && estimateData.profit_rate !== null ? estimateData.profit_rate : 0,
+        sectionOrder: estimateData.section_order || defaultSections
+      };
+      setDirty(false);
+    } else if (!currentEstimateId) {
+      // No estimate loaded yet, mark as clean
+      savedStateRef.current = null;
+      setDirty(false);
     }
   }, [estimateData, currentEstimateId]);
 
@@ -261,6 +277,16 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
         setCurrentEstimateId(result.id);
       }
       lastAutoSaveRef.current = Date.now();
+      // Update saved state reference after successful save
+      savedStateRef.current = {
+        items: [...items],
+        markup,
+        pstRate,
+        gstRate,
+        profitRate,
+        sectionOrder: [...sectionOrder]
+      };
+      setDirty(false);
     } catch (e) {
       // Silent fail for auto-save
     } finally {
@@ -311,6 +337,29 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
 
     return () => clearInterval(interval);
   }, [projectId, items.length, currentEstimateId, autoSave, canEdit]);
+
+  // Check for changes and update dirty state
+  useEffect(() => {
+    if (!savedStateRef.current) {
+      setDirty(false);
+      return;
+    }
+
+    const saved = savedStateRef.current;
+    
+    // Compare items (deep comparison needed)
+    const itemsChanged = JSON.stringify(items) !== JSON.stringify(saved.items);
+    
+    // Compare other fields
+    const ratesChanged = markup !== saved.markup || 
+                        pstRate !== saved.pstRate || 
+                        gstRate !== saved.gstRate || 
+                        profitRate !== saved.profitRate;
+    
+    const orderChanged = JSON.stringify(sectionOrder) !== JSON.stringify(saved.sectionOrder);
+    
+    setDirty(itemsChanged || ratesChanged || orderChanged);
+  }, [items, markup, pstRate, gstRate, profitRate, sectionOrder]);
 
   // Calculate quantity based on qty_required and unit_type
   const calculateQuantity = (item: Item): number => {
@@ -371,6 +420,54 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
       return acc + sectionTotal;
     }, 0);
   }, [groupedItems, markup]);
+
+  // Helper function to calculate section subtotal
+  const calculateSectionSubtotal = useCallback((sectionName: string): number => {
+    const sectionItems = groupedItems[sectionName] || [];
+    if (sectionItems.length === 0) return 0;
+    const isLabourSection = ['Labour', 'Sub-Contractors', 'Shop', 'Miscellaneous'].includes(sectionName);
+    return sectionItems.reduce((sum, it) => {
+      const m = it.markup !== undefined && it.markup !== null ? it.markup : markup;
+      let itemTotal = 0;
+      if (!isLabourSection) {
+        itemTotal = it.quantity * it.unit_price;
+      } else {
+        if (it.item_type === 'labour' && it.labour_journey_type) {
+          if (it.labour_journey_type === 'contract') {
+            itemTotal = (it.labour_journey || 0) * it.unit_price;
+          } else {
+            itemTotal = (it.labour_journey || 0) * (it.labour_men || 0) * it.unit_price;
+          }
+        } else {
+          itemTotal = it.quantity * it.unit_price;
+        }
+      }
+      return sum + (itemTotal * (1 + (m/100)));
+    }, 0);
+  }, [groupedItems, markup]);
+
+  // Calculate section subtotals for Summary
+  const totalProductsCosts = useMemo(() => {
+    return Object.keys(groupedItems)
+      .filter(section => !['Labour', 'Sub-Contractors', 'Shop', 'Miscellaneous'].includes(section))
+      .reduce((acc, section) => acc + calculateSectionSubtotal(section), 0);
+  }, [groupedItems, calculateSectionSubtotal]);
+
+  const totalLabourCosts = useMemo(() => {
+    return calculateSectionSubtotal('Labour');
+  }, [calculateSectionSubtotal]);
+
+  const totalSubContractorsCosts = useMemo(() => {
+    return calculateSectionSubtotal('Sub-Contractors');
+  }, [calculateSectionSubtotal]);
+
+  const totalShopCosts = useMemo(() => {
+    return calculateSectionSubtotal('Shop');
+  }, [calculateSectionSubtotal]);
+
+  const totalMiscellaneousCosts = useMemo(() => {
+    return calculateSectionSubtotal('Miscellaneous');
+  }, [calculateSectionSubtotal]);
 
   // Calculate Sections Mark-up as the difference between total with markup and total without markup
   const markupValue = useMemo(() => {
@@ -464,6 +561,80 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
       setItems(prev => prev.filter(item => item.section !== section));
     }
   }, [confirm, canEdit, groupedItems]);
+
+  // Manual save function for the save button
+  const handleManualSave = useCallback(async () => {
+    if (!canEdit) {
+      toast.error('Editing is restricted for this project status');
+      return;
+    }
+
+    if (!projectId) {
+      toast.error('Project ID is required');
+      return;
+    }
+
+    try {
+      setIsLoading(true);
+      const payload = { 
+        project_id: projectId, 
+        markup, 
+        pst_rate: pstRate,
+        gst_rate: gstRate,
+        profit_rate: profitRate,
+        section_order: sectionOrder,
+        items: items.map(it=> ({ 
+          material_id: it.material_id, 
+          quantity: it.quantity, 
+          unit_price: it.unit_price, 
+          section: it.section, 
+          description: it.description, 
+          item_type: it.item_type,
+          name: it.name,
+          unit: it.unit,
+          markup: it.markup,
+          taxable: it.taxable,
+          qty_required: it.qty_required,
+          unit_required: it.unit_required,
+          supplier_name: it.supplier_name,
+          unit_type: it.unit_type,
+          units_per_package: it.units_per_package,
+          coverage_sqs: it.coverage_sqs,
+          coverage_ft2: it.coverage_ft2,
+          coverage_m2: it.coverage_m2,
+          labour_journey: it.labour_journey,
+          labour_men: it.labour_men,
+          labour_journey_type: it.labour_journey_type
+        })) 
+      };
+      
+      if (currentEstimateId) {
+        // Update existing estimate
+        await api('PUT', `/estimate/estimates/${currentEstimateId}`, payload);
+        toast.success('Estimate updated');
+      } else {
+        // Create new estimate
+        const result = await api<any>('POST', '/estimate/estimates', payload);
+        setCurrentEstimateId(result.id);
+        toast.success('Estimate saved');
+      }
+      
+      // Update saved state reference after successful save
+      savedStateRef.current = {
+        items: [...items],
+        markup,
+        pstRate,
+        gstRate,
+        profitRate,
+        sectionOrder: [...sectionOrder]
+      };
+      setDirty(false);
+    } catch (e) {
+      toast.error('Failed to save');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [projectId, items, markup, pstRate, gstRate, profitRate, sectionOrder, currentEstimateId, canEdit]);
   
   return (
     <div>
@@ -959,14 +1130,61 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
       </div>
 
       <div className="mt-4 grid md:grid-cols-2 gap-4">
+        {/* Left Card */}
         <div className="rounded-xl border bg-white p-4">
           <h4 className="font-semibold mb-2">Summary</h4>
           <div className="space-y-1 text-sm">
-            <div className="flex items-center justify-between"><span>Total Direct Project Costs</span><span>${totalWithMarkup.toFixed(2)}</span></div>
-            <div className="flex items-center justify-between"><span>PST</span><span>${pst.toFixed(2)}</span></div>
-            <div className="flex items-center justify-between"><span>Sub-total</span><span>${subtotal.toFixed(2)}</span></div>
-            <div className="flex items-center justify-between"><span>Sections Mark-up</span><span>${markupValue.toFixed(2)}</span></div>
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between hover:bg-gray-50 px-2 py-1 rounded transition-colors">
+              <span>Total Products Costs</span>
+              <span>${totalProductsCosts.toFixed(2)}</span>
+            </div>
+            <div className="flex items-center justify-between hover:bg-gray-50 px-2 py-1 rounded transition-colors">
+              <span>Total Labour Costs</span>
+              <span>${totalLabourCosts.toFixed(2)}</span>
+            </div>
+            <div className="flex items-center justify-between hover:bg-gray-50 px-2 py-1 rounded transition-colors">
+              <span>Total Sub-Contractors Costs</span>
+              <span>${totalSubContractorsCosts.toFixed(2)}</span>
+            </div>
+            <div className="flex items-center justify-between hover:bg-gray-50 px-2 py-1 rounded transition-colors">
+              <span>Total Shop Costs</span>
+              <span>${totalShopCosts.toFixed(2)}</span>
+            </div>
+            <div className="flex items-center justify-between hover:bg-gray-50 px-2 py-1 rounded transition-colors">
+              <span>Total Miscellaneous Costs</span>
+              <span>${totalMiscellaneousCosts.toFixed(2)}</span>
+            </div>
+            <div className="flex items-center justify-between hover:bg-gray-50 px-2 py-1 rounded transition-colors">
+              <span>Total Direct Project Costs</span>
+              <span>${totalWithMarkup.toFixed(2)}</span>
+            </div>
+            <div className="flex items-center justify-between hover:bg-gray-50 px-2 py-1 rounded transition-colors">
+              <span>PST</span>
+              <span>${pst.toFixed(2)}</span>
+            </div>
+            <div className="flex items-center justify-between hover:bg-gray-50 px-2 py-1 rounded transition-colors">
+              <span>Sub-total</span>
+              <span>${subtotal.toFixed(2)}</span>
+            </div>
+          </div>
+          <div className="mt-3 text-right flex items-center gap-2 justify-end">
+            <button
+              onClick={()=>setSummaryOpen(true)}
+              className="px-3 py-2 rounded bg-gray-100 hover:bg-gray-200">
+              Analysis
+            </button>
+          </div>
+        </div>
+
+        {/* Right Card */}
+        <div className="rounded-xl border bg-white p-4">
+          <h4 className="font-semibold mb-2">Summary</h4>
+          <div className="space-y-1 text-sm">
+            <div className="flex items-center justify-between hover:bg-gray-50 px-2 py-1 rounded transition-colors">
+              <span>Sections Mark-up</span>
+              <span>${markupValue.toFixed(2)}</span>
+            </div>
+            <div className="flex items-center justify-between hover:bg-gray-50 px-2 py-1 rounded transition-colors">
               <span>Profit (%)</span>
               <input 
                 type="number" 
@@ -975,149 +1193,122 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
                 min={0} 
                 step={0.1}
                 onChange={e=>setProfitRate(Number(e.target.value||0))} 
+                disabled={!canEdit}
               />
             </div>
-            <div className="flex items-center justify-between"><span>Total Profit</span><span>${profitValue.toFixed(2)}</span></div>
-            <div className="flex items-center justify-between font-medium"><span>Total Estimate</span><span>${finalTotal.toFixed(2)}</span></div>
-            <div className="flex items-center justify-between"><span>GST</span><span>${gst.toFixed(2)}</span></div>
-            <div className="flex items-center justify-between font-semibold text-lg"><span>Final Total (with GST)</span><span>${grandTotal.toFixed(2)}</span></div>
+            <div className="flex items-center justify-between hover:bg-gray-50 px-2 py-1 rounded transition-colors">
+              <span>Total Profit</span>
+              <span>${profitValue.toFixed(2)}</span>
+            </div>
+            <div className="flex items-center justify-between hover:bg-gray-50 px-2 py-1 rounded transition-colors font-medium">
+              <span>Total Estimate</span>
+              <span>${finalTotal.toFixed(2)}</span>
+            </div>
+            <div className="flex items-center justify-between hover:bg-gray-50 px-2 py-1 rounded transition-colors">
+              <span>GST</span>
+              <span>${gst.toFixed(2)}</span>
+            </div>
+            <div className="flex items-center justify-between hover:bg-gray-50 px-2 py-1 rounded transition-colors font-semibold text-lg">
+              <span>Final Total (with GST)</span>
+              <span>${grandTotal.toFixed(2)}</span>
+            </div>
           </div>
-          <div className="mt-3 text-right flex items-center gap-2 justify-end">
+        </div>
+      </div>
+
+      <div className="mt-4 flex justify-end">
+        <button
+          onClick={async()=>{
+            try{
+              setIsLoading(true);
+              // First ensure estimate is saved
+              let estimateIdToUse = currentEstimateId;
+              if (!estimateIdToUse) {
+                const payload = { 
+                  project_id: projectId, 
+                  markup, 
+                  pst_rate: pstRate,
+                  gst_rate: gstRate,
+                  profit_rate: profitRate,
+                  section_order: sectionOrder,
+                  items: items.map(it=> ({ 
+                    material_id: it.material_id, 
+                    quantity: it.quantity, 
+                    unit_price: it.unit_price, 
+                    section: it.section, 
+                    description: it.description, 
+                    item_type: it.item_type,
+                    name: it.name,
+                    unit: it.unit,
+                    markup: it.markup,
+                    taxable: it.taxable,
+                    qty_required: it.qty_required,
+                    unit_required: it.unit_required,
+                    supplier_name: it.supplier_name,
+                    unit_type: it.unit_type,
+                    units_per_package: it.units_per_package,
+                    coverage_sqs: it.coverage_sqs,
+                    coverage_ft2: it.coverage_ft2,
+                    coverage_m2: it.coverage_m2,
+                    labour_journey: it.labour_journey,
+                    labour_men: it.labour_men,
+                    labour_journey_type: it.labour_journey_type
+                  })) 
+                };
+                const result = await api<any>('POST', '/estimate/estimates', payload);
+                estimateIdToUse = result.id;
+                setCurrentEstimateId(estimateIdToUse);
+              }
+              
+              // Generate PDF
+              const token = localStorage.getItem('user_token');
+              const resp = await fetch(`/estimate/estimates/${estimateIdToUse}/generate`, {
+                method: 'GET',
+                headers: token ? { Authorization: `Bearer ${token}` } : {}
+              });
+              
+              if (!resp.ok) {
+                throw new Error('Failed to generate PDF');
+              }
+              
+              const blob = await resp.blob();
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement('a');
+              a.href = url;
+              a.download = `estimate-${estimateIdToUse}.pdf`;
+              document.body.appendChild(a);
+              a.click();
+              document.body.removeChild(a);
+              URL.revokeObjectURL(url);
+              
+              toast.success('PDF generated and downloaded');
+            }catch(_e){
+              toast.error('Failed to generate PDF');
+            }finally{
+              setIsLoading(false);
+            }
+          }}
+          disabled={isLoading || items.length === 0}
+          className="px-3 py-2 rounded bg-gray-700 text-white disabled:opacity-60">
+          {isLoading ? 'Generating...' : 'Generate PDF'}
+        </button>
+      </div>
+
+      {/* Spacer to prevent overlap with fixed save bar */}
+      <div className="h-24" />
+
+      {/* Fixed save bar at bottom (similar to CustomerDetail) */}
+      <div className="fixed left-60 right-0 bottom-0 z-40">
+        <div className="px-4">
+          <div className="mx-auto max-w-[1400px] rounded-t-xl border bg-white/95 backdrop-blur p-3 flex items-center justify-between shadow-[0_-6px_16px_rgba(0,0,0,0.08)]">
+            <div className={dirty? 'text-[12px] text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5' : 'text-[12px] text-green-700 bg-green-50 border border-green-200 rounded-full px-2 py-0.5'}>
+              {dirty? 'Unsaved changes' : 'All changes saved'}
+            </div>
             <button 
-              onClick={async()=>{
-                try{
-                  setIsLoading(true);
-                  const payload = { 
-                    project_id: projectId, 
-                    markup, 
-                    pst_rate: pstRate,
-                    gst_rate: gstRate,
-                    profit_rate: profitRate,
-                    section_order: sectionOrder,
-                    items: items.map(it=> ({ 
-                      material_id: it.material_id, 
-                      quantity: it.quantity, 
-                      unit_price: it.unit_price, 
-                      section: it.section, 
-                      description: it.description, 
-                      item_type: it.item_type,
-                      name: it.name,
-                      unit: it.unit,
-                      markup: it.markup,
-                      taxable: it.taxable,
-                      qty_required: it.qty_required,
-                      unit_required: it.unit_required,
-                      supplier_name: it.supplier_name,
-                      unit_type: it.unit_type,
-                      units_per_package: it.units_per_package,
-                      coverage_sqs: it.coverage_sqs,
-                      coverage_ft2: it.coverage_ft2,
-                      coverage_m2: it.coverage_m2,
-                      labour_journey: it.labour_journey,
-                      labour_men: it.labour_men,
-                      labour_journey_type: it.labour_journey_type
-                    })) 
-                  };
-                  
-                  if (currentEstimateId) {
-                    // Update existing estimate
-                    await api('PUT', `/estimate/estimates/${currentEstimateId}`, payload);
-                    toast.success('Estimate updated');
-                  } else {
-                    // Create new estimate
-                    const result = await api<any>('POST', '/estimate/estimates', payload);
-                    setCurrentEstimateId(result.id);
-                    toast.success('Estimate saved');
-                  }
-                }catch(_e){ 
-                  toast.error('Failed to save'); 
-                }finally{
-                  setIsLoading(false);
-                }
-              }} 
-              disabled={isLoading || !canEdit}
-              className="px-3 py-2 rounded bg-brand-red text-white disabled:opacity-60">
-              {isLoading ? 'Saving...' : (currentEstimateId ? 'Update Estimate' : 'Save Estimate')}
-            </button>
-            <button
-              onClick={()=>setSummaryOpen(true)}
-              className="px-3 py-2 rounded bg-gray-100 hover:bg-gray-200">
-              Analysis
-            </button>
-            <button
-              onClick={async()=>{
-                try{
-                  setIsLoading(true);
-                  // First ensure estimate is saved
-                  let estimateIdToUse = currentEstimateId;
-                  if (!estimateIdToUse) {
-                    const payload = { 
-                      project_id: projectId, 
-                      markup, 
-                      pst_rate: pstRate,
-                      gst_rate: gstRate,
-                      profit_rate: profitRate,
-                      section_order: sectionOrder,
-                      items: items.map(it=> ({ 
-                        material_id: it.material_id, 
-                        quantity: it.quantity, 
-                        unit_price: it.unit_price, 
-                        section: it.section, 
-                        description: it.description, 
-                        item_type: it.item_type,
-                        name: it.name,
-                        unit: it.unit,
-                        markup: it.markup,
-                        taxable: it.taxable,
-                        qty_required: it.qty_required,
-                        unit_required: it.unit_required,
-                        supplier_name: it.supplier_name,
-                        unit_type: it.unit_type,
-                        units_per_package: it.units_per_package,
-                        coverage_sqs: it.coverage_sqs,
-                        coverage_ft2: it.coverage_ft2,
-                        coverage_m2: it.coverage_m2,
-                        labour_journey: it.labour_journey,
-                        labour_men: it.labour_men,
-                        labour_journey_type: it.labour_journey_type
-                      })) 
-                    };
-                    const result = await api<any>('POST', '/estimate/estimates', payload);
-                    estimateIdToUse = result.id;
-                    setCurrentEstimateId(estimateIdToUse);
-                  }
-                  
-                  // Generate PDF
-                  const token = localStorage.getItem('user_token');
-                  const resp = await fetch(`/estimate/estimates/${estimateIdToUse}/generate`, {
-                    method: 'GET',
-                    headers: token ? { Authorization: `Bearer ${token}` } : {}
-                  });
-                  
-                  if (!resp.ok) {
-                    throw new Error('Failed to generate PDF');
-                  }
-                  
-                  const blob = await resp.blob();
-                  const url = URL.createObjectURL(blob);
-                  const a = document.createElement('a');
-                  a.href = url;
-                  a.download = `estimate-${estimateIdToUse}.pdf`;
-                  document.body.appendChild(a);
-                  a.click();
-                  document.body.removeChild(a);
-                  URL.revokeObjectURL(url);
-                  
-                  toast.success('PDF generated and downloaded');
-                }catch(_e){
-                  toast.error('Failed to generate PDF');
-                }finally{
-                  setIsLoading(false);
-                }
-              }}
-              disabled={isLoading || items.length === 0}
-              className="px-3 py-2 rounded bg-gray-700 text-white disabled:opacity-60">
-              {isLoading ? 'Generating...' : 'Generate PDF'}
+              disabled={!dirty || isLoading || !canEdit} 
+              onClick={handleManualSave}
+              className="px-4 py-2 rounded-xl bg-gradient-to-r from-brand-red to-[#ee2b2b] font-semibold text-white disabled:opacity-50 disabled:cursor-not-allowed">
+              {isLoading ? 'Saving...' : 'Save'}
             </button>
           </div>
         </div>
