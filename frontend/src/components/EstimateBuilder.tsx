@@ -423,7 +423,6 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
         gstRate={gstRate}
         markup={markup}
         profitRate={profitRate}
-        setProfitRate={setProfitRate}
       />
 
       {/* Sections grouped display */}
@@ -929,6 +928,11 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
               {isLoading ? 'Saving...' : (currentEstimateId ? 'Update Estimate' : 'Save Estimate')}
             </button>
             <button
+              onClick={()=>setSummaryOpen(true)}
+              className="px-3 py-2 rounded bg-gray-100 hover:bg-gray-200">
+              Analysis
+            </button>
+            <button
               onClick={async()=>{
                 try{
                   setIsLoading(true);
@@ -1010,7 +1014,7 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
   );
 }
 
-function SummaryModal({ open, onClose, items, pstRate, gstRate, markup, profitRate, setProfitRate }: { open:boolean, onClose:()=>void, items:Item[], pstRate:number, gstRate:number, markup:number, profitRate:number, setProfitRate:(value:number)=>void }){
+function SummaryModal({ open, onClose, items, pstRate, gstRate, markup, profitRate }: { open:boolean, onClose:()=>void, items:Item[], pstRate:number, gstRate:number, markup:number, profitRate:number }){
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
@@ -1049,7 +1053,7 @@ function SummaryModal({ open, onClose, items, pstRate, gstRate, markup, profitRa
   }, [items]);
 
   const materialTotal = useMemo(() => {
-    return items.filter(it => !['labour', 'sub-contractor', 'shop', 'miscellaneous'].includes(it.item_type || '')).reduce((acc, it) => acc + calculateItemTotal(it), 0);
+    return items.filter(it => !['labour'].includes(it.item_type || '')).reduce((acc, it) => acc + calculateItemTotal(it), 0);
   }, [items]);
 
   const subcontractorTotal = useMemo(() => {
@@ -1212,7 +1216,7 @@ function SummaryModal({ open, onClose, items, pstRate, gstRate, markup, profitRa
                 </thead>
                 <tbody>
                   {Object.keys(costsBySection)
-                    .filter(s => !['Labour', 'Sub-Contractors', 'Shop'].includes(s))
+                    .filter(s => !['Labour'].includes(s))
                     .map(section => {
                       const total = costsBySection[section];
                       return (
@@ -1241,14 +1245,7 @@ function SummaryModal({ open, onClose, items, pstRate, gstRate, markup, profitRa
               <div className="flex items-center justify-between"><span>Sections Mark-up:</span><span className="font-medium">${markupValue.toFixed(2)}</span></div>
               <div className="flex items-center justify-between">
                 <span>Profit (%):</span>
-                <input 
-                  type="number" 
-                  className="border rounded px-2 py-1 w-20 text-right" 
-                  value={profitRate} 
-                  min={0} 
-                  step={0.1}
-                  onChange={e=>setProfitRate(Number(e.target.value||0))} 
-                />
+                <span className="font-medium">{profitRate.toFixed(1)}%</span>
               </div>
               <div className="flex items-center justify-between"><span>Total Profit:</span><span className="font-medium">${profitValue.toFixed(2)}</span></div>
               <div className="flex items-center justify-between"><span>Total Estimate:</span><span className="font-medium">${totalEstimate.toFixed(2)}</span></div>
