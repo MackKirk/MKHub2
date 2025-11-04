@@ -16,7 +16,6 @@ export default function ProjectNew(){
 
   const [clientId, setClientId] = useState<string>(initialClientId);
   const [name, setName] = useState<string>('');
-  const [code, setCode] = useState<string>('');
   const [desc, setDesc] = useState<string>('');
   const [siteId, setSiteId] = useState<string>('');
   const [createSite, setCreateSite] = useState<boolean>(false);
@@ -70,7 +69,7 @@ export default function ProjectNew(){
         const created:any = await api('POST', `/clients/${encodeURIComponent(clientId)}/sites`, siteForm);
         newSiteId = String(created?.id||'');
       }
-      const payload:any = { name, code: code||null, description: desc||null, client_id: clientId, site_id: newSiteId||null, status_label: statusLabel||null, division_ids: divisionIds, estimator_id: estimatorId||null, onsite_lead_id: leadId||null, contact_id: contactId||null };
+      const payload:any = { name, description: desc||null, client_id: clientId, site_id: newSiteId||null, status_label: statusLabel||null, division_ids: divisionIds, estimator_id: estimatorId||null, onsite_lead_id: leadId||null, contact_id: contactId||null };
       const proj:any = await api('POST','/projects', payload);
       if(coverBlob){
         try{
@@ -109,7 +108,7 @@ export default function ProjectNew(){
               <input className={`w-full border rounded px-3 py-2 ${!nameValid? 'border-red-500':''}`} value={name} onChange={e=>setName(e.target.value)} />
               {!nameValid && <div className="text-[11px] text-red-600 mt-1">Required</div>}
             </div>
-            <div><label className="text-xs text-gray-600">Code</label><input className="w-full border rounded px-3 py-2" value={code} onChange={e=>setCode(e.target.value)} /></div>
+                
             <div>
               <label className="text-xs text-gray-600">Client *</label>
               <select className={`w-full border rounded px-3 py-2 ${!clientValid? 'border-red-500':''}`} value={clientId} onChange={e=> setClientId(e.target.value)}>

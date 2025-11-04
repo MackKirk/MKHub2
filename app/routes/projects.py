@@ -16,32 +16,19 @@ def create_project(payload: dict, db: Session = Depends(get_db)):
     # Minimal validation: require client_id
     if not payload.get("client_id"):
         raise HTTPException(status_code=400, detail="client_id is required")
-    
-    # Generate code if not provided
-    if not payload.get("code"):
-        # Generate a unique code based on client_id and project count
-        client_id = payload.get("client_id")
-        try:
-            import uuid as _uuid
-            u = _uuid.UUID(str(client_id))
-            base = int.from_bytes(u.bytes[:2], byteorder='big') % 10000
-        except Exception:
-            base = 0
-        
-        # Count existing projects for this client
-        project_count = db.query(Project).filter(Project.client_id == client_id).count()
-        seq = project_count + 1
-        
-        # Generate code: base-seq (e.g., 1234-001)
-        code = f"{base:04d}-{seq:03d}"
-        
-        # Ensure uniqueness by checking if code already exists
-        counter = 1
-        while db.query(Project).filter(Project.code == code).first():
-            code = f"{base:04d}-{seq:03d}-{counter}"
-            counter += 1
-        
-        payload["code"] = code
+    # Always auto-generate project code: MK-<seq>/<slug>-<year>
+    # Sequence is a simple global sequence based on current count; ensure uniqueness
+    from datetime import datetime as _dt
+    raw_name = (payload.get("name") or "project").strip()
+    slug = "-".join([s for s in "".join([c if c.isalnum() else " " for c in raw_name]).split() if s]).strip() or "project"
+    year = _dt.utcnow().year
+    seq = db.query(func.count(Project.id)).scalar() or 0
+    seq += 1
+    code = f"MK-{seq:06d}/{slug}-{year}"
+    while db.query(Project).filter(Project.code == code).first():
+        seq += 1
+        code = f"MK-{seq:06d}/{slug}-{year}"
+    payload["code"] = code
     
     proj = Project(**payload)
     db.add(proj)
@@ -153,6 +140,9 @@ def update_project(project_id: str, payload: dict, db: Session = Depends(get_db)
     p = db.query(Project).filter(Project.id == project_id).first()
     if not p:
         raise HTTPException(status_code=404, detail="Not found")
+    # Do not allow changing auto-generated code
+    if "code" in payload:
+        payload.pop("code", None)
     for k, v in payload.items():
         setattr(p, k, v)
     db.commit()

@@ -432,8 +432,7 @@ export default function CustomerDetail(){
                             <button onClick={(e)=>{ e.preventDefault(); e.stopPropagation(); setProjectPicker({ open:true, projectId: String(p.id) }); }} className="absolute right-2 top-2 text-xs px-2 py-1 rounded bg-black/70 text-white">Change cover</button>
                           </div>
                           <div className="p-2 text-sm">
-                            <div className="font-semibold text-sm group-hover:underline truncate">{p.name||'Project'}</div>
-                            <div className="text-xs text-gray-600 truncate">{p.code||''}</div>
+                            <div className="font-semibold text-sm group-hover:underline truncate">{p.name||'Project'} {p.code? `· ${p.code}`:''}</div>
                             <div className="text-[11px] text-gray-500 mt-1">{(p.date_start||p.created_at||'').slice(0,10)}</div>
                           </div>
                         </Link>
