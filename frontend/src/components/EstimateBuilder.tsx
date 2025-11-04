@@ -6,7 +6,7 @@ import toast from 'react-hot-toast';
 type Material = { id:number, name:string, supplier_name?:string, unit?:string, price?:number, unit_type?:string, units_per_package?:number, coverage_sqs?:number, coverage_ft2?:number, coverage_m2?:number };
 type Item = { material_id?:number, name:string, unit?:string, quantity:number, unit_price:number, section:string, description?:string, item_type?:string, supplier_name?:string, unit_type?:string, qty_required?:number, unit_required?:string, markup?:number, taxable?:boolean, units_per_package?:number, coverage_sqs?:number, coverage_ft2?:number, coverage_m2?:number, labour_journey?:number, labour_men?:number, labour_journey_type?:'days'|'hours'|'contract' };
 
-export default function EstimateBuilder({ projectId, estimateId }: { projectId: string, estimateId?: number }){
+export default function EstimateBuilder({ projectId, estimateId, statusLabel, settings }: { projectId: string, estimateId?: number, statusLabel?: string, settings?: any }){
   const [items, setItems] = useState<Item[]>([]);
   const [markup, setMarkup] = useState<number>(5);
   const [pstRate, setPstRate] = useState<number>(7);
@@ -20,6 +20,23 @@ export default function EstimateBuilder({ projectId, estimateId }: { projectId: 
   const autoSaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isAutoSavingRef = useRef<boolean>(false);
   const lastAutoSaveRef = useRef<number>(0);
+  
+  // Check if editing is allowed based on status
+  const canEdit = useMemo(()=>{
+    if (!statusLabel) return true; // Default to allow if no status
+    const statusLabelStr = String(statusLabel).trim();
+    const statusConfig = ((settings?.project_statuses||[]) as any[]).find((s:any)=> s.label === statusLabelStr);
+    // Allow editing if status is "estimating" or if allow_edit_proposal is true in meta
+    if (statusLabelStr.toLowerCase() === 'estimating') return true;
+    return statusConfig?.meta?.allow_edit_proposal === true;
+  }, [statusLabel, settings]);
+  
+  // Show warning if editing is restricted
+  useEffect(() => {
+    if (!canEdit && statusLabel) {
+      toast.error(`Editing is restricted for projects with status "${statusLabel}"`, { duration: 5000 });
+    }
+  }, [canEdit, statusLabel]);
 
   // Load estimate data if estimateId is provided
   const { data: estimateData } = useQuery({
@@ -208,6 +225,11 @@ export default function EstimateBuilder({ projectId, estimateId }: { projectId: 
         })) 
       };
       
+      if (!canEdit) {
+        toast.error('Editing is restricted for this project status');
+        return;
+      }
+      
       if (currentEstimateId) {
         // Update existing estimate
         await api('PUT', `/estimate/estimates/${currentEstimateId}`, payload);
@@ -222,12 +244,19 @@ export default function EstimateBuilder({ projectId, estimateId }: { projectId: 
     } finally {
       isAutoSavingRef.current = false;
     }
-  }, [projectId, markup, pstRate, gstRate, profitRate, sectionOrder, items, currentEstimateId]);
+  }, [projectId, markup, pstRate, gstRate, profitRate, sectionOrder, items, currentEstimateId, canEdit]);
+
+  // Show warning if editing is restricted
+  useEffect(() => {
+    if (!canEdit && statusLabel) {
+      toast.error(`Editing is restricted for projects with status "${statusLabel}"`, { duration: 5000 });
+    }
+  }, [canEdit, statusLabel]);
 
   // Auto-save on changes (debounced)
   useEffect(() => {
-    // Only auto-save if estimate is loaded or if we have items
-    if (!projectId || (items.length === 0 && !currentEstimateId)) return;
+    // Only auto-save if estimate is loaded or if we have items, and editing is allowed
+    if (!projectId || (items.length === 0 && !currentEstimateId) || !canEdit) return;
 
     // Clear existing timeout
     if (autoSaveTimeoutRef.current) {
@@ -236,7 +265,9 @@ export default function EstimateBuilder({ projectId, estimateId }: { projectId: 
 
     // Set new timeout for auto-save (2 seconds after last change)
     autoSaveTimeoutRef.current = setTimeout(() => {
-      autoSave();
+      if (canEdit) {
+        autoSave();
+      }
     }, 2000);
 
     return () => {
@@ -248,14 +279,16 @@ export default function EstimateBuilder({ projectId, estimateId }: { projectId: 
 
   // Periodic auto-save (every 30 seconds)
   useEffect(() => {
-    if (!projectId || (items.length === 0 && !currentEstimateId)) return;
+    if (!projectId || (items.length === 0 && !currentEstimateId) || !canEdit) return;
 
     const interval = setInterval(() => {
-      autoSave();
+      if (canEdit) {
+        autoSave();
+      }
     }, 30000); // 30 seconds
 
     return () => clearInterval(interval);
-  }, [projectId, items.length, currentEstimateId, autoSave]);
+  }, [projectId, items.length, currentEstimateId, autoSave, canEdit]);
 
   // Calculate quantity based on qty_required and unit_type
   const calculateQuantity = (item: Item): number => {
@@ -327,18 +360,27 @@ export default function EstimateBuilder({ projectId, estimateId }: { projectId: 
     setDragOverSection(null);
   };
 
+  // Show warning banner if editing is restricted
+  const showRestrictionWarning = !canEdit && statusLabel;
+  
   return (
     <div>
+      {showRestrictionWarning && (
+        <div className="mb-4 p-4 bg-yellow-50 border border-yellow-200 rounded text-sm text-yellow-800">
+          <strong>Editing Restricted:</strong> This project has status "{statusLabel}" which does not allow editing proposals or estimates. 
+          Please change the project status to allow editing.
+        </div>
+      )}
       <div className="mb-3 flex items-center gap-2">
-        <AddProductModal onAdd={(it)=> setItems(prev=> [...prev, it])} />
-        <AddLabourModal onAdd={(it)=> setItems(prev=> [...prev, it])} />
-        <AddSubContractorModal onAdd={(it)=> setItems(prev=> [...prev, it])} />
-        <AddMiscellaneousModal onAdd={(it)=> setItems(prev=> [...prev, it])} />
-        <AddShopModal onAdd={(it)=> setItems(prev=> [...prev, it])} />
+        <AddProductModal onAdd={(it)=> setItems(prev=> [...prev, it])} disabled={!canEdit} />
+        <AddLabourModal onAdd={(it)=> setItems(prev=> [...prev, it])} disabled={!canEdit} />
+        <AddSubContractorModal onAdd={(it)=> setItems(prev=> [...prev, it])} disabled={!canEdit} />
+        <AddMiscellaneousModal onAdd={(it)=> setItems(prev=> [...prev, it])} disabled={!canEdit} />
+        <AddShopModal onAdd={(it)=> setItems(prev=> [...prev, it])} disabled={!canEdit} />
         <div className="ml-auto flex items-center gap-3 text-sm">
-          <label>Markup (%)</label><input type="number" className="border rounded px-2 py-1 w-20" value={markup} min={0} step={1} onChange={e=>setMarkup(Number(e.target.value||0))} />
-          <label>PST (%)</label><input type="number" className="border rounded px-2 py-1 w-20" value={pstRate} min={0} step={1} onChange={e=>setPstRate(Number(e.target.value||0))} />
-          <label>GST (%)</label><input type="number" className="border rounded px-2 py-1 w-20" value={gstRate} min={0} step={1} onChange={e=>setGstRate(Number(e.target.value||0))} />
+          <label>Markup (%)</label><input type="number" className="border rounded px-2 py-1 w-20" value={markup} min={0} step={1} onChange={e=>setMarkup(Number(e.target.value||0))} disabled={!canEdit} />
+          <label>PST (%)</label><input type="number" className="border rounded px-2 py-1 w-20" value={pstRate} min={0} step={1} onChange={e=>setPstRate(Number(e.target.value||0))} disabled={!canEdit} />
+          <label>GST (%)</label><input type="number" className="border rounded px-2 py-1 w-20" value={gstRate} min={0} step={1} onChange={e=>setGstRate(Number(e.target.value||0))} disabled={!canEdit} />
           <button onClick={()=>setSummaryOpen(true)} className="px-3 py-2 rounded bg-gray-100 hover:bg-gray-200">Summary</button>
         </div>
       </div>
@@ -852,7 +894,7 @@ export default function EstimateBuilder({ projectId, estimateId }: { projectId: 
                   setIsLoading(false);
                 }
               }} 
-              disabled={isLoading}
+              disabled={isLoading || !canEdit}
               className="px-3 py-2 rounded bg-brand-red text-white disabled:opacity-60">
               {isLoading ? 'Saving...' : (currentEstimateId ? 'Update Estimate' : 'Save Estimate')}
             </button>
@@ -1190,7 +1232,7 @@ function SummaryModal({ open, onClose, items, pstRate, gstRate, markup, profitRa
   );
 }
 
-function AddProductModal({ onAdd }:{ onAdd:(it: Item)=>void }){
+function AddProductModal({ onAdd, disabled }: { onAdd:(it: Item)=>void, disabled?: boolean }){
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState('');
   const [section, setSection] = useState('Roof System');
@@ -1215,7 +1257,7 @@ function AddProductModal({ onAdd }:{ onAdd:(it: Item)=>void }){
 
   return (
     <>
-      <button onClick={()=>setOpen(true)} className="px-3 py-2 rounded bg-gray-100">+ Add Product</button>
+      <button onClick={()=>setOpen(true)} className="px-3 py-2 rounded bg-gray-100" disabled={disabled}>+ Add Product</button>
       {open && (
         <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center">
           <div className="w-[720px] max-w-[95vw] bg-white rounded-xl overflow-hidden">
@@ -1297,7 +1339,7 @@ function AddProductModal({ onAdd }:{ onAdd:(it: Item)=>void }){
   );
 }
 
-function AddLabourModal({ onAdd }:{ onAdd:(it: Item)=>void }){
+function AddLabourModal({ onAdd, disabled }: { onAdd:(it: Item)=>void, disabled?: boolean }){
   const [open, setOpen] = useState(false);
   const [labour, setLabour] = useState('');
   const [men, setMen] = useState<string>('1');
@@ -1350,7 +1392,7 @@ function AddLabourModal({ onAdd }:{ onAdd:(it: Item)=>void }){
 
   return (
     <>
-      <button onClick={()=>setOpen(true)} className="px-3 py-2 rounded bg-gray-100">+ Add Labour</button>
+      <button onClick={()=>setOpen(true)} className="px-3 py-2 rounded bg-gray-100" disabled={disabled}>+ Add Labour</button>
       {open && (
         <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center">
           <div className="w-[600px] max-w-[95vw] bg-white rounded-xl overflow-hidden">
@@ -1434,7 +1476,7 @@ function AddLabourModal({ onAdd }:{ onAdd:(it: Item)=>void }){
   );
 }
 
-function AddSubContractorModal({ onAdd }:{ onAdd:(it: Item)=>void }){
+function AddSubContractorModal({ onAdd, disabled }: { onAdd:(it: Item)=>void, disabled?: boolean }){
   const [open, setOpen] = useState(false);
   const [type, setType] = useState<'debris-cartage'|'portable-washroom'|'other'|''>('');
   
@@ -1514,7 +1556,7 @@ function AddSubContractorModal({ onAdd }:{ onAdd:(it: Item)=>void }){
 
   return (
     <>
-      <button onClick={()=>setOpen(true)} className="px-3 py-2 rounded bg-gray-100">+ Add Sub-Contractor</button>
+      <button onClick={()=>setOpen(true)} className="px-3 py-2 rounded bg-gray-100" disabled={disabled}>+ Add Sub-Contractor</button>
       {open && (
         <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center">
           <div className="w-[700px] max-w-[95vw] bg-white rounded-xl overflow-hidden">
@@ -1655,7 +1697,7 @@ function AddSubContractorModal({ onAdd }:{ onAdd:(it: Item)=>void }){
   );
 }
 
-function AddMiscellaneousModal({ onAdd }:{ onAdd:(it: Item)=>void }){
+function AddMiscellaneousModal({ onAdd, disabled }: { onAdd:(it: Item)=>void, disabled?: boolean }){
   const [open, setOpen] = useState(false);
   const [name, setName] = useState('');
   const [quantity, setQuantity] = useState<string>('1');
@@ -1674,7 +1716,7 @@ function AddMiscellaneousModal({ onAdd }:{ onAdd:(it: Item)=>void }){
 
   return (
     <>
-      <button onClick={()=>setOpen(true)} className="px-3 py-2 rounded bg-gray-100">+ Add Miscellaneous</button>
+      <button onClick={()=>setOpen(true)} className="px-3 py-2 rounded bg-gray-100" disabled={disabled}>+ Add Miscellaneous</button>
       {open && (
         <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center">
           <div className="w-[600px] max-w-[95vw] bg-white rounded-xl overflow-hidden">
@@ -1717,7 +1759,7 @@ function AddMiscellaneousModal({ onAdd }:{ onAdd:(it: Item)=>void }){
   );
 }
 
-function AddShopModal({ onAdd }:{ onAdd:(it: Item)=>void }){
+function AddShopModal({ onAdd, disabled }: { onAdd:(it: Item)=>void, disabled?: boolean }){
   const [open, setOpen] = useState(false);
   const [name, setName] = useState('');
   const [quantity, setQuantity] = useState<string>('1');
@@ -1736,7 +1778,7 @@ function AddShopModal({ onAdd }:{ onAdd:(it: Item)=>void }){
 
   return (
     <>
-      <button onClick={()=>setOpen(true)} className="px-3 py-2 rounded bg-gray-100">+ Add Shop</button>
+      <button onClick={()=>setOpen(true)} className="px-3 py-2 rounded bg-gray-100" disabled={disabled}>+ Add Shop</button>
       {open && (
         <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center">
           <div className="w-[600px] max-w-[95vw] bg-white rounded-xl overflow-hidden">

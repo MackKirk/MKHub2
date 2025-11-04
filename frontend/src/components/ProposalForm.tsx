@@ -9,7 +9,7 @@ import { useConfirm } from '@/components/ConfirmProvider';
 type Client = { id:string, name?:string, display_name?:string, address_line1?:string, city?:string, province?:string, country?:string };
 type Site = { id:string, site_name?:string, site_address_line1?:string, site_city?:string, site_province?:string, site_country?:string };
 
-export default function ProposalForm({ mode, clientId: clientIdProp, siteId: siteIdProp, projectId: projectIdProp, initial }:{ mode:'new'|'edit', clientId?:string, siteId?:string, projectId?:string, initial?: any }){
+export default function ProposalForm({ mode, clientId: clientIdProp, siteId: siteIdProp, projectId: projectIdProp, initial, disabled }: { mode:'new'|'edit', clientId?:string, siteId?:string, projectId?:string, initial?: any, disabled?: boolean }){
   const nav = useNavigate();
   const queryClient = useQueryClient();
 
@@ -202,6 +202,10 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
   }, [isReady, lastSavedHash, coverTitle, orderNumber, date, createdFor, primary, typeOfProject, otherNotes, projectDescription, additionalNotes, bidPrice, costs, terms, sections, coverFoId, page2FoId, clientId, siteId, projectId, computeFingerprint]);
 
   const handleSave = async()=>{
+    if (disabled) {
+      toast.error('Editing is restricted for this project status');
+      return;
+    }
     try{
       const payload:any = {
         id: mode==='edit'? initial?.id : undefined,
@@ -677,8 +681,8 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
               Delete Proposal
             </button>
           )}
-          <button className="px-3 py-2 rounded bg-gray-100" onClick={handleSave}>Save Proposal</button>
-          <button className="px-3 py-2 rounded bg-brand-red text-white disabled:opacity-60" disabled={isGenerating} onClick={handleGenerate}>{isGenerating? 'Generating…' : 'Generate Proposal'}</button>
+          <button className="px-3 py-2 rounded bg-gray-100" onClick={handleSave} disabled={disabled}>Save Proposal</button>
+          <button className="px-3 py-2 rounded bg-brand-red text-white disabled:opacity-60" disabled={isGenerating || disabled} onClick={handleGenerate}>{isGenerating? 'Generating…' : 'Generate Proposal'}</button>
           {downloadUrl && (
             (renderFingerprint===lastGeneratedHash) ? (
               <a className="px-3 py-2 rounded bg-black text-white" href={downloadUrl} download="ProjectProposal.pdf">Download PDF</a>

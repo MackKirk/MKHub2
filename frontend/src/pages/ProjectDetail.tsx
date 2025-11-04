@@ -21,7 +21,7 @@ export default function ProjectDetail(){
   const { data:updates, refetch: refetchUpdates } = useQuery({ queryKey:['projectUpdates', id], queryFn: ()=>api<Update[]>('GET', `/projects/${id}/updates`) });
   const { data:reports, refetch: refetchReports } = useQuery({ queryKey:['projectReports', id], queryFn: ()=>api<Report[]>('GET', `/projects/${id}/reports`) });
   const { data:proposals } = useQuery({ queryKey:['projectProposals', id], queryFn: ()=>api<Proposal[]>('GET', `/proposals?project_id=${encodeURIComponent(String(id||''))}`) });
-  const [tab, setTab] = useState<'overview'|'general'|'reports'|'timesheet'|'files'|'photos'|'proposals'|'estimate'>('overview');
+  const [tab, setTab] = useState<'overview'|'general'|'reports'|'timesheet'|'files'|'photos'|'proposal'|'estimate'>('overview');
   const [pickerOpen, setPickerOpen] = useState(false);
   const cover = useMemo(()=>{
     const img = (files||[]).find(f=> String(f.category||'')==='project-cover-derived') || (files||[]).find(f=> (f.is_image===true) || String(f.content_type||'').startsWith('image/'));
@@ -54,7 +54,7 @@ export default function ProjectDetail(){
                 </div>
               </div>
               <div className="mt-auto flex gap-3">
-                {(['overview','general','reports','timesheet','files','photos','proposals','estimate'] as const).map(k=> (
+                {(['overview','general','reports','timesheet','files','photos','proposal','estimate'] as const).map(k=> (
                   <button key={k} onClick={()=>setTab(k)} className={`px-4 py-2 rounded-full ${tab===k?'bg-black text-white':'bg-white text-black'}`}>{k[0].toUpperCase()+k.slice(1)}</button>
                 ))}
               </div>
@@ -114,13 +114,13 @@ export default function ProjectDetail(){
               <PhotosTab files={(files||[]).filter(f=> (f.is_image===true) || String(f.content_type||'').startsWith('image/'))} />
             )}
 
-            {tab==='proposals' && (
-              <ProjectProposalsTab projectId={String(id)} clientId={String(proj?.client_id||'')} siteId={String(proj?.site_id||'')} proposals={proposals||[]} />
+            {tab==='proposal' && (
+              <ProjectProposalTab projectId={String(id)} clientId={String(proj?.client_id||'')} siteId={String(proj?.site_id||'')} proposals={proposals||[]} statusLabel={proj?.status_label||''} settings={settings||{}} />
             )}
 
             {tab==='estimate' && (
               <div className="rounded-xl border bg-white p-4">
-                <EstimateBuilder projectId={String(id)} />
+                <EstimateBuilder projectId={String(id)} statusLabel={proj?.status_label||''} settings={settings||{}} />
               </div>
             )}
           </>
@@ -323,29 +323,57 @@ function PhotosTab({ files }:{ files: ProjectFile[] }){
   );
 }
 
-function ProjectProposalsTab({ projectId, clientId, siteId, proposals }:{ projectId:string, clientId:string, siteId?:string, proposals: Proposal[] }){
+function ProjectProposalTab({ projectId, clientId, siteId, proposals, statusLabel, settings }:{ projectId:string, clientId:string, siteId?:string, proposals: Proposal[], statusLabel:string, settings:any }){
   const navigate = useNavigate();
   
+  // Get the first (and only) proposal for this project
+  const proposal = (proposals||[])[0];
+  
+  // Check if editing is allowed based on status
+  const canEdit = useMemo(()=>{
+    if (!statusLabel) return true; // Default to allow if no status
+    const statusConfig = ((settings?.project_statuses||[]) as any[]).find((s:any)=> s.label === statusLabel);
+    // Allow editing if status is "estimating" or if allow_edit_proposal is true in meta
+    if (statusLabel.toLowerCase() === 'estimating') return true;
+    return statusConfig?.meta?.allow_edit_proposal === true;
+  }, [statusLabel, settings]);
+  
+  // Navigate to proposal edit or create
+  useEffect(()=>{
+    if (proposal) {
+      // If proposal exists, navigate to edit
+      navigate(`/proposals/${encodeURIComponent(proposal.id)}/edit`);
+    } else {
+      // If no proposal, create new one
+      const params = new URLSearchParams();
+      params.set('client_id', clientId);
+      if (siteId) params.set('site_id', siteId);
+      params.set('project_id', projectId);
+      navigate(`/proposals/new?${params.toString()}`);
+    }
+  }, [proposal, projectId, clientId, siteId, navigate]);
+  
   return (
-    <div className="rounded-xl border bg-white overflow-hidden">
-      <div className="p-3 flex justify-end">
-        <button onClick={()=>{ 
-          const params = new URLSearchParams();
-          params.set('client_id', clientId);
-          if (siteId) params.set('site_id', siteId);
-          params.set('project_id', projectId);
-          navigate(`/proposals/new?${params.toString()}`);
-        }} className="px-3 py-2 rounded bg-brand-red text-white">New Proposal</button>
+    <div className="rounded-xl border bg-white p-4">
+      <div className="text-center py-8">
+        {proposal ? (
+          <>
+            <div className="text-lg font-semibold mb-2">Opening proposal...</div>
+            <div className="text-sm text-gray-600">{proposal.title || 'Proposal'}</div>
+          </>
+        ) : (
+          <>
+            <div className="text-lg font-semibold mb-2">Creating new proposal...</div>
+            <div className="text-sm text-gray-600">Redirecting to proposal editor</div>
+          </>
+        )}
+        {!canEdit && (
+          <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded text-sm text-yellow-800">
+            <strong>Note:</strong> Editing is restricted for projects with status "{statusLabel}". 
+            Please change the project status to allow editing.
+          </div>
+        )}
       </div>
-      <table className="w-full text-sm">
-        <thead className="bg-gray-50"><tr><th className="text-left p-2">Title</th><th className="text-left p-2">Order</th><th className="text-left p-2">Created</th><th className="text-left p-2">Actions</th></tr></thead>
-        <tbody>
-          {(proposals||[]).map(p=> (
-            <tr key={p.id} className="border-t"><td className="p-2">{p.title||'Proposal'}</td><td className="p-2">{p.order_number||''}</td><td className="p-2">{(p.created_at||'').slice(0,10)}</td><td className="p-2"><a className="underline" href={`/proposals/${encodeURIComponent(p.id)}/edit`}>Open</a></td></tr>
-          ))}
-          {(!proposals||!proposals.length) && <tr><td colSpan={3} className="p-3 text-gray-600">No proposals</td></tr>}
-        </tbody>
-      </table>
     </div>
   );
 }

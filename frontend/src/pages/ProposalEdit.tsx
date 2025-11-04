@@ -15,6 +15,20 @@ export default function ProposalEdit(){
   const clientId = String(p?.client_id||'');
   const siteId = String(p?.site_id||'');
   const projectId = String(p?.project_id||'');
+  
+  // Get project and settings to check if editing is allowed
+  const { data: project } = useQuery({ queryKey:['project', projectId], queryFn: ()=> projectId? api<any>('GET', `/projects/${projectId}`): Promise.resolve(null), enabled: !!projectId });
+  const { data: settings } = useQuery({ queryKey:['settings'], queryFn: ()=>api<any>('GET','/settings') });
+  
+  // Check if editing is allowed
+  const canEdit = useMemo(()=>{
+    if (!project?.status_label) return true; // Default to allow if no status
+    const statusLabel = String(project.status_label).trim();
+    const statusConfig = ((settings?.project_statuses||[]) as any[]).find((s:any)=> s.label === statusLabel);
+    // Allow editing if status is "estimating" or if allow_edit_proposal is true in meta
+    if (statusLabel.toLowerCase() === 'estimating') return true;
+    return statusConfig?.meta?.allow_edit_proposal === true;
+  }, [project?.status_label, settings]);
   type Client = { id:string, name?:string, display_name?:string, address_line1?:string, city?:string, province?:string, country?:string };
   type Site = { id:string, site_name?:string, site_address_line1?:string, site_city?:string, site_province?:string, site_country?:string };
   const { data:client } = useQuery({ queryKey:['client', clientId], queryFn: ()=> clientId? api<Client>('GET', `/clients/${clientId}`): Promise.resolve(null) });
@@ -103,8 +117,14 @@ export default function ProposalEdit(){
   return (
     <div>
       <h1 className="text-2xl font-bold mb-3">Edit Proposal</h1>
+      {!canEdit && project?.status_label && (
+        <div className="mb-4 p-4 bg-yellow-50 border border-yellow-200 rounded text-sm text-yellow-800">
+          <strong>Editing Restricted:</strong> This project has status "{project.status_label}" which does not allow editing proposals or estimates. 
+          Please change the project status to allow editing.
+        </div>
+      )}
       {isLoading? <div className="h-24 bg-gray-100 animate-pulse rounded"/> : (
-        <ProposalForm mode="edit" clientId={String(p?.client_id||'')} siteId={String(p?.site_id||'')} projectId={String(p?.project_id||'')} initial={p} />
+        <ProposalForm mode="edit" clientId={String(p?.client_id||'')} siteId={String(p?.site_id||'')} projectId={String(p?.project_id||'')} initial={p} disabled={!canEdit} />
       )}
       {/* Image pickers handled inside ProposalForm */}
     </div>
