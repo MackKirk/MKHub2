@@ -150,7 +150,6 @@ export default function ProjectNew(){
                     <div><label className="text-xs text-gray-600">Postal code</label><input className="w-full border rounded px-3 py-2" value={siteForm.site_postal_code||''} onChange={e=>setSiteField('site_postal_code', e.target.value)} /></div>
                     <div className="md:col-span-2"><label className="text-xs text-gray-600">Notes</label><textarea rows={3} className="w-full border rounded px-3 py-2" value={siteForm.site_notes||''} onChange={e=>setSiteField('site_notes', e.target.value)} /></div>
                   </div>
-                ) : (
                 )}
               </div>
             )}
