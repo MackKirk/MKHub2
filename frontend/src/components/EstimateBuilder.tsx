@@ -2,11 +2,13 @@ import { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
+import { useConfirm } from '@/components/ConfirmProvider';
 
 type Material = { id:number, name:string, supplier_name?:string, unit?:string, price?:number, unit_type?:string, units_per_package?:number, coverage_sqs?:number, coverage_ft2?:number, coverage_m2?:number };
 type Item = { material_id?:number, name:string, unit?:string, quantity:number, unit_price:number, section:string, description?:string, item_type?:string, supplier_name?:string, unit_type?:string, qty_required?:number, unit_required?:string, markup?:number, taxable?:boolean, units_per_package?:number, coverage_sqs?:number, coverage_ft2?:number, coverage_m2?:number, labour_journey?:number, labour_men?:number, labour_journey_type?:'days'|'hours'|'contract' };
 
 export default function EstimateBuilder({ projectId, estimateId, statusLabel, settings }: { projectId: string, estimateId?: number, statusLabel?: string, settings?: any }){
+  const confirm = useConfirm();
   const [items, setItems] = useState<Item[]>([]);
   const [markup, setMarkup] = useState<number>(5);
   const [pstRate, setPstRate] = useState<number>(7);
@@ -393,6 +395,25 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
   // Show warning banner if editing is restricted
   const showRestrictionWarning = !canEdit && statusLabel;
   
+  // Handle remove item with confirmation
+  const handleRemoveItem = useCallback(async (index: number, itemName: string) => {
+    if (!canEdit) {
+      toast.error('Editing is restricted for this project status');
+      return;
+    }
+    
+    const ok = await confirm({
+      title: 'Remove item',
+      message: `Are you sure you want to remove "${itemName}"? This action cannot be undone.`,
+      confirmText: 'Remove',
+      cancelText: 'Cancel'
+    });
+    
+    if (ok) {
+      setItems(prev => prev.filter((_, i) => i !== index));
+    }
+  }, [confirm, canEdit]);
+  
   return (
     <div>
       {showRestrictionWarning && (
@@ -411,7 +432,6 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
           <label>Markup (%)</label><input type="number" className="border rounded px-2 py-1 w-20" value={markup} min={0} step={1} onChange={e=>setMarkup(Number(e.target.value||0))} disabled={!canEdit} />
           <label>PST (%)</label><input type="number" className="border rounded px-2 py-1 w-20" value={pstRate} min={0} step={1} onChange={e=>setPstRate(Number(e.target.value||0))} disabled={!canEdit} />
           <label>GST (%)</label><input type="number" className="border rounded px-2 py-1 w-20" value={gstRate} min={0} step={1} onChange={e=>setGstRate(Number(e.target.value||0))} disabled={!canEdit} />
-          <button onClick={()=>setSummaryOpen(true)} className="px-3 py-2 rounded bg-gray-100 hover:bg-gray-200">Summary</button>
         </div>
       </div>
 
@@ -807,7 +827,7 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
                             </td>
                           </>
                         )}
-                        <td className="p-2"><button onClick={()=> setItems(prev=> prev.filter((_,i)=> i!==originalIdx))} className="px-2 py-1 rounded bg-gray-100 hover:bg-gray-200">Remove</button></td>
+                        <td className="p-2"><button onClick={()=> handleRemoveItem(originalIdx, it.name || it.description || 'this item')} className="px-2 py-1 rounded bg-gray-100 hover:bg-gray-200">Remove</button></td>
                       </tr>
                     );
                   })}
@@ -1034,27 +1054,34 @@ function SummaryModal({ open, onClose, items, pstRate, gstRate, markup, profitRa
     return it.quantity * it.unit_price;
   };
 
+  // Calculate item total with markup applied
+  const calculateItemTotalWithMarkup = (it: Item): number => {
+    const itemTotal = calculateItemTotal(it);
+    const itemMarkup = it.markup !== undefined && it.markup !== null ? it.markup : markup;
+    return itemTotal * (1 + (itemMarkup / 100));
+  };
+
   // Calculate costs by section
   const costsBySection = useMemo(() => {
     const sectionTotals: Record<string, number> = {};
     items.forEach(it => {
       const section = it.section || 'Miscellaneous';
       if (!sectionTotals[section]) sectionTotals[section] = 0;
-      sectionTotals[section] += calculateItemTotal(it);
+      sectionTotals[section] += calculateItemTotalWithMarkup(it);
     });
     return sectionTotals;
-  }, [items]);
+  }, [items, markup]);
 
   const totalCost = useMemo(() => Object.values(costsBySection).reduce((acc: number, val: number) => acc + val, 0), [costsBySection]);
   
   // Calculate labor, materials, sub-contractors, shop totals
   const laborTotal = useMemo(() => {
-    return items.filter(it => it.item_type === 'labour').reduce((acc, it) => acc + calculateItemTotal(it), 0);
-  }, [items]);
+    return items.filter(it => it.item_type === 'labour').reduce((acc, it) => acc + calculateItemTotalWithMarkup(it), 0);
+  }, [items, markup]);
 
   const materialTotal = useMemo(() => {
-    return items.filter(it => !['labour'].includes(it.item_type || '')).reduce((acc, it) => acc + calculateItemTotal(it), 0);
-  }, [items]);
+    return items.filter(it => !['labour'].includes(it.item_type || '')).reduce((acc, it) => acc + calculateItemTotalWithMarkup(it), 0);
+  }, [items, markup]);
 
   const subcontractorTotal = useMemo(() => {
     return costsBySection['Sub-Contractors'] || 0;
@@ -1182,18 +1209,11 @@ function SummaryModal({ open, onClose, items, pstRate, gstRate, markup, profitRa
                 </thead>
                 <tbody>
                   {items.filter(it => it.item_type === 'labour').map((it, idx) => {
-                    let itemTotal = 0;
-                    if (it.labour_journey_type === 'contract') {
-                      itemTotal = it.labour_journey! * it.unit_price;
-                    } else if (it.labour_journey_type) {
-                      itemTotal = it.labour_journey! * it.labour_men! * it.unit_price;
-                    } else {
-                      itemTotal = it.quantity * it.unit_price;
-                    }
+                    const itemTotalWithMarkup = calculateItemTotalWithMarkup(it);
                     return (
                       <tr key={idx} className="border-b hover:bg-gray-50">
                         <td className="p-2">{it.description || it.name}</td>
-                        <td className="p-2 text-right">${itemTotal.toFixed(2)}</td>
+                        <td className="p-2 text-right">${itemTotalWithMarkup.toFixed(2)}</td>
                       </tr>
                     );
                   })}
@@ -1235,7 +1255,7 @@ function SummaryModal({ open, onClose, items, pstRate, gstRate, markup, profitRa
           <div className="rounded-xl border bg-white overflow-hidden">
             <div className="bg-gray-50 px-4 py-2 border-b font-semibold">Final Summary</div>
             <div className="p-4 space-y-2 text-sm">
-              <div className="flex items-center justify-between"><span>Total Direct Costs:</span><span className="font-medium">${total.toFixed(2)}</span></div>
+              <div className="flex items-center justify-between"><span>Total Direct Costs:</span><span className="font-medium">${totalCost.toFixed(2)}</span></div>
               <div className="flex items-center justify-between"><span>Labor Costs:</span><span className="font-medium">${laborTotal.toFixed(2)}</span></div>
               <div className="flex items-center justify-between"><span>Material Costs:</span><span className="font-medium">${materialTotal.toFixed(2)}</span></div>
               <div className="flex items-center justify-between"><span>Sub-Contractors:</span><span className="font-medium">${subcontractorTotal.toFixed(2)}</span></div>
