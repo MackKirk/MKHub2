@@ -19,6 +19,38 @@ pdfmetrics.registerFont(TTFont("Montserrat", os.path.join(fonts_path, "Montserra
 pdfmetrics.registerFont(TTFont("Montserrat-Bold", os.path.join(fonts_path, "Montserrat-Bold.ttf")))
 
 
+def format_number(num):
+    """Format number without trailing zeros. If integer, show no decimals."""
+    if num is None:
+        return "0"
+    num = float(num)
+    # If it's an integer, return without decimals
+    if num == int(num):
+        return str(int(num))
+    # Otherwise, remove trailing zeros
+    return f"{num:.10f}".rstrip('0').rstrip('.')
+
+
+def format_currency(num):
+    """Format currency without trailing zeros. If integer, show no decimals."""
+    if num is None:
+        return "$0"
+    num = float(num)
+    # If it's an integer, return without decimals
+    if num == int(num):
+        return f"${int(num):,}"
+    # Otherwise, remove trailing zeros and format with commas
+    # First format with many decimals, then remove trailing zeros
+    formatted = f"{num:.10f}".rstrip('0').rstrip('.')
+    # Split into integer and decimal parts
+    if '.' in formatted:
+        int_part_str, decimal_part_str = formatted.split('.', 1)
+        int_part = int(int_part_str) if int_part_str else 0
+        return f"${int_part:,}.{decimal_part_str}"
+    else:
+        return f"${int(formatted):,}"
+
+
 def draw_template_page(c, doc, data):
     """Draw template header/footer on each page"""
     c.setFillColor(colors.white)
@@ -198,18 +230,18 @@ def build_estimate_dynamic_pages(data, output_path):
                     if item.get("labour_journey_type") == 'contract':
                         quantity = item.get("labour_journey", 0)
                         item_total = quantity * unit_price
-                        composition = f"{quantity:.2f} contract"
+                        composition = f"{format_number(quantity)} {unit}" if unit else f"{format_number(quantity)} contract"
                     else:
                         quantity = item.get("labour_journey", 0) * item.get("labour_men", 0)
                         item_total = quantity * unit_price
                         journey_type = item.get("labour_journey_type", "days")
-                        composition = f"{item.get('labour_journey', 0):.2f} {journey_type} × {item.get('labour_men', 0)} men"
+                        composition = f"{format_number(item.get('labour_journey', 0))} {journey_type} × {format_number(item.get('labour_men', 0))} men"
                 else:
                     quantity = item.get("quantity", 0)
                     item_total = quantity * unit_price
                     # For non-labour items in non-product sections, composition is empty or can show quantity and unit
                     if not is_product_section:
-                        composition = f"{quantity:.2f} {unit}" if unit else f"{quantity:.2f}"
+                        composition = f"{format_number(quantity)} {unit}" if unit else f"{format_number(quantity)}"
                     else:
                         composition = ""
                 
@@ -221,8 +253,8 @@ def build_estimate_dynamic_pages(data, output_path):
                     supplier_name = item.get("supplier_name", "")
                     table_data.append([
                         Paragraph(str(name)[:50], item_style),
-                        Paragraph(f"{quantity:.2f}", item_style),
-                        Paragraph(f"${total_with_markup:.2f}", item_style),
+                        Paragraph(format_number(quantity), item_style),
+                        Paragraph(format_currency(total_with_markup), item_style),
                         Paragraph(str(supplier_name)[:40], item_style)
                     ])
                 else:
@@ -230,8 +262,8 @@ def build_estimate_dynamic_pages(data, output_path):
                     table_data.append([
                         Paragraph(str(name)[:50], item_style),
                         Paragraph(str(composition)[:40], item_style),
-                        Paragraph(f"${unit_price:.2f}", item_style),
-                        Paragraph(f"${total_with_markup:.2f}", item_style)
+                        Paragraph(format_currency(unit_price), item_style),
+                        Paragraph(format_currency(total_with_markup), item_style)
                     ])
             
             # Section subtotal - calculate correctly for all item types
@@ -257,7 +289,7 @@ def build_estimate_dynamic_pages(data, output_path):
                 table_data.append([
                     Paragraph("<b>Section Subtotal:</b>", item_style),
                     Paragraph("", item_style),
-                    Paragraph(f"<b>${section_total_with_markup:.2f}</b>", item_style),
+                    Paragraph(f"<b>{format_currency(section_total_with_markup)}</b>", item_style),
                     Paragraph("", item_style)
                 ])
             else:
@@ -265,7 +297,7 @@ def build_estimate_dynamic_pages(data, output_path):
                     Paragraph("<b>Section Subtotal:</b>", item_style),
                     Paragraph("", item_style),
                     Paragraph("", item_style),
-                    Paragraph(f"<b>${section_total_with_markup:.2f}</b>", item_style)
+                    Paragraph(f"<b>{format_currency(section_total_with_markup)}</b>", item_style)
                 ])
             
             # Set table column widths based on section type
@@ -341,7 +373,7 @@ def build_estimate_dynamic_pages(data, output_path):
             c.drawString(x_left, y, "Total Direct Costs")
             c.setFont("Montserrat-Bold", 11.5)
             c.setFillColor(colors.grey)
-            c.drawRightString(x_right, y, f"${float(self.data.get('total', 0)):,.2f}")
+            c.drawRightString(x_right, y, format_currency(self.data.get('total', 0)))
             y -= 20
 
             # Always show PST (even if 0)
@@ -349,10 +381,10 @@ def build_estimate_dynamic_pages(data, output_path):
             pst = self.data.get("pst", 0)
             c.setFont("Montserrat-Bold", 11.5)
             c.setFillColor(colors.black)
-            c.drawString(x_left, y, f"PST ({pst_rate}%)")
+            c.drawString(x_left, y, f"PST ({format_number(pst_rate)}%)")
             c.setFont("Montserrat-Bold", 11.5)
             c.setFillColor(colors.grey)
-            c.drawRightString(x_right, y, f"${pst:,.2f}")
+            c.drawRightString(x_right, y, format_currency(pst))
             y -= 20
 
             # Always show Subtotal
@@ -362,7 +394,7 @@ def build_estimate_dynamic_pages(data, output_path):
             c.drawString(x_left, y, "Subtotal")
             c.setFont("Montserrat-Bold", 11.5)
             c.setFillColor(colors.grey)
-            c.drawRightString(x_right, y, f"${subtotal:,.2f}")
+            c.drawRightString(x_right, y, format_currency(subtotal))
             y -= 20
 
             # Always show Sections Mark-up (even if 0)
@@ -372,7 +404,7 @@ def build_estimate_dynamic_pages(data, output_path):
             c.drawString(x_left, y, "Sections Mark-up")
             c.setFont("Montserrat-Bold", 11.5)
             c.setFillColor(colors.grey)
-            c.drawRightString(x_right, y, f"${markup_value:,.2f}")
+            c.drawRightString(x_right, y, format_currency(markup_value))
             y -= 20
 
             # Always show Profit (even if 0)
@@ -380,10 +412,10 @@ def build_estimate_dynamic_pages(data, output_path):
             profit_value = self.data.get("profit_value", 0)
             c.setFont("Montserrat-Bold", 11.5)
             c.setFillColor(colors.black)
-            c.drawString(x_left, y, f"Total Profit ({profit_rate:.1f}%)")
+            c.drawString(x_left, y, f"Total Profit ({format_number(profit_rate)}%)")
             c.setFont("Montserrat-Bold", 11.5)
             c.setFillColor(colors.grey)
-            c.drawRightString(x_right, y, f"${profit_value:,.2f}")
+            c.drawRightString(x_right, y, format_currency(profit_value))
             y -= 20
 
             # Always show Total Estimate
@@ -393,7 +425,7 @@ def build_estimate_dynamic_pages(data, output_path):
             c.drawString(x_left, y, "Total Estimate")
             c.setFont("Montserrat-Bold", 11.5)
             c.setFillColor(colors.grey)
-            c.drawRightString(x_right, y, f"${final_total:,.2f}")
+            c.drawRightString(x_right, y, format_currency(final_total))
             y -= 20
 
             # Always show GST (even if 0)
@@ -401,10 +433,10 @@ def build_estimate_dynamic_pages(data, output_path):
             gst = self.data.get("gst", 0)
             c.setFont("Montserrat-Bold", 11.5)
             c.setFillColor(colors.black)
-            c.drawString(x_left, y, f"GST ({gst_rate}%)")
+            c.drawString(x_left, y, f"GST ({format_number(gst_rate)}%)")
             c.setFont("Montserrat-Bold", 11.5)
             c.setFillColor(colors.grey)
-            c.drawRightString(x_right, y, f"${gst:,.2f}")
+            c.drawRightString(x_right, y, format_currency(gst))
             y -= 30
 
             # Grand total line - draw line higher to avoid overlapping text
@@ -418,7 +450,7 @@ def build_estimate_dynamic_pages(data, output_path):
             c.drawString(x_left, y, "GRAND TOTAL:")
             c.setFont("Montserrat-Bold", 14)
             c.setFillColor(colors.HexColor("#d62028"))
-            c.drawRightString(x_right, y, f"${grand_total:,.2f}")
+            c.drawRightString(x_right, y, format_currency(grand_total))
 
     story.append(EstimatePricingTable(data))
     story.append(Spacer(1, 20))

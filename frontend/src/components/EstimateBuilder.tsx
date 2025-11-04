@@ -1106,7 +1106,7 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
             <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span>Total Shop Costs</span><span>${totalShopCosts.toFixed(2)}</span></div>
             <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span>Total Miscellaneous Costs</span><span>${totalMiscellaneousCosts.toFixed(2)}</span></div>
             <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span className="font-bold">Total Direct Project Costs</span><span className="font-bold">${totalWithMarkup.toFixed(2)}</span></div>
-            <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span>PST (${pstRate}%)</span><span>${pst.toFixed(2)}</span></div>
+            <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span>PST ({pstRate}%)</span><span>${pst.toFixed(2)}</span></div>
             <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span className="font-bold">Sub-total</span><span className="font-bold">${subtotal.toFixed(2)}</span></div>
           </div>
         </div>
@@ -1121,13 +1121,13 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
                 className="border rounded px-2 py-1 w-20 text-right" 
                 value={profitRate} 
                 min={0} 
-                step={0.1}
+                step={1}
                 onChange={e=>setProfitRate(Number(e.target.value||0))} 
               />
             </div>
             <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span className="font-bold">Total Profit</span><span className="font-bold">${profitValue.toFixed(2)}</span></div>
             <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span className="font-bold">Total Estimate</span><span className="font-bold">${finalTotal.toFixed(2)}</span></div>
-            <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span>GST (${gstRate}%)</span><span>${gst.toFixed(2)}</span></div>
+            <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span>GST ({gstRate}%)</span><span>${gst.toFixed(2)}</span></div>
             <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1 text-lg"><span className="font-bold">Final Total (with GST)</span><span className="font-bold">${grandTotal.toFixed(2)}</span></div>
           </div>
         </div>
