@@ -100,7 +100,7 @@ export default function ProjectNew(){
                 <span className={step===2? 'px-2 py-0.5 rounded-full bg-brand-red text-white' : 'px-2 py-0.5 rounded-full bg-gray-100'}>Step 2</span>
               </div>
             </div>
-            {step===1 ? (
+            {step===1 ? ( <>
             <div className="md:col-span-2">
               <label className="text-xs text-gray-600">Name *</label>
               <input className={`w-full border rounded px-3 py-2 ${!nameValid? 'border-red-500':''}`} value={name} onChange={e=>setName(e.target.value)} />
@@ -154,6 +154,7 @@ export default function ProjectNew(){
                 )}
               </div>
             )}
+            </>
             ) : (
               <>
                 <div>
