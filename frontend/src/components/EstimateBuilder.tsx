@@ -140,7 +140,26 @@ export default function EstimateBuilder({ projectId, estimateId }: { projectId: 
   
   const pst = useMemo(()=> (taxableTotal * (pstRate/100)), [taxableTotal, pstRate]);
   const subtotal = useMemo(()=> total + pst, [total, pst]);
-  const markupValue = useMemo(()=> subtotal * (markup/100), [subtotal, markup]);
+  
+  // Calculate Sections Mark-up based on individual item markups
+  const markupValue = useMemo(() => {
+    return items.reduce((acc, it) => {
+      let itemTotal = 0;
+      if (it.item_type === 'labour' && it.labour_journey_type) {
+        if (it.labour_journey_type === 'contract') {
+          itemTotal = (it.labour_journey || 0) * it.unit_price;
+        } else {
+          itemTotal = (it.labour_journey || 0) * (it.labour_men || 0) * it.unit_price;
+        }
+      } else {
+        itemTotal = it.quantity * it.unit_price;
+      }
+      const itemMarkup = it.markup !== undefined && it.markup !== null ? it.markup : markup;
+      const itemMarkupValue = itemTotal * (itemMarkup / 100);
+      return acc + itemMarkupValue;
+    }, 0);
+  }, [items, markup]);
+  
   const profitValue = useMemo(()=> subtotal * (profitRate/100), [subtotal, profitRate]);
   const finalTotal = useMemo(()=> subtotal + markupValue + profitValue, [subtotal, markupValue, profitValue]);
   const gst = useMemo(()=> finalTotal * (gstRate/100), [finalTotal, gstRate]);
@@ -601,7 +620,7 @@ export default function EstimateBuilder({ projectId, estimateId }: { projectId: 
                                 )
                               ) : (
                                 <div className="flex items-center gap-2">
-                                  <input type="number" className="w-20 border rounded px-2 py-1" value={it.quantity ?? ''} min={0} step={0.01} 
+                                  <input type="number" className="w-20 border rounded px-2 py-1" value={it.quantity ?? ''} min={0} step={['Sub-Contractors', 'Shop', 'Miscellaneous'].includes(section) ? 1 : 0.01} 
                                     onChange={e=>{
                                       const inputValue = e.target.value;
                                       if (inputValue === '') {
@@ -626,7 +645,7 @@ export default function EstimateBuilder({ projectId, estimateId }: { projectId: 
                               <div className="flex items-center gap-1">
                                 <span>$</span>
                                 <input type="number" className="w-20 border rounded px-2 py-1" 
-                                  value={it.unit_price ?? ''} min={0} step={0.01}
+                                  value={it.unit_price ?? ''} min={0} step={it.item_type === 'labour' ? 1 : 0.01}
                                   onChange={e=>{
                                     const inputValue = e.target.value;
                                     if (inputValue === '') {
@@ -1011,7 +1030,26 @@ function SummaryModal({ open, onClose, items, pstRate, gstRate, markup, profitRa
   
   const pst = useMemo(() => taxableTotal * (pstRate/100), [taxableTotal, pstRate]);
   const subtotal = useMemo(() => total + pst, [total, pst]);
-  const markupValue = useMemo(() => subtotal * (markup/100), [subtotal, markup]);
+  
+  // Calculate Sections Mark-up based on individual item markups
+  const markupValue = useMemo(() => {
+    return items.reduce((acc, it) => {
+      let itemTotal = 0;
+      if (it.item_type === 'labour' && it.labour_journey_type) {
+        if (it.labour_journey_type === 'contract') {
+          itemTotal = (it.labour_journey || 0) * it.unit_price;
+        } else {
+          itemTotal = (it.labour_journey || 0) * (it.labour_men || 0) * it.unit_price;
+        }
+      } else {
+        itemTotal = it.quantity * it.unit_price;
+      }
+      const itemMarkup = it.markup !== undefined && it.markup !== null ? it.markup : markup;
+      const itemMarkupValue = itemTotal * (itemMarkup / 100);
+      return acc + itemMarkupValue;
+    }, 0);
+  }, [items, markup]);
+  
   const profitValue = useMemo(() => subtotal * (profitRate/100), [subtotal, profitRate]);
   const totalEstimate = useMemo(() => subtotal + markupValue + profitValue, [subtotal, markupValue, profitValue]);
   const gst = useMemo(() => totalEstimate * (gstRate/100), [totalEstimate, gstRate]);
