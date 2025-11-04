@@ -4,7 +4,7 @@ from sqlalchemy import func, extract
 from typing import List, Optional
 
 from ..db import get_db
-from ..models.models import Project, ClientFile, FileObject, ProjectUpdate, ProjectReport, ProjectTimeEntry, ProjectTimeEntryLog, User, EmployeeProfile, Client, ClientSite, ClientFolder
+from ..models.models import Project, ClientFile, FileObject, ProjectUpdate, ProjectReport, ProjectTimeEntry, ProjectTimeEntryLog, User, EmployeeProfile, Client, ClientSite, ClientFolder, ClientContact
 from ..auth.security import get_current_user, require_permissions, can_approve_timesheet
 
 
@@ -109,6 +109,7 @@ def get_project(project_id: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Not found")
     client = db.query(Client).filter(Client.id == p.client_id).first() if getattr(p,'client_id',None) else None
     site = db.query(ClientSite).filter(ClientSite.id == getattr(p,'site_id',None)).first() if getattr(p,'site_id',None) else None
+    contact = db.query(ClientContact).filter(ClientContact.id == getattr(p,'contact_id',None)).first() if getattr(p,'contact_id',None) else None
     return {
         "id": str(p.id),
         "code": p.code,
@@ -132,6 +133,10 @@ def get_project(project_id: str, db: Session = Depends(get_db)):
         "site_country": getattr(site, 'site_country', None),
         "estimator_id": getattr(p, 'estimator_id', None),
         "onsite_lead_id": getattr(p, 'onsite_lead_id', None),
+        "contact_id": getattr(p, 'contact_id', None),
+        "contact_name": getattr(contact, 'name', None) if contact else None,
+        "contact_email": getattr(contact, 'email', None) if contact else None,
+        "contact_phone": getattr(contact, 'phone', None) if contact else None,
         "date_start": p.date_start.isoformat() if getattr(p, 'date_start', None) else None,
         "date_eta": getattr(p, 'date_eta', None).isoformat() if getattr(p, 'date_eta', None) else None,
         "date_end": p.date_end.isoformat() if getattr(p, 'date_end', None) else None,

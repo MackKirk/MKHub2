@@ -27,6 +27,7 @@ export default function ProjectNew(){
   const [divisionIds, setDivisionIds] = useState<string[]>([]);
   const [estimatorId, setEstimatorId] = useState<string>('');
   const [leadId, setLeadId] = useState<string>('');
+  const [contactId, setContactId] = useState<string>('');
   const [coverBlob, setCoverBlob] = useState<Blob|null>(null);
   const [coverPreview, setCoverPreview] = useState<string>('');
   const [hiddenPickerOpen, setHiddenPickerOpen] = useState<boolean>(false);
@@ -42,6 +43,7 @@ export default function ProjectNew(){
   const { data:sites } = useQuery({ queryKey:['clientSites', clientId], queryFn: ()=> clientId? api<Site[]>('GET', `/clients/${encodeURIComponent(clientId)}/sites`) : Promise.resolve([]), enabled: !!clientId });
   const { data:settings } = useQuery({ queryKey:['settings'], queryFn: ()=> api<any>('GET','/settings') });
   const { data:employees } = useQuery({ queryKey:['employees'], queryFn: ()=> api<any[]>('GET','/employees') });
+  const { data:contacts } = useQuery({ queryKey:['clientContacts-mini', clientId], queryFn: ()=> clientId? api<any[]>('GET', `/clients/${encodeURIComponent(clientId)}/contacts`) : Promise.resolve([]), enabled: !!clientId });
 
   useEffect(()=>{ if(initialClientId) setClientId(initialClientId); }, [initialClientId]);
   useEffect(()=>{ if(!clientId){ setSiteId(''); setCreateSite(false); } }, [clientId]);
@@ -68,7 +70,7 @@ export default function ProjectNew(){
         const created:any = await api('POST', `/clients/${encodeURIComponent(clientId)}/sites`, siteForm);
         newSiteId = String(created?.id||'');
       }
-      const payload:any = { name, code: code||null, description: desc||null, client_id: clientId, site_id: newSiteId||null, status_label: statusLabel||null, division_ids: divisionIds, estimator_id: estimatorId||null, onsite_lead_id: leadId||null };
+      const payload:any = { name, code: code||null, description: desc||null, client_id: clientId, site_id: newSiteId||null, status_label: statusLabel||null, division_ids: divisionIds, estimator_id: estimatorId||null, onsite_lead_id: leadId||null, contact_id: contactId||null };
       const proj:any = await api('POST','/projects', payload);
       if(coverBlob){
         try{
@@ -192,6 +194,15 @@ export default function ProjectNew(){
                     {(employees||[]).map((emp:any)=> <option key={emp.id} value={emp.id}>{emp.name||emp.username}</option>)}
                   </select>
                 </div>
+                {!!clientId && (
+                  <div className="md:col-span-2">
+                    <label className="text-xs text-gray-600">Customer contact</label>
+                    <select className="w-full border rounded px-3 py-2" value={contactId} onChange={e=> setContactId(e.target.value)}>
+                      <option value="">Select...</option>
+                      {(contacts||[]).map((c:any)=> <option key={c.id} value={c.id}>{c.name||c.email||c.phone||c.id}</option>)}
+                    </select>
+                  </div>
+                )}
                 <div className="md:col-span-2">
                   <label className="text-xs text-gray-600">Cover <span className="opacity-60">(optional)</span></label>
                   <div className="mt-1 flex items-center gap-3">

@@ -7,7 +7,7 @@ import ImagePicker from '@/components/ImagePicker';
 import EstimateBuilder from '@/components/EstimateBuilder';
 import ProposalForm from '@/components/ProposalForm';
 
-type Project = { id:string, code?:string, name?:string, client_id?:string, address_city?:string, address_province?:string, address_country?:string, description?:string, status_id?:string, division_id?:string, estimator_id?:string, onsite_lead_id?:string, date_start?:string, date_eta?:string, date_end?:string, cost_estimated?:number, cost_actual?:number, service_value?:number, progress?:number };
+type Project = { id:string, code?:string, name?:string, client_id?:string, client_display_name?:string, address_city?:string, address_province?:string, address_country?:string, description?:string, status_id?:string, division_id?:string, estimator_id?:string, onsite_lead_id?:string, contact_id?:string, contact_name?:string, contact_email?:string, contact_phone?:string, date_start?:string, date_eta?:string, date_end?:string, cost_estimated?:number, cost_actual?:number, service_value?:number, progress?:number };
 type ProjectFile = { id:string, file_object_id:string, is_image?:boolean, content_type?:string, category?:string, original_name?:string, uploaded_at?:string };
 type Update = { id:string, timestamp?:string, text?:string, images?:any };
 type Report = { id:string, category_id?:string, division_id?:string, description?:string, images?:any, status?:string };
@@ -19,6 +19,7 @@ export default function ProjectDetail(){
   const { data:proj, isLoading } = useQuery({ queryKey:['project', id], queryFn: ()=>api<Project>('GET', `/projects/${id}`) });
   const { data:settings } = useQuery({ queryKey:['settings'], queryFn: ()=>api<any>('GET','/settings') });
   const { data:files, refetch: refetchFiles } = useQuery({ queryKey:['projectFiles', id], queryFn: ()=>api<ProjectFile[]>('GET', `/projects/${id}/files`) });
+  const { data:clientFiles } = useQuery({ queryKey:['clientFilesForContacts-project', proj?.client_id||''], queryFn: ()=> proj?.client_id? api<any[]>('GET', `/clients/${encodeURIComponent(String(proj?.client_id||''))}/files`) : Promise.resolve([]), enabled: !!proj?.client_id });
   const { data:updates, refetch: refetchUpdates } = useQuery({ queryKey:['projectUpdates', id], queryFn: ()=>api<Update[]>('GET', `/projects/${id}/updates`) });
   const { data:reports, refetch: refetchReports } = useQuery({ queryKey:['projectReports', id], queryFn: ()=>api<Report[]>('GET', `/projects/${id}/reports`) });
   const { data:proposals } = useQuery({ queryKey:['projectProposals', id], queryFn: ()=>api<Proposal[]>('GET', `/proposals?project_id=${encodeURIComponent(String(id||''))}`) });
@@ -41,19 +42,46 @@ export default function ProjectDetail(){
     const img = (files||[]).find(f=> String(f.category||'')==='project-cover-derived') || (files||[]).find(f=> (f.is_image===true) || String(f.content_type||'').startsWith('image/'));
     return img? `/files/${img.file_object_id}/thumbnail?w=1000` : '/ui/assets/login/logo-light.svg';
   }, [files]);
+  const overlayUrl = useMemo(()=>{
+    const branding = (settings?.branding||[]) as any[];
+    const row = branding.find((i:any)=> ['project_hero_overlay_url','hero_overlay_url','project hero overlay','hero overlay'].includes(String(i.label||'').toLowerCase()));
+    return row?.value || '';
+  }, [settings]);
+  const [overlayResolved, setOverlayResolved] = useState<string>('');
+  useEffect(()=>{
+    (async()=>{
+      try{
+        if(!overlayUrl){ setOverlayResolved(''); return; }
+        if(overlayUrl.startsWith('/files/')){
+          const r:any = await api('GET', overlayUrl);
+          setOverlayResolved(r.download_url||'');
+        } else {
+          setOverlayResolved(overlayUrl);
+        }
+      }catch{ setOverlayResolved(''); }
+    })();
+  }, [overlayUrl]);
 
   return (
     <div>
-      <div className="rounded-xl border bg-white overflow-hidden">
-        <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] rounded-t-xl p-5 text-white">
-          <div className="flex gap-4 items-stretch min-h-[220px]">
+      <div className="mb-3 rounded-xl border bg-gradient-to-br from-[#7f1010] to-[#a31414] text-white p-4">
+        <div className="text-2xl font-extrabold">Project Information</div>
+        <div className="text-sm opacity-90">Overview, files, schedule and contacts.</div>
+      </div>
+      <div className="rounded-xl border bg-white overflow-hidden relative">
+        <div className="relative rounded-t-xl p-5 text-white overflow-hidden" style={{ backgroundImage: 'linear-gradient(135deg, #6b7280, #1f2937)' }}>
+          <img src={cover} alt="" className="pointer-events-none select-none absolute right-0 top-0 h-[160%] w-auto opacity-15 -translate-x-20 scale-150 object-contain" />
+          {overlayResolved && (
+            <img src={overlayResolved} alt="" className="pointer-events-none select-none absolute right-0 top-0 h-full w-auto opacity-80" style={{ WebkitMaskImage: 'linear-gradient(to left, black 70%, transparent 100%)', maskImage: 'linear-gradient(to left, black 70%, transparent 100%)' }} />
+          )}
+          <div className="flex gap-4 items-stretch min-h-[220px] relative">
             <div className="w-[260px] relative group">
               <img src={cover} className="w-full h-full object-cover rounded-xl border-2 border-brand-red" />
               <button onClick={()=>setPickerOpen(true)} className="absolute inset-0 rounded-xl bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white">✏️ Change</button>
             </div>
             <div className="flex-1 flex flex-col justify-start">
               <div className="text-3xl font-extrabold">{proj?.name||'Project'}</div>
-              <div className="text-sm opacity-90 mt-1">{proj?.code||''} · {proj?.client_display_name||''}</div>
+              <div className="text-sm opacity-90 mt-1">{proj?.code||''} · {proj?.client_id ? (<Link className="underline" to={`/customers/${encodeURIComponent(String(proj?.client_id||''))}`}>{proj?.client_display_name||''}</Link>): (proj?.client_display_name||'')}</div>
               <div className="text-sm opacity-90">
                 {proj?.site_id ? (
                   <Link to={`/customers/${encodeURIComponent(String(proj?.client_id||''))}/sites/${encodeURIComponent(String(proj?.site_id||''))}`} state={{ backgroundLocation: location }} className="underline">Site: {proj?.site_name||proj?.site_id}</Link>
@@ -88,6 +116,16 @@ export default function ProjectDetail(){
                   <div className="text-sm text-gray-500">{proj?.address_city||''} {proj?.address_province||''} {proj?.address_country||''}</div>
                 </div>
                 <ProjectQuickEdit projectId={String(id)} proj={proj||{}} settings={settings||{}} />
+                <div className="rounded-xl border bg-white p-4">
+                  <h4 className="font-semibold mb-2">Contact</h4>
+                  <div className="flex items-center gap-3">
+                    {(() => { const cid = (proj as any)?.contact_id; if(!cid) return <span className="w-12 h-12 rounded bg-gray-200 inline-block"/>; const rec = (clientFiles||[]).find((f:any)=> String(f.category||'').toLowerCase()===`contact-photo-${String(cid)}`.toLowerCase()); const url = rec? `/files/${rec.file_object_id}/thumbnail?w=160` : ''; return url? <img className="w-12 h-12 rounded border object-cover" src={url}/> : <span className="w-12 h-12 rounded bg-gray-200 inline-block"/>; })()}
+                    <div>
+                      <div className="text-sm text-gray-700">{(proj as any)?.contact_name || '—'}</div>
+                      <div className="text-xs text-gray-600">{(proj as any)?.contact_email || ''} {(proj as any)?.contact_phone? `· ${(proj as any)?.contact_phone}`:''}</div>
+                    </div>
+                  </div>
+                </div>
                 <div className="rounded-xl border bg-white p-4">
                   <h4 className="font-semibold mb-2">Dates & Costs</h4>
                   <div className="text-sm text-gray-700">Start: {(proj?.date_start||'').slice(0,10)||'-'}</div>
@@ -621,9 +659,11 @@ function ProjectQuickEdit({ projectId, proj, settings }:{ projectId:string, proj
   const [progress, setProgress] = useState<number>(Number(proj?.progress||0));
   const [estimator, setEstimator] = useState<string>(proj?.estimator_id||'');
   const [lead, setLead] = useState<string>(proj?.onsite_lead_id||'');
+  const [contactId, setContactId] = useState<string>(proj?.contact_id||'');
   const statuses = (settings?.project_statuses||[]) as any[];
   const divisions = (settings?.divisions||[]) as any[];
   const { data:employees } = useQuery({ queryKey:['employees'], queryFn: ()=>api<any[]>('GET','/employees') });
+  const { data:contacts } = useQuery({ queryKey:['project-client-contacts', proj?.client_id||''], queryFn: ()=> (proj?.client_id? api<any[]>('GET', `/clients/${encodeURIComponent(String(proj?.client_id))}/contacts`) : Promise.resolve([])) });
   const toggleDiv = (id:string)=> setDivs(prev=> prev.includes(id)? prev.filter(x=>x!==id) : [...prev, id]);
   return (
     <div className="rounded-xl border bg-white p-4">
@@ -659,8 +699,15 @@ function ProjectQuickEdit({ projectId, proj, settings }:{ projectId:string, proj
         </div>
         <EmployeeSelect label="Estimator" value={estimator} onChange={setEstimator} employees={employees||[]} />
         <EmployeeSelect label="On-site lead" value={lead} onChange={setLead} employees={employees||[]} />
+        <div>
+          <label className="text-xs text-gray-600">Customer contact</label>
+          <select className="w-full border rounded px-2 py-1.5" value={contactId} onChange={e=>setContactId(e.target.value)}>
+            <option value="">Select...</option>
+            {(contacts||[]).map((c:any)=> <option key={c.id} value={c.id}>{c.name||c.email||c.phone||c.id}</option>)}
+          </select>
+        </div>
         <div className="col-span-2 text-right">
-          <button onClick={async()=>{ try{ await api('PATCH', `/projects/${projectId}`, { status_label: status||null, division_ids: divs, progress, estimator_id: estimator||null, onsite_lead_id: lead||null }); toast.success('Saved'); location.reload(); }catch(_e){ toast.error('Failed to save'); } }} className="px-3 py-2 rounded bg-brand-red text-white">Save</button>
+          <button onClick={async()=>{ try{ await api('PATCH', `/projects/${projectId}`, { status_label: status||null, division_ids: divs, progress, estimator_id: estimator||null, onsite_lead_id: lead||null, contact_id: contactId||null }); toast.success('Saved'); location.reload(); }catch(_e){ toast.error('Failed to save'); } }} className="px-3 py-2 rounded bg-brand-red text-white">Save</button>
         </div>
       </div>
     </div>
@@ -677,6 +724,8 @@ function ProjectGeneralForm({ projectId, proj, onSaved }:{ projectId:string, pro
   const [start, setStart] = useState<string>((proj?.date_start||'').slice(0,10));
   const [eta, setEta] = useState<string>((proj?.date_eta||'').slice(0,10));
   const [end, setEnd] = useState<string>((proj?.date_end||'').slice(0,10));
+  const [contactId, setContactId] = useState<string>(proj?.contact_id||'');
+  const { data:contacts } = useQuery({ queryKey:['project-client-contacts', proj?.client_id||''], queryFn: ()=> (proj?.client_id? api<any[]>('GET', `/clients/${encodeURIComponent(String(proj?.client_id))}/contacts`) : Promise.resolve([])) });
   return (
     <div className="grid md:grid-cols-2 gap-4">
       <div><label className="text-xs text-gray-600">Name</label><input className="w-full border rounded px-3 py-2" value={name} onChange={e=>setName(e.target.value)} /></div>
@@ -684,11 +733,12 @@ function ProjectGeneralForm({ projectId, proj, onSaved }:{ projectId:string, pro
       <div><label className="text-xs text-gray-600">City</label><input className="w-full border rounded px-3 py-2" value={city} onChange={e=>setCity(e.target.value)} /></div>
       <div><label className="text-xs text-gray-600">Province/State</label><input className="w-full border rounded px-3 py-2" value={province} onChange={e=>setProvince(e.target.value)} /></div>
       <div><label className="text-xs text-gray-600">Country</label><input className="w-full border rounded px-3 py-2" value={country} onChange={e=>setCountry(e.target.value)} /></div>
+      <div><label className="text-xs text-gray-600">Customer contact</label><select className="w-full border rounded px-3 py-2" value={contactId} onChange={e=>setContactId(e.target.value)}><option value="">Select...</option>{(contacts||[]).map((c:any)=> <option key={c.id} value={c.id}>{c.name||c.email||c.phone||c.id}</option>)}</select></div>
       <div className="md:col-span-2"><label className="text-xs text-gray-600">Description</label><textarea rows={6} className="w-full border rounded px-3 py-2" value={desc} onChange={e=>setDesc(e.target.value)} /></div>
       <div><label className="text-xs text-gray-600">Start date</label><input type="date" className="w-full border rounded px-3 py-2" value={start} onChange={e=>setStart(e.target.value)} /></div>
       <div><label className="text-xs text-gray-600">ETA</label><input type="date" className="w-full border rounded px-3 py-2" value={eta} onChange={e=>setEta(e.target.value)} /></div>
       <div><label className="text-xs text-gray-600">End date</label><input type="date" className="w-full border rounded px-3 py-2" value={end} onChange={e=>setEnd(e.target.value)} /></div>
-      <div className="md:col-span-2 text-right"><button onClick={async()=>{ try{ await api('PATCH', `/projects/${projectId}`, { name, code, address_city: city, address_province: province, address_country: country, description: desc, date_start: start||null, date_eta: eta||null, date_end: end||null }); toast.success('Saved'); onSaved(); }catch(_e){ toast.error('Failed to save'); } }} className="px-4 py-2 rounded bg-brand-red text-white">Save</button></div>
+      <div className="md:col-span-2 text-right"><button onClick={async()=>{ try{ await api('PATCH', `/projects/${projectId}`, { name, code, address_city: city, address_province: province, address_country: country, description: desc, date_start: start||null, date_eta: eta||null, date_end: end||null, contact_id: contactId||null }); toast.success('Saved'); onSaved(); }catch(_e){ toast.error('Failed to save'); } }} className="px-4 py-2 rounded bg-brand-red text-white">Save</button></div>
     </div>
   );
 }
