@@ -534,7 +534,7 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
                 <tbody>
                   {groupedItems[section].map((it, idx)=> {
                     const originalIdx = items.indexOf(it);
-                    const itemMarkup = it.markup || markup;
+                    const itemMarkup = it.markup !== undefined && it.markup !== null ? it.markup : markup;
                     // Calculate total value based on item type
                     let totalValue = 0;
                     if (!isLabourSection) {
@@ -629,7 +629,7 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
                             <td className="p-2">${totalValue.toFixed(2)}</td>
                             <td className="p-2">
                               <input type="number" className="w-16 border rounded px-2 py-1" 
-                                value={itemMarkup ?? ''} min={0} step={1}
+                                value={it.markup !== undefined && it.markup !== null ? it.markup : ''} min={0} step={1}
                                 onChange={e=>{
                                   const inputValue = e.target.value;
                                   if (inputValue === '') {
@@ -817,7 +817,7 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
                             <td className="p-2">${totalValue.toFixed(2)}</td>
                             <td className="p-2">
                               <input type="number" className="w-16 border rounded px-2 py-1" 
-                                value={itemMarkup ?? ''} min={0} step={1}
+                                value={it.markup !== undefined && it.markup !== null ? it.markup : ''} min={0} step={1}
                                 onChange={e=>{
                                   const inputValue = e.target.value;
                                   if (inputValue === '') {
@@ -852,7 +852,7 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
                   <tr>
                     <td colSpan={!isLabourSection ? 10 : 7} className="p-2 text-right font-semibold">Section Subtotal:</td>
                     <td className="p-2 text-right font-bold">${groupedItems[section].reduce((acc, it)=> {
-                      const m = it.markup || markup;
+                      const m = it.markup !== undefined && it.markup !== null ? it.markup : markup;
                       let itemTotal = 0;
                       if (!isLabourSection) {
                         itemTotal = it.quantity * it.unit_price;
