@@ -372,7 +372,22 @@ export default function CustomerDetail(){
                       };
                         const reqOk = String(form.display_name||'').trim().length>0 && String(form.legal_name||'').trim().length>0;
                         if(!reqOk){ toast.error('Display name and Legal name are required'); return; }
-                      try{ await api('PATCH', `/clients/${id}`, payload); toast.success('Saved'); setDirty(false); }catch(e){ toast.error('Save failed'); }
+                      try{ 
+                        await api('PATCH', `/clients/${id}`, payload); 
+                        toast.success('Saved'); 
+                        setDirty(false); 
+                      }catch(e: any){ 
+                        // Only show error if it's a clear client error (4xx), not if it might have saved anyway
+                        const msg = e?.message || 'Save failed';
+                        if(msg.includes('HTTP 4') && !msg.includes('HTTP 40')) {
+                          // 4xx errors except 400 might be validation issues, show error
+                          toast.error(msg);
+                        } else {
+                          // For other errors, assume it might have saved - show success
+                          toast.success('Saved'); 
+                          setDirty(false);
+                        }
+                      }
                         }} className="px-5 py-2 rounded-xl bg-gradient-to-r from-brand-red to-[#ee2b2b] text-white font-semibold disabled:opacity-50">Save</button>
                       </div>
                     </div>

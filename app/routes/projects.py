@@ -4,7 +4,8 @@ from sqlalchemy import func, extract
 from typing import List, Optional
 
 from ..db import get_db
-from ..models.models import Project, ClientFile, FileObject, ProjectUpdate, ProjectReport, ProjectTimeEntry, ProjectTimeEntryLog, User, EmployeeProfile, Client, ClientSite, ClientFolder, ClientContact
+from ..models.models import Project, ClientFile, FileObject, ProjectUpdate, ProjectReport, ProjectTimeEntry, ProjectTimeEntryLog, User, EmployeeProfile, Client, ClientSite, ClientFolder, ClientContact, SettingList, SettingItem
+from datetime import datetime, timezone
 from ..auth.security import get_current_user, require_permissions, can_approve_timesheet
 
 
@@ -143,6 +144,29 @@ def update_project(project_id: str, payload: dict, db: Session = Depends(get_db)
     # Do not allow changing auto-generated code
     if "code" in payload:
         payload.pop("code", None)
+    
+    # Check if status_label is being updated
+    old_status_label = getattr(p, 'status_label', None)
+    new_status_label = payload.get("status_label")
+    
+    # If status is changing, check if we need to update dates
+    if new_status_label and new_status_label != old_status_label:
+        # Look up the status setting to check its meta
+        status_list = db.query(SettingList).filter(SettingList.name == "project_statuses").first()
+        if status_list:
+            status_item = db.query(SettingItem).filter(
+                SettingItem.list_id == status_list.id,
+                SettingItem.label == new_status_label
+            ).first()
+            if status_item and status_item.meta:
+                meta = status_item.meta if isinstance(status_item.meta, dict) else {}
+                # If this status sets start date and project doesn't have one yet, set it
+                if meta.get("sets_start_date") and not getattr(p, 'date_start', None):
+                    payload["date_start"] = datetime.now(timezone.utc)
+                # If this status sets end date and project doesn't have one yet, set it
+                if meta.get("sets_end_date") and not getattr(p, 'date_end', None):
+                    payload["date_end"] = datetime.now(timezone.utc)
+    
     for k, v in payload.items():
         setattr(p, k, v)
     db.commit()
