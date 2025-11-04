@@ -84,10 +84,9 @@ export default function ProjectDetail(){
               <div className="text-sm opacity-90 mt-1">{proj?.code||''} · {proj?.client_id ? (<Link className="underline" to={`/customers/${encodeURIComponent(String(proj?.client_id||''))}`}>{proj?.client_display_name||''}</Link>): (proj?.client_display_name||'')}</div>
               <div className="text-sm opacity-90">
                 {proj?.site_id ? (
-                  <Link to={`/customers/${encodeURIComponent(String(proj?.client_id||''))}/sites/${encodeURIComponent(String(proj?.site_id||''))}`} state={{ backgroundLocation: location }} className="underline">Site: {proj?.site_name||proj?.site_id}</Link>
+                  <Link to={`/customers/${encodeURIComponent(String(proj?.client_id||''))}/sites/${encodeURIComponent(String(proj?.site_id||''))}`} state={{ backgroundLocation: location }} className="underline">{(proj?.site_name||proj?.site_id)}{(proj?.site_address_line1||proj?.site_city||proj?.site_province||proj?.site_country)? ` (${[proj?.site_address_line1, proj?.site_city, proj?.site_province, proj?.site_country].filter(Boolean).join(', ')})` : ''}</Link>
                 ) : ''}
               </div>
-              <div className="text-sm opacity-90">{proj?.site_address_line1||''} {proj?.site_city||''} {proj?.site_province||''} {proj?.site_country||''}</div>
               <div className="mt-2 flex items-center gap-3">
                 {(() => { const statusLabel = String((proj as any)?.status_label||'').trim(); const color = ((settings||{}).project_statuses||[]).find((s:any)=>s.label===statusLabel)?.value || '#e5e7eb'; return (<span className="px-2 py-0.5 rounded-full border text-black" style={{ backgroundColor: color }}>{statusLabel||'—'}</span>); })()}
                 <div className="flex items-center gap-2">
@@ -716,7 +715,6 @@ function ProjectQuickEdit({ projectId, proj, settings }:{ projectId:string, proj
 
 function ProjectGeneralForm({ projectId, proj, onSaved }:{ projectId:string, proj:any, onSaved: ()=>void }){
   const [name, setName] = useState<string>(proj?.name||'');
-  const [code, setCode] = useState<string>(proj?.code||'');
   const [city, setCity] = useState<string>(proj?.address_city||'');
   const [province, setProvince] = useState<string>(proj?.address_province||'');
   const [country, setCountry] = useState<string>(proj?.address_country||'');
@@ -729,7 +727,7 @@ function ProjectGeneralForm({ projectId, proj, onSaved }:{ projectId:string, pro
   return (
     <div className="grid md:grid-cols-2 gap-4">
       <div><label className="text-xs text-gray-600">Name</label><input className="w-full border rounded px-3 py-2" value={name} onChange={e=>setName(e.target.value)} /></div>
-      <div><label className="text-xs text-gray-600">Code</label><input className="w-full border rounded px-3 py-2" value={code} onChange={e=>setCode(e.target.value)} /></div>
+      
       <div><label className="text-xs text-gray-600">City</label><input className="w-full border rounded px-3 py-2" value={city} onChange={e=>setCity(e.target.value)} /></div>
       <div><label className="text-xs text-gray-600">Province/State</label><input className="w-full border rounded px-3 py-2" value={province} onChange={e=>setProvince(e.target.value)} /></div>
       <div><label className="text-xs text-gray-600">Country</label><input className="w-full border rounded px-3 py-2" value={country} onChange={e=>setCountry(e.target.value)} /></div>
@@ -738,7 +736,7 @@ function ProjectGeneralForm({ projectId, proj, onSaved }:{ projectId:string, pro
       <div><label className="text-xs text-gray-600">Start date</label><input type="date" className="w-full border rounded px-3 py-2" value={start} onChange={e=>setStart(e.target.value)} /></div>
       <div><label className="text-xs text-gray-600">ETA</label><input type="date" className="w-full border rounded px-3 py-2" value={eta} onChange={e=>setEta(e.target.value)} /></div>
       <div><label className="text-xs text-gray-600">End date</label><input type="date" className="w-full border rounded px-3 py-2" value={end} onChange={e=>setEnd(e.target.value)} /></div>
-      <div className="md:col-span-2 text-right"><button onClick={async()=>{ try{ await api('PATCH', `/projects/${projectId}`, { name, code, address_city: city, address_province: province, address_country: country, description: desc, date_start: start||null, date_eta: eta||null, date_end: end||null, contact_id: contactId||null }); toast.success('Saved'); onSaved(); }catch(_e){ toast.error('Failed to save'); } }} className="px-4 py-2 rounded bg-brand-red text-white">Save</button></div>
+      <div className="md:col-span-2 text-right"><button onClick={async()=>{ try{ await api('PATCH', `/projects/${projectId}`, { name, address_city: city, address_province: province, address_country: country, description: desc, date_start: start||null, date_eta: eta||null, date_end: end||null, contact_id: contactId||null }); toast.success('Saved'); onSaved(); }catch(_e){ toast.error('Failed to save'); } }} className="px-4 py-2 rounded bg-brand-red text-white">Save</button></div>
     </div>
   );
 }
