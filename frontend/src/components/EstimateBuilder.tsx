@@ -604,7 +604,7 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
           Please change the project status to allow editing.
         </div>
       )}
-      <div className="mb-3 flex items-center gap-2">
+      <div className="sticky top-0 z-30 bg-white/95 backdrop-blur mb-3 py-3 border-b flex items-center gap-2">
         <AddProductModal onAdd={(it)=> setItems(prev=> [...prev, it])} disabled={!canEdit} defaultMarkup={markup} />
         <AddLabourModal onAdd={(it)=> setItems(prev=> [...prev, it])} disabled={!canEdit} defaultMarkup={markup} />
         <AddSubContractorModal onAdd={(it)=> setItems(prev=> [...prev, it])} disabled={!canEdit} defaultMarkup={markup} />
