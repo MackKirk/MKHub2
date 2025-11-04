@@ -67,7 +67,7 @@ def delete_setting_item(list_name: str, item_id: str, db: Session = Depends(get_
 
 
 @router.put("/{list_name}/{item_id}")
-def update_setting_item(list_name: str, item_id: str, label: str = None, value: str = None, sort_index: int | None = None, abbr: Optional[str] = None, color: Optional[str] = None, allow_edit_proposal: Optional[str] = None, db: Session = Depends(get_db), _=Depends(require_permissions("users:write"))):
+def update_setting_item(list_name: str, item_id: str, label: str = None, value: str = None, sort_index: int | None = None, abbr: Optional[str] = None, color: Optional[str] = None, allow_edit_proposal: Optional[str] = None, sets_start_date: Optional[str] = None, sets_end_date: Optional[str] = None, db: Session = Depends(get_db), _=Depends(require_permissions("users:write"))):
     lst = db.query(SettingList).filter(SettingList.name == list_name).first()
     if not lst:
         return {"status": "ok"}
@@ -91,7 +91,13 @@ def update_setting_item(list_name: str, item_id: str, label: str = None, value: 
     if allow_edit_proposal is not None:
         # Convert string to boolean
         meta["allow_edit_proposal"] = allow_edit_proposal.lower() in ('true', '1', 'yes')
-    # Always set meta (even if empty dict) to ensure allow_edit_proposal is preserved
+    if sets_start_date is not None:
+        # Convert string to boolean
+        meta["sets_start_date"] = sets_start_date.lower() in ('true', '1', 'yes')
+    if sets_end_date is not None:
+        # Convert string to boolean
+        meta["sets_end_date"] = sets_end_date.lower() in ('true', '1', 'yes')
+    # Always set meta (even if empty dict) to ensure meta fields are preserved
     it.meta = meta
     db.commit()
     # Propagate label rename to referencing records (non-destructive; only on rename, not on delete)
