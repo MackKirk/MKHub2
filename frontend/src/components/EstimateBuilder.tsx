@@ -12,7 +12,7 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
   const [pstRate, setPstRate] = useState<number>(7);
   const [gstRate, setGstRate] = useState<number>(5);
   const [profitRate, setProfitRate] = useState<number>(0);
-  const defaultSections = ['Roof System','Wood Blocking / Accessories','Flashing','Miscellaneous'];
+  const defaultSections = ['Roof System','Wood Blocking / Accessories','Flashing'];
   const [sectionOrder, setSectionOrder] = useState<string[]>(defaultSections);
   const [summaryOpen, setSummaryOpen] = useState(false);
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -1331,7 +1331,7 @@ function AddProductModal({ onAdd, disabled }: { onAdd:(it: Item)=>void, disabled
                 <div>
                   <label className="text-xs text-gray-600">Section:</label>
                   <select className="w-full border rounded px-3 py-2" value={section} onChange={e=>setSection(e.target.value)}>
-                    {['Roof System','Wood Blocking / Accessories','Flashing','Miscellaneous'].map(s=> <option key={s} value={s}>{s}</option>)}
+                    {['Roof System','Wood Blocking / Accessories','Flashing'].map(s=> <option key={s} value={s}>{s}</option>)}
                   </select>
                 </div>
               )}
