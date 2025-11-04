@@ -91,7 +91,8 @@ def update_setting_item(list_name: str, item_id: str, label: str = None, value: 
     if allow_edit_proposal is not None:
         # Convert string to boolean
         meta["allow_edit_proposal"] = allow_edit_proposal.lower() in ('true', '1', 'yes')
-    it.meta = meta or None
+    # Always set meta (even if empty dict) to ensure allow_edit_proposal is preserved
+    it.meta = meta
     db.commit()
     # Propagate label rename to referencing records (non-destructive; only on rename, not on delete)
     if label_changed and label:

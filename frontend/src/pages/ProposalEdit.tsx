@@ -27,7 +27,9 @@ export default function ProposalEdit(){
     const statusConfig = ((settings?.project_statuses||[]) as any[]).find((s:any)=> s.label === statusLabel);
     // Allow editing if status is "estimating" or if allow_edit_proposal is true in meta
     if (statusLabel.toLowerCase() === 'estimating') return true;
-    return statusConfig?.meta?.allow_edit_proposal === true;
+    // Check both boolean true and string "true" for compatibility
+    const allowEdit = statusConfig?.meta?.allow_edit_proposal;
+    return allowEdit === true || allowEdit === 'true' || allowEdit === 1;
   }, [project?.status_label, settings]);
   type Client = { id:string, name?:string, display_name?:string, address_line1?:string, city?:string, province?:string, country?:string };
   type Site = { id:string, site_name?:string, site_address_line1?:string, site_city?:string, site_province?:string, site_country?:string };

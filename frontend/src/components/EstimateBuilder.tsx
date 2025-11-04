@@ -28,7 +28,19 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
     const statusConfig = ((settings?.project_statuses||[]) as any[]).find((s:any)=> s.label === statusLabelStr);
     // Allow editing if status is "estimating" or if allow_edit_proposal is true in meta
     if (statusLabelStr.toLowerCase() === 'estimating') return true;
-    return statusConfig?.meta?.allow_edit_proposal === true;
+    // Check both boolean true and string "true" for compatibility
+    const allowEdit = statusConfig?.meta?.allow_edit_proposal;
+    // Debug log to help troubleshoot
+    if (statusConfig && statusLabelStr) {
+      console.log('[EstimateBuilder] Status check:', { 
+        statusLabel: statusLabelStr, 
+        found: !!statusConfig,
+        meta: statusConfig.meta, 
+        allowEdit,
+        canEdit: allowEdit === true || allowEdit === 'true' || allowEdit === 1
+      });
+    }
+    return allowEdit === true || allowEdit === 'true' || allowEdit === 1;
   }, [statusLabel, settings]);
   
   // Show warning if editing is restricted

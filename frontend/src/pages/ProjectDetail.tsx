@@ -335,7 +335,19 @@ function ProjectProposalTab({ projectId, clientId, siteId, proposals, statusLabe
     const statusConfig = ((settings?.project_statuses||[]) as any[]).find((s:any)=> s.label === statusLabel);
     // Allow editing if status is "estimating" or if allow_edit_proposal is true in meta
     if (statusLabel.toLowerCase() === 'estimating') return true;
-    return statusConfig?.meta?.allow_edit_proposal === true;
+    // Check both boolean true and string "true" for compatibility
+    const allowEdit = statusConfig?.meta?.allow_edit_proposal;
+    // Debug log
+    if (statusConfig && statusLabel) {
+      console.log('[ProjectDetail] Status check:', { 
+        statusLabel, 
+        found: !!statusConfig,
+        meta: statusConfig.meta, 
+        allowEdit,
+        canEdit: allowEdit === true || allowEdit === 'true' || allowEdit === 1
+      });
+    }
+    return allowEdit === true || allowEdit === 'true' || allowEdit === 1;
   }, [statusLabel, settings]);
   
   // Navigate to proposal edit or create
