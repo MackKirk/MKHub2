@@ -1,4 +1,4 @@
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { useEffect, useMemo, useState, ReactNode } from 'react';
@@ -13,6 +13,7 @@ type Project = { id:string, code?:string, name?:string, slug?:string, created_at
 type Contact = { id:string, name?:string, email?:string, phone?:string, is_primary?:boolean };
 
 export default function CustomerDetail(){
+  const location = useLocation();
   const { id } = useParams();
   const [tab, setTab] = useState<'overview'|'general'|'files'|'contacts'|'sites'|'projects'>('overview');
   const { data:client, isLoading } = useQuery({ queryKey:['client', id], queryFn: ()=>api<Client>('GET', `/clients/${id}`) });
@@ -163,7 +164,7 @@ export default function CustomerDetail(){
                         const cover = filesForSite.find(f=> String(f.category||'')==='site-cover-derived') || filesForSite.find(f=> (f.is_image===true) || String(f.content_type||'').startsWith('image/'));
                         const src = cover? `/files/${cover.file_object_id}/thumbnail?w=600` : '/ui/assets/login/logo-light.svg';
                         return (
-                          <Link to={`/customers/${encodeURIComponent(String(id||''))}/sites/${encodeURIComponent(String(s.id||''))}`} key={String(s.id)} className="group rounded-xl border overflow-hidden bg-white block">
+                          <Link to={`/customers/${encodeURIComponent(String(id||''))}/sites/${encodeURIComponent(String(s.id||''))}`} state={{ backgroundLocation: location }} key={String(s.id)} className="group rounded-xl border overflow-hidden bg-white block">
                             <div className="aspect-square w-full bg-gray-100">
                               <img className="w-full h-full object-cover" src={src} />
                             </div>
@@ -357,7 +358,7 @@ export default function CustomerDetail(){
                       const img = cover || filesForSite.find(f=> (f.is_image===true) || String(f.content_type||'').startsWith('image/'));
                       const src = img? `/files/${img.file_object_id}/thumbnail?w=600` : '/ui/assets/login/logo-light.svg';
                       return (
-                        <Link to={`/customers/${encodeURIComponent(String(id||''))}/sites/${encodeURIComponent(String(s.id))}`} key={String(s.id)} className="group rounded-xl border overflow-hidden bg-white block">
+                        <Link to={`/customers/${encodeURIComponent(String(id||''))}/sites/${encodeURIComponent(String(s.id))}`} state={{ backgroundLocation: location }} key={String(s.id)} className="group rounded-xl border overflow-hidden bg-white block">
                           <div className="aspect-square w-full bg-gray-100 relative">
                             <img className="w-full h-full object-cover" src={src} />
                             <button onClick={(e)=>{ e.preventDefault(); e.stopPropagation(); setSitePicker({ open:true, siteId: String(s.id) }); }} className="absolute right-2 top-2 text-xs px-2 py-1 rounded bg-black/70 text-white">Change cover</button>
