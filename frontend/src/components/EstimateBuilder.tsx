@@ -168,11 +168,13 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
     }, 0);
   }, [items]);
   
-  // Total of taxable items only (for PST calculation)
+  // Total of taxable items only (for PST calculation) - with markup
   const taxableTotal = useMemo(()=> {
     return items
       .filter(it => it.taxable !== false) // Only items marked as taxable
       .reduce((acc, it)=> {
+        // Calculate item total with markup
+        const m = it.markup !== undefined && it.markup !== null ? it.markup : markup;
         let itemTotal = 0;
         if (it.item_type === 'labour' && it.labour_journey_type) {
           if (it.labour_journey_type === 'contract') {
@@ -183,36 +185,11 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
         } else {
           itemTotal = it.quantity * it.unit_price;
         }
-        return acc + itemTotal;
+        return acc + (itemTotal * (1 + (m/100)));
       }, 0);
-  }, [items]);
-  
-  const pst = useMemo(()=> (taxableTotal * (pstRate/100)), [taxableTotal, pstRate]);
-  const subtotal = useMemo(()=> total + pst, [total, pst]);
-  
-  // Calculate Sections Mark-up based on individual item markups
-  const markupValue = useMemo(() => {
-    return items.reduce((acc, it) => {
-      let itemTotal = 0;
-      if (it.item_type === 'labour' && it.labour_journey_type) {
-        if (it.labour_journey_type === 'contract') {
-          itemTotal = (it.labour_journey || 0) * it.unit_price;
-        } else {
-          itemTotal = (it.labour_journey || 0) * (it.labour_men || 0) * it.unit_price;
-        }
-      } else {
-        itemTotal = it.quantity * it.unit_price;
-      }
-      const itemMarkup = it.markup !== undefined && it.markup !== null ? it.markup : markup;
-      const itemMarkupValue = itemTotal * (itemMarkup / 100);
-      return acc + itemMarkupValue;
-    }, 0);
   }, [items, markup]);
   
-  const profitValue = useMemo(()=> subtotal * (profitRate/100), [subtotal, profitRate]);
-  const finalTotal = useMemo(()=> subtotal + markupValue + profitValue, [subtotal, markupValue, profitValue]);
-  const gst = useMemo(()=> finalTotal * (gstRate/100), [finalTotal, gstRate]);
-  const grandTotal = useMemo(()=> finalTotal + gst, [finalTotal, gst]);
+  const pst = useMemo(()=> (taxableTotal * (pstRate/100)), [taxableTotal, pstRate]);
 
   // Auto-save function (silent save without toast)
   const autoSave = useCallback(async () => {
@@ -354,6 +331,45 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
     });
     return groups;
   }, [items]);
+
+  // Calculate total of all section subtotals with markup (same as shown in table)
+  const totalWithMarkup = useMemo(() => {
+    return Object.keys(groupedItems).reduce((acc, section) => {
+      const sectionItems = groupedItems[section];
+      const isLabourSection = ['Labour', 'Sub-Contractors', 'Shop', 'Miscellaneous'].includes(section);
+      const sectionTotal = sectionItems.reduce((sum, it) => {
+        const m = it.markup !== undefined && it.markup !== null ? it.markup : markup;
+        let itemTotal = 0;
+        if (!isLabourSection) {
+          itemTotal = it.quantity * it.unit_price;
+        } else {
+          if (it.item_type === 'labour' && it.labour_journey_type) {
+            if (it.labour_journey_type === 'contract') {
+              itemTotal = (it.labour_journey || 0) * it.unit_price;
+            } else {
+              itemTotal = (it.labour_journey || 0) * (it.labour_men || 0) * it.unit_price;
+            }
+          } else {
+            itemTotal = it.quantity * it.unit_price;
+          }
+        }
+        return sum + (itemTotal * (1 + (m/100)));
+      }, 0);
+      return acc + sectionTotal;
+    }, 0);
+  }, [groupedItems, markup]);
+
+  // Calculate Sections Mark-up as the difference between total with markup and total without markup
+  const markupValue = useMemo(() => {
+    return totalWithMarkup - total;
+  }, [totalWithMarkup, total]);
+
+  const subtotal = useMemo(()=> totalWithMarkup + pst, [totalWithMarkup, pst]);
+
+  const profitValue = useMemo(()=> subtotal * (profitRate/100), [subtotal, profitRate]);
+  const finalTotal = useMemo(()=> subtotal + profitValue, [subtotal, profitValue]);
+  const gst = useMemo(()=> finalTotal * (gstRate/100), [finalTotal, gstRate]);
+  const grandTotal = useMemo(()=> finalTotal + gst, [finalTotal, gst]);
 
   // Sync section order with items (add new sections that appear in items)
   useEffect(()=>{
@@ -870,7 +886,7 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
         <div className="rounded-xl border bg-white p-4">
           <h4 className="font-semibold mb-2">Summary</h4>
           <div className="space-y-1 text-sm">
-            <div className="flex items-center justify-between"><span>Total Direct Project Costs</span><span>${total.toFixed(2)}</span></div>
+            <div className="flex items-center justify-between"><span>Total Direct Project Costs</span><span>${totalWithMarkup.toFixed(2)}</span></div>
             <div className="flex items-center justify-between"><span>PST</span><span>${pst.toFixed(2)}</span></div>
             <div className="flex items-center justify-between"><span>Sub-total</span><span>${subtotal.toFixed(2)}</span></div>
             <div className="flex items-center justify-between"><span>Sections Mark-up</span><span>${markupValue.toFixed(2)}</span></div>
@@ -1166,6 +1182,13 @@ function SummaryModal({ open, onClose, items, pstRate, gstRate, markup, profitRa
                   );
                 })}
               </tbody>
+              <tfoot className="bg-gray-50">
+                <tr>
+                  <td className="p-2 font-semibold">Total</td>
+                  <td className="p-2 text-right font-bold">${totalCost.toFixed(2)}</td>
+                  <td className="p-2 text-right font-semibold">100.00%</td>
+                </tr>
+              </tfoot>
             </table>
           </div>
 
