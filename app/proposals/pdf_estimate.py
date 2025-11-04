@@ -175,10 +175,12 @@ def build_estimate_dynamic_pages(data, output_path):
                     Paragraph("<b>Supplier</b>", item_style)
                 ])
             else:
-                # Labour/Sub-Contractors/Shop/Miscellaneous columns: Labours, Composition, Unit Price, Total (With mkp)
+                # Labour/Sub-Contractors/Shop/Miscellaneous columns
+                # Use "Composition" for Labour, "Quantity Required" for Sub-Contractors/Shop/Miscellaneous
+                column_header = "Composition" if section_name == "Labour" else "Quantity Required"
                 table_data.append([
                     Paragraph(f"<b>{section_name}</b>", item_style),
-                    Paragraph("<b>Composition</b>", item_style),
+                    Paragraph(f"<b>{column_header}</b>", item_style),
                     Paragraph("<b>Unit Price</b>", item_style),
                     Paragraph("<b>Total (with Mkp)</b>", item_style)
                 ])
@@ -364,11 +366,10 @@ def build_estimate_dynamic_pages(data, output_path):
             y -= 20
 
             # Always show Sections Mark-up (even if 0)
-            markup = self.data.get("markup", 0)
             markup_value = self.data.get("markup_value", 0)
             c.setFont("Montserrat-Bold", 11.5)
             c.setFillColor(colors.black)
-            c.drawString(x_left, y, f"Sections Mark-up ({markup:.0f}%)")
+            c.drawString(x_left, y, "Sections Mark-up")
             c.setFont("Montserrat-Bold", 11.5)
             c.setFillColor(colors.grey)
             c.drawRightString(x_right, y, f"${markup_value:,.2f}")
@@ -406,10 +407,10 @@ def build_estimate_dynamic_pages(data, output_path):
             c.drawRightString(x_right, y, f"${gst:,.2f}")
             y -= 30
 
-            # Grand total line
+            # Grand total line - draw line higher to avoid overlapping text
             c.setStrokeColor(colors.HexColor("#d62028"))
             c.setLineWidth(2)
-            c.line(x_right - 100, y + 10, x_right, y + 10)
+            c.line(x_right - 100, y + 25, x_right, y + 25)
 
             grand_total = self.data.get("grand_total", 0)
             c.setFont("Montserrat-Bold", 14)

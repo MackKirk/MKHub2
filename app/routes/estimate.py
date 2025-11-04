@@ -706,6 +706,7 @@ async def generate_estimate_pdf(estimate_id: int, db: Session = Depends(get_db),
     gst_rate = ui_state.get('gst_rate', 5.0)
     profit_rate = ui_state.get('profit_rate', 0.0)
     section_order = ui_state.get('section_order', [])
+    global_markup = ui_state.get('markup', est.markup or 0.0)
     
     # Get item extras from notes to include labour_journey, labour_men, labour_journey_type
     item_extras_map = ui_state.get('item_extras', {})
@@ -775,14 +776,19 @@ async def generate_estimate_pdf(estimate_id: int, db: Session = Depends(get_db),
         })
     
     # Calculate totals considering item types (labour has different calculation)
+    # Match frontend calculations: total without markup, totalWithMarkup with individual markups, taxableTotal with markup
     total = 0.0
-    taxable_total = 0.0
+    total_with_markup = 0.0
+    taxable_total_with_markup = 0.0
+    
     for item in items_data:
         item_key = f'item_{item.id}'
         extras = item_extras_map.get(item_key, {})
         item_type = item.item_type or 'product'
         taxable = extras.get('taxable', True)  # Default to True if not specified
+        item_markup = extras.get('markup')  # Individual item markup (can be None)
         
+        # Calculate item total without markup
         if item_type == 'labour' and extras.get('labour_journey_type'):
             if extras['labour_journey_type'] == 'contract':
                 item_total = (extras.get('labour_journey', 0) or 0) * (item.unit_price or 0.0)
@@ -791,19 +797,40 @@ async def generate_estimate_pdf(estimate_id: int, db: Session = Depends(get_db),
         else:
             item_total = (item.quantity or 0.0) * (item.unit_price or 0.0)
         
+        # Apply markup (individual or global)
+        markup_percent = item_markup if item_markup is not None else global_markup
+        item_total_with_markup = item_total * (1 + (markup_percent / 100))
+        
         total += item_total
-        # PST only applies to taxable items
+        total_with_markup += item_total_with_markup
+        
+        # PST only applies to taxable items (with markup)
         if taxable:
-            taxable_total += item_total
-    pst = taxable_total * (pst_rate / 100)
-    subtotal = total + pst
-    markup_value = subtotal * ((est.markup or 0.0) / 100)
+            taxable_total_with_markup += item_total_with_markup
+    
+    # Calculate markup value as difference between total with markup and total without markup
+    markup_value = total_with_markup - total
+    
+    # Calculate PST on taxable items with markup
+    pst = taxable_total_with_markup * (pst_rate / 100)
+    
+    # Subtotal = total with markup + PST
+    subtotal = total_with_markup + pst
+    
+    # Profit is calculated on subtotal
     profit_value = subtotal * (profit_rate / 100)
-    final_total = subtotal + markup_value + profit_value
+    
+    # Final total = subtotal + profit
+    final_total = subtotal + profit_value
+    
+    # GST is calculated on final total
     gst = final_total * (gst_rate / 100)
+    
+    # Grand total = final total + GST
     grand_total = final_total + gst
     
     # Prepare data for PDF generation
+    # Note: "total" is used for "Total Direct Costs" in PDF, which should be total_with_markup (matching frontend)
     estimate_data = {
         "cover_title": f"ESTIMATE - {project_name}",
         "order_number": str(estimate_id),
@@ -812,11 +839,11 @@ async def generate_estimate_pdf(estimate_id: int, db: Session = Depends(get_db),
         "project_name": project_name,
         "date": est.created_at.strftime("%Y-%m-%d") if est.created_at else "",
         "sections": sections_data,
-        "total": total,
+        "total": total_with_markup,  # Total Direct Costs should show total with markup (matching frontend)
         "pst": pst,
         "pst_rate": pst_rate,
         "subtotal": subtotal,
-        "markup": est.markup or 0.0,
+        "markup": global_markup,
         "markup_value": markup_value,
         "profit_rate": profit_rate,
         "profit_value": profit_value,

@@ -615,7 +615,7 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
                               {it.item_type === 'product' && it.material_id ? (
                                 <button
                                   onClick={() => setViewingProductId(it.material_id!)}
-                                  className="text-left cursor-pointer"
+                                  className="text-left cursor-pointer hover:text-red-600"
                                   title="View product details"
                                 >
                                   {it.name}
@@ -1358,43 +1358,44 @@ function ProductViewModal({ product, onClose }: { product: Material, onClose: ()
     <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center">
       <div className="w-[900px] max-w-[95vw] max-h-[90vh] bg-white rounded-xl overflow-hidden flex flex-col">
         <div className="overflow-y-auto">
-          {/* Product Header */}
-          <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] p-6 flex items-center gap-6 relative">
-            <button
-              onClick={onClose}
-              className="absolute top-4 right-4 text-white/80 hover:text-white text-2xl font-bold w-8 h-8 flex items-center justify-center rounded hover:bg-white/10"
-              title="Close"
-            >
-              ×
-            </button>
-            <div className="w-24 h-24 rounded-xl border-4 border-white shadow-lg overflow-hidden bg-white flex items-center justify-center">
-              <img 
-                src={product.image_base64 || '/ui/assets/login/logo-light.svg'} 
-                className="w-full h-full object-cover" 
-                alt={product.name}
-              />
-            </div>
-                    <div className="flex-1">
-                      <h2 className="text-3xl font-extrabold text-white">{product.name}</h2>
-                      <div className="flex items-center gap-4 mt-3 text-sm">
-                        {product.supplier_name && (
-                          <div className="flex items-center gap-2">
-                            <span className="text-white/80">🏢</span>
-                            <span className="text-white">{product.supplier_name}</span>
-                          </div>
-                        )}
-                        {product.category && (
-                          <div className="flex items-center gap-2">
-                            <span className="text-white/80">📦</span>
-                            <span className="text-white">{product.category}</span>
-                          </div>
-                        )}
-                      </div>
+          <div className="space-y-6">
+            {/* Product Header */}
+            <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] p-6 flex items-center gap-6 relative">
+              <button
+                onClick={onClose}
+                className="absolute top-4 right-4 text-white/80 hover:text-white text-2xl font-bold w-8 h-8 flex items-center justify-center rounded hover:bg-white/10"
+                title="Close"
+              >
+                ×
+              </button>
+              <div className="w-24 h-24 rounded-xl border-4 border-white shadow-lg overflow-hidden bg-white flex items-center justify-center">
+                <img 
+                  src={product.image_base64 || '/ui/assets/login/logo-light.svg'} 
+                  className="w-full h-full object-cover" 
+                  alt={product.name}
+                />
+              </div>
+              <div className="flex-1">
+                <h2 className="text-3xl font-extrabold text-white">{product.name}</h2>
+                <div className="flex items-center gap-4 mt-3 text-sm">
+                  {product.supplier_name && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-white/80">🏢</span>
+                      <span className="text-white">{product.supplier_name}</span>
                     </div>
-          </div>
+                  )}
+                  {product.category && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-white/80">📦</span>
+                      <span className="text-white">{product.category}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
 
-          {/* Product Details */}
-          <div className="px-6 pb-6 space-y-4">
+            {/* Product Details */}
+            <div className="px-6 pb-6 space-y-4">
             <div className="grid grid-cols-2 gap-4">
               {product.unit && (
                 <div className="bg-white border rounded-lg p-4">
@@ -1437,6 +1438,7 @@ function ProductViewModal({ product, onClose }: { product: Material, onClose: ()
                 <div className="text-gray-700 whitespace-pre-wrap">{product.description}</div>
               </div>
             )}
+            </div>
           </div>
         </div>
       </div>
