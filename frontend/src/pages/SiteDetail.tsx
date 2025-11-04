@@ -18,7 +18,6 @@ type Site = {
   site_notes?:string
 };
 type ClientFile = { id:string, file_object_id:string, is_image?:boolean, content_type?:string, site_id?:string, category?:string, uploaded_at?:string };
-type ClientFile = { id:string, file_object_id:string, is_image?:boolean, content_type?:string };
 type Proposal = { id:string, title?:string, order_number?:string, created_at?:string };
 
 export default function SiteDetail(){
@@ -52,6 +51,7 @@ export default function SiteDetail(){
   const [coverPickerOpen, setCoverPickerOpen] = useState(false);
 
   return (
+    <>
     <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center">
       <div className="w-[900px] max-w-[95vw] max-h-[90vh] bg-white rounded-xl overflow-hidden flex flex-col">
         <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] p-6 flex items-center gap-6 relative">
@@ -145,6 +145,7 @@ export default function SiteDetail(){
         }catch(e){ toast.error('Failed to update cover'); setCoverPickerOpen(false); }
       }} />
     )}
+    </>
   );
 }
 
