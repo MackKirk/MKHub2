@@ -1,6 +1,6 @@
 import { useParams, Link, useLocation, useNavigate } from 'react-router-dom';
 import { useMemo, useState, useEffect } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
 import ImagePicker from '@/components/ImagePicker';
@@ -26,6 +26,7 @@ export default function ProjectDetail(){
   const { data:updates, refetch: refetchUpdates } = useQuery({ queryKey:['projectUpdates', id], queryFn: ()=>api<Update[]>('GET', `/projects/${id}/updates`) });
   const { data:reports, refetch: refetchReports } = useQuery({ queryKey:['projectReports', id], queryFn: ()=>api<Report[]>('GET', `/projects/${id}/reports`) });
   const { data:proposals } = useQuery({ queryKey:['projectProposals', id], queryFn: ()=>api<Proposal[]>('GET', `/proposals?project_id=${encodeURIComponent(String(id||''))}`) });
+  const { data:projectEstimates } = useQuery({ queryKey:['projectEstimates', id], queryFn: ()=>api<any[]>('GET', `/estimate/estimates?project_id=${encodeURIComponent(String(id||''))}`) });
   // Check for tab query parameter
   const searchParams = new URLSearchParams(location.search);
   const initialTab = (searchParams.get('tab') as 'overview'|'general'|'reports'|'timesheet'|'files'|'photos'|'proposal'|'estimate'|null) || 'overview';
@@ -151,14 +152,10 @@ export default function ProjectDetail(){
                   </div>
                 </div>
                 <div className="rounded-xl border bg-white p-4">
-                  <h4 className="font-semibold mb-2">Dates & Costs</h4>
-                  <div className="text-sm text-gray-700">Start: {(proj?.date_start||'').slice(0,10)||'-'}</div>
-                  <div className="text-sm text-gray-700">ETA: {(proj?.date_eta||'').slice(0,10)||'-'}</div>
-                  <div className="text-sm text-gray-700">End: {(proj?.date_end||'').slice(0,10)||'-'}</div>
-                  <div className="text-sm text-gray-700 mt-1">Estimated: {proj?.cost_estimated ?? '-'}</div>
-                  <div className="text-sm text-gray-700">Actual: {proj?.cost_actual ?? '-'}</div>
-                  <div className="text-sm text-gray-700">Service: {proj?.service_value ?? '-'}</div>
+                  <h4 className="font-semibold mb-2">Estimated Time of Completion</h4>
+                  <ProjectEtaEdit projectId={String(id)} proj={proj||{}} settings={settings||{}} />
                 </div>
+                <ProjectCostsSummary projectId={String(id)} estimates={projectEstimates||[]} />
                 <div className="md:col-span-3 rounded-xl border bg-white p-4">
                   <h4 className="font-semibold mb-2">Schedule</h4>
                   <div className="text-sm text-gray-600">(Calendar view placeholder) Define milestones and production expectations here.</div>
@@ -738,15 +735,151 @@ function ProjectQuickEdit({ projectId, proj, settings }:{ projectId:string, proj
   );
 }
 
+function ProjectEtaEdit({ projectId, proj, settings }:{ projectId:string, proj:any, settings:any }){
+  const [isEditing, setIsEditing] = useState(false);
+  const [eta, setEta] = useState<string>((proj?.date_eta||'').slice(0,10));
+  const { data:projUpdated, refetch } = useQuery({ queryKey:['project', projectId], queryFn: ()=>api<Project>('GET', `/projects/${projectId}`) });
+  const queryClient = useQueryClient();
+  
+  useEffect(()=>{
+    if(projUpdated?.date_eta) setEta((projUpdated.date_eta||'').slice(0,10));
+  }, [projUpdated?.date_eta]);
+  
+  const canEdit = useMemo(()=>{
+    if (!proj?.status_label) return true;
+    const statusLabelStr = String(proj.status_label).trim();
+    const statusConfig = ((settings?.project_statuses||[]) as any[]).find((s:any)=> s.label === statusLabelStr);
+    if (statusLabelStr.toLowerCase() === 'estimating') return true;
+    const allowEdit = statusConfig?.meta?.allow_edit_proposal;
+    return allowEdit === true || allowEdit === 'true' || allowEdit === 1;
+  }, [proj?.status_label, settings]);
+  
+  if(!isEditing){
+    return (
+      <div className="flex items-center gap-2">
+        <div className="text-sm text-gray-700 flex-1">{(proj?.date_eta||'').slice(0,10)||'-'}</div>
+        {canEdit && (
+          <button onClick={()=>setIsEditing(true)} className="text-gray-500 hover:text-gray-700" title="Edit ETA">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+          </button>
+        )}
+      </div>
+    );
+  }
+  
+  return (
+    <div className="flex items-center gap-2">
+      <input type="date" className="flex-1 border rounded px-2 py-1 text-sm" value={eta} onChange={e=>setEta(e.target.value)} />
+      <button onClick={async()=>{
+        try{
+          await api('PATCH', `/projects/${projectId}`, { date_eta: eta||null });
+          queryClient.invalidateQueries({ queryKey:['project', projectId] });
+          toast.success('ETA updated');
+          setIsEditing(false);
+        }catch(_e){ toast.error('Failed to update'); }
+      }} className="px-2 py-1 rounded bg-brand-red text-white text-xs">Save</button>
+      <button onClick={()=>{ setIsEditing(false); setEta((proj?.date_eta||'').slice(0,10)); }} className="px-2 py-1 rounded bg-gray-100 text-xs">Cancel</button>
+    </div>
+  );
+}
+
+function ProjectCostsSummary({ projectId, estimates }:{ projectId:string, estimates:any[] }){
+  const { data:estimateData } = useQuery({ 
+    queryKey: ['estimate', estimates[0]?.id], 
+    queryFn: () => estimates[0]?.id ? api<any>('GET', `/estimate/estimates/${estimates[0].id}`) : Promise.resolve(null),
+    enabled: !!estimates[0]?.id
+  });
+  
+  if(!estimateData || !estimates.length) {
+    return (
+      <div className="md:col-span-3 rounded-xl border bg-white p-4">
+        <h4 className="font-semibold mb-2">Costs Summary</h4>
+        <div className="text-sm text-gray-600">No estimate available</div>
+      </div>
+    );
+  }
+  
+  const items = estimateData.items || [];
+  const markup = estimateData.markup || 0;
+  const pstRate = estimateData.pst_rate || 0;
+  const gstRate = estimateData.gst_rate || 0;
+  const profitRate = estimateData.profit_rate || 0;
+  
+  // Parse UI state for item extras
+  const uiState = estimateData.notes ? (()=>{ try{ return JSON.parse(estimateData.notes); }catch{ return {}; } })() : {};
+  const itemExtrasMap = uiState.item_extras || {};
+  
+  // Calculate totals similar to EstimateBuilder
+  const calculateItemTotal = (it:any):number => {
+    if (it.item_type === 'labour' && itemExtrasMap[`item_${it.id}`]?.labour_journey_type) {
+      const extras = itemExtrasMap[`item_${it.id}`];
+      if (extras.labour_journey_type === 'contract') {
+        return (extras.labour_journey || 0) * (it.unit_price || 0);
+      } else {
+        return (extras.labour_journey || 0) * (extras.labour_men || 0) * (it.unit_price || 0);
+      }
+    }
+    return (it.quantity || 0) * (it.unit_price || 0);
+  };
+  
+  const total = items.reduce((acc:number, it:any)=> acc + calculateItemTotal(it), 0);
+  
+  // Calculate taxable total (only taxable items)
+  const taxableTotal = items.reduce((acc:number, it:any)=>{
+    const extras = itemExtrasMap[`item_${it.id}`];
+    if (extras?.taxable === false) return acc;
+    const m = extras?.markup !== undefined && extras.markup !== null ? extras.markup : markup;
+    const itemTotal = calculateItemTotal(it);
+    return acc + (itemTotal * (1 + m / 100));
+  }, 0);
+  
+  const totalWithMarkup = items.reduce((acc:number, it:any)=>{
+    const m = itemExtrasMap[`item_${it.id}`]?.markup !== undefined && itemExtrasMap[`item_${it.id}`].markup !== null ? itemExtrasMap[`item_${it.id}`].markup : markup;
+    return acc + (calculateItemTotal(it) * (1 + m / 100));
+  }, 0);
+  
+  const pst = taxableTotal * (pstRate / 100);
+  const subtotal = totalWithMarkup + pst;
+  const profit = subtotal * (profitRate / 100);
+  const totalBeforeTax = subtotal + profit;
+  const gst = totalBeforeTax * (gstRate / 100);
+  const grandTotal = totalBeforeTax + gst;
+  
+  const summaryItems = [
+    { label: 'Subtotal', value: total },
+    { label: `Markup (${markup}%)`, value: totalWithMarkup - total, show: true },
+    { label: `PST (${pstRate}%)`, value: pst, show: pstRate > 0 },
+    { label: `Profit (${profitRate}%)`, value: profit, show: profitRate > 0 },
+    { label: `GST (${gstRate}%)`, value: gst, show: gstRate > 0 },
+  ].filter(i => i.show !== false);
+  
+  return (
+    <div className="md:col-span-3 rounded-xl border bg-white p-4">
+      <h4 className="font-semibold mb-3">Costs Summary</h4>
+      <div className="grid md:grid-cols-5 gap-4 text-sm">
+        {summaryItems.map((item, idx)=> (
+          <div key={idx}>
+            <div className="text-xs text-gray-600 mb-1">{item.label}</div>
+            <div className="text-lg font-semibold">${item.value.toFixed(2)}</div>
+          </div>
+        ))}
+        <div className="md:col-span-5 pt-3 border-t mt-2">
+          <div className="flex items-center justify-between">
+            <div className="text-sm font-semibold text-gray-700">Grand Total</div>
+            <div className="text-2xl font-bold text-brand-red">${grandTotal.toFixed(2)}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ProjectGeneralForm({ projectId, proj, onSaved }:{ projectId:string, proj:any, onSaved: ()=>void }){
   const [name, setName] = useState<string>(proj?.name||'');
   const [city, setCity] = useState<string>(proj?.address_city||'');
   const [province, setProvince] = useState<string>(proj?.address_province||'');
   const [country, setCountry] = useState<string>(proj?.address_country||'');
   const [desc, setDesc] = useState<string>(proj?.description||'');
-  const [start, setStart] = useState<string>((proj?.date_start||'').slice(0,10));
-  const [eta, setEta] = useState<string>((proj?.date_eta||'').slice(0,10));
-  const [end, setEnd] = useState<string>((proj?.date_end||'').slice(0,10));
   const [contactId, setContactId] = useState<string>(proj?.contact_id||'');
   const { data:contacts } = useQuery({ queryKey:['project-client-contacts', proj?.client_id||''], queryFn: ()=> (proj?.client_id? api<any[]>('GET', `/clients/${encodeURIComponent(String(proj?.client_id))}/contacts`) : Promise.resolve([])) });
   return (
@@ -758,10 +891,7 @@ function ProjectGeneralForm({ projectId, proj, onSaved }:{ projectId:string, pro
       <div><label className="text-xs text-gray-600">Country</label><input className="w-full border rounded px-3 py-2" value={country} onChange={e=>setCountry(e.target.value)} /></div>
       <div><label className="text-xs text-gray-600">Customer contact</label><select className="w-full border rounded px-3 py-2" value={contactId} onChange={e=>setContactId(e.target.value)}><option value="">Select...</option>{(contacts||[]).map((c:any)=> <option key={c.id} value={c.id}>{c.name||c.email||c.phone||c.id}</option>)}</select></div>
       <div className="md:col-span-2"><label className="text-xs text-gray-600">Description</label><textarea rows={6} className="w-full border rounded px-3 py-2" value={desc} onChange={e=>setDesc(e.target.value)} /></div>
-      <div><label className="text-xs text-gray-600">Start date</label><input type="date" className="w-full border rounded px-3 py-2" value={start} onChange={e=>setStart(e.target.value)} /></div>
-      <div><label className="text-xs text-gray-600">ETA</label><input type="date" className="w-full border rounded px-3 py-2" value={eta} onChange={e=>setEta(e.target.value)} /></div>
-      <div><label className="text-xs text-gray-600">End date</label><input type="date" className="w-full border rounded px-3 py-2" value={end} onChange={e=>setEnd(e.target.value)} /></div>
-      <div className="md:col-span-2 text-right"><button onClick={async()=>{ try{ await api('PATCH', `/projects/${projectId}`, { name, address_city: city, address_province: province, address_country: country, description: desc, date_start: start||null, date_eta: eta||null, date_end: end||null, contact_id: contactId||null }); toast.success('Saved'); onSaved(); }catch(_e){ toast.error('Failed to save'); } }} className="px-4 py-2 rounded bg-brand-red text-white">Save</button></div>
+      <div className="md:col-span-2 text-right"><button onClick={async()=>{ try{ await api('PATCH', `/projects/${projectId}`, { name, address_city: city, address_province: province, address_country: country, description: desc, contact_id: contactId||null }); toast.success('Saved'); onSaved(); }catch(_e){ toast.error('Failed to save'); } }} className="px-4 py-2 rounded bg-brand-red text-white">Save</button></div>
     </div>
   );
 }
