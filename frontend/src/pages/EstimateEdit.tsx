@@ -39,8 +39,6 @@ export default function EstimateEdit(){
     );
   }
   
-  const projectId = String(estimateData.estimate.project_id || '');
-  
   return (
     <div>
       <div className="mb-3 rounded-xl border bg-gradient-to-br from-[#7f1010] to-[#a31414] text-white p-4">
