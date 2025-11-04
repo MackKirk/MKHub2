@@ -482,13 +482,24 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
   const grandTotal = useMemo(()=> finalTotal + gst, [finalTotal, gst]);
 
   // Sync section order with items (add new sections that appear in items)
+  // Always ensure special sections (Labour, Sub-Contractors, Shop, Miscellaneous) appear at the end
   useEffect(()=>{
     const sectionsInItems = new Set<string>();
     items.forEach(it=> sectionsInItems.add(it.section || 'Miscellaneous'));
     const existingSections = new Set(sectionOrder);
     const newSections = Array.from(sectionsInItems).filter(s => !existingSections.has(s));
-    if(newSections.length > 0){
-      setSectionOrder(prev => [...prev, ...newSections]);
+    
+    // Define special sections that should always be at the end
+    const specialSections = ['Labour', 'Sub-Contractors', 'Shop', 'Miscellaneous'];
+    
+    if(newSections.length > 0 || sectionOrder.some(s => specialSections.includes(s))){
+      // Reorganize section order to ensure special sections are at the end
+      setSectionOrder(prev => {
+        const productSections = prev.filter(s => !specialSections.includes(s) && sectionsInItems.has(s));
+        const specialSectionsInOrder = specialSections.filter(s => sectionsInItems.has(s));
+        const newProductSections = newSections.filter(s => !specialSections.includes(s));
+        return [...productSections, ...newProductSections, ...specialSectionsInOrder];
+      });
     }
   }, [items, sectionOrder]);
 
@@ -1123,62 +1134,60 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
             </div>
           )})
         ) : (
-          <div className="rounded-xl border bg-white p-6 text-center text-gray-600">
-            No items yet. Add products, labour, sub-contractors or shop items to build your estimate.
-          </div>
-        )}
-      </div>
+                      <div className="rounded-xl border bg-white p-6 text-center text-gray-600">
+              No items yet. Add products, labour, sub-contractors or shop items to build your estimate.
+            </div>
+          )}
+        </div>
 
-      <div className="mt-4 grid md:grid-cols-2 gap-4">
-        {/* Left Card */}
-        <div className="rounded-xl border bg-white p-4">
-          <h4 className="font-semibold mb-2">Summary</h4>
-          <div className="space-y-1 text-sm">
-            <div className="flex items-center justify-between hover:bg-gray-50 px-2 py-1 rounded transition-colors">
-              <span>Total Products Costs</span>
-              <span>${totalProductsCosts.toFixed(2)}</span>
-            </div>
-            <div className="flex items-center justify-between hover:bg-gray-50 px-2 py-1 rounded transition-colors">
-              <span>Total Labour Costs</span>
-              <span>${totalLabourCosts.toFixed(2)}</span>
-            </div>
-            <div className="flex items-center justify-between hover:bg-gray-50 px-2 py-1 rounded transition-colors">
-              <span>Total Sub-Contractors Costs</span>
-              <span>${totalSubContractorsCosts.toFixed(2)}</span>
-            </div>
-            <div className="flex items-center justify-between hover:bg-gray-50 px-2 py-1 rounded transition-colors">
-              <span>Total Shop Costs</span>
-              <span>${totalShopCosts.toFixed(2)}</span>
-            </div>
-            <div className="flex items-center justify-between hover:bg-gray-50 px-2 py-1 rounded transition-colors">
-              <span>Total Miscellaneous Costs</span>
-              <span>${totalMiscellaneousCosts.toFixed(2)}</span>
-            </div>
-            <div className="flex items-center justify-between hover:bg-gray-50 px-2 py-1 rounded transition-colors">
-              <span>Total Direct Project Costs</span>
-              <span>${totalWithMarkup.toFixed(2)}</span>
-            </div>
-            <div className="flex items-center justify-between hover:bg-gray-50 px-2 py-1 rounded transition-colors">
-              <span>PST</span>
-              <span>${pst.toFixed(2)}</span>
-            </div>
-            <div className="flex items-center justify-between hover:bg-gray-50 px-2 py-1 rounded transition-colors">
-              <span>Sub-total</span>
-              <span>${subtotal.toFixed(2)}</span>
-            </div>
-          </div>
-          <div className="mt-3 text-right flex items-center gap-2 justify-end">
-            <button
-              onClick={()=>setSummaryOpen(true)}
-              className="px-3 py-2 rounded bg-gray-100 hover:bg-gray-200">
-              Analysis
-            </button>
+        {/* Summary Title Card */}
+        <div className="mt-4">
+          <div className="rounded-xl border bg-white p-4">
+            <h4 className="font-semibold">Summary</h4>
           </div>
         </div>
 
-        {/* Right Card */}
-        <div className="rounded-xl border bg-white p-4">
-          <h4 className="font-semibold mb-2">Summary</h4>
+        <div className="mt-4 grid md:grid-cols-2 gap-4">
+          {/* Left Card */}
+          <div className="rounded-xl border bg-white p-4">
+            <div className="space-y-1 text-sm">
+              <div className="flex items-center justify-between hover:bg-gray-50 px-2 py-1 rounded transition-colors">
+                <span>Total Products Costs</span>
+                <span>${totalProductsCosts.toFixed(2)}</span>
+              </div>
+              <div className="flex items-center justify-between hover:bg-gray-50 px-2 py-1 rounded transition-colors">
+                <span>Total Labour Costs</span>
+                <span>${totalLabourCosts.toFixed(2)}</span>
+              </div>
+              <div className="flex items-center justify-between hover:bg-gray-50 px-2 py-1 rounded transition-colors">
+                <span>Total Sub-Contractors Costs</span>
+                <span>${totalSubContractorsCosts.toFixed(2)}</span>
+              </div>
+              <div className="flex items-center justify-between hover:bg-gray-50 px-2 py-1 rounded transition-colors">
+                <span>Total Shop Costs</span>
+                <span>${totalShopCosts.toFixed(2)}</span>
+              </div>
+              <div className="flex items-center justify-between hover:bg-gray-50 px-2 py-1 rounded transition-colors">
+                <span>Total Miscellaneous Costs</span>
+                <span>${totalMiscellaneousCosts.toFixed(2)}</span>
+              </div>
+              <div className="flex items-center justify-between hover:bg-gray-50 px-2 py-1 rounded transition-colors">
+                <span>Total Direct Project Costs</span>
+                <span>${totalWithMarkup.toFixed(2)}</span>
+              </div>
+              <div className="flex items-center justify-between hover:bg-gray-50 px-2 py-1 rounded transition-colors">
+                <span>PST</span>
+                <span>${pst.toFixed(2)}</span>
+              </div>
+              <div className="flex items-center justify-between hover:bg-gray-50 px-2 py-1 rounded transition-colors">
+                <span>Sub-total</span>
+                <span>${subtotal.toFixed(2)}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Right Card */}
+          <div className="rounded-xl border bg-white p-4">
           <div className="space-y-1 text-sm">
             <div className="flex items-center justify-between hover:bg-gray-50 px-2 py-1 rounded transition-colors">
               <span>Sections Mark-up</span>
@@ -1216,9 +1225,14 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
         </div>
       </div>
 
-      <div className="mt-4 flex justify-end">
-        <button
-          onClick={async()=>{
+              <div className="mt-4 flex justify-end gap-2">
+          <button
+            onClick={()=>setSummaryOpen(true)}
+            className="px-3 py-2 rounded bg-gray-100 hover:bg-gray-200">
+            Analysis
+          </button>
+          <button
+            onClick={async()=>{
             try{
               setIsLoading(true);
               // First ensure estimate is saved
