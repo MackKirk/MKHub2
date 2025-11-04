@@ -23,6 +23,8 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
   const autoSaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isAutoSavingRef = useRef<boolean>(false);
   const lastAutoSaveRef = useRef<number>(0);
+  const [dirty, setDirty] = useState(false);
+  const savedStateRef = useRef<{ items: Item[], markup: number, pstRate: number, gstRate: number, profitRate: number, sectionOrder: string[] } | null>(null);
   
   // Check if editing is allowed based on status
   const canEdit = useMemo(()=>{
@@ -149,8 +151,32 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
       setItems(formattedItems);
       // Update lastAutoSaveRef when estimate is loaded to prevent immediate auto-save
       lastAutoSaveRef.current = Date.now();
+      // Initialize saved state reference for dirty tracking
+      savedStateRef.current = {
+        items: formattedItems,
+        markup: est.markup !== undefined ? est.markup : markup,
+        pstRate: estimateData.pst_rate !== undefined && estimateData.pst_rate !== null ? estimateData.pst_rate : pstRate,
+        gstRate: estimateData.gst_rate !== undefined && estimateData.gst_rate !== null ? estimateData.gst_rate : gstRate,
+        profitRate: estimateData.profit_rate !== undefined && estimateData.profit_rate !== null ? estimateData.profit_rate : profitRate,
+        sectionOrder: estimateData.section_order || sectionOrder
+      };
+      setDirty(false);
     }
   }, [estimateData, currentEstimateId]);
+
+  // Track dirty state by comparing current state with saved state
+  useEffect(() => {
+    if (!savedStateRef.current) return;
+    const saved = savedStateRef.current;
+    // Deep comparison of items
+    const itemsChanged = JSON.stringify(items) !== JSON.stringify(saved.items);
+    const markupChanged = markup !== saved.markup;
+    const pstRateChanged = pstRate !== saved.pstRate;
+    const gstRateChanged = gstRate !== saved.gstRate;
+    const profitRateChanged = profitRate !== saved.profitRate;
+    const sectionOrderChanged = JSON.stringify(sectionOrder) !== JSON.stringify(saved.sectionOrder);
+    setDirty(itemsChanged || markupChanged || pstRateChanged || gstRateChanged || profitRateChanged || sectionOrderChanged);
+  }, [items, markup, pstRate, gstRate, profitRate, sectionOrder]);
 
   // Calculate item total based on item type
   const calculateItemTotal = (it: Item): number => {
@@ -261,12 +287,87 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
         setCurrentEstimateId(result.id);
       }
       lastAutoSaveRef.current = Date.now();
+      // Update saved state reference and reset dirty flag
+      savedStateRef.current = {
+        items: [...items],
+        markup,
+        pstRate,
+        gstRate,
+        profitRate,
+        sectionOrder: [...sectionOrder]
+      };
+      setDirty(false);
     } catch (e) {
       // Silent fail for auto-save
     } finally {
       isAutoSavingRef.current = false;
     }
   }, [projectId, markup, pstRate, gstRate, profitRate, sectionOrder, items, currentEstimateId, canEdit]);
+
+  // Manual save function
+  const handleManualSave = useCallback(async () => {
+    if (!dirty || !projectId || !canEdit) return;
+    
+    try {
+      isAutoSavingRef.current = true;
+      const payload = { 
+        project_id: projectId, 
+        markup, 
+        pst_rate: pstRate,
+        gst_rate: gstRate,
+        profit_rate: profitRate,
+        section_order: sectionOrder,
+        items: items.map(it=> ({ 
+          material_id: it.material_id, 
+          quantity: it.quantity, 
+          unit_price: it.unit_price, 
+          section: it.section, 
+          description: it.description, 
+          item_type: it.item_type,
+          name: it.name,
+          unit: it.unit,
+          markup: it.markup,
+          taxable: it.taxable,
+          qty_required: it.qty_required,
+          unit_required: it.unit_required,
+          supplier_name: it.supplier_name,
+          unit_type: it.unit_type,
+          units_per_package: it.units_per_package,
+          coverage_sqs: it.coverage_sqs,
+          coverage_ft2: it.coverage_ft2,
+          coverage_m2: it.coverage_m2,
+          labour_journey: it.labour_journey,
+          labour_men: it.labour_men,
+          labour_journey_type: it.labour_journey_type
+        })) 
+      };
+      
+      if (currentEstimateId) {
+        // Update existing estimate
+        await api('PUT', `/estimate/estimates/${currentEstimateId}`, payload);
+      } else {
+        // Create new estimate
+        const result = await api<any>('POST', '/estimate/estimates', payload);
+        setCurrentEstimateId(result.id);
+      }
+      lastAutoSaveRef.current = Date.now();
+      // Update saved state reference and reset dirty flag
+      savedStateRef.current = {
+        items: [...items],
+        markup,
+        pstRate,
+        gstRate,
+        profitRate,
+        sectionOrder: [...sectionOrder]
+      };
+      setDirty(false);
+      toast.success('Saved');
+    } catch (e) {
+      toast.error('Save failed');
+    } finally {
+      isAutoSavingRef.current = false;
+    }
+  }, [dirty, projectId, canEdit, markup, pstRate, gstRate, profitRate, sectionOrder, items, currentEstimateId]);
 
   // Show warning if editing is restricted
   useEffect(() => {
@@ -1120,6 +1221,28 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
               {isLoading ? 'Generating...' : 'Generate PDF'}
             </button>
       </div>
+
+      {/* Spacer to prevent fixed bar from overlapping content */}
+      <div className="h-24" />
+
+      {/* Fixed Unsaved Changes bar */}
+      {canEdit && (
+        <div className="fixed left-60 right-0 bottom-0 z-40">
+          <div className="px-4">
+            <div className="mx-auto max-w-[1400px] rounded-t-xl border bg-white/95 backdrop-blur p-3 flex items-center justify-between shadow-[0_-6px_16px_rgba(0,0,0,0.08)]">
+              <div className={dirty ? 'text-[12px] text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5' : 'text-[12px] text-green-700 bg-green-50 border border-green-200 rounded-full px-2 py-0.5'}>
+                {dirty ? 'Unsaved changes' : 'All changes saved'}
+              </div>
+              <button 
+                disabled={!dirty} 
+                onClick={handleManualSave}
+                className="px-5 py-2 rounded-xl bg-gradient-to-r from-brand-red to-[#ee2b2b] text-white font-semibold disabled:opacity-50">
+                Save
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -1,0 +1,206 @@
+﻿
+  // Calculate item total based on item type
+  const calculateItemTotal = (it: Item): number => {
+    if (it.item_type === 'labour' && it.labour_journey_type) {
+      if (it.labour_journey_type === 'contract') {
+        return (it.labour_journey || 0) * it.unit_price;
+      } else {
+        return (it.labour_journey || 0) * (it.labour_men || 0) * it.unit_price;
+      }
+    }
+    return it.quantity * it.unit_price;
+  };
+
+  // Total of all items
+  const total = useMemo(()=> {
+    return items.reduce((acc, it)=> {
+      let itemTotal = 0;
+      if (it.item_type === 'labour' && it.labour_journey_type) {
+        if (it.labour_journey_type === 'contract') {
+          itemTotal = (it.labour_journey || 0) * it.unit_price;
+        } else {
+          itemTotal = (it.labour_journey || 0) * (it.labour_men || 0) * it.unit_price;
+        }
+      } else {
+        itemTotal = it.quantity * it.unit_price;
+      }
+      return acc + itemTotal;
+    }, 0);
+  }, [items]);
+  
+  // Total of taxable items only (for PST calculation) - with markup
+  const taxableTotal = useMemo(()=> {
+    return items
+      .filter(it => it.taxable !== false) // Only items marked as taxable
+      .reduce((acc, it)=> {
+        // Calculate item total with markup
+        const m = it.markup !== undefined && it.markup !== null ? it.markup : markup;
+        let itemTotal = 0;
+        if (it.item_type === 'labour' && it.labour_journey_type) {
+          if (it.labour_journey_type === 'contract') {
+            itemTotal = (it.labour_journey || 0) * it.unit_price;
+          } else {
+            itemTotal = (it.labour_journey || 0) * (it.labour_men || 0) * it.unit_price;
+          }
+        } else {
+          itemTotal = it.quantity * it.unit_price;
+        }
+        return acc + (itemTotal * (1 + (m/100)));
+      }, 0);
+  }, [items, markup]);
+  
+  const pst = useMemo(()=> (taxableTotal * (pstRate/100)), [taxableTotal, pstRate]);
+
+  // Auto-save function (silent save without toast)
+  const autoSave = useCallback(async () => {
+    // Don't auto-save if already saving or if no projectId
+    if (isAutoSavingRef.current || !projectId) return;
+    
+    // Don't auto-save if less than 3 seconds since last save
+    const now = Date.now();
+    if (now - lastAutoSaveRef.current < 3000) return;
+
+    try {
+      isAutoSavingRef.current = true;
+      const payload = { 
+        project_id: projectId, 
+        markup, 
+        pst_rate: pstRate,
+        gst_rate: gstRate,
+        profit_rate: profitRate,
+        section_order: sectionOrder,
+        items: items.map(it=> ({ 
+          material_id: it.material_id, 
+          quantity: it.quantity, 
+          unit_price: it.unit_price, 
+          section: it.section, 
+          description: it.description, 
+          item_type: it.item_type,
+          name: it.name,
+          unit: it.unit,
+          markup: it.markup,
+          taxable: it.taxable,
+          qty_required: it.qty_required,
+          unit_required: it.unit_required,
+          supplier_name: it.supplier_name,
+          unit_type: it.unit_type,
+          units_per_package: it.units_per_package,
+          coverage_sqs: it.coverage_sqs,
+          coverage_ft2: it.coverage_ft2,
+          coverage_m2: it.coverage_m2,
+          labour_journey: it.labour_journey,
+          labour_men: it.labour_men,
+          labour_journey_type: it.labour_journey_type
+        })) 
+      };
+      
+      if (!canEdit) {
+        toast.error('Editing is restricted for this project status');
+        return;
+      }
+      
+      if (currentEstimateId) {
+        // Update existing estimate
+        await api('PUT', `/estimate/estimates/${currentEstimateId}`, payload);
+      } else {
+        // Create new estimate
+        const result = await api<any>('POST', '/estimate/estimates', payload);
+        setCurrentEstimateId(result.id);
+      }
+      lastAutoSaveRef.current = Date.now();
+    } catch (e) {
+      // Silent fail for auto-save
+    } finally {
+      isAutoSavingRef.current = false;
+    }
+  }, [projectId, markup, pstRate, gstRate, profitRate, sectionOrder, items, currentEstimateId, canEdit]);
+
+  // Show warning if editing is restricted
+  useEffect(() => {
+    if (!canEdit && statusLabel) {
+      toast.error(`Editing is restricted for projects with status "${statusLabel}"`, { duration: 5000 });
+    }
+  }, [canEdit, statusLabel]);
+
+  // Auto-save on changes (debounced)
+  useEffect(() => {
+    // Only auto-save if estimate is loaded or if we have items, and editing is allowed
+    if (!projectId || (items.length === 0 && !currentEstimateId) || !canEdit) return;
+
+    // Clear existing timeout
+    if (autoSaveTimeoutRef.current) {
+      clearTimeout(autoSaveTimeoutRef.current);
+    }
+
+    // Set new timeout for auto-save (2 seconds after last change)
+    autoSaveTimeoutRef.current = setTimeout(() => {
+      if (canEdit) {
+        autoSave();
+      }
+    }, 2000);
+
+    return () => {
+      if (autoSaveTimeoutRef.current) {
+        clearTimeout(autoSaveTimeoutRef.current);
+      }
+    };
+  }, [items, markup, pstRate, gstRate, profitRate, sectionOrder, projectId, currentEstimateId, autoSave]);
+
+  // Periodic auto-save (every 30 seconds)
+  useEffect(() => {
+    if (!projectId || (items.length === 0 && !currentEstimateId) || !canEdit) return;
+
+    const interval = setInterval(() => {
+      if (canEdit) {
+        autoSave();
+      }
+    }, 30000); // 30 seconds
+
+    return () => clearInterval(interval);
+  }, [projectId, items.length, currentEstimateId, autoSave, canEdit]);
+
+  // Calculate quantity based on qty_required and unit_type
+  const calculateQuantity = (item: Item): number => {
+    if (!item.qty_required || item.qty_required <= 0) return item.quantity || 1;
+    const qty = Number(item.qty_required);
+    
+    if (item.unit_type === 'coverage') {
+      if (item.unit_required === 'SQS' && item.coverage_sqs && item.coverage_sqs > 0) {
+        return Math.ceil(qty / item.coverage_sqs);
+      } else if (item.unit_required === 'ftÂ²' && item.coverage_ft2 && item.coverage_ft2 > 0) {
+        return Math.ceil(qty / item.coverage_ft2);
+      } else if (item.unit_required === 'mÂ²' && item.coverage_m2 && item.coverage_m2 > 0) {
+        return Math.ceil(qty / item.coverage_m2);
+      }
+    } else if (item.unit_type === 'multiple' && item.units_per_package && item.units_per_package > 0) {
+      return Math.ceil(qty / item.units_per_package);
+    } else if (item.unit_type === 'unitary') {
+      return Math.ceil(qty);
+    }
+    
+    return item.quantity || 1;
+  };
+
+  // Group items by section
+  const groupedItems = useMemo(()=>{
+    const groups: Record<string, Item[]> = {};
+    items.forEach(it=>{
+      const section = it.section || 'Miscellaneous';
+      if(!groups[section]) groups[section] = [];
+      groups[section].push(it);
+    });
+    return groups;
+  }, [items]);
+
+  // Calculate total of all section subtotals with markup (same as shown in table)
+  const totalWithMarkup = useMemo(() => {
+    return Object.keys(groupedItems).reduce((acc, section) => {
+      const sectionItems = groupedItems[section];
+      const isLabourSection = ['Labour', 'Sub-Contractors', 'Shop', 'Miscellaneous'].includes(section);
+      const sectionTotal = sectionItems.reduce((sum, it) => {
+        const m = it.markup !== undefined && it.markup !== null ? it.markup : markup;
+        let itemTotal = 0;
+        if (!isLabourSection) {
+          itemTotal = it.quantity * it.unit_price;
+        } else {
+          if (it.item_type === 'labour' && it.labour_journey_type) {
