@@ -392,3 +392,13 @@ def get_proposal(proposal_id: str, db: Session = Depends(get_db)):
     }
 
 
+@router.delete("/{proposal_id}")
+def delete_proposal(proposal_id: str, db: Session = Depends(get_db)):
+    p = db.query(Proposal).filter(Proposal.id == proposal_id).first()
+    if not p:
+        raise HTTPException(status_code=404, detail='Proposal not found')
+    db.delete(p)
+    db.commit()
+    return {"status": "ok"}
+
+

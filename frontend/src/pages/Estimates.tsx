@@ -1,7 +1,17 @@
+import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 
-type Estimate = { id:number, project_id:string, total_cost?:number, markup?:number, created_at?:string };
+type Estimate = { 
+  id:number, 
+  project_id:string, 
+  project_name?:string,
+  client_name?:string,
+  total_cost?:number, 
+  grand_total?:number,
+  markup?:number, 
+  created_at?:string 
+};
 
 export default function Estimates(){
   const { data, isLoading } = useQuery({ queryKey:['estimates-all'], queryFn: ()=> api<Estimate[]>('GET','/estimate/estimates') });
@@ -15,20 +25,25 @@ export default function Estimates(){
       <div className="rounded-xl border bg-white overflow-hidden">
         <table className="w-full text-sm">
           <thead className="bg-gray-50"><tr>
-            <th className="p-2 text-left">ID</th>
             <th className="p-2 text-left">Project</th>
+            <th className="p-2 text-left">Customer</th>
             <th className="p-2 text-left">Total</th>
-            <th className="p-2 text-left">Markup</th>
             <th className="p-2 text-left">Created</th>
+            <th className="p-2 text-left">Actions</th>
           </tr></thead>
           <tbody>
             {isLoading? <tr><td colSpan={5} className="p-4"><div className="h-6 bg-gray-100 animate-pulse rounded"/></td></tr> : rows.map(e=> (
-              <tr key={e.id} className="border-t">
-                <td className="p-2">{e.id}</td>
-                <td className="p-2"><a className="underline" href={`/projects/${encodeURIComponent(String(e.project_id))}`}>{String(e.project_id).slice(0,8)}</a></td>
-                <td className="p-2">{typeof e.total_cost==='number'? `$${e.total_cost.toFixed(2)}` : '-'}</td>
-                <td className="p-2">{typeof e.markup==='number'? `${e.markup}%` : '-'}</td>
-                <td className="p-2">{(e.created_at||'').slice(0,19).replace('T',' ')}</td>
+              <tr key={e.id} className="border-t hover:bg-gray-50">
+                <td className="p-2">{e.project_name || String(e.project_id).slice(0,8)}</td>
+                <td className="p-2">{e.client_name || '-'}</td>
+                <td className="p-2">
+                  {typeof e.grand_total==='number'? `$${e.grand_total.toFixed(2)}` : 
+                   typeof e.total_cost==='number'? `$${e.total_cost.toFixed(2)}` : '-'}
+                </td>
+                <td className="p-2">{(e.created_at||'').slice(0,10)}</td>
+                <td className="p-2">
+                  <Link to={`/estimates/${e.id}/edit`} className="underline">Open</Link>
+                </td>
               </tr>
             ))}
             {!isLoading && rows.length===0 && <tr><td colSpan={5} className="p-3 text-gray-600">No estimates yet</td></tr>}

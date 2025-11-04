@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
 import ImagePicker from '@/components/ImagePicker';
@@ -11,6 +11,7 @@ type Site = { id:string, site_name?:string, site_address_line1?:string, site_cit
 
 export default function ProposalForm({ mode, clientId: clientIdProp, siteId: siteIdProp, projectId: projectIdProp, initial }:{ mode:'new'|'edit', clientId?:string, siteId?:string, projectId?:string, initial?: any }){
   const nav = useNavigate();
+  const queryClient = useQueryClient();
 
   const [clientId] = useState<string>(String(clientIdProp || initial?.client_id || ''));
   const [siteId] = useState<string>(String(siteIdProp || initial?.site_id || ''));
@@ -53,6 +54,10 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
   const [focusTarget, setFocusTarget] = useState<{ type:'title'|'caption', sectionIndex:number, imageIndex?: number }|null>(null);
   const [activeSectionIndex, setActiveSectionIndex] = useState<number>(-1);
   const confirm = useConfirm();
+  const autoSaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isAutoSavingRef = useRef<boolean>(false);
+  const lastAutoSaveRef = useRef<number>(0);
+  const proposalIdRef = useRef<string | undefined>(mode === 'edit' ? initial?.id : undefined);
 
   // --- Helpers declared early so effects can safely reference them
   const sanitizeSections = (arr:any[])=> (arr||[]).map((sec:any)=>{
@@ -120,6 +125,10 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
     setSections(normalized);
     setCoverFoId(d.cover_file_object_id||undefined);
     setPage2FoId(d.page2_file_object_id||undefined);
+    // Update proposal ID ref for auto-save
+    if (initial?.id) {
+      proposalIdRef.current = initial.id;
+    }
     setIsReady(true);
   }, [initial?.id]);
 
@@ -184,7 +193,13 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
   
 
   // Initialize saved hash only after fields are populated (isReady)
-  useEffect(()=>{ if (isReady && !lastSavedHash) setLastSavedHash(computeFingerprint()); }, [isReady, lastSavedHash, coverTitle, orderNumber, date, createdFor, primary, typeOfProject, otherNotes, projectDescription, additionalNotes, bidPrice, costs, terms, sections, coverFoId, page2FoId, clientId, siteId, projectId]);
+  useEffect(()=>{ 
+    if (isReady && !lastSavedHash) {
+      setLastSavedHash(computeFingerprint());
+      // Update lastAutoSaveRef when proposal is loaded to prevent immediate auto-save
+      lastAutoSaveRef.current = Date.now();
+    }
+  }, [isReady, lastSavedHash, coverTitle, orderNumber, date, createdFor, primary, typeOfProject, otherNotes, projectDescription, additionalNotes, bidPrice, costs, terms, sections, coverFoId, page2FoId, clientId, siteId, projectId, computeFingerprint]);
 
   const handleSave = async()=>{
     try{
@@ -216,9 +231,116 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
       toast.success('Saved');
       // Stay on page after save; update saved fingerprint so warnings clear
       setLastSavedHash(computeFingerprint());
-      // Optionally, if this was a new proposal and now has id, we could update URL later
+      
+      // Update proposal ID ref for auto-save
+      if (r?.id) {
+        proposalIdRef.current = r.id;
+      }
+      
+      // If this was a new proposal and now has id, navigate to edit page
+      if (mode === 'new' && r?.id) {
+        // Invalidate proposals list to refresh it
+        queryClient.invalidateQueries({ queryKey: ['proposals'] });
+        // Navigate to edit page
+        nav(`/proposals/${encodeURIComponent(r.id)}/edit`);
+      } else if (mode === 'edit') {
+        // Invalidate proposals list to refresh it
+        queryClient.invalidateQueries({ queryKey: ['proposals'] });
+      }
+      lastAutoSaveRef.current = Date.now();
     }catch(e){ toast.error('Save failed'); }
   };
+
+  // Auto-save function (silent save without toast)
+  const autoSave = useCallback(async () => {
+    // Don't auto-save if already saving or if no clientId
+    if (isAutoSavingRef.current || !clientId) return;
+    
+    // Don't auto-save if less than 3 seconds since last save
+    const now = Date.now();
+    if (now - lastAutoSaveRef.current < 3000) return;
+
+    try {
+      isAutoSavingRef.current = true;
+      const payload:any = {
+        id: proposalIdRef.current || (mode==='edit'? initial?.id : undefined),
+        project_id: projectId||null,
+        client_id: clientId||null,
+        site_id: siteId||null,
+        cover_title: coverTitle,
+        order_number: orderNumber||null,
+        date,
+        proposal_created_for: createdFor||null,
+        primary_contact_name: primary.name||null,
+        primary_contact_phone: primary.phone||null,
+        primary_contact_email: primary.email||null,
+        type_of_project: typeOfProject||null,
+        other_notes: otherNotes||null,
+        project_description: projectDescription||null,
+        additional_project_notes: additionalNotes||null,
+        bid_price: Number(bidPrice||'0'),
+        total: Number(total||'0'),
+        terms_text: terms||'',
+        additional_costs: costs.map(c=> ({ label: c.label, value: Number(c.amount||'0') })),
+        sections: sanitizeSections(sections),
+        cover_file_object_id: coverFoId||null,
+        page2_file_object_id: page2FoId||null,
+      };
+      const r:any = await api('POST','/proposals', payload);
+      
+      // Update proposal ID ref for auto-save
+      if (r?.id) {
+        proposalIdRef.current = r.id;
+      }
+      
+      // If this was a new proposal and now has id, update mode to edit
+      if (mode === 'new' && r?.id) {
+        queryClient.invalidateQueries({ queryKey: ['proposals'] });
+      } else if (mode === 'edit') {
+        queryClient.invalidateQueries({ queryKey: ['proposals'] });
+      }
+      
+      setLastSavedHash(computeFingerprint());
+      lastAutoSaveRef.current = Date.now();
+    } catch (e) {
+      // Silent fail for auto-save
+    } finally {
+      isAutoSavingRef.current = false;
+    }
+  }, [clientId, projectId, siteId, coverTitle, orderNumber, date, createdFor, primary, typeOfProject, otherNotes, projectDescription, additionalNotes, bidPrice, costs, total, terms, sections, coverFoId, page2FoId, mode, initial, queryClient, sanitizeSections, computeFingerprint]);
+
+  // Auto-save on changes (debounced)
+  useEffect(() => {
+    // Only auto-save if proposal is ready
+    if (!isReady || !clientId) return;
+
+    // Clear existing timeout
+    if (autoSaveTimeoutRef.current) {
+      clearTimeout(autoSaveTimeoutRef.current);
+    }
+
+    // Set new timeout for auto-save (2 seconds after last change)
+    autoSaveTimeoutRef.current = setTimeout(() => {
+      autoSave();
+    }, 2000);
+
+    return () => {
+      if (autoSaveTimeoutRef.current) {
+        clearTimeout(autoSaveTimeoutRef.current);
+      }
+    };
+  }, [isReady, clientId, coverTitle, orderNumber, date, createdFor, primary, typeOfProject, otherNotes, projectDescription, additionalNotes, bidPrice, costs, terms, sections, coverFoId, page2FoId, autoSave]);
+
+  // Periodic auto-save (every 30 seconds)
+  useEffect(() => {
+    if (!isReady || !clientId) return;
+
+    const interval = setInterval(() => {
+      autoSave();
+    }, 30000); // 30 seconds
+
+    return () => clearInterval(interval);
+  }, [isReady, clientId, autoSave]);
 
   const handleGenerate = async()=>{
     try{
@@ -379,14 +501,25 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
             {sections.map((s:any, idx:number)=> (
               <div key={s.id||idx}
                    className={`border rounded p-3 ${dragOverSection===idx? 'ring-2 ring-brand-red':''}`}
-                   draggable
-                   onDragStart={()=> onSectionDragStart(idx)}
                    onDragOver={(e)=>{ e.preventDefault(); onSectionDragOver(idx); }}
                    onDrop={onSectionDrop}
               >
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2 w-full">
-                    <span className="inline-flex items-center justify-center w-5 h-5 text-gray-400 hover:text-gray-600 cursor-grab active:cursor-grabbing" title="Drag to reorder section" aria-label="Drag section handle">
+                    <span 
+                      className="inline-flex items-center justify-center w-5 h-5 text-gray-400 hover:text-gray-600 cursor-grab active:cursor-grabbing" 
+                      title="Drag to reorder section" 
+                      aria-label="Drag section handle"
+                      draggable
+                      onDragStart={() => {
+                        onSectionDragStart(idx);
+                      }}
+                      onDragEnd={() => {
+                        if (draggingSection === idx) {
+                          setDraggingSection(null);
+                          setDragOverSection(null);
+                        }
+                      }}>
                       <svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
                         <circle cx="6" cy="6" r="1.5"></circle>
                         <circle cx="10" cy="6" r="1.5"></circle>
@@ -519,6 +652,31 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
       <div className="mt-2 flex items-center justify-between">
         <button className="px-3 py-2 rounded bg-gray-100" onClick={()=> nav(-1)}>Back</button>
         <div className="space-x-2">
+          {mode === 'edit' && (
+            <button 
+              className="px-3 py-2 rounded bg-red-600 text-white hover:bg-red-700" 
+              onClick={async () => {
+                const ok = await confirm({ 
+                  title: 'Delete Proposal', 
+                  message: 'Are you sure you want to delete this proposal? This action cannot be undone.' 
+                });
+                if (!ok) return;
+                try {
+                  if (initial?.id) {
+                    await api('DELETE', `/proposals/${encodeURIComponent(initial.id)}`);
+                    toast.success('Proposal deleted');
+                    queryClient.invalidateQueries({ queryKey: ['proposals'] });
+                    nav(-1);
+                  }
+                } catch (e: any) {
+                  console.error('Failed to delete proposal:', e);
+                  toast.error(e?.response?.data?.detail || 'Failed to delete proposal');
+                }
+              }}
+            >
+              Delete Proposal
+            </button>
+          )}
           <button className="px-3 py-2 rounded bg-gray-100" onClick={handleSave}>Save Proposal</button>
           <button className="px-3 py-2 rounded bg-brand-red text-white disabled:opacity-60" disabled={isGenerating} onClick={handleGenerate}>{isGenerating? 'Generating…' : 'Generate Proposal'}</button>
           {downloadUrl && (

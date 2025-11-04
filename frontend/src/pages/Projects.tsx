@@ -20,10 +20,36 @@ export default function Projects(){
 
   useEffect(() => {
     if (!newOpen) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setNewOpen(false); };
+    const onKey = (e: KeyboardEvent) => { 
+      if (e.key === 'Escape') {
+        setNewOpen(false);
+        setName('');
+        setClientId('');
+      }
+    };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [newOpen]);
+
+  const handleCreateProject = async () => {
+    if (!name.trim() || !clientId.trim()) {
+      toast.error('Name and client ID are required');
+      return;
+    }
+    try {
+      const created: any = await api('POST', '/projects', { name: name.trim(), client_id: clientId.trim() });
+      toast.success('Project created');
+      setNewOpen(false);
+      setName('');
+      setClientId('');
+      if (created?.id) {
+        window.location.href = `/projects/${encodeURIComponent(String(created.id))}`;
+      }
+    } catch (e: any) {
+      console.error('Failed to create project:', e);
+      toast.error(e?.response?.data?.detail || 'Failed to create project');
+    }
+  };
 
   return (
     <div>
@@ -55,21 +81,50 @@ export default function Projects(){
         }} />
       )}
       {newOpen && (
-        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center">
-          <div className="w-[600px] max-w-[95vw] bg-white rounded-xl overflow-hidden">
-            <div className="px-4 py-3 border-b flex items-center justify-between"><div className="font-semibold">New Project</div><button onClick={()=>setNewOpen(false)} className="text-gray-500 hover:text-gray-700 text-2xl font-bold w-8 h-8 flex items-center justify-center rounded hover:bg-gray-100" title="Close">×</button></div>
-            <div className="p-4 grid gap-3">
-              <div>
-                <label className="text-xs text-gray-600">Project Name</label>
-                <input className="w-full border rounded px-3 py-2" value={name} onChange={e=>setName(e.target.value)} />
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="w-[480px] max-w-[95vw] bg-white rounded-lg shadow-lg overflow-hidden">
+            <div className="px-4 py-3 border-b font-semibold">New Project</div>
+            <div className="p-4">
+              <div className="mb-3">
+                <label className="block text-sm text-gray-700 mb-1">Project Name</label>
+                <input 
+                  type="text" 
+                  className="w-full border rounded px-3 py-2" 
+                  value={name} 
+                  onChange={e=>setName(e.target.value)}
+                  onKeyDown={(e)=>{
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleCreateProject();
+                    } else if (e.key === 'Escape') {
+                      setNewOpen(false);
+                      setName('');
+                      setClientId('');
+                    }
+                  }}
+                  autoFocus
+                />
               </div>
-              <div>
-                <label className="text-xs text-gray-600">Client ID</label>
-                <input className="w-full border rounded px-3 py-2" value={clientId} onChange={e=>setClientId(e.target.value)} placeholder="client uuid" />
+              <div className="mb-3">
+                <label className="block text-sm text-gray-700 mb-1">Client ID</label>
+                <input 
+                  type="text" 
+                  className="w-full border rounded px-3 py-2" 
+                  value={clientId} 
+                  onChange={e=>setClientId(e.target.value)} 
+                  placeholder="client uuid"
+                  onKeyDown={(e)=>{
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleCreateProject();
+                    }
+                  }}
+                />
               </div>
-              <div className="text-right">
-                <button onClick={async()=>{ if(!name||!clientId){ toast.error('Name and client required'); return; } try{ const created:any = await api('POST','/projects', { name, client_id: clientId }); toast.success('Project created'); setNewOpen(false); setName(''); setClientId(''); if(created?.id){ location.href = `/projects/${encodeURIComponent(String(created.id))}`; } }catch(_e){ toast.error('Failed to create'); } }} className="px-4 py-2 rounded bg-brand-red text-white">Create</button>
-              </div>
+            </div>
+            <div className="p-3 flex items-center justify-end gap-2 border-t">
+              <button className="px-3 py-2 rounded bg-gray-100" onClick={()=>{ setNewOpen(false); setName(''); setClientId(''); }}>Cancel</button>
+              <button className="px-3 py-2 rounded bg-brand-red text-white" onClick={handleCreateProject}>Create</button>
             </div>
           </div>
         </div>

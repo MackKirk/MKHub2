@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
@@ -6,21 +6,237 @@ import toast from 'react-hot-toast';
 type Material = { id:number, name:string, supplier_name?:string, unit?:string, price?:number, unit_type?:string, units_per_package?:number, coverage_sqs?:number, coverage_ft2?:number, coverage_m2?:number };
 type Item = { material_id?:number, name:string, unit?:string, quantity:number, unit_price:number, section:string, description?:string, item_type?:string, supplier_name?:string, unit_type?:string, qty_required?:number, unit_required?:string, markup?:number, taxable?:boolean, units_per_package?:number, coverage_sqs?:number, coverage_ft2?:number, coverage_m2?:number, labour_journey?:number, labour_men?:number, labour_journey_type?:'days'|'hours'|'contract' };
 
-export default function EstimateBuilder({ projectId }:{ projectId:string }){
+export default function EstimateBuilder({ projectId, estimateId }: { projectId: string, estimateId?: number }){
   const [items, setItems] = useState<Item[]>([]);
   const [markup, setMarkup] = useState<number>(5);
   const [pstRate, setPstRate] = useState<number>(7);
   const [gstRate, setGstRate] = useState<number>(5);
+  const [profitRate, setProfitRate] = useState<number>(0);
   const defaultSections = ['Roof System','Wood Blocking / Accessories','Flashing','Miscellaneous'];
   const [sectionOrder, setSectionOrder] = useState<string[]>(defaultSections);
   const [summaryOpen, setSummaryOpen] = useState(false);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [currentEstimateId, setCurrentEstimateId] = useState<number|undefined>(estimateId);
+  const autoSaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isAutoSavingRef = useRef<boolean>(false);
+  const lastAutoSaveRef = useRef<number>(0);
 
-  const total = useMemo(()=> items.reduce((acc, it)=> acc + (it.quantity * it.unit_price), 0), [items]);
-  const pst = useMemo(()=> (total * (pstRate/100)), [total, pstRate]);
+  // Load estimate data if estimateId is provided
+  const { data: estimateData } = useQuery({
+    queryKey: ['estimate', estimateId],
+    queryFn: () => estimateId ? api<any>('GET', `/estimate/estimates/${estimateId}`) : Promise.resolve(null),
+    enabled: !!estimateId && !!currentEstimateId
+  });
+
+  // Load estimate data on mount
+  useEffect(() => {
+    if (estimateData && currentEstimateId) {
+      const est = estimateData.estimate;
+      const loadedItems = estimateData.items || [];
+      
+      // Restore rates and section order
+      // If values are null/undefined, use defaults (don't set 0 for rates that weren't saved)
+      // Only set if value exists in the saved data (could be 0 if explicitly saved as 0)
+      if (estimateData.pst_rate !== undefined && estimateData.pst_rate !== null) {
+        setPstRate(estimateData.pst_rate);
+      }
+      if (estimateData.gst_rate !== undefined && estimateData.gst_rate !== null) {
+        setGstRate(estimateData.gst_rate);
+      }
+      if (estimateData.profit_rate !== undefined && estimateData.profit_rate !== null) {
+        setProfitRate(estimateData.profit_rate);
+      }
+      if (estimateData.section_order) setSectionOrder(estimateData.section_order);
+      if (est.markup !== undefined) setMarkup(est.markup);
+      
+      // Convert loaded items to Item format
+      const formattedItems: Item[] = loadedItems.map((it: any) => {
+        // For labour items, set unit based on labour_journey_type if unit is not provided
+        let unit = it.unit || '';
+        if (it.item_type === 'labour' && it.labour_journey_type && !unit) {
+          if (it.labour_journey_type === 'contract') {
+            unit = 'each'; // Default for contract if not saved
+          } else {
+            unit = it.labour_journey_type; // 'days' or 'hours'
+          }
+        }
+        return {
+          material_id: it.material_id,
+          name: it.name || it.description || 'Item',
+          unit: unit,
+          quantity: it.quantity || 0,
+          unit_price: it.unit_price || 0,
+          section: it.section || 'Miscellaneous',
+          description: it.description,
+          item_type: it.item_type || 'product',
+          supplier_name: it.supplier_name,
+          unit_type: it.unit_type,
+          units_per_package: it.units_per_package,
+          coverage_sqs: it.coverage_sqs,
+          coverage_ft2: it.coverage_ft2,
+          coverage_m2: it.coverage_m2,
+          qty_required: it.qty_required,
+          unit_required: it.unit_required,
+          markup: it.markup,
+          taxable: it.taxable !== false,
+          labour_journey: it.labour_journey,
+          labour_men: it.labour_men,
+          labour_journey_type: it.labour_journey_type
+        };
+      });
+      setItems(formattedItems);
+      // Update lastAutoSaveRef when estimate is loaded to prevent immediate auto-save
+      lastAutoSaveRef.current = Date.now();
+    }
+  }, [estimateData, currentEstimateId]);
+
+  // Calculate item total based on item type
+  const calculateItemTotal = (it: Item): number => {
+    if (it.item_type === 'labour' && it.labour_journey_type) {
+      if (it.labour_journey_type === 'contract') {
+        return (it.labour_journey || 0) * it.unit_price;
+      } else {
+        return (it.labour_journey || 0) * (it.labour_men || 0) * it.unit_price;
+      }
+    }
+    return it.quantity * it.unit_price;
+  };
+
+  // Total of all items
+  const total = useMemo(()=> {
+    return items.reduce((acc, it)=> {
+      let itemTotal = 0;
+      if (it.item_type === 'labour' && it.labour_journey_type) {
+        if (it.labour_journey_type === 'contract') {
+          itemTotal = (it.labour_journey || 0) * it.unit_price;
+        } else {
+          itemTotal = (it.labour_journey || 0) * (it.labour_men || 0) * it.unit_price;
+        }
+      } else {
+        itemTotal = it.quantity * it.unit_price;
+      }
+      return acc + itemTotal;
+    }, 0);
+  }, [items]);
+  
+  // Total of taxable items only (for PST calculation)
+  const taxableTotal = useMemo(()=> {
+    return items
+      .filter(it => it.taxable !== false) // Only items marked as taxable
+      .reduce((acc, it)=> {
+        let itemTotal = 0;
+        if (it.item_type === 'labour' && it.labour_journey_type) {
+          if (it.labour_journey_type === 'contract') {
+            itemTotal = (it.labour_journey || 0) * it.unit_price;
+          } else {
+            itemTotal = (it.labour_journey || 0) * (it.labour_men || 0) * it.unit_price;
+          }
+        } else {
+          itemTotal = it.quantity * it.unit_price;
+        }
+        return acc + itemTotal;
+      }, 0);
+  }, [items]);
+  
+  const pst = useMemo(()=> (taxableTotal * (pstRate/100)), [taxableTotal, pstRate]);
   const subtotal = useMemo(()=> total + pst, [total, pst]);
   const markupValue = useMemo(()=> subtotal * (markup/100), [subtotal, markup]);
-  const finalTotal = useMemo(()=> subtotal + markupValue, [subtotal, markupValue]);
-  const grandTotal = useMemo(()=> finalTotal * (1 + (gstRate/100)), [finalTotal, gstRate]);
+  const profitValue = useMemo(()=> subtotal * (profitRate/100), [subtotal, profitRate]);
+  const finalTotal = useMemo(()=> subtotal + markupValue + profitValue, [subtotal, markupValue, profitValue]);
+  const gst = useMemo(()=> finalTotal * (gstRate/100), [finalTotal, gstRate]);
+  const grandTotal = useMemo(()=> finalTotal + gst, [finalTotal, gst]);
+
+  // Auto-save function (silent save without toast)
+  const autoSave = useCallback(async () => {
+    // Don't auto-save if already saving or if no projectId
+    if (isAutoSavingRef.current || !projectId) return;
+    
+    // Don't auto-save if less than 3 seconds since last save
+    const now = Date.now();
+    if (now - lastAutoSaveRef.current < 3000) return;
+
+    try {
+      isAutoSavingRef.current = true;
+      const payload = { 
+        project_id: projectId, 
+        markup, 
+        pst_rate: pstRate,
+        gst_rate: gstRate,
+        profit_rate: profitRate,
+        section_order: sectionOrder,
+        items: items.map(it=> ({ 
+          material_id: it.material_id, 
+          quantity: it.quantity, 
+          unit_price: it.unit_price, 
+          section: it.section, 
+          description: it.description, 
+          item_type: it.item_type,
+          name: it.name,
+          unit: it.unit,
+          markup: it.markup,
+          taxable: it.taxable,
+          qty_required: it.qty_required,
+          unit_required: it.unit_required,
+          supplier_name: it.supplier_name,
+          unit_type: it.unit_type,
+          units_per_package: it.units_per_package,
+          coverage_sqs: it.coverage_sqs,
+          coverage_ft2: it.coverage_ft2,
+          coverage_m2: it.coverage_m2,
+          labour_journey: it.labour_journey,
+          labour_men: it.labour_men,
+          labour_journey_type: it.labour_journey_type
+        })) 
+      };
+      
+      if (currentEstimateId) {
+        // Update existing estimate
+        await api('PUT', `/estimate/estimates/${currentEstimateId}`, payload);
+      } else {
+        // Create new estimate
+        const result = await api<any>('POST', '/estimate/estimates', payload);
+        setCurrentEstimateId(result.id);
+      }
+      lastAutoSaveRef.current = Date.now();
+    } catch (e) {
+      // Silent fail for auto-save
+    } finally {
+      isAutoSavingRef.current = false;
+    }
+  }, [projectId, markup, pstRate, gstRate, profitRate, sectionOrder, items, currentEstimateId]);
+
+  // Auto-save on changes (debounced)
+  useEffect(() => {
+    // Only auto-save if estimate is loaded or if we have items
+    if (!projectId || (items.length === 0 && !currentEstimateId)) return;
+
+    // Clear existing timeout
+    if (autoSaveTimeoutRef.current) {
+      clearTimeout(autoSaveTimeoutRef.current);
+    }
+
+    // Set new timeout for auto-save (2 seconds after last change)
+    autoSaveTimeoutRef.current = setTimeout(() => {
+      autoSave();
+    }, 2000);
+
+    return () => {
+      if (autoSaveTimeoutRef.current) {
+        clearTimeout(autoSaveTimeoutRef.current);
+      }
+    };
+  }, [items, markup, pstRate, gstRate, profitRate, sectionOrder, projectId, currentEstimateId, autoSave]);
+
+  // Periodic auto-save (every 30 seconds)
+  useEffect(() => {
+    if (!projectId || (items.length === 0 && !currentEstimateId)) return;
+
+    const interval = setInterval(() => {
+      autoSave();
+    }, 30000); // 30 seconds
+
+    return () => clearInterval(interval);
+  }, [projectId, items.length, currentEstimateId, autoSave]);
 
   // Calculate quantity based on qty_required and unit_type
   const calculateQuantity = (item: Item): number => {
@@ -98,6 +314,7 @@ export default function EstimateBuilder({ projectId }:{ projectId:string }){
         <AddProductModal onAdd={(it)=> setItems(prev=> [...prev, it])} />
         <AddLabourModal onAdd={(it)=> setItems(prev=> [...prev, it])} />
         <AddSubContractorModal onAdd={(it)=> setItems(prev=> [...prev, it])} />
+        <AddMiscellaneousModal onAdd={(it)=> setItems(prev=> [...prev, it])} />
         <AddShopModal onAdd={(it)=> setItems(prev=> [...prev, it])} />
         <div className="ml-auto flex items-center gap-3 text-sm">
           <label>Markup (%)</label><input type="number" className="border rounded px-2 py-1 w-20" value={markup} min={0} step={1} onChange={e=>setMarkup(Number(e.target.value||0))} />
@@ -112,22 +329,37 @@ export default function EstimateBuilder({ projectId }:{ projectId:string }){
         onClose={()=>setSummaryOpen(false)}
         items={items}
         pstRate={pstRate}
+        gstRate={gstRate}
+        markup={markup}
+        profitRate={profitRate}
+        setProfitRate={setProfitRate}
       />
 
       {/* Sections grouped display */}
       <div className="space-y-4">
         {Object.keys(groupedItems).length > 0 ? (
           sectionOrder.filter(section => groupedItems[section] && groupedItems[section].length > 0).map(section => {
-            const isLabourSection = ['Labour', 'Sub-Contractors', 'Shop'].includes(section);
+            const isLabourSection = ['Labour', 'Sub-Contractors', 'Shop', 'Miscellaneous'].includes(section);
             return (
             <div key={section}
                  className={`rounded-xl border overflow-hidden bg-white ${dragOverSection === section ? 'ring-2 ring-brand-red' : ''}`}
-                 draggable
-                 onDragStart={() => onSectionDragStart(section)}
                  onDragOver={(e) => onSectionDragOver(e, section)}
                  onDrop={onSectionDrop}>
               <div className="bg-gray-50 px-4 py-2 border-b flex items-center gap-2">
-                <span className="inline-flex items-center justify-center w-5 h-5 text-gray-400 hover:text-gray-600 cursor-grab active:cursor-grabbing" title="Drag to reorder section" aria-label="Drag section handle">
+                <span 
+                  className="inline-flex items-center justify-center w-5 h-5 text-gray-400 hover:text-gray-600 cursor-grab active:cursor-grabbing" 
+                  title="Drag to reorder section" 
+                  aria-label="Drag section handle"
+                  draggable
+                  onDragStart={() => {
+                    onSectionDragStart(section);
+                  }}
+                  onDragEnd={() => {
+                    if (draggingSection === section) {
+                      setDraggingSection(null);
+                      setDragOverSection(null);
+                    }
+                  }}>
                   <svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
                     <circle cx="6" cy="6" r="1.5"></circle>
                     <circle cx="10" cy="6" r="1.5"></circle>
@@ -158,8 +390,12 @@ export default function EstimateBuilder({ projectId }:{ projectId:string }){
                     </>
                   ) : (
                     <>
-                      <th className="p-2 text-left">{section}</th>
-                      <th className="p-2 text-left">Composition</th>
+                      <th className="p-2 text-left">
+                        {['Sub-Contractors', 'Shop', 'Miscellaneous'].includes(section) ? 'Product / Item' : section}
+                      </th>
+                      <th className="p-2 text-left">
+                        {['Sub-Contractors', 'Shop', 'Miscellaneous'].includes(section) ? 'Quantity Required' : 'Composition'}
+                      </th>
                       <th className="p-2 text-left">Unit Price</th>
                       <th className="p-2 text-left">Total</th>
                       <th className="p-2 text-left">Mkp%</th>
@@ -197,12 +433,28 @@ export default function EstimateBuilder({ projectId }:{ projectId:string }){
                             <td className="p-2">{it.name}</td>
                             <td className="p-2">
                               <input type="number" className="w-20 border rounded px-2 py-1" 
-                                value={it.qty_required||1} min={0} step={1}
+                                value={it.qty_required ?? ''} min={0} step={1}
                                 onChange={e=>{
-                                  const newValue = Number(e.target.value);
-                                  const newItem = {...it, qty_required: newValue};
-                                  const calculatedQty = calculateQuantity(newItem);
-                                  setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...newItem, quantity: calculatedQty} : item));
+                                  const inputValue = e.target.value;
+                                  if (inputValue === '') {
+                                    // Allow empty field during editing
+                                    setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, qty_required: undefined} : item));
+                                    return;
+                                  }
+                                  const newValue = Number(inputValue);
+                                  if (!isNaN(newValue)) {
+                                    const newItem = {...it, qty_required: newValue};
+                                    const calculatedQty = calculateQuantity(newItem);
+                                    setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...newItem, quantity: calculatedQty} : item));
+                                  }
+                                }}
+                                onBlur={e=>{
+                                  // If empty on blur, set to default value
+                                  if (e.target.value === '' || e.target.value === null) {
+                                    const newItem = {...it, qty_required: 1};
+                                    const calculatedQty = calculateQuantity(newItem);
+                                    setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...newItem, quantity: calculatedQty} : item));
+                                  }
                                 }} />
                             </td>
                             <td className="p-2">
@@ -229,15 +481,45 @@ export default function EstimateBuilder({ projectId }:{ projectId:string }){
                             <td className="p-2">${it.unit_price.toFixed(2)}</td>
                             <td className="p-2">
                               <input type="number" className="w-20 border rounded px-2 py-1" 
-                                value={it.quantity} min={0} step={1}
-                                onChange={e=>setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, quantity: Number(e.target.value)} : item))} />
+                                value={it.quantity ?? ''} min={0} step={1}
+                                onChange={e=>{
+                                  const inputValue = e.target.value;
+                                  if (inputValue === '') {
+                                    setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, quantity: 0} : item));
+                                    return;
+                                  }
+                                  const newValue = Number(inputValue);
+                                  if (!isNaN(newValue)) {
+                                    setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, quantity: newValue} : item));
+                                  }
+                                }}
+                                onBlur={e=>{
+                                  if (e.target.value === '' || e.target.value === null) {
+                                    setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, quantity: 0} : item));
+                                  }
+                                }} />
                             </td>
                             <td className="p-2">{it.unit||''}</td>
                             <td className="p-2">${totalValue.toFixed(2)}</td>
                             <td className="p-2">
                               <input type="number" className="w-16 border rounded px-2 py-1" 
-                                value={itemMarkup} min={0} step={1}
-                                onChange={e=>setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, markup: Number(e.target.value)} : item))} />
+                                value={itemMarkup ?? ''} min={0} step={1}
+                                onChange={e=>{
+                                  const inputValue = e.target.value;
+                                  if (inputValue === '') {
+                                    setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, markup: 0} : item));
+                                    return;
+                                  }
+                                  const newValue = Number(inputValue);
+                                  if (!isNaN(newValue)) {
+                                    setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, markup: newValue} : item));
+                                  }
+                                }}
+                                onBlur={e=>{
+                                  if (e.target.value === '' || e.target.value === null) {
+                                    setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, markup: markup} : item));
+                                  }
+                                }} />
                             </td>
                             <td className="p-2">${totalWithMarkup.toFixed(2)}</td>
                             <td className="p-2 text-center">
@@ -254,27 +536,89 @@ export default function EstimateBuilder({ projectId }:{ projectId:string }){
                               {it.item_type === 'labour' && it.labour_journey_type ? (
                                 it.labour_journey_type === 'contract' ? (
                                   <div className="flex items-center gap-2">
-                                    <input type="number" className="w-16 border rounded px-2 py-1" value={it.labour_journey} min={0} step={0.5} onChange={e=>setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, labour_journey: Number(e.target.value)} : item))} />
-                                    <span>{it.unit}</span>
+                                    <input type="number" className="w-16 border rounded px-2 py-1" value={it.labour_journey ?? ''} min={0} step={0.5} 
+                                      onChange={e=>{
+                                        const inputValue = e.target.value;
+                                        if (inputValue === '') {
+                                          setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, labour_journey: 0} : item));
+                                          return;
+                                        }
+                                        const newValue = Number(inputValue);
+                                        if (!isNaN(newValue)) {
+                                          setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, labour_journey: newValue} : item));
+                                        }
+                                      }}
+                                      onBlur={e=>{
+                                        if (e.target.value === '' || e.target.value === null) {
+                                          setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, labour_journey: 0} : item));
+                                        }
+                                      }} />
+                                    <span>{it.unit || ''}</span>
                                   </div>
                                 ) : (
                                   <div className="flex items-center gap-2">
-                                    <input type="number" className="w-16 border rounded px-2 py-1" value={it.labour_journey} min={0} step={0.5} onChange={e=>setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, labour_journey: Number(e.target.value)} : item))} />
-                                    <span>{it.unit?.endsWith('s') ? it.unit.slice(0, -1) : it.unit}</span>
+                                    <input type="number" className="w-16 border rounded px-2 py-1" value={it.labour_journey ?? ''} min={0} step={0.5} 
+                                      onChange={e=>{
+                                        const inputValue = e.target.value;
+                                        if (inputValue === '') {
+                                          setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, labour_journey: 0} : item));
+                                          return;
+                                        }
+                                        const newValue = Number(inputValue);
+                                        if (!isNaN(newValue)) {
+                                          setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, labour_journey: newValue} : item));
+                                        }
+                                      }}
+                                      onBlur={e=>{
+                                        if (e.target.value === '' || e.target.value === null) {
+                                          setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, labour_journey: 0} : item));
+                                        }
+                                      }} />
+                                    <span>{it.labour_journey_type}</span>
                                     <span>×</span>
-                                    <input type="number" className="w-14 border rounded px-2 py-1" value={it.labour_men} min={0} step={1} onChange={e=>{
-                                      const newMen = Number(e.target.value);
-                                      const baseName = it.description?.includes(' - ') ? it.description.split(' - ')[0] : it.description || it.name;
-                                      const newDesc = newMen > 0 ? `${baseName} - ${newMen} men` : baseName;
-                                      setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, labour_men: newMen, description: newDesc} : item));
-                                    }} />
+                                    <input type="number" className="w-14 border rounded px-2 py-1" value={it.labour_men ?? ''} min={0} step={1} 
+                                      onChange={e=>{
+                                        const inputValue = e.target.value;
+                                        if (inputValue === '') {
+                                          setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, labour_men: 0} : item));
+                                          return;
+                                        }
+                                        const newMen = Number(inputValue);
+                                        if (!isNaN(newMen)) {
+                                          const baseName = it.description?.includes(' - ') ? it.description.split(' - ')[0] : it.description || it.name;
+                                          const newDesc = newMen > 0 ? `${baseName} - ${newMen} men` : baseName;
+                                          setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, labour_men: newMen, description: newDesc} : item));
+                                        }
+                                      }}
+                                      onBlur={e=>{
+                                        if (e.target.value === '' || e.target.value === null) {
+                                          const baseName = it.description?.includes(' - ') ? it.description.split(' - ')[0] : it.description || it.name;
+                                          setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, labour_men: 1, description: `${baseName} - 1 men`} : item));
+                                        }
+                                      }} />
                                     <span>men</span>
                                   </div>
                                 )
                               ) : (
                                 <div className="flex items-center gap-2">
-                                  <input type="number" className="w-20 border rounded px-2 py-1" value={it.quantity} min={0} step={1} onChange={e=>setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, quantity: Number(e.target.value)} : item))} />
-                                  <span>{it.unit}</span>
+                                  <input type="number" className="w-20 border rounded px-2 py-1" value={it.quantity ?? ''} min={0} step={0.01} 
+                                    onChange={e=>{
+                                      const inputValue = e.target.value;
+                                      if (inputValue === '') {
+                                        setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, quantity: 0} : item));
+                                        return;
+                                      }
+                                      const newValue = Number(inputValue);
+                                      if (!isNaN(newValue)) {
+                                        setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, quantity: newValue} : item));
+                                      }
+                                    }}
+                                    onBlur={e=>{
+                                      if (e.target.value === '' || e.target.value === null) {
+                                        setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, quantity: 0} : item));
+                                      }
+                                    }} />
+                                  <span>{it.unit || ''}</span>
                                 </div>
                               )}
                             </td>
@@ -282,16 +626,88 @@ export default function EstimateBuilder({ projectId }:{ projectId:string }){
                               <div className="flex items-center gap-1">
                                 <span>$</span>
                                 <input type="number" className="w-20 border rounded px-2 py-1" 
-                                  value={it.unit_price} min={0} step={0.01}
-                                  onChange={e=>setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, unit_price: Number(e.target.value)} : item))} />
-                                <span>{it.unit ? `per ${it.unit?.endsWith('s') ? it.unit.slice(0, -1) : it.unit}` : ''}</span>
+                                  value={it.unit_price ?? ''} min={0} step={0.01}
+                                  onChange={e=>{
+                                    const inputValue = e.target.value;
+                                    if (inputValue === '') {
+                                      setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, unit_price: 0} : item));
+                                      return;
+                                    }
+                                    const newValue = Number(inputValue);
+                                    if (!isNaN(newValue)) {
+                                      setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, unit_price: newValue} : item));
+                                    }
+                                  }}
+                                  onBlur={e=>{
+                                    if (e.target.value === '' || e.target.value === null) {
+                                      setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, unit_price: 0} : item));
+                                    }
+                                  }} />
+                                <span>
+                                  {it.item_type === 'labour' && it.labour_journey_type ? (
+                                    it.labour_journey_type === 'contract' 
+                                      ? (() => {
+                                          // For contract, check if unit is "each" or "lump sum" (no "per")
+                                          const unitLower = (it.unit || '').toLowerCase().trim();
+                                          if (unitLower === 'each' || unitLower === 'lump sum') {
+                                            return it.unit || '';
+                                          }
+                                          // For "sqs", keep as is (show "per sqs")
+                                          if (unitLower === 'sqs') {
+                                            return it.unit ? `per ${it.unit}` : '';
+                                          }
+                                          // Convert to singular for display (except sqs)
+                                          const unitSingular = it.unit?.endsWith('s') ? it.unit.slice(0, -1) : it.unit;
+                                          return unitSingular ? `per ${unitSingular}` : '';
+                                        })()
+                                      : (() => {
+                                          // For days/hours, convert to singular if needed
+                                          const journeyType = it.labour_journey_type;
+                                          const singular = journeyType?.endsWith('s') ? journeyType.slice(0, -1) : journeyType;
+                                          return `per ${singular}`;
+                                        })()
+                                  ) : (
+                                    (() => {
+                                      // For subcontractor, shop, and miscellaneous
+                                      if (['subcontractor', 'shop', 'miscellaneous'].includes(it.item_type || '')) {
+                                        const unitLower = (it.unit || '').toLowerCase().trim();
+                                        if (unitLower === 'each' || unitLower === 'lump sum') {
+                                          return it.unit || '';
+                                        }
+                                        // Keep "sqs" as is, convert others to singular for display
+                                        if (unitLower === 'sqs') {
+                                          return it.unit ? `per ${it.unit}` : '';
+                                        }
+                                        const unitSingular = it.unit?.endsWith('s') ? it.unit.slice(0, -1) : it.unit;
+                                        return unitSingular ? `per ${unitSingular}` : '';
+                                      }
+                                      // For other cases (products), show "per unit" as is
+                                      return it.unit ? `per ${it.unit}` : '';
+                                    })()
+                                  )}
+                                </span>
                               </div>
                             </td>
                             <td className="p-2">${totalValue.toFixed(2)}</td>
                             <td className="p-2">
                               <input type="number" className="w-16 border rounded px-2 py-1" 
-                                value={itemMarkup} min={0} step={1}
-                                onChange={e=>setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, markup: Number(e.target.value)} : item))} />
+                                value={itemMarkup ?? ''} min={0} step={1}
+                                onChange={e=>{
+                                  const inputValue = e.target.value;
+                                  if (inputValue === '') {
+                                    setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, markup: 0} : item));
+                                    return;
+                                  }
+                                  const newValue = Number(inputValue);
+                                  if (!isNaN(newValue)) {
+                                    setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, markup: newValue} : item));
+                                  }
+                                }}
+                                onBlur={e=>{
+                                  if (e.target.value === '' || e.target.value === null) {
+                                    setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, markup: markup} : item));
+                                  }
+                                }} />
                             </td>
                             <td className="p-2">${totalWithMarkup.toFixed(2)}</td>
                             <td className="p-2 text-center">
@@ -347,19 +763,155 @@ export default function EstimateBuilder({ projectId }:{ projectId:string }){
             <div className="flex items-center justify-between"><span>Total Direct Project Costs</span><span>${total.toFixed(2)}</span></div>
             <div className="flex items-center justify-between"><span>PST</span><span>${pst.toFixed(2)}</span></div>
             <div className="flex items-center justify-between"><span>Sub-total</span><span>${subtotal.toFixed(2)}</span></div>
-            <div className="flex items-center justify-between"><span>Overhead & Profit (mark-up)</span><span>${markupValue.toFixed(2)}</span></div>
+            <div className="flex items-center justify-between"><span>Sections Mark-up</span><span>${markupValue.toFixed(2)}</span></div>
+            <div className="flex items-center justify-between">
+              <span>Profit (%)</span>
+              <input 
+                type="number" 
+                className="border rounded px-2 py-1 w-20 text-right" 
+                value={profitRate} 
+                min={0} 
+                step={0.1}
+                onChange={e=>setProfitRate(Number(e.target.value||0))} 
+              />
+            </div>
+            <div className="flex items-center justify-between"><span>Total Profit</span><span>${profitValue.toFixed(2)}</span></div>
             <div className="flex items-center justify-between font-medium"><span>Total Estimate</span><span>${finalTotal.toFixed(2)}</span></div>
-            <div className="flex items-center justify-between"><span>GST</span><span>${(finalTotal*(gstRate/100)).toFixed(2)}</span></div>
+            <div className="flex items-center justify-between"><span>GST</span><span>${gst.toFixed(2)}</span></div>
             <div className="flex items-center justify-between font-semibold text-lg"><span>Final Total (with GST)</span><span>${grandTotal.toFixed(2)}</span></div>
           </div>
-          <div className="mt-3 text-right">
-            <button onClick={async()=>{
-              try{
-                const payload = { project_id: projectId, markup, items: items.map(it=> ({ material_id: it.material_id, quantity: it.quantity, unit_price: it.unit_price, section: it.section, description: it.description, item_type: it.item_type })) };
-                await api('POST','/estimate/estimates', payload);
-                toast.success('Estimate saved');
-              }catch(_e){ toast.error('Failed to save'); }
-            }} className="px-3 py-2 rounded bg-brand-red text-white">Save Estimate</button>
+          <div className="mt-3 text-right flex items-center gap-2 justify-end">
+            <button 
+              onClick={async()=>{
+                try{
+                  setIsLoading(true);
+                  const payload = { 
+                    project_id: projectId, 
+                    markup, 
+                    pst_rate: pstRate,
+                    gst_rate: gstRate,
+                    profit_rate: profitRate,
+                    section_order: sectionOrder,
+                    items: items.map(it=> ({ 
+                      material_id: it.material_id, 
+                      quantity: it.quantity, 
+                      unit_price: it.unit_price, 
+                      section: it.section, 
+                      description: it.description, 
+                      item_type: it.item_type,
+                      name: it.name,
+                      unit: it.unit,
+                      markup: it.markup,
+                      taxable: it.taxable,
+                      qty_required: it.qty_required,
+                      unit_required: it.unit_required,
+                      supplier_name: it.supplier_name,
+                      unit_type: it.unit_type,
+                      units_per_package: it.units_per_package,
+                      coverage_sqs: it.coverage_sqs,
+                      coverage_ft2: it.coverage_ft2,
+                      coverage_m2: it.coverage_m2,
+                      labour_journey: it.labour_journey,
+                      labour_men: it.labour_men,
+                      labour_journey_type: it.labour_journey_type
+                    })) 
+                  };
+                  
+                  if (currentEstimateId) {
+                    // Update existing estimate
+                    await api('PUT', `/estimate/estimates/${currentEstimateId}`, payload);
+                    toast.success('Estimate updated');
+                  } else {
+                    // Create new estimate
+                    const result = await api<any>('POST', '/estimate/estimates', payload);
+                    setCurrentEstimateId(result.id);
+                    toast.success('Estimate saved');
+                  }
+                }catch(_e){ 
+                  toast.error('Failed to save'); 
+                }finally{
+                  setIsLoading(false);
+                }
+              }} 
+              disabled={isLoading}
+              className="px-3 py-2 rounded bg-brand-red text-white disabled:opacity-60">
+              {isLoading ? 'Saving...' : (currentEstimateId ? 'Update Estimate' : 'Save Estimate')}
+            </button>
+            <button
+              onClick={async()=>{
+                try{
+                  setIsLoading(true);
+                  // First ensure estimate is saved
+                  let estimateIdToUse = currentEstimateId;
+                  if (!estimateIdToUse) {
+                    const payload = { 
+                      project_id: projectId, 
+                      markup, 
+                      pst_rate: pstRate,
+                      gst_rate: gstRate,
+                      profit_rate: profitRate,
+                      section_order: sectionOrder,
+                      items: items.map(it=> ({ 
+                        material_id: it.material_id, 
+                        quantity: it.quantity, 
+                        unit_price: it.unit_price, 
+                        section: it.section, 
+                        description: it.description, 
+                        item_type: it.item_type,
+                        name: it.name,
+                        unit: it.unit,
+                        markup: it.markup,
+                        taxable: it.taxable,
+                        qty_required: it.qty_required,
+                        unit_required: it.unit_required,
+                        supplier_name: it.supplier_name,
+                        unit_type: it.unit_type,
+                        units_per_package: it.units_per_package,
+                        coverage_sqs: it.coverage_sqs,
+                        coverage_ft2: it.coverage_ft2,
+                        coverage_m2: it.coverage_m2,
+                        labour_journey: it.labour_journey,
+                        labour_men: it.labour_men,
+                        labour_journey_type: it.labour_journey_type
+                      })) 
+                    };
+                    const result = await api<any>('POST', '/estimate/estimates', payload);
+                    estimateIdToUse = result.id;
+                    setCurrentEstimateId(estimateIdToUse);
+                  }
+                  
+                  // Generate PDF
+                  const token = localStorage.getItem('user_token');
+                  const resp = await fetch(`/estimate/estimates/${estimateIdToUse}/generate`, {
+                    method: 'GET',
+                    headers: token ? { Authorization: `Bearer ${token}` } : {}
+                  });
+                  
+                  if (!resp.ok) {
+                    throw new Error('Failed to generate PDF');
+                  }
+                  
+                  const blob = await resp.blob();
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = url;
+                  a.download = `estimate-${estimateIdToUse}.pdf`;
+                  document.body.appendChild(a);
+                  a.click();
+                  document.body.removeChild(a);
+                  URL.revokeObjectURL(url);
+                  
+                  toast.success('PDF generated and downloaded');
+                }catch(_e){
+                  toast.error('Failed to generate PDF');
+                }finally{
+                  setIsLoading(false);
+                }
+              }}
+              disabled={isLoading || items.length === 0}
+              className="px-3 py-2 rounded bg-gray-700 text-white disabled:opacity-60">
+              {isLoading ? 'Generating...' : 'Generate PDF'}
+            </button>
           </div>
         </div>
       </div>
@@ -367,7 +919,7 @@ export default function EstimateBuilder({ projectId }:{ projectId:string }){
   );
 }
 
-function SummaryModal({ open, onClose, items, pstRate }:{ open:boolean, onClose:()=>void, items:Item[], pstRate:number }){
+function SummaryModal({ open, onClose, items, pstRate, gstRate, markup, profitRate, setProfitRate }: { open:boolean, onClose:()=>void, items:Item[], pstRate:number, gstRate:number, markup:number, profitRate:number, setProfitRate:(value:number)=>void }){
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
@@ -375,23 +927,25 @@ function SummaryModal({ open, onClose, items, pstRate }:{ open:boolean, onClose:
     return () => window.removeEventListener('keydown', onKey);
   }, [open, onClose]);
 
+  // Calculate item total based on item type
+  const calculateItemTotal = (it: Item): number => {
+    if (it.item_type === 'labour' && it.labour_journey_type) {
+      if (it.labour_journey_type === 'contract') {
+        return (it.labour_journey || 0) * it.unit_price;
+      } else {
+        return (it.labour_journey || 0) * (it.labour_men || 0) * it.unit_price;
+      }
+    }
+    return it.quantity * it.unit_price;
+  };
+
   // Calculate costs by section
   const costsBySection = useMemo(() => {
     const sectionTotals: Record<string, number> = {};
     items.forEach(it => {
       const section = it.section || 'Miscellaneous';
       if (!sectionTotals[section]) sectionTotals[section] = 0;
-      let itemTotal = 0;
-      if (it.item_type === 'labour' && it.labour_journey_type) {
-        if (it.labour_journey_type === 'contract') {
-          itemTotal = it.labour_journey! * it.unit_price;
-        } else {
-          itemTotal = it.labour_journey! * it.labour_men! * it.unit_price;
-        }
-      } else {
-        itemTotal = it.quantity * it.unit_price;
-      }
-      sectionTotals[section] += itemTotal;
+      sectionTotals[section] += calculateItemTotal(it);
     });
     return sectionTotals;
   }, [items]);
@@ -400,18 +954,11 @@ function SummaryModal({ open, onClose, items, pstRate }:{ open:boolean, onClose:
   
   // Calculate labor, materials, sub-contractors, shop totals
   const laborTotal = useMemo(() => {
-    return items.filter(it => it.item_type === 'labour').reduce((acc, it) => {
-      if (it.labour_journey_type === 'contract') {
-        return acc + (it.labour_journey! * it.unit_price);
-      } else if (it.labour_journey_type) {
-        return acc + (it.labour_journey! * it.labour_men! * it.unit_price);
-      }
-      return acc + (it.quantity * it.unit_price);
-    }, 0);
+    return items.filter(it => it.item_type === 'labour').reduce((acc, it) => acc + calculateItemTotal(it), 0);
   }, [items]);
 
   const materialTotal = useMemo(() => {
-    return items.filter(it => !['labour', 'sub-contractor', 'shop'].includes(it.item_type || '')).reduce((acc, it) => acc + (it.quantity * it.unit_price), 0);
+    return items.filter(it => !['labour', 'sub-contractor', 'shop', 'miscellaneous'].includes(it.item_type || '')).reduce((acc, it) => acc + calculateItemTotal(it), 0);
   }, [items]);
 
   const subcontractorTotal = useMemo(() => {
@@ -422,12 +969,52 @@ function SummaryModal({ open, onClose, items, pstRate }:{ open:boolean, onClose:
     return costsBySection['Shop'] || 0;
   }, [costsBySection]);
 
-  const directCosts = useMemo(() => laborTotal + materialTotal + subcontractorTotal + shopTotal, [laborTotal, materialTotal, subcontractorTotal, shopTotal]);
-  const pst = useMemo(() => directCosts * (pstRate/100), [directCosts, pstRate]);
-  const subtotal = useMemo(() => directCosts + pst, [directCosts, pst]);
-  const markup = useMemo(() => subtotal * 0.35, [subtotal]); // Assuming 35% markup
-  const totalEstimate = useMemo(() => subtotal + markup, [subtotal, markup]);
-  const gst = useMemo(() => totalEstimate * 0.05, [totalEstimate]); // Assuming 5% GST
+  const miscellaneousTotal = useMemo(() => {
+    return costsBySection['Miscellaneous'] || 0;
+  }, [costsBySection]);
+
+  // Total of all items (same calculation as main page)
+  const total = useMemo(() => {
+    return items.reduce((acc, it) => {
+      let itemTotal = 0;
+      if (it.item_type === 'labour' && it.labour_journey_type) {
+        if (it.labour_journey_type === 'contract') {
+          itemTotal = (it.labour_journey || 0) * it.unit_price;
+        } else {
+          itemTotal = (it.labour_journey || 0) * (it.labour_men || 0) * it.unit_price;
+        }
+      } else {
+        itemTotal = it.quantity * it.unit_price;
+      }
+      return acc + itemTotal;
+    }, 0);
+  }, [items]);
+  
+  // Total of taxable items only (for PST calculation)
+  const taxableTotal = useMemo(() => {
+    return items
+      .filter(it => it.taxable !== false) // Only items marked as taxable
+      .reduce((acc, it) => {
+        let itemTotal = 0;
+        if (it.item_type === 'labour' && it.labour_journey_type) {
+          if (it.labour_journey_type === 'contract') {
+            itemTotal = (it.labour_journey || 0) * it.unit_price;
+          } else {
+            itemTotal = (it.labour_journey || 0) * (it.labour_men || 0) * it.unit_price;
+          }
+        } else {
+          itemTotal = it.quantity * it.unit_price;
+        }
+        return acc + itemTotal;
+      }, 0);
+  }, [items]);
+  
+  const pst = useMemo(() => taxableTotal * (pstRate/100), [taxableTotal, pstRate]);
+  const subtotal = useMemo(() => total + pst, [total, pst]);
+  const markupValue = useMemo(() => subtotal * (markup/100), [subtotal, markup]);
+  const profitValue = useMemo(() => subtotal * (profitRate/100), [subtotal, profitRate]);
+  const totalEstimate = useMemo(() => subtotal + markupValue + profitValue, [subtotal, markupValue, profitValue]);
+  const gst = useMemo(() => totalEstimate * (gstRate/100), [totalEstimate, gstRate]);
   const finalTotal = useMemo(() => totalEstimate + gst, [totalEstimate, gst]);
 
   if (!open) return null;
@@ -534,16 +1121,29 @@ function SummaryModal({ open, onClose, items, pstRate }:{ open:boolean, onClose:
           <div className="rounded-xl border bg-white overflow-hidden">
             <div className="bg-gray-50 px-4 py-2 border-b font-semibold">Final Summary</div>
             <div className="p-4 space-y-2 text-sm">
-              <div className="flex items-center justify-between"><span>Total Direct Costs:</span><span className="font-medium">${directCosts.toFixed(2)}</span></div>
+              <div className="flex items-center justify-between"><span>Total Direct Costs:</span><span className="font-medium">${total.toFixed(2)}</span></div>
               <div className="flex items-center justify-between"><span>Labor Costs:</span><span className="font-medium">${laborTotal.toFixed(2)}</span></div>
               <div className="flex items-center justify-between"><span>Material Costs:</span><span className="font-medium">${materialTotal.toFixed(2)}</span></div>
               <div className="flex items-center justify-between"><span>Sub-Contractors:</span><span className="font-medium">${subcontractorTotal.toFixed(2)}</span></div>
               <div className="flex items-center justify-between"><span>Shop:</span><span className="font-medium">${shopTotal.toFixed(2)}</span></div>
+              <div className="flex items-center justify-between"><span>Miscellaneous:</span><span className="font-medium">${miscellaneousTotal.toFixed(2)}</span></div>
               <div className="flex items-center justify-between border-t pt-2"><span>Total PST:</span><span className="font-medium">${pst.toFixed(2)}</span></div>
-              <div className="flex items-center justify-between"><span>Markup:</span><span className="font-medium">${markup.toFixed(2)}</span></div>
+              <div className="flex items-center justify-between"><span>Sections Mark-up:</span><span className="font-medium">${markupValue.toFixed(2)}</span></div>
+              <div className="flex items-center justify-between">
+                <span>Profit (%):</span>
+                <input 
+                  type="number" 
+                  className="border rounded px-2 py-1 w-20 text-right" 
+                  value={profitRate} 
+                  min={0} 
+                  step={0.1}
+                  onChange={e=>setProfitRate(Number(e.target.value||0))} 
+                />
+              </div>
+              <div className="flex items-center justify-between"><span>Total Profit:</span><span className="font-medium">${profitValue.toFixed(2)}</span></div>
               <div className="flex items-center justify-between"><span>Total Estimate:</span><span className="font-medium">${totalEstimate.toFixed(2)}</span></div>
               <div className="flex items-center justify-between"><span>GST:</span><span className="font-medium">${gst.toFixed(2)}</span></div>
-              <div className="flex items-center justify-between font-semibold text-lg border-t pt-2"><span>Final Total:</span><span className="font-semibold">${finalTotal.toFixed(2)}</span></div>
+              <div className="flex items-center justify-between font-semibold text-lg border-t pt-2"><span>Grand Total:</span><span className="font-semibold">${finalTotal.toFixed(2)}</span></div>
             </div>
           </div>
         </div>
@@ -1008,6 +1608,68 @@ function AddSubContractorModal({ onAdd }:{ onAdd:(it: Item)=>void }){
                   onAdd({ name: desc, unit, quantity: qty, unit_price: totalValue, section: 'Sub-Contractors', description: desc, item_type: 'subcontractor', taxable: true });
                   setOpen(false); setType(''); setDebrisDesc(''); setDebrisSqs('0'); setDebrisSqsPerLoad('0'); setDebrisLoads('0'); setDebrisPricePerLoad('0'); setWashroomPeriod('days'); setWashroomPeriodCount('1'); setWashroomPrice('0'); setOtherDesc(''); setOtherNumber('1'); setOtherUnit(''); setOtherPrice('0');
                 }} className="px-3 py-2 rounded bg-brand-red text-white">Add Sub-Contractors</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+function AddMiscellaneousModal({ onAdd }:{ onAdd:(it: Item)=>void }){
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState('');
+  const [quantity, setQuantity] = useState<string>('1');
+  const [unit, setUnit] = useState('');
+  const [price, setPrice] = useState<string>('0');
+
+  const total = useMemo(()=> Number(quantity||0) * Number(price||0), [quantity, price]);
+  const calcText = `${quantity} ${unit} × $${Number(price||0).toFixed(2)} = $${total.toFixed(2)}`;
+
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open]);
+
+  return (
+    <>
+      <button onClick={()=>setOpen(true)} className="px-3 py-2 rounded bg-gray-100">+ Add Miscellaneous</button>
+      {open && (
+        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center">
+          <div className="w-[600px] max-w-[95vw] bg-white rounded-xl overflow-hidden">
+            <div className="px-4 py-3 border-b flex items-center justify-between">
+              <div className="font-semibold">Add Miscellaneous</div>
+              <button onClick={()=>setOpen(false)} className="text-gray-500 hover:text-gray-700 text-2xl font-bold w-8 h-8 flex items-center justify-center rounded hover:bg-gray-100" title="Close">×</button>
+            </div>
+            <div className="p-4 space-y-3">
+              <div>
+                <label className="text-xs text-gray-600">Name/Description:</label>
+                <input type="text" className="w-full border rounded px-3 py-2" placeholder="Enter miscellaneous name or description..." value={name} onChange={e=>setName(e.target.value)} />
+              </div>
+              <div>
+                <label className="text-xs text-gray-600">Quantity:</label>
+                <div className="flex gap-2 items-center">
+                  <input type="number" className="w-28 border rounded px-3 py-2" value={quantity} min={0} step={0.01} onChange={e=>setQuantity(e.target.value)} />
+                  <input type="text" className="flex-1 border rounded px-3 py-2" placeholder="Unit (e.g., each, sqs)" value={unit} onChange={e=>setUnit(e.target.value)} />
+                </div>
+              </div>
+              <div>
+                <label className="text-xs text-gray-600">Price per Unit ($):</label>
+                <input type="number" className="w-full border rounded px-3 py-2" value={price} min={0} step={0.01} onChange={e=>setPrice(e.target.value)} />
+              </div>
+              <div className="bg-gray-100 p-3 rounded">
+                <strong>Total Preview:</strong>
+                <div className="mt-1 text-sm text-gray-600">{calcText}</div>
+              </div>
+              <div className="text-right">
+                <button onClick={()=>{
+                  if(!name.trim()){ toast.error('Please enter a miscellaneous name/description'); return; }
+                  onAdd({ name, unit, quantity: Number(quantity||0), unit_price: Number(price||0), section: 'Miscellaneous', description: name, item_type: 'miscellaneous', taxable: true });
+                  setOpen(false); setName(''); setQuantity('1'); setUnit(''); setPrice('0');
+                }} className="px-3 py-2 rounded bg-brand-red text-white">Add Miscellaneous</button>
               </div>
             </div>
           </div>
