@@ -439,11 +439,11 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
         </div>
       )}
       <div className="mb-3 flex items-center gap-2">
-        <AddProductModal onAdd={(it)=> setItems(prev=> [...prev, it])} disabled={!canEdit} />
-        <AddLabourModal onAdd={(it)=> setItems(prev=> [...prev, it])} disabled={!canEdit} />
-        <AddSubContractorModal onAdd={(it)=> setItems(prev=> [...prev, it])} disabled={!canEdit} />
-        <AddMiscellaneousModal onAdd={(it)=> setItems(prev=> [...prev, it])} disabled={!canEdit} />
-        <AddShopModal onAdd={(it)=> setItems(prev=> [...prev, it])} disabled={!canEdit} />
+        <AddProductModal onAdd={(it)=> setItems(prev=> [...prev, it])} disabled={!canEdit} defaultMarkup={markup} />
+        <AddLabourModal onAdd={(it)=> setItems(prev=> [...prev, it])} disabled={!canEdit} defaultMarkup={markup} />
+        <AddSubContractorModal onAdd={(it)=> setItems(prev=> [...prev, it])} disabled={!canEdit} defaultMarkup={markup} />
+        <AddMiscellaneousModal onAdd={(it)=> setItems(prev=> [...prev, it])} disabled={!canEdit} defaultMarkup={markup} />
+        <AddShopModal onAdd={(it)=> setItems(prev=> [...prev, it])} disabled={!canEdit} defaultMarkup={markup} />
         <div className="ml-auto flex items-center gap-3 text-sm">
           <label>Markup (%)</label><input type="number" className="border rounded px-2 py-1 w-20" value={markup} min={0} step={1} onChange={e=>setMarkup(Number(e.target.value||0))} disabled={!canEdit} />
           <label>PST (%)</label><input type="number" className="border rounded px-2 py-1 w-20" value={pstRate} min={0} step={1} onChange={e=>setPstRate(Number(e.target.value||0))} disabled={!canEdit} />
@@ -637,13 +637,13 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
                                     return;
                                   }
                                   const newValue = Number(inputValue);
-                                  if (!isNaN(newValue)) {
+                                  if (!isNaN(newValue) && newValue >= 0) {
                                     setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, markup: newValue} : item));
                                   }
                                 }}
                                 onBlur={e=>{
                                   if (e.target.value === '' || e.target.value === null) {
-                                    setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, markup: markup} : item));
+                                    setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, markup: 0} : item));
                                   }
                                 }} />
                             </td>
@@ -825,13 +825,13 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
                                     return;
                                   }
                                   const newValue = Number(inputValue);
-                                  if (!isNaN(newValue)) {
+                                  if (!isNaN(newValue) && newValue >= 0) {
                                     setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, markup: newValue} : item));
                                   }
                                 }}
                                 onBlur={e=>{
                                   if (e.target.value === '' || e.target.value === null) {
-                                    setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, markup: markup} : item));
+                                    setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, markup: 0} : item));
                                   }
                                 }} />
                             </td>
@@ -1271,7 +1271,7 @@ function SummaryModal({ open, onClose, items, pstRate, gstRate, markup, profitRa
   );
 }
 
-function AddProductModal({ onAdd, disabled }: { onAdd:(it: Item)=>void, disabled?: boolean }){
+function AddProductModal({ onAdd, disabled, defaultMarkup }: { onAdd:(it: Item)=>void, disabled?: boolean, defaultMarkup?: number }){
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState('');
   const [section, setSection] = useState('Roof System');
@@ -1364,6 +1364,7 @@ function AddProductModal({ onAdd, disabled }: { onAdd:(it: Item)=>void, disabled
                     coverage_m2: selection.coverage_m2,
                     qty_required: 1,
                     unit_required: defaultUnitRequired,
+                    markup: defaultMarkup ?? 5,
                     taxable: true
                   });
                   setOpen(false);
@@ -1378,7 +1379,7 @@ function AddProductModal({ onAdd, disabled }: { onAdd:(it: Item)=>void, disabled
   );
 }
 
-function AddLabourModal({ onAdd, disabled }: { onAdd:(it: Item)=>void, disabled?: boolean }){
+function AddLabourModal({ onAdd, disabled, defaultMarkup }: { onAdd:(it: Item)=>void, disabled?: boolean, defaultMarkup?: number }){
   const [open, setOpen] = useState(false);
   const [labour, setLabour] = useState('');
   const [men, setMen] = useState<string>('1');
@@ -1503,7 +1504,7 @@ function AddLabourModal({ onAdd, disabled }: { onAdd:(it: Item)=>void, disabled?
                     unit = showHours ? 'hours' : 'days';
                     journey = showHours ? Number(hours||0) : Number(days||0);
                   }
-                  onAdd({ name, unit, quantity: qty, unit_price: priceValue, section: 'Labour', description: desc, item_type: 'labour', taxable: true, labour_journey: journey, labour_men: Number(men||0), labour_journey_type: journeyType });
+                  onAdd({ name, unit, quantity: qty, unit_price: priceValue, section: 'Labour', description: desc, item_type: 'labour', markup: defaultMarkup ?? 5, taxable: true, labour_journey: journey, labour_men: Number(men||0), labour_journey_type: journeyType });
                   setOpen(false); setLabour(''); setMen('1'); setDays('1'); setHours('1'); setContractNumber('1'); setContractUnit(''); setPrice('0'); setJourneyType('days');
                 }} className="px-3 py-2 rounded bg-brand-red text-white">Add Labour</button>
               </div>
@@ -1515,7 +1516,7 @@ function AddLabourModal({ onAdd, disabled }: { onAdd:(it: Item)=>void, disabled?
   );
 }
 
-function AddSubContractorModal({ onAdd, disabled }: { onAdd:(it: Item)=>void, disabled?: boolean }){
+function AddSubContractorModal({ onAdd, disabled, defaultMarkup }: { onAdd:(it: Item)=>void, disabled?: boolean, defaultMarkup?: number }){
   const [open, setOpen] = useState(false);
   const [type, setType] = useState<'debris-cartage'|'portable-washroom'|'other'|''>('');
   
@@ -1724,7 +1725,7 @@ function AddSubContractorModal({ onAdd, disabled }: { onAdd:(it: Item)=>void, di
                     totalValue = Number(otherPrice||0);
                   }
                   if(!desc){ toast.error('Please fill in the required fields'); return; }
-                  onAdd({ name: desc, unit, quantity: qty, unit_price: totalValue, section: 'Sub-Contractors', description: desc, item_type: 'subcontractor', taxable: true });
+                  onAdd({ name: desc, unit, quantity: qty, unit_price: totalValue, section: 'Sub-Contractors', description: desc, item_type: 'subcontractor', markup: defaultMarkup ?? 5, taxable: true });
                   setOpen(false); setType(''); setDebrisDesc(''); setDebrisSqs('0'); setDebrisSqsPerLoad('0'); setDebrisLoads('0'); setDebrisPricePerLoad('0'); setWashroomPeriod('days'); setWashroomPeriodCount('1'); setWashroomPrice('0'); setOtherDesc(''); setOtherNumber('1'); setOtherUnit(''); setOtherPrice('0');
                 }} className="px-3 py-2 rounded bg-brand-red text-white">Add Sub-Contractors</button>
               </div>
@@ -1736,7 +1737,7 @@ function AddSubContractorModal({ onAdd, disabled }: { onAdd:(it: Item)=>void, di
   );
 }
 
-function AddMiscellaneousModal({ onAdd, disabled }: { onAdd:(it: Item)=>void, disabled?: boolean }){
+function AddMiscellaneousModal({ onAdd, disabled, defaultMarkup }: { onAdd:(it: Item)=>void, disabled?: boolean, defaultMarkup?: number }){
   const [open, setOpen] = useState(false);
   const [name, setName] = useState('');
   const [quantity, setQuantity] = useState<string>('1');
@@ -1786,7 +1787,7 @@ function AddMiscellaneousModal({ onAdd, disabled }: { onAdd:(it: Item)=>void, di
               <div className="text-right">
                 <button onClick={()=>{
                   if(!name.trim()){ toast.error('Please enter a miscellaneous name/description'); return; }
-                  onAdd({ name, unit, quantity: Number(quantity||0), unit_price: Number(price||0), section: 'Miscellaneous', description: name, item_type: 'miscellaneous', taxable: true });
+                  onAdd({ name, unit, quantity: Number(quantity||0), unit_price: Number(price||0), section: 'Miscellaneous', description: name, item_type: 'miscellaneous', markup: defaultMarkup ?? 5, taxable: true });
                   setOpen(false); setName(''); setQuantity('1'); setUnit(''); setPrice('0');
                 }} className="px-3 py-2 rounded bg-brand-red text-white">Add Miscellaneous</button>
               </div>
@@ -1798,7 +1799,7 @@ function AddMiscellaneousModal({ onAdd, disabled }: { onAdd:(it: Item)=>void, di
   );
 }
 
-function AddShopModal({ onAdd, disabled }: { onAdd:(it: Item)=>void, disabled?: boolean }){
+function AddShopModal({ onAdd, disabled, defaultMarkup }: { onAdd:(it: Item)=>void, disabled?: boolean, defaultMarkup?: number }){
   const [open, setOpen] = useState(false);
   const [name, setName] = useState('');
   const [quantity, setQuantity] = useState<string>('1');
@@ -1848,7 +1849,7 @@ function AddShopModal({ onAdd, disabled }: { onAdd:(it: Item)=>void, disabled?: 
               <div className="text-right">
                 <button onClick={()=>{
                   if(!name.trim()){ toast.error('Please enter a shop name/description'); return; }
-                  onAdd({ name, unit, quantity: Number(quantity||0), unit_price: Number(price||0), section: 'Shop', description: name, item_type: 'shop', taxable: true });
+                  onAdd({ name, unit, quantity: Number(quantity||0), unit_price: Number(price||0), section: 'Shop', description: name, item_type: 'shop', markup: defaultMarkup ?? 5, taxable: true });
                   setOpen(false); setName(''); setQuantity('1'); setUnit(''); setPrice('0');
                 }} className="px-3 py-2 rounded bg-brand-red text-white">Add Shop</button>
               </div>
