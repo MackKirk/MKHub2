@@ -651,6 +651,21 @@ def update_estimate(estimate_id: int, body: EstimateIn, db: Session = Depends(ge
     return _update_estimate_internal(estimate_id, body, db)
 
 
+@router.delete("/estimates/{estimate_id}")
+def delete_estimate(estimate_id: int, db: Session = Depends(get_db), _=Depends(require_permissions("inventory:write"))):
+    est = db.query(Estimate).filter(Estimate.id == estimate_id).first()
+    if not est:
+        raise HTTPException(status_code=404, detail="Estimate not found")
+    
+    # Delete estimate items first (due to foreign key constraint)
+    db.query(EstimateItem).filter(EstimateItem.estimate_id == estimate_id).delete()
+    
+    # Delete estimate
+    db.delete(est)
+    db.commit()
+    return {"status": "ok"}
+
+
 @router.get("/estimates/{estimate_id}/generate")
 async def generate_estimate_pdf(estimate_id: int, db: Session = Depends(get_db), _=Depends(require_permissions("inventory:read"))):
     from fastapi.responses import FileResponse
