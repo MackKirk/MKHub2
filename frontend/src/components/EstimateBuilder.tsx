@@ -1106,7 +1106,7 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
             <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span>Total Shop Costs</span><span>${totalShopCosts.toFixed(2)}</span></div>
             <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span>Total Miscellaneous Costs</span><span>${totalMiscellaneousCosts.toFixed(2)}</span></div>
             <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span className="font-bold">Total Direct Project Costs</span><span className="font-bold">${totalWithMarkup.toFixed(2)}</span></div>
-            <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span>PST</span><span>${pst.toFixed(2)}</span></div>
+            <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span>PST (${pstRate}%)</span><span>${pst.toFixed(2)}</span></div>
             <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span className="font-bold">Sub-total</span><span className="font-bold">${subtotal.toFixed(2)}</span></div>
           </div>
         </div>
@@ -1127,7 +1127,7 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
             </div>
             <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span className="font-bold">Total Profit</span><span className="font-bold">${profitValue.toFixed(2)}</span></div>
             <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span className="font-bold">Total Estimate</span><span className="font-bold">${finalTotal.toFixed(2)}</span></div>
-            <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span>GST</span><span>${gst.toFixed(2)}</span></div>
+            <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span>GST (${gstRate}%)</span><span>${gst.toFixed(2)}</span></div>
             <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1 text-lg"><span className="font-bold">Final Total (with GST)</span><span className="font-bold">${grandTotal.toFixed(2)}</span></div>
           </div>
         </div>
@@ -1342,12 +1342,12 @@ function SummaryModal({ open, onClose, items, pstRate, gstRate, markup, profitRa
 
   return (
     <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
-      <div className="w-[800px] max-w-full bg-white rounded-xl overflow-hidden max-h-[90vh] overflow-y-auto">
-        <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] p-6 flex items-center gap-6 relative">
+      <div className="w-[800px] max-w-full bg-white rounded-xl overflow-hidden max-h-[90vh] flex flex-col">
+        <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] p-6 flex items-center gap-6 relative flex-shrink-0">
           <div className="font-semibold text-lg text-white">Summary and Analysis</div>
           <button onClick={onClose} className="ml-auto text-white hover:text-gray-200 text-2xl font-bold w-8 h-8 flex items-center justify-center rounded hover:bg-white/20" title="Close">×</button>
         </div>
-        <div className="p-6 space-y-6">
+        <div className="p-6 space-y-6 overflow-y-auto flex-1">
           {/* Cost Breakdown by Section */}
           <div className="rounded-xl border bg-white overflow-hidden">
             <div className="bg-gray-50 px-4 py-2 border-b font-semibold">Cost Breakdown by Section</div>
