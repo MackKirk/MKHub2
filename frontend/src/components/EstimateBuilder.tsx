@@ -48,12 +48,13 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
     return allowEdit === true || allowEdit === 'true' || allowEdit === 1;
   }, [statusLabel, settings]);
   
-  // Show warning if editing is restricted
+  // Show warning if editing is restricted (only after settings have loaded to avoid false positives)
   useEffect(() => {
-    if (!canEdit && statusLabel) {
+    // Only show warning if settings is defined (has loaded) and editing is actually restricted
+    if (settings !== undefined && !canEdit && statusLabel) {
       toast.error(`Editing is restricted for projects with status "${statusLabel}"`, { duration: 5000 });
     }
-  }, [canEdit, statusLabel]);
+  }, [canEdit, statusLabel, settings]);
 
   // Fetch estimate by project_id if only projectId is provided
   const { data: projectEstimates } = useQuery({
@@ -368,13 +369,6 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
       isAutoSavingRef.current = false;
     }
   }, [dirty, projectId, canEdit, markup, pstRate, gstRate, profitRate, sectionOrder, items, currentEstimateId]);
-
-  // Show warning if editing is restricted
-  useEffect(() => {
-    if (!canEdit && statusLabel) {
-      toast.error(`Editing is restricted for projects with status "${statusLabel}"`, { duration: 5000 });
-    }
-  }, [canEdit, statusLabel]);
 
   // Auto-save on changes (debounced)
   useEffect(() => {
@@ -1112,7 +1106,7 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
             <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span>Total Shop Costs</span><span>${totalShopCosts.toFixed(2)}</span></div>
             <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span>Total Miscellaneous Costs</span><span>${totalMiscellaneousCosts.toFixed(2)}</span></div>
             <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span className="font-bold">Total Direct Project Costs</span><span className="font-bold">${totalWithMarkup.toFixed(2)}</span></div>
-            <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span className="font-bold">PST</span><span className="font-bold">${pst.toFixed(2)}</span></div>
+            <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span>PST</span><span>${pst.toFixed(2)}</span></div>
             <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span className="font-bold">Sub-total</span><span className="font-bold">${subtotal.toFixed(2)}</span></div>
           </div>
         </div>
@@ -1133,93 +1127,10 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
             </div>
             <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span className="font-bold">Total Profit</span><span className="font-bold">${profitValue.toFixed(2)}</span></div>
             <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span className="font-bold">Total Estimate</span><span className="font-bold">${finalTotal.toFixed(2)}</span></div>
-            <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span className="font-bold">GST</span><span className="font-bold">${gst.toFixed(2)}</span></div>
-            <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1 font-semibold text-lg"><span>Final Total (with GST)</span><span>${grandTotal.toFixed(2)}</span></div>
+            <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span>GST</span><span>${gst.toFixed(2)}</span></div>
+            <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1 text-lg"><span className="font-bold">Final Total (with GST)</span><span className="font-bold">${grandTotal.toFixed(2)}</span></div>
           </div>
         </div>
-      </div>
-
-      <div className="mt-4 flex justify-end gap-2">
-        <button
-          onClick={()=>setSummaryOpen(true)}
-          className="px-3 py-2 rounded bg-gray-100 hover:bg-gray-200">
-          Analysis
-        </button>
-        <button
-              onClick={async()=>{
-                try{
-                  setIsLoading(true);
-                  // First ensure estimate is saved
-                  let estimateIdToUse = currentEstimateId;
-                  if (!estimateIdToUse) {
-                    const payload = { 
-                      project_id: projectId, 
-                      markup, 
-                      pst_rate: pstRate,
-                      gst_rate: gstRate,
-                      profit_rate: profitRate,
-                      section_order: sectionOrder,
-                      items: items.map(it=> ({ 
-                        material_id: it.material_id, 
-                        quantity: it.quantity, 
-                        unit_price: it.unit_price, 
-                        section: it.section, 
-                        description: it.description, 
-                        item_type: it.item_type,
-                        name: it.name,
-                        unit: it.unit,
-                        markup: it.markup,
-                        taxable: it.taxable,
-                        qty_required: it.qty_required,
-                        unit_required: it.unit_required,
-                        supplier_name: it.supplier_name,
-                        unit_type: it.unit_type,
-                        units_per_package: it.units_per_package,
-                        coverage_sqs: it.coverage_sqs,
-                        coverage_ft2: it.coverage_ft2,
-                        coverage_m2: it.coverage_m2,
-                        labour_journey: it.labour_journey,
-                        labour_men: it.labour_men,
-                        labour_journey_type: it.labour_journey_type
-                      })) 
-                    };
-                    const result = await api<any>('POST', '/estimate/estimates', payload);
-                    estimateIdToUse = result.id;
-                    setCurrentEstimateId(estimateIdToUse);
-                  }
-                  
-                  // Generate PDF
-                  const token = localStorage.getItem('user_token');
-                  const resp = await fetch(`/estimate/estimates/${estimateIdToUse}/generate`, {
-                    method: 'GET',
-                    headers: token ? { Authorization: `Bearer ${token}` } : {}
-                  });
-                  
-                  if (!resp.ok) {
-                    throw new Error('Failed to generate PDF');
-                  }
-                  
-                  const blob = await resp.blob();
-                  const url = URL.createObjectURL(blob);
-                  const a = document.createElement('a');
-                  a.href = url;
-                  a.download = `estimate-${estimateIdToUse}.pdf`;
-                  document.body.appendChild(a);
-                  a.click();
-                  document.body.removeChild(a);
-                  URL.revokeObjectURL(url);
-                  
-                  toast.success('PDF generated and downloaded');
-                }catch(_e){
-                  toast.error('Failed to generate PDF');
-                }finally{
-                  setIsLoading(false);
-                }
-              }}
-              disabled={isLoading || items.length === 0}
-              className="px-3 py-2 rounded bg-gray-700 text-white disabled:opacity-60">
-              {isLoading ? 'Generating...' : 'Generate PDF'}
-            </button>
       </div>
 
       {/* Spacer to prevent fixed bar from overlapping content */}
@@ -1233,12 +1144,94 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
               <div className={dirty ? 'text-[12px] text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5' : 'text-[12px] text-green-700 bg-green-50 border border-green-200 rounded-full px-2 py-0.5'}>
                 {dirty ? 'Unsaved changes' : 'All changes saved'}
               </div>
-              <button 
-                disabled={!dirty} 
-                onClick={handleManualSave}
-                className="px-5 py-2 rounded-xl bg-gradient-to-r from-brand-red to-[#ee2b2b] text-white font-semibold disabled:opacity-50">
-                Save
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={()=>setSummaryOpen(true)}
+                  className="px-3 py-2 rounded bg-gray-100 hover:bg-gray-200">
+                  Analysis
+                </button>
+                <button
+                  onClick={async()=>{
+                    try{
+                      setIsLoading(true);
+                      // First ensure estimate is saved
+                      let estimateIdToUse = currentEstimateId;
+                      if (!estimateIdToUse) {
+                        const payload = { 
+                          project_id: projectId, 
+                          markup, 
+                          pst_rate: pstRate,
+                          gst_rate: gstRate,
+                          profit_rate: profitRate,
+                          section_order: sectionOrder,
+                          items: items.map(it=> ({ 
+                            material_id: it.material_id, 
+                            quantity: it.quantity, 
+                            unit_price: it.unit_price, 
+                            section: it.section, 
+                            description: it.description, 
+                            item_type: it.item_type,
+                            name: it.name,
+                            unit: it.unit,
+                            markup: it.markup,
+                            taxable: it.taxable,
+                            qty_required: it.qty_required,
+                            unit_required: it.unit_required,
+                            supplier_name: it.supplier_name,
+                            unit_type: it.unit_type,
+                            units_per_package: it.units_per_package,
+                            coverage_sqs: it.coverage_sqs,
+                            coverage_ft2: it.coverage_ft2,
+                            coverage_m2: it.coverage_m2,
+                            labour_journey: it.labour_journey,
+                            labour_men: it.labour_men,
+                            labour_journey_type: it.labour_journey_type
+                          })) 
+                        };
+                        const result = await api<any>('POST', '/estimate/estimates', payload);
+                        estimateIdToUse = result.id;
+                        setCurrentEstimateId(estimateIdToUse);
+                      }
+                      
+                      // Generate PDF
+                      const token = localStorage.getItem('user_token');
+                      const resp = await fetch(`/estimate/estimates/${estimateIdToUse}/generate`, {
+                        method: 'GET',
+                        headers: token ? { Authorization: `Bearer ${token}` } : {}
+                      });
+                      
+                      if (!resp.ok) {
+                        throw new Error('Failed to generate PDF');
+                      }
+                      
+                      const blob = await resp.blob();
+                      const url = URL.createObjectURL(blob);
+                      const a = document.createElement('a');
+                      a.href = url;
+                      a.download = `estimate-${estimateIdToUse}.pdf`;
+                      document.body.appendChild(a);
+                      a.click();
+                      document.body.removeChild(a);
+                      URL.revokeObjectURL(url);
+                      
+                      toast.success('PDF generated and downloaded');
+                    }catch(_e){
+                      toast.error('Failed to generate PDF');
+                    }finally{
+                      setIsLoading(false);
+                    }
+                  }}
+                  disabled={isLoading || items.length === 0}
+                  className="px-3 py-2 rounded bg-gray-700 text-white disabled:opacity-60">
+                  {isLoading ? 'Generating...' : 'Generate PDF'}
+                </button>
+                <button 
+                  disabled={!dirty} 
+                  onClick={handleManualSave}
+                  className="px-5 py-2 rounded-xl bg-gradient-to-r from-brand-red to-[#ee2b2b] text-white font-semibold disabled:opacity-50">
+                  Save
+                </button>
+              </div>
             </div>
           </div>
         </div>
