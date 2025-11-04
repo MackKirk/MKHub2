@@ -1,8 +1,6 @@
 import { Link } from 'react-router-dom';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
-import toast from 'react-hot-toast';
-import { useConfirm } from '@/components/ConfirmProvider';
 
 type Estimate = { 
   id:number, 
@@ -16,7 +14,6 @@ type Estimate = {
 };
 
 export default function Estimates(){
-  const queryClient = useQueryClient();
   const { data, isLoading } = useQuery({ queryKey:['estimates-all'], queryFn: ()=> api<Estimate[]>('GET','/estimate/estimates') });
   const rows = data||[];
   return (
@@ -45,12 +42,7 @@ export default function Estimates(){
                 </td>
                 <td className="p-2">{(e.created_at||'').slice(0,10)}</td>
                 <td className="p-2">
-                  <div className="flex items-center gap-2">
-                    <Link to={`/estimates/${e.id}/edit`} className="underline">Open</Link>
-                    <EstimateDeleteButton estimateId={e.id} projectName={e.project_name} onDeleted={() => {
-                      queryClient.invalidateQueries({ queryKey: ['estimates-all'] });
-                    }} />
-                  </div>
+                  <Link to={`/projects/${encodeURIComponent(e.project_id)}?tab=estimate`} className="underline">Open</Link>
                 </td>
               </tr>
             ))}
@@ -61,37 +53,3 @@ export default function Estimates(){
     </div>
   );
 }
-
-function EstimateDeleteButton({ estimateId, projectName, onDeleted }: { estimateId: number, projectName?: string, onDeleted: () => void }) {
-  const confirm = useConfirm();
-  
-  const handleDelete = async () => {
-    const ok = await confirm({
-      title: 'Delete Estimate',
-      message: `Are you sure you want to delete this estimate${projectName ? ` for ${projectName}` : ''}? This action cannot be undone.`,
-      confirmText: 'Delete',
-      cancelText: 'Cancel'
-    });
-    if (!ok) return;
-    
-    try {
-      await api('DELETE', `/estimate/estimates/${estimateId}`);
-      toast.success('Estimate deleted');
-      onDeleted();
-    } catch (e: any) {
-      console.error('Failed to delete estimate:', e);
-      toast.error(e?.response?.data?.detail || 'Failed to delete estimate');
-    }
-  };
-  
-  return (
-    <button
-      onClick={handleDelete}
-      className="text-red-600 hover:text-red-800 underline text-sm"
-      title="Delete estimate"
-    >
-      Delete
-    </button>
-  );
-}
-

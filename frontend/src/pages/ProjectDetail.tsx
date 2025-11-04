@@ -22,8 +22,21 @@ export default function ProjectDetail(){
   const { data:updates, refetch: refetchUpdates } = useQuery({ queryKey:['projectUpdates', id], queryFn: ()=>api<Update[]>('GET', `/projects/${id}/updates`) });
   const { data:reports, refetch: refetchReports } = useQuery({ queryKey:['projectReports', id], queryFn: ()=>api<Report[]>('GET', `/projects/${id}/reports`) });
   const { data:proposals } = useQuery({ queryKey:['projectProposals', id], queryFn: ()=>api<Proposal[]>('GET', `/proposals?project_id=${encodeURIComponent(String(id||''))}`) });
-  const [tab, setTab] = useState<'overview'|'general'|'reports'|'timesheet'|'files'|'photos'|'proposal'|'estimate'>('overview');
+  // Check for tab query parameter
+  const searchParams = new URLSearchParams(location.search);
+  const initialTab = (searchParams.get('tab') as 'overview'|'general'|'reports'|'timesheet'|'files'|'photos'|'proposal'|'estimate'|null) || 'overview';
+  const [tab, setTab] = useState<'overview'|'general'|'reports'|'timesheet'|'files'|'photos'|'proposal'|'estimate'>(initialTab);
   const [pickerOpen, setPickerOpen] = useState(false);
+  
+  // Update tab when URL search params change
+  useEffect(() => {
+    const searchParams = new URLSearchParams(location.search);
+    const tabParam = searchParams.get('tab') as 'overview'|'general'|'reports'|'timesheet'|'files'|'photos'|'proposal'|'estimate'|null;
+    if (tabParam && ['overview','general','reports','timesheet','files','photos','proposal','estimate'].includes(tabParam)) {
+      setTab(tabParam);
+    }
+  }, [location.search]);
+  
   const cover = useMemo(()=>{
     const img = (files||[]).find(f=> String(f.category||'')==='project-cover-derived') || (files||[]).find(f=> (f.is_image===true) || String(f.content_type||'').startsWith('image/'));
     return img? `/files/${img.file_object_id}/thumbnail?w=1000` : '/ui/assets/login/logo-light.svg';
