@@ -330,8 +330,145 @@ def list_estimates(project_id: Optional[uuid.UUID] = None, db: Session = Depends
     return result
 
 
+def _update_estimate_internal(estimate_id: int, body: EstimateIn, db: Session):
+    """Internal function to update an estimate - can be called from create_estimate or update_estimate route"""
+    est = db.query(Estimate).filter(Estimate.id == estimate_id).first()
+    if not est:
+        raise HTTPException(status_code=404, detail="Estimate not found")
+    
+    # Update estimate fields
+    est.markup = body.markup or 0.0
+    
+    # Get existing UI state to preserve existing values if not provided
+    existing_ui_state = {}
+    if est.notes:
+        try:
+            existing_ui_state = json.loads(est.notes)
+        except:
+            pass
+    
+    # Store UI state in notes as JSON
+    ui_state = {}
+    # Always save rates - they're part of the estimate configuration
+    # Check if values were provided (not None) - 0 is a valid value
+    # If not provided, preserve existing value if available
+    if body.pst_rate is not None:
+        ui_state['pst_rate'] = body.pst_rate
+    elif 'pst_rate' in existing_ui_state:
+        ui_state['pst_rate'] = existing_ui_state['pst_rate']
+    
+    if body.gst_rate is not None:
+        ui_state['gst_rate'] = body.gst_rate
+    elif 'gst_rate' in existing_ui_state:
+        ui_state['gst_rate'] = existing_ui_state['gst_rate']
+    
+    if body.profit_rate is not None:
+        ui_state['profit_rate'] = body.profit_rate
+    elif 'profit_rate' in existing_ui_state:
+        ui_state['profit_rate'] = existing_ui_state['profit_rate']
+    
+    if body.section_order:
+        ui_state['section_order'] = body.section_order
+    elif 'section_order' in existing_ui_state:
+        ui_state['section_order'] = existing_ui_state['section_order']
+    
+    # Delete existing items (but first get old extras to preserve if items match)
+    old_items = db.query(EstimateItem).filter(EstimateItem.estimate_id == estimate_id).all()
+    old_extras_map = {}
+    if est.notes:
+        try:
+            old_ui_state = json.loads(est.notes)
+            old_extras_map = old_ui_state.get('item_extras', {})
+        except:
+            pass
+    
+    # Map old items by material_id + section + description for matching
+    old_items_map = {}
+    for old_item in old_items:
+        key = f"{old_item.material_id}_{old_item.section}_{old_item.description}"
+        old_items_map[key] = old_item
+    
+    db.query(EstimateItem).filter(EstimateItem.estimate_id == estimate_id).delete()
+    
+    # Add new items and preserve extras where possible
+    total = 0.0
+    item_extras = {}
+    for it in body.items:
+        price = it.unit_price
+        if price is None and it.material_id is not None:
+            m = db.query(Material).filter(Material.id == it.material_id).first()
+            price = (m.price or 0.0) if m else 0.0
+        elif price is None:
+            price = 0.0
+        line_total = (it.quantity or 0.0) * (price or 0.0)
+        total += line_total
+        estimate_item = EstimateItem(
+            estimate_id=est.id,
+            material_id=it.material_id,
+            quantity=it.quantity,
+            unit_price=price,
+            total_price=line_total,
+            section=it.section or None,
+            description=it.description or None,
+            item_type=it.item_type or 'product'
+        )
+        db.add(estimate_item)
+        db.flush()  # Flush to get the ID
+        
+        # Store extras using item ID
+        extras = {}
+        # First try to get from new values
+        if it.qty_required is not None:
+            extras['qty_required'] = it.qty_required
+        if it.unit_required:
+            extras['unit_required'] = it.unit_required
+        if it.markup is not None:
+            extras['markup'] = it.markup
+        if it.taxable is not None:
+            extras['taxable'] = it.taxable
+        # Store labour fields
+        if it.labour_journey is not None:
+            extras['labour_journey'] = it.labour_journey
+        if it.labour_men is not None:
+            extras['labour_men'] = it.labour_men
+        if it.labour_journey_type:
+            extras['labour_journey_type'] = it.labour_journey_type
+        # Store unit for subcontractor, shop, and miscellaneous items (for composition display)
+        if it.unit:
+            extras['unit'] = it.unit
+        
+        # If no new values, try to preserve from old item
+        if not extras:
+            key = f"{it.material_id}_{it.section or ''}_{it.description or ''}"
+            if key in old_items_map:
+                old_item_id = old_items_map[key].id
+                old_key = f'item_{old_item_id}'
+                if old_key in old_extras_map:
+                    extras = old_extras_map[old_key].copy()
+        
+        if extras:
+            item_extras[f'item_{estimate_item.id}'] = extras
+    
+    # Combine UI state and item extras in notes
+    if item_extras:
+        ui_state['item_extras'] = item_extras
+    est.notes = json.dumps(ui_state) if ui_state else None
+    
+    est.total_cost = total
+    db.commit()
+    db.refresh(est)
+    return est
+
+
 @router.post("/estimates")
 def create_estimate(body: EstimateIn, db: Session = Depends(get_db), _=Depends(require_permissions("inventory:write"))):
+    # Check if estimate already exists for this project
+    existing_est = db.query(Estimate).filter(Estimate.project_id == body.project_id).first()
+    
+    if existing_est:
+        # If estimate exists, update it instead of creating a new one
+        return _update_estimate_internal(existing_est.id, body, db)
+    
     # Store UI state in notes as JSON
     ui_state = {}
     # Always save rates - they're part of the estimate configuration
@@ -511,132 +648,7 @@ def get_estimate(estimate_id: int, db: Session = Depends(get_db), _=Depends(requ
 
 @router.put("/estimates/{estimate_id}")
 def update_estimate(estimate_id: int, body: EstimateIn, db: Session = Depends(get_db), _=Depends(require_permissions("inventory:write"))):
-    est = db.query(Estimate).filter(Estimate.id == estimate_id).first()
-    if not est:
-        raise HTTPException(status_code=404, detail="Estimate not found")
-    
-    # Update estimate fields
-    est.markup = body.markup or 0.0
-    
-    # Get existing UI state to preserve existing values if not provided
-    existing_ui_state = {}
-    if est.notes:
-        try:
-            existing_ui_state = json.loads(est.notes)
-        except:
-            pass
-    
-    # Store UI state in notes as JSON
-    ui_state = {}
-    # Always save rates - they're part of the estimate configuration
-    # Check if values were provided (not None) - 0 is a valid value
-    # If not provided, preserve existing value if available
-    if body.pst_rate is not None:
-        ui_state['pst_rate'] = body.pst_rate
-    elif 'pst_rate' in existing_ui_state:
-        ui_state['pst_rate'] = existing_ui_state['pst_rate']
-    
-    if body.gst_rate is not None:
-        ui_state['gst_rate'] = body.gst_rate
-    elif 'gst_rate' in existing_ui_state:
-        ui_state['gst_rate'] = existing_ui_state['gst_rate']
-    
-    if body.profit_rate is not None:
-        ui_state['profit_rate'] = body.profit_rate
-    elif 'profit_rate' in existing_ui_state:
-        ui_state['profit_rate'] = existing_ui_state['profit_rate']
-    
-    if body.section_order:
-        ui_state['section_order'] = body.section_order
-    elif 'section_order' in existing_ui_state:
-        ui_state['section_order'] = existing_ui_state['section_order']
-    
-    # Delete existing items (but first get old extras to preserve if items match)
-    old_items = db.query(EstimateItem).filter(EstimateItem.estimate_id == estimate_id).all()
-    old_extras_map = {}
-    if est.notes:
-        try:
-            old_ui_state = json.loads(est.notes)
-            old_extras_map = old_ui_state.get('item_extras', {})
-        except:
-            pass
-    
-    # Map old items by material_id + section + description for matching
-    old_items_map = {}
-    for old_item in old_items:
-        key = f"{old_item.material_id}_{old_item.section}_{old_item.description}"
-        old_items_map[key] = old_item
-    
-    db.query(EstimateItem).filter(EstimateItem.estimate_id == estimate_id).delete()
-    
-    # Add new items and preserve extras where possible
-    total = 0.0
-    item_extras = {}
-    for it in body.items:
-        price = it.unit_price
-        if price is None and it.material_id is not None:
-            m = db.query(Material).filter(Material.id == it.material_id).first()
-            price = (m.price or 0.0) if m else 0.0
-        elif price is None:
-            price = 0.0
-        line_total = (it.quantity or 0.0) * (price or 0.0)
-        total += line_total
-        estimate_item = EstimateItem(
-            estimate_id=est.id,
-            material_id=it.material_id,
-            quantity=it.quantity,
-            unit_price=price,
-            total_price=line_total,
-            section=it.section or None,
-            description=it.description or None,
-            item_type=it.item_type or 'product'
-        )
-        db.add(estimate_item)
-        db.flush()  # Flush to get the ID
-        
-        # Store extras using item ID
-        extras = {}
-        # First try to get from new values
-        if it.qty_required is not None:
-            extras['qty_required'] = it.qty_required
-        if it.unit_required:
-            extras['unit_required'] = it.unit_required
-        if it.markup is not None:
-            extras['markup'] = it.markup
-        if it.taxable is not None:
-            extras['taxable'] = it.taxable
-        # Store labour fields
-        if it.labour_journey is not None:
-            extras['labour_journey'] = it.labour_journey
-        if it.labour_men is not None:
-            extras['labour_men'] = it.labour_men
-        if it.labour_journey_type:
-            extras['labour_journey_type'] = it.labour_journey_type
-        # Store unit for subcontractor, shop, and miscellaneous items (for composition display)
-        if it.unit:
-            extras['unit'] = it.unit
-        
-        # If no new values, try to preserve from old item
-        if not extras:
-            key = f"{it.material_id}_{it.section or ''}_{it.description or ''}"
-            if key in old_items_map:
-                old_item_id = old_items_map[key].id
-                old_key = f'item_{old_item_id}'
-                if old_key in old_extras_map:
-                    extras = old_extras_map[old_key].copy()
-        
-        if extras:
-            item_extras[f'item_{estimate_item.id}'] = extras
-    
-    # Combine UI state and item extras in notes
-    if item_extras:
-        ui_state['item_extras'] = item_extras
-    est.notes = json.dumps(ui_state) if ui_state else None
-    
-    est.total_cost = total
-    db.commit()
-    db.refresh(est)
-    return est
+    return _update_estimate_internal(estimate_id, body, db)
 
 
 @router.get("/estimates/{estimate_id}/generate")
