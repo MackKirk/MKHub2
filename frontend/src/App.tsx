@@ -23,6 +23,7 @@ import ProposalEdit from './pages/ProposalEdit';
 import CustomerDetail from './pages/CustomerDetail';
 import SiteDetail from './pages/SiteDetail';
 import Projects from './pages/Projects';
+import ProjectNew from './pages/ProjectNew';
 import ProjectDetail from './pages/ProjectDetail';
 import SystemSettings from './pages/SystemSettings';
 import Users from './pages/Users';
@@ -64,6 +65,7 @@ export default function App(){
           <Route path="/proposals/:id" element={<AppShell><ProposalView/></AppShell>} />
           <Route path="/proposals/:id/edit" element={<AppShell><ProposalEdit/></AppShell>} />
           <Route path="/projects" element={<AppShell><Projects/></AppShell>} />
+          <Route path="/projects/new" element={<AppShell><ProjectNew/></AppShell>} />
           <Route path="/projects/:id" element={<AppShell><ProjectDetail/></AppShell>} />
           <Route path="/settings" element={<AppShell><SystemSettings/></AppShell>} />
           <Route path="/log-hours" element={<AppShell><LogHours/></AppShell>} />
@@ -79,6 +81,7 @@ export default function App(){
       {state?.backgroundLocation && (
         <Routes>
           <Route path="/customers/:customerId/sites/:siteId" element={<AppShell><SiteDetail/></AppShell>} />
+          <Route path="/projects/new" element={<AppShell><ProjectNew/></AppShell>} />
         </Routes>
       )}
       <Toaster position="top-right" />

@@ -418,40 +418,8 @@ export default function CustomerDetail(){
                 <div>
                   <div className="mb-3 flex items-center justify-between">
                     <h3 className="font-semibold">Projects</h3>
-                    <button onClick={()=>setNewProjectOpen(true)} className="px-3 py-1.5 rounded bg-brand-red text-white">New Project</button>
+                    <Link to={`/projects/new?client_id=${encodeURIComponent(String(id||''))}`} state={{ backgroundLocation: location }} className="px-3 py-1.5 rounded bg-brand-red text-white">New Project</Link>
                   </div>
-                  {newProjectOpen && (
-                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-                      <div className="w-[480px] max-w-[95vw] bg-white rounded-lg shadow-lg overflow-hidden">
-                        <div className="px-4 py-3 border-b font-semibold">New Project</div>
-                        <div className="p-4">
-                          <div className="mb-3">
-                            <label className="block text-sm text-gray-700 mb-1">Project Name</label>
-                            <input 
-                              type="text" 
-                              className="w-full border rounded px-3 py-2" 
-                              value={newProjectName} 
-                              onChange={e=>setNewProjectName(e.target.value)}
-                              onKeyDown={(e)=>{
-                                if (e.key === 'Enter') {
-                                  e.preventDefault();
-                                  handleCreateProject();
-                                } else if (e.key === 'Escape') {
-                                  setNewProjectOpen(false);
-                                  setNewProjectName('');
-                                }
-                              }}
-                              autoFocus
-                            />
-                          </div>
-                        </div>
-                        <div className="p-3 flex items-center justify-end gap-2 border-t">
-                          <button className="px-3 py-2 rounded bg-gray-100" onClick={()=>{ setNewProjectOpen(false); setNewProjectName(''); }}>Cancel</button>
-                          <button className="px-3 py-2 rounded bg-brand-red text-white" onClick={handleCreateProject}>Create</button>
-                        </div>
-                      </div>
-                    </div>
-                  )}
                   <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
                     {(projects||[]).map(p=> {
                       const pfiles = (files||[]).filter(f=> String((f as any).project_id||'')===String(p.id));
@@ -492,7 +460,7 @@ export default function CustomerDetail(){
         finally{ setPickerOpen(false); }
       }} />
       {sitePicker?.open && (
-        <ImagePicker isOpen={true} onClose={()=>setSitePicker(null)} clientId={String(id)} targetWidth={1200} targetHeight={400} allowEdit={true} onConfirm={async(blob)=>{
+        <ImagePicker isOpen={true} onClose={()=>setSitePicker(null)} clientId={String(id)} targetWidth={800} targetHeight={800} allowEdit={true} onConfirm={async(blob)=>{
           try{
             const up:any = await api('POST','/files/upload',{ project_id:null, client_id:id, employee_id:null, category_id:'site-cover-derived', original_name:'site-cover.jpg', content_type:'image/jpeg' });
             await fetch(up.upload_url, { method:'PUT', headers:{ 'Content-Type':'image/jpeg', 'x-ms-blob-type':'BlockBlob' }, body: blob });

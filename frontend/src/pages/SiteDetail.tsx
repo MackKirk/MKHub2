@@ -134,7 +134,7 @@ export default function SiteDetail(){
       </div>
     </div>
     {coverPickerOpen && (
-      <ImagePicker isOpen={true} onClose={()=>setCoverPickerOpen(false)} clientId={String(customerId)} targetWidth={1200} targetHeight={400} allowEdit={true} onConfirm={async(blob)=>{
+      <ImagePicker isOpen={true} onClose={()=>setCoverPickerOpen(false)} clientId={String(customerId)} targetWidth={800} targetHeight={800} allowEdit={true} onConfirm={async(blob)=>{
         try{
           const up:any = await api('POST','/files/upload',{ project_id:null, client_id:customerId, employee_id:null, category_id:'site-cover-derived', original_name:'site-cover.jpg', content_type:'image/jpeg' });
           await fetch(up.upload_url, { method:'PUT', headers:{ 'Content-Type':'image/jpeg', 'x-ms-blob-type':'BlockBlob' }, body: blob });
