@@ -162,7 +162,7 @@ export default function CustomerDetail(){
             <>
               {tab==='overview' && (
                 <div className="space-y-6">
-                  <div className="grid md:grid-cols-3 gap-4">
+                  <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
                     <div className="rounded-xl border bg-white p-4">
                       <h4 className="font-semibold mb-2">Client</h4>
                       <div className="text-sm text-gray-700">{c.display_name||c.name}</div>
@@ -181,7 +181,7 @@ export default function CustomerDetail(){
                   </div>
                   <div>
                     <div className="flex items-center justify-between mb-2"><h3 className="font-semibold">Recent Projects</h3><button onClick={()=>setTab('projects')} className="text-sm px-3 py-1.5 rounded bg-brand-red text-white">View all</button></div>
-                    <div className="grid md:grid-cols-4 gap-2">
+                    <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
                       {(projects||[]).slice(0,4).map(p=> {
                         const pfiles = (files||[]).filter(f=> String((f as any).project_id||'')===String(p.id));
                         const cover = pfiles.find(f=> String(f.category||'')==='project-cover-derived') || pfiles.find(f=> (f.is_image===true) || String(f.content_type||'').startsWith('image/'));
@@ -195,7 +195,7 @@ export default function CustomerDetail(){
                   </div>
                   <div>
                     <div className="flex items-center justify-between mb-2"><h3 className="font-semibold">Recent Sites</h3><button onClick={()=>setTab('sites')} className="text-sm px-3 py-1.5 rounded bg-brand-red text-white">View all</button></div>
-                    <div className="grid md:grid-cols-4 gap-3">
+                    <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
                       {(sites||[]).slice(0,4).map(s=>{
                         const filesForSite = (fileBySite[s.id||'']||[]);
                         const cover = filesForSite.find(f=> String(f.category||'')==='site-cover-derived') || filesForSite.find(f=> (f.is_image===true) || String(f.content_type||'').startsWith('image/'));
@@ -452,7 +452,7 @@ export default function CustomerDetail(){
                       </div>
                     </div>
                   )}
-                  <div className="grid md:grid-cols-3 gap-4">
+                  <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
                     {(projects||[]).map(p=> {
                       const pfiles = (files||[]).filter(f=> String((f as any).project_id||'')===String(p.id));
                       const cover = pfiles.find(f=> String(f.category||'')==='project-cover-derived') || pfiles.find(f=> (f.is_image===true) || String(f.content_type||'').startsWith('image/'));
@@ -463,9 +463,9 @@ export default function CustomerDetail(){
                             <img className="w-full h-full object-cover" src={src} />
                             <button onClick={(e)=>{ e.preventDefault(); e.stopPropagation(); setProjectPicker({ open:true, projectId: String(p.id) }); }} className="absolute right-2 top-2 text-xs px-2 py-1 rounded bg-black/70 text-white">Change cover</button>
                           </div>
-                          <div className="p-3 text-sm">
-                            <div className="font-semibold text-base group-hover:underline">{p.name||'Project'}</div>
-                            <div className="text-gray-600">{p.code||''}</div>
+                          <div className="p-2 text-sm">
+                            <div className="font-semibold text-sm group-hover:underline truncate">{p.name||'Project'}</div>
+                            <div className="text-xs text-gray-600 truncate">{p.code||''}</div>
                             <div className="text-[11px] text-gray-500 mt-1">{(p.date_start||p.created_at||'').slice(0,10)}</div>
                           </div>
                         </Link>
