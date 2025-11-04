@@ -24,6 +24,8 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
   const [editingSectionNameValue, setEditingSectionNameValue] = useState<string>('');
   const [sectionNames, setSectionNames] = useState<Record<string, string>>({});
   const [addingToSection, setAddingToSection] = useState<{section: string, type: 'product' | 'labour' | 'subcontractor' | 'miscellaneous' | 'shop'} | null>(null);
+  const [dirty, setDirty] = useState(false);
+  const savedStateRef = useRef<{ items: Item[], markup: number, pstRate: number, gstRate: number, profitRate: number, sectionOrder: string[] } | null>(null);
   const autoSaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isAutoSavingRef = useRef<boolean>(false);
   const lastAutoSaveRef = useRef<number>(0);
@@ -264,6 +266,8 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
         const result = await api<any>('POST', '/estimate/estimates', payload);
         setCurrentEstimateId(result.id);
       }
+      savedStateRef.current = { items, markup, pstRate, gstRate, profitRate, sectionOrder };
+      setDirty(false);
       lastAutoSaveRef.current = Date.now();
     } catch (e) {
       // Silent fail for auto-save
@@ -388,6 +392,142 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
   const gst = useMemo(()=> finalTotal * (gstRate/100), [finalTotal, gstRate]);
   const grandTotal = useMemo(()=> finalTotal + gst, [finalTotal, gst]);
 
+  // Helper function to calculate section subtotal
+  const calculateSectionSubtotal = useCallback((sectionName: string): number => {
+    const sectionItems = groupedItems[sectionName] || [];
+    const isLabourSection = ['Labour', 'Sub-Contractors', 'Shop', 'Miscellaneous'].includes(sectionName) || 
+                          sectionName.startsWith('Labour Section') || 
+                          sectionName.startsWith('Sub-Contractor Section') || 
+                          sectionName.startsWith('Shop Section') || 
+                          sectionName.startsWith('Miscellaneous Section');
+    return sectionItems.reduce((sum, it) => {
+      const m = it.markup !== undefined && it.markup !== null ? it.markup : markup;
+      let itemTotal = 0;
+      if (!isLabourSection) {
+        itemTotal = it.quantity * it.unit_price;
+      } else {
+        if (it.item_type === 'labour' && it.labour_journey_type) {
+          if (it.labour_journey_type === 'contract') {
+            itemTotal = (it.labour_journey || 0) * it.unit_price;
+          } else {
+            itemTotal = (it.labour_journey || 0) * (it.labour_men || 0) * it.unit_price;
+          }
+        } else {
+          itemTotal = it.quantity * it.unit_price;
+        }
+      }
+      return sum + (itemTotal * (1 + (m/100)));
+    }, 0);
+  }, [groupedItems, markup]);
+
+  // Calculate specific section costs
+  const totalProductsCosts = useMemo(() => {
+    return sectionOrder
+      .filter(section => !['Labour', 'Sub-Contractors', 'Shop', 'Miscellaneous'].includes(section) && 
+                        !section.startsWith('Labour Section') && 
+                        !section.startsWith('Sub-Contractor Section') && 
+                        !section.startsWith('Shop Section') && 
+                        !section.startsWith('Miscellaneous Section'))
+      .reduce((sum, section) => sum + calculateSectionSubtotal(section), 0);
+  }, [sectionOrder, calculateSectionSubtotal]);
+
+  const totalLabourCosts = useMemo(() => {
+    return calculateSectionSubtotal('Labour') + 
+           sectionOrder
+             .filter(s => s.startsWith('Labour Section'))
+             .reduce((sum, section) => sum + calculateSectionSubtotal(section), 0);
+  }, [sectionOrder, calculateSectionSubtotal]);
+
+  const totalSubContractorsCosts = useMemo(() => {
+    return calculateSectionSubtotal('Sub-Contractors') + 
+           sectionOrder
+             .filter(s => s.startsWith('Sub-Contractor Section'))
+             .reduce((sum, section) => sum + calculateSectionSubtotal(section), 0);
+  }, [sectionOrder, calculateSectionSubtotal]);
+
+  const totalShopCosts = useMemo(() => {
+    return calculateSectionSubtotal('Shop') + 
+           sectionOrder
+             .filter(s => s.startsWith('Shop Section'))
+             .reduce((sum, section) => sum + calculateSectionSubtotal(section), 0);
+  }, [sectionOrder, calculateSectionSubtotal]);
+
+  const totalMiscellaneousCosts = useMemo(() => {
+    return calculateSectionSubtotal('Miscellaneous') + 
+           sectionOrder
+             .filter(s => s.startsWith('Miscellaneous Section'))
+             .reduce((sum, section) => sum + calculateSectionSubtotal(section), 0);
+  }, [sectionOrder, calculateSectionSubtotal]);
+
+  // Track dirty state
+  useEffect(() => {
+    if (!savedStateRef.current) {
+      savedStateRef.current = { items, markup, pstRate, gstRate, profitRate, sectionOrder };
+      setDirty(false);
+      return;
+    }
+    const saved = savedStateRef.current;
+    const itemsChanged = JSON.stringify(items) !== JSON.stringify(saved.items);
+    const markupChanged = markup !== saved.markup;
+    const profitRateChanged = profitRate !== saved.profitRate;
+    const sectionOrderChanged = JSON.stringify(sectionOrder) !== JSON.stringify(saved.sectionOrder);
+    const pstRateChanged = pstRate !== saved.pstRate;
+    const gstRateChanged = gstRate !== saved.gstRate;
+    setDirty(itemsChanged || markupChanged || pstRateChanged || gstRateChanged || profitRateChanged || sectionOrderChanged);
+  }, [items, markup, pstRate, gstRate, profitRate, sectionOrder]);
+
+  // Manual save function
+  const handleManualSave = useCallback(async () => {
+    if (!canEdit || !projectId) return;
+    
+    try {
+      const payload = { 
+        project_id: projectId, 
+        markup, 
+        pst_rate: pstRate,
+        gst_rate: gstRate,
+        profit_rate: profitRate,
+        section_order: sectionOrder,
+        items: items.map(it=> ({ 
+          material_id: it.material_id, 
+          quantity: it.quantity, 
+          unit_price: it.unit_price, 
+          section: it.section, 
+          description: it.description, 
+          item_type: it.item_type,
+          name: it.name,
+          unit: it.unit,
+          markup: it.markup,
+          taxable: it.taxable,
+          qty_required: it.qty_required,
+          unit_required: it.unit_required,
+          supplier_name: it.supplier_name,
+          unit_type: it.unit_type,
+          units_per_package: it.units_per_package,
+          coverage_sqs: it.coverage_sqs,
+          coverage_ft2: it.coverage_ft2,
+          coverage_m2: it.coverage_m2,
+          labour_journey: it.labour_journey,
+          labour_men: it.labour_men,
+          labour_journey_type: it.labour_journey_type
+        })) 
+      };
+      
+      if (currentEstimateId) {
+        await api('PUT', `/estimate/estimates/${currentEstimateId}`, payload);
+      } else {
+        const result = await api<any>('POST', '/estimate/estimates', payload);
+        setCurrentEstimateId(result.id);
+      }
+      
+      savedStateRef.current = { items, markup, pstRate, gstRate, profitRate, sectionOrder };
+      setDirty(false);
+      toast.success('Changes saved');
+    } catch (e) {
+      toast.error('Failed to save');
+    }
+  }, [canEdit, projectId, items, markup, pstRate, gstRate, profitRate, sectionOrder, currentEstimateId]);
+
   // Sync section order with items (add new sections that appear in items)
   useEffect(()=>{
     const sectionsInItems = new Set<string>();
@@ -466,6 +606,12 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
     
     if (ok) {
       setItems(prev => prev.filter(item => item.section !== section));
+      setSectionOrder(prev => prev.filter(s => s !== section));
+      setSectionNames(prev => {
+        const newNames = { ...prev };
+        delete newNames[section];
+        return newNames;
+      });
     }
   }, [confirm, canEdit, groupedItems]);
   
@@ -1172,170 +1318,155 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
         )}
       </div>
 
-      <div className="mt-4 grid md:grid-cols-2 gap-4">
-        <div className="rounded-xl border bg-white p-4">
-          <h4 className="font-semibold mb-2">Summary</h4>
-          <div className="space-y-1 text-sm">
-            <div className="flex items-center justify-between"><span>Total Direct Project Costs</span><span>${totalWithMarkup.toFixed(2)}</span></div>
-            <div className="flex items-center justify-between"><span>PST</span><span>${pst.toFixed(2)}</span></div>
-            <div className="flex items-center justify-between"><span>Sub-total</span><span>${subtotal.toFixed(2)}</span></div>
-            <div className="flex items-center justify-between"><span>Sections Mark-up</span><span>${markupValue.toFixed(2)}</span></div>
-            <div className="flex items-center justify-between">
-              <span>Profit (%)</span>
-              <input 
-                type="number" 
-                className="border rounded px-2 py-1 w-20 text-right" 
-                value={profitRate} 
-                min={0} 
-                step={0.1}
-                onChange={e=>setProfitRate(Number(e.target.value||0))} 
-              />
+      {/* Summary Section */}
+      <div className="mt-6 space-y-4">
+        {/* Summary Title Card */}
+        <div className="rounded-t-xl bg-gradient-to-br from-[#7f1010] to-[#a31414] p-4 text-white font-semibold text-lg">
+          Summary
+        </div>
+        
+        {/* Two Cards Grid */}
+        <div className="grid md:grid-cols-2 gap-4">
+          {/* Left Card */}
+          <div className="rounded-xl border bg-white p-4">
+            <div className="space-y-1 text-sm">
+              <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span>Total Products Costs</span><span>${totalProductsCosts.toFixed(2)}</span></div>
+              <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span>Total Labour Costs</span><span>${totalLabourCosts.toFixed(2)}</span></div>
+              <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span>Total Sub-Contractors Costs</span><span>${totalSubContractorsCosts.toFixed(2)}</span></div>
+              <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span>Total Shop Costs</span><span>${totalShopCosts.toFixed(2)}</span></div>
+              <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span>Total Miscellaneous Costs</span><span>${totalMiscellaneousCosts.toFixed(2)}</span></div>
+              <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span className="font-bold">Total Direct Project Costs</span><span className="font-bold">${totalWithMarkup.toFixed(2)}</span></div>
+              <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span>PST ({pstRate}%)</span><span>${pst.toFixed(2)}</span></div>
+              <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span className="font-bold">Sub-total</span><span className="font-bold">${subtotal.toFixed(2)}</span></div>
             </div>
-            <div className="flex items-center justify-between"><span>Total Profit</span><span>${profitValue.toFixed(2)}</span></div>
-            <div className="flex items-center justify-between font-medium"><span>Total Estimate</span><span>${finalTotal.toFixed(2)}</span></div>
-            <div className="flex items-center justify-between"><span>GST</span><span>${gst.toFixed(2)}</span></div>
-            <div className="flex items-center justify-between font-semibold text-lg"><span>Final Total (with GST)</span><span>${grandTotal.toFixed(2)}</span></div>
           </div>
-          <div className="mt-3 text-right flex items-center gap-2 justify-end">
-            <button 
-              onClick={async()=>{
-                try{
-                  setIsLoading(true);
-                  const payload = { 
-                    project_id: projectId, 
-                    markup, 
-                    pst_rate: pstRate,
-                    gst_rate: gstRate,
-                    profit_rate: profitRate,
-                    section_order: sectionOrder,
-                    items: items.map(it=> ({ 
-                      material_id: it.material_id, 
-                      quantity: it.quantity, 
-                      unit_price: it.unit_price, 
-                      section: it.section, 
-                      description: it.description, 
-                      item_type: it.item_type,
-                      name: it.name,
-                      unit: it.unit,
-                      markup: it.markup,
-                      taxable: it.taxable,
-                      qty_required: it.qty_required,
-                      unit_required: it.unit_required,
-                      supplier_name: it.supplier_name,
-                      unit_type: it.unit_type,
-                      units_per_package: it.units_per_package,
-                      coverage_sqs: it.coverage_sqs,
-                      coverage_ft2: it.coverage_ft2,
-                      coverage_m2: it.coverage_m2,
-                      labour_journey: it.labour_journey,
-                      labour_men: it.labour_men,
-                      labour_journey_type: it.labour_journey_type
-                    })) 
-                  };
-                  
-                  if (currentEstimateId) {
-                    // Update existing estimate
-                    await api('PUT', `/estimate/estimates/${currentEstimateId}`, payload);
-                    toast.success('Estimate updated');
-                  } else {
-                    // Create new estimate
-                    const result = await api<any>('POST', '/estimate/estimates', payload);
-                    setCurrentEstimateId(result.id);
-                    toast.success('Estimate saved');
-                  }
-                }catch(_e){ 
-                  toast.error('Failed to save'); 
-                }finally{
-                  setIsLoading(false);
-                }
-              }} 
-              disabled={isLoading || !canEdit}
-              className="px-3 py-2 rounded bg-brand-red text-white disabled:opacity-60">
-              {isLoading ? 'Saving...' : (currentEstimateId ? 'Update Estimate' : 'Save Estimate')}
-            </button>
-            <button
-              onClick={()=>setSummaryOpen(true)}
-              className="px-3 py-2 rounded bg-gray-100 hover:bg-gray-200">
-              Analysis
-            </button>
-            <button
-              onClick={async()=>{
-                try{
-                  setIsLoading(true);
-                  // First ensure estimate is saved
-                  let estimateIdToUse = currentEstimateId;
-                  if (!estimateIdToUse) {
-                    const payload = { 
-                      project_id: projectId, 
-                      markup, 
-                      pst_rate: pstRate,
-                      gst_rate: gstRate,
-                      profit_rate: profitRate,
-                      section_order: sectionOrder,
-                      items: items.map(it=> ({ 
-                        material_id: it.material_id, 
-                        quantity: it.quantity, 
-                        unit_price: it.unit_price, 
-                        section: it.section, 
-                        description: it.description, 
-                        item_type: it.item_type,
-                        name: it.name,
-                        unit: it.unit,
-                        markup: it.markup,
-                        taxable: it.taxable,
-                        qty_required: it.qty_required,
-                        unit_required: it.unit_required,
-                        supplier_name: it.supplier_name,
-                        unit_type: it.unit_type,
-                        units_per_package: it.units_per_package,
-                        coverage_sqs: it.coverage_sqs,
-                        coverage_ft2: it.coverage_ft2,
-                        coverage_m2: it.coverage_m2,
-                        labour_journey: it.labour_journey,
-                        labour_men: it.labour_men,
-                        labour_journey_type: it.labour_journey_type
-                      })) 
-                    };
-                    const result = await api<any>('POST', '/estimate/estimates', payload);
-                    estimateIdToUse = result.id;
-                    setCurrentEstimateId(estimateIdToUse);
-                  }
-                  
-                  // Generate PDF
-                  const token = localStorage.getItem('user_token');
-                  const resp = await fetch(`/estimate/estimates/${estimateIdToUse}/generate`, {
-                    method: 'GET',
-                    headers: token ? { Authorization: `Bearer ${token}` } : {}
-                  });
-                  
-                  if (!resp.ok) {
-                    throw new Error('Failed to generate PDF');
-                  }
-                  
-                  const blob = await resp.blob();
-                  const url = URL.createObjectURL(blob);
-                  const a = document.createElement('a');
-                  a.href = url;
-                  a.download = `estimate-${estimateIdToUse}.pdf`;
-                  document.body.appendChild(a);
-                  a.click();
-                  document.body.removeChild(a);
-                  URL.revokeObjectURL(url);
-                  
-                  toast.success('PDF generated and downloaded');
-                }catch(_e){
-                  toast.error('Failed to generate PDF');
-                }finally{
-                  setIsLoading(false);
-                }
-              }}
-              disabled={isLoading || items.length === 0}
-              className="px-3 py-2 rounded bg-gray-700 text-white disabled:opacity-60">
-              {isLoading ? 'Generating...' : 'Generate PDF'}
-            </button>
+          {/* Right Card */}
+          <div className="rounded-xl border bg-white p-4">
+            <div className="space-y-1 text-sm">
+              <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span>Sections Mark-up</span><span>${markupValue.toFixed(2)}</span></div>
+              <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1">
+                <span>Profit (%)</span>
+                <input 
+                  type="number" 
+                  className="border rounded px-2 py-1 w-20 text-right" 
+                  value={profitRate} 
+                  min={0} 
+                  step={1}
+                  onChange={e=>setProfitRate(Number(e.target.value||0))} 
+                />
+              </div>
+              <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span className="font-bold">Total Profit</span><span className="font-bold">${profitValue.toFixed(2)}</span></div>
+              <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span className="font-bold">Total Estimate</span><span className="font-bold">${finalTotal.toFixed(2)}</span></div>
+              <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span>GST ({gstRate}%)</span><span>${gst.toFixed(2)}</span></div>
+              <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1 text-lg"><span className="font-bold">Final Total (with GST)</span><span className="font-bold">${grandTotal.toFixed(2)}</span></div>
+            </div>
           </div>
         </div>
       </div>
+
+      {/* Spacer to prevent fixed bar from overlapping content */}
+      <div className="h-24" />
+
+      {/* Fixed Unsaved Changes bar */}
+      {canEdit && (
+        <div className="fixed left-60 right-0 bottom-0 z-40">
+          <div className="px-4">
+            <div className="mx-auto max-w-[1400px] rounded-t-xl border bg-white/95 backdrop-blur p-3 flex items-center justify-between shadow-[0_-6px_16px_rgba(0,0,0,0.08)]">
+              <div className={dirty ? 'text-[12px] text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5' : 'text-[12px] text-green-700 bg-green-50 border border-green-200 rounded-full px-2 py-0.5'}>
+                {dirty ? 'Unsaved changes' : 'All changes saved'}
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={()=>setSummaryOpen(true)}
+                  className="px-3 py-2 rounded bg-gray-100 hover:bg-gray-200">
+                  Analysis
+                </button>
+                <button
+                  onClick={async()=>{
+                    try{
+                      setIsLoading(true);
+                      // First ensure estimate is saved
+                      let estimateIdToUse = currentEstimateId;
+                      if (!estimateIdToUse) {
+                        const payload = { 
+                          project_id: projectId, 
+                          markup, 
+                          pst_rate: pstRate,
+                          gst_rate: gstRate,
+                          profit_rate: profitRate,
+                          section_order: sectionOrder,
+                          items: items.map(it=> ({ 
+                            material_id: it.material_id, 
+                            quantity: it.quantity, 
+                            unit_price: it.unit_price, 
+                            section: it.section, 
+                            description: it.description, 
+                            item_type: it.item_type,
+                            name: it.name,
+                            unit: it.unit,
+                            markup: it.markup,
+                            taxable: it.taxable,
+                            qty_required: it.qty_required,
+                            unit_required: it.unit_required,
+                            supplier_name: it.supplier_name,
+                            unit_type: it.unit_type,
+                            units_per_package: it.units_per_package,
+                            coverage_sqs: it.coverage_sqs,
+                            coverage_ft2: it.coverage_ft2,
+                            coverage_m2: it.coverage_m2,
+                            labour_journey: it.labour_journey,
+                            labour_men: it.labour_men,
+                            labour_journey_type: it.labour_journey_type
+                          })) 
+                        };
+                        const result = await api<any>('POST', '/estimate/estimates', payload);
+                        estimateIdToUse = result.id;
+                        setCurrentEstimateId(estimateIdToUse);
+                      }
+                      
+                      // Generate PDF
+                      const token = localStorage.getItem('user_token');
+                      const resp = await fetch(`/estimate/estimates/${estimateIdToUse}/generate`, {
+                        method: 'GET',
+                        headers: token ? { Authorization: `Bearer ${token}` } : {}
+                      });
+                      
+                      if (!resp.ok) {
+                        throw new Error('Failed to generate PDF');
+                      }
+                      
+                      const blob = await resp.blob();
+                      const url = URL.createObjectURL(blob);
+                      const a = document.createElement('a');
+                      a.href = url;
+                      a.download = `estimate-${estimateIdToUse}.pdf`;
+                      document.body.appendChild(a);
+                      a.click();
+                      document.body.removeChild(a);
+                      URL.revokeObjectURL(url);
+                      
+                      toast.success('PDF generated and downloaded');
+                    }catch(_e){
+                      toast.error('Failed to generate PDF');
+                    }finally{
+                      setIsLoading(false);
+                    }
+                  }}
+                  disabled={isLoading || items.length === 0}
+                  className="px-3 py-2 rounded bg-gray-700 text-white disabled:opacity-60">
+                  {isLoading ? 'Generating...' : 'Generate PDF'}
+                </button>
+                <button 
+                  disabled={!dirty} 
+                  onClick={handleManualSave}
+                  className="px-5 py-2 rounded-xl bg-gradient-to-r from-brand-red to-[#ee2b2b] text-white font-semibold disabled:opacity-50">
+                  Save
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
