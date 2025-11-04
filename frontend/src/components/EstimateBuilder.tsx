@@ -38,11 +38,29 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
     }
   }, [canEdit, statusLabel]);
 
+  // Fetch estimate by project_id if only projectId is provided
+  const { data: projectEstimates } = useQuery({
+    queryKey: ['projectEstimates', projectId],
+    queryFn: () => projectId ? api<any[]>('GET', `/estimate/estimates?project_id=${encodeURIComponent(projectId)}`) : Promise.resolve([]),
+    enabled: !!projectId && !estimateId && !currentEstimateId
+  });
+
+  // Set estimateId from project estimate if found
+  useEffect(() => {
+    if (projectEstimates && projectEstimates.length > 0 && !currentEstimateId && !estimateId) {
+      // Use the first (most recent) estimate for this project
+      const projectEstimate = projectEstimates[0];
+      if (projectEstimate && projectEstimate.id) {
+        setCurrentEstimateId(projectEstimate.id);
+      }
+    }
+  }, [projectEstimates, currentEstimateId, estimateId]);
+
   // Load estimate data if estimateId is provided
   const { data: estimateData } = useQuery({
-    queryKey: ['estimate', estimateId],
-    queryFn: () => estimateId ? api<any>('GET', `/estimate/estimates/${estimateId}`) : Promise.resolve(null),
-    enabled: !!estimateId && !!currentEstimateId
+    queryKey: ['estimate', currentEstimateId],
+    queryFn: () => currentEstimateId ? api<any>('GET', `/estimate/estimates/${currentEstimateId}`) : Promise.resolve(null),
+    enabled: !!currentEstimateId
   });
 
   // Load estimate data on mount
