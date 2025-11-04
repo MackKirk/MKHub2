@@ -338,6 +338,7 @@ def create_app() -> FastAPI:
                     conn.execute(text("ALTER TABLE projects ADD COLUMN IF NOT EXISTS status_label VARCHAR(100)"))
                     conn.execute(text("ALTER TABLE projects ADD COLUMN IF NOT EXISTS division_ids JSONB"))
                     conn.execute(text("ALTER TABLE projects ADD COLUMN IF NOT EXISTS site_id UUID"))
+                    conn.execute(text("ALTER TABLE projects ADD COLUMN IF NOT EXISTS contact_id UUID"))
                     # Employee reviews
                     conn.execute(text("CREATE TABLE IF NOT EXISTS review_templates (\n"
                                        "id UUID PRIMARY KEY,\n"
