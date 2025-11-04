@@ -1112,49 +1112,23 @@ function SummaryModal({ open, onClose, items, pstRate, gstRate, markup, profitRa
     }, 0);
   }, [items]);
   
-  // Total of taxable items only (for PST calculation)
+  // Total of taxable items only (for PST calculation) - with markup
   const taxableTotal = useMemo(() => {
     return items
       .filter(it => it.taxable !== false) // Only items marked as taxable
-      .reduce((acc, it) => {
-        let itemTotal = 0;
-        if (it.item_type === 'labour' && it.labour_journey_type) {
-          if (it.labour_journey_type === 'contract') {
-            itemTotal = (it.labour_journey || 0) * it.unit_price;
-          } else {
-            itemTotal = (it.labour_journey || 0) * (it.labour_men || 0) * it.unit_price;
-          }
-        } else {
-          itemTotal = it.quantity * it.unit_price;
-        }
-        return acc + itemTotal;
-      }, 0);
-  }, [items]);
-  
-  const pst = useMemo(() => taxableTotal * (pstRate/100), [taxableTotal, pstRate]);
-  const subtotal = useMemo(() => total + pst, [total, pst]);
-  
-  // Calculate Sections Mark-up based on individual item markups
-  const markupValue = useMemo(() => {
-    return items.reduce((acc, it) => {
-      let itemTotal = 0;
-      if (it.item_type === 'labour' && it.labour_journey_type) {
-        if (it.labour_journey_type === 'contract') {
-          itemTotal = (it.labour_journey || 0) * it.unit_price;
-        } else {
-          itemTotal = (it.labour_journey || 0) * (it.labour_men || 0) * it.unit_price;
-        }
-      } else {
-        itemTotal = it.quantity * it.unit_price;
-      }
-      const itemMarkup = it.markup !== undefined && it.markup !== null ? it.markup : markup;
-      const itemMarkupValue = itemTotal * (itemMarkup / 100);
-      return acc + itemMarkupValue;
-    }, 0);
+      .reduce((acc, it) => acc + calculateItemTotalWithMarkup(it), 0);
   }, [items, markup]);
   
+  const pst = useMemo(() => taxableTotal * (pstRate/100), [taxableTotal, pstRate]);
+  const subtotal = useMemo(() => totalCost + pst, [totalCost, pst]);
+  
+  // Calculate Sections Mark-up as the difference between total with markup and total without markup
+  const markupValue = useMemo(() => {
+    return totalCost - total;
+  }, [totalCost, total]);
+  
   const profitValue = useMemo(() => subtotal * (profitRate/100), [subtotal, profitRate]);
-  const totalEstimate = useMemo(() => subtotal + markupValue + profitValue, [subtotal, markupValue, profitValue]);
+  const totalEstimate = useMemo(() => subtotal + profitValue, [subtotal, profitValue]);
   const gst = useMemo(() => totalEstimate * (gstRate/100), [totalEstimate, gstRate]);
   const finalTotal = useMemo(() => totalEstimate + gst, [totalEstimate, gst]);
 
@@ -1256,11 +1230,6 @@ function SummaryModal({ open, onClose, items, pstRate, gstRate, markup, profitRa
             <div className="bg-gray-50 px-4 py-2 border-b font-semibold">Final Summary</div>
             <div className="p-4 space-y-2 text-sm">
               <div className="flex items-center justify-between"><span>Total Direct Costs:</span><span className="font-medium">${totalCost.toFixed(2)}</span></div>
-              <div className="flex items-center justify-between"><span>Labor Costs:</span><span className="font-medium">${laborTotal.toFixed(2)}</span></div>
-              <div className="flex items-center justify-between"><span>Material Costs:</span><span className="font-medium">${materialTotal.toFixed(2)}</span></div>
-              <div className="flex items-center justify-between"><span>Sub-Contractors:</span><span className="font-medium">${subcontractorTotal.toFixed(2)}</span></div>
-              <div className="flex items-center justify-between"><span>Shop:</span><span className="font-medium">${shopTotal.toFixed(2)}</span></div>
-              <div className="flex items-center justify-between"><span>Miscellaneous:</span><span className="font-medium">${miscellaneousTotal.toFixed(2)}</span></div>
               <div className="flex items-center justify-between border-t pt-2"><span>Total PST:</span><span className="font-medium">${pst.toFixed(2)}</span></div>
               <div className="flex items-center justify-between"><span>Sections Mark-up:</span><span className="font-medium">${markupValue.toFixed(2)}</span></div>
               <div className="flex items-center justify-between">
