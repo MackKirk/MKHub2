@@ -638,44 +638,68 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
         <button 
           onClick={() => {
             if (!canEdit) return;
+            // Check if Labour section already exists
+            const hasLabour = sectionOrder.some(s => s.startsWith('Labour Section') || s === 'Labour');
+            if (hasLabour) {
+              toast.error('Only one Labour section is allowed');
+              return;
+            }
             const newSection = `Labour Section ${Date.now()}`;
             setSectionOrder(prev => [...prev, newSection]);
-            setSectionNames(prev => ({ ...prev, [newSection]: 'Labour Section' }));
+            setSectionNames(prev => ({ ...prev, [newSection]: 'Labour' }));
           }}
-          disabled={!canEdit}
+          disabled={!canEdit || sectionOrder.some(s => s.startsWith('Labour Section') || s === 'Labour')}
           className="px-3 py-2 rounded bg-gray-100 hover:bg-gray-200 disabled:opacity-60">
           + Add Labour
         </button>
         <button 
           onClick={() => {
             if (!canEdit) return;
+            // Check if Sub-Contractor section already exists
+            const hasSubContractor = sectionOrder.some(s => s.startsWith('Sub-Contractor Section') || s === 'Sub-Contractors');
+            if (hasSubContractor) {
+              toast.error('Only one Sub-Contractor section is allowed');
+              return;
+            }
             const newSection = `Sub-Contractor Section ${Date.now()}`;
             setSectionOrder(prev => [...prev, newSection]);
-            setSectionNames(prev => ({ ...prev, [newSection]: 'Sub-Contractor Section' }));
+            setSectionNames(prev => ({ ...prev, [newSection]: 'Sub-Contractor' }));
           }}
-          disabled={!canEdit}
+          disabled={!canEdit || sectionOrder.some(s => s.startsWith('Sub-Contractor Section') || s === 'Sub-Contractors')}
           className="px-3 py-2 rounded bg-gray-100 hover:bg-gray-200 disabled:opacity-60">
           + Add Sub-Contractor
         </button>
         <button 
           onClick={() => {
             if (!canEdit) return;
+            // Check if Miscellaneous section already exists
+            const hasMiscellaneous = sectionOrder.some(s => s.startsWith('Miscellaneous Section') || s === 'Miscellaneous');
+            if (hasMiscellaneous) {
+              toast.error('Only one Miscellaneous section is allowed');
+              return;
+            }
             const newSection = `Miscellaneous Section ${Date.now()}`;
             setSectionOrder(prev => [...prev, newSection]);
-            setSectionNames(prev => ({ ...prev, [newSection]: 'Miscellaneous Section' }));
+            setSectionNames(prev => ({ ...prev, [newSection]: 'Miscellaneous' }));
           }}
-          disabled={!canEdit}
+          disabled={!canEdit || sectionOrder.some(s => s.startsWith('Miscellaneous Section') || s === 'Miscellaneous')}
           className="px-3 py-2 rounded bg-gray-100 hover:bg-gray-200 disabled:opacity-60">
           + Add Miscellaneous
         </button>
         <button 
           onClick={() => {
             if (!canEdit) return;
+            // Check if Shop section already exists
+            const hasShop = sectionOrder.some(s => s.startsWith('Shop Section') || s === 'Shop');
+            if (hasShop) {
+              toast.error('Only one Shop section is allowed');
+              return;
+            }
             const newSection = `Shop Section ${Date.now()}`;
             setSectionOrder(prev => [...prev, newSection]);
-            setSectionNames(prev => ({ ...prev, [newSection]: 'Shop Section' }));
+            setSectionNames(prev => ({ ...prev, [newSection]: 'Shop' }));
           }}
-          disabled={!canEdit}
+          disabled={!canEdit || sectionOrder.some(s => s.startsWith('Shop Section') || s === 'Shop')}
           className="px-3 py-2 rounded bg-gray-100 hover:bg-gray-200 disabled:opacity-60">
           + Add Shop
         </button>
@@ -800,6 +824,7 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
                  onDragOver={(e) => onSectionDragOver(e, section)}
                  onDrop={onSectionDrop}>
               <div className="bg-gray-50 px-4 py-2 border-b flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-1">
                 <span 
                   className="inline-flex items-center justify-center w-5 h-5 text-gray-400 hover:text-gray-600 cursor-grab active:cursor-grabbing" 
                   title="Drag to reorder section" 
@@ -851,13 +876,27 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
                     autoFocus
                   />
                 ) : (
-                  <h3 className="font-semibold text-gray-900">{sectionNames[section] || section}</h3>
+                  <h3 className="font-semibold text-gray-900">
+                    {sectionNames[section] || 
+                      (section.startsWith('Labour Section') ? 'Labour' :
+                       section.startsWith('Sub-Contractor Section') ? 'Sub-Contractor' :
+                       section.startsWith('Miscellaneous Section') ? 'Miscellaneous' :
+                       section.startsWith('Shop Section') ? 'Shop' :
+                       section.startsWith('Product Section') ? 'Product Section' :
+                       section)}
+                  </h3>
                 )}
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
                     setEditingSectionName(section);
-                    setEditingSectionNameValue(sectionNames[section] || section);
+                    setEditingSectionNameValue(sectionNames[section] || 
+                      (section.startsWith('Labour Section') ? 'Labour' :
+                       section.startsWith('Sub-Contractor Section') ? 'Sub-Contractor' :
+                       section.startsWith('Miscellaneous Section') ? 'Miscellaneous' :
+                       section.startsWith('Shop Section') ? 'Shop' :
+                       section.startsWith('Product Section') ? 'Product Section' :
+                       section));
                   }}
                   className="px-2 py-1 rounded text-gray-500 hover:text-blue-600"
                   title="Edit section name"
@@ -867,42 +906,45 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
                     <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
                   </svg>
                 </button>
-                {(() => {
-                  const sectionType = section.startsWith('Product Section') ? 'product' :
-                                    section.startsWith('Labour Section') ? 'labour' :
-                                    section.startsWith('Sub-Contractor Section') ? 'subcontractor' :
-                                    section.startsWith('Miscellaneous Section') ? 'miscellaneous' :
-                                    section.startsWith('Shop Section') ? 'shop' :
-                                    ['Labour', 'Sub-Contractors', 'Shop', 'Miscellaneous'].includes(section) ? 
-                                      (section === 'Labour' ? 'labour' : section === 'Sub-Contractors' ? 'subcontractor' : section === 'Shop' ? 'shop' : 'miscellaneous') :
-                                    'product';
-                  return (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setAddingToSection({ section, type: sectionType as 'product' | 'labour' | 'subcontractor' | 'miscellaneous' | 'shop' });
-                      }}
-                      className="px-2 py-1 rounded text-brand-red hover:bg-red-50"
-                      title="Add item to section"
-                      disabled={!canEdit}>
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                        <path d="M12 4v16m8-8H4"></path>
-                      </svg>
-                    </button>
-                  );
-                })()}
-                <button 
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleRemoveSection(section);
-                  }} 
-                  className="ml-auto px-2 py-1 rounded text-gray-500 hover:text-red-600" 
-                  title="Remove section"
-                  disabled={!canEdit}>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                    <path d="M9 3h6a1 1 0 0 1 1 1v2h4v2h-1l-1 13a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 8H4V6h4V4a1 1 0 0 1 1-1Zm1 3h4V5h-4v1Zm-2 2 1 12h8l1-12H8Z"></path>
-                  </svg>
-                </button>
+                </div>
+                <div className="flex items-center gap-2">
+                  {(() => {
+                    const sectionType = section.startsWith('Product Section') ? 'product' :
+                                      section.startsWith('Labour Section') ? 'labour' :
+                                      section.startsWith('Sub-Contractor Section') ? 'subcontractor' :
+                                      section.startsWith('Miscellaneous Section') ? 'miscellaneous' :
+                                      section.startsWith('Shop Section') ? 'shop' :
+                                      ['Labour', 'Sub-Contractors', 'Shop', 'Miscellaneous'].includes(section) ? 
+                                        (section === 'Labour' ? 'labour' : section === 'Sub-Contractors' ? 'subcontractor' : section === 'Shop' ? 'shop' : 'miscellaneous') :
+                                      'product';
+                    return (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setAddingToSection({ section, type: sectionType as 'product' | 'labour' | 'subcontractor' | 'miscellaneous' | 'shop' });
+                        }}
+                        className="px-2 py-1 rounded bg-brand-red text-white hover:bg-red-600"
+                        title="Add item to section"
+                        disabled={!canEdit}>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                          <path d="M12 4v16m8-8H4"></path>
+                        </svg>
+                      </button>
+                    );
+                  })()}
+                  <button 
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleRemoveSection(section);
+                    }} 
+                    className="px-2 py-1 rounded text-gray-500 hover:text-red-600" 
+                    title="Remove section"
+                    disabled={!canEdit}>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                      <path d="M9 3h6a1 1 0 0 1 1 1v2h4v2h-1l-1 13a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 8H4V6h4V4a1 1 0 0 1 1-1Zm1 3h4V5h-4v1Zm-2 2 1 12h8l1-12H8Z"></path>
+                    </svg>
+                  </button>
+                </div>
               </div>
               <table className="w-full text-sm">
                 <thead className="bg-gray-50 border-b"><tr>
@@ -924,10 +966,13 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
                   ) : (
                     <>
                       <th className="p-2 text-left">
-                        {['Sub-Contractors', 'Shop', 'Miscellaneous'].includes(section) ? 'Product / Item' : section}
+                        {section.startsWith('Miscellaneous Section') || section === 'Miscellaneous' || section.startsWith('Shop Section') || section === 'Shop' ? 'Product / Item' :
+                         section.startsWith('Labour Section') || section === 'Labour' ? 'Labour' :
+                         section.startsWith('Sub-Contractor Section') || section === 'Sub-Contractors' ? 'Sub-Contractor' :
+                         section}
                       </th>
                       <th className="p-2 text-left">
-                        {['Sub-Contractors', 'Shop', 'Miscellaneous'].includes(section) ? 'Quantity Required' : 'Composition'}
+                        {section.startsWith('Miscellaneous Section') || section === 'Miscellaneous' || section.startsWith('Shop Section') || section === 'Shop' ? 'Quantity Required' : 'Composition'}
                       </th>
                       <th className="p-2 text-left">Unit Price</th>
                       <th className="p-2 text-left">Total</th>
@@ -1573,12 +1618,12 @@ function SummaryModal({ open, onClose, items, pstRate, gstRate, markup, profitRa
 
   return (
     <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
-      <div className="w-[800px] max-w-full bg-white rounded-xl overflow-hidden max-h-[90vh] overflow-y-auto">
-        <div className="px-4 py-3 border-b flex items-center justify-between sticky top-0 bg-white z-10">
-          <div className="font-semibold text-lg">Summary and Analysis</div>
-          <button onClick={onClose} className="text-gray-500 hover:text-gray-700 text-2xl font-bold w-8 h-8 flex items-center justify-center rounded hover:bg-gray-100" title="Close">×</button>
+      <div className="w-[800px] max-w-full bg-white rounded-xl overflow-hidden max-h-[90vh] flex flex-col">
+        <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] p-6 flex items-center gap-6 relative flex-shrink-0">
+          <div className="font-semibold text-lg text-white">Summary and Analysis</div>
+          <button onClick={onClose} className="ml-auto text-white hover:text-gray-200 text-2xl font-bold w-8 h-8 flex items-center justify-center rounded hover:bg-white/20" title="Close">×</button>
         </div>
-        <div className="p-6 space-y-6">
+        <div className="p-6 space-y-6 overflow-y-auto flex-1">
           {/* Cost Breakdown by Section */}
           <div className="rounded-xl border bg-white overflow-hidden">
             <div className="bg-gray-50 px-4 py-2 border-b font-semibold">Cost Breakdown by Section</div>
