@@ -5,6 +5,7 @@ import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
 import ImagePicker from '@/components/ImagePicker';
 import EstimateBuilder from '@/components/EstimateBuilder';
+import ProposalForm from '@/components/ProposalForm';
 
 type Project = { id:string, code?:string, name?:string, client_id?:string, address_city?:string, address_province?:string, address_country?:string, description?:string, status_id?:string, division_id?:string, estimator_id?:string, onsite_lead_id?:string, date_start?:string, date_eta?:string, date_end?:string, cost_estimated?:number, cost_actual?:number, service_value?:number, progress?:number };
 type ProjectFile = { id:string, file_object_id:string, is_image?:boolean, content_type?:string, category?:string, original_name?:string, uploaded_at?:string };
@@ -324,10 +325,21 @@ function PhotosTab({ files }:{ files: ProjectFile[] }){
 }
 
 function ProjectProposalTab({ projectId, clientId, siteId, proposals, statusLabel, settings }:{ projectId:string, clientId:string, siteId?:string, proposals: Proposal[], statusLabel:string, settings:any }){
-  const navigate = useNavigate();
-  
   // Get the first (and only) proposal for this project
   const proposal = (proposals||[])[0];
+  
+  // Fetch full proposal data if it exists
+  const { data: proposalData, isLoading: isLoadingProposal, refetch: refetchProposal } = useQuery({
+    queryKey: ['proposal', proposal?.id],
+    queryFn: () => proposal?.id ? api<any>('GET', `/proposals/${proposal.id}`) : Promise.resolve(null),
+    enabled: !!proposal?.id
+  });
+  
+  // Refetch proposals list when needed
+  const { refetch: refetchProposals } = useQuery({ 
+    queryKey:['projectProposals', projectId], 
+    queryFn: ()=>api<Proposal[]>('GET', `/proposals?project_id=${encodeURIComponent(String(projectId||''))}`) 
+  });
   
   // Check if editing is allowed based on status
   const canEdit = useMemo(()=>{
@@ -337,55 +349,34 @@ function ProjectProposalTab({ projectId, clientId, siteId, proposals, statusLabe
     if (statusLabel.toLowerCase() === 'estimating') return true;
     // Check both boolean true and string "true" for compatibility
     const allowEdit = statusConfig?.meta?.allow_edit_proposal;
-    // Debug log
-    if (statusConfig && statusLabel) {
-      console.log('[ProjectDetail] Status check:', { 
-        statusLabel, 
-        found: !!statusConfig,
-        meta: statusConfig.meta, 
-        allowEdit,
-        canEdit: allowEdit === true || allowEdit === 'true' || allowEdit === 1
-      });
-    }
     return allowEdit === true || allowEdit === 'true' || allowEdit === 1;
   }, [statusLabel, settings]);
   
-  // Navigate to proposal edit or create
-  useEffect(()=>{
-    if (proposal) {
-      // If proposal exists, navigate to edit
-      navigate(`/proposals/${encodeURIComponent(proposal.id)}/edit`);
-    } else {
-      // If no proposal, create new one
-      const params = new URLSearchParams();
-      params.set('client_id', clientId);
-      if (siteId) params.set('site_id', siteId);
-      params.set('project_id', projectId);
-      navigate(`/proposals/new?${params.toString()}`);
-    }
-  }, [proposal, projectId, clientId, siteId, navigate]);
-  
   return (
     <div className="rounded-xl border bg-white p-4">
-      <div className="text-center py-8">
-        {proposal ? (
-          <>
-            <div className="text-lg font-semibold mb-2">Opening proposal...</div>
-            <div className="text-sm text-gray-600">{proposal.title || 'Proposal'}</div>
-          </>
-        ) : (
-          <>
-            <div className="text-lg font-semibold mb-2">Creating new proposal...</div>
-            <div className="text-sm text-gray-600">Redirecting to proposal editor</div>
-          </>
-        )}
-        {!canEdit && (
-          <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded text-sm text-yellow-800">
-            <strong>Note:</strong> Editing is restricted for projects with status "{statusLabel}". 
-            Please change the project status to allow editing.
-          </div>
-        )}
-      </div>
+      {!canEdit && statusLabel && (
+        <div className="mb-4 p-4 bg-yellow-50 border border-yellow-200 rounded text-sm text-yellow-800">
+          <strong>Editing Restricted:</strong> This project has status "{statusLabel}" which does not allow editing proposals or estimates. 
+          Please change the project status to allow editing.
+        </div>
+      )}
+      {isLoadingProposal && proposal ? (
+        <div className="h-24 bg-gray-100 animate-pulse rounded"/>
+      ) : (
+        <ProposalForm 
+          mode={proposal ? 'edit' : 'new'} 
+          clientId={clientId} 
+          siteId={siteId} 
+          projectId={projectId} 
+          initial={proposalData?.proposal || null}
+          disabled={!canEdit}
+          onSave={()=>{
+            // Refetch proposal data and proposals list after save
+            if (proposal?.id) refetchProposal();
+            refetchProposals();
+          }}
+        />
+      )}
     </div>
   );
 }

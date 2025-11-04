@@ -9,7 +9,7 @@ import { useConfirm } from '@/components/ConfirmProvider';
 type Client = { id:string, name?:string, display_name?:string, address_line1?:string, city?:string, province?:string, country?:string };
 type Site = { id:string, site_name?:string, site_address_line1?:string, site_city?:string, site_province?:string, site_country?:string };
 
-export default function ProposalForm({ mode, clientId: clientIdProp, siteId: siteIdProp, projectId: projectIdProp, initial, disabled }: { mode:'new'|'edit', clientId?:string, siteId?:string, projectId?:string, initial?: any, disabled?: boolean }){
+export default function ProposalForm({ mode, clientId: clientIdProp, siteId: siteIdProp, projectId: projectIdProp, initial, disabled, onSave }: { mode:'new'|'edit', clientId?:string, siteId?:string, projectId?:string, initial?: any, disabled?: boolean, onSave?: ()=>void }){
   const nav = useNavigate();
   const queryClient = useQueryClient();
 
@@ -241,15 +241,22 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
         proposalIdRef.current = r.id;
       }
       
-      // If this was a new proposal and now has id, navigate to edit page
-      if (mode === 'new' && r?.id) {
-        // Invalidate proposals list to refresh it
-        queryClient.invalidateQueries({ queryKey: ['proposals'] });
-        // Navigate to edit page
+      // Invalidate queries to refresh data
+      queryClient.invalidateQueries({ queryKey: ['proposals'] });
+      queryClient.invalidateQueries({ queryKey: ['projectProposals'] });
+      queryClient.invalidateQueries({ queryKey: ['proposal', r?.id] });
+      
+      // Call onSave callback if provided (for inline editing in project context)
+      if (onSave) {
+        onSave();
+      }
+      
+      // If this was a new proposal and now has id, navigate to edit page (only if not in project context)
+      // Check if we're in a project context by checking if projectId is set and we're not in a standalone proposal page
+      const isInProjectContext = projectId && !window.location.pathname.includes('/proposals/');
+      if (mode === 'new' && r?.id && !isInProjectContext) {
+        // Navigate to edit page only if not embedded in project detail
         nav(`/proposals/${encodeURIComponent(r.id)}/edit`);
-      } else if (mode === 'edit') {
-        // Invalidate proposals list to refresh it
-        queryClient.invalidateQueries({ queryKey: ['proposals'] });
       }
       lastAutoSaveRef.current = Date.now();
     }catch(e){ toast.error('Save failed'); }
@@ -654,7 +661,11 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
         <div className="mb-3 p-2 rounded bg-blue-50 border text-[12px] text-blue-800">There are unsaved changes in this proposal. Click "Save Proposal" to persist.</div>
       )}
       <div className="mt-2 flex items-center justify-between">
-        <button className="px-3 py-2 rounded bg-gray-100" onClick={()=> nav(-1)}>Back</button>
+        {/* Only show Back button when not in project context */}
+        {(!projectId || window.location.pathname.includes('/proposals/')) && (
+          <button className="px-3 py-2 rounded bg-gray-100" onClick={()=> nav(-1)}>Back</button>
+        )}
+        {projectId && !window.location.pathname.includes('/proposals/') && <div />}
         <div className="space-x-2">
           {mode === 'edit' && (
             <button 
@@ -670,7 +681,11 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
                     await api('DELETE', `/proposals/${encodeURIComponent(initial.id)}`);
                     toast.success('Proposal deleted');
                     queryClient.invalidateQueries({ queryKey: ['proposals'] });
-                    nav(-1);
+                    queryClient.invalidateQueries({ queryKey: ['projectProposals'] });
+                    // Only navigate back if not in project context
+                    if (!projectId || window.location.pathname.includes('/proposals/')) {
+                      nav(-1);
+                    }
                   }
                 } catch (e: any) {
                   console.error('Failed to delete proposal:', e);
