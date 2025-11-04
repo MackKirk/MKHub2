@@ -645,7 +645,7 @@ export default function EstimateBuilder({ projectId, estimateId }: { projectId: 
                               <div className="flex items-center gap-1">
                                 <span>$</span>
                                 <input type="number" className="w-20 border rounded px-2 py-1" 
-                                  value={it.unit_price ?? ''} min={0} step={it.item_type === 'labour' ? 1 : 0.01}
+                                  value={it.unit_price ?? ''} min={0} step={(it.item_type === 'labour' || it.item_type === 'subcontractor' || it.item_type === 'shop' || it.item_type === 'miscellaneous' || ['Sub-Contractors', 'Shop', 'Miscellaneous', 'Labour'].includes(section)) ? 1 : 0.01}
                                   onChange={e=>{
                                     const inputValue = e.target.value;
                                     if (inputValue === '') {
