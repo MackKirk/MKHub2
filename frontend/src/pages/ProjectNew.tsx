@@ -84,6 +84,7 @@ export default function ProjectNew(){
   };
 
   return (
+    <>
     <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center">
       <div className="w-[900px] max-w-[95vw] max-h-[90vh] bg-white rounded-xl overflow-hidden flex flex-col">
         <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] p-6 relative">
@@ -224,6 +225,7 @@ export default function ProjectNew(){
         try{ setCoverBlob(blob); setCoverPreview(URL.createObjectURL(blob)); }catch(_e){} finally{ setHiddenPickerOpen(false); }
       }} />
     )}
+    </>
   );
 }
 
