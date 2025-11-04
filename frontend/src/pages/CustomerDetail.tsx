@@ -387,8 +387,11 @@ export default function CustomerDetail(){
               )}
               {tab==='sites' && (
                 <div>
-                  <h3 className="font-semibold mb-3">Construction Sites</h3>
-                  <div className="grid md:grid-cols-3 gap-4">
+                  <div className="mb-3 flex items-center justify-between">
+                    <h3 className="font-semibold">Construction Sites</h3>
+                    <Link to={`/customers/${encodeURIComponent(String(id||''))}/sites/new`} state={{ backgroundLocation: location }} className="px-3 py-1.5 rounded bg-brand-red text-white">New Site</Link>
+                  </div>
+                  <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
                     {(sites||[]).map(s=>{
                       const filesForSite = (fileBySite[s.id||'']||[]);
                       const cover = filesForSite.find(f=> String(f.category||'')==='site-cover-derived');
@@ -400,10 +403,10 @@ export default function CustomerDetail(){
                             <img className="w-full h-full object-cover" src={src} />
                             <button onClick={(e)=>{ e.preventDefault(); e.stopPropagation(); setSitePicker({ open:true, siteId: String(s.id) }); }} className="absolute right-2 top-2 text-xs px-2 py-1 rounded bg-black/70 text-white">Change cover</button>
                           </div>
-                          <div className="p-3">
-                            <div className="font-semibold text-base group-hover:underline">{s.site_name||'Site'}</div>
-                            <div className="text-sm text-gray-600 truncate">{s.site_address_line1||''}</div>
-                            <div className="text-xs text-gray-500">{s.site_city||''} {s.site_province||''} {s.site_country||''}</div>
+                          <div className="p-2">
+                            <div className="font-semibold text-sm group-hover:underline truncate">{s.site_name||'Site'}</div>
+                            <div className="text-xs text-gray-600 truncate">{s.site_address_line1||''}</div>
+                            <div className="text-[11px] text-gray-500 truncate">{s.site_city||''} {s.site_province||''} {s.site_country||''}</div>
                           </div>
                         </Link>
                       );
