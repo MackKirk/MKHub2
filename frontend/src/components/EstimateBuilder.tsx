@@ -2,17 +2,19 @@ import { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
+import { useConfirm } from '@/components/ConfirmProvider';
 
 type Material = { id:number, name:string, supplier_name?:string, unit?:string, price?:number, unit_type?:string, units_per_package?:number, coverage_sqs?:number, coverage_ft2?:number, coverage_m2?:number };
 type Item = { material_id?:number, name:string, unit?:string, quantity:number, unit_price:number, section:string, description?:string, item_type?:string, supplier_name?:string, unit_type?:string, qty_required?:number, unit_required?:string, markup?:number, taxable?:boolean, units_per_package?:number, coverage_sqs?:number, coverage_ft2?:number, coverage_m2?:number, labour_journey?:number, labour_men?:number, labour_journey_type?:'days'|'hours'|'contract' };
 
 export default function EstimateBuilder({ projectId, estimateId, statusLabel, settings }: { projectId: string, estimateId?: number, statusLabel?: string, settings?: any }){
+  const confirm = useConfirm();
   const [items, setItems] = useState<Item[]>([]);
   const [markup, setMarkup] = useState<number>(5);
   const [pstRate, setPstRate] = useState<number>(7);
   const [gstRate, setGstRate] = useState<number>(5);
   const [profitRate, setProfitRate] = useState<number>(0);
-  const defaultSections = ['Roof System','Wood Blocking / Accessories','Flashing','Miscellaneous'];
+  const defaultSections = ['Roof System','Wood Blocking / Accessories','Flashing'];
   const [sectionOrder, setSectionOrder] = useState<string[]>(defaultSections);
   const [summaryOpen, setSummaryOpen] = useState(false);
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -166,11 +168,13 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
     }, 0);
   }, [items]);
   
-  // Total of taxable items only (for PST calculation)
+  // Total of taxable items only (for PST calculation) - with markup
   const taxableTotal = useMemo(()=> {
     return items
       .filter(it => it.taxable !== false) // Only items marked as taxable
       .reduce((acc, it)=> {
+        // Calculate item total with markup
+        const m = it.markup !== undefined && it.markup !== null ? it.markup : markup;
         let itemTotal = 0;
         if (it.item_type === 'labour' && it.labour_journey_type) {
           if (it.labour_journey_type === 'contract') {
@@ -181,36 +185,11 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
         } else {
           itemTotal = it.quantity * it.unit_price;
         }
-        return acc + itemTotal;
+        return acc + (itemTotal * (1 + (m/100)));
       }, 0);
-  }, [items]);
-  
-  const pst = useMemo(()=> (taxableTotal * (pstRate/100)), [taxableTotal, pstRate]);
-  const subtotal = useMemo(()=> total + pst, [total, pst]);
-  
-  // Calculate Sections Mark-up based on individual item markups
-  const markupValue = useMemo(() => {
-    return items.reduce((acc, it) => {
-      let itemTotal = 0;
-      if (it.item_type === 'labour' && it.labour_journey_type) {
-        if (it.labour_journey_type === 'contract') {
-          itemTotal = (it.labour_journey || 0) * it.unit_price;
-        } else {
-          itemTotal = (it.labour_journey || 0) * (it.labour_men || 0) * it.unit_price;
-        }
-      } else {
-        itemTotal = it.quantity * it.unit_price;
-      }
-      const itemMarkup = it.markup !== undefined && it.markup !== null ? it.markup : markup;
-      const itemMarkupValue = itemTotal * (itemMarkup / 100);
-      return acc + itemMarkupValue;
-    }, 0);
   }, [items, markup]);
   
-  const profitValue = useMemo(()=> subtotal * (profitRate/100), [subtotal, profitRate]);
-  const finalTotal = useMemo(()=> subtotal + markupValue + profitValue, [subtotal, markupValue, profitValue]);
-  const gst = useMemo(()=> finalTotal * (gstRate/100), [finalTotal, gstRate]);
-  const grandTotal = useMemo(()=> finalTotal + gst, [finalTotal, gst]);
+  const pst = useMemo(()=> (taxableTotal * (pstRate/100)), [taxableTotal, pstRate]);
 
   // Auto-save function (silent save without toast)
   const autoSave = useCallback(async () => {
@@ -353,6 +332,45 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
     return groups;
   }, [items]);
 
+  // Calculate total of all section subtotals with markup (same as shown in table)
+  const totalWithMarkup = useMemo(() => {
+    return Object.keys(groupedItems).reduce((acc, section) => {
+      const sectionItems = groupedItems[section];
+      const isLabourSection = ['Labour', 'Sub-Contractors', 'Shop', 'Miscellaneous'].includes(section);
+      const sectionTotal = sectionItems.reduce((sum, it) => {
+        const m = it.markup !== undefined && it.markup !== null ? it.markup : markup;
+        let itemTotal = 0;
+        if (!isLabourSection) {
+          itemTotal = it.quantity * it.unit_price;
+        } else {
+          if (it.item_type === 'labour' && it.labour_journey_type) {
+            if (it.labour_journey_type === 'contract') {
+              itemTotal = (it.labour_journey || 0) * it.unit_price;
+            } else {
+              itemTotal = (it.labour_journey || 0) * (it.labour_men || 0) * it.unit_price;
+            }
+          } else {
+            itemTotal = it.quantity * it.unit_price;
+          }
+        }
+        return sum + (itemTotal * (1 + (m/100)));
+      }, 0);
+      return acc + sectionTotal;
+    }, 0);
+  }, [groupedItems, markup]);
+
+  // Calculate Sections Mark-up as the difference between total with markup and total without markup
+  const markupValue = useMemo(() => {
+    return totalWithMarkup - total;
+  }, [totalWithMarkup, total]);
+
+  const subtotal = useMemo(()=> totalWithMarkup + pst, [totalWithMarkup, pst]);
+
+  const profitValue = useMemo(()=> subtotal * (profitRate/100), [subtotal, profitRate]);
+  const finalTotal = useMemo(()=> subtotal + profitValue, [subtotal, profitValue]);
+  const gst = useMemo(()=> finalTotal * (gstRate/100), [finalTotal, gstRate]);
+  const grandTotal = useMemo(()=> finalTotal + gst, [finalTotal, gst]);
+
   // Sync section order with items (add new sections that appear in items)
   useEffect(()=>{
     const sectionsInItems = new Set<string>();
@@ -393,6 +411,25 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
   // Show warning banner if editing is restricted
   const showRestrictionWarning = !canEdit && statusLabel;
   
+  // Handle remove item with confirmation
+  const handleRemoveItem = useCallback(async (index: number, itemName: string) => {
+    if (!canEdit) {
+      toast.error('Editing is restricted for this project status');
+      return;
+    }
+    
+    const ok = await confirm({
+      title: 'Remove item',
+      message: `Are you sure you want to remove "${itemName}"? This action cannot be undone.`,
+      confirmText: 'Remove',
+      cancelText: 'Cancel'
+    });
+    
+    if (ok) {
+      setItems(prev => prev.filter((_, i) => i !== index));
+    }
+  }, [confirm, canEdit]);
+  
   return (
     <div>
       {showRestrictionWarning && (
@@ -402,16 +439,15 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
         </div>
       )}
       <div className="mb-3 flex items-center gap-2">
-        <AddProductModal onAdd={(it)=> setItems(prev=> [...prev, it])} disabled={!canEdit} />
-        <AddLabourModal onAdd={(it)=> setItems(prev=> [...prev, it])} disabled={!canEdit} />
-        <AddSubContractorModal onAdd={(it)=> setItems(prev=> [...prev, it])} disabled={!canEdit} />
-        <AddMiscellaneousModal onAdd={(it)=> setItems(prev=> [...prev, it])} disabled={!canEdit} />
-        <AddShopModal onAdd={(it)=> setItems(prev=> [...prev, it])} disabled={!canEdit} />
+        <AddProductModal onAdd={(it)=> setItems(prev=> [...prev, it])} disabled={!canEdit} defaultMarkup={markup} />
+        <AddLabourModal onAdd={(it)=> setItems(prev=> [...prev, it])} disabled={!canEdit} defaultMarkup={markup} />
+        <AddSubContractorModal onAdd={(it)=> setItems(prev=> [...prev, it])} disabled={!canEdit} defaultMarkup={markup} />
+        <AddMiscellaneousModal onAdd={(it)=> setItems(prev=> [...prev, it])} disabled={!canEdit} defaultMarkup={markup} />
+        <AddShopModal onAdd={(it)=> setItems(prev=> [...prev, it])} disabled={!canEdit} defaultMarkup={markup} />
         <div className="ml-auto flex items-center gap-3 text-sm">
           <label>Markup (%)</label><input type="number" className="border rounded px-2 py-1 w-20" value={markup} min={0} step={1} onChange={e=>setMarkup(Number(e.target.value||0))} disabled={!canEdit} />
           <label>PST (%)</label><input type="number" className="border rounded px-2 py-1 w-20" value={pstRate} min={0} step={1} onChange={e=>setPstRate(Number(e.target.value||0))} disabled={!canEdit} />
           <label>GST (%)</label><input type="number" className="border rounded px-2 py-1 w-20" value={gstRate} min={0} step={1} onChange={e=>setGstRate(Number(e.target.value||0))} disabled={!canEdit} />
-          <button onClick={()=>setSummaryOpen(true)} className="px-3 py-2 rounded bg-gray-100 hover:bg-gray-200">Summary</button>
         </div>
       </div>
 
@@ -423,7 +459,6 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
         gstRate={gstRate}
         markup={markup}
         profitRate={profitRate}
-        setProfitRate={setProfitRate}
       />
 
       {/* Sections grouped display */}
@@ -499,7 +534,7 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
                 <tbody>
                   {groupedItems[section].map((it, idx)=> {
                     const originalIdx = items.indexOf(it);
-                    const itemMarkup = it.markup || markup;
+                    const itemMarkup = it.markup !== undefined && it.markup !== null ? it.markup : markup;
                     // Calculate total value based on item type
                     let totalValue = 0;
                     if (!isLabourSection) {
@@ -594,7 +629,7 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
                             <td className="p-2">${totalValue.toFixed(2)}</td>
                             <td className="p-2">
                               <input type="number" className="w-16 border rounded px-2 py-1" 
-                                value={itemMarkup ?? ''} min={0} step={1}
+                                value={it.markup !== undefined && it.markup !== null ? it.markup : ''} min={0} step={1}
                                 onChange={e=>{
                                   const inputValue = e.target.value;
                                   if (inputValue === '') {
@@ -602,13 +637,13 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
                                     return;
                                   }
                                   const newValue = Number(inputValue);
-                                  if (!isNaN(newValue)) {
+                                  if (!isNaN(newValue) && newValue >= 0) {
                                     setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, markup: newValue} : item));
                                   }
                                 }}
                                 onBlur={e=>{
                                   if (e.target.value === '' || e.target.value === null) {
-                                    setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, markup: markup} : item));
+                                    setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, markup: 0} : item));
                                   }
                                 }} />
                             </td>
@@ -782,7 +817,7 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
                             <td className="p-2">${totalValue.toFixed(2)}</td>
                             <td className="p-2">
                               <input type="number" className="w-16 border rounded px-2 py-1" 
-                                value={itemMarkup ?? ''} min={0} step={1}
+                                value={it.markup !== undefined && it.markup !== null ? it.markup : ''} min={0} step={1}
                                 onChange={e=>{
                                   const inputValue = e.target.value;
                                   if (inputValue === '') {
@@ -790,13 +825,13 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
                                     return;
                                   }
                                   const newValue = Number(inputValue);
-                                  if (!isNaN(newValue)) {
+                                  if (!isNaN(newValue) && newValue >= 0) {
                                     setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, markup: newValue} : item));
                                   }
                                 }}
                                 onBlur={e=>{
                                   if (e.target.value === '' || e.target.value === null) {
-                                    setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, markup: markup} : item));
+                                    setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, markup: 0} : item));
                                   }
                                 }} />
                             </td>
@@ -808,7 +843,7 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
                             </td>
                           </>
                         )}
-                        <td className="p-2"><button onClick={()=> setItems(prev=> prev.filter((_,i)=> i!==originalIdx))} className="px-2 py-1 rounded bg-gray-100 hover:bg-gray-200">Remove</button></td>
+                        <td className="p-2"><button onClick={()=> handleRemoveItem(originalIdx, it.name || it.description || 'this item')} className="px-2 py-1 rounded bg-gray-100 hover:bg-gray-200">Remove</button></td>
                       </tr>
                     );
                   })}
@@ -817,7 +852,7 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
                   <tr>
                     <td colSpan={!isLabourSection ? 10 : 7} className="p-2 text-right font-semibold">Section Subtotal:</td>
                     <td className="p-2 text-right font-bold">${groupedItems[section].reduce((acc, it)=> {
-                      const m = it.markup || markup;
+                      const m = it.markup !== undefined && it.markup !== null ? it.markup : markup;
                       let itemTotal = 0;
                       if (!isLabourSection) {
                         itemTotal = it.quantity * it.unit_price;
@@ -851,7 +886,7 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
         <div className="rounded-xl border bg-white p-4">
           <h4 className="font-semibold mb-2">Summary</h4>
           <div className="space-y-1 text-sm">
-            <div className="flex items-center justify-between"><span>Total Direct Project Costs</span><span>${total.toFixed(2)}</span></div>
+            <div className="flex items-center justify-between"><span>Total Direct Project Costs</span><span>${totalWithMarkup.toFixed(2)}</span></div>
             <div className="flex items-center justify-between"><span>PST</span><span>${pst.toFixed(2)}</span></div>
             <div className="flex items-center justify-between"><span>Sub-total</span><span>${subtotal.toFixed(2)}</span></div>
             <div className="flex items-center justify-between"><span>Sections Mark-up</span><span>${markupValue.toFixed(2)}</span></div>
@@ -927,6 +962,11 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
               disabled={isLoading || !canEdit}
               className="px-3 py-2 rounded bg-brand-red text-white disabled:opacity-60">
               {isLoading ? 'Saving...' : (currentEstimateId ? 'Update Estimate' : 'Save Estimate')}
+            </button>
+            <button
+              onClick={()=>setSummaryOpen(true)}
+              className="px-3 py-2 rounded bg-gray-100 hover:bg-gray-200">
+              Analysis
             </button>
             <button
               onClick={async()=>{
@@ -1010,7 +1050,7 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
   );
 }
 
-function SummaryModal({ open, onClose, items, pstRate, gstRate, markup, profitRate, setProfitRate }: { open:boolean, onClose:()=>void, items:Item[], pstRate:number, gstRate:number, markup:number, profitRate:number, setProfitRate:(value:number)=>void }){
+function SummaryModal({ open, onClose, items, pstRate, gstRate, markup, profitRate }: { open:boolean, onClose:()=>void, items:Item[], pstRate:number, gstRate:number, markup:number, profitRate:number }){
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
@@ -1030,27 +1070,34 @@ function SummaryModal({ open, onClose, items, pstRate, gstRate, markup, profitRa
     return it.quantity * it.unit_price;
   };
 
+  // Calculate item total with markup applied
+  const calculateItemTotalWithMarkup = (it: Item): number => {
+    const itemTotal = calculateItemTotal(it);
+    const itemMarkup = it.markup !== undefined && it.markup !== null ? it.markup : markup;
+    return itemTotal * (1 + (itemMarkup / 100));
+  };
+
   // Calculate costs by section
   const costsBySection = useMemo(() => {
     const sectionTotals: Record<string, number> = {};
     items.forEach(it => {
       const section = it.section || 'Miscellaneous';
       if (!sectionTotals[section]) sectionTotals[section] = 0;
-      sectionTotals[section] += calculateItemTotal(it);
+      sectionTotals[section] += calculateItemTotalWithMarkup(it);
     });
     return sectionTotals;
-  }, [items]);
+  }, [items, markup]);
 
   const totalCost = useMemo(() => Object.values(costsBySection).reduce((acc: number, val: number) => acc + val, 0), [costsBySection]);
   
   // Calculate labor, materials, sub-contractors, shop totals
   const laborTotal = useMemo(() => {
-    return items.filter(it => it.item_type === 'labour').reduce((acc, it) => acc + calculateItemTotal(it), 0);
-  }, [items]);
+    return items.filter(it => it.item_type === 'labour').reduce((acc, it) => acc + calculateItemTotalWithMarkup(it), 0);
+  }, [items, markup]);
 
   const materialTotal = useMemo(() => {
-    return items.filter(it => !['labour', 'sub-contractor', 'shop', 'miscellaneous'].includes(it.item_type || '')).reduce((acc, it) => acc + calculateItemTotal(it), 0);
-  }, [items]);
+    return items.filter(it => !['labour'].includes(it.item_type || '')).reduce((acc, it) => acc + calculateItemTotalWithMarkup(it), 0);
+  }, [items, markup]);
 
   const subcontractorTotal = useMemo(() => {
     return costsBySection['Sub-Contractors'] || 0;
@@ -1081,49 +1128,23 @@ function SummaryModal({ open, onClose, items, pstRate, gstRate, markup, profitRa
     }, 0);
   }, [items]);
   
-  // Total of taxable items only (for PST calculation)
+  // Total of taxable items only (for PST calculation) - with markup
   const taxableTotal = useMemo(() => {
     return items
       .filter(it => it.taxable !== false) // Only items marked as taxable
-      .reduce((acc, it) => {
-        let itemTotal = 0;
-        if (it.item_type === 'labour' && it.labour_journey_type) {
-          if (it.labour_journey_type === 'contract') {
-            itemTotal = (it.labour_journey || 0) * it.unit_price;
-          } else {
-            itemTotal = (it.labour_journey || 0) * (it.labour_men || 0) * it.unit_price;
-          }
-        } else {
-          itemTotal = it.quantity * it.unit_price;
-        }
-        return acc + itemTotal;
-      }, 0);
-  }, [items]);
-  
-  const pst = useMemo(() => taxableTotal * (pstRate/100), [taxableTotal, pstRate]);
-  const subtotal = useMemo(() => total + pst, [total, pst]);
-  
-  // Calculate Sections Mark-up based on individual item markups
-  const markupValue = useMemo(() => {
-    return items.reduce((acc, it) => {
-      let itemTotal = 0;
-      if (it.item_type === 'labour' && it.labour_journey_type) {
-        if (it.labour_journey_type === 'contract') {
-          itemTotal = (it.labour_journey || 0) * it.unit_price;
-        } else {
-          itemTotal = (it.labour_journey || 0) * (it.labour_men || 0) * it.unit_price;
-        }
-      } else {
-        itemTotal = it.quantity * it.unit_price;
-      }
-      const itemMarkup = it.markup !== undefined && it.markup !== null ? it.markup : markup;
-      const itemMarkupValue = itemTotal * (itemMarkup / 100);
-      return acc + itemMarkupValue;
-    }, 0);
+      .reduce((acc, it) => acc + calculateItemTotalWithMarkup(it), 0);
   }, [items, markup]);
   
+  const pst = useMemo(() => taxableTotal * (pstRate/100), [taxableTotal, pstRate]);
+  const subtotal = useMemo(() => totalCost + pst, [totalCost, pst]);
+  
+  // Calculate Sections Mark-up as the difference between total with markup and total without markup
+  const markupValue = useMemo(() => {
+    return totalCost - total;
+  }, [totalCost, total]);
+  
   const profitValue = useMemo(() => subtotal * (profitRate/100), [subtotal, profitRate]);
-  const totalEstimate = useMemo(() => subtotal + markupValue + profitValue, [subtotal, markupValue, profitValue]);
+  const totalEstimate = useMemo(() => subtotal + profitValue, [subtotal, profitValue]);
   const gst = useMemo(() => totalEstimate * (gstRate/100), [totalEstimate, gstRate]);
   const finalTotal = useMemo(() => totalEstimate + gst, [totalEstimate, gst]);
 
@@ -1161,6 +1182,13 @@ function SummaryModal({ open, onClose, items, pstRate, gstRate, markup, profitRa
                   );
                 })}
               </tbody>
+              <tfoot className="bg-gray-50">
+                <tr>
+                  <td className="p-2 font-semibold">Total</td>
+                  <td className="p-2 text-right font-bold">${totalCost.toFixed(2)}</td>
+                  <td className="p-2 text-right font-semibold">100.00%</td>
+                </tr>
+              </tfoot>
             </table>
           </div>
 
@@ -1178,18 +1206,11 @@ function SummaryModal({ open, onClose, items, pstRate, gstRate, markup, profitRa
                 </thead>
                 <tbody>
                   {items.filter(it => it.item_type === 'labour').map((it, idx) => {
-                    let itemTotal = 0;
-                    if (it.labour_journey_type === 'contract') {
-                      itemTotal = it.labour_journey! * it.unit_price;
-                    } else if (it.labour_journey_type) {
-                      itemTotal = it.labour_journey! * it.labour_men! * it.unit_price;
-                    } else {
-                      itemTotal = it.quantity * it.unit_price;
-                    }
+                    const itemTotalWithMarkup = calculateItemTotalWithMarkup(it);
                     return (
                       <tr key={idx} className="border-b hover:bg-gray-50">
                         <td className="p-2">{it.description || it.name}</td>
-                        <td className="p-2 text-right">${itemTotal.toFixed(2)}</td>
+                        <td className="p-2 text-right">${itemTotalWithMarkup.toFixed(2)}</td>
                       </tr>
                     );
                   })}
@@ -1212,7 +1233,7 @@ function SummaryModal({ open, onClose, items, pstRate, gstRate, markup, profitRa
                 </thead>
                 <tbody>
                   {Object.keys(costsBySection)
-                    .filter(s => !['Labour', 'Sub-Contractors', 'Shop'].includes(s))
+                    .filter(s => !['Labour'].includes(s))
                     .map(section => {
                       const total = costsBySection[section];
                       return (
@@ -1231,24 +1252,12 @@ function SummaryModal({ open, onClose, items, pstRate, gstRate, markup, profitRa
           <div className="rounded-xl border bg-white overflow-hidden">
             <div className="bg-gray-50 px-4 py-2 border-b font-semibold">Final Summary</div>
             <div className="p-4 space-y-2 text-sm">
-              <div className="flex items-center justify-between"><span>Total Direct Costs:</span><span className="font-medium">${total.toFixed(2)}</span></div>
-              <div className="flex items-center justify-between"><span>Labor Costs:</span><span className="font-medium">${laborTotal.toFixed(2)}</span></div>
-              <div className="flex items-center justify-between"><span>Material Costs:</span><span className="font-medium">${materialTotal.toFixed(2)}</span></div>
-              <div className="flex items-center justify-between"><span>Sub-Contractors:</span><span className="font-medium">${subcontractorTotal.toFixed(2)}</span></div>
-              <div className="flex items-center justify-between"><span>Shop:</span><span className="font-medium">${shopTotal.toFixed(2)}</span></div>
-              <div className="flex items-center justify-between"><span>Miscellaneous:</span><span className="font-medium">${miscellaneousTotal.toFixed(2)}</span></div>
+              <div className="flex items-center justify-between"><span>Total Direct Costs:</span><span className="font-medium">${totalCost.toFixed(2)}</span></div>
               <div className="flex items-center justify-between border-t pt-2"><span>Total PST:</span><span className="font-medium">${pst.toFixed(2)}</span></div>
               <div className="flex items-center justify-between"><span>Sections Mark-up:</span><span className="font-medium">${markupValue.toFixed(2)}</span></div>
               <div className="flex items-center justify-between">
                 <span>Profit (%):</span>
-                <input 
-                  type="number" 
-                  className="border rounded px-2 py-1 w-20 text-right" 
-                  value={profitRate} 
-                  min={0} 
-                  step={0.1}
-                  onChange={e=>setProfitRate(Number(e.target.value||0))} 
-                />
+                <span className="font-medium">{profitRate.toFixed(1)}%</span>
               </div>
               <div className="flex items-center justify-between"><span>Total Profit:</span><span className="font-medium">${profitValue.toFixed(2)}</span></div>
               <div className="flex items-center justify-between"><span>Total Estimate:</span><span className="font-medium">${totalEstimate.toFixed(2)}</span></div>
@@ -1262,7 +1271,7 @@ function SummaryModal({ open, onClose, items, pstRate, gstRate, markup, profitRa
   );
 }
 
-function AddProductModal({ onAdd, disabled }: { onAdd:(it: Item)=>void, disabled?: boolean }){
+function AddProductModal({ onAdd, disabled, defaultMarkup }: { onAdd:(it: Item)=>void, disabled?: boolean, defaultMarkup?: number }){
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState('');
   const [section, setSection] = useState('Roof System');
@@ -1331,7 +1340,7 @@ function AddProductModal({ onAdd, disabled }: { onAdd:(it: Item)=>void, disabled
                 <div>
                   <label className="text-xs text-gray-600">Section:</label>
                   <select className="w-full border rounded px-3 py-2" value={section} onChange={e=>setSection(e.target.value)}>
-                    {['Roof System','Wood Blocking / Accessories','Flashing','Miscellaneous'].map(s=> <option key={s} value={s}>{s}</option>)}
+                    {['Roof System','Wood Blocking / Accessories','Flashing'].map(s=> <option key={s} value={s}>{s}</option>)}
                   </select>
                 </div>
               )}
@@ -1355,6 +1364,7 @@ function AddProductModal({ onAdd, disabled }: { onAdd:(it: Item)=>void, disabled
                     coverage_m2: selection.coverage_m2,
                     qty_required: 1,
                     unit_required: defaultUnitRequired,
+                    markup: defaultMarkup ?? 5,
                     taxable: true
                   });
                   setOpen(false);
@@ -1369,7 +1379,7 @@ function AddProductModal({ onAdd, disabled }: { onAdd:(it: Item)=>void, disabled
   );
 }
 
-function AddLabourModal({ onAdd, disabled }: { onAdd:(it: Item)=>void, disabled?: boolean }){
+function AddLabourModal({ onAdd, disabled, defaultMarkup }: { onAdd:(it: Item)=>void, disabled?: boolean, defaultMarkup?: number }){
   const [open, setOpen] = useState(false);
   const [labour, setLabour] = useState('');
   const [men, setMen] = useState<string>('1');
@@ -1494,7 +1504,7 @@ function AddLabourModal({ onAdd, disabled }: { onAdd:(it: Item)=>void, disabled?
                     unit = showHours ? 'hours' : 'days';
                     journey = showHours ? Number(hours||0) : Number(days||0);
                   }
-                  onAdd({ name, unit, quantity: qty, unit_price: priceValue, section: 'Labour', description: desc, item_type: 'labour', taxable: true, labour_journey: journey, labour_men: Number(men||0), labour_journey_type: journeyType });
+                  onAdd({ name, unit, quantity: qty, unit_price: priceValue, section: 'Labour', description: desc, item_type: 'labour', markup: defaultMarkup ?? 5, taxable: true, labour_journey: journey, labour_men: Number(men||0), labour_journey_type: journeyType });
                   setOpen(false); setLabour(''); setMen('1'); setDays('1'); setHours('1'); setContractNumber('1'); setContractUnit(''); setPrice('0'); setJourneyType('days');
                 }} className="px-3 py-2 rounded bg-brand-red text-white">Add Labour</button>
               </div>
@@ -1506,7 +1516,7 @@ function AddLabourModal({ onAdd, disabled }: { onAdd:(it: Item)=>void, disabled?
   );
 }
 
-function AddSubContractorModal({ onAdd, disabled }: { onAdd:(it: Item)=>void, disabled?: boolean }){
+function AddSubContractorModal({ onAdd, disabled, defaultMarkup }: { onAdd:(it: Item)=>void, disabled?: boolean, defaultMarkup?: number }){
   const [open, setOpen] = useState(false);
   const [type, setType] = useState<'debris-cartage'|'portable-washroom'|'other'|''>('');
   
@@ -1715,7 +1725,7 @@ function AddSubContractorModal({ onAdd, disabled }: { onAdd:(it: Item)=>void, di
                     totalValue = Number(otherPrice||0);
                   }
                   if(!desc){ toast.error('Please fill in the required fields'); return; }
-                  onAdd({ name: desc, unit, quantity: qty, unit_price: totalValue, section: 'Sub-Contractors', description: desc, item_type: 'subcontractor', taxable: true });
+                  onAdd({ name: desc, unit, quantity: qty, unit_price: totalValue, section: 'Sub-Contractors', description: desc, item_type: 'subcontractor', markup: defaultMarkup ?? 5, taxable: true });
                   setOpen(false); setType(''); setDebrisDesc(''); setDebrisSqs('0'); setDebrisSqsPerLoad('0'); setDebrisLoads('0'); setDebrisPricePerLoad('0'); setWashroomPeriod('days'); setWashroomPeriodCount('1'); setWashroomPrice('0'); setOtherDesc(''); setOtherNumber('1'); setOtherUnit(''); setOtherPrice('0');
                 }} className="px-3 py-2 rounded bg-brand-red text-white">Add Sub-Contractors</button>
               </div>
@@ -1727,7 +1737,7 @@ function AddSubContractorModal({ onAdd, disabled }: { onAdd:(it: Item)=>void, di
   );
 }
 
-function AddMiscellaneousModal({ onAdd, disabled }: { onAdd:(it: Item)=>void, disabled?: boolean }){
+function AddMiscellaneousModal({ onAdd, disabled, defaultMarkup }: { onAdd:(it: Item)=>void, disabled?: boolean, defaultMarkup?: number }){
   const [open, setOpen] = useState(false);
   const [name, setName] = useState('');
   const [quantity, setQuantity] = useState<string>('1');
@@ -1777,7 +1787,7 @@ function AddMiscellaneousModal({ onAdd, disabled }: { onAdd:(it: Item)=>void, di
               <div className="text-right">
                 <button onClick={()=>{
                   if(!name.trim()){ toast.error('Please enter a miscellaneous name/description'); return; }
-                  onAdd({ name, unit, quantity: Number(quantity||0), unit_price: Number(price||0), section: 'Miscellaneous', description: name, item_type: 'miscellaneous', taxable: true });
+                  onAdd({ name, unit, quantity: Number(quantity||0), unit_price: Number(price||0), section: 'Miscellaneous', description: name, item_type: 'miscellaneous', markup: defaultMarkup ?? 5, taxable: true });
                   setOpen(false); setName(''); setQuantity('1'); setUnit(''); setPrice('0');
                 }} className="px-3 py-2 rounded bg-brand-red text-white">Add Miscellaneous</button>
               </div>
@@ -1789,7 +1799,7 @@ function AddMiscellaneousModal({ onAdd, disabled }: { onAdd:(it: Item)=>void, di
   );
 }
 
-function AddShopModal({ onAdd, disabled }: { onAdd:(it: Item)=>void, disabled?: boolean }){
+function AddShopModal({ onAdd, disabled, defaultMarkup }: { onAdd:(it: Item)=>void, disabled?: boolean, defaultMarkup?: number }){
   const [open, setOpen] = useState(false);
   const [name, setName] = useState('');
   const [quantity, setQuantity] = useState<string>('1');
@@ -1839,7 +1849,7 @@ function AddShopModal({ onAdd, disabled }: { onAdd:(it: Item)=>void, disabled?: 
               <div className="text-right">
                 <button onClick={()=>{
                   if(!name.trim()){ toast.error('Please enter a shop name/description'); return; }
-                  onAdd({ name, unit, quantity: Number(quantity||0), unit_price: Number(price||0), section: 'Shop', description: name, item_type: 'shop', taxable: true });
+                  onAdd({ name, unit, quantity: Number(quantity||0), unit_price: Number(price||0), section: 'Shop', description: name, item_type: 'shop', markup: defaultMarkup ?? 5, taxable: true });
                   setOpen(false); setName(''); setQuantity('1'); setUnit(''); setPrice('0');
                 }} className="px-3 py-2 rounded bg-brand-red text-white">Add Shop</button>
               </div>

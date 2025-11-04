@@ -42,7 +42,7 @@ export default function Estimates(){
                 </td>
                 <td className="p-2">{(e.created_at||'').slice(0,10)}</td>
                 <td className="p-2">
-                  <Link to={`/estimates/${e.id}/edit`} className="underline">Open</Link>
+                  <Link to={`/projects/${encodeURIComponent(e.project_id)}?tab=estimate`} className="underline">Open</Link>
                 </td>
               </tr>
             ))}
@@ -53,5 +53,3 @@ export default function Estimates(){
     </div>
   );
 }
-
-
