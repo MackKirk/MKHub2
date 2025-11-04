@@ -1,4 +1,4 @@
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from 'react-hot-toast';
 import { queryClient } from './lib/queryClient';
@@ -37,10 +37,12 @@ import { getToken } from './lib/api';
 function Home(){ return <Navigate to={getToken()? '/home':'/login'} replace />; }
 
 export default function App(){
+  const location = useLocation();
+  const state = location.state as { backgroundLocation?: Location } | undefined;
   return (
     <QueryClientProvider client={queryClient}>
       <ConfirmProvider>
-      <Routes>
+      <Routes location={state?.backgroundLocation || location}>
         <Route path="/" element={<Home/>} />
         <Route path="/index.html" element={<Home/>} />
         <Route path="/login" element={<Login/>} />
@@ -74,6 +76,11 @@ export default function App(){
         </Route>
         <Route path="*" element={<Navigate to={getToken()? '/home':'/login'} replace />} />
       </Routes>
+      {state?.backgroundLocation && (
+        <Routes>
+          <Route path="/customers/:customerId/sites/:siteId" element={<AppShell><SiteDetail/></AppShell>} />
+        </Routes>
+      )}
       <Toaster position="top-right" />
       </ConfirmProvider>
     </QueryClientProvider>

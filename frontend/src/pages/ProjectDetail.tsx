@@ -1,4 +1,4 @@
-import { useParams, Link, useNavigate } from 'react-router-dom';
+import { useParams, Link, useLocation, useNavigate } from 'react-router-dom';
 import { useMemo, useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
@@ -13,6 +13,7 @@ type Report = { id:string, category_id?:string, division_id?:string, description
 type Proposal = { id:string, title?:string, order_number?:string, created_at?:string };
 
 export default function ProjectDetail(){
+  const location = useLocation();
   const { id } = useParams();
   const { data:proj, isLoading } = useQuery({ queryKey:['project', id], queryFn: ()=>api<Project>('GET', `/projects/${id}`) });
   const { data:settings } = useQuery({ queryKey:['settings'], queryFn: ()=>api<any>('GET','/settings') });
@@ -41,7 +42,7 @@ export default function ProjectDetail(){
               <div className="text-sm opacity-90 mt-1">{proj?.code||''} · {proj?.client_display_name||''}</div>
               <div className="text-sm opacity-90">
                 {proj?.site_id ? (
-                  <Link to={`/customers/${encodeURIComponent(String(proj?.client_id||''))}/sites/${encodeURIComponent(String(proj?.site_id||''))}`} className="underline">Site: {proj?.site_name||proj?.site_id}</Link>
+                  <Link to={`/customers/${encodeURIComponent(String(proj?.client_id||''))}/sites/${encodeURIComponent(String(proj?.site_id||''))}`} state={{ backgroundLocation: location }} className="underline">Site: {proj?.site_name||proj?.site_id}</Link>
                 ) : ''}
               </div>
               <div className="text-sm opacity-90">{proj?.site_address_line1||''} {proj?.site_city||''} {proj?.site_province||''} {proj?.site_country||''}</div>
