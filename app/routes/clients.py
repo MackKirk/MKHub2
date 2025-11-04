@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from typing import Optional, List
 
 from ..db import get_db
-from ..models.models import Client, ClientContact, ClientSite, ClientFile, FileObject, ClientFolder, ClientDocument
+from ..models.models import Client, ClientContact, ClientSite, ClientFile, FileObject, ClientFolder, ClientDocument, Project, Proposal
 import mimetypes
 from ..schemas.clients import (
     ClientCreate, ClientResponse,
@@ -85,6 +85,20 @@ def delete_client(client_id: str, db: Session = Depends(get_db), _=Depends(requi
     c = db.query(Client).filter(Client.id == client_id).first()
     if not c:
         return {"status": "ok"}
+    # Check for related projects and proposals - these are NOT cascade deleted
+    projects_count = db.query(Project).filter(Project.client_id == client_id).count()
+    proposals_count = db.query(Proposal).filter(Proposal.client_id == client_id).count()
+    if projects_count > 0 or proposals_count > 0:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Cannot delete client: {projects_count} project(s) and {proposals_count} proposal(s) still exist. Please delete or reassign them first."
+        )
+    # The following will be cascade deleted automatically:
+    # - ClientContact (CASCADE)
+    # - ClientSite (CASCADE)
+    # - ClientFile (CASCADE)
+    # - ClientFolder (CASCADE)
+    # - ClientDocument (CASCADE)
     db.delete(c)
     db.commit()
     return {"status": "ok"}
