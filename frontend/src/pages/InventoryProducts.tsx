@@ -3,6 +3,7 @@ import { api } from '@/lib/api';
 import { useMemo, useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import { useConfirm } from '@/components/ConfirmProvider';
+import ImagePicker from '@/components/ImagePicker';
 
 type Material = { id:number, name:string, supplier_name?:string, category?:string, unit?:string, price?:number, last_updated?:string, unit_type?:string, units_per_package?:number, coverage_sqs?:number, coverage_ft2?:number, coverage_m2?:number, description?:string, image_base64?:string };
 
@@ -78,6 +79,7 @@ export default function InventoryProducts(){
   const [covFt2, setCovFt2] = useState<string>('');
   const [covM2, setCovM2] = useState<string>('');
   const [imageDataUrl, setImageDataUrl] = useState<string>('');
+  const [imagePickerOpen, setImagePickerOpen] = useState(false);
 
   const [viewRelated, setViewRelated] = useState<number|null>(null);
   const [relatedList, setRelatedList] = useState<any[]>([]);
@@ -134,6 +136,15 @@ export default function InventoryProducts(){
     const reader = new FileReader();
     reader.onload = ()=> setImageDataUrl(String(reader.result||''));
     reader.readAsDataURL(f);
+  };
+
+  const handleImagePickerConfirm = async (blob: Blob) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      setImageDataUrl(String(reader.result || ''));
+      setImagePickerOpen(false);
+    };
+    reader.readAsDataURL(blob);
   };
 
   const openViewModal = (p: Material) => {
@@ -201,7 +212,8 @@ export default function InventoryProducts(){
     setViewing(null);
     setOpen(false);
     setName(''); setNewSupplier(''); setNewCategory(''); setUnit(''); setPrice(''); setDesc('');
-    setUnitsPerPackage(''); setCovSqs(''); setCovFt2(''); setCovM2(''); setUnitType('unitary'); setImageDataUrl('');
+    setUnitsPerPackage(''); setCovSqs(''); setCovFt2(''); setCovM2(''); setUnitType('unitary');     setImageDataUrl('');
+    setImagePickerOpen(false);
   };
 
   const searchRelatedProducts = async (txt: string)=>{
@@ -494,8 +506,25 @@ export default function InventoryProducts(){
               <div className="col-span-2"><label className="text-xs font-semibold text-gray-700">Description / Notes</label><textarea className="w-full border rounded px-3 py-2 mt-1" rows={3} value={desc} onChange={e=>setDesc(e.target.value)} /></div>
               <div className="col-span-2">
                 <label className="text-xs font-semibold text-gray-700">Product Image</label>
-                <input type="file" accept="image/*" onChange={e=> onFileChange(e.target.files?.[0]||null)} />
-                {imageDataUrl && <img src={imageDataUrl} className="mt-2 w-32 border rounded" alt="Preview" />}
+                <div className="mt-1 space-y-2">
+                  <button
+                    type="button"
+                    onClick={() => setImagePickerOpen(true)}
+                    className="px-3 py-2 rounded bg-gray-100 hover:bg-gray-200 text-sm">
+                    {imageDataUrl ? 'Change Image' : 'Select Image'}
+                  </button>
+                  {imageDataUrl && (
+                    <div className="mt-2">
+                      <img src={imageDataUrl} className="w-32 h-32 object-contain border rounded" alt="Preview" />
+                      <button
+                        type="button"
+                        onClick={() => setImageDataUrl('')}
+                        className="mt-2 px-2 py-1 text-xs rounded bg-red-100 text-red-700 hover:bg-red-200">
+                        Remove Image
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
                   </div>
                 </div>
@@ -614,6 +643,14 @@ export default function InventoryProducts(){
           </div>
         </div>
       )}
+      <ImagePicker
+        isOpen={imagePickerOpen}
+        onClose={() => setImagePickerOpen(false)}
+        targetWidth={400}
+        targetHeight={400}
+        allowEdit={true}
+        onConfirm={handleImagePickerConfirm}
+      />
     </div>
   );
 }
