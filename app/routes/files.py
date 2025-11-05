@@ -100,13 +100,69 @@ def thumbnail(file_id: str, w: int = 200, db: Session = Depends(get_db), storage
         # Download file from storage
         with httpx.stream("GET", url, timeout=30.0) as r:
             r.raise_for_status()
-            buf = io.BytesIO()
+            # Read all content into bytes
+            file_content = b""
             for chunk in r.iter_bytes():
-                buf.write(chunk)
+                file_content += chunk
+        
+        # Check if file has content
+        if len(file_content) == 0:
+            raise ValueError("Downloaded file is empty")
+        
+        # Create buffer from bytes
+        buf = io.BytesIO(file_content)
         buf.seek(0)
         
-        # Open and process image (supports HEIC via pillow-heif if registered)
-        with PILImage.open(buf) as im:
+        # Try to detect if it's a HEIC file by extension or content type
+        is_heic = False
+        original_name = str(fo.key) if fo else ''
+        content_type = str(fo.content_type) if fo and fo.content_type else ''
+        
+        # Check by extension
+        if original_name.lower().endswith(('.heic', '.heif')):
+            is_heic = True
+        
+        # Check by content type
+        if 'heic' in content_type.lower() or 'heif' in content_type.lower():
+            is_heic = True
+        
+        # Check file signature (HEIC files start with ftyp box)
+        if len(file_content) >= 12:
+            header = file_content[:12]
+            if header[:4] == b'ftyp':
+                # Check for HEIC/HEIF brand indicators
+                if b'heic' in header[4:12] or b'heif' in header[4:12] or b'mif1' in header[4:12] or b'msf1' in header[4:12]:
+                    is_heic = True
+        
+        # Ensure pillow-heif is registered for HEIC files
+        if is_heic:
+            try:
+                from pillow_heif import register_heif_opener
+                register_heif_opener()
+            except Exception as heif_err:
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.warning(f"Could not register HEIF opener: {heif_err}")
+        
+        # Open and process image
+        buf.seek(0)
+        try:
+            im = PILImage.open(buf)
+        except Exception as open_err:
+            # If opening failed and it's a HEIC file, try to re-register and retry
+            if is_heic:
+                try:
+                    from pillow_heif import register_heif_opener
+                    register_heif_opener()
+                    buf.seek(0)
+                    im = PILImage.open(buf)
+                except Exception as retry_err:
+                    raise ValueError(f"Cannot open HEIC file. Make sure pillow-heif is properly installed: {retry_err}")
+            else:
+                # For non-HEIC files, provide more details
+                raise ValueError(f"Cannot identify image file (size: {len(file_content)} bytes, content_type: {content_type}, key: {original_name}): {open_err}")
+        
+        try:
             # Convert to RGB (needed for HEIC and some other formats)
             if im.mode != "RGB":
                 im = im.convert("RGB")
@@ -119,11 +175,13 @@ def thumbnail(file_id: str, w: int = 200, db: Session = Depends(get_db), storage
             im.save(out, format="PNG", optimize=True)
             out.seek(0)
             return Response(content=out.read(), media_type="image/png")
+        finally:
+            im.close()
     except Exception as e:
         # Log error for debugging but don't expose to client
         import logging
         logger = logging.getLogger(__name__)
-        logger.error(f"Thumbnail generation failed for file {file_id}: {str(e)}", exc_info=True)
+        logger.error(f"Thumbnail generation failed for file {file_id} (key: {fo.key if fo else 'unknown'}, content_type: {getattr(fo, 'content_type', 'unknown') if fo else 'unknown'}): {str(e)}", exc_info=True)
         # Return 500 error instead of redirect - browsers can't handle redirects in img tags
         raise HTTPException(status_code=500, detail=f"Failed to generate thumbnail: {str(e)}")
 
