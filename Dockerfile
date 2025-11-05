@@ -15,10 +15,18 @@ ENV PYTHONUNBUFFERED=1
 WORKDIR /app
 
 # Install system dependencies for pillow-heif (libheif)
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    curl \
+    # libheif runtime + codecs and CLI tools
+    libheif1 \
     libheif-dev \
+    libde265-0 \
     libde265-dev \
     x265 \
+    libx265-dev \
+    libaom3 \
+    libheif-examples \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt ./

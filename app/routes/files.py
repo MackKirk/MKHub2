@@ -111,10 +111,65 @@ def confirm(req: ConfirmRequest, db: Session = Depends(get_db), storage: Storage
                 logger.warning(f"Failed to register pillow-heif opener: {heif_err}. HEIC conversion will be skipped. Make sure libheif is installed (apt-get install libheif-dev libde265-dev x265). Error: {heif_err}")
                 pillow_heif_available = False
             
-            # If pillow-heif is not available, skip conversion and fall back to saving HEIC as-is
+            # If pillow-heif is not available, try CLI fallback (heif-convert); otherwise save HEIC as-is
             if not pillow_heif_available:
-                logger.info(f"pillow-heif not available, skipping HEIC conversion for {original_key}. File will be saved as-is.")
-                raise ValueError("pillow-heif not available, skipping conversion")
+                logger.info(f"pillow-heif not available for {original_key}. Attempting heif-convert CLI fallback.")
+                try:
+                    import tempfile
+                    import subprocess
+                    # Small delay to ensure Azure blob is available
+                    time.sleep(0.5)
+                    download_url = storage.get_download_url(original_key, expires_s=300)
+                    if not download_url:
+                        raise ValueError("Could not get download URL for HEIC file")
+                    with httpx.stream("GET", download_url, timeout=30.0) as r:
+                        r.raise_for_status()
+                        file_content = b""
+                        for chunk in r.iter_bytes():
+                            file_content += chunk
+                    if len(file_content) == 0:
+                        raise ValueError("Downloaded HEIC file is empty")
+                    with tempfile.TemporaryDirectory() as td:
+                        src_path = os.path.join(td, "in.heic")
+                        dst_path = os.path.join(td, "out.jpg")
+                        with open(src_path, "wb") as fsrc:
+                            fsrc.write(file_content)
+                        # heif-convert outputs JPEG
+                        subprocess.run(["heif-convert", "-q", "95", src_path, dst_path], check=True, timeout=30)
+                        with open(dst_path, "rb") as fdst:
+                            jpg_content = fdst.read()
+                    # Upload the converted JPG file
+                    jpg_key = original_key.rsplit('.', 1)[0] + '.jpg'
+                    if jpg_key == original_key:
+                        jpg_key = original_key + '.jpg'
+                    if original_key.lower().endswith('.heic'):
+                        jpg_key = original_key[:-5] + '.jpg'
+                    elif original_key.lower().endswith('.heif'):
+                        jpg_key = original_key[:-5] + '.jpg'
+                    else:
+                        jpg_key = original_key.rsplit('.', 1)[0] + '.jpg'
+                    upload_url = storage.generate_upload_url(jpg_key, "image/jpeg", expires_s=900)
+                    put_resp = httpx.put(
+                        upload_url,
+                        content=jpg_content,
+                        headers={"Content-Type": "image/jpeg", "x-ms-blob-type": "BlockBlob"},
+                        timeout=30.0
+                    )
+                    put_resp.raise_for_status()
+                    fo = FileObject(
+                        provider="blob",
+                        container=settings.azure_blob_container or "",
+                        key=jpg_key,
+                        size_bytes=len(jpg_content),
+                        checksum_sha256=req.checksum_sha256,
+                        content_type="image/jpeg",
+                    )
+                    db.add(fo)
+                    db.commit()
+                    return {"id": str(fo.id)}
+                except Exception as cli_err:
+                    logger.warning(f"heif-convert fallback failed for {original_key}: {cli_err}. Saving HEIC as-is.", exc_info=True)
+                    # Fall through to save the original HEIC file
             
             # Small delay to ensure Azure blob is available
             time.sleep(0.5)
@@ -327,9 +382,26 @@ def thumbnail(file_id: str, w: int = 200, db: Session = Depends(get_db), storage
                     im = PILImage.open(buf)
                     logger.info(f"Successfully opened HEIC file after re-registering opener: {original_name}")
                 except Exception as retry_err:
-                    # If still failing, provide detailed error
-                    logger.error(f"Failed to open HEIC file even after registering opener. File: {original_name}, Content-Type: {content_type}, Error: {retry_err}", exc_info=True)
-                    raise ValueError(f"Cannot open HEIC file. Make sure pillow-heif and libheif are properly installed. Error: {retry_err}")
+                    # Try CLI fallback via heif-convert to JPEG, then open and continue
+                    try:
+                        import tempfile
+                        import subprocess
+                        with tempfile.TemporaryDirectory() as td:
+                            src_path = os.path.join(td, "in.heic")
+                            dst_path = os.path.join(td, "out.jpg")
+                            with open(src_path, "wb") as fsrc:
+                                fsrc.write(file_content)
+                            subprocess.run(["heif-convert", "-q", "90", src_path, dst_path], check=True, timeout=30)
+                            with open(dst_path, "rb") as fdst:
+                                jpeg_bytes = fdst.read()
+                        # Open the produced JPEG with PIL and proceed
+                        buf2 = io.BytesIO(jpeg_bytes)
+                        buf2.seek(0)
+                        im = PILImage.open(buf2)
+                        logger.info(f"Thumbnail: opened JPEG from heif-convert fallback for {original_name}")
+                    except Exception as cli_err:
+                        logger.error(f"Failed to open HEIC file after CLI fallback. File: {original_name}, Error: {cli_err}", exc_info=True)
+                        raise ValueError(f"Cannot open HEIC file. Make sure pillow-heif/libheif or heif-convert are installed. Error: {cli_err}")
             else:
                 # For non-HEIC files, provide more details
                 raise ValueError(f"Cannot identify image file (size: {len(file_content)} bytes, content_type: {content_type}, key: {original_name}): {open_err}")
