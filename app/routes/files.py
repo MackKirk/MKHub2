@@ -68,28 +68,45 @@ def confirm(req: ConfirmRequest, db: Session = Depends(get_db), storage: Storage
     if 'heic' in content_type.lower() or 'heif' in content_type.lower():
         is_heic = True
     
-    # Check by file extension
+    # Check by file extension (case-insensitive)
     if original_key.lower().endswith(('.heic', '.heif')):
         is_heic = True
     
+    import logging
+    logger = logging.getLogger(__name__)
+    
     # If it's HEIC, convert to JPG before saving
     if is_heic:
+        logger.info(f"Detected HEIC file: {original_key}, content_type: {content_type}")
         try:
             import io
             import httpx
+            import time
             from PIL import Image as PILImage
             
             # Ensure pillow-heif is registered
             try:
                 from pillow_heif import register_heif_opener
                 register_heif_opener()
-            except Exception:
-                pass
+                logger.info("pillow-heif opener registered successfully")
+            except ImportError as import_err:
+                error_msg = f"pillow-heif module not found. Please install it with: pip install pillow-heif. Error: {import_err}"
+                logger.error(error_msg)
+                raise HTTPException(status_code=500, detail=error_msg)
+            except Exception as heif_err:
+                error_msg = f"Failed to register pillow-heif opener: {heif_err}. Make sure libheif is installed on your system."
+                logger.error(error_msg, exc_info=True)
+                raise HTTPException(status_code=500, detail=error_msg)
+            
+            # Small delay to ensure Azure blob is available
+            time.sleep(0.5)
             
             # Download the HEIC file from storage
             download_url = storage.get_download_url(original_key, expires_s=300)
             if not download_url:
                 raise ValueError("Could not get download URL for HEIC file")
+            
+            logger.info(f"Downloading HEIC from Azure: {download_url[:100]}...")
             
             # Download and convert
             with httpx.stream("GET", download_url, timeout=30.0) as r:
@@ -98,13 +115,24 @@ def confirm(req: ConfirmRequest, db: Session = Depends(get_db), storage: Storage
                 for chunk in r.iter_bytes():
                     file_content += chunk
             
+            logger.info(f"Downloaded {len(file_content)} bytes")
+            
             if len(file_content) == 0:
                 raise ValueError("Downloaded HEIC file is empty")
             
             # Convert HEIC to JPG
             buf = io.BytesIO(file_content)
             buf.seek(0)
-            with PILImage.open(buf) as im:
+            logger.info("Opening HEIC image with PIL...")
+            
+            try:
+                im = PILImage.open(buf)
+                logger.info(f"Opened image: {im.format}, size: {im.size}, mode: {im.mode}")
+            except Exception as open_err:
+                logger.error(f"Failed to open HEIC with PIL: {open_err}", exc_info=True)
+                raise ValueError(f"Cannot open HEIC file - pillow-heif may not be working: {open_err}")
+            
+            try:
                 # Convert to RGB (required for JPG)
                 if im.mode != "RGB":
                     im = im.convert("RGB")
@@ -114,11 +142,25 @@ def confirm(req: ConfirmRequest, db: Session = Depends(get_db), storage: Storage
                 im.save(jpg_buf, format="JPEG", quality=95, optimize=True)
                 jpg_buf.seek(0)
                 jpg_content = jpg_buf.read()
+                
+                logger.info(f"Converted to JPG: {len(jpg_content)} bytes")
+            finally:
+                im.close()
             
             # Upload the converted JPG file
             jpg_key = original_key.rsplit('.', 1)[0] + '.jpg'
             if jpg_key == original_key:
                 jpg_key = original_key + '.jpg'
+            
+            # Handle case-insensitive extension replacement
+            if original_key.lower().endswith('.heic'):
+                jpg_key = original_key[:-5] + '.jpg'
+            elif original_key.lower().endswith('.heif'):
+                jpg_key = original_key[:-5] + '.jpg'
+            else:
+                jpg_key = original_key.rsplit('.', 1)[0] + '.jpg'
+            
+            logger.info(f"Uploading converted JPG to Azure: {jpg_key}")
             
             # Generate upload URL for JPG
             upload_url = storage.generate_upload_url(jpg_key, "image/jpeg", expires_s=900)
@@ -131,6 +173,8 @@ def confirm(req: ConfirmRequest, db: Session = Depends(get_db), storage: Storage
                 timeout=30.0
             )
             put_resp.raise_for_status()
+            
+            logger.info(f"Successfully converted and uploaded JPG: {jpg_key}")
             
             # Create FileObject with JPG instead of HEIC
             fo = FileObject(
@@ -145,13 +189,15 @@ def confirm(req: ConfirmRequest, db: Session = Depends(get_db), storage: Storage
             db.commit()
             return {"id": str(fo.id)}
         except Exception as e:
-            # If conversion fails, log and fall back to saving HEIC as-is
-            import logging
-            logger = logging.getLogger(__name__)
-            logger.warning(f"Failed to convert HEIC to JPG for {original_key}: {str(e)}", exc_info=True)
-            # Continue with original HEIC file
+            # If conversion fails, log and raise error instead of silently falling back
+            logger.error(f"Failed to convert HEIC to JPG for {original_key}: {str(e)}", exc_info=True)
+            # Raise error so frontend knows conversion failed
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to convert HEIC to JPG: {str(e)}. Please ensure pillow-heif is properly installed and the file is a valid HEIC image."
+            )
     
-    # Original code for non-HEIC files or fallback
+    # Original code for non-HEIC files
     fo = FileObject(
         provider="blob",
         container=settings.azure_blob_container or "",
