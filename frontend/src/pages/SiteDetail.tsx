@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
 import GeoSelect from '@/components/GeoSelect';
 import ImagePicker from '@/components/ImagePicker';
+import { useConfirm } from '@/components/ConfirmProvider';
 
 type Site = {
   id:string,
@@ -23,6 +24,7 @@ type Proposal = { id:string, title?:string, order_number?:string, created_at?:st
 export default function SiteDetail(){
   const { customerId, siteId } = useParams();
   const nav = useNavigate();
+  const confirm = useConfirm();
   const { data:sites } = useQuery({ queryKey:['clientSites', customerId], queryFn: ()=>api<Site[]>('GET', `/clients/${customerId}/sites`) });
   const { data:files } = useQuery({ queryKey:['clientFilesForSiteHeader', customerId], queryFn: ()=> api<ClientFile[]>('GET', `/clients/${customerId}/files`), enabled: !!customerId });
   const s = useMemo(()=> (sites||[]).find(x=> String(x.id)===String(siteId)) || null, [sites, siteId]);
@@ -115,21 +117,42 @@ export default function SiteDetail(){
             </div>
           </div>
         </div>
-        <div className="px-5 py-4 border-t bg-gray-50 flex items-center justify-end gap-2">
-          <button onClick={()=> nav(-1)} className="px-4 py-2 rounded bg-gray-200 hover:bg-gray-300">Close</button>
-          <button onClick={async()=>{
-            try{
-              if(isNew){
-                await api('POST', `/clients/${encodeURIComponent(String(customerId||''))}/sites`, form);
-                toast.success('Created');
-              } else {
-                await api('PATCH', `/clients/${encodeURIComponent(String(customerId||''))}/sites/${encodeURIComponent(String(siteId||''))}`, form);
-                toast.success('Saved');
-              }
-              try{ await qc.invalidateQueries({ queryKey:['clientSites', customerId] }); }catch(_e){}
-              nav(-1);
-            }catch(_e){ toast.error('Save failed'); }
-          }} className="px-4 py-2 rounded bg-brand-red text-white">{isNew? 'Create':'Save'}</button>
+        <div className="px-5 py-4 border-t bg-gray-50 flex items-center justify-between gap-2">
+          <div>
+            {!isNew && (
+              <button onClick={async()=>{
+                const ok = await confirm({ 
+                  title: 'Delete Site', 
+                  message: `Are you sure you want to delete "${form.site_name||'this site'}"? This action cannot be undone.`,
+                  confirmText: 'Delete',
+                  cancelText: 'Cancel'
+                });
+                if (!ok) return;
+                try{
+                  await api('DELETE', `/clients/${encodeURIComponent(String(customerId||''))}/sites/${encodeURIComponent(String(siteId||''))}`);
+                  toast.success('Site deleted');
+                  try{ await qc.invalidateQueries({ queryKey:['clientSites', customerId] }); }catch(_e){}
+                  nav(-1);
+                }catch(_e){ toast.error('Failed to delete site'); }
+              }} className="px-4 py-2 rounded bg-red-600 hover:bg-red-700 text-white">Delete Site</button>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            <button onClick={()=> nav(-1)} className="px-4 py-2 rounded bg-gray-200 hover:bg-gray-300">Close</button>
+            <button onClick={async()=>{
+              try{
+                if(isNew){
+                  await api('POST', `/clients/${encodeURIComponent(String(customerId||''))}/sites`, form);
+                  toast.success('Created');
+                } else {
+                  await api('PATCH', `/clients/${encodeURIComponent(String(customerId||''))}/sites/${encodeURIComponent(String(siteId||''))}`, form);
+                  toast.success('Saved');
+                }
+                try{ await qc.invalidateQueries({ queryKey:['clientSites', customerId] }); }catch(_e){}
+                nav(-1);
+              }catch(_e){ toast.error('Save failed'); }
+            }} className="px-4 py-2 rounded bg-brand-red text-white">{isNew? 'Create':'Save'}</button>
+          </div>
         </div>
       </div>
     </div>
