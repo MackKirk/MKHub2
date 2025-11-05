@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useConfirm } from '@/components/ConfirmProvider';
 import { useNavigate } from 'react-router-dom';
 import GeoSelect from '@/components/GeoSelect';
+import ImagePicker from '@/components/ImagePicker';
 
 export default function CustomerNew(){
   const confirm = useConfirm();
@@ -30,6 +31,9 @@ export default function CustomerNew(){
   const [cRole, setCRole] = useState('');
   const [cDept, setCDept] = useState('');
   const [cPrimary, setCPrimary] = useState<'true'|'false'>('false');
+  const [cPhotoBlob, setCPhotoBlob] = useState<Blob|null>(null);
+  const [cPhotoPreview, setCPhotoPreview] = useState<string>('');
+  const [cPickerOpen, setCPickerOpen] = useState(false);
   const [step, setStep] = useState<number>(1);
   const next = ()=> setStep(s=> Math.min(2, s+1));
   const prev = ()=> setStep(s=> Math.max(1, s-1));
@@ -43,7 +47,7 @@ export default function CustomerNew(){
 
   useEffect(() => {
     if (!contactModalOpen) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setContactModalOpen(false); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { setContactModalOpen(false); setCPhotoBlob(null); setCPhotoPreview(''); } };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [contactModalOpen]);
@@ -161,12 +165,18 @@ export default function CustomerNew(){
             </div>
             <div className="grid md:grid-cols-2 gap-3">
               {(contacts||[]).map((c, i)=> (
-                <div key={i} className="rounded border p-3 text-sm flex items-start justify-between">
-                  <div>
+                <div key={i} className="rounded border p-3 text-sm flex items-start gap-3">
+                  {c.photo_preview ? (
+                    <img src={c.photo_preview} className="w-16 h-16 object-cover rounded border" alt={c.name||'Contact'} />
+                  ) : (
+                    <div className="w-16 h-16 rounded bg-gray-200 grid place-items-center text-lg font-bold text-gray-600 flex-shrink-0">{(c.name||'?').slice(0,2).toUpperCase()}</div>
+                  )}
+                  <div className="flex-1">
                     <div className="font-semibold flex items-center gap-2">{c.name||'(No name)'} {c.is_primary && <span className="text-[11px] bg-green-50 text-green-700 border border-green-200 rounded-full px-2">Primary</span>}</div>
                     <div className="text-gray-600">{c.role_title||''} {c.department? `· ${c.department}`:''}</div>
                     <div className="text-gray-700 mt-1">{[c.email, c.phone].filter(Boolean).join(' · ')||'-'}</div>
                   </div>
+                  <div className="flex-shrink-0">
                   <div className="space-x-2">
                     {!c.is_primary && <button onClick={()=>{
                       setContacts(arr=> arr.map((x,idx)=> ({...x, is_primary: idx===i})));
@@ -195,12 +205,24 @@ export default function CustomerNew(){
                   if (!ok) return;
                 }
                 try{
-                  const payload:any = { ...form, name: form.display_name };
+                  const payload:any = { ...form, name: form.display_name, client_type: form.client_type || 'Customer' };
                   const created:any = await api('POST','/clients', payload);
                   if (!created?.id){ toast.error('Create failed'); return; }
                   if (contacts.length){
                     for (const c of contacts){
-                      try{ await api('POST', `/clients/${encodeURIComponent(created.id)}/contacts`, { name: c.name||'Contact', email: c.email||null, phone: c.phone||null, role_title: c.role_title||null, department: c.department||null, is_primary: !!c.is_primary }); }catch(_e){}
+                      try{ 
+                        const contactPayload:any = { name: c.name||'Contact', email: c.email||null, phone: c.phone||null, role_title: c.role_title||null, department: c.department||null, is_primary: !!c.is_primary };
+                        const contactCreated:any = await api('POST', `/clients/${encodeURIComponent(created.id)}/contacts`, contactPayload);
+                        // Upload photo if it exists
+                        if (c.photo_blob && contactCreated?.id){
+                          try{
+                            const up:any = await api('POST','/files/upload',{ project_id:null, client_id:created.id, employee_id:null, category_id:'contact-photo', original_name:`contact-${contactCreated.id}.jpg`, content_type:'image/jpeg' });
+                            await fetch(up.upload_url, { method:'PUT', headers:{ 'Content-Type':'image/jpeg', 'x-ms-blob-type':'BlockBlob' }, body: c.photo_blob });
+                            const conf:any = await api('POST','/files/confirm',{ key: up.key, size_bytes: c.photo_blob.size, checksum_sha256:'na', content_type:'image/jpeg' });
+                            await api('POST', `/clients/${encodeURIComponent(created.id)}/files?file_object_id=${encodeURIComponent(conf.id)}&category=${encodeURIComponent('contact-photo-'+contactCreated.id)}&original_name=${encodeURIComponent('contact-'+contactCreated.id+'.jpg')}`);
+                          }catch(_e){ console.error('Failed to upload contact photo', _e); }
+                        }
+                      }catch(_e){ console.error('Failed to create contact', _e); }
                     }
                   }
                   toast.success('Customer created');
@@ -216,9 +238,19 @@ export default function CustomerNew(){
           <div className="w-[800px] max-w-[95vw] bg-white rounded-xl overflow-hidden">
             <div className="px-4 py-3 border-b flex items-center justify-between">
               <div className="font-semibold">New Contact</div>
-              <button onClick={()=>{ setContactModalOpen(false); }} className="text-gray-500 hover:text-gray-700 text-2xl font-bold w-8 h-8 flex items-center justify-center rounded hover:bg-gray-100" title="Close">×</button>
+              <button onClick={()=>{ setContactModalOpen(false); setCPhotoBlob(null); setCPhotoPreview(''); }} className="text-gray-500 hover:text-gray-700 text-2xl font-bold w-8 h-8 flex items-center justify-center rounded hover:bg-gray-100" title="Close">×</button>
             </div>
             <div className="p-4 grid md:grid-cols-5 gap-3 items-start">
+              <div className="md:col-span-2">
+                <div className="text-[11px] uppercase text-gray-500 mb-1">Contact Photo</div>
+                <button onClick={()=> setCPickerOpen(true)} className="w-full h-40 border rounded grid place-items-center bg-gray-50 relative overflow-hidden">
+                  {cPhotoPreview ? (
+                    <img src={cPhotoPreview} className="w-full h-full object-cover" alt="Contact preview" />
+                  ) : (
+                    <div className="text-gray-400">Select Photo</div>
+                  )}
+                </button>
+              </div>
               <div className="md:col-span-3 grid grid-cols-2 gap-2">
                 <div className="col-span-2">
                   <label className="text-xs text-gray-600">Name</label>
@@ -249,20 +281,33 @@ export default function CustomerNew(){
                 </div>
                 <div className="col-span-2 text-right">
                   <button onClick={()=>{
-                    const norm = { name: cName, email: cEmail, phone: cPhone, role_title: cRole, department: cDept, is_primary: cPrimary==='true' };
+                    const norm:any = { name: cName, email: cEmail, phone: cPhone, role_title: cRole, department: cDept, is_primary: cPrimary==='true' };
+                    if (cPhotoBlob) {
+                      norm.photo_blob = cPhotoBlob;
+                      norm.photo_preview = cPhotoPreview;
+                    }
                     setContacts(arr=> {
                       let updated = [...arr];
                       if (norm.is_primary){ updated = updated.map(x=> ({...x, is_primary:false})); }
                       updated.push(norm);
                       return updated;
                     });
-                    setCName(''); setCEmail(''); setCPhone(''); setCRole(''); setCDept(''); setCPrimary('false'); setContactModalOpen(false);
+                    setCName(''); setCEmail(''); setCPhone(''); setCRole(''); setCDept(''); setCPrimary('false'); setCPhotoBlob(null); setCPhotoPreview(''); setContactModalOpen(false);
                   }} className="px-4 py-2 rounded-xl bg-gradient-to-r from-brand-red to-[#ee2b2b] text-white font-semibold">Add</button>
                 </div>
               </div>
             </div>
           </div>
         </div>
+      )}
+      {cPickerOpen && (
+        <ImagePicker isOpen={true} onClose={()=>setCPickerOpen(false)} clientId={''} targetWidth={400} targetHeight={400} allowEdit={true} onConfirm={async(blob)=>{
+          try{
+            setCPhotoBlob(blob);
+            setCPhotoPreview(URL.createObjectURL(blob));
+          }catch(_e){ toast.error('Failed to process image'); }
+          finally{ setCPickerOpen(false); }
+        }} />
       )}
     </div>
   );
