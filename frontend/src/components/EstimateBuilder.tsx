@@ -636,108 +636,111 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
           Please change the project status to allow editing.
         </div>
       )}
-      <div className="sticky top-0 z-30 bg-white/95 backdrop-blur mb-3 py-3 border-b flex items-center gap-2">
-        <button 
-          onClick={() => {
-            if (!canEdit) return;
-            const newSection = `Product Section ${Date.now()}`;
-            setSectionOrder(prev => {
-              // Find the last index of a Product Section
-              let lastProductIndex = -1;
-              for (let i = prev.length - 1; i >= 0; i--) {
-                if (prev[i].startsWith('Product Section')) {
-                  lastProductIndex = i;
-                  break;
+      <div className="sticky top-0 z-30 bg-white/95 backdrop-blur mb-3 py-3 border-b">
+        <div className="mb-2 text-sm font-medium text-gray-700">+ Add Section for:</div>
+        <div className="flex items-center gap-2">
+          <button 
+            onClick={() => {
+              if (!canEdit) return;
+              const newSection = `Product Section ${Date.now()}`;
+              setSectionOrder(prev => {
+                // Find the last index of a Product Section
+                let lastProductIndex = -1;
+                for (let i = prev.length - 1; i >= 0; i--) {
+                  if (prev[i].startsWith('Product Section')) {
+                    lastProductIndex = i;
+                    break;
+                  }
                 }
+                // If found, insert after the last product section; otherwise, insert at the very beginning (top)
+                if (lastProductIndex >= 0) {
+                  const newOrder = [...prev];
+                  newOrder.splice(lastProductIndex + 1, 0, newSection);
+                  return newOrder;
+                } else {
+                  // No product section found, insert at the very beginning (top of all sections)
+                  return [newSection, ...prev];
+                }
+              });
+              setSectionNames(prev => ({ ...prev, [newSection]: 'Product Section' }));
+            }}
+            disabled={!canEdit}
+            className="px-3 py-2 rounded bg-gray-100 hover:bg-gray-200 disabled:opacity-60">
+            Product
+          </button>
+          <button 
+            onClick={() => {
+              if (!canEdit) return;
+              // Check if Labour section already exists
+              const hasLabour = sectionOrder.some(s => s.startsWith('Labour Section') || s === 'Labour');
+              if (hasLabour) {
+                toast.error('Only one Labour section is allowed');
+                return;
               }
-              // If found, insert after the last product section; otherwise, insert at the very beginning (top)
-              if (lastProductIndex >= 0) {
-                const newOrder = [...prev];
-                newOrder.splice(lastProductIndex + 1, 0, newSection);
-                return newOrder;
-              } else {
-                // No product section found, insert at the very beginning (top of all sections)
-                return [newSection, ...prev];
+              const newSection = `Labour Section ${Date.now()}`;
+              setSectionOrder(prev => [...prev, newSection]);
+              setSectionNames(prev => ({ ...prev, [newSection]: 'Labour' }));
+            }}
+            disabled={!canEdit || sectionOrder.some(s => s.startsWith('Labour Section') || s === 'Labour')}
+            className="px-3 py-2 rounded bg-gray-100 hover:bg-gray-200 disabled:opacity-60">
+            Labour
+          </button>
+          <button 
+            onClick={() => {
+              if (!canEdit) return;
+              // Check if Sub-Contractor section already exists
+              const hasSubContractor = sectionOrder.some(s => s.startsWith('Sub-Contractor Section') || s === 'Sub-Contractors');
+              if (hasSubContractor) {
+                toast.error('Only one Sub-Contractor section is allowed');
+                return;
               }
-            });
-            setSectionNames(prev => ({ ...prev, [newSection]: 'Product Section' }));
-          }}
-          disabled={!canEdit}
-          className="px-3 py-2 rounded bg-gray-100 hover:bg-gray-200 disabled:opacity-60">
-          + Add Product
-        </button>
-        <button 
-          onClick={() => {
-            if (!canEdit) return;
-            // Check if Labour section already exists
-            const hasLabour = sectionOrder.some(s => s.startsWith('Labour Section') || s === 'Labour');
-            if (hasLabour) {
-              toast.error('Only one Labour section is allowed');
-              return;
-            }
-            const newSection = `Labour Section ${Date.now()}`;
-            setSectionOrder(prev => [...prev, newSection]);
-            setSectionNames(prev => ({ ...prev, [newSection]: 'Labour' }));
-          }}
-          disabled={!canEdit || sectionOrder.some(s => s.startsWith('Labour Section') || s === 'Labour')}
-          className="px-3 py-2 rounded bg-gray-100 hover:bg-gray-200 disabled:opacity-60">
-          + Add Labour
-        </button>
-        <button 
-          onClick={() => {
-            if (!canEdit) return;
-            // Check if Sub-Contractor section already exists
-            const hasSubContractor = sectionOrder.some(s => s.startsWith('Sub-Contractor Section') || s === 'Sub-Contractors');
-            if (hasSubContractor) {
-              toast.error('Only one Sub-Contractor section is allowed');
-              return;
-            }
-            const newSection = `Sub-Contractor Section ${Date.now()}`;
-            setSectionOrder(prev => [...prev, newSection]);
-            setSectionNames(prev => ({ ...prev, [newSection]: 'Sub-Contractor' }));
-          }}
-          disabled={!canEdit || sectionOrder.some(s => s.startsWith('Sub-Contractor Section') || s === 'Sub-Contractors')}
-          className="px-3 py-2 rounded bg-gray-100 hover:bg-gray-200 disabled:opacity-60">
-          + Add Sub-Contractor
-        </button>
-        <button 
-          onClick={() => {
-            if (!canEdit) return;
-            // Check if Miscellaneous section already exists
-            const hasMiscellaneous = sectionOrder.some(s => s.startsWith('Miscellaneous Section') || s === 'Miscellaneous');
-            if (hasMiscellaneous) {
-              toast.error('Only one Miscellaneous section is allowed');
-              return;
-            }
-            const newSection = `Miscellaneous Section ${Date.now()}`;
-            setSectionOrder(prev => [...prev, newSection]);
-            setSectionNames(prev => ({ ...prev, [newSection]: 'Miscellaneous' }));
-          }}
-          disabled={!canEdit || sectionOrder.some(s => s.startsWith('Miscellaneous Section') || s === 'Miscellaneous')}
-          className="px-3 py-2 rounded bg-gray-100 hover:bg-gray-200 disabled:opacity-60">
-          + Add Miscellaneous
-        </button>
-        <button 
-          onClick={() => {
-            if (!canEdit) return;
-            // Check if Shop section already exists
-            const hasShop = sectionOrder.some(s => s.startsWith('Shop Section') || s === 'Shop');
-            if (hasShop) {
-              toast.error('Only one Shop section is allowed');
-              return;
-            }
-            const newSection = `Shop Section ${Date.now()}`;
-            setSectionOrder(prev => [...prev, newSection]);
-            setSectionNames(prev => ({ ...prev, [newSection]: 'Shop' }));
-          }}
-          disabled={!canEdit || sectionOrder.some(s => s.startsWith('Shop Section') || s === 'Shop')}
-          className="px-3 py-2 rounded bg-gray-100 hover:bg-gray-200 disabled:opacity-60">
-          + Add Shop
-        </button>
-        <div className="ml-auto flex items-center gap-3 text-sm">
-          <label>Markup (%)</label><input type="number" className="border rounded px-2 py-1 w-20" value={markup} min={0} step={1} onChange={e=>setMarkup(Number(e.target.value||0))} disabled={!canEdit} />
-          <label>PST (%)</label><input type="number" className="border rounded px-2 py-1 w-20" value={pstRate} min={0} step={1} onChange={e=>setPstRate(Number(e.target.value||0))} disabled={!canEdit} />
-          <label>GST (%)</label><input type="number" className="border rounded px-2 py-1 w-20" value={gstRate} min={0} step={1} onChange={e=>setGstRate(Number(e.target.value||0))} disabled={!canEdit} />
+              const newSection = `Sub-Contractor Section ${Date.now()}`;
+              setSectionOrder(prev => [...prev, newSection]);
+              setSectionNames(prev => ({ ...prev, [newSection]: 'Sub-Contractor' }));
+            }}
+            disabled={!canEdit || sectionOrder.some(s => s.startsWith('Sub-Contractor Section') || s === 'Sub-Contractors')}
+            className="px-3 py-2 rounded bg-gray-100 hover:bg-gray-200 disabled:opacity-60">
+            Sub-Contractor
+          </button>
+          <button 
+            onClick={() => {
+              if (!canEdit) return;
+              // Check if Miscellaneous section already exists
+              const hasMiscellaneous = sectionOrder.some(s => s.startsWith('Miscellaneous Section') || s === 'Miscellaneous');
+              if (hasMiscellaneous) {
+                toast.error('Only one Miscellaneous section is allowed');
+                return;
+              }
+              const newSection = `Miscellaneous Section ${Date.now()}`;
+              setSectionOrder(prev => [...prev, newSection]);
+              setSectionNames(prev => ({ ...prev, [newSection]: 'Miscellaneous' }));
+            }}
+            disabled={!canEdit || sectionOrder.some(s => s.startsWith('Miscellaneous Section') || s === 'Miscellaneous')}
+            className="px-3 py-2 rounded bg-gray-100 hover:bg-gray-200 disabled:opacity-60">
+            Miscellaneous
+          </button>
+          <button 
+            onClick={() => {
+              if (!canEdit) return;
+              // Check if Shop section already exists
+              const hasShop = sectionOrder.some(s => s.startsWith('Shop Section') || s === 'Shop');
+              if (hasShop) {
+                toast.error('Only one Shop section is allowed');
+                return;
+              }
+              const newSection = `Shop Section ${Date.now()}`;
+              setSectionOrder(prev => [...prev, newSection]);
+              setSectionNames(prev => ({ ...prev, [newSection]: 'Shop' }));
+            }}
+            disabled={!canEdit || sectionOrder.some(s => s.startsWith('Shop Section') || s === 'Shop')}
+            className="px-3 py-2 rounded bg-gray-100 hover:bg-gray-200 disabled:opacity-60">
+            Shop
+          </button>
+          <div className="ml-auto flex items-center gap-3 text-sm">
+            <label>Markup (%)</label><input type="number" className="border rounded px-2 py-1 w-20" value={markup} min={0} step={1} onChange={e=>setMarkup(Number(e.target.value||0))} disabled={!canEdit} />
+            <label>PST (%)</label><input type="number" className="border rounded px-2 py-1 w-20" value={pstRate} min={0} step={1} onChange={e=>setPstRate(Number(e.target.value||0))} disabled={!canEdit} />
+            <label>GST (%)</label><input type="number" className="border rounded px-2 py-1 w-20" value={gstRate} min={0} step={1} onChange={e=>setGstRate(Number(e.target.value||0))} disabled={!canEdit} />
+          </div>
         </div>
       </div>
 
@@ -910,8 +913,15 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
                         setEditingSectionNameOriginal('');
                       }
                     }}
-                    placeholder={section.startsWith('Product Section') ? "Roof, Wood Blocking, Flashing..." : "Enter section name"}
-                    className="font-semibold text-gray-900 border rounded px-2 py-1 placeholder:text-gray-400"
+                    placeholder={
+                      section.startsWith('Product Section') ? "Insert Product Section Name. E.g.: Roof, Wood Blocking, Flashing..." :
+                      section.startsWith('Shop Section') ? "Insert Shop Section Name" :
+                      section.startsWith('Labour Section') ? "Insert Labour Section Name" :
+                      section.startsWith('Sub-Contractor Section') ? "Insert Sub-Contractor Section Name" :
+                      section.startsWith('Miscellaneous Section') ? "Insert Miscellaneous Section Name" :
+                      "Insert Section Name"
+                    }
+                    className="font-semibold text-gray-900 border rounded px-3 py-2 min-w-[400px] placeholder:text-gray-400 placeholder:font-normal"
                     autoFocus
                   />
                 ) : (
