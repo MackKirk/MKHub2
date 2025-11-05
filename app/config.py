@@ -24,7 +24,7 @@ class Settings(BaseSettings):
     # JWT
     jwt_secret: str = Field(default="change-me", alias="JWT_SECRET")
     jwt_algorithm: str = Field(default="HS256")
-    jwt_ttl_seconds: int = Field(default=900, alias="JWT_TTL")  # 15 min
+    jwt_ttl_seconds: int = Field(default=60 * 60 * 12, alias="JWT_TTL")  # 12 hours
     refresh_ttl_seconds: int = Field(default=60 * 60 * 24 * 14, alias="REFRESH_TTL")  # 14d
 
     # Storage
