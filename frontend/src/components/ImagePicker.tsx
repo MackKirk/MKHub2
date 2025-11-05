@@ -25,10 +25,16 @@ export default function ImagePicker({
 }){
   const [tab, setTab] = useState<'upload'|'library'>('upload');
   const [files, setFiles] = useState<ClientFile[]>([]);
+  const [isLoadingLibrary, setIsLoadingLibrary] = useState<boolean>(false);
+  const [libraryLoaded, setLibraryLoaded] = useState<boolean>(false);
+  const [libraryPage, setLibraryPage] = useState<number>(0);
+  const [libraryHasMore, setLibraryHasMore] = useState<boolean>(true);
   const [img, setImg] = useState<HTMLImageElement|null>(null);
   const [originalFileObjectId, setOriginalFileObjectId] = useState<string|undefined>(undefined);
   const inputRef = useRef<HTMLInputElement>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [showProgress, setShowProgress] = useState<boolean>(false);
+  const [progressMessage, setProgressMessage] = useState<string>("");
 
   // crop state
   const containerRef = useRef<HTMLDivElement>(null);
@@ -51,19 +57,33 @@ export default function ImagePicker({
     return () => window.removeEventListener('keydown', onKey);
   }, [isOpen, onClose]);
 
+  // On-demand gallery loader with pagination
+  const PAGE_SIZE = 60;
+  const loadLibrary = async (reset:boolean)=>{
+    if (!clientId) return;
+    try{
+      setIsLoadingLibrary(true);
+      const page = reset ? 0 : libraryPage;
+      const list = await api<ClientFile[]>('GET', `/clients/${clientId}/files?limit=${PAGE_SIZE}&offset=${page*PAGE_SIZE}`);
+      const imgs = (list||[]).filter(f=> {
+        const isImg = (f.is_image===true) || String(f.content_type||'').startsWith('image/');
+        const isDerived = String(f.category||'').toLowerCase().includes('derived');
+        return isImg && !isDerived;
+      });
+      setFiles(reset ? imgs : [...files, ...imgs]);
+      setLibraryLoaded(true);
+      setLibraryHasMore((list||[]).length === PAGE_SIZE);
+      setLibraryPage(page + 1);
+    }catch(err){ /* ignore */ }
+    finally{ setIsLoadingLibrary(false); }
+  };
+
   useEffect(()=>{
-    if (!clientId || !isOpen) return;
-    (async()=>{
-      try{
-        const list = await api<ClientFile[]>('GET', `/clients/${clientId}/files`);
-        setFiles((list||[]).filter(f=> {
-          const isImg = (f.is_image===true) || String(f.content_type||'').startsWith('image/');
-          const isDerived = String(f.category||'').toLowerCase().includes('derived');
-          return isImg && !isDerived;
-        }));
-      }catch(err){ /* ignore */ }
-    })();
-  }, [clientId, isOpen]);
+    // If user switches to library tab, lazy-load first page
+    if (tab === 'library' && isOpen && clientId && !libraryLoaded && !isLoadingLibrary){
+      loadLibrary(true);
+    }
+  }, [tab, isOpen, clientId]);
 
   const cw = 360;
   const ch = useMemo(()=> Math.round(cw * (targetHeight/targetWidth)), [targetWidth, targetHeight]);
@@ -92,12 +112,14 @@ export default function ImagePicker({
       : (file.type || 'application/octet-stream');
     try{
       setIsLoading(true);
+      setShowProgress(true);
+      setProgressMessage('Uploading image to storage...');
       if (!clientId){
         // Fallback to local preview if we don't have context to persist
         const url = URL.createObjectURL(file);
         const image = new Image();
-        image.onload = ()=>{ setImg(image); setZoom(1); setTx(0); setTy(0); setOriginalFileObjectId(undefined); setIsLoading(false); };
-        image.onerror = ()=>{ toast.error('Failed to load image'); setIsLoading(false); };
+        image.onload = ()=>{ setImg(image); setZoom(1); setTx(0); setTy(0); setOriginalFileObjectId(undefined); setIsLoading(false); setShowProgress(false); setProgressMessage(''); };
+        image.onerror = ()=>{ toast.error('Failed to load image'); setIsLoading(false); setShowProgress(false); setProgressMessage(''); };
         image.src = url; return;
       }
       // Persist original to library first (keeps history and enables HEIC and large previews)
@@ -115,6 +137,7 @@ export default function ImagePicker({
         const errorText = await putResp.text().catch(() => 'Unknown error');
         throw new Error(`Azure upload failed: ${putResp.status} ${putResp.statusText} - ${errorText}`);
       }
+      setProgressMessage(isHeic ? 'Converting HEIC to JPG...' : 'Saving file...');
       const conf:any = await api('POST','/files/confirm',{ key: up.key, size_bytes: file.size, checksum_sha256:'na', content_type: contentType });
       const fileObjectId = conf.id;
       // Attach to client library
@@ -137,8 +160,11 @@ export default function ImagePicker({
         if (!imageLoaded) {
           setIsLoading(false);
           toast.error('Timeout loading image. The file may be processing.');
+          setShowProgress(false);
+          setProgressMessage('');
         }
       }, 30000); // 30 second timeout
+      setProgressMessage('Generating preview...');
       image.onload = ()=>{
         imageLoaded = true;
         clearTimeout(loadTimeout);
@@ -148,12 +174,16 @@ export default function ImagePicker({
         setTy(0); 
         setOriginalFileObjectId(fileObjectId); 
         setIsLoading(false);
+        setShowProgress(false);
+        setProgressMessage('');
       };
       image.onerror = ()=>{
         imageLoaded = true;
         clearTimeout(loadTimeout);
         toast.error('Failed to load image. The file may still be processing.');
         setIsLoading(false);
+        setShowProgress(false);
+        setProgressMessage('');
       };
       image.crossOrigin = 'anonymous';
       image.src = `/files/${fileObjectId}/thumbnail?w=1200&cb=${Date.now()}`;
@@ -161,7 +191,9 @@ export default function ImagePicker({
       console.error('Upload failed:', e);
       const errorMsg = e?.message || e?.response?.data?.detail || 'Upload failed';
       toast.error(`Failed to upload image: ${errorMsg}`);
-      setIsLoading(false); 
+      setIsLoading(false);
+      setShowProgress(false);
+      setProgressMessage('');
     }
   };
 
@@ -169,8 +201,10 @@ export default function ImagePicker({
     try{
       const image = new Image();
       setIsLoading(true);
-      image.onload = ()=>{ setImg(image); setZoom(1); setTx(0); setTy(0); setOriginalFileObjectId(fileObjectId); setIsLoading(false); };
-      image.onerror = ()=>{ toast.error('Failed to load image'); setIsLoading(false); };
+      setShowProgress(true);
+      setProgressMessage('Loading image...');
+      image.onload = ()=>{ setImg(image); setZoom(1); setTx(0); setTy(0); setOriginalFileObjectId(fileObjectId); setIsLoading(false); setShowProgress(false); setProgressMessage(''); };
+      image.onerror = ()=>{ toast.error('Failed to load image'); setIsLoading(false); setShowProgress(false); setProgressMessage(''); };
       image.crossOrigin = 'anonymous';
       // Use thumbnail endpoint to ensure browser-compatible PNG (works for HEIC too)
       image.src = `/files/${fileObjectId}/thumbnail?w=1200&cb=${Date.now()}`;
@@ -233,14 +267,37 @@ export default function ImagePicker({
           <div className="border-r">
             {clientId && (
               <div className="p-3">
-                <div className="mb-2 text-sm font-semibold">Library</div>
-                <div className="grid grid-cols-3 gap-2 max-h-[320px] overflow-auto">
-                  {files.map(f=> (
-                    <button key={f.id} className="border rounded overflow-hidden" onClick={()=>loadFromFileObject(f.file_object_id)}>
-                      <img className="w-full h-20 object-cover" src={`/files/${f.file_object_id}/thumbnail?w=200`} />
-                    </button>
-                  ))}
+                <div className="mb-2 flex items-center justify-between">
+                  <div className="text-sm font-semibold">Library</div>
+                  <div className="flex items-center gap-2">
+                    <button disabled={isLoadingLibrary} onClick={()=>loadLibrary(true)} className="text-xs px-2 py-1 rounded bg-gray-100 disabled:opacity-50">Reload</button>
+                  </div>
                 </div>
+                {!libraryLoaded && (
+                  <div className="py-6 text-center">
+                    <button disabled={isLoadingLibrary} onClick={()=>loadLibrary(true)} className="px-3 py-2 rounded bg-gray-800 text-white disabled:opacity-50">Load gallery</button>
+                  </div>
+                )}
+                {libraryLoaded && (
+                  <>
+                    <div className="grid grid-cols-3 gap-2 max-h-[320px] overflow-auto">
+                      {files.map(f=> (
+                        <button key={f.id} className="border rounded overflow-hidden" onClick={()=>loadFromFileObject(f.file_object_id)}>
+                          <img className="w-full h-20 object-cover" src={`/files/${f.file_object_id}/thumbnail?w=160`} />
+                        </button>
+                      ))}
+                    </div>
+                    <div className="mt-3 text-center">
+                      {libraryHasMore ? (
+                        <button disabled={isLoadingLibrary} onClick={()=>loadLibrary(false)} className="px-3 py-1.5 rounded bg-gray-100 disabled:opacity-50">
+                          {isLoadingLibrary ? 'Loading...' : 'Load more'}
+                        </button>
+                      ) : (
+                        <div className="text-xs text-gray-400">No more images</div>
+                      )}
+                    </div>
+                  </>
+                )}
               </div>
             )}
             <div className="p-3 border-t">
@@ -269,6 +326,14 @@ export default function ImagePicker({
           </div>
         </div>
       </div>
+      {showProgress && (
+        <div className="fixed inset-0 z-[60] bg-black/60 grid place-items-center">
+          <div className="bg-white rounded-lg shadow-lg px-6 py-5 w-[360px] max-w-[90vw] text-center">
+            <div className="mx-auto mb-4 h-10 w-10 rounded-full border-4 border-gray-200 border-t-brand-red animate-spin" />
+            <div className="text-sm text-gray-600">{progressMessage || 'Processing...'}</div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
