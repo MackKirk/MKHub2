@@ -84,17 +84,28 @@ def confirm(req: ConfirmRequest, db: Session = Depends(get_db), storage: Storage
             import time
             from PIL import Image as PILImage
             
-            # Ensure pillow-heif is registered
+            # Ensure pillow-heif is registered and working
             try:
                 from pillow_heif import register_heif_opener
                 register_heif_opener()
                 logger.info("pillow-heif opener registered successfully")
+                
+                # Test if pillow-heif is actually working by checking if HEIC format is available
+                try:
+                    # Check if HEIC is in the list of supported formats
+                    # registered_extensions() returns a dict mapping extensions to formats
+                    registered_exts = PILImage.registered_extensions()
+                    has_heic = any(fmt == 'HEIC' for fmt in registered_exts.values()) or '.heic' in registered_exts or '.heif' in registered_exts
+                    if not has_heic:
+                        logger.warning("HEIC format may not be fully supported - libheif may be missing")
+                except Exception as test_err:
+                    logger.warning(f"Could not verify HEIC support: {test_err}")
             except ImportError as import_err:
                 error_msg = f"pillow-heif module not found. Please install it with: pip install pillow-heif. Error: {import_err}"
                 logger.error(error_msg)
                 raise HTTPException(status_code=500, detail=error_msg)
             except Exception as heif_err:
-                error_msg = f"Failed to register pillow-heif opener: {heif_err}. Make sure libheif is installed on your system."
+                error_msg = f"Failed to register pillow-heif opener: {heif_err}. Make sure libheif is installed on your system (apt-get install libheif-dev libde265-dev x265)."
                 logger.error(error_msg, exc_info=True)
                 raise HTTPException(status_code=500, detail=error_msg)
             
@@ -130,7 +141,8 @@ def confirm(req: ConfirmRequest, db: Session = Depends(get_db), storage: Storage
                 logger.info(f"Opened image: {im.format}, size: {im.size}, mode: {im.mode}")
             except Exception as open_err:
                 logger.error(f"Failed to open HEIC with PIL: {open_err}", exc_info=True)
-                raise ValueError(f"Cannot open HEIC file - pillow-heif may not be working: {open_err}")
+                error_msg = f"Cannot open HEIC file. The pillow-heif library is registered but may not be working correctly. This usually means libheif is not installed on the system. Please install libheif-dev, libde265-dev, and x265. Error: {open_err}"
+                raise ValueError(error_msg)
             
             try:
                 # Convert to RGB (required for JPG)

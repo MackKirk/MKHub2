@@ -14,6 +14,13 @@ FROM python:3.11-slim
 ENV PYTHONUNBUFFERED=1
 WORKDIR /app
 
+# Install system dependencies for pillow-heif (libheif)
+RUN apt-get update && apt-get install -y \
+    libheif-dev \
+    libde265-dev \
+    x265 \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
