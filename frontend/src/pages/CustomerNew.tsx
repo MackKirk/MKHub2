@@ -177,11 +177,12 @@ export default function CustomerNew(){
                     <div className="text-gray-700 mt-1">{[c.email, c.phone].filter(Boolean).join(' · ')||'-'}</div>
                   </div>
                   <div className="flex-shrink-0">
-                  <div className="space-x-2">
-                    {!c.is_primary && <button onClick={()=>{
-                      setContacts(arr=> arr.map((x,idx)=> ({...x, is_primary: idx===i})));
-                    }} className="px-2 py-1 rounded bg-gray-100">Set Primary</button>}
-                    <button onClick={()=> setContacts(arr=> arr.filter((_,idx)=> idx!==i))} className="px-2 py-1 rounded bg-gray-100">Delete</button>
+                    <div className="space-x-2">
+                      {!c.is_primary && <button onClick={()=>{
+                        setContacts(arr=> arr.map((x,idx)=> ({...x, is_primary: idx===i})));
+                      }} className="px-2 py-1 rounded bg-gray-100">Set Primary</button>}
+                      <button onClick={()=> setContacts(arr=> arr.filter((_,idx)=> idx!==i))} className="px-2 py-1 rounded bg-gray-100">Delete</button>
+                    </div>
                   </div>
                 </div>
               ))}
