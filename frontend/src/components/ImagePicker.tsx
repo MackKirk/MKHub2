@@ -101,8 +101,11 @@ export default function ImagePicker({
         image.src = url; return;
       }
       // Persist original to library first (keeps history and enables HEIC and large previews)
+      // For HEIC files, preserve the extension so backend can detect and convert
       const uniqueBase = `${isHeic? 'heic':'upload'}_${Date.now()}_${Math.random().toString(36).slice(2)}`;
-      const originalName = `${uniqueBase}${(file.name && file.name.includes('.'))? file.name.substring(file.name.lastIndexOf('.')) : (isHeic? '.heic': '.bin')}`;
+      const originalName = isHeic 
+        ? `${uniqueBase}.heic`  // Always use .heic extension for HEIC files
+        : `${uniqueBase}${(file.name && file.name.includes('.'))? file.name.substring(file.name.lastIndexOf('.')) : '.bin'}`;
       // Use correct content_type for database, but use application/octet-stream for Azure upload
       // Azure may reject non-standard MIME types like image/heic
       const uploadContentType = isHeic ? 'application/octet-stream' : contentType;

@@ -58,7 +58,100 @@ def upload(req: UploadRequest, storage: StorageProvider = Depends(get_storage)):
 
 
 @router.post("/confirm")
-def confirm(req: ConfirmRequest, db: Session = Depends(get_db)):
+def confirm(req: ConfirmRequest, db: Session = Depends(get_db), storage: StorageProvider = Depends(get_storage)):
+    # Check if this is a HEIC file that needs conversion
+    is_heic = False
+    content_type = req.content_type or ""
+    original_key = req.key
+    
+    # Check by content type
+    if 'heic' in content_type.lower() or 'heif' in content_type.lower():
+        is_heic = True
+    
+    # Check by file extension
+    if original_key.lower().endswith(('.heic', '.heif')):
+        is_heic = True
+    
+    # If it's HEIC, convert to JPG before saving
+    if is_heic:
+        try:
+            import io
+            import httpx
+            from PIL import Image as PILImage
+            
+            # Ensure pillow-heif is registered
+            try:
+                from pillow_heif import register_heif_opener
+                register_heif_opener()
+            except Exception:
+                pass
+            
+            # Download the HEIC file from storage
+            download_url = storage.get_download_url(original_key, expires_s=300)
+            if not download_url:
+                raise ValueError("Could not get download URL for HEIC file")
+            
+            # Download and convert
+            with httpx.stream("GET", download_url, timeout=30.0) as r:
+                r.raise_for_status()
+                file_content = b""
+                for chunk in r.iter_bytes():
+                    file_content += chunk
+            
+            if len(file_content) == 0:
+                raise ValueError("Downloaded HEIC file is empty")
+            
+            # Convert HEIC to JPG
+            buf = io.BytesIO(file_content)
+            buf.seek(0)
+            with PILImage.open(buf) as im:
+                # Convert to RGB (required for JPG)
+                if im.mode != "RGB":
+                    im = im.convert("RGB")
+                
+                # Save as JPG
+                jpg_buf = io.BytesIO()
+                im.save(jpg_buf, format="JPEG", quality=95, optimize=True)
+                jpg_buf.seek(0)
+                jpg_content = jpg_buf.read()
+            
+            # Upload the converted JPG file
+            jpg_key = original_key.rsplit('.', 1)[0] + '.jpg'
+            if jpg_key == original_key:
+                jpg_key = original_key + '.jpg'
+            
+            # Generate upload URL for JPG
+            upload_url = storage.generate_upload_url(jpg_key, "image/jpeg", expires_s=900)
+            
+            # Upload JPG
+            put_resp = httpx.put(
+                upload_url,
+                content=jpg_content,
+                headers={"Content-Type": "image/jpeg", "x-ms-blob-type": "BlockBlob"},
+                timeout=30.0
+            )
+            put_resp.raise_for_status()
+            
+            # Create FileObject with JPG instead of HEIC
+            fo = FileObject(
+                provider="blob",
+                container=settings.azure_blob_container or "",
+                key=jpg_key,
+                size_bytes=len(jpg_content),
+                checksum_sha256=req.checksum_sha256,  # Keep original checksum
+                content_type="image/jpeg",  # Changed to JPEG
+            )
+            db.add(fo)
+            db.commit()
+            return {"id": str(fo.id)}
+        except Exception as e:
+            # If conversion fails, log and fall back to saving HEIC as-is
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(f"Failed to convert HEIC to JPG for {original_key}: {str(e)}", exc_info=True)
+            # Continue with original HEIC file
+    
+    # Original code for non-HEIC files or fallback
     fo = FileObject(
         provider="blob",
         container=settings.azure_blob_container or "",
