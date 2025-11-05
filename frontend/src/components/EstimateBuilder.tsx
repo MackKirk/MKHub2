@@ -857,7 +857,7 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
                  className={`rounded-xl border overflow-hidden bg-white ${dragOverSection === section ? 'ring-2 ring-brand-red' : ''}`}
                  onDragOver={(e) => onSectionDragOver(e, section)}
                  onDrop={onSectionDrop}>
-              <div className="bg-gray-50 px-4 py-2 border-b flex items-center gap-2">
+              <div className="bg-gray-200 px-4 py-2 border-b flex items-center gap-2">
                 <div className="flex items-center gap-2 flex-1">
                 <span 
                   className="inline-flex items-center justify-center w-5 h-5 text-gray-400 hover:text-gray-600 cursor-grab active:cursor-grabbing" 
@@ -1979,26 +1979,47 @@ function AddProductModal({ onAdd, disabled, defaultMarkup, open: openProp, onClo
               )}
               {selection && (
                 <div className="border rounded p-3 bg-gray-50 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <div className="font-medium">{selection.name}</div>
-                    <button
-                      onClick={() => setCompareModalOpen(true)}
-                      className="px-3 py-1.5 rounded bg-gray-700 text-white hover:bg-gray-800 text-sm">
-                      Compare
-                    </button>
+                  <div className="flex items-start gap-3">
+                    <div className="flex-shrink-0 w-24 h-24 relative">
+                      {selection.image_base64 ? (
+                        <img 
+                          src={selection.image_base64.startsWith('data:') ? selection.image_base64 : `data:image/jpeg;base64,${selection.image_base64}`}
+                          alt={selection.name}
+                          className="w-full h-full object-contain rounded"
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).style.display = 'none';
+                            const placeholder = (e.target as HTMLImageElement).nextElementSibling as HTMLElement;
+                            if (placeholder) placeholder.style.display = 'flex';
+                          }}
+                        />
+                      ) : null}
+                      <div className={`w-full h-full bg-gray-200 rounded flex items-center justify-center text-gray-400 text-xs ${selection.image_base64 ? 'hidden' : ''}`} style={{ display: selection.image_base64 ? 'none' : 'flex' }}>
+                        No Image
+                      </div>
+                    </div>
+                    <div className="flex-1 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <div className="font-medium">{selection.name}</div>
+                        <button
+                          onClick={() => setCompareModalOpen(true)}
+                          className="px-3 py-1.5 rounded bg-gray-700 text-white hover:bg-gray-800 text-sm">
+                          Compare
+                        </button>
+                      </div>
+                      <div className="text-sm text-gray-600">Supplier: {selection.supplier_name||'N/A'}</div>
+                      <div className="text-sm text-gray-600">Unit: {selection.unit||'-'} · Price: ${Number(selection.price||0).toFixed(2)}</div>
+                      {selection.unit_type === 'coverage' && (
+                        <div className="text-xs text-gray-600 mt-1">
+                          Coverage: {selection.coverage_sqs ? `${selection.coverage_sqs} SQS · ` : ''}{selection.coverage_ft2 ? `${selection.coverage_ft2} ft² · ` : ''}{selection.coverage_m2 ? `${selection.coverage_m2} m²` : ''}
+                        </div>
+                      )}
+                      {selection.unit_type === 'multiple' && selection.units_per_package && (
+                        <div className="text-xs text-gray-600 mt-1">
+                          {selection.units_per_package} units per package
+                        </div>
+                      )}
+                    </div>
                   </div>
-                  <div className="text-sm text-gray-600">Supplier: {selection.supplier_name||'N/A'}</div>
-                  <div className="text-sm text-gray-600">Unit: {selection.unit||'-'} · Price: ${Number(selection.price||0).toFixed(2)}</div>
-                  {selection.unit_type === 'coverage' && (
-                    <div className="text-xs text-gray-600 mt-1">
-                      Coverage: {selection.coverage_sqs ? `${selection.coverage_sqs} SQS · ` : ''}{selection.coverage_ft2 ? `${selection.coverage_ft2} ft² · ` : ''}{selection.coverage_m2 ? `${selection.coverage_m2} m²` : ''}
-                    </div>
-                  )}
-                  {selection.unit_type === 'multiple' && selection.units_per_package && (
-                    <div className="text-xs text-gray-600 mt-1">
-                      {selection.units_per_package} units per package
-                    </div>
-                  )}
                 </div>
               )}
               {selection && !sectionProp && (
@@ -2166,7 +2187,7 @@ function SupplierProductModal({ open, onClose, onSelect }: { open: boolean, onCl
                             <img 
                               src={product.image_base64.startsWith('data:') ? product.image_base64 : `data:image/jpeg;base64,${product.image_base64}`}
                               alt={product.name}
-                              className="w-full h-full object-cover rounded"
+                              className="w-full h-full object-contain rounded"
                               onError={(e) => {
                                 (e.target as HTMLImageElement).style.display = 'none';
                                 const placeholder = (e.target as HTMLImageElement).nextElementSibling as HTMLElement;
@@ -2235,21 +2256,21 @@ function CompareProductsModal({ open, onClose, selectedProduct, onSelect }: { op
     <div className="fixed inset-0 z-[70] bg-black/60 flex items-center justify-center p-4">
       <div className="w-[900px] max-w-[95vw] bg-white rounded-xl overflow-hidden max-h-[90vh] flex flex-col">
         <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] p-6 flex items-center gap-6 relative flex-shrink-0">
-          <div className="font-semibold text-lg text-white">Compare Products - {selectedProduct.category || 'Related Products'}</div>
+          <div className="font-semibold text-lg text-white">Compare Products</div>
           <button onClick={onClose} className="ml-auto text-white hover:text-gray-200 text-2xl font-bold w-8 h-8 flex items-center justify-center rounded hover:bg-white/20" title="Close">×</button>
         </div>
         <div className="p-6 overflow-y-auto flex-1">
           {/* Selected Product (Highlighted) */}
           <div className="mb-6">
             <div className="text-sm font-semibold text-gray-700 mb-3">Selected Product</div>
-            <div className="border-2 border-brand-red rounded-lg p-4 bg-red-50">
+            <div className="border-2 border-gray-300 rounded-lg p-4 bg-gray-50">
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   {selectedProduct.image_base64 ? (
                     <img 
                       src={selectedProduct.image_base64.startsWith('data:') ? selectedProduct.image_base64 : `data:image/jpeg;base64,${selectedProduct.image_base64}`}
                       alt={selectedProduct.name}
-                      className="w-full h-32 object-cover rounded"
+                      className="w-full h-32 object-contain rounded"
                       onError={(e) => {
                         (e.target as HTMLImageElement).style.display = 'none';
                         (e.target as HTMLImageElement).parentElement?.querySelector('.image-placeholder')?.classList.remove('hidden');
@@ -2297,7 +2318,7 @@ function CompareProductsModal({ open, onClose, selectedProduct, onSelect }: { op
                           <img 
                             src={product.image_base64.startsWith('data:') ? product.image_base64 : `data:image/jpeg;base64,${product.image_base64}`}
                             alt={product.name}
-                            className="w-full h-24 object-cover rounded"
+                            className="w-full h-24 object-contain rounded"
                             onError={(e) => {
                               (e.target as HTMLImageElement).style.display = 'none';
                               (e.target as HTMLImageElement).parentElement?.querySelector('.image-placeholder')?.classList.remove('hidden');
