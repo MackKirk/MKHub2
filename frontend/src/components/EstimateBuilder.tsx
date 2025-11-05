@@ -2256,7 +2256,7 @@ function CompareProductsModal({ open, onClose, selectedProduct, onSelect }: { op
     <div className="fixed inset-0 z-[70] bg-black/60 flex items-center justify-center p-4">
       <div className="w-[900px] max-w-[95vw] bg-white rounded-xl overflow-hidden max-h-[90vh] flex flex-col">
         <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] p-6 flex items-center gap-6 relative flex-shrink-0">
-          <div className="font-semibold text-lg text-white">Compare Products - {selectedProduct.category || 'Related Products'}</div>
+          <div className="font-semibold text-lg text-white">Compare Products</div>
           <button onClick={onClose} className="ml-auto text-white hover:text-gray-200 text-2xl font-bold w-8 h-8 flex items-center justify-center rounded hover:bg-white/20" title="Close">×</button>
         </div>
         <div className="p-6 overflow-y-auto flex-1">
