@@ -39,3 +39,4 @@ var/*.sqlite
 # OS files
 .DS_Store
 Thumbs.db
+renameit.HEIC
