@@ -240,6 +240,9 @@ def download(file_id: str, db: Session = Depends(get_db), storage: StorageProvid
 
 @router.get("/{file_id}/thumbnail")
 def thumbnail(file_id: str, w: int = 200, db: Session = Depends(get_db), storage: StorageProvider = Depends(get_storage)):
+    import logging
+    logger = logging.getLogger(__name__)
+    
     fo: Optional[FileObject] = db.query(FileObject).filter(FileObject.id == file_id).first()
     if not fo:
         raise HTTPException(status_code=404, detail="File not found")
@@ -282,11 +285,14 @@ def thumbnail(file_id: str, w: int = 200, db: Session = Depends(get_db), storage
             is_heic = True
         
         # Check file signature (HEIC files start with ftyp box)
-        if len(file_content) >= 12:
-            header = file_content[:12]
+        # HEIC files can have 'heic' or 'heif' in the first 20 bytes, or 'mif1'/'msf1' slightly later
+        if len(file_content) >= 20:
+            header = file_content[:20]
             if header[:4] == b'ftyp':
-                # Check for HEIC/HEIF brand indicators
-                if b'heic' in header[4:12] or b'heif' in header[4:12] or b'mif1' in header[4:12] or b'msf1' in header[4:12]:
+                # Check for HEIC/HEIF brand indicators in first 20 bytes
+                # 'heic'/'heif' typically appear around bytes 8-12, 'mif1'/'msf1' around bytes 16-20
+                if (b'heic' in header[4:20] or b'heif' in header[4:20] or 
+                    b'mif1' in header[4:20] or b'msf1' in header[4:20]):
                     is_heic = True
         
         # Ensure pillow-heif is registered for HEIC files
@@ -295,8 +301,6 @@ def thumbnail(file_id: str, w: int = 200, db: Session = Depends(get_db), storage
                 from pillow_heif import register_heif_opener
                 register_heif_opener()
             except Exception as heif_err:
-                import logging
-                logger = logging.getLogger(__name__)
                 logger.warning(f"Could not register HEIF opener: {heif_err}")
         
         # Open and process image
@@ -304,15 +308,28 @@ def thumbnail(file_id: str, w: int = 200, db: Session = Depends(get_db), storage
         try:
             im = PILImage.open(buf)
         except Exception as open_err:
-            # If opening failed and it's a HEIC file, try to re-register and retry
-            if is_heic:
+            # If opening failed, check if it might be a HEIC file that wasn't detected
+            # This can happen if the file signature check failed or content_type is wrong
+            error_msg = str(open_err).lower()
+            is_possibly_heic = (
+                is_heic or 
+                'cannot identify image file' in error_msg or
+                original_name.lower().endswith(('.heic', '.heif')) or
+                ('heic' in content_type.lower() or 'heif' in content_type.lower())
+            )
+            
+            if is_possibly_heic:
+                # Try to register pillow-heif and retry
                 try:
                     from pillow_heif import register_heif_opener
                     register_heif_opener()
                     buf.seek(0)
                     im = PILImage.open(buf)
+                    logger.info(f"Successfully opened HEIC file after re-registering opener: {original_name}")
                 except Exception as retry_err:
-                    raise ValueError(f"Cannot open HEIC file. Make sure pillow-heif is properly installed: {retry_err}")
+                    # If still failing, provide detailed error
+                    logger.error(f"Failed to open HEIC file even after registering opener. File: {original_name}, Content-Type: {content_type}, Error: {retry_err}", exc_info=True)
+                    raise ValueError(f"Cannot open HEIC file. Make sure pillow-heif and libheif are properly installed. Error: {retry_err}")
             else:
                 # For non-HEIC files, provide more details
                 raise ValueError(f"Cannot identify image file (size: {len(file_content)} bytes, content_type: {content_type}, key: {original_name}): {open_err}")
@@ -334,8 +351,6 @@ def thumbnail(file_id: str, w: int = 200, db: Session = Depends(get_db), storage
             im.close()
     except Exception as e:
         # Log error for debugging but don't expose to client
-        import logging
-        logger = logging.getLogger(__name__)
         logger.error(f"Thumbnail generation failed for file {file_id} (key: {fo.key if fo else 'unknown'}, content_type: {getattr(fo, 'content_type', 'unknown') if fo else 'unknown'}): {str(e)}", exc_info=True)
         # Return 500 error instead of redirect - browsers can't handle redirects in img tags
         raise HTTPException(status_code=500, detail=f"Failed to generate thumbnail: {str(e)}")
