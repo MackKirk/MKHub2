@@ -86,6 +86,10 @@ export default function ImagePicker({
   const loadFromFile = async (file: File)=>{
     const lower = (file.name||'').toLowerCase();
     const isHeic = lower.endsWith('.heic') || lower.endsWith('.heif') || String(file.type||'').includes('heic') || String(file.type||'').includes('heif');
+    // Determine correct content type for HEIC files
+    const contentType = isHeic 
+      ? (lower.endsWith('.heif') || String(file.type||'').includes('heif') ? 'image/heif' : 'image/heic')
+      : (file.type || 'application/octet-stream');
     try{
       setIsLoading(true);
       if (!clientId){
@@ -99,9 +103,16 @@ export default function ImagePicker({
       // Persist original to library first (keeps history and enables HEIC and large previews)
       const uniqueBase = `${isHeic? 'heic':'upload'}_${Date.now()}_${Math.random().toString(36).slice(2)}`;
       const originalName = `${uniqueBase}${(file.name && file.name.includes('.'))? file.name.substring(file.name.lastIndexOf('.')) : (isHeic? '.heic': '.bin')}`;
-      const up:any = await api('POST','/files/upload',{ project_id: null, client_id: clientId||null, employee_id: null, category_id:'proposal-upload', original_name: originalName, content_type: file.type||'application/octet-stream' });
-      await fetch(up.upload_url, { method:'PUT', headers:{ 'Content-Type': file.type||'application/octet-stream', 'x-ms-blob-type':'BlockBlob' }, body: file });
-      const conf:any = await api('POST','/files/confirm',{ key: up.key, size_bytes: file.size, checksum_sha256:'na', content_type:file.type||'application/octet-stream' });
+      // Use correct content_type for database, but use application/octet-stream for Azure upload
+      // Azure may reject non-standard MIME types like image/heic
+      const uploadContentType = isHeic ? 'application/octet-stream' : contentType;
+      const up:any = await api('POST','/files/upload',{ project_id: null, client_id: clientId||null, employee_id: null, category_id:'proposal-upload', original_name: originalName, content_type: contentType });
+      const putResp = await fetch(up.upload_url, { method:'PUT', headers:{ 'Content-Type': uploadContentType, 'x-ms-blob-type':'BlockBlob' }, body: file });
+      if (!putResp.ok) {
+        const errorText = await putResp.text().catch(() => 'Unknown error');
+        throw new Error(`Azure upload failed: ${putResp.status} ${putResp.statusText} - ${errorText}`);
+      }
+      const conf:any = await api('POST','/files/confirm',{ key: up.key, size_bytes: file.size, checksum_sha256:'na', content_type: contentType });
       const fileObjectId = conf.id;
       // Attach to client library
       try{
@@ -122,7 +133,12 @@ export default function ImagePicker({
       image.onerror = ()=>{ toast.error('Failed to load image'); setIsLoading(false); };
       image.crossOrigin = 'anonymous';
       image.src = `/files/${fileObjectId}/thumbnail?w=1200&cb=${Date.now()}`;
-    }catch(_e){ toast.error('Upload failed'); setIsLoading(false); }
+    }catch(e: any){ 
+      console.error('Upload failed:', e);
+      const errorMsg = e?.message || e?.response?.data?.detail || 'Upload failed';
+      toast.error(`Failed to upload image: ${errorMsg}`);
+      setIsLoading(false); 
+    }
   };
 
   const loadFromFileObject = async (fileObjectId:string)=>{
