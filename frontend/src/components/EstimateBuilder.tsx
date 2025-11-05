@@ -857,7 +857,7 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
                  className={`rounded-xl border overflow-hidden bg-white ${dragOverSection === section ? 'ring-2 ring-brand-red' : ''}`}
                  onDragOver={(e) => onSectionDragOver(e, section)}
                  onDrop={onSectionDrop}>
-              <div className="bg-gray-50 px-4 py-2 border-b flex items-center gap-2">
+              <div className="bg-gray-200 px-4 py-2 border-b flex items-center gap-2">
                 <div className="flex items-center gap-2 flex-1">
                 <span 
                   className="inline-flex items-center justify-center w-5 h-5 text-gray-400 hover:text-gray-600 cursor-grab active:cursor-grabbing" 
