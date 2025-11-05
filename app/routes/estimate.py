@@ -174,9 +174,16 @@ def list_related(product_id: int, db: Session = Depends(get_db), _=Depends(requi
             "id": p.id,
             "name": p.name,
             "supplier_name": p.supplier_name,
+            "category": p.category,
             "unit": p.unit,
             "price": p.price,
             "last_updated": p.last_updated.isoformat() if p.last_updated else None,
+            "unit_type": p.unit_type,
+            "units_per_package": p.units_per_package,
+            "coverage_sqs": p.coverage_sqs,
+            "coverage_ft2": p.coverage_ft2,
+            "coverage_m2": p.coverage_m2,
+            "image_base64": p.image_base64,
         }
         for p in items
     ]

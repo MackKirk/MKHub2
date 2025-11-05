@@ -975,7 +975,7 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
                           e.stopPropagation();
                           setAddingToSection({ section, type: sectionType as 'product' | 'labour' | 'subcontractor' | 'miscellaneous' | 'shop' });
                         }}
-                        className="px-2 py-1 rounded bg-brand-red text-white hover:bg-red-600 flex items-center justify-center"
+                        className="px-2 py-1 rounded text-white bg-gradient-to-br from-[#7f1010] to-[#a31414] hover:from-[#6d0d0d] hover:to-[#8f1111] flex items-center justify-center"
                         title="Add item to section"
                         disabled={!canEdit}>
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
@@ -1898,6 +1898,7 @@ function AddProductModal({ onAdd, disabled, defaultMarkup, open: openProp, onClo
   const [selection, setSelection] = useState<Material|null>(null);
   const [supplierModalOpen, setSupplierModalOpen] = useState(false);
   const [compareModalOpen, setCompareModalOpen] = useState(false);
+  const [displayedCount, setDisplayedCount] = useState(5);
   const { data } = useQuery({ 
     queryKey:['mat-search', q], 
     queryFn: async()=>{
@@ -1908,7 +1909,9 @@ function AddProductModal({ onAdd, disabled, defaultMarkup, open: openProp, onClo
     },
     enabled: !!q.trim()
   });
-  const list = data||[];
+  const allResults = data||[];
+  const list = allResults.slice(0, displayedCount);
+  const hasMore = allResults.length > displayedCount;
 
   useEffect(() => {
     if (sectionProp) {
@@ -1926,6 +1929,7 @@ function AddProductModal({ onAdd, disabled, defaultMarkup, open: openProp, onClo
   const resetForm = () => {
     setQ('');
     setSelection(null);
+    setDisplayedCount(5);
   };
 
   return (
@@ -1964,6 +1968,13 @@ function AddProductModal({ onAdd, disabled, defaultMarkup, open: openProp, onClo
                       <div className="text-xs text-gray-500">{p.supplier_name||''} · {p.unit||''} · ${Number(p.price||0).toFixed(2)}</div>
                     </button>
                   ))}
+                  {hasMore && (
+                    <button
+                      onClick={() => setDisplayedCount(prev => prev + 5)}
+                      className="w-full text-center px-3 py-2 bg-gray-50 hover:bg-gray-100 text-sm text-gray-600 border-t">
+                      Load more ({allResults.length - displayedCount} remaining)
+                    </button>
+                  )}
                 </div>
               )}
               {selection && (
@@ -1972,7 +1983,7 @@ function AddProductModal({ onAdd, disabled, defaultMarkup, open: openProp, onClo
                     <div className="font-medium">{selection.name}</div>
                     <button
                       onClick={() => setCompareModalOpen(true)}
-                      className="px-3 py-1.5 rounded bg-blue-500 text-white hover:bg-blue-600 text-sm">
+                      className="px-3 py-1.5 rounded bg-gray-700 text-white hover:bg-gray-800 text-sm">
                       Compare
                     </button>
                   </div>
@@ -2023,7 +2034,7 @@ function AddProductModal({ onAdd, disabled, defaultMarkup, open: openProp, onClo
                   });
                   setOpen(false);
                   resetForm();
-                }} className="px-3 py-2 rounded bg-brand-red text-white">Add Item</button>
+                }} className="px-3 py-2 rounded text-white bg-gradient-to-br from-[#7f1010] to-[#a31414] hover:from-[#6d0d0d] hover:to-[#8f1111]">Add Item</button>
               </div>
             </div>
           </div>
@@ -2056,6 +2067,7 @@ function AddProductModal({ onAdd, disabled, defaultMarkup, open: openProp, onClo
 
 function SupplierProductModal({ open, onClose, onSelect }: { open: boolean, onClose: ()=>void, onSelect: (product: Material)=>void }){
   const [selectedSupplier, setSelectedSupplier] = useState<string | null>(null);
+  const [displayedProductCount, setDisplayedProductCount] = useState(20);
   const { data: suppliers } = useQuery({ 
     queryKey: ['suppliers'], 
     queryFn: async () => {
@@ -2073,12 +2085,24 @@ function SupplierProductModal({ open, onClose, onSelect }: { open: boolean, onCl
     enabled: open
   });
 
-  const products = useMemo(() => {
+  const allProductsForSupplier = useMemo(() => {
     if (!selectedSupplier || !allProducts) return [];
     const selectedSupplierName = suppliers?.find(s => s.id === selectedSupplier)?.name;
     if (!selectedSupplierName) return [];
     return allProducts.filter(p => p.supplier_name === selectedSupplierName);
   }, [allProducts, selectedSupplier, suppliers]);
+
+  const products = useMemo(() => {
+    return allProductsForSupplier.slice(0, displayedProductCount);
+  }, [allProductsForSupplier, displayedProductCount]);
+
+  const hasMoreProducts = allProductsForSupplier.length > displayedProductCount;
+
+  useEffect(() => {
+    if (selectedSupplier) {
+      setDisplayedProductCount(20);
+    }
+  }, [selectedSupplier]);
 
   useEffect(() => {
     if (!open) return;
@@ -2108,7 +2132,7 @@ function SupplierProductModal({ open, onClose, onSelect }: { open: boolean, onCl
                     onClick={() => setSelectedSupplier(supplier.id)}
                     className={`w-full text-left px-3 py-2 rounded text-sm transition-colors ${
                       selectedSupplier === supplier.id
-                        ? 'bg-brand-red text-white'
+                        ? 'text-white bg-gradient-to-br from-[#7f1010] to-[#a31414]'
                         : 'bg-white hover:bg-gray-100 text-gray-700'
                     }`}>
                     {supplier.name}
@@ -2130,31 +2154,46 @@ function SupplierProductModal({ open, onClose, onSelect }: { open: boolean, onCl
                   Products from {suppliers?.find(s => s.id === selectedSupplier)?.name || 'Supplier'}
                 </div>
                 {products && products.length > 0 ? (
-                  <div className="grid grid-cols-4 gap-3">
-                    {products.map(product => (
+                  <>
+                    <div className="grid grid-cols-4 gap-3">
+                      {products.map(product => (
                       <button
                         key={product.id}
                         onClick={() => onSelect(product)}
-                        className="border rounded-lg p-3 hover:border-brand-red hover:shadow-md transition-all text-left bg-white">
-                        {product.image_base64 ? (
-                          <img 
-                            src={`data:image/jpeg;base64,${product.image_base64}`} 
-                            alt={product.name}
-                            className="w-full h-24 object-cover rounded mb-2"
-                          />
-                        ) : (
-                          <div className="w-full h-24 bg-gray-200 rounded mb-2 flex items-center justify-center text-gray-400 text-xs">
+                        className="border rounded-lg p-3 hover:border-brand-red hover:shadow-md transition-all text-left bg-white flex flex-col">
+                        <div className="w-full h-24 mb-2 relative">
+                          {product.image_base64 ? (
+                            <img 
+                              src={product.image_base64.startsWith('data:') ? product.image_base64 : `data:image/jpeg;base64,${product.image_base64}`}
+                              alt={product.name}
+                              className="w-full h-full object-cover rounded"
+                              onError={(e) => {
+                                (e.target as HTMLImageElement).style.display = 'none';
+                                const placeholder = (e.target as HTMLImageElement).nextElementSibling as HTMLElement;
+                                if (placeholder) placeholder.style.display = 'flex';
+                              }}
+                            />
+                          ) : null}
+                          <div className={`w-full h-full bg-gray-200 rounded flex items-center justify-center text-gray-400 text-xs ${product.image_base64 ? 'hidden' : ''}`} style={{ display: product.image_base64 ? 'none' : 'flex' }}>
                             No Image
                           </div>
-                        )}
+                        </div>
                         <div className="font-medium text-sm mb-1 line-clamp-2">{product.name}</div>
                         {product.category && (
                           <div className="text-xs text-gray-500 mb-1">{product.category}</div>
                         )}
                         <div className="text-sm font-semibold text-brand-red">${Number(product.price || 0).toFixed(2)}</div>
                       </button>
-                    ))}
-                  </div>
+                      ))}
+                    </div>
+                    {hasMoreProducts && (
+                      <button
+                        onClick={() => setDisplayedProductCount(prev => prev + 20)}
+                        className="mt-4 w-full text-center px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded text-sm text-gray-600">
+                        Load more ({allProductsForSupplier.length - displayedProductCount} remaining)
+                      </button>
+                    )}
+                  </>
                 ) : (
                   <div className="text-center text-gray-500 py-8">
                     No products found for this supplier
@@ -2171,16 +2210,16 @@ function SupplierProductModal({ open, onClose, onSelect }: { open: boolean, onCl
 
 function CompareProductsModal({ open, onClose, selectedProduct, onSelect }: { open: boolean, onClose: ()=>void, selectedProduct: Material, onSelect: (product: Material)=>void }){
   const { data: relatedProducts } = useQuery({
-    queryKey: ['related-products', selectedProduct.category, selectedProduct.id],
+    queryKey: ['related-products', selectedProduct.id],
     queryFn: async () => {
-      if (!selectedProduct.category) return [];
-      const params = new URLSearchParams();
-      params.set('category', selectedProduct.category);
-      const products = await api<Material[]>('GET', `/estimate/products/search?${params.toString()}`);
-      // Filter out the selected product itself
-      return products.filter(p => p.id !== selectedProduct.id);
+      if (!selectedProduct.id) return [];
+      try {
+        return await api<Material[]>('GET', `/estimate/related/${selectedProduct.id}`);
+      } catch (e) {
+        return [];
+      }
     },
-    enabled: open && !!selectedProduct.category
+    enabled: open && !!selectedProduct.id
   });
 
   useEffect(() => {
@@ -2205,17 +2244,22 @@ function CompareProductsModal({ open, onClose, selectedProduct, onSelect }: { op
             <div className="text-sm font-semibold text-gray-700 mb-3">Selected Product</div>
             <div className="border-2 border-brand-red rounded-lg p-4 bg-red-50">
               <div className="grid grid-cols-2 gap-4">
-                {selectedProduct.image_base64 ? (
-                  <img 
-                    src={`data:image/jpeg;base64,${selectedProduct.image_base64}`} 
-                    alt={selectedProduct.name}
-                    className="w-full h-32 object-cover rounded"
-                  />
-                ) : (
-                  <div className="w-full h-32 bg-gray-200 rounded flex items-center justify-center text-gray-400 text-xs">
+                <div>
+                  {selectedProduct.image_base64 ? (
+                    <img 
+                      src={selectedProduct.image_base64.startsWith('data:') ? selectedProduct.image_base64 : `data:image/jpeg;base64,${selectedProduct.image_base64}`}
+                      alt={selectedProduct.name}
+                      className="w-full h-32 object-cover rounded"
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).style.display = 'none';
+                        (e.target as HTMLImageElement).parentElement?.querySelector('.image-placeholder')?.classList.remove('hidden');
+                      }}
+                    />
+                  ) : null}
+                  <div className={`w-full h-32 bg-gray-200 rounded flex items-center justify-center text-gray-400 text-xs ${selectedProduct.image_base64 ? 'hidden image-placeholder' : ''}`}>
                     No Image
                   </div>
-                )}
+                </div>
                 <div>
                   <div className="font-semibold text-lg mb-2">{selectedProduct.name}</div>
                   <div className="text-sm text-gray-600 mb-1">Supplier: {selectedProduct.supplier_name || 'N/A'}</div>
@@ -2248,17 +2292,22 @@ function CompareProductsModal({ open, onClose, selectedProduct, onSelect }: { op
                     onClick={() => onSelect(product)}
                     className="border rounded-lg p-4 hover:border-brand-red hover:shadow-md transition-all text-left bg-white">
                     <div className="grid grid-cols-2 gap-3">
-                      {product.image_base64 ? (
-                        <img 
-                          src={`data:image/jpeg;base64,${product.image_base64}`} 
-                          alt={product.name}
-                          className="w-full h-24 object-cover rounded"
-                        />
-                      ) : (
-                        <div className="w-full h-24 bg-gray-200 rounded flex items-center justify-center text-gray-400 text-xs">
+                      <div>
+                        {product.image_base64 ? (
+                          <img 
+                            src={product.image_base64.startsWith('data:') ? product.image_base64 : `data:image/jpeg;base64,${product.image_base64}`}
+                            alt={product.name}
+                            className="w-full h-24 object-cover rounded"
+                            onError={(e) => {
+                              (e.target as HTMLImageElement).style.display = 'none';
+                              (e.target as HTMLImageElement).parentElement?.querySelector('.image-placeholder')?.classList.remove('hidden');
+                            }}
+                          />
+                        ) : null}
+                        <div className={`w-full h-24 bg-gray-200 rounded flex items-center justify-center text-gray-400 text-xs ${product.image_base64 ? 'hidden image-placeholder' : ''}`}>
                           No Image
                         </div>
-                      )}
+                      </div>
                       <div>
                         <div className="font-medium text-sm mb-1 line-clamp-2">{product.name}</div>
                         <div className="text-xs text-gray-500 mb-1">{product.supplier_name || 'N/A'}</div>
@@ -2271,7 +2320,7 @@ function CompareProductsModal({ open, onClose, selectedProduct, onSelect }: { op
               </div>
             ) : (
               <div className="text-center text-gray-500 py-8">
-                {selectedProduct.category ? `No other products found in category "${selectedProduct.category}"` : 'No category specified for this product'}
+                No related products found. Add related products in the Products page.
               </div>
             )}
           </div>
@@ -2412,7 +2461,7 @@ function AddLabourModal({ onAdd, disabled, defaultMarkup, open: openProp, onClos
                   }
                   onAdd({ name, unit, quantity: qty, unit_price: priceValue, section: sectionProp || 'Labour', description: desc, item_type: 'labour', markup: defaultMarkup ?? 5, taxable: true, labour_journey: journey, labour_men: Number(men||0), labour_journey_type: journeyType });
                   setOpen(false); setLabour(''); setMen('1'); setDays('1'); setHours('1'); setContractNumber('1'); setContractUnit(''); setPrice('0'); setJourneyType('days');
-                }} className="px-3 py-2 rounded bg-brand-red text-white">Add Labour</button>
+                }} className="px-3 py-2 rounded text-white bg-gradient-to-br from-[#7f1010] to-[#a31414] hover:from-[#6d0d0d] hover:to-[#8f1111]">Add Labour</button>
               </div>
             </div>
           </div>
@@ -2637,7 +2686,7 @@ function AddSubContractorModal({ onAdd, disabled, defaultMarkup, open: openProp,
                   if(!desc){ toast.error('Please fill in the required fields'); return; }
                   onAdd({ name: desc, unit, quantity: qty, unit_price: totalValue, section: sectionProp || 'Sub-Contractors', description: desc, item_type: 'subcontractor', markup: defaultMarkup ?? 5, taxable: true });
                   setOpen(false); setType(''); setDebrisDesc(''); setDebrisSqs('0'); setDebrisSqsPerLoad('0'); setDebrisLoads('0'); setDebrisPricePerLoad('0'); setWashroomPeriod('days'); setWashroomPeriodCount('1'); setWashroomPrice('0'); setOtherDesc(''); setOtherNumber('1'); setOtherUnit(''); setOtherPrice('0');
-                }} className="px-3 py-2 rounded bg-brand-red text-white">Add Sub-Contractors</button>
+                }} className="px-3 py-2 rounded text-white bg-gradient-to-br from-[#7f1010] to-[#a31414] hover:from-[#6d0d0d] hover:to-[#8f1111]">Add Sub-Contractors</button>
               </div>
             </div>
           </div>
@@ -2703,7 +2752,7 @@ function AddMiscellaneousModal({ onAdd, disabled, defaultMarkup, open: openProp,
                   if(!name.trim()){ toast.error('Please enter a miscellaneous name/description'); return; }
                   onAdd({ name, unit, quantity: Number(quantity||0), unit_price: Number(price||0), section: sectionProp || 'Miscellaneous', description: name, item_type: 'miscellaneous', markup: defaultMarkup ?? 5, taxable: true });
                   setOpen(false); setName(''); setQuantity('1'); setUnit(''); setPrice('0');
-                }} className="px-3 py-2 rounded bg-brand-red text-white">Add Miscellaneous</button>
+                }} className="px-3 py-2 rounded text-white bg-gradient-to-br from-[#7f1010] to-[#a31414] hover:from-[#6d0d0d] hover:to-[#8f1111]">Add Miscellaneous</button>
               </div>
             </div>
           </div>
@@ -2769,7 +2818,7 @@ function AddShopModal({ onAdd, disabled, defaultMarkup, open: openProp, onClose:
                   if(!name.trim()){ toast.error('Please enter a shop name/description'); return; }
                   onAdd({ name, unit, quantity: Number(quantity||0), unit_price: Number(price||0), section: sectionProp || 'Shop', description: name, item_type: 'shop', markup: defaultMarkup ?? 5, taxable: true });
                   setOpen(false); setName(''); setQuantity('1'); setUnit(''); setPrice('0');
-                }} className="px-3 py-2 rounded bg-brand-red text-white">Add Shop</button>
+                }} className="px-3 py-2 rounded text-white bg-gradient-to-br from-[#7f1010] to-[#a31414] hover:from-[#6d0d0d] hover:to-[#8f1111]">Add Shop</button>
               </div>
             </div>
           </div>
