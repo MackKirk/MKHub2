@@ -2263,7 +2263,7 @@ function CompareProductsModal({ open, onClose, selectedProduct, onSelect }: { op
           {/* Selected Product (Highlighted) */}
           <div className="mb-6">
             <div className="text-sm font-semibold text-gray-700 mb-3">Selected Product</div>
-            <div className="border-2 border-brand-red rounded-lg p-4 bg-red-50">
+            <div className="border-2 border-gray-300 rounded-lg p-4 bg-gray-50">
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   {selectedProduct.image_base64 ? (
