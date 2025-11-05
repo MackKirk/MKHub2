@@ -7,6 +7,13 @@ from fastapi.responses import Response
 from sqlalchemy.orm import Session
 from slugify import slugify
 
+# Register HEIF opener early to support HEIC/HEIF files
+try:
+    from pillow_heif import register_heif_opener
+    register_heif_opener()
+except Exception:
+    pass  # pillow-heif not available, continue without HEIC support
+
 from ..config import settings
 from ..db import get_db
 from ..models.models import FileObject
@@ -85,33 +92,38 @@ def thumbnail(file_id: str, w: int = 200, db: Session = Depends(get_db), storage
     if not url:
         raise HTTPException(status_code=404, detail="Not available")
     # Fetch and convert to small PNG
+    import io
+    import httpx
+    from PIL import Image as PILImage
+    
     try:
-        import io
-        import httpx
-        from PIL import Image as PILImage
-        try:
-            from pillow_heif import register_heif_opener
-            register_heif_opener()
-        except Exception:
-            pass
-        with httpx.stream("GET", url) as r:
+        # Download file from storage
+        with httpx.stream("GET", url, timeout=30.0) as r:
             r.raise_for_status()
             buf = io.BytesIO()
             for chunk in r.iter_bytes():
                 buf.write(chunk)
         buf.seek(0)
+        
+        # Open and process image (supports HEIC via pillow-heif if registered)
         with PILImage.open(buf) as im:
-            im = im.convert("RGB")
+            # Convert to RGB (needed for HEIC and some other formats)
+            if im.mode != "RGB":
+                im = im.convert("RGB")
             # Resize to width maintaining aspect
             target_w = max(80, min(1024, int(w or 200)))
             scale = target_w / float(im.width)
             target_h = int(im.height * scale)
-            im = im.resize((target_w, max(1, target_h)))
+            im = im.resize((target_w, max(1, target_h)), PILImage.Resampling.LANCZOS)
             out = io.BytesIO()
             im.save(out, format="PNG", optimize=True)
             out.seek(0)
             return Response(content=out.read(), media_type="image/png")
-    except Exception:
-        # Fallback to direct download if conversion fails
-        return Response(status_code=302, headers={"Location": url})
+    except Exception as e:
+        # Log error for debugging but don't expose to client
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Thumbnail generation failed for file {file_id}: {str(e)}", exc_info=True)
+        # Return 500 error instead of redirect - browsers can't handle redirects in img tags
+        raise HTTPException(status_code=500, detail=f"Failed to generate thumbnail: {str(e)}")
 

@@ -129,8 +129,29 @@ export default function ImagePicker({
       }catch(_e){}
 
       const image = new Image();
-      image.onload = ()=>{ setImg(image); setZoom(1); setTx(0); setTy(0); setOriginalFileObjectId(fileObjectId); setIsLoading(false); };
-      image.onerror = ()=>{ toast.error('Failed to load image'); setIsLoading(false); };
+      let imageLoaded = false;
+      const loadTimeout = setTimeout(()=>{
+        if (!imageLoaded) {
+          setIsLoading(false);
+          toast.error('Timeout loading image. The file may be processing.');
+        }
+      }, 30000); // 30 second timeout
+      image.onload = ()=>{
+        imageLoaded = true;
+        clearTimeout(loadTimeout);
+        setImg(image); 
+        setZoom(1); 
+        setTx(0); 
+        setTy(0); 
+        setOriginalFileObjectId(fileObjectId); 
+        setIsLoading(false);
+      };
+      image.onerror = ()=>{
+        imageLoaded = true;
+        clearTimeout(loadTimeout);
+        toast.error('Failed to load image. The file may still be processing.');
+        setIsLoading(false);
+      };
       image.crossOrigin = 'anonymous';
       image.src = `/files/${fileObjectId}/thumbnail?w=1200&cb=${Date.now()}`;
     }catch(e: any){ 
