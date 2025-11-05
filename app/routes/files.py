@@ -201,13 +201,10 @@ def confirm(req: ConfirmRequest, db: Session = Depends(get_db), storage: Storage
             db.commit()
             return {"id": str(fo.id)}
         except Exception as e:
-            # If conversion fails, log and raise error instead of silently falling back
-            logger.error(f"Failed to convert HEIC to JPG for {original_key}: {str(e)}", exc_info=True)
-            # Raise error so frontend knows conversion failed
-            raise HTTPException(
-                status_code=500,
-                detail=f"Failed to convert HEIC to JPG: {str(e)}. Please ensure pillow-heif is properly installed and the file is a valid HEIC image."
-            )
+            # If conversion fails, log warning but fall back to saving HEIC as-is
+            # This allows uploads to succeed even if libheif is not yet installed
+            logger.warning(f"Failed to convert HEIC to JPG for {original_key}: {str(e)}. Saving HEIC file as-is. Error: {str(e)}", exc_info=True)
+            # Fall through to save the original HEIC file
     
     # Original code for non-HEIC files
     fo = FileObject(
