@@ -85,10 +85,12 @@ def confirm(req: ConfirmRequest, db: Session = Depends(get_db), storage: Storage
             from PIL import Image as PILImage
             
             # Ensure pillow-heif is registered and working
+            pillow_heif_available = False
             try:
                 from pillow_heif import register_heif_opener
                 register_heif_opener()
                 logger.info("pillow-heif opener registered successfully")
+                pillow_heif_available = True
                 
                 # Test if pillow-heif is actually working by checking if HEIC format is available
                 try:
@@ -98,16 +100,21 @@ def confirm(req: ConfirmRequest, db: Session = Depends(get_db), storage: Storage
                     has_heic = any(fmt == 'HEIC' for fmt in registered_exts.values()) or '.heic' in registered_exts or '.heif' in registered_exts
                     if not has_heic:
                         logger.warning("HEIC format may not be fully supported - libheif may be missing")
+                        pillow_heif_available = False
                 except Exception as test_err:
                     logger.warning(f"Could not verify HEIC support: {test_err}")
+                    pillow_heif_available = False
             except ImportError as import_err:
-                error_msg = f"pillow-heif module not found. Please install it with: pip install pillow-heif. Error: {import_err}"
-                logger.error(error_msg)
-                raise HTTPException(status_code=500, detail=error_msg)
+                logger.warning(f"pillow-heif module not found. HEIC conversion will be skipped. Install with: pip install pillow-heif. Error: {import_err}")
+                pillow_heif_available = False
             except Exception as heif_err:
-                error_msg = f"Failed to register pillow-heif opener: {heif_err}. Make sure libheif is installed on your system (apt-get install libheif-dev libde265-dev x265)."
-                logger.error(error_msg, exc_info=True)
-                raise HTTPException(status_code=500, detail=error_msg)
+                logger.warning(f"Failed to register pillow-heif opener: {heif_err}. HEIC conversion will be skipped. Make sure libheif is installed (apt-get install libheif-dev libde265-dev x265). Error: {heif_err}")
+                pillow_heif_available = False
+            
+            # If pillow-heif is not available, skip conversion and fall back to saving HEIC as-is
+            if not pillow_heif_available:
+                logger.info(f"pillow-heif not available, skipping HEIC conversion for {original_key}. File will be saved as-is.")
+                raise ValueError("pillow-heif not available, skipping conversion")
             
             # Small delay to ensure Azure blob is available
             time.sleep(0.5)
