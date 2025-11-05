@@ -599,6 +599,7 @@ function CustomerDocuments({ id, files, sites, onRefresh }:{ id:string, files: C
   const upload = async()=>{ try{ if(!fileObj){ toast.error('Select a file'); return; } if(activeFolderId==='all'){ toast.error('Open a folder first'); return; } const name=fileObj.name; const type=fileObj.type||'application/octet-stream'; const up=await api('POST','/files/upload',{ original_name:name, content_type:type, client_id:id, project_id:null, employee_id:null, category_id:'client-docs' }); await fetch(up.upload_url,{ method:'PUT', headers:{ 'Content-Type':type,'x-ms-blob-type':'BlockBlob' }, body:fileObj }); const conf=await api('POST','/files/confirm',{ key:up.key, size_bytes:fileObj.size, checksum_sha256:'na', content_type:type }); await api('POST', `/clients/${encodeURIComponent(id)}/documents`, { folder_id: activeFolderId, title: title||name, file_id: conf.id }); toast.success('Uploaded'); setShowUpload(false); setFileObj(null); setTitle(''); await refetchDocs(); }catch(_e){ toast.error('Upload failed'); } };
   const uploadToFolder = async(folderId:string, file: File)=>{ try{ const name=file.name; const type=file.type||'application/octet-stream'; const up=await api('POST','/files/upload',{ original_name:name, content_type:type, client_id:id, project_id:null, employee_id:null, category_id:'client-docs' }); await fetch(up.upload_url,{ method:'PUT', headers:{ 'Content-Type':type,'x-ms-blob-type':'BlockBlob' }, body:file }); const conf=await api('POST','/files/confirm',{ key:up.key, size_bytes:file.size, checksum_sha256:'na', content_type:type }); await api('POST', `/clients/${encodeURIComponent(id)}/documents`, { folder_id: folderId, title: name, file_id: conf.id }); }catch(_e){} };
   const removeDoc = async(docId:string)=>{ const ok = await confirm({ title:'Delete file', message:'Are you sure you want to delete this file?' }); if(!ok) return; try{ await api('DELETE', `/clients/${encodeURIComponent(id)}/documents/${encodeURIComponent(docId)}`); toast.success('Deleted'); await refetchDocs(); }catch(_e){ toast.error('Delete failed'); } };
+  const removeFolder = async(folderId:string, folderName:string)=>{ const ok = await confirm({ title:'Delete folder', message:`Are you sure you want to delete "${folderName}"? This action cannot be undone.` }); if(!ok) return; try{ await api('DELETE', `/clients/${encodeURIComponent(id)}/folders/${encodeURIComponent(folderId)}`); toast.success('Folder deleted'); await refetchFolders(); if(activeFolderId===folderId) setActiveFolderId('all'); }catch(_e){ toast.error('Delete failed'); } };
 
   const topFolders = useMemo(()=> (folders||[]).filter((f:any)=> !f.parent_id), [folders]);
   const childFolders = useMemo(()=> (folders||[]).filter((f:any)=> f.parent_id===activeFolderId), [folders, activeFolderId]);
@@ -635,7 +636,9 @@ function CustomerDocuments({ id, files, sites, onRefresh }:{ id:string, files: C
                    onDrop={async(e)=>{ e.preventDefault(); if(e.dataTransfer.files?.length){ const arr=Array.from(e.dataTransfer.files); for(const file of arr){ await uploadToFolder(f.id, file as File); } toast.success('Uploaded'); } }}>
                 <div className="text-4xl">📁</div>
                 <div className="mt-1 text-sm font-medium truncate text-center w-full" title={f.name}>{f.name}</div>
-                
+                <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 folder-actions">
+                  <button onClick={(e)=>{ e.stopPropagation(); removeFolder(f.id, f.name); }} className="p-1 rounded bg-red-600 hover:bg-red-700 text-white text-[10px]" title="Delete folder">🗑️</button>
+                </div>
               </div>
             ))}
             {!topFolders.length && <div className="text-sm text-gray-600">No folders yet</div>}
@@ -668,7 +671,9 @@ function CustomerDocuments({ id, files, sites, onRefresh }:{ id:string, files: C
                            onDrop={async(e)=>{ e.preventDefault(); if(e.dataTransfer.files?.length){ const arr=Array.from(e.dataTransfer.files); for(const file of arr){ await uploadToFolder(f.id, file as File); } toast.success('Uploaded'); } }}>
                         <div className="text-4xl">📁</div>
                         <div className="mt-1 text-sm font-medium truncate text-center w-full" title={f.name}>{f.name}</div>
-                        
+                        <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 folder-actions">
+                          <button onClick={(e)=>{ e.stopPropagation(); removeFolder(f.id, f.name); }} className="p-1 rounded bg-red-600 hover:bg-red-700 text-white text-[10px]" title="Delete folder">🗑️</button>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -714,6 +719,7 @@ function CustomerDocuments({ id, files, sites, onRefresh }:{ id:string, files: C
                     </div>
                     <div className="ml-auto flex items-center gap-1">
                       <a title="Download" className="p-2 rounded hover:bg-gray-100" href={`/files/${encodeURIComponent(d.file_id)}/download`} target="_blank">⬇️</a>
+                      <button onClick={(e)=>{ e.stopPropagation(); removeDoc(d.id); }} title="Delete" className="p-2 rounded hover:bg-red-50 text-red-600">🗑️</button>
                     </div>
                   </div>
                 ); })}
