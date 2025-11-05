@@ -28,6 +28,7 @@ function auth(){ return { Authorization:'Bearer '+MKHubUI.getTokenOrRedirect() }
 const SETTINGS = [
   { area: 'Customers', name: 'Client Types', key: 'client_types', description: 'Types of clients such as Residential or Commercial' },
   { area: 'Customers', name: 'Client Statuses', key: 'client_statuses', description: 'Lifecycle statuses such as Active, Prospect, Paused' },
+  { area: 'Customers', name: 'Lead Sources', key: 'lead_sources', description: 'Sources where customer leads originate from' },
   { area: 'Finance', name: 'Payment Terms', key: 'payment_terms', description: 'Standard payment terms like Net 30' },
   { area: 'Projects', name: 'Project Statuses', key: 'project_statuses', description: 'Statuses used in project workflows' },
   { area: 'Organization', name: 'Divisions', key: 'divisions', description: 'Company divisions or departments' },

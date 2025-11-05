@@ -22,6 +22,7 @@ def get_settings_bundle(db: Session = Depends(get_db)):
     out.setdefault("payment_terms", [])
     out.setdefault("divisions", [])
     out.setdefault("project_statuses", [])
+    out.setdefault("lead_sources", [])
     return out
 
 
@@ -107,5 +108,8 @@ def update_setting_item(list_name: str, item_id: str, label: str = None, value: 
             db.commit()
         elif list_name == "client_types":
             db.query(Client).filter(Client.client_type == old_label).update({Client.client_type: label}, synchronize_session=False)
+            db.commit()
+        elif list_name == "lead_sources":
+            db.query(Client).filter(Client.lead_source == old_label).update({Client.lead_source: label}, synchronize_session=False)
             db.commit()
     return {"status": "ok"}

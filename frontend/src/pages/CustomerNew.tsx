@@ -47,57 +47,6 @@ export default function CustomerNew(){
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [contactModalOpen]);
-
-  const ContactModal = ()=> contactModalOpen? (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-      <div className="w-[800px] max-w-[95vw] bg-white rounded-xl overflow-hidden">
-        <div className="px-4 py-3 border-b flex items-center justify-between"><div className="font-semibold">New Contact</div><button onClick={()=>{ setContactModalOpen(false); }} className="text-gray-500 hover:text-gray-700 text-2xl font-bold w-8 h-8 flex items-center justify-center rounded hover:bg-gray-100" title="Close">×</button></div>
-        <div className="p-4 grid md:grid-cols-5 gap-3 items-start">
-          <div className="md:col-span-3 grid grid-cols-2 gap-2">
-            <div className="col-span-2">
-              <label className="text-xs text-gray-600">Name</label>
-              <input className="border rounded px-3 py-2 col-span-2 w-full" value={cName} onChange={e=>setCName(e.target.value)} />
-            </div>
-            <div>
-              <label className="text-xs text-gray-600">Role/Title</label>
-              <input className="border rounded px-3 py-2 w-full" value={cRole} onChange={e=>setCRole(e.target.value)} />
-            </div>
-            <div>
-              <label className="text-xs text-gray-600">Department</label>
-              <input className="border rounded px-3 py-2 w-full" value={cDept} onChange={e=>setCDept(e.target.value)} />
-            </div>
-            <div>
-              <label className="text-xs text-gray-600">Email</label>
-              <input className="border rounded px-3 py-2 w-full" value={cEmail} onChange={e=>setCEmail(e.target.value)} />
-            </div>
-            <div>
-              <label className="text-xs text-gray-600">Phone</label>
-              <input className="border rounded px-3 py-2 w-full" value={cPhone} onChange={e=>setCPhone(formatPhone(e.target.value))} />
-            </div>
-            <div>
-              <label className="text-xs text-gray-600">Primary</label>
-              <select className="border rounded px-3 py-2 w-full" value={cPrimary} onChange={e=>setCPrimary(e.target.value as any)}>
-                <option value="false">No</option>
-                <option value="true">Yes</option>
-              </select>
-            </div>
-            <div className="col-span-2 text-right">
-              <button onClick={()=>{
-                const norm = { name: cName, email: cEmail, phone: cPhone, role_title: cRole, department: cDept, is_primary: cPrimary==='true' };
-                setContacts(arr=> {
-                  let updated = [...arr];
-                  if (norm.is_primary){ updated = updated.map(x=> ({...x, is_primary:false})); }
-                  updated.push(norm);
-                  return updated;
-                });
-                setCName(''); setCEmail(''); setCPhone(''); setCRole(''); setCDept(''); setCPrimary('false'); setContactModalOpen(false);
-              }} className="px-4 py-2 rounded-xl bg-gradient-to-r from-brand-red to-[#ee2b2b] text-white font-semibold">Add</button>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  ) : null;
   return (
     <div className="max-w-4xl">
       <div className="mb-3 rounded-xl border bg-gradient-to-br from-[#7f1010] to-[#a31414] text-white p-4 flex items-center justify-between">
@@ -262,7 +211,59 @@ export default function CustomerNew(){
         </div>
       </div>
       </div>
-      <ContactModal />
+      {contactModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+          <div className="w-[800px] max-w-[95vw] bg-white rounded-xl overflow-hidden">
+            <div className="px-4 py-3 border-b flex items-center justify-between">
+              <div className="font-semibold">New Contact</div>
+              <button onClick={()=>{ setContactModalOpen(false); }} className="text-gray-500 hover:text-gray-700 text-2xl font-bold w-8 h-8 flex items-center justify-center rounded hover:bg-gray-100" title="Close">×</button>
+            </div>
+            <div className="p-4 grid md:grid-cols-5 gap-3 items-start">
+              <div className="md:col-span-3 grid grid-cols-2 gap-2">
+                <div className="col-span-2">
+                  <label className="text-xs text-gray-600">Name</label>
+                  <input className="border rounded px-3 py-2 col-span-2 w-full" value={cName} onChange={e=>setCName(e.target.value)} />
+                </div>
+                <div>
+                  <label className="text-xs text-gray-600">Role/Title</label>
+                  <input className="border rounded px-3 py-2 w-full" value={cRole} onChange={e=>setCRole(e.target.value)} />
+                </div>
+                <div>
+                  <label className="text-xs text-gray-600">Department</label>
+                  <input className="border rounded px-3 py-2 w-full" value={cDept} onChange={e=>setCDept(e.target.value)} />
+                </div>
+                <div>
+                  <label className="text-xs text-gray-600">Email</label>
+                  <input className="border rounded px-3 py-2 w-full" value={cEmail} onChange={e=>setCEmail(e.target.value)} />
+                </div>
+                <div>
+                  <label className="text-xs text-gray-600">Phone</label>
+                  <input className="border rounded px-3 py-2 w-full" value={cPhone} onChange={e=>setCPhone(formatPhone(e.target.value))} />
+                </div>
+                <div>
+                  <label className="text-xs text-gray-600">Primary</label>
+                  <select className="border rounded px-3 py-2 w-full" value={cPrimary} onChange={e=>setCPrimary(e.target.value as any)}>
+                    <option value="false">No</option>
+                    <option value="true">Yes</option>
+                  </select>
+                </div>
+                <div className="col-span-2 text-right">
+                  <button onClick={()=>{
+                    const norm = { name: cName, email: cEmail, phone: cPhone, role_title: cRole, department: cDept, is_primary: cPrimary==='true' };
+                    setContacts(arr=> {
+                      let updated = [...arr];
+                      if (norm.is_primary){ updated = updated.map(x=> ({...x, is_primary:false})); }
+                      updated.push(norm);
+                      return updated;
+                    });
+                    setCName(''); setCEmail(''); setCPhone(''); setCRole(''); setCDept(''); setCPrimary('false'); setContactModalOpen(false);
+                  }} className="px-4 py-2 rounded-xl bg-gradient-to-r from-brand-red to-[#ee2b2b] text-white font-semibold">Add</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
