@@ -22,6 +22,7 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
   const [viewingProductId, setViewingProductId] = useState<number | null>(null);
   const [editingSectionName, setEditingSectionName] = useState<string | null>(null);
   const [editingSectionNameValue, setEditingSectionNameValue] = useState<string>('');
+  const [editingSectionNameOriginal, setEditingSectionNameOriginal] = useState<string>('');
   const [sectionNames, setSectionNames] = useState<Record<string, string>>({});
   const [addingToSection, setAddingToSection] = useState<{section: string, type: 'product' | 'labour' | 'subcontractor' | 'miscellaneous' | 'shop'} | null>(null);
   const [dirty, setDirty] = useState(false);
@@ -587,6 +588,17 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
     }
   }, [confirm, canEdit]);
 
+  // Helper function to get display name for section
+  const getSectionDisplayName = useCallback((section: string): string => {
+    return sectionNames[section] || 
+      (section.startsWith('Labour Section') ? 'Labour' :
+       section.startsWith('Sub-Contractor Section') ? 'Sub-Contractor' :
+       section.startsWith('Miscellaneous Section') ? 'Miscellaneous' :
+       section.startsWith('Shop Section') ? 'Shop' :
+       section.startsWith('Product Section') ? 'Product Section' :
+       section);
+  }, [sectionNames]);
+
   // Handle remove section with confirmation
   const handleRemoveSection = useCallback(async (section: string) => {
     if (!canEdit) {
@@ -596,10 +608,11 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
     
     const sectionItems = groupedItems[section] || [];
     const itemCount = sectionItems.length;
+    const displayName = getSectionDisplayName(section);
     
     const ok = await confirm({
       title: 'Remove section',
-      message: `Are you sure you want to remove the section "${section}" and all its ${itemCount} item${itemCount !== 1 ? 's' : ''}? This action cannot be undone.`,
+      message: `Are you sure you want to remove the section "${displayName}" and all its ${itemCount} item${itemCount !== 1 ? 's' : ''}? This action cannot be undone.`,
       confirmText: 'Remove',
       cancelText: 'Cancel'
     });
@@ -613,7 +626,7 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
         return newNames;
       });
     }
-  }, [confirm, canEdit, groupedItems]);
+  }, [confirm, canEdit, groupedItems, getSectionDisplayName]);
   
   return (
     <div>
@@ -628,7 +641,25 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
           onClick={() => {
             if (!canEdit) return;
             const newSection = `Product Section ${Date.now()}`;
-            setSectionOrder(prev => [...prev, newSection]);
+            setSectionOrder(prev => {
+              // Find the last index of a Product Section
+              let lastProductIndex = -1;
+              for (let i = prev.length - 1; i >= 0; i--) {
+                if (prev[i].startsWith('Product Section')) {
+                  lastProductIndex = i;
+                  break;
+                }
+              }
+              // If found, insert after the last product section; otherwise, insert at the very beginning (top)
+              if (lastProductIndex >= 0) {
+                const newOrder = [...prev];
+                newOrder.splice(lastProductIndex + 1, 0, newSection);
+                return newOrder;
+              } else {
+                // No product section found, insert at the very beginning (top of all sections)
+                return [newSection, ...prev];
+              }
+            });
             setSectionNames(prev => ({ ...prev, [newSection]: 'Product Section' }));
           }}
           disabled={!canEdit}
@@ -856,23 +887,31 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
                     onBlur={() => {
                       if (editingSectionNameValue.trim()) {
                         setSectionNames(prev => ({ ...prev, [section]: editingSectionNameValue.trim() }));
+                      } else {
+                        // If empty, restore original value - don't change sectionNames
                       }
                       setEditingSectionName(null);
                       setEditingSectionNameValue('');
+                      setEditingSectionNameOriginal('');
                     }}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter') {
                         if (editingSectionNameValue.trim()) {
                           setSectionNames(prev => ({ ...prev, [section]: editingSectionNameValue.trim() }));
                         }
+                        // If empty, don't save - original value will be restored automatically
                         setEditingSectionName(null);
                         setEditingSectionNameValue('');
+                        setEditingSectionNameOriginal('');
                       } else if (e.key === 'Escape') {
+                        // Restore original value on Escape
                         setEditingSectionName(null);
                         setEditingSectionNameValue('');
+                        setEditingSectionNameOriginal('');
                       }
                     }}
-                    className="font-semibold text-gray-900 border rounded px-2 py-1"
+                    placeholder={section.startsWith('Product Section') ? "Roof, Wood Blocking, Flashing..." : "Enter section name"}
+                    className="font-semibold text-gray-900 border rounded px-2 py-1 placeholder:text-gray-400"
                     autoFocus
                   />
                 ) : (
@@ -889,14 +928,17 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
-                    setEditingSectionName(section);
-                    setEditingSectionNameValue(sectionNames[section] || 
+                    // Get current display name as the value to edit
+                    const currentDisplayName = sectionNames[section] || 
                       (section.startsWith('Labour Section') ? 'Labour' :
                        section.startsWith('Sub-Contractor Section') ? 'Sub-Contractor' :
                        section.startsWith('Miscellaneous Section') ? 'Miscellaneous' :
                        section.startsWith('Shop Section') ? 'Shop' :
                        section.startsWith('Product Section') ? 'Product Section' :
-                       section));
+                       section);
+                    setEditingSectionName(section);
+                    setEditingSectionNameValue('');
+                    setEditingSectionNameOriginal(currentDisplayName);
                   }}
                   className="px-2 py-1 rounded text-gray-500 hover:text-blue-600"
                   title="Edit section name"
@@ -923,11 +965,12 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
                           e.stopPropagation();
                           setAddingToSection({ section, type: sectionType as 'product' | 'labour' | 'subcontractor' | 'miscellaneous' | 'shop' });
                         }}
-                        className="px-2 py-1 rounded bg-brand-red text-white hover:bg-red-600"
+                        className="px-2 py-1 rounded bg-brand-red text-white hover:bg-red-600 flex items-center justify-center"
                         title="Add item to section"
                         disabled={!canEdit}>
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                          <path d="M12 4v16m8-8H4"></path>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                          <line x1="12" y1="4" x2="12" y2="20"></line>
+                          <line x1="4" y1="12" x2="20" y2="12"></line>
                         </svg>
                       </button>
                     );
