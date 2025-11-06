@@ -265,9 +265,11 @@
   };
 
   const appendMessage = (m) => {
+    if (!activeConv) return;
     const mine = (me && m.sender_id === me.id);
     const wrap = document.createElement('div');
     wrap.className = 'mkchat-message' + (mine ? ' mine' : '');
+    // Get members_detail from activeConv or conversations list
     const membersDetail = activeConv?.members_detail || conversations.find(c => c.id === activeConv?.id)?.members_detail || [];
     const sender = membersDetail.find(mem => mem.id === String(m.sender_id));
     const senderName = sender?.name || sender?.username || 'User';
@@ -289,46 +291,102 @@
   };
 
   const loadMessages = async (cid, before) => {
-    const url = before ? `/chat/conversations/${cid}/messages?before=${encodeURIComponent(before)}` : `/chat/conversations/${cid}/messages`;
-    const rows = await api('GET', url);
-    if (!rows) return;
-    if (!before) {
-      msgsEl.innerHTML = '<div class="mkchat-load-more"><button id="mkLoadMore" style="display:none">Load older messages</button></div>';
-      loadBtn = document.getElementById('mkLoadMore');
-      loadBtn.addEventListener('click', () => { if (activeConv && earliestTs) loadMessages(activeConv.id, earliestTs); });
+    try {
+      const url = before ? `/chat/conversations/${cid}/messages?before=${encodeURIComponent(before)}` : `/chat/conversations/${cid}/messages`;
+      const rows = await api('GET', url);
+      
+      if (!rows || !Array.isArray(rows)) {
+        if (!before) {
+          // Clear and show empty state
+          earliestTs = null;
+          msgsEl.innerHTML = '<div class="mkchat-load-more"><button id="mkLoadMore" style="display:none">Load older messages</button></div>';
+          const btn = document.getElementById('mkLoadMore');
+          if (btn) {
+            btn.addEventListener('click', () => { 
+              if (activeConv && earliestTs) {
+                loadMessages(activeConv.id, earliestTs);
+              }
+            });
+          }
+        }
+        return;
+      }
+      
+      if (!before) {
+        // Reset state for new conversation
+        earliestTs = null;
+        msgsEl.innerHTML = '<div class="mkchat-load-more"><button id="mkLoadMore" style="display:none">Load older messages</button></div>';
+        const btn = document.getElementById('mkLoadMore');
+        if (btn) {
+          btn.addEventListener('click', () => { 
+            if (activeConv && earliestTs) {
+              loadMessages(activeConv.id, earliestTs);
+            }
+          });
+        }
+      }
+      
+      const loadMoreContainer = msgsEl.querySelector('.mkchat-load-more');
+      if (!loadMoreContainer) {
+        // If container doesn't exist, recreate it
+        msgsEl.innerHTML = '<div class="mkchat-load-more"><button id="mkLoadMore" style="display:none">Load older messages</button></div>';
+        return;
+      }
+      
+      // Use the conversation from the list or activeConv
+      const conv = conversations.find(c => c.id === cid) || activeConv;
+      const membersDetail = conv?.members_detail || [];
+      
+      if (rows.length === 0 && !before) {
+        // No messages - show empty state but keep container
+        const btn = document.getElementById('mkLoadMore');
+        if (btn) btn.style.display = 'none';
+        return;
+      }
+      
+      rows.forEach(m => {
+        const mine = (me && m.sender_id === me.id);
+        const wrap = document.createElement('div');
+        wrap.className = 'mkchat-message' + (mine ? ' mine' : '');
+        const sender = membersDetail.find(mem => mem.id === String(m.sender_id));
+        const senderName = sender?.name || sender?.username || 'User';
+        const avatarUrl = sender && getAvatarUrl(sender);
+        const avatar = avatarUrl
+          ? `<img src="${avatarUrl}" class="mkchat-message-avatar" />`
+          : `<div class="mkchat-message-avatar">${fmtInitials(senderName)}</div>`;
+        const time = new Date(m.created_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+        wrap.innerHTML = `
+          ${!mine ? avatar : ''}
+          <div style="display:flex;flex-direction:column;max-width:100%">
+            <div class="mkchat-message-bubble">${(m.content || '').replace(/[<>&]/g, s => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[s]))}</div>
+            <div class="mkchat-message-time" style="text-align:${mine ? 'right' : 'left'}">${time}</div>
+          </div>
+          ${mine ? avatar : ''}
+        `;
+        loadMoreContainer.insertAdjacentElement('afterend', wrap);
+      });
+      
+      if (rows.length > 0) {
+        earliestTs = rows[0].created_at;
+        const btn = document.getElementById('mkLoadMore');
+        if (btn) btn.style.display = 'inline-block';
+      } else {
+        const btn = document.getElementById('mkLoadMore');
+        if (btn) btn.style.display = 'none';
+      }
+      
+      if (!before) {
+        // Scroll to bottom after loading initial messages
+        setTimeout(() => {
+          msgsEl.scrollTop = msgsEl.scrollHeight;
+        }, 50);
+      }
+    } catch (err) {
+      console.error('Error loading messages:', err);
+      if (!before) {
+        msgsEl.innerHTML = '<div class="mkchat-load-more"><div style="padding:20px;text-align:center;color:#64748b">Error loading messages</div><button id="mkLoadMore" style="display:none">Load older messages</button></div>';
+      }
     }
-    const loadMoreContainer = msgsEl.querySelector('.mkchat-load-more');
-    const membersDetail = conversations.find(c => c.id === activeConv.id)?.members_detail || [];
-    rows.forEach(m => {
-      const mine = (me && m.sender_id === me.id);
-      const wrap = document.createElement('div');
-      wrap.className = 'mkchat-message' + (mine ? ' mine' : '');
-      const sender = membersDetail.find(mem => mem.id === String(m.sender_id));
-      const senderName = sender?.name || sender?.username || 'User';
-      const avatarUrl = sender && getAvatarUrl(sender);
-      const avatar = avatarUrl
-        ? `<img src="${avatarUrl}" class="mkchat-message-avatar" />`
-        : `<div class="mkchat-message-avatar">${fmtInitials(senderName)}</div>`;
-      const time = new Date(m.created_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-      wrap.innerHTML = `
-        ${!mine ? avatar : ''}
-        <div style="display:flex;flex-direction:column;max-width:100%">
-          <div class="mkchat-message-bubble">${(m.content || '').replace(/[<>&]/g, s => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[s]))}</div>
-          <div class="mkchat-message-time" style="text-align:${mine ? 'right' : 'left'}">${time}</div>
-        </div>
-        ${mine ? avatar : ''}
-      `;
-      loadMoreContainer.insertAdjacentElement('afterend', wrap);
-    });
-    if (rows.length > 0) {
-      earliestTs = rows[0].created_at;
-      const btn = document.getElementById('mkLoadMore');
-      if (btn) btn.style.display = 'inline-block';
-    } else {
-      const btn = document.getElementById('mkLoadMore');
-      if (btn) btn.style.display = 'none';
-    }
-    if (!before) msgsEl.scrollTop = msgsEl.scrollHeight;
   };
 
   const markRead = async (cid) => { try { await api('POST', `/chat/conversations/${cid}/read`); } catch (e) {} };
@@ -349,6 +407,7 @@
     chatTitleInner.innerHTML = `${avatar}<span>${conv.title || 'Conversation'}</span>`;
     groupInfoBtn.style.display = conv.is_group ? 'inline-flex' : 'none';
     groupInfoChatBtn.style.display = conv.is_group ? 'inline-flex' : 'none';
+    // Ensure activeConv is set before loading messages
     loadMessages(conv.id);
     markRead(conv.id);
     renderConversations();
