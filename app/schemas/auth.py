@@ -23,6 +23,15 @@ class InviteRequest(BaseModel):
     needs_vehicle: bool = False
     needs_equipment: bool = False
     equipment_list: Optional[str] = None
+    # Job information
+    hire_date: Optional[str] = None
+    job_title: Optional[str] = None
+    work_email: Optional[EmailStr] = None
+    work_phone: Optional[str] = None
+    manager_user_id: Optional[str] = None
+    pay_rate: Optional[str] = None
+    pay_type: Optional[str] = None
+    employment_type: Optional[str] = None
 
 
 class RegisterRequest(BaseModel):

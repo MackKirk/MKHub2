@@ -83,6 +83,7 @@ class Invite(Base):
     division_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
     division_name: Mapped[Optional[str]] = mapped_column(String(255))
     document_ids: Mapped[Optional[list]] = mapped_column(JSON)  # List of document IDs to sign
+    job_info: Mapped[Optional[dict]] = mapped_column(JSON)  # Job information (hire_date, job_title, work_email, etc.)
     created_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

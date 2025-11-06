@@ -12,7 +12,9 @@ type Division = { id: string; label: string; value?: string };
 export default function InviteUserModal({ isOpen, onClose }: InviteModalProps) {
   const queryClient = useQueryClient();
   const { data: settings } = useQuery({ queryKey: ['settings'], queryFn: () => api<any>('GET', '/settings') });
+  const { data: usersOptions } = useQuery({ queryKey: ['usersOptions'], queryFn: () => api<any[]>('GET', '/auth/users/options?limit=500') });
   const divisions: Division[] = (settings?.divisions || []) as Division[];
+  const employmentTypes = (settings?.employment_types || []) as any[];
   
   const [email, setEmail] = useState('');
   const [divisionId, setDivisionId] = useState('');
@@ -23,6 +25,15 @@ export default function InviteUserModal({ isOpen, onClose }: InviteModalProps) {
   const [needsVehicle, setNeedsVehicle] = useState(false);
   const [needsEquipment, setNeedsEquipment] = useState(false);
   const [equipmentList, setEquipmentList] = useState('');
+  // Job fields
+  const [hireDate, setHireDate] = useState('');
+  const [jobTitle, setJobTitle] = useState('');
+  const [workEmail, setWorkEmail] = useState('');
+  const [workPhone, setWorkPhone] = useState('');
+  const [managerUserId, setManagerUserId] = useState('');
+  const [payRate, setPayRate] = useState('');
+  const [payType, setPayType] = useState('');
+  const [employmentType, setEmploymentType] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -44,6 +55,15 @@ export default function InviteUserModal({ isOpen, onClose }: InviteModalProps) {
         needs_vehicle: needsVehicle,
         needs_equipment: needsEquipment,
         equipment_list: needsEquipment && equipmentList ? equipmentList : null,
+        // Job information
+        hire_date: hireDate || null,
+        job_title: jobTitle || null,
+        work_email: workEmail || null,
+        work_phone: workPhone || null,
+        manager_user_id: managerUserId || null,
+        pay_rate: payRate || null,
+        pay_type: payType || null,
+        employment_type: employmentType || null,
       });
       
       // Reset form
@@ -56,6 +76,14 @@ export default function InviteUserModal({ isOpen, onClose }: InviteModalProps) {
       setNeedsVehicle(false);
       setNeedsEquipment(false);
       setEquipmentList('');
+      setHireDate('');
+      setJobTitle('');
+      setWorkEmail('');
+      setWorkPhone('');
+      setManagerUserId('');
+      setPayRate('');
+      setPayType('');
+      setEmploymentType('');
       
       queryClient.invalidateQueries({ queryKey: ['users'] });
       onClose();
@@ -129,6 +157,138 @@ export default function InviteUserModal({ isOpen, onClose }: InviteModalProps) {
               placeholder="Comma-separated document IDs"
             />
             <p className="text-xs text-gray-500 mt-1">Enter document IDs separated by commas</p>
+          </div>
+
+          <div className="border-t pt-4">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">Job Information</h3>
+            
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Hire Date (optional)
+                </label>
+                <input
+                  type="date"
+                  value={hireDate}
+                  onChange={(e) => setHireDate(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#d11616]"
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Job Title (optional)
+                </label>
+                <input
+                  type="text"
+                  value={jobTitle}
+                  onChange={(e) => setJobTitle(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#d11616]"
+                  placeholder="e.g., Software Engineer"
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Work Email (optional)
+                </label>
+                <input
+                  type="email"
+                  value={workEmail}
+                  onChange={(e) => setWorkEmail(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#d11616]"
+                  placeholder="work@company.com"
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Work Phone (optional)
+                </label>
+                <input
+                  type="tel"
+                  value={workPhone}
+                  onChange={(e) => setWorkPhone(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#d11616]"
+                  placeholder="+1 (555) 123-4567"
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Manager (optional)
+                </label>
+                <select
+                  value={managerUserId}
+                  onChange={(e) => setManagerUserId(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#d11616]"
+                >
+                  <option value="">Select a manager...</option>
+                  {(usersOptions || []).map((u: any) => (
+                    <option key={u.id} value={u.id}>
+                      {u.name || u.username}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Employment Type (optional)
+                </label>
+                {employmentTypes.length > 0 ? (
+                  <select
+                    value={employmentType}
+                    onChange={(e) => setEmploymentType(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#d11616]"
+                  >
+                    <option value="">Select type...</option>
+                    {employmentTypes.map((et: any) => (
+                      <option key={et.id} value={et.label}>
+                        {et.label}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    type="text"
+                    value={employmentType}
+                    onChange={(e) => setEmploymentType(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#d11616]"
+                    placeholder="e.g., full-time, part-time"
+                  />
+                )}
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Pay Rate (optional)
+                </label>
+                <input
+                  type="text"
+                  value={payRate}
+                  onChange={(e) => setPayRate(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#d11616]"
+                  placeholder="e.g., $50/hour or $100,000/year"
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Pay Type (optional)
+                </label>
+                <select
+                  value={payType}
+                  onChange={(e) => setPayType(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#d11616]"
+                >
+                  <option value="">Select type...</option>
+                  <option value="hourly">Hourly</option>
+                  <option value="salary">Salary</option>
+                  <option value="contract">Contract</option>
+                </select>
+              </div>
+            </div>
           </div>
 
           <div className="border-t pt-4">
