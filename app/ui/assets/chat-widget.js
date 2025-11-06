@@ -12,71 +12,120 @@
   };
 
   const css = `
-  .mkchat-fab{position:fixed;right:18px;bottom:18px;width:52px;height:52px;border-radius:26px;background:#2563eb;color:#fff;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 12px rgba(0,0,0,.2);cursor:pointer;z-index:2147483000}
-  .mkchat-fab .badge{position:absolute;top:-4px;right:-4px;background:#ef4444;color:#fff;border-radius:10px;padding:2px 6px;font-size:11px;display:none}
-  .mkchat-panel{position:fixed;right:18px;bottom:78px;width:340px;max-height:60vh;background:#fff;border:1px solid #e5e7eb;border-radius:10px;box-shadow:0 12px 24px rgba(0,0,0,.18);overflow:hidden;display:none;z-index:2147483000}
-  .mkchat-header{display:flex;align-items:center;justify-content:space-between;padding:10px 12px;border-bottom:1px solid #e5e7eb;background:#f8fafc}
-  .mkchat-tabs{display:flex;gap:8px;padding:8px 8px;border-bottom:1px solid #f1f5f9}
-  .mkchat-tabs button{flex:1;padding:6px 8px;border-radius:6px;border:1px solid #e5e7eb;background:#fff;cursor:pointer}
-  .mkchat-tabs button.active{background:#2563eb;color:#fff;border-color:#2563eb}
-  .mkchat-body{display:flex;gap:8px;height:360px}
-  .mkchat-list{width:42%;border-right:1px solid #e5e7eb;overflow:auto}
-  .mkchat-list .search{padding:8px;border-bottom:1px solid #f1f5f9}
-  .mkchat-list .search input{width:100%;padding:6px 8px;border:1px solid #e5e7eb;border-radius:6px}
-  .mkchat-list .item{display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid #f8fafc;cursor:pointer}
-  .mkchat-list .item:hover{background:#f8fafc}
-  .mkchat-avatar{width:28px;height:28px;border-radius:50%;background:#e2e8f0;display:flex;align-items:center;justify-content:center;font-size:12px;color:#334155;overflow:hidden}
-  .mkchat-item-right{margin-left:auto;font-size:12px;color:#64748b}
-  .mkchat-unread{background:#ef4444;color:#fff;border-radius:10px;padding:0 6px;font-size:11px}
-  .mkchat-chat{flex:1;display:flex;flex-direction:column}
-  .mkchat-messages{flex:1;overflow:auto;padding:8px 12px;background:#f8fafc}
-  .mkchat-load{padding:8px 12px;text-align:center}
-  .mkchat-input{display:flex;gap:8px;padding:8px;border-top:1px solid #e5e7eb;background:#fff}
-  .mkchat-input input{flex:1;padding:8px 10px;border:1px solid #e5e7eb;border-radius:6px}
-  .mkchat-input button{padding:8px 12px;border-radius:6px;border:1px solid #2563eb;background:#2563eb;color:#fff;cursor:pointer}
+  .mkchat-fab{position:fixed;right:18px;bottom:18px;width:56px;height:56px;border-radius:28px;background:linear-gradient(90deg,#d11616,#ee2b2b);color:#fff;display:flex;align-items:center;justify-content:center;box-shadow:0 6px 18px rgba(209,22,22,.25);cursor:pointer;z-index:2147483000;transition:transform .2s}
+  .mkchat-fab:hover{transform:scale(1.05)}
+  .mkchat-fab .badge{position:absolute;top:-4px;right:-4px;background:#ef4444;color:#fff;border-radius:10px;padding:2px 6px;font-size:11px;font-weight:600;display:none}
+  .mkchat-panel{position:fixed;right:18px;bottom:86px;width:720px;height:580px;background:#fff;border:1px solid #e5e7eb;border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,.2);overflow:hidden;display:none;z-index:2147483000;font-family:Montserrat,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
+  .mkchat-panel.open{display:flex;flex-direction:column}
+  .mkchat-header{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid #e5e7eb;background:#fff;min-height:56px}
+  .mkchat-header-title{font-weight:600;font-size:16px;color:#0f172a;display:flex;align-items:center;gap:8px}
+  .mkchat-header-title .avatar{width:32px;height:32px;border-radius:50%;object-fit:cover;border:2px solid #d11616}
+  .mkchat-header-actions{display:flex;align-items:center;gap:8px}
+  .mkchat-close{width:32px;height:32px;border:none;background:transparent;cursor:pointer;font-size:24px;line-height:1;color:#64748b;display:flex;align-items:center;justify-content:center;border-radius:6px;transition:background .2s}
+  .mkchat-close:hover{background:#f1f5f9}
+  .mkchat-body{display:flex;flex:1;overflow:hidden}
+  .mkchat-sidebar{width:280px;border-right:1px solid #e5e7eb;background:#f6f7f9;display:flex;flex-direction:column;overflow:hidden}
+  .mkchat-sidebar-header{padding:12px 16px;border-bottom:1px solid #e5e7eb;background:#fff}
+  .mkchat-sidebar-header h3{margin:0;font-size:16px;font-weight:600;color:#0f172a}
+  .mkchat-new-chat{width:100%;padding:10px 16px;margin:8px 12px;border:none;border-radius:8px;background:linear-gradient(90deg,#d11616,#ee2b2b);color:#fff;font-weight:600;cursor:pointer;font-size:14px;box-shadow:0 4px 12px rgba(209,22,22,.2);transition:transform .2s}
+  .mkchat-new-chat:hover{transform:translateY(-1px);box-shadow:0 6px 18px rgba(209,22,22,.3)}
+  .mkchat-conv-list{flex:1;overflow-y:auto;padding:8px 0}
+  .mkchat-conv-item{display:flex;align-items:center;gap:12px;padding:10px 16px;cursor:pointer;transition:background .15s;border-left:3px solid transparent}
+  .mkchat-conv-item:hover{background:#f1f5f9}
+  .mkchat-conv-item.active{background:#fff;border-left-color:#d11616}
+  .mkchat-conv-avatar{width:40px;height:40px;border-radius:50%;background:#e2e8f0;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:600;color:#334155;overflow:hidden;flex-shrink:0;border:2px solid #e5e7eb}
+  .mkchat-conv-avatar img{width:100%;height:100%;object-fit:cover}
+  .mkchat-conv-info{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+  .mkchat-conv-name{font-weight:600;font-size:14px;color:#0f172a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .mkchat-conv-preview{font-size:12px;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .mkchat-conv-meta{display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0}
+  .mkchat-conv-time{font-size:11px;color:#9ca3af}
+  .mkchat-unread{background:#d11616;color:#fff;border-radius:12px;padding:2px 6px;font-size:11px;font-weight:600;min-width:18px;text-align:center}
+  .mkchat-main{flex:1;display:flex;flex-direction:column;background:#fff;overflow:hidden}
+  .mkchat-main.empty{display:flex;align-items:center;justify-content:center;color:#9ca3af;font-size:14px}
+  .mkchat-chat-header{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid #e5e7eb;background:#fff;min-height:56px}
+  .mkchat-chat-title{font-weight:600;font-size:16px;color:#0f172a;display:flex;align-items:center;gap:10px}
+  .mkchat-chat-title .avatar{width:36px;height:36px;border-radius:50%;object-fit:cover;border:2px solid #d11616}
+  .mkchat-chat-actions{display:flex;gap:6px}
+  .mkchat-btn-icon{width:32px;height:32px;border:none;background:transparent;cursor:pointer;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#64748b;transition:background .2s}
+  .mkchat-btn-icon:hover{background:#f1f5f9}
+  .mkchat-messages{flex:1;overflow-y:auto;padding:16px;background:#f6f7f9;display:flex;flex-direction:column;gap:8px}
+  .mkchat-message{display:flex;gap:8px;align-items:flex-start}
+  .mkchat-message.mine{flex-direction:row-reverse}
+  .mkchat-message-avatar{width:28px;height:28px;border-radius:50%;background:#e2e8f0;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;color:#334155;overflow:hidden;flex-shrink:0}
+  .mkchat-message-avatar img{width:100%;height:100%;object-fit:cover}
+  .mkchat-message-bubble{max-width:70%;padding:10px 14px;border-radius:12px;font-size:14px;line-height:1.5;word-wrap:break-word}
+  .mkchat-message:not(.mine) .mkchat-message-bubble{background:#fff;color:#0f172a;border:1px solid #e5e7eb}
+  .mkchat-message.mine .mkchat-message-bubble{background:linear-gradient(90deg,#d11616,#ee2b2b);color:#fff}
+  .mkchat-message-time{font-size:11px;color:#9ca3af;margin-top:4px;padding:0 4px}
+  .mkchat-input-area{display:flex;gap:8px;padding:12px 16px;border-top:1px solid #e5e7eb;background:#fff}
+  .mkchat-input-area input{flex:1;padding:10px 14px;border:1px solid #e5e7eb;border-radius:8px;font-size:14px;outline:none;transition:border-color .2s}
+  .mkchat-input-area input:focus{border-color:#d11616}
+  .mkchat-input-area button{padding:10px 20px;border-radius:8px;border:none;background:linear-gradient(90deg,#d11616,#ee2b2b);color:#fff;font-weight:600;cursor:pointer;font-size:14px;box-shadow:0 4px 12px rgba(209,22,22,.2);transition:transform .2s}
+  .mkchat-input-area button:hover{transform:translateY(-1px);box-shadow:0 6px 18px rgba(209,22,22,.3)}
+  .mkchat-load-more{padding:12px;text-align:center}
+  .mkchat-load-more button{padding:8px 16px;border:1px solid #e5e7eb;background:#fff;border-radius:8px;cursor:pointer;font-size:13px;color:#64748b;transition:all .2s}
+  .mkchat-load-more button:hover{background:#f1f5f9;border-color:#d11616;color:#d11616}
+  .mkchat-user-list{flex:1;overflow-y:auto;padding:8px}
+  .mkchat-user-item{display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:8px;cursor:pointer;transition:background .15s}
+  .mkchat-user-item:hover{background:#f1f5f9}
+  .mkchat-user-item input[type="checkbox"]{width:18px;height:18px;cursor:pointer}
+  .mkchat-group-builder{padding:12px 16px;border-top:1px solid #e5e7eb;background:#fff}
+  .mkchat-group-builder input{width:100%;padding:8px 12px;border:1px solid #e5e7eb;border-radius:8px;margin-bottom:8px;font-size:14px}
+  .mkchat-selected-users{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}
+  .mkchat-selected-tag{display:flex;align-items:center;gap:6px;padding:4px 10px;border-radius:999px;background:#f1f5f9;border:1px solid #e5e7eb;font-size:13px}
+  .mkchat-selected-tag button{border:none;background:transparent;cursor:pointer;color:#64748b;font-size:16px;line-height:1;padding:0;margin-left:4px}
+  .mkchat-group-builder button{padding:8px 16px;border-radius:8px;border:none;background:linear-gradient(90deg,#d11616,#ee2b2b);color:#fff;font-weight:600;cursor:pointer;font-size:14px}
   `;
   const style = document.createElement('style'); style.textContent = css; document.head.appendChild(style);
 
   const fab = document.createElement('div');
   fab.className = 'mkchat-fab';
-  fab.innerHTML = '<svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15a4 4 0 0 1-4 4H7l-4 4V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z"/></svg><span class="badge" id="mkchatBadge">0</span>';
+  fab.innerHTML = '<svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15a4 4 0 0 1-4 4H7l-4 4V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z"/></svg><span class="badge" id="mkchatBadge">0</span>';
   document.body.appendChild(fab);
 
   const panel = document.createElement('div');
   panel.className = 'mkchat-panel';
   panel.innerHTML = `
     <div class="mkchat-header">
-      <div id="mkChatTitle" style="font-weight:600">Messages</div>
-      <div>
-        <button id="mkGroupInfo" title="Info" style="display:none;border:1px solid #e5e7eb;background:#fff;border-radius:6px;padding:4px 8px;margin-right:6px;cursor:pointer">Info</button>
-        <button id="mkchatClose" style="border:none;background:transparent;cursor:pointer;font-size:18px;line-height:1;color:#334155">×</button>
+      <div class="mkchat-header-title" id="mkChatTitle">Messages</div>
+      <div class="mkchat-header-actions">
+        <button id="mkGroupInfo" class="mkchat-btn-icon" title="Group info" style="display:none">
+          <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+        </button>
+        <button id="mkchatClose" class="mkchat-close" title="Close">×</button>
       </div>
-    </div>
-    <div class="mkchat-tabs">
-      <button id="mkTabConv" class="active">Conversas</button>
-      <button id="mkTabUsers">Usuários</button>
     </div>
     <div class="mkchat-body">
-      <div class="mkchat-list">
-        <div class="search">
-          <div style="display:flex;gap:6px;align-items:center">
-            <input id="mkUserSearch" placeholder="Buscar usuários..." style="flex:1" />
-            <button id="mkNewGroup" title="Novo grupo" style="border:1px solid #e5e7eb;background:#fff;border-radius:6px;padding:6px 8px;cursor:pointer">+ Grupo</button>
-          </div>
-          <div id="mkGroupBuilder" style="display:none;margin-top:6px">
-            <input id="mkGroupTitle" placeholder="Título do grupo (opcional)" style="width:100%;padding:6px 8px;border:1px solid #e5e7eb;border-radius:6px;margin-bottom:6px" />
-            <div id="mkSelectedUsers" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px"></div>
-            <button id="mkCreateGroup" style="border:1px solid #2563eb;background:#2563eb;color:#fff;border-radius:6px;padding:6px 8px;cursor:pointer">Criar grupo</button>
+      <div class="mkchat-sidebar">
+        <div class="mkchat-sidebar-header">
+          <h3>Conversations</h3>
+        </div>
+        <button class="mkchat-new-chat" id="mkNewChat">+ New Chat</button>
+        <div class="mkchat-conv-list" id="mkConvList"></div>
+      </div>
+      <div class="mkchat-main" id="mkMain">
+        <div class="mkchat-main empty" id="mkEmptyState">Select a conversation or start a new chat</div>
+        <div class="mkchat-chat-header" id="mkChatHeader" style="display:none">
+          <div class="mkchat-chat-title" id="mkChatTitleInner"></div>
+          <div class="mkchat-chat-actions">
+            <button id="mkGroupInfoChat" class="mkchat-btn-icon" title="Group info" style="display:none">
+              <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+            </button>
           </div>
         </div>
-        <div id="mkList"></div>
-      </div>
-      <div class="mkchat-chat">
-        <div class="mkchat-load"><button id="mkLoadMore" style="display:none;border:1px solid #e5e7eb;background:#fff;border-radius:6px;padding:6px 10px;cursor:pointer">Carregar anteriores</button></div>
-        <div id="mkMsgs" class="mkchat-messages"></div>
-        <div class="mkchat-input">
-          <input id="mkInput" placeholder="Escreva uma mensagem..." />
-          <button id="mkSend">Enviar</button>
+        <div class="mkchat-messages" id="mkMsgs" style="display:none">
+          <div class="mkchat-load-more"><button id="mkLoadMore" style="display:none">Load older messages</button></div>
+        </div>
+        <div class="mkchat-input-area" id="mkInputArea" style="display:none">
+          <input id="mkInput" placeholder="Type a message..." />
+          <button id="mkSend">Send</button>
+        </div>
+        <div class="mkchat-user-list" id="mkUserList" style="display:none"></div>
+        <div class="mkchat-group-builder" id="mkGroupBuilder" style="display:none">
+          <input id="mkGroupTitle" placeholder="Group name (optional)" />
+          <div class="mkchat-selected-users" id="mkSelectedUsers"></div>
+          <button id="mkCreateGroup">Create Group</button>
         </div>
       </div>
     </div>
@@ -84,30 +133,34 @@
   document.body.appendChild(panel);
 
   const badge = document.getElementById('mkchatBadge');
-  const listEl = panel.querySelector('#mkList');
+  const convListEl = panel.querySelector('#mkConvList');
+  const mainEl = panel.querySelector('#mkMain');
+  const emptyState = panel.querySelector('#mkEmptyState');
+  const chatHeader = panel.querySelector('#mkChatHeader');
+  const chatTitleInner = panel.querySelector('#mkChatTitleInner');
   const msgsEl = panel.querySelector('#mkMsgs');
+  const inputArea = panel.querySelector('#mkInputArea');
+  const userListEl = panel.querySelector('#mkUserList');
   const loadBtn = panel.querySelector('#mkLoadMore');
   const inputEl = panel.querySelector('#mkInput');
   const sendBtn = panel.querySelector('#mkSend');
   const closeBtn = panel.querySelector('#mkchatClose');
-  const tabConv = panel.querySelector('#mkTabConv');
-  const tabUsers = panel.querySelector('#mkTabUsers');
-  const userSearch = panel.querySelector('#mkUserSearch');
-  const btnNewGroup = panel.querySelector('#mkNewGroup');
-  const builder = panel.querySelector('#mkGroupBuilder');
+  const newChatBtn = panel.querySelector('#mkNewChat');
+  const groupBuilder = panel.querySelector('#mkGroupBuilder');
   const selWrap = panel.querySelector('#mkSelectedUsers');
   const btnCreateGroup = panel.querySelector('#mkCreateGroup');
   const groupTitle = panel.querySelector('#mkGroupTitle');
   const groupInfoBtn = panel.querySelector('#mkGroupInfo');
+  const groupInfoChatBtn = panel.querySelector('#mkGroupInfoChat');
   const chatTitleEl = panel.querySelector('#mkChatTitle');
 
-  let currentTab = 'convs';
   let conversations = [];
   let users = [];
   let activeConv = null;
   let earliestTs = null;
   let me = null;
-  let selected = new Map(); // id -> user
+  let selected = new Map();
+  let currentMode = 'empty'; // 'empty', 'chat', 'users', 'group-builder'
 
   const wsProto = location.protocol === 'https:' ? 'wss' : 'ws';
   const ws = new WebSocket(wsProto + '://' + location.host + '/ws/chat?token=' + encodeURIComponent(token));
@@ -123,15 +176,15 @@
         const cid = msg.data && msg.data.conversation_id;
         if (activeConv && cid === activeConv.id) {
           appendMessage(cm);
-          // mark as read immediately
           markRead(activeConv.id);
         }
-        // refresh conversation previews
         loadConversations();
       } else if (msg.event === 'conversation_updated') {
-        // On any conversation update, refresh list; if active matches, refresh title/members
-        loadConversations().then(()=>{
-          if (activeConv) { openConversation(activeConv); }
+        loadConversations().then(() => {
+          if (activeConv) {
+            const updated = conversations.find(c => c.id === activeConv.id);
+            if (updated) { activeConv = updated; showChat(updated); }
+          }
         });
       }
     } catch (err) {}
@@ -139,70 +192,99 @@
 
   const fmtInitials = (name) => {
     const parts = (name || '').trim().split(/\s+/).filter(Boolean);
-    const letters = parts.slice(0,2).map(p => p[0].toUpperCase()).join('');
+    const letters = parts.slice(0, 2).map(p => p[0].toUpperCase()).join('');
     return letters || '?';
   };
 
-  const renderList = () => {
-    listEl.innerHTML = '';
-    if (currentTab === 'convs') {
-      conversations.forEach(c => {
-        const el = document.createElement('div'); el.className = 'item';
-        const otherId = (c.members || []).find(m => m !== (me && me.id || ''));
-        el.innerHTML = `
-          <div class="mkchat-avatar" data-cid="${c.id}">${fmtInitials(c.title || '')}</div>
-          <div style="display:flex;flex-direction:column;gap:2px">
-            <div style="font-weight:600">${c.title || 'Conversa'}</div>
-            <div style="font-size:12px;color:#64748b;max-width:160px;white-space:nowrap;text-overflow:ellipsis;overflow:hidden">${c.last_message ? c.last_message.content : ''}</div>
-          </div>
-          <div class="mkchat-item-right">${c.unread ? '<span class="mkchat-unread">'+c.unread+'</span>' : ''}</div>
-        `;
-        el.addEventListener('click', () => openConversation(c));
-        listEl.appendChild(el);
-      });
-    } else {
-      users.forEach(u => {
-        const el = document.createElement('div'); el.className = 'item';
-        const avatar = u.avatar_url ? '<img src="'+u.avatar_url+'" class="mkchat-avatar" />' : '<div class="mkchat-avatar">'+fmtInitials(u.name||u.username)+'</div>';
-        el.innerHTML = `
-          ${avatar}
-          <div style="display:flex;flex-direction:column">
-            <div style="font-weight:600">${u.name || u.username}</div>
-            <div style="font-size:12px;color:#64748b">${u.username}</div>
-          </div>
-          ${builder.style.display==='block' ? `<input type="checkbox" data-uid="${u.id}" style="margin-left:auto" ${selected.has(u.id)?'checked':''}/>` : ''}
-        `;
-        if (builder.style.display !== 'block') {
-          el.addEventListener('click', async () => {
-            const conv = await api('POST', '/chat/conversations', { participant_user_id: u.id });
-            if (conv && conv.id) {
-              currentTab = 'convs'; tabUsers.classList.remove('active'); tabConv.classList.add('active');
-              await loadConversations();
-              const found = conversations.find(c => c.id === conv.id) || conv;
-              openConversation(found);
-            }
-          });
-        } else {
-          el.addEventListener('change', (ev) => {
-            const cb = ev.target.closest('input[type="checkbox"]');
-            if (!cb) return;
-            if (cb.checked) selected.set(u.id, u); else selected.delete(u.id);
-            renderSelected();
-          });
-        }
-        listEl.appendChild(el);
-      });
-    }
+  const getAvatarUrl = (user) => {
+    if (user && user.avatar_url) return user.avatar_url;
+    if (user && user.profile_photo_file_id) return `/files/${user.profile_photo_file_id}/thumbnail?w=80`;
+    return null;
   };
 
-  const appendMessage = (m, toTop=false) => {
-    const mine = (window.MK_CURRENT_USER_ID && m.sender_id === window.MK_CURRENT_USER_ID);
+  const renderConversations = () => {
+    convListEl.innerHTML = '';
+    conversations.forEach(c => {
+      const el = document.createElement('div');
+      el.className = 'mkchat-conv-item' + (activeConv && c.id === activeConv.id ? ' active' : '');
+      const avatarUrl = c.avatar_url || (c.other_user && getAvatarUrl(c.other_user));
+      const avatar = avatarUrl 
+        ? `<img src="${avatarUrl}" class="mkchat-conv-avatar" />`
+        : `<div class="mkchat-conv-avatar">${fmtInitials(c.title || '')}</div>`;
+      el.innerHTML = `
+        ${avatar}
+        <div class="mkchat-conv-info">
+          <div class="mkchat-conv-name">${c.title || 'Conversation'}</div>
+          <div class="mkchat-conv-preview">${c.last_message ? c.last_message.content : ''}</div>
+        </div>
+        <div class="mkchat-conv-meta">
+          ${c.unread > 0 ? `<span class="mkchat-unread">${c.unread}</span>` : ''}
+        </div>
+      `;
+      el.addEventListener('click', () => openConversation(c));
+      convListEl.appendChild(el);
+    });
+  };
+
+  const renderUsers = () => {
+    userListEl.innerHTML = '';
+    users.forEach(u => {
+      const el = document.createElement('div');
+      el.className = 'mkchat-user-item';
+      const avatarUrl = getAvatarUrl(u);
+      const avatar = avatarUrl
+        ? `<img src="${avatarUrl}" class="mkchat-conv-avatar" />`
+        : `<div class="mkchat-conv-avatar">${fmtInitials(u.name || u.username)}</div>`;
+      const isBuilder = currentMode === 'group-builder';
+      el.innerHTML = `
+        ${avatar}
+        <div class="mkchat-conv-info" style="flex:1">
+          <div class="mkchat-conv-name">${u.name || u.username}</div>
+          <div class="mkchat-conv-preview">${u.username}</div>
+        </div>
+        ${isBuilder ? `<input type="checkbox" data-uid="${u.id}" ${selected.has(u.id) ? 'checked' : ''} />` : ''}
+      `;
+      if (isBuilder) {
+        el.querySelector('input').addEventListener('change', (ev) => {
+          if (ev.target.checked) selected.set(u.id, u);
+          else selected.delete(u.id);
+          renderSelected();
+        });
+      } else {
+        el.addEventListener('click', async () => {
+          const conv = await api('POST', '/chat/conversations', { participant_user_id: u.id });
+          if (conv && conv.id) {
+            await loadConversations();
+            const found = conversations.find(c => c.id === conv.id) || conv;
+            openConversation(found);
+          }
+        });
+      }
+      userListEl.appendChild(el);
+    });
+  };
+
+  const appendMessage = (m) => {
+    const mine = (me && m.sender_id === me.id);
     const wrap = document.createElement('div');
-    wrap.style = 'display:flex;margin:6px 0;';
+    wrap.className = 'mkchat-message' + (mine ? ' mine' : '');
+    const membersDetail = activeConv?.members_detail || conversations.find(c => c.id === activeConv?.id)?.members_detail || [];
+    const sender = membersDetail.find(mem => mem.id === String(m.sender_id));
+    const senderName = sender?.name || sender?.username || 'User';
+    const avatarUrl = sender && getAvatarUrl(sender);
+    const avatar = avatarUrl
+      ? `<img src="${avatarUrl}" class="mkchat-message-avatar" />`
+      : `<div class="mkchat-message-avatar">${fmtInitials(senderName)}</div>`;
+    const time = new Date(m.created_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
     wrap.innerHTML = `
-      <div style="margin-left:${mine?'auto':'0'};max-width:76%;background:${mine?'#2563eb':'#e5e7eb'};color:${mine?'#fff':'#0f172a'};padding:8px 10px;border-radius:10px">${(m.content||'').replace(/[<>&]/g, s => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[s]))}</div>
+      ${!mine ? avatar : ''}
+      <div style="display:flex;flex-direction:column;max-width:100%">
+        <div class="mkchat-message-bubble">${(m.content || '').replace(/[<>&]/g, s => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[s]))}</div>
+        <div class="mkchat-message-time" style="text-align:${mine ? 'right' : 'left'}">${time}</div>
+      </div>
+      ${mine ? avatar : ''}
     `;
-    if (toTop) msgsEl.prepend(wrap); else msgsEl.appendChild(wrap);
+    msgsEl.appendChild(wrap);
     msgsEl.scrollTop = msgsEl.scrollHeight;
   };
 
@@ -210,32 +292,105 @@
     const url = before ? `/chat/conversations/${cid}/messages?before=${encodeURIComponent(before)}` : `/chat/conversations/${cid}/messages`;
     const rows = await api('GET', url);
     if (!rows) return;
-    if (!before) msgsEl.innerHTML = '';
-    rows.forEach(m => appendMessage(m, !!before));
+    if (!before) {
+      msgsEl.innerHTML = '<div class="mkchat-load-more"><button id="mkLoadMore" style="display:none">Load older messages</button></div>';
+      loadBtn = document.getElementById('mkLoadMore');
+      loadBtn.addEventListener('click', () => { if (activeConv && earliestTs) loadMessages(activeConv.id, earliestTs); });
+    }
+    const loadMoreContainer = msgsEl.querySelector('.mkchat-load-more');
+    const membersDetail = conversations.find(c => c.id === activeConv.id)?.members_detail || [];
+    rows.forEach(m => {
+      const mine = (me && m.sender_id === me.id);
+      const wrap = document.createElement('div');
+      wrap.className = 'mkchat-message' + (mine ? ' mine' : '');
+      const sender = membersDetail.find(mem => mem.id === String(m.sender_id));
+      const senderName = sender?.name || sender?.username || 'User';
+      const avatarUrl = sender && getAvatarUrl(sender);
+      const avatar = avatarUrl
+        ? `<img src="${avatarUrl}" class="mkchat-message-avatar" />`
+        : `<div class="mkchat-message-avatar">${fmtInitials(senderName)}</div>`;
+      const time = new Date(m.created_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+      wrap.innerHTML = `
+        ${!mine ? avatar : ''}
+        <div style="display:flex;flex-direction:column;max-width:100%">
+          <div class="mkchat-message-bubble">${(m.content || '').replace(/[<>&]/g, s => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[s]))}</div>
+          <div class="mkchat-message-time" style="text-align:${mine ? 'right' : 'left'}">${time}</div>
+        </div>
+        ${mine ? avatar : ''}
+      `;
+      loadMoreContainer.insertAdjacentElement('afterend', wrap);
+    });
     if (rows.length > 0) {
       earliestTs = rows[0].created_at;
-      loadBtn.style.display = 'inline-block';
+      const btn = document.getElementById('mkLoadMore');
+      if (btn) btn.style.display = 'inline-block';
     } else {
-      loadBtn.style.display = 'none';
+      const btn = document.getElementById('mkLoadMore');
+      if (btn) btn.style.display = 'none';
     }
+    if (!before) msgsEl.scrollTop = msgsEl.scrollHeight;
   };
 
-  const markRead = async (cid) => { try{ await api('POST', `/chat/conversations/${cid}/read`); }catch(e){} };
+  const markRead = async (cid) => { try { await api('POST', `/chat/conversations/${cid}/read`); } catch (e) {} };
+
+  const showChat = (conv) => {
+    currentMode = 'chat';
+    activeConv = conv;
+    emptyState.style.display = 'none';
+    chatHeader.style.display = 'flex';
+    msgsEl.style.display = 'flex';
+    inputArea.style.display = 'flex';
+    userListEl.style.display = 'none';
+    groupBuilder.style.display = 'none';
+    const avatarUrl = conv.avatar_url || (conv.other_user && getAvatarUrl(conv.other_user));
+    const avatar = avatarUrl
+      ? `<img src="${avatarUrl}" class="avatar" />`
+      : `<div class="avatar" style="width:36px;height:36px;border-radius:50%;background:#e2e8f0;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:600;color:#334155">${fmtInitials(conv.title || '')}</div>`;
+    chatTitleInner.innerHTML = `${avatar}<span>${conv.title || 'Conversation'}</span>`;
+    groupInfoBtn.style.display = conv.is_group ? 'inline-flex' : 'none';
+    groupInfoChatBtn.style.display = conv.is_group ? 'inline-flex' : 'none';
+    loadMessages(conv.id);
+    markRead(conv.id);
+    renderConversations();
+  };
+
+  const showUsers = () => {
+    currentMode = 'users';
+    activeConv = null;
+    emptyState.style.display = 'none';
+    chatHeader.style.display = 'none';
+    msgsEl.style.display = 'none';
+    inputArea.style.display = 'none';
+    userListEl.style.display = 'block';
+    groupBuilder.style.display = 'none';
+    renderUsers();
+  };
+
+  const showGroupBuilder = () => {
+    currentMode = 'group-builder';
+    activeConv = null;
+    emptyState.style.display = 'none';
+    chatHeader.style.display = 'none';
+    msgsEl.style.display = 'none';
+    inputArea.style.display = 'none';
+    userListEl.style.display = 'block';
+    groupBuilder.style.display = 'block';
+    selected.clear();
+    renderSelected();
+    renderUsers();
+  };
 
   const openConversation = async (conv) => {
-    activeConv = conv;
-    chatTitleEl.textContent = conv.title || (conv.is_group ? 'Grupo' : 'Conversa');
-    groupInfoBtn.style.display = conv.is_group ? 'inline-block' : 'none';
-    await loadMessages(conv.id);
-    await markRead(conv.id);
+    await loadConversations();
+    const found = conversations.find(c => c.id === conv.id) || conv;
+    showChat(found);
   };
 
   const loadConversations = async () => {
     const rows = await api('GET', '/chat/conversations');
     if (!rows) return;
-    // build titles (for 1-1, show other user's name if available in cache)
     conversations = rows.map(c => ({ ...c }));
-    renderList();
+    renderConversations();
   };
 
   let searchTimer = 0;
@@ -243,103 +398,130 @@
     const rows = await api('GET', '/chat/users' + (q ? ('?q=' + encodeURIComponent(q)) : ''));
     if (!rows) return;
     users = rows;
-    renderList();
+    if (currentMode === 'users' || currentMode === 'group-builder') renderUsers();
+  };
+
+  const renderSelected = () => {
+    selWrap.innerHTML = '';
+    selected.forEach(u => {
+      const tag = document.createElement('div');
+      tag.className = 'mkchat-selected-tag';
+      tag.innerHTML = `<span>${u.name || u.username}</span><button>×</button>`;
+      tag.querySelector('button').addEventListener('click', () => {
+        selected.delete(u.id);
+        renderSelected();
+        renderUsers();
+      });
+      selWrap.appendChild(tag);
+    });
   };
 
   // Events
-  fab.addEventListener('click', () => { panel.style.display = panel.style.display ? '' : 'block'; panel.style.display = 'block'; });
-  closeBtn.addEventListener('click', () => { panel.style.display = 'none'; });
-  tabConv.addEventListener('click', () => { currentTab = 'convs'; tabConv.classList.add('active'); tabUsers.classList.remove('active'); renderList(); });
-  tabUsers.addEventListener('click', () => { currentTab = 'users'; tabUsers.classList.add('active'); tabConv.classList.remove('active'); renderList(); });
+  fab.addEventListener('click', () => {
+    const isOpen = panel.classList.contains('open');
+    if (isOpen) {
+      panel.classList.remove('open');
+      currentMode = 'empty';
+      activeConv = null;
+      emptyState.style.display = 'flex';
+      chatHeader.style.display = 'none';
+      msgsEl.style.display = 'none';
+      inputArea.style.display = 'none';
+      userListEl.style.display = 'none';
+      groupBuilder.style.display = 'none';
+    } else {
+      panel.classList.add('open');
+      if (!activeConv && currentMode === 'empty') {
+        emptyState.style.display = 'flex';
+      }
+    }
+  });
+  closeBtn.addEventListener('click', () => {
+    panel.classList.remove('open');
+    currentMode = 'empty';
+    activeConv = null;
+    emptyState.style.display = 'flex';
+    chatHeader.style.display = 'none';
+    msgsEl.style.display = 'none';
+    inputArea.style.display = 'none';
+    userListEl.style.display = 'none';
+    groupBuilder.style.display = 'none';
+  });
+  newChatBtn.addEventListener('click', () => {
+    showUsers();
+    loadUsers('');
+  });
   sendBtn.addEventListener('click', async () => {
     const text = (inputEl.value || '').trim();
     if (!text || !activeConv) return;
     const resp = await api('POST', `/chat/conversations/${activeConv.id}/messages`, { content: text });
-    if (resp && resp.message) { appendMessage(resp.message); inputEl.value=''; }
+    if (resp && resp.message) { appendMessage(resp.message); inputEl.value = ''; }
   });
   inputEl.addEventListener('keydown', async (e) => { if (e.key === 'Enter') { e.preventDefault(); sendBtn.click(); } });
-  loadBtn.addEventListener('click', () => { if (activeConv && earliestTs) loadMessages(activeConv.id, earliestTs); });
-  userSearch.addEventListener('input', () => {
-    if (searchTimer) clearTimeout(searchTimer);
-    searchTimer = setTimeout(() => loadUsers(userSearch.value || ''), 250);
-  });
-  btnNewGroup.addEventListener('click', () => {
-    selected.clear(); renderSelected();
-    builder.style.display = builder.style.display==='block' ? 'none' : 'block';
-    renderList();
-  });
-  const renderSelected = () => {
-    selWrap.innerHTML='';
-    selected.forEach(u => {
-      const tag = document.createElement('div');
-      tag.style = 'display:flex;align-items:center;gap:6px;border:1px solid #e5e7eb;border-radius:999px;padding:2px 8px;background:#f8fafc';
-      tag.innerHTML = `<span>${u.name||u.username}</span><button title="remover" style="border:none;background:transparent;cursor:pointer;font-size:14px;color:#64748b">×</button>`;
-      tag.querySelector('button').addEventListener('click', ()=>{ selected.delete(u.id); renderSelected(); renderList(); });
-      selWrap.appendChild(tag);
-    });
-  };
   btnCreateGroup.addEventListener('click', async () => {
     const ids = Array.from(selected.keys());
     if (!ids.length) return;
     const title = (groupTitle.value || '').trim() || null;
     const conv = await api('POST', '/chat/conversations', { is_group: true, title, member_user_ids: ids });
     if (conv && conv.id) {
-      currentTab = 'convs'; tabUsers.classList.remove('active'); tabConv.classList.add('active');
-      builder.style.display = 'none'; selected.clear(); renderSelected();
       await loadConversations();
       const found = conversations.find(c => c.id === conv.id) || conv;
       openConversation(found);
     }
   });
-  groupInfoBtn.addEventListener('click', async () => {
-    if (!activeConv) return;
-    // Basic inline manager actions: rename, add members (uses builder), leave
-    const action = prompt('Ações: digite "title" para renomear, "add" para adicionar membros, "leave" para sair.');
+  const showGroupInfo = async () => {
+    if (!activeConv || !activeConv.is_group) return;
+    const action = prompt('Actions: type "title" to rename, "add" to add members, "leave" to leave.');
     if (!action) return;
     if (action.toLowerCase() === 'title') {
-      const t = prompt('Novo título do grupo:', activeConv.title || '');
+      const t = prompt('New group title:', activeConv.title || '');
       if (t != null) {
         const updated = await api('PATCH', `/chat/conversations/${activeConv.id}`, { title: t });
-        if (updated && updated.id) { activeConv = updated; chatTitleEl.textContent = updated.title || 'Grupo'; await loadConversations(); }
+        if (updated && updated.id) {
+          activeConv = updated;
+          await loadConversations();
+          showChat(updated);
+        }
       }
     } else if (action.toLowerCase() === 'add') {
-      currentTab = 'users'; tabUsers.classList.add('active'); tabConv.classList.remove('active');
-      builder.style.display = 'block'; selected.clear(); renderSelected(); renderList();
-      // Reuse builder UI to add, but wire Create to add-members
-      btnCreateGroup.textContent = 'Adicionar ao grupo';
+      showGroupBuilder();
+      btnCreateGroup.textContent = 'Add to Group';
       const handler = async () => {
         const ids = Array.from(selected.keys());
         if (!ids.length || !activeConv) return;
         await api('POST', `/chat/conversations/${activeConv.id}/members`, { add_user_ids: ids });
-        builder.style.display = 'none'; btnCreateGroup.textContent = 'Criar grupo'; btnCreateGroup.removeEventListener('click', handler);
-        selected.clear(); renderSelected();
-        currentTab = 'convs'; tabConv.classList.add('active'); tabUsers.classList.remove('active');
-        await loadConversations(); openConversation(activeConv);
+        await loadConversations();
+        const updated = conversations.find(c => c.id === activeConv.id);
+        if (updated) showChat(updated);
       };
-      btnCreateGroup.addEventListener('click', handler, { once: true });
+      btnCreateGroup.replaceWith(btnCreateGroup.cloneNode(true));
+      document.getElementById('mkCreateGroup').addEventListener('click', handler, { once: true });
     } else if (action.toLowerCase() === 'leave') {
-      if (confirm('Sair deste grupo?')){
+      if (confirm('Leave this group?')) {
         await api('POST', `/chat/conversations/${activeConv.id}/leave`);
-        activeConv = null; msgsEl.innerHTML=''; await loadConversations();
-        currentTab = 'convs'; tabConv.classList.add('active'); tabUsers.classList.remove('active');
+        activeConv = null;
+        currentMode = 'empty';
+        emptyState.style.display = 'flex';
+        chatHeader.style.display = 'none';
+        msgsEl.style.display = 'none';
+        inputArea.style.display = 'none';
+        await loadConversations();
       }
     }
-  });
+  };
+  groupInfoBtn.addEventListener('click', showGroupInfo);
+  groupInfoChatBtn.addEventListener('click', showGroupInfo);
 
   // Bootstrap
-  (async function init(){
-    try{
-      // fetch current user to mark own messages
-      const meResp = await fetch('/auth/me', { headers: { Authorization: 'Bearer ' + token }});
-      if (meResp.ok) { me = await meResp.json(); window.MK_CURRENT_USER_ID = me && me.id; }
+  (async function init() {
+    try {
+      const meResp = await fetch('/auth/me', { headers: { Authorization: 'Bearer ' + token } });
+      if (meResp.ok) { me = await meResp.json(); }
       await loadConversations();
       const unread = await api('GET', '/chat/unread_count');
       const total = unread && unread.total || 0;
       if (total > 0) { badge.style.display = 'inline-block'; badge.textContent = String(total); }
       else { badge.style.display = 'none'; }
-      // Preload some users
-      await loadUsers('');
-    }catch(e){ /* ignore */ }
+    } catch (e) { /* ignore */ }
   })();
-})(); 
-
+})();

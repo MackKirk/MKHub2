@@ -80,14 +80,36 @@ def _conversation_summary(db: Session, conv: ChatConversation, me_id: uuid.UUID)
         .scalar()
         or 0
     )
-    # Members
+    # Members with details
     member_rows = db.query(ChatConversationMember).filter(ChatConversationMember.conversation_id == conv.id).all()
-    members = [str(m.user_id) for m in member_rows]
+    member_ids = [m.user_id for m in member_rows]
+    members_detail = []
+    other_user = None
+    for uid in member_ids:
+        u = db.query(User).filter(User.id == uid).first()
+        if not u:
+            continue
+        ep = db.query(EmployeeProfile).filter(EmployeeProfile.user_id == uid).first()
+        user_data = _user_basic(u, ep)
+        members_detail.append(user_data)
+        if not conv.is_group and uid != me_id:
+            other_user = user_data
+    # Title for 1-1: use other user's name
+    title = conv.title
+    if not conv.is_group and other_user:
+        title = other_user.get("name") or other_user.get("username") or "Conversation"
+    # Avatar URL for 1-1
+    avatar_url = None
+    if not conv.is_group and other_user:
+        avatar_url = other_user.get("avatar_url")
     return {
         "id": str(conv.id),
-        "title": conv.title,
+        "title": title,
         "is_group": bool(conv.is_group),
-        "members": members,
+        "members": [str(m.user_id) for m in member_rows],
+        "members_detail": members_detail,
+        "other_user": other_user,
+        "avatar_url": avatar_url,
         "last_message": last_msg,
         "unread": int(unread),
         "updated_at": conv.updated_at.isoformat() if conv.updated_at else None,
