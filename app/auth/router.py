@@ -179,7 +179,7 @@ def invite_user(req: InviteRequest, db: Session = Depends(get_db), user: User = 
             invite_id=inv.id,
             created_by=user.id,
             status="pending",
-            metadata={"equipment_list": req.equipment_list} if req.equipment_list else None,
+            extra_data={"equipment_list": req.equipment_list} if req.equipment_list else None,
         )
         db.add(task)
     
@@ -194,7 +194,7 @@ def invite_user(req: InviteRequest, db: Session = Depends(get_db), user: User = 
                 invite_id=inv.id,
                 created_by=user.id,
                 status="pending",
-                metadata={"document_id": doc_id},
+                extra_data={"document_id": doc_id},
             )
             db.add(task)
     

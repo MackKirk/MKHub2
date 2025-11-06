@@ -872,7 +872,7 @@ class Task(Base):
     assigned_to: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), index=True
     )
-    metadata: Mapped[Optional[dict]] = mapped_column(JSON)  # Extra data (equipment list, etc.)
+    extra_data: Mapped[Optional[dict]] = mapped_column(JSON)  # Extra data (equipment list, etc.)
     created_by: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
     )
