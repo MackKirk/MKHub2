@@ -80,6 +80,9 @@ class Invite(Base):
     email_personal: Mapped[str] = mapped_column(String(255), nullable=False)
     token: Mapped[str] = mapped_column(String(128), unique=True, nullable=False, index=True)
     suggested_username: Mapped[Optional[str]] = mapped_column(String(100))
+    division_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
+    division_name: Mapped[Optional[str]] = mapped_column(String(255))
+    document_ids: Mapped[Optional[list]] = mapped_column(JSON)  # List of document IDs to sign
     created_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
@@ -843,3 +846,36 @@ class ChatMessageRead(Base):
     read_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
 
     __table_args__ = (UniqueConstraint("message_id", "user_id", name="uq_chat_read"),)
+
+
+# =====================
+# Task/Ticket domain
+# =====================
+
+
+class Task(Base):
+    __tablename__ = "tasks"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(String(2000))
+    task_type: Mapped[str] = mapped_column(String(50), nullable=False, index=True)  # email, business_card, phone, vehicle, equipment, document
+    status: Mapped[str] = mapped_column(String(50), default="pending", index=True)  # pending, in_progress, completed, cancelled
+    priority: Mapped[str] = mapped_column(String(20), default="normal")  # low, normal, high, urgent
+    division_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), index=True)  # Division that should handle this task
+    invite_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("invites.id", ondelete="SET NULL"), index=True
+    )
+    user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), index=True
+    )
+    assigned_to: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), index=True
+    )
+    metadata: Mapped[Optional[dict]] = mapped_column(JSON)  # Extra data (equipment list, etc.)
+    created_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))

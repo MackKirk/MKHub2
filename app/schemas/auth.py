@@ -14,6 +14,15 @@ class UsernameSuggestResponse(BaseModel):
 
 class InviteRequest(BaseModel):
     email_personal: EmailStr
+    division_id: Optional[str] = None
+    division_name: Optional[str] = None
+    document_ids: Optional[List[str]] = None
+    needs_email: bool = False
+    needs_business_card: bool = False
+    needs_phone: bool = False
+    needs_vehicle: bool = False
+    needs_equipment: bool = False
+    equipment_list: Optional[str] = None
 
 
 class RegisterRequest(BaseModel):

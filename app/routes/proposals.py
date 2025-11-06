@@ -34,6 +34,28 @@ except Exception:
 router = APIRouter(prefix="/proposals", tags=["proposals"])
 
 
+# Serve proposal assets (logo, templates, etc.)
+@router.get("/assets/{filename:path}")
+def serve_proposal_asset(filename: str):
+    """Serve static assets for proposals (logo, templates, etc.)"""
+    assets_dir = os.path.join("app", "proposals", "assets")
+    file_path = os.path.join(assets_dir, filename)
+    
+    # Security: prevent directory traversal
+    if not os.path.abspath(file_path).startswith(os.path.abspath(assets_dir)):
+        raise HTTPException(status_code=403, detail="Forbidden")
+    
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="File not found")
+    
+    # Determine content type
+    content_type, _ = mimetypes.guess_type(file_path)
+    if not content_type:
+        content_type = "application/octet-stream"
+    
+    return FileResponse(file_path, media_type=content_type)
+
+
 UPLOAD_DIR = "var/uploads/proposals"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
