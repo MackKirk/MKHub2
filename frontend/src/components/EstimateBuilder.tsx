@@ -1709,6 +1709,42 @@ function SummaryModal({ open, onClose, items, pstRate, gstRate, markup, profitRa
     return costsBySection['Miscellaneous'] || 0;
   }, [costsBySection]);
 
+  // Calculate product total (all items in product sections)
+  const productTotal = useMemo(() => {
+    return items.filter(it => {
+      const section = it.section || 'Miscellaneous';
+      return !['Labour', 'Sub-Contractors', 'Shop', 'Miscellaneous'].includes(section) &&
+             !section.startsWith('Labour Section') &&
+             !section.startsWith('Sub-Contractor Section') &&
+             !section.startsWith('Shop Section') &&
+             !section.startsWith('Miscellaneous Section');
+    }).reduce((acc, it) => acc + calculateItemTotalWithMarkup(it), 0);
+  }, [items, markup]);
+
+  // Calculate subcontractor total (all items in subcontractor sections)
+  const subcontractorItemsTotal = useMemo(() => {
+    return items.filter(it => {
+      const section = it.section || 'Miscellaneous';
+      return section === 'Sub-Contractors' || section.startsWith('Sub-Contractor Section');
+    }).reduce((acc, it) => acc + calculateItemTotalWithMarkup(it), 0);
+  }, [items, markup]);
+
+  // Calculate shop total (all items in shop sections)
+  const shopItemsTotal = useMemo(() => {
+    return items.filter(it => {
+      const section = it.section || 'Miscellaneous';
+      return section === 'Shop' || section.startsWith('Shop Section');
+    }).reduce((acc, it) => acc + calculateItemTotalWithMarkup(it), 0);
+  }, [items, markup]);
+
+  // Calculate miscellaneous total (all items in miscellaneous sections)
+  const miscellaneousItemsTotal = useMemo(() => {
+    return items.filter(it => {
+      const section = it.section || 'Miscellaneous';
+      return section === 'Miscellaneous' || section.startsWith('Miscellaneous Section');
+    }).reduce((acc, it) => acc + calculateItemTotalWithMarkup(it), 0);
+  }, [items, markup]);
+
   // Total of all items (same calculation as main page)
   const total = useMemo(() => {
     return items.reduce((acc, it) => {
@@ -1804,6 +1840,130 @@ function SummaryModal({ open, onClose, items, pstRate, gstRate, markup, profitRa
                 </thead>
                 <tbody>
                   {items.filter(it => it.item_type === 'labour').map((it, idx) => {
+                    const itemTotalWithMarkup = calculateItemTotalWithMarkup(it);
+                    return (
+                      <tr key={idx} className="border-b hover:bg-gray-50">
+                        <td className="p-2">{it.description || it.name}</td>
+                        <td className="p-2 text-right">${itemTotalWithMarkup.toFixed(2)}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* Product Analysis */}
+          {productTotal > 0 && (
+            <div className="rounded-xl border bg-white overflow-hidden">
+              <div className="bg-gray-50 px-4 py-2 border-b font-semibold">Product Analysis</div>
+              <div className="px-4 py-2 bg-blue-50 border-b">Total Product Cost: ${productTotal.toFixed(2)}</div>
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 border-b">
+                  <tr>
+                    <th className="p-2 text-left">Product Item</th>
+                    <th className="p-2 text-right">Cost</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {items.filter(it => {
+                    const section = it.section || 'Miscellaneous';
+                    return !['Labour', 'Sub-Contractors', 'Shop', 'Miscellaneous'].includes(section) &&
+                           !section.startsWith('Labour Section') &&
+                           !section.startsWith('Sub-Contractor Section') &&
+                           !section.startsWith('Shop Section') &&
+                           !section.startsWith('Miscellaneous Section');
+                  }).map((it, idx) => {
+                    const itemTotalWithMarkup = calculateItemTotalWithMarkup(it);
+                    return (
+                      <tr key={idx} className="border-b hover:bg-gray-50">
+                        <td className="p-2">{it.description || it.name}</td>
+                        <td className="p-2 text-right">${itemTotalWithMarkup.toFixed(2)}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* Sub-Contractor Analysis */}
+          {subcontractorItemsTotal > 0 && (
+            <div className="rounded-xl border bg-white overflow-hidden">
+              <div className="bg-gray-50 px-4 py-2 border-b font-semibold">Sub-Contractor Analysis</div>
+              <div className="px-4 py-2 bg-blue-50 border-b">Total Sub-Contractor Cost: ${subcontractorItemsTotal.toFixed(2)}</div>
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 border-b">
+                  <tr>
+                    <th className="p-2 text-left">Sub-Contractor Item</th>
+                    <th className="p-2 text-right">Cost</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {items.filter(it => {
+                    const section = it.section || 'Miscellaneous';
+                    return section === 'Sub-Contractors' || section.startsWith('Sub-Contractor Section');
+                  }).map((it, idx) => {
+                    const itemTotalWithMarkup = calculateItemTotalWithMarkup(it);
+                    return (
+                      <tr key={idx} className="border-b hover:bg-gray-50">
+                        <td className="p-2">{it.description || it.name}</td>
+                        <td className="p-2 text-right">${itemTotalWithMarkup.toFixed(2)}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* Shop Analysis */}
+          {shopItemsTotal > 0 && (
+            <div className="rounded-xl border bg-white overflow-hidden">
+              <div className="bg-gray-50 px-4 py-2 border-b font-semibold">Shop Analysis</div>
+              <div className="px-4 py-2 bg-blue-50 border-b">Total Shop Cost: ${shopItemsTotal.toFixed(2)}</div>
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 border-b">
+                  <tr>
+                    <th className="p-2 text-left">Shop Item</th>
+                    <th className="p-2 text-right">Cost</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {items.filter(it => {
+                    const section = it.section || 'Miscellaneous';
+                    return section === 'Shop' || section.startsWith('Shop Section');
+                  }).map((it, idx) => {
+                    const itemTotalWithMarkup = calculateItemTotalWithMarkup(it);
+                    return (
+                      <tr key={idx} className="border-b hover:bg-gray-50">
+                        <td className="p-2">{it.description || it.name}</td>
+                        <td className="p-2 text-right">${itemTotalWithMarkup.toFixed(2)}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* Miscellaneous Analysis */}
+          {miscellaneousItemsTotal > 0 && (
+            <div className="rounded-xl border bg-white overflow-hidden">
+              <div className="bg-gray-50 px-4 py-2 border-b font-semibold">Miscellaneous Analysis</div>
+              <div className="px-4 py-2 bg-blue-50 border-b">Total Miscellaneous Cost: ${miscellaneousItemsTotal.toFixed(2)}</div>
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 border-b">
+                  <tr>
+                    <th className="p-2 text-left">Miscellaneous Item</th>
+                    <th className="p-2 text-right">Cost</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {items.filter(it => {
+                    const section = it.section || 'Miscellaneous';
+                    return section === 'Miscellaneous' || section.startsWith('Miscellaneous Section');
+                  }).map((it, idx) => {
                     const itemTotalWithMarkup = calculateItemTotalWithMarkup(it);
                     return (
                       <tr key={idx} className="border-b hover:bg-gray-50">
