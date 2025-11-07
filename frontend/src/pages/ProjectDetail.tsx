@@ -792,16 +792,7 @@ function ProjectCostsSummary({ projectId, estimates }:{ projectId:string, estima
     refetchInterval: 2000 // Refetch every 2 seconds to update in real-time
   });
   
-  if(!estimateData || !estimates.length) {
-    return (
-      <div className="md:col-span-3 rounded-xl border bg-white p-4">
-        <h4 className="font-semibold mb-2">Costs Summary</h4>
-        <div className="text-sm text-gray-600">No estimate available</div>
-      </div>
-    );
-  }
-  
-  // Extract data from estimateData
+  // Extract data from estimateData (always extract, even if empty)
   const items = estimateData?.items || [];
   const markup = estimateData?.estimate?.markup || estimateData?.markup || 0;
   const pstRate = estimateData?.pst_rate ?? 0;
@@ -999,6 +990,16 @@ function ProjectCostsSummary({ projectId, estimates }:{ projectId:string, estima
     { label: `Profit (${profitRate}%)`, value: profitValue },
     { label: `GST (${gstRate}%)`, value: gst },
   ], [totalDirectProjectCosts, markupPercentage, sectionsMarkup, pstRate, pst, profitRate, profitValue, gstRate, gst]);
+  
+  // Early return AFTER all hooks
+  if(!estimateData || !estimates.length) {
+    return (
+      <div className="md:col-span-3 rounded-xl border bg-white p-4">
+        <h4 className="font-semibold mb-2">Costs Summary</h4>
+        <div className="text-sm text-gray-600">No estimate available</div>
+      </div>
+    );
+  }
   
   return (
     <div className="md:col-span-3 rounded-xl border bg-white p-4">
