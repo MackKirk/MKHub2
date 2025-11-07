@@ -215,12 +215,26 @@ def delete_site(client_id: str, site_id: str, db: Session = Depends(get_db), _=D
 
 # ----- Files -----
 @router.get("/{client_id}/files")
-def list_files(client_id: str, site_id: Optional[str] = None, project_id: Optional[str] = None, db: Session = Depends(get_db), _=Depends(require_permissions("clients:read"))):
+def list_files(
+    client_id: str,
+    site_id: Optional[str] = None,
+    project_id: Optional[str] = None,
+    limit: Optional[int] = None,
+    offset: Optional[int] = None,
+    db: Session = Depends(get_db),
+    _=Depends(require_permissions("clients:read"))
+):
     q = db.query(ClientFile)
     q = q.filter(ClientFile.client_id == client_id)
     if site_id:
         q = q.filter(ClientFile.site_id == site_id)
-    rows = q.order_by(ClientFile.uploaded_at.desc()).all()
+    q = q.order_by(ClientFile.uploaded_at.desc())
+    # Optional pagination when provided
+    if offset is not None and isinstance(offset, int) and offset >= 0:
+        q = q.offset(int(offset))
+    if limit is not None and isinstance(limit, int) and limit > 0:
+        q = q.limit(int(limit))
+    rows = q.all()
     out = []
     for cf in rows:
         fo = db.query(FileObject).filter(FileObject.id == cf.file_object_id).first()

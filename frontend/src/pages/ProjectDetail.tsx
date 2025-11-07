@@ -7,6 +7,7 @@ import ImagePicker from '@/components/ImagePicker';
 import EstimateBuilder from '@/components/EstimateBuilder';
 import ProposalForm from '@/components/ProposalForm';
 import { useConfirm } from '@/components/ConfirmProvider';
+import CalendarMock from '@/components/CalendarMock';
 
 type Project = { id:string, code?:string, name?:string, client_id?:string, client_display_name?:string, address_city?:string, address_province?:string, address_country?:string, description?:string, status_id?:string, division_id?:string, estimator_id?:string, onsite_lead_id?:string, contact_id?:string, contact_name?:string, contact_email?:string, contact_phone?:string, date_start?:string, date_eta?:string, date_end?:string, cost_estimated?:number, cost_actual?:number, service_value?:number, progress?:number };
 type ProjectFile = { id:string, file_object_id:string, is_image?:boolean, content_type?:string, category?:string, original_name?:string, uploaded_at?:string };
@@ -158,7 +159,7 @@ export default function ProjectDetail(){
                 <ProjectCostsSummary projectId={String(id)} estimates={projectEstimates||[]} />
                 <div className="md:col-span-3 rounded-xl border bg-white p-4">
                   <h4 className="font-semibold mb-2">Schedule</h4>
-                  <div className="text-sm text-gray-600">(Calendar view placeholder) Define milestones and production expectations here.</div>
+                  <CalendarMock title="Project Calendar (mock)" />
                 </div>
                 <div className="md:col-span-3 rounded-xl border bg-white p-4">
                   <h4 className="font-semibold mb-2">Description</h4>

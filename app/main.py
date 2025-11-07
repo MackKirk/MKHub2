@@ -26,6 +26,8 @@ from .routes.proposals import router as proposals_router
 from .routes.users import router as users_router
 from .routes.estimate import router as estimate_router
 from .routes.reviews import router as reviews_router
+from .routes.chat import router as chat_router
+from .routes.tasks import router as tasks_router
 
 
 def create_app() -> FastAPI:
@@ -61,6 +63,8 @@ def create_app() -> FastAPI:
     app.include_router(users_router)
     app.include_router(estimate_router)
     app.include_router(reviews_router)
+    app.include_router(chat_router)
+    app.include_router(tasks_router)
     # Legacy UI redirects to new React routes (exact paths)
     legacy_map = {
         "/ui/login.html": "/login",

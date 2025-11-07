@@ -1,11 +1,14 @@
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { Link } from 'react-router-dom';
+import { useState } from 'react';
+import InviteUserModal from '@/components/InviteUserModal';
 
 type User = { id:string, username:string, email?:string, name?:string, roles?:string[], is_active?:boolean, profile_photo_file_id?:string };
 
 export default function Users(){
   const { data, isLoading } = useQuery({ queryKey:['users'], queryFn: ()=>api<User[]>('GET','/users') });
+  const [showInviteModal, setShowInviteModal] = useState(false);
   const month = new Date().toISOString().slice(0,7);
   const { data:summary } = useQuery({ queryKey:['timesheetSummary', month], queryFn: ()=> api<any[]>('GET', `/projects/timesheet/summary?month=${encodeURIComponent(month)}`) });
   const minsByUser: Record<string, number> = {};
@@ -18,6 +21,12 @@ export default function Users(){
           <div className="text-2xl font-extrabold">Users</div>
           <div className="text-sm opacity-90">Manage employees, roles, and access.</div>
         </div>
+        <button
+          onClick={() => setShowInviteModal(true)}
+          className="px-4 py-2 bg-white text-[#d11616] rounded-lg font-semibold hover:bg-gray-100 transition-colors"
+        >
+          + Invite User
+        </button>
       </div>
       <div className="grid md:grid-cols-4 gap-4">
         {isLoading? <div className="h-24 bg-gray-100 animate-pulse rounded"/> : arr.map(u=> (
@@ -32,6 +41,7 @@ export default function Users(){
           </Link>
         ))}
       </div>
+      <InviteUserModal isOpen={showInviteModal} onClose={() => setShowInviteModal(false)} />
     </div>
   );
 }

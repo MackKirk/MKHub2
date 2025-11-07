@@ -8,7 +8,7 @@ from slugify import slugify
 
 from ..db import get_db
 from ..config import settings
-from ..models.models import User, Role, Invite, UsernameReservation
+from ..models.models import User, Role, Invite, UsernameReservation, Task, EmployeeProfile
 from ..schemas.auth import (
     UsernameSuggestRequest,
     UsernameSuggestResponse,
@@ -31,7 +31,8 @@ from .security import (
 )
 from ..logging import structlog
 import smtplib
-from email.message import EmailMessage
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 import secrets
 from sqlalchemy import and_
 import random
@@ -86,25 +87,187 @@ def invite_user(req: InviteRequest, db: Session = Depends(get_db), user: User = 
     if not (has_admin or has_perm):
         raise HTTPException(status_code=403, detail="Forbidden")
     token = str(uuid.uuid4())
-    suggested = find_available_username(db, req.email_personal.split("@")[0], "user")
+    email_local = req.email_personal.split("@")[0]
+    # Extract name parts from email (assume format like first.last or first_last)
+    name_parts = email_local.replace('.', ' ').replace('_', ' ').split()
+    first_name = name_parts[0] if name_parts else email_local
+    last_name = name_parts[1] if len(name_parts) > 1 else email_local
+    suggested = find_available_username(db, first_name, last_name)
+    
+    # Parse division_id if provided
+    division_uuid = None
+    if req.division_id:
+        try:
+            division_uuid = uuid.UUID(str(req.division_id))
+        except Exception:
+            pass
+    
+    # Collect job information
+    job_info = {}
+    if req.hire_date:
+        job_info["hire_date"] = req.hire_date
+    if req.job_title:
+        job_info["job_title"] = req.job_title
+    if req.work_email:
+        job_info["work_email"] = req.work_email
+    if req.work_phone:
+        job_info["work_phone"] = req.work_phone
+    if req.manager_user_id:
+        try:
+            job_info["manager_user_id"] = str(uuid.UUID(str(req.manager_user_id)))
+        except Exception:
+            pass
+    if req.pay_rate:
+        job_info["pay_rate"] = req.pay_rate
+    if req.pay_type:
+        job_info["pay_type"] = req.pay_type
+    if req.employment_type:
+        job_info["employment_type"] = req.employment_type
+    # Add division_name to job_info as well (for consistency)
+    if req.division_name:
+        job_info["division"] = req.division_name
+    
     inv = Invite(
         email_personal=req.email_personal,
         token=token,
         suggested_username=suggested,
+        division_id=division_uuid,
+        division_name=req.division_name,
+        document_ids=req.document_ids or [],
+        job_info=job_info if job_info else None,
         created_by=user.id,
         expires_at=datetime.now(timezone.utc) + timedelta(days=7),
     )
     db.add(inv)
+    db.flush()
+    
+    # Get division_id from invite (will be used for all tasks)
+    task_division_id = division_uuid
+    
+    # Create tasks based on requirements
+    # Note: Tasks are assigned to the division specified in the invite
+    # Each task type will be visible to users in that division
+    
+    if req.needs_email:
+        task = Task(
+            title=f"Create email account for {req.email_personal}",
+            description=f"Create email account for new employee: {req.email_personal}",
+            task_type="email",
+            division_id=task_division_id,
+            invite_id=inv.id,
+            created_by=user.id,
+            status="pending",
+        )
+        db.add(task)
+    
+    if req.needs_business_card:
+        task = Task(
+            title=f"Create business card for {req.email_personal}",
+            description=f"Create business card for new employee: {req.email_personal}",
+            task_type="business_card",
+            division_id=task_division_id,
+            invite_id=inv.id,
+            created_by=user.id,
+            status="pending",
+        )
+        db.add(task)
+    
+    if req.needs_phone:
+        task = Task(
+            title=f"Setup phone for {req.email_personal}",
+            description=f"Setup phone for new employee: {req.email_personal}",
+            task_type="phone",
+            division_id=task_division_id,
+            invite_id=inv.id,
+            created_by=user.id,
+            status="pending",
+        )
+        db.add(task)
+    
+    if req.needs_vehicle:
+        task = Task(
+            title=f"Assign vehicle for {req.email_personal}",
+            description=f"Assign vehicle for new employee: {req.email_personal}",
+            task_type="vehicle",
+            division_id=task_division_id,
+            invite_id=inv.id,
+            created_by=user.id,
+            status="pending",
+        )
+        db.add(task)
+    
+    if req.needs_equipment:
+        task = Task(
+            title=f"Provide equipment for {req.email_personal}",
+            description=f"Provide equipment for new employee: {req.email_personal}",
+            task_type="equipment",
+            division_id=task_division_id,
+            invite_id=inv.id,
+            created_by=user.id,
+            status="pending",
+            extra_data={"equipment_list": req.equipment_list} if req.equipment_list else None,
+        )
+        db.add(task)
+    
+    # Create document signing tasks if any
+    if req.document_ids:
+        for doc_id in req.document_ids:
+            task = Task(
+                title=f"Sign document for {req.email_personal}",
+                description=f"New employee needs to sign document",
+                task_type="document",
+                division_id=task_division_id,
+                invite_id=inv.id,
+                created_by=user.id,
+                status="pending",
+                extra_data={"document_id": doc_id},
+            )
+            db.add(task)
+    
     db.commit()
+    
+    # Get inviter information for email signature
+    inviter_profile = db.query(EmployeeProfile).filter(EmployeeProfile.user_id == user.id).first()
+    inviter_name = user.username
+    if inviter_profile:
+        if inviter_profile.first_name and inviter_profile.last_name:
+            inviter_name = f"{inviter_profile.first_name} {inviter_profile.last_name}"
+        elif inviter_profile.preferred_name:
+            inviter_name = inviter_profile.preferred_name
+    inviter_email = user.email_personal or user.email or settings.mail_from or "noreply@example.com"
+    
     # Email if SMTP is configured
     try:
         if settings.smtp_host and settings.mail_from and settings.public_base_url:
-            msg = EmailMessage()
-            msg["Subject"] = f"You're invited to {settings.app_name}"
+            invite_link = f"{settings.public_base_url}/ui/register.html?token={token}"
+            
+            msg = MIMEMultipart("alternative")
+            msg["Subject"] = f"Welcome to {settings.app_name} - Complete Your Onboarding"
             msg["From"] = settings.mail_from
             msg["To"] = req.email_personal
-            link = f"{settings.public_base_url}/ui/register.html?token={token}"
-            msg.set_content(f"Click to register: {link}")
+            
+            # Plain text version
+            text_content = generate_invite_email_text(
+                invitee_email=req.email_personal,
+                invite_link=invite_link,
+                inviter_name=inviter_name,
+                app_name=settings.app_name,
+            )
+            text_part = MIMEText(text_content, "plain")
+            msg.attach(text_part)
+            
+            # HTML version
+            html_content = generate_invite_email_html(
+                invitee_email=req.email_personal,
+                invite_link=invite_link,
+                inviter_name=inviter_name,
+                inviter_email=inviter_email,
+                app_name=settings.app_name,
+                public_base_url=settings.public_base_url,
+            )
+            html_part = MIMEText(html_content, "html")
+            msg.attach(html_part)
+            
             if settings.smtp_tls:
                 with smtplib.SMTP(settings.smtp_host, settings.smtp_port) as s:
                     s.starttls()
@@ -118,7 +281,159 @@ def invite_user(req: InviteRequest, db: Session = Depends(get_db), user: User = 
                     s.send_message(msg)
     except Exception as e:
         structlog.get_logger().warning("invite_email_failed", error=str(e))
+    
     return {"invite_token": token}
+
+
+def generate_invite_email_html(
+    invitee_email: str,
+    invite_link: str,
+    inviter_name: str,
+    inviter_email: str,
+    app_name: str,
+    public_base_url: str,
+) -> str:
+    """Generate HTML email template for user invitation."""
+    logo_url = f"{public_base_url}/proposals/assets/logo.png"
+    
+    html = f"""
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Welcome to {app_name}</title>
+</head>
+<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f6f7f9;">
+    <table role="presentation" style="width: 100%; border-collapse: collapse;">
+        <tr>
+            <td align="center" style="padding: 40px 20px;">
+                <table role="presentation" style="max-width: 600px; width: 100%; background-color: #ffffff; border-radius: 12px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1); border: 1px solid #e5e7eb;">
+                    <!-- Header with Logo -->
+                    <tr>
+                        <td align="center" style="padding: 40px 20px 30px; background: linear-gradient(135deg, #7f1010 0%, #a31414 100%); border-radius: 12px 12px 0 0;">
+                            <img src="{logo_url}" alt="{app_name}" style="max-width: 200px; height: auto; display: block;" />
+                        </td>
+                    </tr>
+                    
+                    <!-- Content -->
+                    <tr>
+                        <td style="padding: 40px 30px;">
+                            <h1 style="margin: 0 0 20px 0; font-size: 28px; font-weight: 700; color: #0f172a; line-height: 1.3;">
+                                Welcome to {app_name}!
+                            </h1>
+                            
+                            <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 1.6; color: #374151;">
+                                Hello,
+                            </p>
+                            
+                            <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 1.6; color: #374151;">
+                                We're excited to invite you to join our team! You've been selected to become part of {app_name}, and we're looking forward to having you on board.
+                            </p>
+                            
+                            <p style="margin: 0 0 30px 0; font-size: 16px; line-height: 1.6; color: #374151;">
+                                To get started, please complete your onboarding process by clicking the button below. This will take you to a secure registration page where you'll be able to:
+                            </p>
+                            
+                            <ul style="margin: 0 0 30px 0; padding-left: 20px; font-size: 16px; line-height: 1.8; color: #374151;">
+                                <li>Set up your account password</li>
+                                <li>Complete your personal information</li>
+                                <li>Review and sign required documents</li>
+                                <li>Access your new workspace</li>
+                            </ul>
+                            
+                            <!-- CTA Button -->
+                            <table role="presentation" style="width: 100%; margin: 30px 0;">
+                                <tr>
+                                    <td align="center">
+                                        <a href="{invite_link}" style="display: inline-block; padding: 14px 32px; background: linear-gradient(90deg, #d11616 0%, #ee2b2b 100%); color: #ffffff; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 16px; box-shadow: 0 4px 12px rgba(209, 22, 22, 0.3);">
+                                            Complete Your Onboarding
+                                        </a>
+                                    </td>
+                                </tr>
+                            </table>
+                            
+                            <p style="margin: 30px 0 20px 0; font-size: 14px; line-height: 1.6; color: #6b7280;">
+                                Or copy and paste this link into your browser:
+                            </p>
+                            <p style="margin: 0 0 30px 0; font-size: 14px; line-height: 1.6; color: #2563eb; word-break: break-all;">
+                                {invite_link}
+                            </p>
+                            
+                            <div style="border-top: 1px solid #e5e7eb; padding-top: 30px; margin-top: 30px;">
+                                <p style="margin: 0 0 10px 0; font-size: 14px; line-height: 1.6; color: #6b7280;">
+                                    This invitation link will expire in 7 days. If you have any questions or need assistance, please don't hesitate to reach out.
+                                </p>
+                                <p style="margin: 0; font-size: 14px; line-height: 1.6; color: #6b7280;">
+                                    We're here to help make your onboarding experience smooth and enjoyable!
+                                </p>
+                            </div>
+                        </td>
+                    </tr>
+                    
+                    <!-- Footer with Signature -->
+                    <tr>
+                        <td style="padding: 30px; background-color: #f9fafb; border-top: 1px solid #e5e7eb; border-radius: 0 0 12px 12px;">
+                            <p style="margin: 0 0 10px 0; font-size: 16px; font-weight: 600; color: #0f172a;">
+                                Best regards,
+                            </p>
+                            <p style="margin: 0 0 5px 0; font-size: 15px; color: #374151;">
+                                {inviter_name}
+                            </p>
+                            <p style="margin: 0; font-size: 14px; color: #6b7280;">
+                                {inviter_email}
+                            </p>
+                        </td>
+                    </tr>
+                </table>
+                
+                <!-- Footer Text -->
+                <table role="presentation" style="max-width: 600px; width: 100%; margin-top: 20px;">
+                    <tr>
+                        <td align="center" style="padding: 20px;">
+                            <p style="margin: 0; font-size: 12px; color: #9ca3af;">
+                                © {datetime.now(timezone.utc).year} {app_name}. All rights reserved.
+                            </p>
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>
+    """
+    return html.strip()
+
+
+def generate_invite_email_text(
+    invitee_email: str,
+    invite_link: str,
+    inviter_name: str,
+    app_name: str,
+) -> str:
+    """Generate plain text version of invitation email."""
+    return f"""
+Welcome to {app_name}!
+
+Hello,
+
+We're excited to invite you to join our team! You've been selected to become part of {app_name}, and we're looking forward to having you on board.
+
+To get started, please complete your onboarding process by clicking the link below:
+{invite_link}
+
+This will take you to a secure registration page where you'll be able to:
+- Set up your account password
+- Complete your personal information
+- Review and sign required documents
+- Access your new workspace
+
+This invitation link will expire in 7 days. If you have any questions or need assistance, please don't hesitate to reach out.
+
+Best regards,
+{inviter_name}
+    """.strip()
 
 
 @router.get("/invite/{token}")
@@ -253,8 +568,34 @@ def register(payload: RegisterPayload, db: Session = Depends(get_db)):
             db.add(ep)
             db.commit()
         else:
-            # Create minimal profile with names so UI can display them
+            # Create minimal profile with names and job info from invite
             ep = EmployeeProfile(user_id=user.id, first_name=payload.first_name, last_name=payload.last_name)
+            
+            # Apply job_info from invite if available
+            if inv.job_info:
+                job_info = inv.job_info
+                if job_info.get("hire_date"):
+                    ep.hire_date = _parse_dt(job_info["hire_date"])
+                if job_info.get("job_title"):
+                    ep.job_title = job_info["job_title"]
+                if job_info.get("division"):
+                    ep.division = job_info["division"]
+                if job_info.get("work_email"):
+                    ep.work_email = job_info["work_email"]
+                if job_info.get("work_phone"):
+                    ep.work_phone = job_info["work_phone"]
+                if job_info.get("manager_user_id"):
+                    try:
+                        ep.manager_user_id = uuid.UUID(str(job_info["manager_user_id"]))
+                    except Exception:
+                        pass
+                if job_info.get("pay_rate"):
+                    ep.pay_rate = job_info["pay_rate"]
+                if job_info.get("pay_type"):
+                    ep.pay_type = job_info["pay_type"]
+                if job_info.get("employment_type"):
+                    ep.employment_type = job_info["employment_type"]
+            
             db.add(ep)
             db.commit()
     except Exception as e:
