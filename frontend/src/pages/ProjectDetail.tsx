@@ -801,27 +801,40 @@ function ProjectCostsSummary({ projectId, estimates }:{ projectId:string, estima
     );
   }
   
-  const items = estimateData.items || [];
-  const markup = estimateData.markup || 0;
-  const pstRate = estimateData.pst_rate || 0;
-  const gstRate = estimateData.gst_rate || 0;
-  const profitRate = estimateData.profit_rate || 20; // Default to 20%
-  const sectionOrder = estimateData.section_order || [];
+  // Extract data from estimateData
+  const items = useMemo(() => estimateData?.items || [], [estimateData]);
+  const markup = useMemo(() => estimateData?.estimate?.markup || estimateData?.markup || 0, [estimateData]);
+  const pstRate = useMemo(() => estimateData?.pst_rate ?? 0, [estimateData]);
+  const gstRate = useMemo(() => estimateData?.gst_rate ?? 0, [estimateData]);
+  const profitRate = useMemo(() => estimateData?.profit_rate ?? 20, [estimateData]); // Default to 20%
+  const sectionOrder = useMemo(() => estimateData?.section_order || [], [estimateData]);
   
   // Parse UI state for item extras
-  const uiState = estimateData.notes ? (()=>{ try{ return JSON.parse(estimateData.notes); }catch{ return {}; } })() : {};
-  const itemExtrasMap = uiState.item_extras || {};
+  const uiState = useMemo(() => {
+    const notes = estimateData?.estimate?.notes || estimateData?.notes;
+    if (!notes) return {};
+    try {
+      return JSON.parse(notes);
+    } catch {
+      return {};
+    }
+  }, [estimateData]);
+  
+  const itemExtrasMap = useMemo(() => uiState.item_extras || {}, [uiState]);
   
   // Group items by section
-  const groupedItems: Record<string, any[]> = {};
-  items.forEach((it:any) => {
-    const section = it.section || 'Miscellaneous';
-    if(!groupedItems[section]) groupedItems[section] = [];
-    groupedItems[section].push(it);
-  });
+  const groupedItems = useMemo(() => {
+    const groups: Record<string, any[]> = {};
+    items.forEach((it:any) => {
+      const section = it.section || 'Miscellaneous';
+      if(!groups[section]) groups[section] = [];
+      groups[section].push(it);
+    });
+    return groups;
+  }, [items]);
   
   // Helper function to calculate section subtotal (same as EstimateBuilder)
-  const calculateSectionSubtotal = (sectionName: string): number => {
+  const calculateSectionSubtotal = useMemo(() => (sectionName: string): number => {
     const sectionItems = groupedItems[sectionName] || [];
     const isLabourSection = ['Labour', 'Sub-Contractors', 'Shop', 'Miscellaneous'].includes(sectionName) || 
                           sectionName.startsWith('Labour Section') || 
@@ -847,42 +860,42 @@ function ProjectCostsSummary({ projectId, estimates }:{ projectId:string, estima
       }
       return sum + (itemTotal * (1 + (m/100)));
     }, 0);
-  };
+  }, [groupedItems, markup, itemExtrasMap]);
   
   // Calculate specific section costs (same as EstimateBuilder)
-  const totalProductsCosts = sectionOrder
+  const totalProductsCosts = useMemo(() => sectionOrder
     .filter(section => !['Labour', 'Sub-Contractors', 'Shop', 'Miscellaneous'].includes(section) && 
                       !section.startsWith('Labour Section') && 
                       !section.startsWith('Sub-Contractor Section') && 
                       !section.startsWith('Shop Section') && 
                       !section.startsWith('Miscellaneous Section'))
-    .reduce((sum, section) => sum + calculateSectionSubtotal(section), 0);
+    .reduce((sum, section) => sum + calculateSectionSubtotal(section), 0), [sectionOrder, calculateSectionSubtotal]);
   
-  const totalLabourCosts = calculateSectionSubtotal('Labour') + 
+  const totalLabourCosts = useMemo(() => calculateSectionSubtotal('Labour') + 
            sectionOrder
              .filter(s => s.startsWith('Labour Section'))
-             .reduce((sum, section) => sum + calculateSectionSubtotal(section), 0);
+             .reduce((sum, section) => sum + calculateSectionSubtotal(section), 0), [sectionOrder, calculateSectionSubtotal]);
   
-  const totalSubContractorsCosts = calculateSectionSubtotal('Sub-Contractors') + 
+  const totalSubContractorsCosts = useMemo(() => calculateSectionSubtotal('Sub-Contractors') + 
            sectionOrder
              .filter(s => s.startsWith('Sub-Contractor Section'))
-             .reduce((sum, section) => sum + calculateSectionSubtotal(section), 0);
+             .reduce((sum, section) => sum + calculateSectionSubtotal(section), 0), [sectionOrder, calculateSectionSubtotal]);
   
-  const totalShopCosts = calculateSectionSubtotal('Shop') + 
+  const totalShopCosts = useMemo(() => calculateSectionSubtotal('Shop') + 
            sectionOrder
              .filter(s => s.startsWith('Shop Section'))
-             .reduce((sum, section) => sum + calculateSectionSubtotal(section), 0);
+             .reduce((sum, section) => sum + calculateSectionSubtotal(section), 0), [sectionOrder, calculateSectionSubtotal]);
   
-  const totalMiscellaneousCosts = calculateSectionSubtotal('Miscellaneous') + 
+  const totalMiscellaneousCosts = useMemo(() => calculateSectionSubtotal('Miscellaneous') + 
            sectionOrder
              .filter(s => s.startsWith('Miscellaneous Section'))
-             .reduce((sum, section) => sum + calculateSectionSubtotal(section), 0);
+             .reduce((sum, section) => sum + calculateSectionSubtotal(section), 0), [sectionOrder, calculateSectionSubtotal]);
   
   // Total Direct Project Costs (sum of all specific costs)
-  const totalDirectProjectCosts = totalProductsCosts + totalLabourCosts + totalSubContractorsCosts + totalShopCosts + totalMiscellaneousCosts;
+  const totalDirectProjectCosts = useMemo(() => totalProductsCosts + totalLabourCosts + totalSubContractorsCosts + totalShopCosts + totalMiscellaneousCosts, [totalProductsCosts, totalLabourCosts, totalSubContractorsCosts, totalShopCosts, totalMiscellaneousCosts]);
   
   // Calculate total without markup for all items
-  const totalWithoutMarkup = items.reduce((acc, it) => {
+  const totalWithoutMarkup = useMemo(() => items.reduce((acc, it) => {
     const m = itemExtrasMap[`item_${it.id}`]?.markup !== undefined && itemExtrasMap[`item_${it.id}`].markup !== null ? itemExtrasMap[`item_${it.id}`].markup : markup;
     let itemTotal = 0;
     const section = it.section || 'Miscellaneous';
@@ -907,10 +920,10 @@ function ProjectCostsSummary({ projectId, estimates }:{ projectId:string, estima
       }
     }
     return acc + itemTotal;
-  }, 0);
+  }, 0), [items, markup, itemExtrasMap]);
   
   // Calculate total with markup for all items
-  const totalWithMarkupAll = items.reduce((acc, it) => {
+  const totalWithMarkupAll = useMemo(() => items.reduce((acc, it) => {
     const m = itemExtrasMap[`item_${it.id}`]?.markup !== undefined && itemExtrasMap[`item_${it.id}`].markup !== null ? itemExtrasMap[`item_${it.id}`].markup : markup;
     let itemTotal = 0;
     const section = it.section || 'Miscellaneous';
@@ -935,13 +948,13 @@ function ProjectCostsSummary({ projectId, estimates }:{ projectId:string, estima
       }
     }
     return acc + (itemTotal * (1 + (m/100)));
-  }, 0);
+  }, 0), [items, markup, itemExtrasMap]);
   
   // Sections Mark-up (difference between total with markup and total without markup)
-  const sectionsMarkup = totalWithMarkupAll - totalWithoutMarkup;
+  const sectionsMarkup = useMemo(() => totalWithMarkupAll - totalWithoutMarkup, [totalWithMarkupAll, totalWithoutMarkup]);
   
   // Calculate taxable total (only taxable items) with markup
-  const taxableTotal = items.reduce((acc, it) => {
+  const taxableTotal = useMemo(() => items.reduce((acc, it) => {
     const extras = itemExtrasMap[`item_${it.id}`];
     if (extras?.taxable === false) return acc;
     const m = extras?.markup !== undefined && extras.markup !== null ? extras.markup : markup;
@@ -968,17 +981,17 @@ function ProjectCostsSummary({ projectId, estimates }:{ projectId:string, estima
       }
     }
     return acc + (itemTotal * (1 + (m/100)));
-  }, 0);
+  }, 0), [items, markup, itemExtrasMap]);
   
-  const pst = taxableTotal * (pstRate / 100);
-  const subtotal = totalDirectProjectCosts + pst;
-  const profitValue = subtotal * (profitRate / 100);
-  const finalTotal = subtotal + profitValue;
-  const gst = finalTotal * (gstRate / 100);
-  const grandTotal = finalTotal + gst;
+  const pst = useMemo(() => taxableTotal * (pstRate / 100), [taxableTotal, pstRate]);
+  const subtotal = useMemo(() => totalDirectProjectCosts + pst, [totalDirectProjectCosts, pst]);
+  const profitValue = useMemo(() => subtotal * (profitRate / 100), [subtotal, profitRate]);
+  const finalTotal = useMemo(() => subtotal + profitValue, [subtotal, profitValue]);
+  const gst = useMemo(() => finalTotal * (gstRate / 100), [finalTotal, gstRate]);
+  const grandTotal = useMemo(() => finalTotal + gst, [finalTotal, gst]);
   
   // Calculate markup percentage (Sections Mark-up / Total Direct Project Costs * 100)
-  const markupPercentage = totalDirectProjectCosts > 0 ? (sectionsMarkup / totalDirectProjectCosts) * 100 : 0;
+  const markupPercentage = useMemo(() => totalDirectProjectCosts > 0 ? (sectionsMarkup / totalDirectProjectCosts) * 100 : 0, [sectionsMarkup, totalDirectProjectCosts]);
   
   const summaryItems = [
     { label: 'Subtotal', value: totalDirectProjectCosts },
