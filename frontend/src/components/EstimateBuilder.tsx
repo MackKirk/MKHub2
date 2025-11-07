@@ -116,6 +116,7 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
         setProfitRate(estimateData.profit_rate);
       }
       if (estimateData.section_order) setSectionOrder(estimateData.section_order);
+      if (estimateData.section_names) setSectionNames(estimateData.section_names);
       if (est.markup !== undefined) setMarkup(est.markup);
       
       // Convert loaded items to Item format
@@ -229,6 +230,7 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
         gst_rate: gstRate,
         profit_rate: profitRate,
         section_order: sectionOrder,
+        section_names: sectionNames,
         items: items.map(it=> ({ 
           material_id: it.material_id, 
           quantity: it.quantity, 
@@ -275,7 +277,7 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
     } finally {
       isAutoSavingRef.current = false;
     }
-  }, [projectId, markup, pstRate, gstRate, profitRate, sectionOrder, items, currentEstimateId, canEdit]);
+  }, [projectId, markup, pstRate, gstRate, profitRate, sectionOrder, sectionNames, items, currentEstimateId, canEdit]);
 
   // Show warning if editing is restricted
   useEffect(() => {
@@ -358,7 +360,11 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
   const totalWithMarkup = useMemo(() => {
     return Object.keys(groupedItems).reduce((acc, section) => {
       const sectionItems = groupedItems[section];
-      const isLabourSection = ['Labour', 'Sub-Contractors', 'Shop', 'Miscellaneous'].includes(section);
+      const isLabourSection = ['Labour', 'Sub-Contractors', 'Shop', 'Miscellaneous'].includes(section) ||
+                              section.startsWith('Labour Section') ||
+                              section.startsWith('Sub-Contractor Section') ||
+                              section.startsWith('Shop Section') ||
+                              section.startsWith('Miscellaneous Section');
       const sectionTotal = sectionItems.reduce((sum, it) => {
         const m = it.markup !== undefined && it.markup !== null ? it.markup : markup;
         let itemTotal = 0;
@@ -381,17 +387,64 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
     }, 0);
   }, [groupedItems, markup]);
 
-  // Calculate Sections Mark-up as the difference between total with markup and total without markup
+  // Calculate Sections Mark-up as the difference between total with markup and total without markup for all products
   const markupValue = useMemo(() => {
-    return totalWithMarkup - total;
-  }, [totalWithMarkup, total]);
-
-  const subtotal = useMemo(()=> totalWithMarkup + pst, [totalWithMarkup, pst]);
-
-  const profitValue = useMemo(()=> subtotal * (profitRate/100), [subtotal, profitRate]);
-  const finalTotal = useMemo(()=> subtotal + profitValue, [subtotal, profitValue]);
-  const gst = useMemo(()=> finalTotal * (gstRate/100), [finalTotal, gstRate]);
-  const grandTotal = useMemo(()=> finalTotal + gst, [finalTotal, gst]);
+    // Calculate total without markup for all items
+    const totalWithoutMarkup = items.reduce((acc, it) => {
+      const m = it.markup !== undefined && it.markup !== null ? it.markup : markup;
+      let itemTotal = 0;
+      const section = it.section || 'Miscellaneous';
+      const isLabourSection = ['Labour', 'Sub-Contractors', 'Shop', 'Miscellaneous'].includes(section) ||
+                              section.startsWith('Labour Section') ||
+                              section.startsWith('Sub-Contractor Section') ||
+                              section.startsWith('Shop Section') ||
+                              section.startsWith('Miscellaneous Section');
+      
+      if (!isLabourSection) {
+        itemTotal = it.quantity * it.unit_price;
+      } else {
+        if (it.item_type === 'labour' && it.labour_journey_type) {
+          if (it.labour_journey_type === 'contract') {
+            itemTotal = (it.labour_journey || 0) * it.unit_price;
+          } else {
+            itemTotal = (it.labour_journey || 0) * (it.labour_men || 0) * it.unit_price;
+          }
+        } else {
+          itemTotal = it.quantity * it.unit_price;
+        }
+      }
+      return acc + itemTotal;
+    }, 0);
+    
+    // Calculate total with markup for all items
+    const totalWithMarkupAll = items.reduce((acc, it) => {
+      const m = it.markup !== undefined && it.markup !== null ? it.markup : markup;
+      let itemTotal = 0;
+      const section = it.section || 'Miscellaneous';
+      const isLabourSection = ['Labour', 'Sub-Contractors', 'Shop', 'Miscellaneous'].includes(section) ||
+                              section.startsWith('Labour Section') ||
+                              section.startsWith('Sub-Contractor Section') ||
+                              section.startsWith('Shop Section') ||
+                              section.startsWith('Miscellaneous Section');
+      
+      if (!isLabourSection) {
+        itemTotal = it.quantity * it.unit_price;
+      } else {
+        if (it.item_type === 'labour' && it.labour_journey_type) {
+          if (it.labour_journey_type === 'contract') {
+            itemTotal = (it.labour_journey || 0) * it.unit_price;
+          } else {
+            itemTotal = (it.labour_journey || 0) * (it.labour_men || 0) * it.unit_price;
+          }
+        } else {
+          itemTotal = it.quantity * it.unit_price;
+        }
+      }
+      return acc + (itemTotal * (1 + (m/100)));
+    }, 0);
+    
+    return totalWithMarkupAll - totalWithoutMarkup;
+  }, [items, markup]);
 
   // Helper function to calculate section subtotal
   const calculateSectionSubtotal = useCallback((sectionName: string): number => {
@@ -460,6 +513,18 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
              .reduce((sum, section) => sum + calculateSectionSubtotal(section), 0);
   }, [sectionOrder, calculateSectionSubtotal]);
 
+  // Calculate Total Direct Project Costs as sum of all specific costs
+  const totalDirectProjectCosts = useMemo(() => {
+    return totalProductsCosts + totalLabourCosts + totalSubContractorsCosts + totalShopCosts + totalMiscellaneousCosts;
+  }, [totalProductsCosts, totalLabourCosts, totalSubContractorsCosts, totalShopCosts, totalMiscellaneousCosts]);
+
+  const subtotal = useMemo(()=> totalDirectProjectCosts + pst, [totalDirectProjectCosts, pst]);
+
+  const profitValue = useMemo(()=> subtotal * (profitRate/100), [subtotal, profitRate]);
+  const finalTotal = useMemo(()=> subtotal + profitValue, [subtotal, profitValue]);
+  const gst = useMemo(()=> finalTotal * (gstRate/100), [finalTotal, gstRate]);
+  const grandTotal = useMemo(()=> finalTotal + gst, [finalTotal, gst]);
+
   // Track dirty state
   useEffect(() => {
     if (!savedStateRef.current) {
@@ -489,6 +554,7 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
         gst_rate: gstRate,
         profit_rate: profitRate,
         section_order: sectionOrder,
+        section_names: sectionNames,
         items: items.map(it=> ({ 
           material_id: it.material_id, 
           quantity: it.quantity, 
@@ -527,7 +593,7 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
     } catch (e) {
       toast.error('Failed to save');
     }
-  }, [canEdit, projectId, items, markup, pstRate, gstRate, profitRate, sectionOrder, currentEstimateId]);
+  }, [canEdit, projectId, items, markup, pstRate, gstRate, profitRate, sectionOrder, sectionNames, currentEstimateId]);
 
   // Sync section order with items (add new sections that appear in items)
   useEffect(()=>{
@@ -752,6 +818,8 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
         gstRate={gstRate}
         markup={markup}
         profitRate={profitRate}
+        sectionNames={sectionNames}
+        sectionOrder={sectionOrder}
       />
 
       {/* Product View Modal */}
@@ -1433,7 +1501,7 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
               <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span>Total Sub-Contractors Costs</span><span>${totalSubContractorsCosts.toFixed(2)}</span></div>
               <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span>Total Shop Costs</span><span>${totalShopCosts.toFixed(2)}</span></div>
               <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span>Total Miscellaneous Costs</span><span>${totalMiscellaneousCosts.toFixed(2)}</span></div>
-              <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span className="font-bold">Total Direct Project Costs</span><span className="font-bold">${totalWithMarkup.toFixed(2)}</span></div>
+              <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span className="font-bold">Total Direct Project Costs</span><span className="font-bold">${totalDirectProjectCosts.toFixed(2)}</span></div>
               <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span>PST ({pstRate}%)</span><span>${pst.toFixed(2)}</span></div>
               <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span className="font-bold">Sub-total</span><span className="font-bold">${subtotal.toFixed(2)}</span></div>
             </div>
@@ -1569,7 +1637,7 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
   );
 }
 
-function SummaryModal({ open, onClose, items, pstRate, gstRate, markup, profitRate }: { open:boolean, onClose:()=>void, items:Item[], pstRate:number, gstRate:number, markup:number, profitRate:number }){
+function SummaryModal({ open, onClose, items, pstRate, gstRate, markup, profitRate, sectionNames, sectionOrder }: { open:boolean, onClose:()=>void, items:Item[], pstRate:number, gstRate:number, markup:number, profitRate:number, sectionNames:Record<string, string>, sectionOrder:string[] }){
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
@@ -1595,6 +1663,17 @@ function SummaryModal({ open, onClose, items, pstRate, gstRate, markup, profitRa
     const itemMarkup = it.markup !== undefined && it.markup !== null ? it.markup : markup;
     return itemTotal * (1 + (itemMarkup / 100));
   };
+
+  // Helper to get display name for section
+  const getSectionDisplayName = useCallback((section: string): string => {
+    return sectionNames[section] || 
+      (section.startsWith('Labour Section') ? 'Labour' :
+       section.startsWith('Sub-Contractor Section') ? 'Sub-Contractor' :
+       section.startsWith('Miscellaneous Section') ? 'Miscellaneous' :
+       section.startsWith('Shop Section') ? 'Shop' :
+       section.startsWith('Product Section') ? 'Product Section' :
+       section);
+  }, [sectionNames]);
 
   // Calculate costs by section
   const costsBySection = useMemo(() => {
@@ -1694,7 +1773,7 @@ function SummaryModal({ open, onClose, items, pstRate, gstRate, markup, profitRa
                   const percentage = totalCost > 0 ? (total / totalCost * 100) : 0;
                   return (
                     <tr key={section} className="border-b hover:bg-gray-50">
-                      <td className="p-2">{section}</td>
+                      <td className="p-2">{getSectionDisplayName(section)}</td>
                       <td className="p-2 text-right">${total.toFixed(2)}</td>
                       <td className="p-2 text-right">{percentage.toFixed(2)}%</td>
                     </tr>
@@ -1738,34 +1817,6 @@ function SummaryModal({ open, onClose, items, pstRate, gstRate, markup, profitRa
             </div>
           )}
 
-          {/* Material & Supplies Analysis */}
-          {materialTotal > 0 && (
-            <div className="rounded-xl border bg-white overflow-hidden">
-              <div className="bg-gray-50 px-4 py-2 border-b font-semibold">Material & Supplies Analysis</div>
-              <div className="px-4 py-2 bg-blue-50 border-b">Total Material Cost: ${materialTotal.toFixed(2)}</div>
-              <table className="w-full text-sm">
-                <thead className="bg-gray-50 border-b">
-                  <tr>
-                    <th className="p-2 text-left">Section</th>
-                    <th className="p-2 text-right">Subtotal</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {Object.keys(costsBySection)
-                    .filter(s => !['Labour'].includes(s))
-                    .map(section => {
-                      const total = costsBySection[section];
-                      return (
-                        <tr key={section} className="border-b hover:bg-gray-50">
-                          <td className="p-2">{section}</td>
-                          <td className="p-2 text-right">${total.toFixed(2)}</td>
-                        </tr>
-                      );
-                    })}
-                </tbody>
-              </table>
-            </div>
-          )}
 
           {/* Final Summary */}
           <div className="rounded-xl border bg-white overflow-hidden">
