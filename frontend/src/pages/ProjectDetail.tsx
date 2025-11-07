@@ -802,25 +802,24 @@ function ProjectCostsSummary({ projectId, estimates }:{ projectId:string, estima
   }
   
   // Extract data from estimateData
-  const items = useMemo(() => estimateData?.items || [], [estimateData]);
-  const markup = useMemo(() => estimateData?.estimate?.markup || estimateData?.markup || 0, [estimateData]);
-  const pstRate = useMemo(() => estimateData?.pst_rate ?? 0, [estimateData]);
-  const gstRate = useMemo(() => estimateData?.gst_rate ?? 0, [estimateData]);
-  const profitRate = useMemo(() => estimateData?.profit_rate ?? 20, [estimateData]); // Default to 20%
-  const sectionOrder = useMemo(() => estimateData?.section_order || [], [estimateData]);
+  const items = estimateData?.items || [];
+  const markup = estimateData?.estimate?.markup || estimateData?.markup || 0;
+  const pstRate = estimateData?.pst_rate ?? 0;
+  const gstRate = estimateData?.gst_rate ?? 0;
+  const profitRate = estimateData?.profit_rate ?? 20; // Default to 20%
+  const sectionOrder = estimateData?.section_order || [];
   
   // Parse UI state for item extras
-  const uiState = useMemo(() => {
+  const itemExtrasMap = useMemo(() => {
     const notes = estimateData?.estimate?.notes || estimateData?.notes;
     if (!notes) return {};
     try {
-      return JSON.parse(notes);
+      const uiState = JSON.parse(notes);
+      return uiState.item_extras || {};
     } catch {
       return {};
     }
   }, [estimateData]);
-  
-  const itemExtrasMap = useMemo(() => uiState.item_extras || {}, [uiState]);
   
   // Group items by section
   const groupedItems = useMemo(() => {
@@ -993,13 +992,13 @@ function ProjectCostsSummary({ projectId, estimates }:{ projectId:string, estima
   // Calculate markup percentage (Sections Mark-up / Total Direct Project Costs * 100)
   const markupPercentage = useMemo(() => totalDirectProjectCosts > 0 ? (sectionsMarkup / totalDirectProjectCosts) * 100 : 0, [sectionsMarkup, totalDirectProjectCosts]);
   
-  const summaryItems = [
+  const summaryItems = useMemo(() => [
     { label: 'Subtotal', value: totalDirectProjectCosts },
     { label: `Markup (${markupPercentage.toFixed(1)}%)`, value: sectionsMarkup },
     { label: `PST (${pstRate}%)`, value: pst },
     { label: `Profit (${profitRate}%)`, value: profitValue },
     { label: `GST (${gstRate}%)`, value: gst },
-  ];
+  ], [totalDirectProjectCosts, markupPercentage, sectionsMarkup, pstRate, pst, profitRate, profitValue, gstRate, gst]);
   
   return (
     <div className="md:col-span-3 rounded-xl border bg-white p-4">
