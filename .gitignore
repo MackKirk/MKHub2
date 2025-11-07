@@ -41,6 +41,7 @@ var/storage/
 .env
 .env.local
 .env.*.local
+SECRETS.md
 
 # OS files
 .DS_Store
