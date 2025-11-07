@@ -1,5 +1,5 @@
 import { useMemo, useState, useEffect, useRef, useCallback } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
 import { useConfirm } from '@/components/ConfirmProvider';
@@ -9,6 +9,7 @@ type Item = { material_id?:number, name:string, unit?:string, quantity:number, u
 
 export default function EstimateBuilder({ projectId, estimateId, statusLabel, settings }: { projectId: string, estimateId?: number, statusLabel?: string, settings?: any }){
   const confirm = useConfirm();
+  const queryClient = useQueryClient();
   const [items, setItems] = useState<Item[]>([]);
   const [markup, setMarkup] = useState<number>(5);
   const [pstRate, setPstRate] = useState<number>(7);
@@ -79,11 +80,22 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
   }, [projectEstimates, currentEstimateId, estimateId]);
 
   // Load estimate data if estimateId is provided
-  const { data: estimateData } = useQuery({
+  const { data: estimateData, refetch: refetchEstimate } = useQuery({
     queryKey: ['estimate', currentEstimateId],
     queryFn: () => currentEstimateId ? api<any>('GET', `/estimate/estimates/${currentEstimateId}`) : Promise.resolve(null),
     enabled: !!currentEstimateId
   });
+  
+  // Invalidate and refetch estimate data when component mounts or when estimateId changes to ensure fresh data
+  const hasLoadedRef = useRef<number | undefined>(undefined);
+  useEffect(() => {
+    if (currentEstimateId && hasLoadedRef.current !== currentEstimateId) {
+      hasLoadedRef.current = currentEstimateId;
+      // Invalidate cache and refetch to ensure we have the latest data
+      queryClient.invalidateQueries({ queryKey: ['estimate', currentEstimateId] });
+      refetchEstimate();
+    }
+  }, [currentEstimateId, queryClient, refetchEstimate]);
 
   // Load product data when viewing a product
   const { data: viewingProduct } = useQuery({
@@ -160,8 +172,17 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
       setItems(formattedItems);
       // Update lastAutoSaveRef when estimate is loaded to prevent immediate auto-save
       lastAutoSaveRef.current = Date.now();
+      // Update savedStateRef to match loaded data so dirty check works correctly
+      savedStateRef.current = { 
+        items: formattedItems, 
+        markup: est.markup !== undefined ? est.markup : markup, 
+        pstRate: estimateData.pst_rate !== undefined && estimateData.pst_rate !== null ? estimateData.pst_rate : pstRate, 
+        gstRate: estimateData.gst_rate !== undefined && estimateData.gst_rate !== null ? estimateData.gst_rate : gstRate, 
+        profitRate: estimateData.profit_rate !== undefined && estimateData.profit_rate !== null ? estimateData.profit_rate : profitRate, 
+        sectionOrder: estimateData.section_order || sectionOrder 
+      };
     }
-  }, [estimateData, currentEstimateId]);
+  }, [estimateData, currentEstimateId, markup, pstRate, gstRate, profitRate, sectionOrder]);
 
   // Calculate item total based on item type
   const calculateItemTotal = (it: Item): number => {
@@ -264,23 +285,29 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
         return;
       }
       
-      if (currentEstimateId) {
+      let estimateIdToUse = currentEstimateId;
+      if (estimateIdToUse) {
         // Update existing estimate
-        await api('PUT', `/estimate/estimates/${currentEstimateId}`, payload);
+        await api('PUT', `/estimate/estimates/${estimateIdToUse}`, payload);
       } else {
         // Create new estimate
         const result = await api<any>('POST', '/estimate/estimates', payload);
-        setCurrentEstimateId(result.id);
+        estimateIdToUse = result.id;
+        setCurrentEstimateId(estimateIdToUse);
       }
       savedStateRef.current = { items, markup, pstRate, gstRate, profitRate, sectionOrder };
       setDirty(false);
       lastAutoSaveRef.current = Date.now();
+      
+      // Invalidate cache to ensure fresh data on remount
+      queryClient.invalidateQueries({ queryKey: ['estimate', estimateIdToUse] });
+      queryClient.invalidateQueries({ queryKey: ['projectEstimates', projectId] });
     } catch (e) {
       // Silent fail for auto-save
     } finally {
       isAutoSavingRef.current = false;
     }
-  }, [projectId, markup, pstRate, gstRate, profitRate, sectionOrder, sectionNames, items, currentEstimateId, canEdit]);
+  }, [projectId, markup, pstRate, gstRate, profitRate, sectionOrder, sectionNames, items, currentEstimateId, canEdit, queryClient]);
 
   // Show warning if editing is restricted
   useEffect(() => {
@@ -583,20 +610,26 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
         })) 
       };
       
-      if (currentEstimateId) {
-        await api('PUT', `/estimate/estimates/${currentEstimateId}`, payload);
+      let estimateIdToUse = currentEstimateId;
+      if (estimateIdToUse) {
+        await api('PUT', `/estimate/estimates/${estimateIdToUse}`, payload);
       } else {
         const result = await api<any>('POST', '/estimate/estimates', payload);
-        setCurrentEstimateId(result.id);
+        estimateIdToUse = result.id;
+        setCurrentEstimateId(estimateIdToUse);
       }
       
       savedStateRef.current = { items, markup, pstRate, gstRate, profitRate, sectionOrder };
       setDirty(false);
       toast.success('Changes saved');
+      
+      // Invalidate cache to ensure fresh data on remount
+      queryClient.invalidateQueries({ queryKey: ['estimate', estimateIdToUse] });
+      queryClient.invalidateQueries({ queryKey: ['projectEstimates', projectId] });
     } catch (e) {
       toast.error('Failed to save');
     }
-  }, [canEdit, projectId, items, markup, pstRate, gstRate, profitRate, sectionOrder, sectionNames, currentEstimateId]);
+  }, [canEdit, projectId, items, markup, pstRate, gstRate, profitRate, sectionOrder, sectionNames, currentEstimateId, queryClient]);
 
   // Sync section order with items (add new sections that appear in items)
   useEffect(()=>{
@@ -809,30 +842,6 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
             <label>Markup (%)</label><input type="number" className="border rounded px-2 py-1 w-20" value={markup} min={0} step={1} onChange={e=>setMarkup(Number(e.target.value||0))} disabled={!canEdit} />
             <label>PST (%)</label><input type="number" className="border rounded px-2 py-1 w-20" value={pstRate} min={0} step={1} onChange={e=>setPstRate(Number(e.target.value||0))} disabled={!canEdit} />
             <label>GST (%)</label><input type="number" className="border rounded px-2 py-1 w-20" value={gstRate} min={0} step={1} onChange={e=>setGstRate(Number(e.target.value||0))} disabled={!canEdit} />
-            <button
-              onClick={async () => {
-                if (!canEdit) {
-                  toast.error('Editing is restricted for this project status');
-                  return;
-                }
-                const ok = await confirm({
-                  title: 'Clear Estimate',
-                  message: 'Are you sure you want to clear all sections and items? This action cannot be undone.',
-                  confirmText: 'Clear',
-                  cancelText: 'Cancel'
-                });
-                if (ok) {
-                  setItems([]);
-                  setSectionOrder(defaultSections);
-                  setSectionNames({});
-                  setDirty(true);
-                  toast.success('Estimate cleared');
-                }
-              }}
-              disabled={!canEdit || items.length === 0}
-              className="px-3 py-2 rounded text-white bg-gradient-to-br from-[#7f1010] to-[#a31414] hover:from-[#6d0d0d] hover:to-[#8f1111] disabled:opacity-60 disabled:cursor-not-allowed">
-              Clear Estimate
-            </button>
           </div>
         </div>
       </div>
