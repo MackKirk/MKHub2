@@ -1,5 +1,5 @@
 import { useParams, Link, useLocation, useNavigate } from 'react-router-dom';
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo, useState, useEffect, useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
@@ -834,7 +834,7 @@ function ProjectCostsSummary({ projectId, estimates }:{ projectId:string, estima
   }, [items]);
   
   // Helper function to calculate section subtotal (same as EstimateBuilder)
-  const calculateSectionSubtotal = useMemo(() => (sectionName: string): number => {
+  const calculateSectionSubtotal = useCallback((sectionName: string): number => {
     const sectionItems = groupedItems[sectionName] || [];
     const isLabourSection = ['Labour', 'Sub-Contractors', 'Shop', 'Miscellaneous'].includes(sectionName) || 
                           sectionName.startsWith('Labour Section') || 
