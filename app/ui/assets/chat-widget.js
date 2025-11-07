@@ -164,7 +164,7 @@
 
   const wsProto = location.protocol === 'https:' ? 'wss' : 'ws';
   const ws = new WebSocket(wsProto + '://' + location.host + '/ws/chat?token=' + encodeURIComponent(token));
-  ws.onmessage = (e) => {
+  ws.onmessage = async (e) => {
     try {
       const msg = JSON.parse(e.data);
       if (msg.event === 'unread_count') {
@@ -174,20 +174,36 @@
       } else if (msg.event === 'message_new') {
         const cm = msg.data && msg.data.message;
         const cid = msg.data && msg.data.conversation_id;
+        
+        // Always update unread count
+        const unread = await api('GET', '/chat/unread_count');
+        const total = unread && unread.total || 0;
+        if (total > 0) { badge.style.display = 'inline-block'; badge.textContent = String(total); }
+        else { badge.style.display = 'none'; }
+        
+        // If this message is for the active conversation, append it
         if (activeConv && cid === activeConv.id) {
           appendMessage(cm);
           markRead(activeConv.id);
+          // Update unread count again after marking as read
+          const unreadAfter = await api('GET', '/chat/unread_count');
+          const totalAfter = unreadAfter && unreadAfter.total || 0;
+          if (totalAfter > 0) { badge.style.display = 'inline-block'; badge.textContent = String(totalAfter); }
+          else { badge.style.display = 'none'; }
         }
-        loadConversations();
+        
+        // Always reload conversations to update previews
+        await loadConversations();
       } else if (msg.event === 'conversation_updated') {
-        loadConversations().then(() => {
-          if (activeConv) {
-            const updated = conversations.find(c => c.id === activeConv.id);
-            if (updated) { activeConv = updated; showChat(updated); }
-          }
-        });
+        await loadConversations();
+        if (activeConv) {
+          const updated = conversations.find(c => c.id === activeConv.id);
+          if (updated) { activeConv = updated; showChat(updated); }
+        }
       }
-    } catch (err) {}
+    } catch (err) {
+      console.error('WebSocket error:', err);
+    }
   };
 
   const fmtInitials = (name) => {
@@ -286,8 +302,17 @@
       </div>
       ${mine ? avatar : ''}
     `;
-    msgsEl.appendChild(wrap);
-    msgsEl.scrollTop = msgsEl.scrollHeight;
+    // Always append to the end (after load-more button if it exists)
+    const loadMoreContainer = msgsEl.querySelector('.mkchat-load-more');
+    if (loadMoreContainer) {
+      loadMoreContainer.insertAdjacentElement('afterend', wrap);
+    } else {
+      msgsEl.appendChild(wrap);
+    }
+    // Scroll to bottom after adding message
+    setTimeout(() => {
+      msgsEl.scrollTop = msgsEl.scrollHeight;
+    }, 10);
   };
 
   const loadMessages = async (cid, before) => {
@@ -344,6 +369,10 @@
         return;
       }
       
+      // API returns messages in chronological order (oldest first), which is what we want
+      // When loading initial messages (!before), insert after load-more button
+      // When loading older messages (before), insert before load-more button
+      
       rows.forEach(m => {
         const mine = (me && m.sender_id === me.id);
         const wrap = document.createElement('div');
@@ -363,14 +392,24 @@
           </div>
           ${mine ? avatar : ''}
         `;
-        loadMoreContainer.insertAdjacentElement('afterend', wrap);
+        // If loading older messages (before), insert before load-more button
+        // If loading initial messages (!before), insert after load-more button
+        if (before) {
+          loadMoreContainer.insertAdjacentElement('beforebegin', wrap);
+        } else {
+          loadMoreContainer.insertAdjacentElement('afterend', wrap);
+        }
       });
       
       if (rows.length > 0) {
+        // Update earliestTs to the oldest message in the batch
+        // When loading initial messages, rows[0] is the oldest
+        // When loading older messages, rows[0] is also the oldest (and older than current earliestTs)
         earliestTs = rows[0].created_at;
         const btn = document.getElementById('mkLoadMore');
         if (btn) btn.style.display = 'inline-block';
       } else {
+        // No more messages to load
         const btn = document.getElementById('mkLoadMore');
         if (btn) btn.style.display = 'none';
       }
@@ -513,8 +552,15 @@
   sendBtn.addEventListener('click', async () => {
     const text = (inputEl.value || '').trim();
     if (!text || !activeConv) return;
+    inputEl.value = ''; // Clear input immediately for better UX
     const resp = await api('POST', `/chat/conversations/${activeConv.id}/messages`, { content: text });
-    if (resp && resp.message) { appendMessage(resp.message); inputEl.value = ''; }
+    if (resp && resp.message) { 
+      appendMessage(resp.message);
+      // Ensure scroll to bottom after sending
+      setTimeout(() => {
+        msgsEl.scrollTop = msgsEl.scrollHeight;
+      }, 10);
+    }
   });
   inputEl.addEventListener('keydown', async (e) => { if (e.key === 'Enter') { e.preventDefault(); sendBtn.click(); } });
   btnCreateGroup.addEventListener('click', async () => {
