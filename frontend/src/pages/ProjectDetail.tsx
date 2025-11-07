@@ -148,10 +148,6 @@ export default function ProjectDetail(){
                   <h4 className="font-semibold mb-2">Schedule</h4>
                   <CalendarMock title="Project Calendar (mock)" />
                 </div>
-                <div className="md:col-span-3 rounded-xl border bg-white p-4">
-                  <h4 className="font-semibold mb-2">Description</h4>
-                  <div className="text-sm text-gray-700 whitespace-pre-wrap">{proj?.description||'-'}</div>
-                </div>
               </div>
             )}
 
@@ -723,6 +719,7 @@ function ProjectQuickEdit({ projectId, proj, settings }:{ projectId:string, proj
 }
 
 function ProjectGeneralInfoCard({ projectId, proj }:{ projectId:string, proj:any }){
+  const queryClient = useQueryClient();
   const [description, setDescription] = useState<string>(proj?.description || '');
   const [saving, setSaving] = useState(false);
 
@@ -735,6 +732,7 @@ function ProjectGeneralInfoCard({ projectId, proj }:{ projectId:string, proj:any
       setSaving(true);
       await api('PATCH', `/projects/${projectId}`, { description: description?.trim()? description : null });
       toast.success('Description saved');
+      queryClient.invalidateQueries({ queryKey: ['project', projectId] });
     }catch(_e){
       toast.error('Failed to save description');
     }finally{
@@ -742,12 +740,18 @@ function ProjectGeneralInfoCard({ projectId, proj }:{ projectId:string, proj:any
     }
   }, [projectId, description]);
 
+  const city = proj?.address_city || proj?.site_city || '—';
+  const province = proj?.address_province || proj?.site_province || proj?.site_state || '—';
+  const country = proj?.address_country || proj?.site_country || '—';
+  const postal = proj?.address_postal_code || proj?.postal_code || proj?.site_postal_code || proj?.site_zip || '—';
+
   const fields = useMemo(()=>[
-    { label: 'Project Name', value: proj?.name || '—' },
-    { label: 'City', value: proj?.address_city || '—' },
-    { label: 'Province / State', value: proj?.address_province || '—' },
-    { label: 'Country', value: proj?.address_country || '—' },
-  ], [proj?.name, proj?.address_city, proj?.address_province, proj?.address_country]);
+    { label: 'Project Name', value: proj?.name || proj?.site_name || '—' },
+    { label: 'City', value: city },
+    { label: 'Province / State', value: province },
+    { label: 'Country', value: country },
+    { label: 'Postal Code', value: postal },
+  ], [proj?.name, proj?.site_name, city, province, country, postal]);
 
   return (
     <div className="rounded-xl border bg-white p-4">
