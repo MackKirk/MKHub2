@@ -13,7 +13,7 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
   const [markup, setMarkup] = useState<number>(5);
   const [pstRate, setPstRate] = useState<number>(7);
   const [gstRate, setGstRate] = useState<number>(5);
-  const [profitRate, setProfitRate] = useState<number>(0);
+  const [profitRate, setProfitRate] = useState<number>(20);
   const defaultSections = ['Roof System','Wood Blocking / Accessories','Flashing'];
   const [sectionOrder, setSectionOrder] = useState<string[]>(defaultSections);
   const [summaryOpen, setSummaryOpen] = useState(false);
@@ -114,6 +114,9 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
       }
       if (estimateData.profit_rate !== undefined && estimateData.profit_rate !== null) {
         setProfitRate(estimateData.profit_rate);
+      } else {
+        // Default to 20% if not set
+        setProfitRate(20);
       }
       if (estimateData.section_order) setSectionOrder(estimateData.section_order);
       if (estimateData.section_names) setSectionNames(estimateData.section_names);
@@ -806,6 +809,30 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
             <label>Markup (%)</label><input type="number" className="border rounded px-2 py-1 w-20" value={markup} min={0} step={1} onChange={e=>setMarkup(Number(e.target.value||0))} disabled={!canEdit} />
             <label>PST (%)</label><input type="number" className="border rounded px-2 py-1 w-20" value={pstRate} min={0} step={1} onChange={e=>setPstRate(Number(e.target.value||0))} disabled={!canEdit} />
             <label>GST (%)</label><input type="number" className="border rounded px-2 py-1 w-20" value={gstRate} min={0} step={1} onChange={e=>setGstRate(Number(e.target.value||0))} disabled={!canEdit} />
+            <button
+              onClick={async () => {
+                if (!canEdit) {
+                  toast.error('Editing is restricted for this project status');
+                  return;
+                }
+                const ok = await confirm({
+                  title: 'Clear Estimate',
+                  message: 'Are you sure you want to clear all sections and items? This action cannot be undone.',
+                  confirmText: 'Clear',
+                  cancelText: 'Cancel'
+                });
+                if (ok) {
+                  setItems([]);
+                  setSectionOrder(defaultSections);
+                  setSectionNames({});
+                  setDirty(true);
+                  toast.success('Estimate cleared');
+                }
+              }}
+              disabled={!canEdit || items.length === 0}
+              className="px-3 py-2 rounded text-white bg-gradient-to-br from-[#7f1010] to-[#a31414] hover:from-[#6d0d0d] hover:to-[#8f1111] disabled:opacity-60 disabled:cursor-not-allowed">
+              Clear Estimate
+            </button>
           </div>
         </div>
       </div>
