@@ -1,5 +1,5 @@
 import { useParams, Link, useLocation, useNavigate } from 'react-router-dom';
-import { useMemo, useState, useEffect, useCallback } from 'react';
+import { useMemo, useState, useEffect, useCallback, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
@@ -122,7 +122,7 @@ export default function ProjectDetail(){
                 }} className="px-4 py-2 rounded bg-red-600 hover:bg-red-700 text-white text-sm">Delete Project</button>
               </div>
               <div className="mt-auto flex gap-3">
-                {(['overview','general','reports','timesheet','files','photos','proposal','estimate'] as const).map(k=> (
+                {(['overview','reports','timesheet','files','photos','proposal','estimate'] as const).map(k=> (
                   <button key={k} onClick={()=>setTab(k)} className={`px-4 py-2 rounded-full ${tab===k?'bg-black text-white':'bg-white text-black'}`}>{k[0].toUpperCase()+k.slice(1)}</button>
                 ))}
               </div>
@@ -136,22 +136,9 @@ export default function ProjectDetail(){
           <>
             {tab==='overview' && (
               <div className="grid md:grid-cols-3 gap-4">
-                <div className="rounded-xl border bg-white p-4">
-                  <h4 className="font-semibold mb-2">Client</h4>
-                  <ClientName clientId={String(proj?.client_id||'')} />
-                  <div className="text-sm text-gray-500">{proj?.address_city||''} {proj?.address_province||''} {proj?.address_country||''}</div>
-                </div>
+                <ProjectGeneralInfoCard projectId={String(id)} proj={proj||{}} />
                 <ProjectQuickEdit projectId={String(id)} proj={proj||{}} settings={settings||{}} />
-                <div className="rounded-xl border bg-white p-4">
-                  <h4 className="font-semibold mb-2">Contact</h4>
-                  <div className="flex items-center gap-3">
-                    {(() => { const cid = (proj as any)?.contact_id; if(!cid) return <span className="w-12 h-12 rounded bg-gray-200 inline-block"/>; const rec = (clientFiles||[]).find((f:any)=> String(f.category||'').toLowerCase()===`contact-photo-${String(cid)}`.toLowerCase()); const url = rec? `/files/${rec.file_object_id}/thumbnail?w=160` : ''; return url? <img className="w-12 h-12 rounded border object-cover" src={url}/> : <span className="w-12 h-12 rounded bg-gray-200 inline-block"/>; })()}
-                    <div>
-                      <div className="text-sm text-gray-700">{(proj as any)?.contact_name || '—'}</div>
-                      <div className="text-xs text-gray-600">{(proj as any)?.contact_email || ''} {(proj as any)?.contact_phone? `· ${(proj as any)?.contact_phone}`:''}</div>
-                    </div>
-                  </div>
-                </div>
+                <ProjectContactCard projectId={String(id)} proj={proj||{}} clientId={proj?.client_id ? String(proj.client_id) : undefined} clientFiles={clientFiles||[]} />
                 <div className="rounded-xl border bg-white p-4">
                   <h4 className="font-semibold mb-2">Estimated Time of Completion</h4>
                   <ProjectEtaEdit projectId={String(id)} proj={proj||{}} settings={settings||{}} />
@@ -166,10 +153,6 @@ export default function ProjectDetail(){
                   <div className="text-sm text-gray-700 whitespace-pre-wrap">{proj?.description||'-'}</div>
                 </div>
               </div>
-            )}
-
-            {tab==='general' && (
-              <ProjectGeneralForm projectId={String(id)} proj={proj||{}} onSaved={()=> location.reload()} />
             )}
 
             {tab==='reports' && (
@@ -495,13 +478,25 @@ function AddDivisionDropdown({ divisions, selected, onAdd }:{ divisions:any[], s
 function EmployeeSelect({ label, value, onChange, employees }:{ label:string, value?:string, onChange:(v:string)=>void, employees:any[] }){
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState('');
+  const containerRef = useRef<HTMLDivElement|null>(null);
   const current = (employees||[]).find((e:any)=> String(e.id)===String(value||''));
   const filtered = (employees||[]).filter((e:any)=>{
     const t = (String(e.name||'') + ' ' + String(e.username||'')).toLowerCase();
     return t.includes(q.toLowerCase());
   });
+  useEffect(()=>{
+    if(!open) return;
+    const handleClick = (event: MouseEvent)=>{
+      if(!containerRef.current) return;
+      if(!containerRef.current.contains(event.target as Node)){
+        setOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClick);
+    return ()=> document.removeEventListener('mousedown', handleClick);
+  }, [open]);
   return (
-    <div>
+    <div ref={containerRef}>
       <label className="text-xs text-gray-600">{label}</label>
       <div className="relative">
         <button onClick={()=>setOpen(v=>!v)} className="w-full border rounded px-2 py-1.5 flex items-center gap-2 bg-white">
@@ -681,11 +676,9 @@ function ProjectQuickEdit({ projectId, proj, settings }:{ projectId:string, proj
   const [progress, setProgress] = useState<number>(Number(proj?.progress||0));
   const [estimator, setEstimator] = useState<string>(proj?.estimator_id||'');
   const [lead, setLead] = useState<string>(proj?.onsite_lead_id||'');
-  const [contactId, setContactId] = useState<string>(proj?.contact_id||'');
   const statuses = (settings?.project_statuses||[]) as any[];
   const divisions = (settings?.divisions||[]) as any[];
   const { data:employees } = useQuery({ queryKey:['employees'], queryFn: ()=>api<any[]>('GET','/employees') });
-  const { data:contacts } = useQuery({ queryKey:['project-client-contacts', proj?.client_id||''], queryFn: ()=> (proj?.client_id? api<any[]>('GET', `/clients/${encodeURIComponent(String(proj?.client_id))}/contacts`) : Promise.resolve([])) });
   const toggleDiv = (id:string)=> setDivs(prev=> prev.includes(id)? prev.filter(x=>x!==id) : [...prev, id]);
   return (
     <div className="rounded-xl border bg-white p-4">
@@ -721,15 +714,152 @@ function ProjectQuickEdit({ projectId, proj, settings }:{ projectId:string, proj
         </div>
         <EmployeeSelect label="Estimator" value={estimator} onChange={setEstimator} employees={employees||[]} />
         <EmployeeSelect label="On-site lead" value={lead} onChange={setLead} employees={employees||[]} />
+        <div className="col-span-2 text-right">
+          <button onClick={async()=>{ try{ await api('PATCH', `/projects/${projectId}`, { status_label: status||null, division_ids: divs, progress, estimator_id: estimator||null, onsite_lead_id: lead||null }); toast.success('Saved'); location.reload(); }catch(_e){ toast.error('Failed to save'); } }} className="px-3 py-2 rounded bg-brand-red text-white">Save</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ProjectGeneralInfoCard({ projectId, proj }:{ projectId:string, proj:any }){
+  const [description, setDescription] = useState<string>(proj?.description || '');
+  const [saving, setSaving] = useState(false);
+
+  useEffect(()=>{
+    setDescription(proj?.description || '');
+  }, [proj?.description]);
+
+  const handleSave = useCallback(async()=>{
+    try{
+      setSaving(true);
+      await api('PATCH', `/projects/${projectId}`, { description: description?.trim()? description : null });
+      toast.success('Description saved');
+    }catch(_e){
+      toast.error('Failed to save description');
+    }finally{
+      setSaving(false);
+    }
+  }, [projectId, description]);
+
+  const fields = useMemo(()=>[
+    { label: 'Project Name', value: proj?.name || '—' },
+    { label: 'City', value: proj?.address_city || '—' },
+    { label: 'Province / State', value: proj?.address_province || '—' },
+    { label: 'Country', value: proj?.address_country || '—' },
+  ], [proj?.name, proj?.address_city, proj?.address_province, proj?.address_country]);
+
+  return (
+    <div className="rounded-xl border bg-white p-4">
+      <h4 className="font-semibold mb-2">General Information</h4>
+      <div className="space-y-4 text-sm">
+        <div className="grid grid-cols-2 gap-3">
+          {fields.map((item)=> (
+            <div key={item.label}>
+              <div className="text-xs text-gray-600">{item.label}</div>
+              <div className="mt-1 text-gray-800">{item.value}</div>
+            </div>
+          ))}
+        </div>
+        <div>
+          <label className="text-xs text-gray-600">Description</label>
+          <textarea
+            className="mt-1 w-full border rounded px-3 py-2 text-sm min-h-[120px] resize-y"
+            placeholder="Add notes or general information about this project..."
+            value={description}
+            onChange={e=>setDescription(e.target.value)}
+          />
+        </div>
+        <div className="text-right">
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="px-3 py-2 rounded bg-brand-red text-white disabled:opacity-60"
+          >
+            {saving ? 'Saving...' : 'Save'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ProjectContactCard({ projectId, proj, clientId, clientFiles }:{ projectId:string, proj:any, clientId?:string, clientFiles:any[] }){
+  const [contactId, setContactId] = useState<string>(proj?.contact_id || '');
+  const { data:contacts } = useQuery({
+    queryKey:['project-contact-options', clientId||''],
+    queryFn: ()=> clientId ? api<any[]>('GET', `/clients/${encodeURIComponent(String(clientId))}/contacts`) : Promise.resolve([]),
+    enabled: !!clientId
+  });
+  useEffect(()=>{
+    setContactId(proj?.contact_id || '');
+  }, [proj?.contact_id]);
+  const currentContact = useMemo(()=> (contacts||[]).find((c:any)=> String(c.id) === String(contactId)) || null, [contacts, contactId]);
+  const photoUrl = useMemo(()=>{
+    if(!contactId) return '';
+    const rec = (clientFiles||[]).find((f:any)=> String(f.category||'').toLowerCase() === `contact-photo-${String(contactId)}`.toLowerCase());
+    return rec ? `/files/${rec.file_object_id}/thumbnail?w=160` : '';
+  }, [clientFiles, contactId]);
+  const [saving, setSaving] = useState(false);
+  const handleSave = useCallback(async()=>{
+    try{
+      setSaving(true);
+      await api('PATCH', `/projects/${projectId}`, { contact_id: contactId || null });
+      toast.success('Contact updated');
+    }catch(_e){
+      toast.error('Failed to update contact');
+    }finally{
+      setSaving(false);
+    }
+  }, [projectId, contactId]);
+  const displayName = currentContact?.name || proj?.contact_name || '—';
+  const displayEmail = currentContact?.email || proj?.contact_email || '';
+  const displayPhone = currentContact?.phone || proj?.contact_phone || '';
+  return (
+    <div className="rounded-xl border bg-white p-4">
+      <h4 className="font-semibold mb-2">Contact</h4>
+      <div className="space-y-3">
+        <div className="flex items-center gap-3">
+          {photoUrl ? (
+            <img className="w-12 h-12 rounded border object-cover" src={photoUrl} alt="Contact" />
+          ) : (
+            <span className="w-12 h-12 rounded bg-gray-200 inline-block" />
+          )}
+          <div>
+            <div className="text-sm text-gray-700">{displayName}</div>
+            {(displayEmail || displayPhone) ? (
+              <div className="text-xs text-gray-600">
+                {displayEmail}
+                {displayEmail && displayPhone ? ' · ' : ''}
+                {displayPhone}
+              </div>
+            ) : (
+              <div className="text-xs text-gray-500">No contact details</div>
+            )}
+          </div>
+        </div>
         <div>
           <label className="text-xs text-gray-600">Customer contact</label>
-          <select className="w-full border rounded px-2 py-1.5" value={contactId} onChange={e=>setContactId(e.target.value)}>
-            <option value="">Select...</option>
-            {(contacts||[]).map((c:any)=> <option key={c.id} value={c.id}>{c.name||c.email||c.phone||c.id}</option>)}
+          <select
+            className="w-full border rounded px-2 py-1.5 mt-1"
+            value={contactId}
+            onChange={e=>setContactId(e.target.value)}
+            disabled={!contacts?.length}
+          >
+            <option value="">No contact</option>
+            {(contacts||[]).map((c:any)=> (
+              <option key={c.id} value={c.id}>{c.name || c.email || c.phone || c.id}</option>
+            ))}
           </select>
         </div>
-        <div className="col-span-2 text-right">
-          <button onClick={async()=>{ try{ await api('PATCH', `/projects/${projectId}`, { status_label: status||null, division_ids: divs, progress, estimator_id: estimator||null, onsite_lead_id: lead||null, contact_id: contactId||null }); toast.success('Saved'); location.reload(); }catch(_e){ toast.error('Failed to save'); } }} className="px-3 py-2 rounded bg-brand-red text-white">Save</button>
+        <div className="text-right">
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="px-3 py-2 rounded bg-brand-red text-white disabled:opacity-60"
+          >
+            {saving ? 'Saving...' : 'Save'}
+          </button>
         </div>
       </div>
     </div>
@@ -1021,28 +1151,4 @@ function ProjectCostsSummary({ projectId, estimates }:{ projectId:string, estima
     </div>
   );
 }
-
-function ProjectGeneralForm({ projectId, proj, onSaved }:{ projectId:string, proj:any, onSaved: ()=>void }){
-  const [name, setName] = useState<string>(proj?.name||'');
-  const [city, setCity] = useState<string>(proj?.address_city||'');
-  const [province, setProvince] = useState<string>(proj?.address_province||'');
-  const [country, setCountry] = useState<string>(proj?.address_country||'');
-  const [desc, setDesc] = useState<string>(proj?.description||'');
-  const [contactId, setContactId] = useState<string>(proj?.contact_id||'');
-  const { data:contacts } = useQuery({ queryKey:['project-client-contacts', proj?.client_id||''], queryFn: ()=> (proj?.client_id? api<any[]>('GET', `/clients/${encodeURIComponent(String(proj?.client_id))}/contacts`) : Promise.resolve([])) });
-  return (
-    <div className="grid md:grid-cols-2 gap-4">
-      <div><label className="text-xs text-gray-600">Name</label><input className="w-full border rounded px-3 py-2" value={name} onChange={e=>setName(e.target.value)} /></div>
-      
-      <div><label className="text-xs text-gray-600">City</label><input className="w-full border rounded px-3 py-2" value={city} onChange={e=>setCity(e.target.value)} /></div>
-      <div><label className="text-xs text-gray-600">Province/State</label><input className="w-full border rounded px-3 py-2" value={province} onChange={e=>setProvince(e.target.value)} /></div>
-      <div><label className="text-xs text-gray-600">Country</label><input className="w-full border rounded px-3 py-2" value={country} onChange={e=>setCountry(e.target.value)} /></div>
-      <div><label className="text-xs text-gray-600">Customer contact</label><select className="w-full border rounded px-3 py-2" value={contactId} onChange={e=>setContactId(e.target.value)}><option value="">Select...</option>{(contacts||[]).map((c:any)=> <option key={c.id} value={c.id}>{c.name||c.email||c.phone||c.id}</option>)}</select></div>
-      <div className="md:col-span-2"><label className="text-xs text-gray-600">Description</label><textarea rows={6} className="w-full border rounded px-3 py-2" value={desc} onChange={e=>setDesc(e.target.value)} /></div>
-      <div className="md:col-span-2 text-right"><button onClick={async()=>{ try{ await api('PATCH', `/projects/${projectId}`, { name, address_city: city, address_province: province, address_country: country, description: desc, contact_id: contactId||null }); toast.success('Saved'); onSaved(); }catch(_e){ toast.error('Failed to save'); } }} className="px-4 py-2 rounded bg-brand-red text-white">Save</button></div>
-    </div>
-  );
-}
-
-
 
