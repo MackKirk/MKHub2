@@ -1,5 +1,5 @@
 import { useMemo, useState, useEffect, useRef, useCallback } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
 import { useConfirm } from '@/components/ConfirmProvider';
@@ -9,11 +9,12 @@ type Item = { material_id?:number, name:string, unit?:string, quantity:number, u
 
 export default function EstimateBuilder({ projectId, estimateId, statusLabel, settings }: { projectId: string, estimateId?: number, statusLabel?: string, settings?: any }){
   const confirm = useConfirm();
+  const queryClient = useQueryClient();
   const [items, setItems] = useState<Item[]>([]);
   const [markup, setMarkup] = useState<number>(5);
   const [pstRate, setPstRate] = useState<number>(7);
   const [gstRate, setGstRate] = useState<number>(5);
-  const [profitRate, setProfitRate] = useState<number>(0);
+  const [profitRate, setProfitRate] = useState<number>(20);
   const defaultSections = ['Roof System','Wood Blocking / Accessories','Flashing'];
   const [sectionOrder, setSectionOrder] = useState<string[]>(defaultSections);
   const [summaryOpen, setSummaryOpen] = useState(false);
@@ -79,11 +80,22 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
   }, [projectEstimates, currentEstimateId, estimateId]);
 
   // Load estimate data if estimateId is provided
-  const { data: estimateData } = useQuery({
+  const { data: estimateData, refetch: refetchEstimate } = useQuery({
     queryKey: ['estimate', currentEstimateId],
     queryFn: () => currentEstimateId ? api<any>('GET', `/estimate/estimates/${currentEstimateId}`) : Promise.resolve(null),
     enabled: !!currentEstimateId
   });
+  
+  // Invalidate and refetch estimate data when component mounts or when estimateId changes to ensure fresh data
+  const hasLoadedRef = useRef<number | undefined>(undefined);
+  useEffect(() => {
+    if (currentEstimateId && hasLoadedRef.current !== currentEstimateId) {
+      hasLoadedRef.current = currentEstimateId;
+      // Invalidate cache and refetch to ensure we have the latest data
+      queryClient.invalidateQueries({ queryKey: ['estimate', currentEstimateId] });
+      refetchEstimate();
+    }
+  }, [currentEstimateId, queryClient, refetchEstimate]);
 
   // Load product data when viewing a product
   const { data: viewingProduct } = useQuery({
@@ -114,8 +126,12 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
       }
       if (estimateData.profit_rate !== undefined && estimateData.profit_rate !== null) {
         setProfitRate(estimateData.profit_rate);
+      } else {
+        // Default to 20% if not set
+        setProfitRate(20);
       }
       if (estimateData.section_order) setSectionOrder(estimateData.section_order);
+      if (estimateData.section_names) setSectionNames(estimateData.section_names);
       if (est.markup !== undefined) setMarkup(est.markup);
       
       // Convert loaded items to Item format
@@ -156,8 +172,17 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
       setItems(formattedItems);
       // Update lastAutoSaveRef when estimate is loaded to prevent immediate auto-save
       lastAutoSaveRef.current = Date.now();
+      // Update savedStateRef to match loaded data so dirty check works correctly
+      savedStateRef.current = { 
+        items: formattedItems, 
+        markup: est.markup !== undefined ? est.markup : markup, 
+        pstRate: estimateData.pst_rate !== undefined && estimateData.pst_rate !== null ? estimateData.pst_rate : pstRate, 
+        gstRate: estimateData.gst_rate !== undefined && estimateData.gst_rate !== null ? estimateData.gst_rate : gstRate, 
+        profitRate: estimateData.profit_rate !== undefined && estimateData.profit_rate !== null ? estimateData.profit_rate : profitRate, 
+        sectionOrder: estimateData.section_order || sectionOrder 
+      };
     }
-  }, [estimateData, currentEstimateId]);
+  }, [estimateData, currentEstimateId, markup, pstRate, gstRate, profitRate, sectionOrder]);
 
   // Calculate item total based on item type
   const calculateItemTotal = (it: Item): number => {
@@ -229,6 +254,7 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
         gst_rate: gstRate,
         profit_rate: profitRate,
         section_order: sectionOrder,
+        section_names: sectionNames,
         items: items.map(it=> ({ 
           material_id: it.material_id, 
           quantity: it.quantity, 
@@ -259,23 +285,29 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
         return;
       }
       
-      if (currentEstimateId) {
+      let estimateIdToUse = currentEstimateId;
+      if (estimateIdToUse) {
         // Update existing estimate
-        await api('PUT', `/estimate/estimates/${currentEstimateId}`, payload);
+        await api('PUT', `/estimate/estimates/${estimateIdToUse}`, payload);
       } else {
         // Create new estimate
         const result = await api<any>('POST', '/estimate/estimates', payload);
-        setCurrentEstimateId(result.id);
+        estimateIdToUse = result.id;
+        setCurrentEstimateId(estimateIdToUse);
       }
       savedStateRef.current = { items, markup, pstRate, gstRate, profitRate, sectionOrder };
       setDirty(false);
       lastAutoSaveRef.current = Date.now();
+      
+      // Invalidate cache to ensure fresh data on remount
+      queryClient.invalidateQueries({ queryKey: ['estimate', estimateIdToUse] });
+      queryClient.invalidateQueries({ queryKey: ['projectEstimates', projectId] });
     } catch (e) {
       // Silent fail for auto-save
     } finally {
       isAutoSavingRef.current = false;
     }
-  }, [projectId, markup, pstRate, gstRate, profitRate, sectionOrder, items, currentEstimateId, canEdit]);
+  }, [projectId, markup, pstRate, gstRate, profitRate, sectionOrder, sectionNames, items, currentEstimateId, canEdit, queryClient]);
 
   // Show warning if editing is restricted
   useEffect(() => {
@@ -358,7 +390,11 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
   const totalWithMarkup = useMemo(() => {
     return Object.keys(groupedItems).reduce((acc, section) => {
       const sectionItems = groupedItems[section];
-      const isLabourSection = ['Labour', 'Sub-Contractors', 'Shop', 'Miscellaneous'].includes(section);
+      const isLabourSection = ['Labour', 'Sub-Contractors', 'Shop', 'Miscellaneous'].includes(section) ||
+                              section.startsWith('Labour Section') ||
+                              section.startsWith('Sub-Contractor Section') ||
+                              section.startsWith('Shop Section') ||
+                              section.startsWith('Miscellaneous Section');
       const sectionTotal = sectionItems.reduce((sum, it) => {
         const m = it.markup !== undefined && it.markup !== null ? it.markup : markup;
         let itemTotal = 0;
@@ -381,17 +417,64 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
     }, 0);
   }, [groupedItems, markup]);
 
-  // Calculate Sections Mark-up as the difference between total with markup and total without markup
+  // Calculate Sections Mark-up as the difference between total with markup and total without markup for all products
   const markupValue = useMemo(() => {
-    return totalWithMarkup - total;
-  }, [totalWithMarkup, total]);
-
-  const subtotal = useMemo(()=> totalWithMarkup + pst, [totalWithMarkup, pst]);
-
-  const profitValue = useMemo(()=> subtotal * (profitRate/100), [subtotal, profitRate]);
-  const finalTotal = useMemo(()=> subtotal + profitValue, [subtotal, profitValue]);
-  const gst = useMemo(()=> finalTotal * (gstRate/100), [finalTotal, gstRate]);
-  const grandTotal = useMemo(()=> finalTotal + gst, [finalTotal, gst]);
+    // Calculate total without markup for all items
+    const totalWithoutMarkup = items.reduce((acc, it) => {
+      const m = it.markup !== undefined && it.markup !== null ? it.markup : markup;
+      let itemTotal = 0;
+      const section = it.section || 'Miscellaneous';
+      const isLabourSection = ['Labour', 'Sub-Contractors', 'Shop', 'Miscellaneous'].includes(section) ||
+                              section.startsWith('Labour Section') ||
+                              section.startsWith('Sub-Contractor Section') ||
+                              section.startsWith('Shop Section') ||
+                              section.startsWith('Miscellaneous Section');
+      
+      if (!isLabourSection) {
+        itemTotal = it.quantity * it.unit_price;
+      } else {
+        if (it.item_type === 'labour' && it.labour_journey_type) {
+          if (it.labour_journey_type === 'contract') {
+            itemTotal = (it.labour_journey || 0) * it.unit_price;
+          } else {
+            itemTotal = (it.labour_journey || 0) * (it.labour_men || 0) * it.unit_price;
+          }
+        } else {
+          itemTotal = it.quantity * it.unit_price;
+        }
+      }
+      return acc + itemTotal;
+    }, 0);
+    
+    // Calculate total with markup for all items
+    const totalWithMarkupAll = items.reduce((acc, it) => {
+      const m = it.markup !== undefined && it.markup !== null ? it.markup : markup;
+      let itemTotal = 0;
+      const section = it.section || 'Miscellaneous';
+      const isLabourSection = ['Labour', 'Sub-Contractors', 'Shop', 'Miscellaneous'].includes(section) ||
+                              section.startsWith('Labour Section') ||
+                              section.startsWith('Sub-Contractor Section') ||
+                              section.startsWith('Shop Section') ||
+                              section.startsWith('Miscellaneous Section');
+      
+      if (!isLabourSection) {
+        itemTotal = it.quantity * it.unit_price;
+      } else {
+        if (it.item_type === 'labour' && it.labour_journey_type) {
+          if (it.labour_journey_type === 'contract') {
+            itemTotal = (it.labour_journey || 0) * it.unit_price;
+          } else {
+            itemTotal = (it.labour_journey || 0) * (it.labour_men || 0) * it.unit_price;
+          }
+        } else {
+          itemTotal = it.quantity * it.unit_price;
+        }
+      }
+      return acc + (itemTotal * (1 + (m/100)));
+    }, 0);
+    
+    return totalWithMarkupAll - totalWithoutMarkup;
+  }, [items, markup]);
 
   // Helper function to calculate section subtotal
   const calculateSectionSubtotal = useCallback((sectionName: string): number => {
@@ -460,6 +543,18 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
              .reduce((sum, section) => sum + calculateSectionSubtotal(section), 0);
   }, [sectionOrder, calculateSectionSubtotal]);
 
+  // Calculate Total Direct Project Costs as sum of all specific costs
+  const totalDirectProjectCosts = useMemo(() => {
+    return totalProductsCosts + totalLabourCosts + totalSubContractorsCosts + totalShopCosts + totalMiscellaneousCosts;
+  }, [totalProductsCosts, totalLabourCosts, totalSubContractorsCosts, totalShopCosts, totalMiscellaneousCosts]);
+
+  const subtotal = useMemo(()=> totalDirectProjectCosts + pst, [totalDirectProjectCosts, pst]);
+
+  const profitValue = useMemo(()=> subtotal * (profitRate/100), [subtotal, profitRate]);
+  const finalTotal = useMemo(()=> subtotal + profitValue, [subtotal, profitValue]);
+  const gst = useMemo(()=> finalTotal * (gstRate/100), [finalTotal, gstRate]);
+  const grandTotal = useMemo(()=> finalTotal + gst, [finalTotal, gst]);
+
   // Track dirty state
   useEffect(() => {
     if (!savedStateRef.current) {
@@ -489,6 +584,7 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
         gst_rate: gstRate,
         profit_rate: profitRate,
         section_order: sectionOrder,
+        section_names: sectionNames,
         items: items.map(it=> ({ 
           material_id: it.material_id, 
           quantity: it.quantity, 
@@ -514,20 +610,26 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
         })) 
       };
       
-      if (currentEstimateId) {
-        await api('PUT', `/estimate/estimates/${currentEstimateId}`, payload);
+      let estimateIdToUse = currentEstimateId;
+      if (estimateIdToUse) {
+        await api('PUT', `/estimate/estimates/${estimateIdToUse}`, payload);
       } else {
         const result = await api<any>('POST', '/estimate/estimates', payload);
-        setCurrentEstimateId(result.id);
+        estimateIdToUse = result.id;
+        setCurrentEstimateId(estimateIdToUse);
       }
       
       savedStateRef.current = { items, markup, pstRate, gstRate, profitRate, sectionOrder };
       setDirty(false);
       toast.success('Changes saved');
+      
+      // Invalidate cache to ensure fresh data on remount
+      queryClient.invalidateQueries({ queryKey: ['estimate', estimateIdToUse] });
+      queryClient.invalidateQueries({ queryKey: ['projectEstimates', projectId] });
     } catch (e) {
       toast.error('Failed to save');
     }
-  }, [canEdit, projectId, items, markup, pstRate, gstRate, profitRate, sectionOrder, currentEstimateId]);
+  }, [canEdit, projectId, items, markup, pstRate, gstRate, profitRate, sectionOrder, sectionNames, currentEstimateId, queryClient]);
 
   // Sync section order with items (add new sections that appear in items)
   useEffect(()=>{
@@ -752,6 +854,8 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
         gstRate={gstRate}
         markup={markup}
         profitRate={profitRate}
+        sectionNames={sectionNames}
+        sectionOrder={sectionOrder}
       />
 
       {/* Product View Modal */}
@@ -1433,7 +1537,7 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
               <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span>Total Sub-Contractors Costs</span><span>${totalSubContractorsCosts.toFixed(2)}</span></div>
               <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span>Total Shop Costs</span><span>${totalShopCosts.toFixed(2)}</span></div>
               <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span>Total Miscellaneous Costs</span><span>${totalMiscellaneousCosts.toFixed(2)}</span></div>
-              <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span className="font-bold">Total Direct Project Costs</span><span className="font-bold">${totalWithMarkup.toFixed(2)}</span></div>
+              <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span className="font-bold">Total Direct Project Costs</span><span className="font-bold">${totalDirectProjectCosts.toFixed(2)}</span></div>
               <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span>PST ({pstRate}%)</span><span>${pst.toFixed(2)}</span></div>
               <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span className="font-bold">Sub-total</span><span className="font-bold">${subtotal.toFixed(2)}</span></div>
             </div>
@@ -1569,7 +1673,7 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
   );
 }
 
-function SummaryModal({ open, onClose, items, pstRate, gstRate, markup, profitRate }: { open:boolean, onClose:()=>void, items:Item[], pstRate:number, gstRate:number, markup:number, profitRate:number }){
+function SummaryModal({ open, onClose, items, pstRate, gstRate, markup, profitRate, sectionNames, sectionOrder }: { open:boolean, onClose:()=>void, items:Item[], pstRate:number, gstRate:number, markup:number, profitRate:number, sectionNames:Record<string, string>, sectionOrder:string[] }){
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
@@ -1595,6 +1699,17 @@ function SummaryModal({ open, onClose, items, pstRate, gstRate, markup, profitRa
     const itemMarkup = it.markup !== undefined && it.markup !== null ? it.markup : markup;
     return itemTotal * (1 + (itemMarkup / 100));
   };
+
+  // Helper to get display name for section
+  const getSectionDisplayName = useCallback((section: string): string => {
+    return sectionNames[section] || 
+      (section.startsWith('Labour Section') ? 'Labour' :
+       section.startsWith('Sub-Contractor Section') ? 'Sub-Contractor' :
+       section.startsWith('Miscellaneous Section') ? 'Miscellaneous' :
+       section.startsWith('Shop Section') ? 'Shop' :
+       section.startsWith('Product Section') ? 'Product Section' :
+       section);
+  }, [sectionNames]);
 
   // Calculate costs by section
   const costsBySection = useMemo(() => {
@@ -1629,6 +1744,42 @@ function SummaryModal({ open, onClose, items, pstRate, gstRate, markup, profitRa
   const miscellaneousTotal = useMemo(() => {
     return costsBySection['Miscellaneous'] || 0;
   }, [costsBySection]);
+
+  // Calculate product total (all items in product sections)
+  const productTotal = useMemo(() => {
+    return items.filter(it => {
+      const section = it.section || 'Miscellaneous';
+      return !['Labour', 'Sub-Contractors', 'Shop', 'Miscellaneous'].includes(section) &&
+             !section.startsWith('Labour Section') &&
+             !section.startsWith('Sub-Contractor Section') &&
+             !section.startsWith('Shop Section') &&
+             !section.startsWith('Miscellaneous Section');
+    }).reduce((acc, it) => acc + calculateItemTotalWithMarkup(it), 0);
+  }, [items, markup]);
+
+  // Calculate subcontractor total (all items in subcontractor sections)
+  const subcontractorItemsTotal = useMemo(() => {
+    return items.filter(it => {
+      const section = it.section || 'Miscellaneous';
+      return section === 'Sub-Contractors' || section.startsWith('Sub-Contractor Section');
+    }).reduce((acc, it) => acc + calculateItemTotalWithMarkup(it), 0);
+  }, [items, markup]);
+
+  // Calculate shop total (all items in shop sections)
+  const shopItemsTotal = useMemo(() => {
+    return items.filter(it => {
+      const section = it.section || 'Miscellaneous';
+      return section === 'Shop' || section.startsWith('Shop Section');
+    }).reduce((acc, it) => acc + calculateItemTotalWithMarkup(it), 0);
+  }, [items, markup]);
+
+  // Calculate miscellaneous total (all items in miscellaneous sections)
+  const miscellaneousItemsTotal = useMemo(() => {
+    return items.filter(it => {
+      const section = it.section || 'Miscellaneous';
+      return section === 'Miscellaneous' || section.startsWith('Miscellaneous Section');
+    }).reduce((acc, it) => acc + calculateItemTotalWithMarkup(it), 0);
+  }, [items, markup]);
 
   // Total of all items (same calculation as main page)
   const total = useMemo(() => {
@@ -1694,7 +1845,7 @@ function SummaryModal({ open, onClose, items, pstRate, gstRate, markup, profitRa
                   const percentage = totalCost > 0 ? (total / totalCost * 100) : 0;
                   return (
                     <tr key={section} className="border-b hover:bg-gray-50">
-                      <td className="p-2">{section}</td>
+                      <td className="p-2">{getSectionDisplayName(section)}</td>
                       <td className="p-2 text-right">${total.toFixed(2)}</td>
                       <td className="p-2 text-right">{percentage.toFixed(2)}%</td>
                     </tr>
@@ -1738,34 +1889,130 @@ function SummaryModal({ open, onClose, items, pstRate, gstRate, markup, profitRa
             </div>
           )}
 
-          {/* Material & Supplies Analysis */}
-          {materialTotal > 0 && (
+          {/* Product Analysis */}
+          {productTotal > 0 && (
             <div className="rounded-xl border bg-white overflow-hidden">
-              <div className="bg-gray-50 px-4 py-2 border-b font-semibold">Material & Supplies Analysis</div>
-              <div className="px-4 py-2 bg-blue-50 border-b">Total Material Cost: ${materialTotal.toFixed(2)}</div>
+              <div className="bg-gray-50 px-4 py-2 border-b font-semibold">Product Analysis</div>
+              <div className="px-4 py-2 bg-blue-50 border-b">Total Product Cost: ${productTotal.toFixed(2)}</div>
               <table className="w-full text-sm">
                 <thead className="bg-gray-50 border-b">
                   <tr>
-                    <th className="p-2 text-left">Section</th>
-                    <th className="p-2 text-right">Subtotal</th>
+                    <th className="p-2 text-left">Product Item</th>
+                    <th className="p-2 text-right">Cost</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {Object.keys(costsBySection)
-                    .filter(s => !['Labour'].includes(s))
-                    .map(section => {
-                      const total = costsBySection[section];
-                      return (
-                        <tr key={section} className="border-b hover:bg-gray-50">
-                          <td className="p-2">{section}</td>
-                          <td className="p-2 text-right">${total.toFixed(2)}</td>
-                        </tr>
-                      );
-                    })}
+                  {items.filter(it => {
+                    const section = it.section || 'Miscellaneous';
+                    return !['Labour', 'Sub-Contractors', 'Shop', 'Miscellaneous'].includes(section) &&
+                           !section.startsWith('Labour Section') &&
+                           !section.startsWith('Sub-Contractor Section') &&
+                           !section.startsWith('Shop Section') &&
+                           !section.startsWith('Miscellaneous Section');
+                  }).map((it, idx) => {
+                    const itemTotalWithMarkup = calculateItemTotalWithMarkup(it);
+                    return (
+                      <tr key={idx} className="border-b hover:bg-gray-50">
+                        <td className="p-2">{it.description || it.name}</td>
+                        <td className="p-2 text-right">${itemTotalWithMarkup.toFixed(2)}</td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
           )}
+
+          {/* Sub-Contractor Analysis */}
+          {subcontractorItemsTotal > 0 && (
+            <div className="rounded-xl border bg-white overflow-hidden">
+              <div className="bg-gray-50 px-4 py-2 border-b font-semibold">Sub-Contractor Analysis</div>
+              <div className="px-4 py-2 bg-blue-50 border-b">Total Sub-Contractor Cost: ${subcontractorItemsTotal.toFixed(2)}</div>
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 border-b">
+                  <tr>
+                    <th className="p-2 text-left">Sub-Contractor Item</th>
+                    <th className="p-2 text-right">Cost</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {items.filter(it => {
+                    const section = it.section || 'Miscellaneous';
+                    return section === 'Sub-Contractors' || section.startsWith('Sub-Contractor Section');
+                  }).map((it, idx) => {
+                    const itemTotalWithMarkup = calculateItemTotalWithMarkup(it);
+                    return (
+                      <tr key={idx} className="border-b hover:bg-gray-50">
+                        <td className="p-2">{it.description || it.name}</td>
+                        <td className="p-2 text-right">${itemTotalWithMarkup.toFixed(2)}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* Shop Analysis */}
+          {shopItemsTotal > 0 && (
+            <div className="rounded-xl border bg-white overflow-hidden">
+              <div className="bg-gray-50 px-4 py-2 border-b font-semibold">Shop Analysis</div>
+              <div className="px-4 py-2 bg-blue-50 border-b">Total Shop Cost: ${shopItemsTotal.toFixed(2)}</div>
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 border-b">
+                  <tr>
+                    <th className="p-2 text-left">Shop Item</th>
+                    <th className="p-2 text-right">Cost</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {items.filter(it => {
+                    const section = it.section || 'Miscellaneous';
+                    return section === 'Shop' || section.startsWith('Shop Section');
+                  }).map((it, idx) => {
+                    const itemTotalWithMarkup = calculateItemTotalWithMarkup(it);
+                    return (
+                      <tr key={idx} className="border-b hover:bg-gray-50">
+                        <td className="p-2">{it.description || it.name}</td>
+                        <td className="p-2 text-right">${itemTotalWithMarkup.toFixed(2)}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* Miscellaneous Analysis */}
+          {miscellaneousItemsTotal > 0 && (
+            <div className="rounded-xl border bg-white overflow-hidden">
+              <div className="bg-gray-50 px-4 py-2 border-b font-semibold">Miscellaneous Analysis</div>
+              <div className="px-4 py-2 bg-blue-50 border-b">Total Miscellaneous Cost: ${miscellaneousItemsTotal.toFixed(2)}</div>
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 border-b">
+                  <tr>
+                    <th className="p-2 text-left">Miscellaneous Item</th>
+                    <th className="p-2 text-right">Cost</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {items.filter(it => {
+                    const section = it.section || 'Miscellaneous';
+                    return section === 'Miscellaneous' || section.startsWith('Miscellaneous Section');
+                  }).map((it, idx) => {
+                    const itemTotalWithMarkup = calculateItemTotalWithMarkup(it);
+                    return (
+                      <tr key={idx} className="border-b hover:bg-gray-50">
+                        <td className="p-2">{it.description || it.name}</td>
+                        <td className="p-2 text-right">${itemTotalWithMarkup.toFixed(2)}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+
 
           {/* Final Summary */}
           <div className="rounded-xl border bg-white overflow-hidden">

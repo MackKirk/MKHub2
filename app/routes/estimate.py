@@ -248,6 +248,7 @@ class EstimateIn(BaseModel):
     gst_rate: Optional[float] = None  # GST rate
     profit_rate: Optional[float] = None  # Profit rate
     section_order: Optional[List[str]] = None  # Section order
+    section_names: Optional[dict] = None  # Section display names
     items: List[EstimateItemIn] = []
 
 
@@ -378,6 +379,11 @@ def _update_estimate_internal(estimate_id: int, body: EstimateIn, db: Session):
         ui_state['section_order'] = body.section_order
     elif 'section_order' in existing_ui_state:
         ui_state['section_order'] = existing_ui_state['section_order']
+    
+    if body.section_names:
+        ui_state['section_names'] = body.section_names
+    elif 'section_names' in existing_ui_state:
+        ui_state['section_names'] = existing_ui_state['section_names']
     
     # Delete existing items (but first get old extras to preserve if items match)
     old_items = db.query(EstimateItem).filter(EstimateItem.estimate_id == estimate_id).all()
@@ -649,7 +655,8 @@ def get_estimate(estimate_id: int, db: Session = Depends(get_db), _=Depends(requ
         "pst_rate": pst_rate if "pst_rate" in ui_state else None,
         "gst_rate": gst_rate if "gst_rate" in ui_state else None,
         "profit_rate": profit_rate if "profit_rate" in ui_state else None,
-        "section_order": ui_state.get("section_order")
+        "section_order": ui_state.get("section_order"),
+        "section_names": ui_state.get("section_names")
     }
 
 
@@ -713,6 +720,7 @@ async def generate_estimate_pdf(estimate_id: int, db: Session = Depends(get_db),
     gst_rate = ui_state.get('gst_rate', 5.0)
     profit_rate = ui_state.get('profit_rate', 0.0)
     section_order = ui_state.get('section_order', [])
+    section_names = ui_state.get('section_names', {})
     global_markup = ui_state.get('markup', est.markup or 0.0)
     
     # Get item extras from notes to include labour_journey, labour_men, labour_journey_type
@@ -770,14 +778,33 @@ async def generate_estimate_pdf(estimate_id: int, db: Session = Depends(get_db),
         
         items_by_section[section].append(item_dict)
     
+    # Helper function to get display name for section
+    def get_section_display_name(section: str) -> str:
+        if section in section_names:
+            return section_names[section]
+        elif section.startswith('Labour Section'):
+            return 'Labour'
+        elif section.startswith('Sub-Contractor Section'):
+            return 'Sub-Contractor'
+        elif section.startswith('Miscellaneous Section'):
+            return 'Miscellaneous'
+        elif section.startswith('Shop Section'):
+            return 'Shop'
+        elif section.startswith('Product Section'):
+            return 'Product Section'
+        else:
+            return section
+    
     # Prepare sections in order
     ordered_sections = section_order if section_order else sorted(items_by_section.keys())
     sections_data = []
     for section_name in ordered_sections:
         if section_name not in items_by_section:
             continue
+        # Use display name for section title
+        display_name = get_section_display_name(section_name)
         sections_data.append({
-            "title": section_name,
+            "title": display_name,
             "section": section_name,
             "items": items_by_section[section_name]
         })

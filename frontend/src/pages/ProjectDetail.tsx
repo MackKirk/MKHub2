@@ -788,7 +788,8 @@ function ProjectCostsSummary({ projectId, estimates }:{ projectId:string, estima
   const { data:estimateData } = useQuery({ 
     queryKey: ['estimate', estimates[0]?.id], 
     queryFn: () => estimates[0]?.id ? api<any>('GET', `/estimate/estimates/${estimates[0].id}`) : Promise.resolve(null),
-    enabled: !!estimates[0]?.id
+    enabled: !!estimates[0]?.id,
+    refetchInterval: 2000 // Refetch every 2 seconds to update in real-time
   });
   
   if(!estimateData || !estimates.length) {
@@ -800,59 +801,205 @@ function ProjectCostsSummary({ projectId, estimates }:{ projectId:string, estima
     );
   }
   
-  const items = estimateData.items || [];
-  const markup = estimateData.markup || 0;
-  const pstRate = estimateData.pst_rate || 0;
-  const gstRate = estimateData.gst_rate || 0;
-  const profitRate = estimateData.profit_rate || 0;
+  // Extract data from estimateData
+  const items = useMemo(() => estimateData?.items || [], [estimateData]);
+  const markup = useMemo(() => estimateData?.estimate?.markup || estimateData?.markup || 0, [estimateData]);
+  const pstRate = useMemo(() => estimateData?.pst_rate ?? 0, [estimateData]);
+  const gstRate = useMemo(() => estimateData?.gst_rate ?? 0, [estimateData]);
+  const profitRate = useMemo(() => estimateData?.profit_rate ?? 20, [estimateData]); // Default to 20%
+  const sectionOrder = useMemo(() => estimateData?.section_order || [], [estimateData]);
   
   // Parse UI state for item extras
-  const uiState = estimateData.notes ? (()=>{ try{ return JSON.parse(estimateData.notes); }catch{ return {}; } })() : {};
-  const itemExtrasMap = uiState.item_extras || {};
+  const uiState = useMemo(() => {
+    const notes = estimateData?.estimate?.notes || estimateData?.notes;
+    if (!notes) return {};
+    try {
+      return JSON.parse(notes);
+    } catch {
+      return {};
+    }
+  }, [estimateData]);
   
-  // Calculate totals similar to EstimateBuilder
-  const calculateItemTotal = (it:any):number => {
-    if (it.item_type === 'labour' && itemExtrasMap[`item_${it.id}`]?.labour_journey_type) {
-      const extras = itemExtrasMap[`item_${it.id}`];
-      if (extras.labour_journey_type === 'contract') {
-        return (extras.labour_journey || 0) * (it.unit_price || 0);
+  const itemExtrasMap = useMemo(() => uiState.item_extras || {}, [uiState]);
+  
+  // Group items by section
+  const groupedItems = useMemo(() => {
+    const groups: Record<string, any[]> = {};
+    items.forEach((it:any) => {
+      const section = it.section || 'Miscellaneous';
+      if(!groups[section]) groups[section] = [];
+      groups[section].push(it);
+    });
+    return groups;
+  }, [items]);
+  
+  // Helper function to calculate section subtotal (same as EstimateBuilder)
+  const calculateSectionSubtotal = useMemo(() => (sectionName: string): number => {
+    const sectionItems = groupedItems[sectionName] || [];
+    const isLabourSection = ['Labour', 'Sub-Contractors', 'Shop', 'Miscellaneous'].includes(sectionName) || 
+                          sectionName.startsWith('Labour Section') || 
+                          sectionName.startsWith('Sub-Contractor Section') || 
+                          sectionName.startsWith('Shop Section') || 
+                          sectionName.startsWith('Miscellaneous Section');
+    return sectionItems.reduce((sum, it) => {
+      const m = itemExtrasMap[`item_${it.id}`]?.markup !== undefined && itemExtrasMap[`item_${it.id}`].markup !== null ? itemExtrasMap[`item_${it.id}`].markup : markup;
+      let itemTotal = 0;
+      if (!isLabourSection) {
+        itemTotal = (it.quantity || 0) * (it.unit_price || 0);
       } else {
-        return (extras.labour_journey || 0) * (extras.labour_men || 0) * (it.unit_price || 0);
+        if (it.item_type === 'labour' && itemExtrasMap[`item_${it.id}`]?.labour_journey_type) {
+          const extras = itemExtrasMap[`item_${it.id}`];
+          if (extras.labour_journey_type === 'contract') {
+            itemTotal = (extras.labour_journey || 0) * (it.unit_price || 0);
+          } else {
+            itemTotal = (extras.labour_journey || 0) * (extras.labour_men || 0) * (it.unit_price || 0);
+          }
+        } else {
+          itemTotal = (it.quantity || 0) * (it.unit_price || 0);
+        }
+      }
+      return sum + (itemTotal * (1 + (m/100)));
+    }, 0);
+  }, [groupedItems, markup, itemExtrasMap]);
+  
+  // Calculate specific section costs (same as EstimateBuilder)
+  const totalProductsCosts = useMemo(() => sectionOrder
+    .filter(section => !['Labour', 'Sub-Contractors', 'Shop', 'Miscellaneous'].includes(section) && 
+                      !section.startsWith('Labour Section') && 
+                      !section.startsWith('Sub-Contractor Section') && 
+                      !section.startsWith('Shop Section') && 
+                      !section.startsWith('Miscellaneous Section'))
+    .reduce((sum, section) => sum + calculateSectionSubtotal(section), 0), [sectionOrder, calculateSectionSubtotal]);
+  
+  const totalLabourCosts = useMemo(() => calculateSectionSubtotal('Labour') + 
+           sectionOrder
+             .filter(s => s.startsWith('Labour Section'))
+             .reduce((sum, section) => sum + calculateSectionSubtotal(section), 0), [sectionOrder, calculateSectionSubtotal]);
+  
+  const totalSubContractorsCosts = useMemo(() => calculateSectionSubtotal('Sub-Contractors') + 
+           sectionOrder
+             .filter(s => s.startsWith('Sub-Contractor Section'))
+             .reduce((sum, section) => sum + calculateSectionSubtotal(section), 0), [sectionOrder, calculateSectionSubtotal]);
+  
+  const totalShopCosts = useMemo(() => calculateSectionSubtotal('Shop') + 
+           sectionOrder
+             .filter(s => s.startsWith('Shop Section'))
+             .reduce((sum, section) => sum + calculateSectionSubtotal(section), 0), [sectionOrder, calculateSectionSubtotal]);
+  
+  const totalMiscellaneousCosts = useMemo(() => calculateSectionSubtotal('Miscellaneous') + 
+           sectionOrder
+             .filter(s => s.startsWith('Miscellaneous Section'))
+             .reduce((sum, section) => sum + calculateSectionSubtotal(section), 0), [sectionOrder, calculateSectionSubtotal]);
+  
+  // Total Direct Project Costs (sum of all specific costs)
+  const totalDirectProjectCosts = useMemo(() => totalProductsCosts + totalLabourCosts + totalSubContractorsCosts + totalShopCosts + totalMiscellaneousCosts, [totalProductsCosts, totalLabourCosts, totalSubContractorsCosts, totalShopCosts, totalMiscellaneousCosts]);
+  
+  // Calculate total without markup for all items
+  const totalWithoutMarkup = useMemo(() => items.reduce((acc, it) => {
+    const m = itemExtrasMap[`item_${it.id}`]?.markup !== undefined && itemExtrasMap[`item_${it.id}`].markup !== null ? itemExtrasMap[`item_${it.id}`].markup : markup;
+    let itemTotal = 0;
+    const section = it.section || 'Miscellaneous';
+    const isLabourSection = ['Labour', 'Sub-Contractors', 'Shop', 'Miscellaneous'].includes(section) ||
+                            section.startsWith('Labour Section') ||
+                            section.startsWith('Sub-Contractor Section') ||
+                            section.startsWith('Shop Section') ||
+                            section.startsWith('Miscellaneous Section');
+    
+    if (!isLabourSection) {
+      itemTotal = (it.quantity || 0) * (it.unit_price || 0);
+    } else {
+      if (it.item_type === 'labour' && itemExtrasMap[`item_${it.id}`]?.labour_journey_type) {
+        const extras = itemExtrasMap[`item_${it.id}`];
+        if (extras.labour_journey_type === 'contract') {
+          itemTotal = (extras.labour_journey || 0) * (it.unit_price || 0);
+        } else {
+          itemTotal = (extras.labour_journey || 0) * (extras.labour_men || 0) * (it.unit_price || 0);
+        }
+      } else {
+        itemTotal = (it.quantity || 0) * (it.unit_price || 0);
       }
     }
-    return (it.quantity || 0) * (it.unit_price || 0);
-  };
+    return acc + itemTotal;
+  }, 0), [items, markup, itemExtrasMap]);
   
-  const total = items.reduce((acc:number, it:any)=> acc + calculateItemTotal(it), 0);
+  // Calculate total with markup for all items
+  const totalWithMarkupAll = useMemo(() => items.reduce((acc, it) => {
+    const m = itemExtrasMap[`item_${it.id}`]?.markup !== undefined && itemExtrasMap[`item_${it.id}`].markup !== null ? itemExtrasMap[`item_${it.id}`].markup : markup;
+    let itemTotal = 0;
+    const section = it.section || 'Miscellaneous';
+    const isLabourSection = ['Labour', 'Sub-Contractors', 'Shop', 'Miscellaneous'].includes(section) ||
+                            section.startsWith('Labour Section') ||
+                            section.startsWith('Sub-Contractor Section') ||
+                            section.startsWith('Shop Section') ||
+                            section.startsWith('Miscellaneous Section');
+    
+    if (!isLabourSection) {
+      itemTotal = (it.quantity || 0) * (it.unit_price || 0);
+    } else {
+      if (it.item_type === 'labour' && itemExtrasMap[`item_${it.id}`]?.labour_journey_type) {
+        const extras = itemExtrasMap[`item_${it.id}`];
+        if (extras.labour_journey_type === 'contract') {
+          itemTotal = (extras.labour_journey || 0) * (it.unit_price || 0);
+        } else {
+          itemTotal = (extras.labour_journey || 0) * (extras.labour_men || 0) * (it.unit_price || 0);
+        }
+      } else {
+        itemTotal = (it.quantity || 0) * (it.unit_price || 0);
+      }
+    }
+    return acc + (itemTotal * (1 + (m/100)));
+  }, 0), [items, markup, itemExtrasMap]);
   
-  // Calculate taxable total (only taxable items)
-  const taxableTotal = items.reduce((acc:number, it:any)=>{
+  // Sections Mark-up (difference between total with markup and total without markup)
+  const sectionsMarkup = useMemo(() => totalWithMarkupAll - totalWithoutMarkup, [totalWithMarkupAll, totalWithoutMarkup]);
+  
+  // Calculate taxable total (only taxable items) with markup
+  const taxableTotal = useMemo(() => items.reduce((acc, it) => {
     const extras = itemExtrasMap[`item_${it.id}`];
     if (extras?.taxable === false) return acc;
     const m = extras?.markup !== undefined && extras.markup !== null ? extras.markup : markup;
-    const itemTotal = calculateItemTotal(it);
-    return acc + (itemTotal * (1 + m / 100));
-  }, 0);
+    let itemTotal = 0;
+    const section = it.section || 'Miscellaneous';
+    const isLabourSection = ['Labour', 'Sub-Contractors', 'Shop', 'Miscellaneous'].includes(section) ||
+                            section.startsWith('Labour Section') ||
+                            section.startsWith('Sub-Contractor Section') ||
+                            section.startsWith('Shop Section') ||
+                            section.startsWith('Miscellaneous Section');
+    
+    if (!isLabourSection) {
+      itemTotal = (it.quantity || 0) * (it.unit_price || 0);
+    } else {
+      if (it.item_type === 'labour' && itemExtrasMap[`item_${it.id}`]?.labour_journey_type) {
+        const extras = itemExtrasMap[`item_${it.id}`];
+        if (extras.labour_journey_type === 'contract') {
+          itemTotal = (extras.labour_journey || 0) * (it.unit_price || 0);
+        } else {
+          itemTotal = (extras.labour_journey || 0) * (extras.labour_men || 0) * (it.unit_price || 0);
+        }
+      } else {
+        itemTotal = (it.quantity || 0) * (it.unit_price || 0);
+      }
+    }
+    return acc + (itemTotal * (1 + (m/100)));
+  }, 0), [items, markup, itemExtrasMap]);
   
-  const totalWithMarkup = items.reduce((acc:number, it:any)=>{
-    const m = itemExtrasMap[`item_${it.id}`]?.markup !== undefined && itemExtrasMap[`item_${it.id}`].markup !== null ? itemExtrasMap[`item_${it.id}`].markup : markup;
-    return acc + (calculateItemTotal(it) * (1 + m / 100));
-  }, 0);
+  const pst = useMemo(() => taxableTotal * (pstRate / 100), [taxableTotal, pstRate]);
+  const subtotal = useMemo(() => totalDirectProjectCosts + pst, [totalDirectProjectCosts, pst]);
+  const profitValue = useMemo(() => subtotal * (profitRate / 100), [subtotal, profitRate]);
+  const finalTotal = useMemo(() => subtotal + profitValue, [subtotal, profitValue]);
+  const gst = useMemo(() => finalTotal * (gstRate / 100), [finalTotal, gstRate]);
+  const grandTotal = useMemo(() => finalTotal + gst, [finalTotal, gst]);
   
-  const pst = taxableTotal * (pstRate / 100);
-  const subtotal = totalWithMarkup + pst;
-  const profit = subtotal * (profitRate / 100);
-  const totalBeforeTax = subtotal + profit;
-  const gst = totalBeforeTax * (gstRate / 100);
-  const grandTotal = totalBeforeTax + gst;
+  // Calculate markup percentage (Sections Mark-up / Total Direct Project Costs * 100)
+  const markupPercentage = useMemo(() => totalDirectProjectCosts > 0 ? (sectionsMarkup / totalDirectProjectCosts) * 100 : 0, [sectionsMarkup, totalDirectProjectCosts]);
   
   const summaryItems = [
-    { label: 'Subtotal', value: total },
-    { label: `Markup (${markup}%)`, value: totalWithMarkup - total, show: true },
-    { label: `PST (${pstRate}%)`, value: pst, show: pstRate > 0 },
-    { label: `Profit (${profitRate}%)`, value: profit, show: profitRate > 0 },
-    { label: `GST (${gstRate}%)`, value: gst, show: gstRate > 0 },
-  ].filter(i => i.show !== false);
+    { label: 'Subtotal', value: totalDirectProjectCosts },
+    { label: `Markup (${markupPercentage.toFixed(1)}%)`, value: sectionsMarkup },
+    { label: `PST (${pstRate}%)`, value: pst },
+    { label: `Profit (${profitRate}%)`, value: profitValue },
+    { label: `GST (${gstRate}%)`, value: gst },
+  ];
   
   return (
     <div className="md:col-span-3 rounded-xl border bg-white p-4">
