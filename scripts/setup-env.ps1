@@ -1,0 +1,107 @@
+# Script para configurar o .env rapidamente com a URL do Render
+
+$ErrorActionPreference = "Stop"
+
+Write-Host "========================================" -ForegroundColor Cyan
+Write-Host "MK Hub - Configuracao do .env" -ForegroundColor Cyan
+Write-Host "========================================" -ForegroundColor Cyan
+Write-Host ""
+
+# URL do Render PostgreSQL (externa)
+# IMPORTANTE: Configure esta URL manualmente ou via variavel de ambiente
+# Obtenha a URL externa do Render PostgreSQL no painel do Render
+$renderDbUrl = $env:RENDER_DB_URL
+if (-not $renderDbUrl) {
+    Write-Host "AVISO: RENDER_DB_URL nao configurado!" -ForegroundColor Yellow
+    Write-Host "Configure a variavel de ambiente RENDER_DB_URL ou edite este script." -ForegroundColor Yellow
+    Write-Host "Formato: postgresql+psycopg2://user:password@host:5432/dbname" -ForegroundColor Yellow
+    $renderDbUrl = Read-Host "Cole a URL do Render PostgreSQL (ou pressione Enter para pular)"
+    if ([string]::IsNullOrWhiteSpace($renderDbUrl)) {
+        Write-Host "Pulando configuracao de DATABASE_URL. Configure manualmente no .env" -ForegroundColor Yellow
+        $renderDbUrl = ""
+    }
+}
+
+# Verificar se .env ja existe
+if (Test-Path ".env") {
+    Write-Host "AVISO: Arquivo .env ja existe!" -ForegroundColor Yellow
+    $overwrite = Read-Host "Deseja sobrescrever? (S/N)"
+    if ($overwrite -ne "S" -and $overwrite -ne "s") {
+        Write-Host "Operacao cancelada." -ForegroundColor Yellow
+        exit 0
+    }
+}
+
+# Verificar se .env.example existe
+if (-not (Test-Path ".env.example")) {
+    Write-Host "Erro: .env.example nao encontrado" -ForegroundColor Red
+    exit 1
+}
+
+# Copiar .env.example para .env
+Write-Host "Criando .env a partir de .env.example..." -ForegroundColor Yellow
+Copy-Item .env.example .env
+
+# Ler conteudo do .env
+$content = Get-Content .env -Raw -Encoding UTF8
+
+# Substituir DATABASE_URL padrao (SQLite) pela URL do Render (se fornecida)
+if ($renderDbUrl) {
+    $content = $content -replace '(?m)^DATABASE_URL=sqlite:///\./var/dev\.db$', "# DATABASE_URL=sqlite:///./var/dev.db"
+    $content = $content -replace '(?m)^# DATABASE_URL=postgresql\+psycopg2://.*$', "DATABASE_URL=$renderDbUrl"
+}
+
+# Gerar JWT_SECRET aleatorio se ainda for o padrao
+if ($content -match 'JWT_SECRET=change-me') {
+    $jwtSecret = -join ((65..90) + (97..122) + (48..57) | Get-Random -Count 32 | ForEach-Object {[char]$_})
+    $content = $content -replace 'JWT_SECRET=change-me.*', "JWT_SECRET=$jwtSecret"
+}
+
+# Configurar Azure Blob Storage (se nao estiver configurado)
+# IMPORTANTE: Configure estas credenciais manualmente ou via variaveis de ambiente
+$azureBlobConnection = $env:AZURE_BLOB_CONNECTION
+$azureBlobContainer = $env:AZURE_BLOB_CONTAINER
+
+if (-not $azureBlobConnection) {
+    Write-Host "AVISO: AZURE_BLOB_CONNECTION nao configurado!" -ForegroundColor Yellow
+    Write-Host "Configure a variavel de ambiente AZURE_BLOB_CONNECTION ou edite o .env manualmente." -ForegroundColor Yellow
+    Write-Host "Formato: DefaultEndpointsProtocol=https;AccountName=...;AccountKey=...;EndpointSuffix=core.windows.net" -ForegroundColor Yellow
+    $azureBlobConnection = Read-Host "Cole a connection string do Azure Blob (ou pressione Enter para pular)"
+    if ([string]::IsNullOrWhiteSpace($azureBlobConnection)) {
+        Write-Host "Pulando configuracao de Azure Blob. Configure manualmente no .env" -ForegroundColor Yellow
+        $azureBlobConnection = ""
+    }
+}
+
+if (-not $azureBlobContainer) {
+    $azureBlobContainer = Read-Host "Nome do container do Azure Blob (ou pressione Enter para 'documents')"
+    if ([string]::IsNullOrWhiteSpace($azureBlobContainer)) {
+        $azureBlobContainer = "documents"
+    }
+}
+
+if ($azureBlobConnection) {
+    if ($content -notmatch 'AZURE_BLOB_CONNECTION=') {
+        $content += "`n# Azure Blob Storage`n"
+        $content += "AZURE_BLOB_CONNECTION=$azureBlobConnection`n"
+        $content += "AZURE_BLOB_CONTAINER=$azureBlobContainer`n"
+    } else {
+        # Atualizar se ja existir mas estiver vazio ou com valor padrao
+        $content = $content -replace '(?m)^AZURE_BLOB_CONNECTION=.*$', "AZURE_BLOB_CONNECTION=$azureBlobConnection"
+        $content = $content -replace '(?m)^AZURE_BLOB_CONTAINER=.*$', "AZURE_BLOB_CONTAINER=$azureBlobContainer"
+    }
+}
+
+# Salvar .env
+$utf8NoBom = New-Object System.Text.UTF8Encoding $false
+[System.IO.File]::WriteAllText((Resolve-Path .env), $content, $utf8NoBom)
+
+Write-Host ""
+Write-Host "[OK] Arquivo .env configurado com sucesso!" -ForegroundColor Green
+Write-Host ""
+Write-Host "Configuracoes aplicadas:" -ForegroundColor Cyan
+Write-Host "  - DATABASE_URL: PostgreSQL do Render (externa)" -ForegroundColor White
+Write-Host "  - JWT_SECRET: Gerado automaticamente" -ForegroundColor White
+Write-Host ""
+Write-Host "Voce pode editar o .env para ajustar outras variaveis se necessario." -ForegroundColor Yellow
+Write-Host ""

@@ -6,7 +6,6 @@
 
   <a href="/ui/home.html" id="nav-home" onclick="return MKHubUI.loadPage(event,'/ui/home.html')"><img src="/ui/assets/icons/home.svg" class="i"> Home</a>
   <a href="/ui/profile.html" id="nav-profile" onclick="return MKHubUI.loadPage(event,'/ui/profile.html')"><img src="/ui/assets/icons/profile.svg" class="i"> My Information</a>
-  <a href="/ui/invite.html" id="nav-invite" data-perm="invite:send" style="display:none" onclick="return MKHubUI.loadPage(event,'/ui/invite.html')"><img src="/ui/assets/icons/invite.svg" class="i"> Invite Users</a>
   <a href="/ui/users.html" id="nav-users" data-perm="users:read" style="display:none" onclick="return MKHubUI.loadPage(event,'/ui/users.html')"><img src="/ui/assets/icons/users.svg" class="i"> Users</a>
 
   <div class="section">Inventory</div>
@@ -42,7 +41,7 @@ fetch('/auth/me', { headers:{ Authorization:'Bearer '+token } })
     });
   });
 const path = location.pathname;
-for (const id of ['home','profile','invite','users','inventory-suppliers','inventory-products','inventory-orders','customers','customer-new','proposals','settings']) {
+for (const id of ['home','profile','users','inventory-suppliers','inventory-products','inventory-orders','customers','customer-new','proposals','settings']) {
   const el = document.getElementById('nav-'+id);
   if (el && path.endsWith(id+'.html')) { el.classList.add('active'); }
 }

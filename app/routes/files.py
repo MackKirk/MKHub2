@@ -19,6 +19,7 @@ from ..db import get_db
 from ..models.models import FileObject
 from ..schemas.files import UploadRequest, UploadResponse, ConfirmRequest
 from ..storage.blob_provider import BlobStorageProvider
+from ..storage.local_provider import LocalStorageProvider
 from ..storage.provider import StorageProvider
 
 
@@ -26,8 +27,17 @@ router = APIRouter(prefix="/files", tags=["files"])
 
 
 def get_storage() -> StorageProvider:
-    # For now, only blob provider supported; SharePoint adapter would be added later
-    return BlobStorageProvider()
+    """
+    Get storage provider based on configuration.
+    Uses LocalStorageProvider for local development when Azure Blob is not configured.
+    Uses BlobStorageProvider in production (Render) when Azure Blob is configured.
+    """
+    # Check if Azure Blob Storage is configured
+    if settings.azure_blob_connection and settings.azure_blob_container:
+        return BlobStorageProvider()
+    else:
+        # Use local filesystem storage for development
+        return LocalStorageProvider()
 
 
 def canonical_key(
@@ -156,9 +166,17 @@ def confirm(req: ConfirmRequest, db: Session = Depends(get_db), storage: Storage
                         timeout=30.0
                     )
                     put_resp.raise_for_status()
+                    # Determine provider and container based on storage type
+                    if isinstance(storage, LocalStorageProvider):
+                        provider = "local"
+                        container = "local"
+                    else:
+                        provider = "blob"
+                        container = settings.azure_blob_container or ""
+                    
                     fo = FileObject(
-                        provider="blob",
-                        container=settings.azure_blob_container or "",
+                        provider=provider,
+                        container=container,
                         key=jpg_key,
                         size_bytes=len(jpg_content),
                         checksum_sha256=req.checksum_sha256,
@@ -251,9 +269,17 @@ def confirm(req: ConfirmRequest, db: Session = Depends(get_db), storage: Storage
             logger.info(f"Successfully converted and uploaded JPG: {jpg_key}")
             
             # Create FileObject with JPG instead of HEIC
+            # Determine provider and container based on storage type
+            if isinstance(storage, LocalStorageProvider):
+                provider = "local"
+                container = "local"
+            else:
+                provider = "blob"
+                container = settings.azure_blob_container or ""
+            
             fo = FileObject(
-                provider="blob",
-                container=settings.azure_blob_container or "",
+                provider=provider,
+                container=container,
                 key=jpg_key,
                 size_bytes=len(jpg_content),
                 checksum_sha256=req.checksum_sha256,  # Keep original checksum
@@ -269,9 +295,17 @@ def confirm(req: ConfirmRequest, db: Session = Depends(get_db), storage: Storage
             # Fall through to save the original HEIC file
     
     # Original code for non-HEIC files
+    # Determine provider and container based on storage type
+    if isinstance(storage, LocalStorageProvider):
+        provider = "local"
+        container = "local"
+    else:
+        provider = "blob"
+        container = settings.azure_blob_container or ""
+    
     fo = FileObject(
-        provider="blob",
-        container=settings.azure_blob_container or "",
+        provider=provider,
+        container=container,
         key=req.key,
         size_bytes=req.size_bytes,
         checksum_sha256=req.checksum_sha256,
@@ -282,11 +316,72 @@ def confirm(req: ConfirmRequest, db: Session = Depends(get_db), storage: Storage
     return {"id": str(fo.id)}
 
 
+@router.get("/local/{file_path:path}")
+def serve_local_file(file_path: str):
+    """Serve files from local storage for development."""
+    from pathlib import Path
+    from fastapi.responses import FileResponse
+    
+    # Security: prevent directory traversal
+    clean_path = file_path.lstrip("/").replace("..", "").replace("\\", "/")
+    local_storage = LocalStorageProvider()
+    file_path_obj = local_storage._get_path(clean_path)
+    
+    # Ensure the file is within the storage directory
+    storage_base = local_storage.base_dir.resolve()
+    file_resolved = file_path_obj.resolve()
+    
+    if not str(file_resolved).startswith(str(storage_base)):
+        raise HTTPException(status_code=403, detail="Access denied")
+    
+    if not file_path_obj.exists():
+        raise HTTPException(status_code=404, detail="File not found")
+    
+    # Determine content type
+    content_type = "application/octet-stream"
+    if file_path_obj.suffix:
+        from mimetypes import guess_type
+        guessed = guess_type(str(file_path_obj))
+        if guessed[0]:
+            content_type = guessed[0]
+    
+    return FileResponse(
+        path=str(file_path_obj),
+        media_type=content_type,
+        filename=file_path_obj.name
+    )
+
+
 @router.get("/{file_id}/download")
 def download(file_id: str, db: Session = Depends(get_db), storage: StorageProvider = Depends(get_storage)):
     fo: Optional[FileObject] = db.query(FileObject).filter(FileObject.id == file_id).first()
     if not fo:
         raise HTTPException(status_code=404, detail="File not found")
+    
+    # If using local storage, serve directly
+    if isinstance(storage, LocalStorageProvider):
+        from fastapi.responses import FileResponse
+        from pathlib import Path
+        
+        file_path = storage._get_path(fo.key)
+        if not file_path.exists():
+            raise HTTPException(status_code=404, detail="File not found")
+        
+        # Determine content type
+        content_type = fo.content_type or "application/octet-stream"
+        if file_path.suffix:
+            from mimetypes import guess_type
+            guessed = guess_type(str(file_path))
+            if guessed[0]:
+                content_type = guessed[0]
+        
+        return FileResponse(
+            path=str(file_path),
+            media_type=content_type,
+            filename=Path(fo.key).name
+        )
+    
+    # For blob storage, return download URL
     url = storage.get_download_url(fo.key, expires_s=300)
     if not url:
         raise HTTPException(status_code=404, detail="Not available")
@@ -301,22 +396,32 @@ def thumbnail(file_id: str, w: int = 200, db: Session = Depends(get_db), storage
     fo: Optional[FileObject] = db.query(FileObject).filter(FileObject.id == file_id).first()
     if not fo:
         raise HTTPException(status_code=404, detail="File not found")
-    url = storage.get_download_url(fo.key, expires_s=300)
-    if not url:
-        raise HTTPException(status_code=404, detail="Not available")
+    
     # Fetch and convert to small PNG
     import io
     import httpx
     from PIL import Image as PILImage
     
     try:
-        # Download file from storage
-        with httpx.stream("GET", url, timeout=30.0) as r:
-            r.raise_for_status()
-            # Read all content into bytes
-            file_content = b""
-            for chunk in r.iter_bytes():
-                file_content += chunk
+        # For local storage, read file directly
+        if isinstance(storage, LocalStorageProvider):
+            file_path = storage._get_path(fo.key)
+            if not file_path.exists():
+                raise HTTPException(status_code=404, detail="File not found")
+            with open(file_path, "rb") as f:
+                file_content = f.read()
+        else:
+            # For blob storage, download from URL
+            url = storage.get_download_url(fo.key, expires_s=300)
+            if not url:
+                raise HTTPException(status_code=404, detail="Not available")
+            # Download file from storage
+            with httpx.stream("GET", url, timeout=30.0) as r:
+                r.raise_for_status()
+                # Read all content into bytes
+                file_content = b""
+                for chunk in r.iter_bytes():
+                    file_content += chunk
         
         # Check if file has content
         if len(file_content) == 0:
