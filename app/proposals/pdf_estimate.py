@@ -20,32 +20,28 @@ pdfmetrics.registerFont(TTFont("Montserrat-Bold", os.path.join(fonts_path, "Mont
 
 
 def format_number(num):
-    """Format number with max 2 decimal places. If integer, show no decimals."""
+    """Format number without trailing zeros. If integer, show no decimals."""
     if num is None:
         return "0"
     num = float(num)
-    # Round to 2 decimal places
-    num = round(num, 2)
     # If it's an integer, return without decimals
     if num == int(num):
         return str(int(num))
-    # Otherwise, format with up to 2 decimals and remove trailing zeros
-    formatted = f"{num:.2f}".rstrip('0').rstrip('.')
-    return formatted
+    # Otherwise, remove trailing zeros
+    return f"{num:.10f}".rstrip('0').rstrip('.')
 
 
 def format_currency(num):
-    """Format currency with max 2 decimal places. If integer, show no decimals."""
+    """Format currency without trailing zeros. If integer, show no decimals."""
     if num is None:
         return "$0"
     num = float(num)
-    # Round to 2 decimal places
-    num = round(num, 2)
     # If it's an integer, return without decimals
     if num == int(num):
         return f"${int(num):,}"
-    # Otherwise, format with up to 2 decimals, remove trailing zeros, and format with commas
-    formatted = f"{num:.2f}".rstrip('0').rstrip('.')
+    # Otherwise, remove trailing zeros and format with commas
+    # First format with many decimals, then remove trailing zeros
+    formatted = f"{num:.10f}".rstrip('0').rstrip('.')
     # Split into integer and decimal parts
     if '.' in formatted:
         int_part_str, decimal_part_str = formatted.split('.', 1)
