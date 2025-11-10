@@ -4,7 +4,7 @@ from sqlalchemy import func, extract
 from typing import List, Optional
 
 from ..db import get_db
-from ..models.models import Project, ClientFile, FileObject, ProjectUpdate, ProjectReport, ProjectTimeEntry, ProjectTimeEntryLog, User, EmployeeProfile, Client, ClientSite, ClientFolder, ClientContact, SettingList, SettingItem
+from ..models.models import Project, ClientFile, FileObject, ProjectUpdate, ProjectReport, ProjectEvent, ProjectTimeEntry, ProjectTimeEntryLog, User, EmployeeProfile, Client, ClientSite, ClientFolder, ClientContact, SettingList, SettingItem
 from datetime import datetime, timezone
 from ..auth.security import get_current_user, require_permissions, can_approve_timesheet
 
@@ -312,6 +312,282 @@ def create_project_report(project_id: str, payload: dict, db: Session = Depends(
 @router.delete("/{project_id}/reports/{report_id}")
 def delete_project_report(project_id: str, report_id: str, db: Session = Depends(get_db)):
     row = db.query(ProjectReport).filter(ProjectReport.id == report_id, ProjectReport.project_id == project_id).first()
+    if not row:
+        return {"status": "ok"}
+    db.delete(row)
+    db.commit()
+    return {"status": "ok"}
+
+
+# ---- Events ----
+@router.get("/{project_id}/events")
+def list_project_events(project_id: str, db: Session = Depends(get_db)):
+    rows = db.query(ProjectEvent).filter(ProjectEvent.project_id == project_id).order_by(ProjectEvent.start_datetime.asc()).all()
+    return [
+        {
+            "id": str(e.id),
+            "project_id": str(e.project_id),
+            "name": e.name,
+            "location": e.location,
+            "start_datetime": e.start_datetime.isoformat() if e.start_datetime else None,
+            "end_datetime": e.end_datetime.isoformat() if e.end_datetime else None,
+            "notes": e.notes,
+            "is_all_day": getattr(e, 'is_all_day', False),
+            "timezone": getattr(e, 'timezone', None),
+            "repeat_type": getattr(e, 'repeat_type', None) or "none",
+            "repeat_config": getattr(e, 'repeat_config', None),
+            "repeat_until": e.repeat_until.isoformat() if getattr(e, 'repeat_until', None) else None,
+            "repeat_count": getattr(e, 'repeat_count', None),
+            "exceptions": getattr(e, 'exceptions', None) or [],
+            "extra_dates": getattr(e, 'extra_dates', None) or [],
+            "overrides": getattr(e, 'overrides', None) or {},
+            "created_at": e.created_at.isoformat() if e.created_at else None,
+            "created_by": str(e.created_by) if e.created_by else None,
+        }
+        for e in rows
+    ]
+
+
+@router.post("/{project_id}/events")
+def create_project_event(project_id: str, payload: dict, db: Session = Depends(get_db), user=Depends(get_current_user)):
+    # Validate project exists
+    proj = db.query(Project).filter(Project.id == project_id).first()
+    if not proj:
+        raise HTTPException(status_code=404, detail="Project not found")
+    
+    # Validate required fields
+    name = payload.get("name")
+    if not name:
+        raise HTTPException(status_code=400, detail="name is required")
+    
+    # Parse datetime strings
+    start_datetime_str = payload.get("start_datetime")
+    end_datetime_str = payload.get("end_datetime")
+    
+    if not start_datetime_str:
+        raise HTTPException(status_code=400, detail="start_datetime is required")
+    if not end_datetime_str:
+        raise HTTPException(status_code=400, detail="end_datetime is required")
+    
+    try:
+        # Parse ISO format datetime strings
+        start_datetime = datetime.fromisoformat(start_datetime_str.replace('Z', '+00:00'))
+        end_datetime = datetime.fromisoformat(end_datetime_str.replace('Z', '+00:00'))
+        
+        # Ensure timezone-aware
+        if start_datetime.tzinfo is None:
+            start_datetime = start_datetime.replace(tzinfo=timezone.utc)
+        if end_datetime.tzinfo is None:
+            end_datetime = end_datetime.replace(tzinfo=timezone.utc)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Invalid datetime format: {str(e)}")
+    
+    # Validate end is after start
+    if end_datetime <= start_datetime:
+        raise HTTPException(status_code=400, detail="end_datetime must be after start_datetime")
+    
+    # Handle recurrence fields
+    is_all_day = payload.get("is_all_day", False)
+    timezone_str = payload.get("timezone", "America/Vancouver")
+    repeat_type = payload.get("repeat_type", "none")
+    repeat_config = payload.get("repeat_config")
+    repeat_until = payload.get("repeat_until")
+    repeat_count = payload.get("repeat_count")
+    exceptions = payload.get("exceptions", [])
+    extra_dates = payload.get("extra_dates", [])
+    overrides = payload.get("overrides", {})
+    
+    # Parse repeat_until if provided
+    repeat_until_dt = None
+    if repeat_until:
+        try:
+            repeat_until_dt = datetime.fromisoformat(str(repeat_until).replace('Z', '+00:00'))
+            if repeat_until_dt.tzinfo is None:
+                repeat_until_dt = repeat_until_dt.replace(tzinfo=timezone.utc)
+        except Exception:
+            pass
+    
+    row = ProjectEvent(
+        project_id=project_id,
+        name=name,
+        location=payload.get("location"),
+        start_datetime=start_datetime,
+        end_datetime=end_datetime,
+        notes=payload.get("notes"),
+        is_all_day=is_all_day,
+        timezone=timezone_str,
+        repeat_type=repeat_type if repeat_type != "none" else None,
+        repeat_config=repeat_config,
+        repeat_until=repeat_until_dt,
+        repeat_count=repeat_count,
+        exceptions=exceptions if exceptions else None,
+        extra_dates=extra_dates if extra_dates else None,
+        overrides=overrides if overrides else None,
+        created_by=user.id,
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return {
+        "id": str(row.id),
+        "project_id": str(row.project_id),
+        "name": row.name,
+        "location": row.location,
+        "start_datetime": row.start_datetime.isoformat() if row.start_datetime else None,
+        "end_datetime": row.end_datetime.isoformat() if row.end_datetime else None,
+        "notes": row.notes,
+        "is_all_day": getattr(row, 'is_all_day', False),
+        "timezone": getattr(row, 'timezone', None),
+        "repeat_type": getattr(row, 'repeat_type', None) or "none",
+        "repeat_config": getattr(row, 'repeat_config', None),
+        "repeat_until": row.repeat_until.isoformat() if getattr(row, 'repeat_until', None) else None,
+        "repeat_count": getattr(row, 'repeat_count', None),
+        "exceptions": getattr(row, 'exceptions', None) or [],
+        "extra_dates": getattr(row, 'extra_dates', None) or [],
+        "overrides": getattr(row, 'overrides', None) or {},
+        "created_at": row.created_at.isoformat() if row.created_at else None,
+        "created_by": str(row.created_by) if row.created_by else None,
+    }
+
+
+@router.get("/{project_id}/events/{event_id}")
+def get_project_event(project_id: str, event_id: str, db: Session = Depends(get_db)):
+    row = db.query(ProjectEvent).filter(ProjectEvent.id == event_id, ProjectEvent.project_id == project_id).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Event not found")
+    return {
+        "id": str(row.id),
+        "project_id": str(row.project_id),
+        "name": row.name,
+        "location": row.location,
+        "start_datetime": row.start_datetime.isoformat() if row.start_datetime else None,
+        "end_datetime": row.end_datetime.isoformat() if row.end_datetime else None,
+        "notes": row.notes,
+        "is_all_day": getattr(row, 'is_all_day', False),
+        "timezone": getattr(row, 'timezone', None),
+        "repeat_type": getattr(row, 'repeat_type', None) or "none",
+        "repeat_config": getattr(row, 'repeat_config', None),
+        "repeat_until": row.repeat_until.isoformat() if getattr(row, 'repeat_until', None) else None,
+        "repeat_count": getattr(row, 'repeat_count', None),
+        "exceptions": getattr(row, 'exceptions', None) or [],
+        "extra_dates": getattr(row, 'extra_dates', None) or [],
+        "overrides": getattr(row, 'overrides', None) or {},
+        "created_at": row.created_at.isoformat() if row.created_at else None,
+        "created_by": str(row.created_by) if row.created_by else None,
+    }
+
+
+@router.patch("/{project_id}/events/{event_id}")
+def update_project_event(project_id: str, event_id: str, payload: dict, db: Session = Depends(get_db), user=Depends(get_current_user)):
+    row = db.query(ProjectEvent).filter(ProjectEvent.id == event_id, ProjectEvent.project_id == project_id).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Event not found")
+    
+    # Update fields
+    if "name" in payload:
+        if not payload["name"]:
+            raise HTTPException(status_code=400, detail="name cannot be empty")
+        row.name = payload["name"]
+    
+    if "location" in payload:
+        row.location = payload["location"]
+    
+    if "notes" in payload:
+        row.notes = payload["notes"]
+    
+    # Update recurrence fields
+    if "is_all_day" in payload:
+        row.is_all_day = bool(payload["is_all_day"])
+    
+    if "timezone" in payload:
+        row.timezone = payload["timezone"]
+    
+    if "repeat_type" in payload:
+        row.repeat_type = payload["repeat_type"] if payload["repeat_type"] != "none" else None
+    
+    if "repeat_config" in payload:
+        row.repeat_config = payload["repeat_config"]
+    
+    if "repeat_until" in payload:
+        if payload["repeat_until"]:
+            try:
+                repeat_until_dt = datetime.fromisoformat(str(payload["repeat_until"]).replace('Z', '+00:00'))
+                if repeat_until_dt.tzinfo is None:
+                    repeat_until_dt = repeat_until_dt.replace(tzinfo=timezone.utc)
+                row.repeat_until = repeat_until_dt
+            except Exception:
+                pass
+        else:
+            row.repeat_until = None
+    
+    if "repeat_count" in payload:
+        row.repeat_count = payload["repeat_count"]
+    
+    if "exceptions" in payload:
+        row.exceptions = payload["exceptions"] if payload["exceptions"] else None
+    
+    if "extra_dates" in payload:
+        row.extra_dates = payload["extra_dates"] if payload["extra_dates"] else None
+    
+    if "overrides" in payload:
+        row.overrides = payload["overrides"] if payload["overrides"] else None
+    
+    # Handle datetime updates
+    start_datetime = row.start_datetime
+    end_datetime = row.end_datetime
+    
+    if "start_datetime" in payload:
+        try:
+            start_datetime_str = payload["start_datetime"]
+            start_datetime = datetime.fromisoformat(start_datetime_str.replace('Z', '+00:00'))
+            if start_datetime.tzinfo is None:
+                start_datetime = start_datetime.replace(tzinfo=timezone.utc)
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Invalid start_datetime format: {str(e)}")
+    
+    if "end_datetime" in payload:
+        try:
+            end_datetime_str = payload["end_datetime"]
+            end_datetime = datetime.fromisoformat(end_datetime_str.replace('Z', '+00:00'))
+            if end_datetime.tzinfo is None:
+                end_datetime = end_datetime.replace(tzinfo=timezone.utc)
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Invalid end_datetime format: {str(e)}")
+    
+    # Validate end is after start
+    if end_datetime <= start_datetime:
+        raise HTTPException(status_code=400, detail="end_datetime must be after start_datetime")
+    
+    row.start_datetime = start_datetime
+    row.end_datetime = end_datetime
+    
+    db.commit()
+    db.refresh(row)
+    return {
+        "id": str(row.id),
+        "project_id": str(row.project_id),
+        "name": row.name,
+        "location": row.location,
+        "start_datetime": row.start_datetime.isoformat() if row.start_datetime else None,
+        "end_datetime": row.end_datetime.isoformat() if row.end_datetime else None,
+        "notes": row.notes,
+        "is_all_day": getattr(row, 'is_all_day', False),
+        "timezone": getattr(row, 'timezone', None),
+        "repeat_type": getattr(row, 'repeat_type', None) or "none",
+        "repeat_config": getattr(row, 'repeat_config', None),
+        "repeat_until": row.repeat_until.isoformat() if getattr(row, 'repeat_until', None) else None,
+        "repeat_count": getattr(row, 'repeat_count', None),
+        "exceptions": getattr(row, 'exceptions', None) or [],
+        "extra_dates": getattr(row, 'extra_dates', None) or [],
+        "overrides": getattr(row, 'overrides', None) or {},
+        "created_at": row.created_at.isoformat() if row.created_at else None,
+        "created_by": str(row.created_by) if row.created_by else None,
+    }
+
+
+@router.delete("/{project_id}/events/{event_id}")
+def delete_project_event(project_id: str, event_id: str, db: Session = Depends(get_db)):
+    row = db.query(ProjectEvent).filter(ProjectEvent.id == event_id, ProjectEvent.project_id == project_id).first()
     if not row:
         return {"status": "ok"}
     db.delete(row)

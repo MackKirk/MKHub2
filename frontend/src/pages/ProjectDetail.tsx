@@ -146,7 +146,7 @@ export default function ProjectDetail(){
                 <ProjectCostsSummary projectId={String(id)} estimates={projectEstimates||[]} />
                 <div className="md:col-span-3 rounded-xl border bg-white p-4">
                   <h4 className="font-semibold mb-2">Schedule</h4>
-                  <CalendarMock title="Project Calendar (mock)" />
+                  <CalendarMock title="Project Calendar" projectId={String(id)} />
                 </div>
               </div>
             )}

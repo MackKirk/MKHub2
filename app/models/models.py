@@ -189,6 +189,32 @@ class ProjectReport(Base):
     created_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
 
 
+class ProjectEvent(Base):
+    __tablename__ = "project_events"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    project_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"))
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    location: Mapped[Optional[str]] = mapped_column(String(500))
+    start_datetime: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    end_datetime: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    notes: Mapped[Optional[str]] = mapped_column(String(2000))
+    
+    # Recurrence fields
+    is_all_day: Mapped[bool] = mapped_column(Boolean, default=False)
+    timezone: Mapped[Optional[str]] = mapped_column(String(100))  # e.g., "America/Vancouver"
+    repeat_type: Mapped[Optional[str]] = mapped_column(String(50))  # "none", "daily", "weekly", "monthly", "yearly", "custom"
+    repeat_config: Mapped[Optional[dict]] = mapped_column(JSON)  # JSON with repeat rules
+    repeat_until: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    repeat_count: Mapped[Optional[int]] = mapped_column(Integer)
+    exceptions: Mapped[Optional[list]] = mapped_column(JSON)  # List of exception dates (EXDATE)
+    extra_dates: Mapped[Optional[list]] = mapped_column(JSON)  # List of extra dates (RDATE)
+    overrides: Mapped[Optional[dict]] = mapped_column(JSON)  # Overrides for specific occurrences
+    
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    created_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+
+
 # Employee time entries per project
 class ProjectTimeEntry(Base):
     __tablename__ = "project_time_entries"

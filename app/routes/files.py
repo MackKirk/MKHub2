@@ -40,6 +40,26 @@ def get_storage() -> StorageProvider:
         return LocalStorageProvider()
 
 
+def get_storage_for_file(fo: FileObject) -> StorageProvider:
+    """
+    Get the appropriate storage provider for a specific file.
+    This ensures that files stored in blob storage can be accessed even in local development
+    if Azure credentials are available, and files stored locally can be accessed locally.
+    """
+    # If the file was stored with blob provider, try to use blob storage
+    if fo.provider == "blob":
+        # Check if Azure Blob Storage is configured (even in local dev)
+        if settings.azure_blob_connection and settings.azure_blob_container:
+            try:
+                return BlobStorageProvider()
+            except Exception:
+                # If blob provider fails, fall back to local storage
+                pass
+    
+    # For local files or if blob is not available, use local storage
+    return LocalStorageProvider()
+
+
 def canonical_key(
     project_code: Optional[str], slug: Optional[str], category: Optional[str], original_name: str
 ) -> str:
@@ -353,10 +373,16 @@ def serve_local_file(file_path: str):
 
 
 @router.get("/{file_id}/download")
-def download(file_id: str, db: Session = Depends(get_db), storage: StorageProvider = Depends(get_storage)):
+def download(file_id: str, db: Session = Depends(get_db)):
+    import logging
+    logger = logging.getLogger(__name__)
+    
     fo: Optional[FileObject] = db.query(FileObject).filter(FileObject.id == file_id).first()
     if not fo:
         raise HTTPException(status_code=404, detail="File not found")
+    
+    # Get the appropriate storage provider for this specific file
+    storage = get_storage_for_file(fo)
     
     # If using local storage, serve directly
     if isinstance(storage, LocalStorageProvider):
@@ -365,6 +391,15 @@ def download(file_id: str, db: Session = Depends(get_db), storage: StorageProvid
         
         file_path = storage._get_path(fo.key)
         if not file_path.exists():
+            # File not found locally
+            # If this file was stored in blob storage, it won't be available locally
+            # unless Azure credentials are configured in local environment
+            if fo.provider == "blob":
+                logger.warning(
+                    f"File {file_id} (key: {fo.key}) not found locally. "
+                    f"This file was stored in blob storage. "
+                    f"To access it locally, configure AZURE_BLOB_CONNECTION and AZURE_BLOB_CONTAINER environment variables."
+                )
             raise HTTPException(status_code=404, detail="File not found")
         
         # Determine content type
@@ -384,18 +419,21 @@ def download(file_id: str, db: Session = Depends(get_db), storage: StorageProvid
     # For blob storage, return download URL
     url = storage.get_download_url(fo.key, expires_s=300)
     if not url:
-        raise HTTPException(status_code=404, detail="Not available")
+        raise HTTPException(status_code=404, detail="File not available in blob storage")
     return {"download_url": url, "expires_in": 300}
 
 
 @router.get("/{file_id}/thumbnail")
-def thumbnail(file_id: str, w: int = 200, db: Session = Depends(get_db), storage: StorageProvider = Depends(get_storage)):
+def thumbnail(file_id: str, w: int = 200, db: Session = Depends(get_db)):
     import logging
     logger = logging.getLogger(__name__)
     
     fo: Optional[FileObject] = db.query(FileObject).filter(FileObject.id == file_id).first()
     if not fo:
         raise HTTPException(status_code=404, detail="File not found")
+    
+    # Get the appropriate storage provider for this specific file
+    storage = get_storage_for_file(fo)
     
     # Fetch and convert to small PNG
     import io
@@ -407,6 +445,15 @@ def thumbnail(file_id: str, w: int = 200, db: Session = Depends(get_db), storage
         if isinstance(storage, LocalStorageProvider):
             file_path = storage._get_path(fo.key)
             if not file_path.exists():
+                # File not found locally
+                # If this file was stored in blob storage, it won't be available locally
+                # unless Azure credentials are configured in local environment
+                if fo.provider == "blob":
+                    logger.warning(
+                        f"File {file_id} (key: {fo.key}) not found locally. "
+                        f"This file was stored in blob storage. "
+                        f"To access it locally, configure AZURE_BLOB_CONNECTION and AZURE_BLOB_CONTAINER environment variables."
+                    )
                 raise HTTPException(status_code=404, detail="File not found")
             with open(file_path, "rb") as f:
                 file_content = f.read()
@@ -414,7 +461,7 @@ def thumbnail(file_id: str, w: int = 200, db: Session = Depends(get_db), storage
             # For blob storage, download from URL
             url = storage.get_download_url(fo.key, expires_s=300)
             if not url:
-                raise HTTPException(status_code=404, detail="Not available")
+                raise HTTPException(status_code=404, detail="File not available in blob storage")
             # Download file from storage
             with httpx.stream("GET", url, timeout=30.0) as r:
                 r.raise_for_status()
@@ -526,6 +573,9 @@ def thumbnail(file_id: str, w: int = 200, db: Session = Depends(get_db), storage
             return Response(content=out.read(), media_type="image/png")
         finally:
             im.close()
+    except HTTPException:
+        # Re-raise HTTPException (like 404) as-is, don't convert to 500
+        raise
     except Exception as e:
         # Log error for debugging but don't expose to client
         logger.error(f"Thumbnail generation failed for file {file_id} (key: {fo.key if fo else 'unknown'}, content_type: {getattr(fo, 'content_type', 'unknown') if fo else 'unknown'}): {str(e)}", exc_info=True)

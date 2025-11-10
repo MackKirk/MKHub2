@@ -200,6 +200,69 @@ def create_app() -> FastAPI:
                             conn.execute(text("ALTER TABLE suppliers ADD COLUMN updated_at TEXT"))
                         except Exception:
                             pass
+                        # Project events table for SQLite
+                        try:
+                            conn.execute(text("CREATE TABLE IF NOT EXISTS project_events (\n"
+                                               "id TEXT PRIMARY KEY,\n"
+                                               "project_id TEXT NOT NULL,\n"
+                                               "name TEXT NOT NULL,\n"
+                                               "location TEXT,\n"
+                                               "start_datetime TEXT NOT NULL,\n"
+                                               "end_datetime TEXT NOT NULL,\n"
+                                               "notes TEXT,\n"
+                                               "is_all_day INTEGER DEFAULT 0,\n"
+                                               "timezone TEXT,\n"
+                                               "repeat_type TEXT,\n"
+                                               "repeat_config TEXT,\n"
+                                               "repeat_until TEXT,\n"
+                                               "repeat_count INTEGER,\n"
+                                               "exceptions TEXT,\n"
+                                               "extra_dates TEXT,\n"
+                                               "overrides TEXT,\n"
+                                               "created_at TEXT DEFAULT CURRENT_TIMESTAMP,\n"
+                                               "created_by TEXT,\n"
+                                               "FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,\n"
+                                               "FOREIGN KEY(created_by) REFERENCES users(id)\n"
+                                               ")"))
+                        except Exception:
+                            pass
+                        # Add new columns to existing SQLite table
+                        try:
+                            conn.execute(text("ALTER TABLE project_events ADD COLUMN is_all_day INTEGER DEFAULT 0"))
+                        except Exception:
+                            pass
+                        try:
+                            conn.execute(text("ALTER TABLE project_events ADD COLUMN timezone TEXT"))
+                        except Exception:
+                            pass
+                        try:
+                            conn.execute(text("ALTER TABLE project_events ADD COLUMN repeat_type TEXT"))
+                        except Exception:
+                            pass
+                        try:
+                            conn.execute(text("ALTER TABLE project_events ADD COLUMN repeat_config TEXT"))
+                        except Exception:
+                            pass
+                        try:
+                            conn.execute(text("ALTER TABLE project_events ADD COLUMN repeat_until TEXT"))
+                        except Exception:
+                            pass
+                        try:
+                            conn.execute(text("ALTER TABLE project_events ADD COLUMN repeat_count INTEGER"))
+                        except Exception:
+                            pass
+                        try:
+                            conn.execute(text("ALTER TABLE project_events ADD COLUMN exceptions TEXT"))
+                        except Exception:
+                            pass
+                        try:
+                            conn.execute(text("ALTER TABLE project_events ADD COLUMN extra_dates TEXT"))
+                        except Exception:
+                            pass
+                        try:
+                            conn.execute(text("ALTER TABLE project_events ADD COLUMN overrides TEXT"))
+                        except Exception:
+                            pass
                 except Exception:
                     pass
             if settings.database_url.startswith("postgres"):
@@ -417,6 +480,64 @@ def create_app() -> FastAPI:
                     # Ensure estimate_items table has all required columns
                     conn.execute(text("ALTER TABLE estimate_items ADD COLUMN IF NOT EXISTS description TEXT"))
                     conn.execute(text("ALTER TABLE estimate_items ADD COLUMN IF NOT EXISTS item_type VARCHAR(50)"))
+                    # Project events table
+                    conn.execute(text("CREATE TABLE IF NOT EXISTS project_events (\n"
+                                       "id UUID PRIMARY KEY,\n"
+                                       "project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,\n"
+                                       "name VARCHAR(255) NOT NULL,\n"
+                                       "location VARCHAR(500),\n"
+                                       "start_datetime TIMESTAMPTZ NOT NULL,\n"
+                                       "end_datetime TIMESTAMPTZ NOT NULL,\n"
+                                       "notes VARCHAR(2000),\n"
+                                       "is_all_day BOOLEAN DEFAULT FALSE,\n"
+                                       "timezone VARCHAR(100),\n"
+                                       "repeat_type VARCHAR(50),\n"
+                                       "repeat_config JSONB,\n"
+                                       "repeat_until TIMESTAMPTZ,\n"
+                                       "repeat_count INTEGER,\n"
+                                       "exceptions JSONB,\n"
+                                       "extra_dates JSONB,\n"
+                                       "overrides JSONB,\n"
+                                       "created_at TIMESTAMPTZ DEFAULT NOW(),\n"
+                                       "created_by UUID REFERENCES users(id)\n"
+                                       ")"))
+                    # Add new columns to existing table if they don't exist
+                    try:
+                        conn.execute(text("ALTER TABLE project_events ADD COLUMN IF NOT EXISTS is_all_day BOOLEAN DEFAULT FALSE"))
+                    except Exception:
+                        pass
+                    try:
+                        conn.execute(text("ALTER TABLE project_events ADD COLUMN IF NOT EXISTS timezone VARCHAR(100)"))
+                    except Exception:
+                        pass
+                    try:
+                        conn.execute(text("ALTER TABLE project_events ADD COLUMN IF NOT EXISTS repeat_type VARCHAR(50)"))
+                    except Exception:
+                        pass
+                    try:
+                        conn.execute(text("ALTER TABLE project_events ADD COLUMN IF NOT EXISTS repeat_config JSONB"))
+                    except Exception:
+                        pass
+                    try:
+                        conn.execute(text("ALTER TABLE project_events ADD COLUMN IF NOT EXISTS repeat_until TIMESTAMPTZ"))
+                    except Exception:
+                        pass
+                    try:
+                        conn.execute(text("ALTER TABLE project_events ADD COLUMN IF NOT EXISTS repeat_count INTEGER"))
+                    except Exception:
+                        pass
+                    try:
+                        conn.execute(text("ALTER TABLE project_events ADD COLUMN IF NOT EXISTS exceptions JSONB"))
+                    except Exception:
+                        pass
+                    try:
+                        conn.execute(text("ALTER TABLE project_events ADD COLUMN IF NOT EXISTS extra_dates JSONB"))
+                    except Exception:
+                        pass
+                    try:
+                        conn.execute(text("ALTER TABLE project_events ADD COLUMN IF NOT EXISTS overrides JSONB"))
+                    except Exception:
+                        pass
         except Exception:
             pass
         # Removed bootstrap admin creation: admins should be granted via roles after onboarding
