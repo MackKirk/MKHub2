@@ -1,4 +1,9 @@
+import { useState } from 'react';
+import ScheduleModal from '@/components/ScheduleModal';
+
 export default function Home(){
+  const [showScheduleModal, setShowScheduleModal] = useState(false);
+
   return (
     <div className="space-y-4">
       <div className="mb-3 rounded-xl border bg-gradient-to-br from-[#7f1010] to-[#a31414] text-white p-4">
@@ -30,6 +35,28 @@ export default function Home(){
           </div>
         </div>
       </div>
+      <div className="grid md:grid-cols-3 gap-4">
+        <div 
+          className="rounded-xl border bg-white p-4 cursor-pointer hover:shadow-lg transition-shadow"
+          onClick={() => setShowScheduleModal(true)}
+        >
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 rounded-lg bg-blue-100 flex items-center justify-center">
+              <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+            </div>
+            <div className="flex-1">
+              <h3 className="font-semibold text-gray-900">Schedule</h3>
+              <p className="text-sm text-gray-600">View your shifts and clock in/out</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {showScheduleModal && (
+        <ScheduleModal onClose={() => setShowScheduleModal(false)} />
+      )}
     </div>
   );
 }

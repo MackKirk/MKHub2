@@ -5,6 +5,7 @@ from typing import List, Optional
 from ..db import get_db
 from ..models.models import SettingList, SettingItem, Client
 from ..auth.security import require_permissions
+from ..config import settings
 
 router = APIRouter(prefix="/settings", tags=["settings"])
 
@@ -23,6 +24,9 @@ def get_settings_bundle(db: Session = Depends(get_db)):
     out.setdefault("divisions", [])
     out.setdefault("project_statuses", [])
     out.setdefault("lead_sources", [])
+    # Add Google Places API key (if configured)
+    if settings.google_places_api_key:
+        out["google_places_api_key"] = settings.google_places_api_key
     return out
 
 

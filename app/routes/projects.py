@@ -4,7 +4,7 @@ from sqlalchemy import func, extract
 from typing import List, Optional
 
 from ..db import get_db
-from ..models.models import Project, ClientFile, FileObject, ProjectUpdate, ProjectReport, ProjectEvent, ProjectTimeEntry, ProjectTimeEntryLog, User, EmployeeProfile, Client, ClientSite, ClientFolder, ClientContact, SettingList, SettingItem
+from ..models.models import Project, ClientFile, FileObject, ProjectUpdate, ProjectReport, ProjectEvent, ProjectTimeEntry, ProjectTimeEntryLog, User, EmployeeProfile, Client, ClientSite, ClientFolder, ClientContact, SettingList, SettingItem, Shift
 from datetime import datetime, timezone
 from ..auth.security import get_current_user, require_permissions, can_approve_timesheet
 
@@ -30,6 +30,24 @@ def create_project(payload: dict, db: Session = Depends(get_db)):
         seq += 1
         code = f"MK-{seq:06d}/{slug}-{year}"
     payload["code"] = code
+    
+    # If site_id is provided, copy lat/lng from site to project for geofencing
+    if payload.get("site_id"):
+        site = db.query(ClientSite).filter(ClientSite.id == payload["site_id"]).first()
+        if site:
+            if getattr(site, 'site_lat', None) is not None:
+                payload["lat"] = float(site.site_lat)
+            if getattr(site, 'site_lng', None) is not None:
+                payload["lng"] = float(site.site_lng)
+            # Also copy address fields from site if not provided in payload
+            if not payload.get("address") and site.site_address_line1:
+                payload["address"] = site.site_address_line1
+            if not payload.get("address_city") and site.site_city:
+                payload["address_city"] = site.site_city
+            if not payload.get("address_province") and site.site_province:
+                payload["address_province"] = site.site_province
+            if not payload.get("address_country") and site.site_country:
+                payload["address_country"] = site.site_country
     
     proj = Project(**payload)
     db.add(proj)
@@ -105,6 +123,7 @@ def get_project(project_id: str, db: Session = Depends(get_db)):
         "slug": p.slug,
         "client_id": str(p.client_id) if p.client_id else None,
         "client_display_name": getattr(client,'display_name', None) or getattr(client,'name', None),
+        "address": getattr(p, 'address', None),
         "address_city": getattr(p, 'address_city', None),
         "address_province": getattr(p, 'address_province', None),
         "address_country": getattr(p, 'address_country', None),
@@ -134,6 +153,9 @@ def get_project(project_id: str, db: Session = Depends(get_db)):
         "cost_estimated": getattr(p, 'cost_estimated', None),
         "cost_actual": getattr(p, 'cost_actual', None),
         "service_value": getattr(p, 'service_value', None),
+        "lat": float(p.lat) if getattr(p, 'lat', None) is not None else None,
+        "lng": float(p.lng) if getattr(p, 'lng', None) is not None else None,
+        "timezone": getattr(p, 'timezone', None),
         "created_at": p.created_at.isoformat() if getattr(p, 'created_at', None) else None,
     }
 
@@ -169,9 +191,91 @@ def update_project(project_id: str, payload: dict, db: Session = Depends(get_db)
                 if meta.get("sets_end_date") and not getattr(p, 'date_end', None):
                     payload["date_end"] = datetime.now(timezone.utc)
     
+    # Check if coordinates (lat/lng) are being updated
+    old_lat = getattr(p, 'lat', None)
+    old_lng = getattr(p, 'lng', None)
+    new_lat = payload.get('lat')
+    new_lng = payload.get('lng')
+    
+    # Check if coordinates actually changed
+    coordinates_changed = False
+    if new_lat is not None or new_lng is not None:
+        # Convert to float for comparison if they exist
+        if new_lat is not None:
+            new_lat = float(new_lat)
+        if new_lng is not None:
+            new_lng = float(new_lng)
+        if old_lat is not None:
+            old_lat = float(old_lat)
+        if old_lng is not None:
+            old_lng = float(old_lng)
+        
+        # Check if coordinates changed (with small tolerance for floating point)
+        if (new_lat is not None and old_lat is None) or (new_lat is None and old_lat is not None):
+            coordinates_changed = True
+        elif new_lat is not None and old_lat is not None:
+            if abs(new_lat - old_lat) > 0.0001:  # ~11 meters tolerance
+                coordinates_changed = True
+        
+        if (new_lng is not None and old_lng is None) or (new_lng is None and old_lng is not None):
+            coordinates_changed = True
+        elif new_lng is not None and old_lng is not None:
+            if abs(new_lng - old_lng) > 0.0001:  # ~11 meters tolerance
+                coordinates_changed = True
+    
+    # Update project
     for k, v in payload.items():
         setattr(p, k, v)
     db.commit()
+    
+    # If coordinates changed, update shifts to use new coordinates
+    if coordinates_changed:
+        from ..config import settings
+        
+        # Get final coordinates (use new values if provided, otherwise keep old ones)
+        final_lat = new_lat if new_lat is not None else old_lat
+        final_lng = new_lng if new_lng is not None else old_lng
+        
+        # Only update if we have valid coordinates
+        if final_lat is not None and final_lng is not None:
+            # Get all shifts for this project
+            shifts = db.query(Shift).filter(Shift.project_id == project_id).all()
+            
+            # Update shifts that don't have custom geofences (geofences is None or empty)
+            # Clear their geofences so they use the project coordinates in real-time
+            updated_count = 0
+            for shift in shifts:
+                # If shift has no geofences or empty geofences, clear them to use project coordinates
+                if not shift.geofences or len(shift.geofences) == 0:
+                    # Shift already uses project coordinates, no need to update
+                    continue
+                
+                # Check if shift's geofences match the old project coordinates (within tolerance)
+                # If they do, update them to use new coordinates (or clear them to use project in real-time)
+                shift_uses_project_coords = False
+                if shift.geofences and len(shift.geofences) > 0:
+                    for geofence in shift.geofences:
+                        if isinstance(geofence, dict):
+                            geofence_lat = geofence.get('lat')
+                            geofence_lng = geofence.get('lng')
+                            if geofence_lat is not None and geofence_lng is not None:
+                                # Check if geofence matches old project coordinates (within tolerance)
+                                if old_lat is not None and old_lng is not None:
+                                    lat_diff = abs(float(geofence_lat) - float(old_lat))
+                                    lng_diff = abs(float(geofence_lng) - float(old_lng))
+                                    if lat_diff < 0.0001 and lng_diff < 0.0001:
+                                        shift_uses_project_coords = True
+                                        break
+                
+                # If shift's geofences match old project coordinates, clear them to use new project coordinates
+                if shift_uses_project_coords:
+                    shift.geofences = None  # Clear geofences to use project coordinates in real-time
+                    shift.updated_at = datetime.now(timezone.utc)
+                    updated_count += 1
+            
+            if updated_count > 0:
+                db.commit()
+    
     return {"status": "ok"}
 
 
@@ -726,8 +830,70 @@ def delete_time_entry(project_id: str, entry_id: str, db: Session = Depends(get_
     row = db.query(ProjectTimeEntry).filter(ProjectTimeEntry.id == entry_id, ProjectTimeEntry.project_id == project_id).first()
     if not row:
         return {"status":"ok"}
+    
+    # Store entry data before deletion for attendance lookup
+    entry_user_id = row.user_id
+    entry_work_date = row.work_date
+    entry_start_time = row.start_time
+    entry_end_time = row.end_time
+    
+    # Log deletion
     db.add(ProjectTimeEntryLog(entry_id=row.id, project_id=row.project_id, user_id=user.id, action="delete", changes=None))
     db.delete(row)
+    db.commit()
+    
+    # Reset related attendance records if this entry was created from attendance
+    # Find shifts for this project, user, and date
+    from ..models.models import Shift, Attendance
+    from ..services.audit import create_audit_log
+    from ..services.permissions import is_admin, is_supervisor
+    
+    shifts = db.query(Shift).filter(
+        Shift.project_id == project_id,
+        Shift.worker_id == entry_user_id,
+        Shift.date == entry_work_date,
+        Shift.status == "scheduled"
+    ).all()
+    
+    # Determine user role for audit log
+    actor_role = "worker"
+    if is_admin(user, db):
+        actor_role = "admin"
+    elif is_supervisor(user, db):
+        actor_role = "supervisor"
+    
+    # For each shift, find and reset approved attendance records
+    for shift in shifts:
+        # Find all approved attendance records for this shift
+        attendances = db.query(Attendance).filter(
+            Attendance.shift_id == shift.id,
+            Attendance.status == "approved"
+        ).all()
+        
+        for attendance in attendances:
+            # Reset attendance status to pending
+            attendance.status = "pending"
+            attendance.approved_at = None
+            attendance.approved_by = None
+            
+            # Create audit log
+            create_audit_log(
+                db=db,
+                entity_type="attendance",
+                entity_id=str(attendance.id),
+                action="RESET",
+                actor_id=str(user.id),
+                actor_role=actor_role,
+                source="api",
+                changes_json={"before": {"status": "approved"}, "after": {"status": "pending"}},
+                context={
+                    "project_id": project_id,
+                    "worker_id": str(attendance.worker_id),
+                    "shift_id": str(attendance.shift_id),
+                    "reason": "Timesheet entry deleted",
+                }
+            )
+    
     db.commit()
     return {"status":"ok"}
 

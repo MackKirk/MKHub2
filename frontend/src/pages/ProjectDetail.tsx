@@ -8,8 +8,9 @@ import EstimateBuilder from '@/components/EstimateBuilder';
 import ProposalForm from '@/components/ProposalForm';
 import { useConfirm } from '@/components/ConfirmProvider';
 import CalendarMock from '@/components/CalendarMock';
+import DispatchTab from '@/components/DispatchTab';
 
-type Project = { id:string, code?:string, name?:string, client_id?:string, client_display_name?:string, address_city?:string, address_province?:string, address_country?:string, address_postal_code?:string, description?:string, status_id?:string, division_id?:string, estimator_id?:string, onsite_lead_id?:string, contact_id?:string, contact_name?:string, contact_email?:string, contact_phone?:string, date_start?:string, date_eta?:string, date_end?:string, cost_estimated?:number, cost_actual?:number, service_value?:number, progress?:number, site_id?:string, site_name?:string, site_address_line1?:string, site_city?:string, site_province?:string, site_country?:string, site_postal_code?:string };
+type Project = { id:string, code?:string, name?:string, client_id?:string, client_display_name?:string, address_city?:string, address_province?:string, address_country?:string, address_postal_code?:string, description?:string, status_id?:string, division_id?:string, estimator_id?:string, onsite_lead_id?:string, contact_id?:string, contact_name?:string, contact_email?:string, contact_phone?:string, date_start?:string, date_eta?:string, date_end?:string, cost_estimated?:number, cost_actual?:number, service_value?:number, progress?:number, site_id?:string, site_name?:string, site_address_line1?:string, site_city?:string, site_province?:string, site_country?:string, site_postal_code?:string, status_label?:string };
 type ProjectFile = { id:string, file_object_id:string, is_image?:boolean, content_type?:string, category?:string, original_name?:string, uploaded_at?:string };
 type Update = { id:string, timestamp?:string, text?:string, images?:any };
 type Report = { id:string, category_id?:string, division_id?:string, description?:string, images?:any, status?:string };
@@ -30,15 +31,15 @@ export default function ProjectDetail(){
   const { data:projectEstimates } = useQuery({ queryKey:['projectEstimates', id], queryFn: ()=>api<any[]>('GET', `/estimate/estimates?project_id=${encodeURIComponent(String(id||''))}`) });
   // Check for tab query parameter
   const searchParams = new URLSearchParams(location.search);
-  const initialTab = (searchParams.get('tab') as 'overview'|'general'|'reports'|'timesheet'|'files'|'photos'|'proposal'|'estimate'|null) || 'overview';
-  const [tab, setTab] = useState<'overview'|'general'|'reports'|'timesheet'|'files'|'photos'|'proposal'|'estimate'>(initialTab);
+  const initialTab = (searchParams.get('tab') as 'overview'|'general'|'reports'|'dispatch'|'timesheet'|'files'|'photos'|'proposal'|'estimate'|null) || 'overview';
+  const [tab, setTab] = useState<'overview'|'general'|'reports'|'dispatch'|'timesheet'|'files'|'photos'|'proposal'|'estimate'>(initialTab);
   const [pickerOpen, setPickerOpen] = useState(false);
   
   // Update tab when URL search params change
   useEffect(() => {
     const searchParams = new URLSearchParams(location.search);
-    const tabParam = searchParams.get('tab') as 'overview'|'general'|'reports'|'timesheet'|'files'|'photos'|'proposal'|'estimate'|null;
-    if (tabParam && ['overview','general','reports','timesheet','files','photos','proposal','estimate'].includes(tabParam)) {
+    const tabParam = searchParams.get('tab') as 'overview'|'general'|'reports'|'dispatch'|'timesheet'|'files'|'photos'|'proposal'|'estimate'|null;
+    if (tabParam && ['overview','general','reports','dispatch','timesheet','files','photos','proposal','estimate'].includes(tabParam)) {
       setTab(tabParam);
     }
   }, [location.search]);
@@ -122,8 +123,8 @@ export default function ProjectDetail(){
                 }} className="px-4 py-2 rounded bg-red-600 hover:bg-red-700 text-white text-sm">Delete Project</button>
               </div>
               <div className="mt-auto flex gap-3">
-                {(['overview','reports','timesheet','files','photos','proposal','estimate'] as const).map(k=> (
-                  <button key={k} onClick={()=>setTab(k)} className={`px-4 py-2 rounded-full ${tab===k?'bg-black text-white':'bg-white text-black'}`}>{k[0].toUpperCase()+k.slice(1)}</button>
+                {(['overview','reports','dispatch','timesheet','files','photos','proposal','estimate'] as const).map(k=> (
+                  <button key={k} onClick={()=>setTab(k)} className={`px-4 py-2 rounded-full ${tab===k?'bg-black text-white':'bg-white text-black'}`}>{k === 'dispatch' ? 'Schedule' : k[0].toUpperCase()+k.slice(1)}</button>
                 ))}
               </div>
             </div>
@@ -153,6 +154,10 @@ export default function ProjectDetail(){
 
             {tab==='reports' && (
               <ReportsTabEnhanced projectId={String(id)} items={reports||[]} onRefresh={refetchReports} />
+            )}
+
+            {tab==='dispatch' && (
+              <DispatchTab projectId={String(id)} />
             )}
 
             {tab==='timesheet' && (
@@ -518,6 +523,7 @@ function EmployeeSelect({ label, value, onChange, employees }:{ label:string, va
 }
 
 function TimesheetTab({ projectId }:{ projectId:string }){
+  const queryClient = useQueryClient();
   const [month, setMonth] = useState<string>(new Date().toISOString().slice(0,7));
   const [userFilter, setUserFilter] = useState<string>('');
   const qs = useMemo(()=>{
@@ -530,14 +536,378 @@ function TimesheetTab({ projectId }:{ projectId:string }){
   const { data, refetch } = useQuery({ queryKey:['timesheet', projectId, qs], queryFn: ()=> api<any[]>(`GET`, `/projects/${projectId}/timesheet${qs}`), refetchInterval: 10000 });
   const entries = data||[];
   const [workDate, setWorkDate] = useState<string>(new Date().toISOString().slice(0,10));
-  const [hours, setHours] = useState<string>('8');
-  const [start, setStart] = useState<string>('');
-  const [end, setEnd] = useState<string>('');
-  const [targetUser, setTargetUser] = useState<string>('');
-  const [notes, setNotes] = useState<string>('');
   const minutesTotal = (entries||[]).reduce((acc:number, e:any)=> acc + Number(e.minutes||0), 0);
   const hoursTotal = (minutesTotal/60).toFixed(1);
   const { data:employees } = useQuery({ queryKey:['employees'], queryFn: ()=>api<any[]>('GET','/employees') });
+  
+  // Get current user info to check if supervisor/admin
+  const { data: currentUser } = useQuery({ queryKey:['me'], queryFn: ()=>api<any>('GET','/auth/me') });
+  
+  // Check if user is supervisor or admin
+  const isSupervisorOrAdmin = useMemo(() => {
+    if (!currentUser) return false;
+    const roles = currentUser.roles || [];
+    const permissions = currentUser.permissions || [];
+    return roles.includes('admin') || roles.includes('supervisor') || permissions.includes('dispatch:write');
+  }, [currentUser]);
+  
+  // Fetch shifts for the selected date
+  const dateRange = useMemo(() => {
+    return `${workDate},${workDate}`;
+  }, [workDate]);
+
+  const { data: shifts, refetch: refetchShifts } = useQuery({
+    queryKey: ['shifts', projectId, dateRange],
+    queryFn: async () => {
+      try {
+        const allShifts = await api<any[]>('GET', `/dispatch/projects/${projectId}/shifts?date_range=${dateRange}`);
+        // Return all shifts (not just scheduled) to show all shifts including those with attendances
+        return allShifts;
+      } catch {
+        return [];
+      }
+    },
+    refetchInterval: 5000, // Refetch every 5 seconds for real-time updates
+  });
+
+  // Fetch attendance records for shifts
+  const { data: attendances, refetch: refetchAttendances } = useQuery({
+    queryKey: ['attendances', projectId, workDate, shifts?.map((s: any) => s.id).join(',')],
+    queryFn: async () => {
+      if (!shifts || shifts.length === 0) return [];
+      try {
+        const attendancePromises = shifts.map((shift: any) =>
+          api<any[]>('GET', `/dispatch/shifts/${shift.id}/attendance`).catch(() => [])
+        );
+        const results = await Promise.all(attendancePromises);
+        return results.flat();
+      } catch {
+        return [];
+      }
+    },
+    enabled: !!shifts && shifts.length > 0,
+    refetchInterval: 5000, // Refetch every 5 seconds for real-time updates
+  });
+
+  // Clock-in/out state
+  const [selectedShift, setSelectedShift] = useState<any>(null);
+  const [clockType, setClockType] = useState<'in' | 'out' | null>(null);
+  const [selectedTime, setSelectedTime] = useState<string>(''); // Stores time in 24h format (HH:MM) for backend
+  const [selectedHour12, setSelectedHour12] = useState<string>(''); // Stores hour in 12h format (1-12)
+  const [selectedMinute, setSelectedMinute] = useState<string>(''); // Stores minute (00, 15, 30, 45)
+  const [selectedAmPm, setSelectedAmPm] = useState<'AM' | 'PM'>('AM'); // Stores AM/PM
+  const [reasonText, setReasonText] = useState<string>('');
+  const [gpsLocation, setGpsLocation] = useState<{ lat: number; lng: number; accuracy: number } | null>(null);
+  const [gpsError, setGpsError] = useState<string>('');
+  const [gpsLoading, setGpsLoading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [showClockModal, setShowClockModal] = useState(false);
+  const [geofenceStatus, setGeofenceStatus] = useState<{ inside: boolean; distance?: number; radius?: number } | null>(null);
+
+  // Haversine distance calculation (same as backend)
+  const haversineDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
+    const R = 6371000; // Earth radius in meters
+    const phi1 = (lat1 * Math.PI) / 180;
+    const phi2 = (lat2 * Math.PI) / 180;
+    const deltaPhi = ((lat2 - lat1) * Math.PI) / 180;
+    const deltaLambda = ((lon2 - lon1) * Math.PI) / 180;
+    
+    const a =
+      Math.sin(deltaPhi / 2) ** 2 +
+      Math.cos(phi1) * Math.cos(phi2) * Math.sin(deltaLambda / 2) ** 2;
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    
+    return R * c;
+  };
+
+  // Check if GPS location is inside geofence
+  const checkGeofence = (lat: number, lng: number, geofences: any[] | null | undefined) => {
+    if (!geofences || geofences.length === 0) {
+      setGeofenceStatus({ inside: true }); // No geofence means always allowed
+      return;
+    }
+
+    for (const geofence of geofences) {
+      const geofenceLat = parseFloat(geofence.lat);
+      const geofenceLng = parseFloat(geofence.lng);
+      const radiusM = parseFloat(geofence.radius_m) || 150;
+      
+      const distance = haversineDistance(lat, lng, geofenceLat, geofenceLng);
+      
+      if (distance <= radiusM) {
+        setGeofenceStatus({ inside: true, distance: Math.round(distance), radius: radiusM });
+        return;
+      }
+    }
+    
+    // Find the closest geofence to show distance
+    let minDistance = Infinity;
+    let closestRadius = 150;
+    for (const geofence of geofences) {
+      const geofenceLat = parseFloat(geofence.lat);
+      const geofenceLng = parseFloat(geofence.lng);
+      const radiusM = parseFloat(geofence.radius_m) || 150;
+      const distance = haversineDistance(lat, lng, geofenceLat, geofenceLng);
+      if (distance < minDistance) {
+        minDistance = distance;
+        closestRadius = radiusM;
+      }
+    }
+    
+    setGeofenceStatus({ inside: false, distance: Math.round(minDistance), radius: closestRadius });
+  };
+
+  // Get GPS location
+  const getCurrentLocation = (): Promise<{ lat: number; lng: number; accuracy: number }> => {
+    return new Promise((resolve, reject) => {
+      if (!navigator.geolocation) {
+        reject(new Error('Geolocation is not supported by your browser'));
+        return;
+      }
+
+      setGpsLoading(true);
+      setGpsError('');
+
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          setGpsLoading(false);
+          const location = {
+            lat: position.coords.latitude,
+            lng: position.coords.longitude,
+            accuracy: position.coords.accuracy || 0,
+          };
+          setGpsLocation(location);
+          
+          // Check geofence if shift has geofences
+          if (selectedShift?.geofences) {
+            checkGeofence(location.lat, location.lng, selectedShift.geofences);
+          } else {
+            setGeofenceStatus({ inside: true }); // No geofence means always allowed
+          }
+          
+          resolve(location);
+        },
+        (error) => {
+          setGpsLoading(false);
+          const errorMsg =
+            error.code === 1
+              ? 'Location permission denied'
+              : error.code === 2
+              ? 'Location unavailable'
+              : error.code === 3
+              ? 'Location request timeout'
+              : 'Failed to get location';
+          setGpsError(errorMsg);
+          setGpsLocation(null);
+          setGeofenceStatus(null);
+          reject(new Error(errorMsg));
+        },
+        {
+          enableHighAccuracy: true,
+          timeout: 10000,
+          maximumAge: 0,
+        }
+      );
+    });
+  };
+
+  // Helper function to convert 24h to 12h format
+  const convert24hTo12h = (hour24: number): { hour12: number; amPm: 'AM' | 'PM' } => {
+    if (hour24 === 0) return { hour12: 12, amPm: 'AM' };
+    if (hour24 === 12) return { hour12: 12, amPm: 'PM' };
+    if (hour24 < 12) return { hour12: hour24, amPm: 'AM' };
+    return { hour12: hour24 - 12, amPm: 'PM' };
+  };
+
+  // Helper function to convert 12h to 24h format
+  const convert12hTo24h = (hour12: number, amPm: 'AM' | 'PM'): number => {
+    if (amPm === 'AM') {
+      if (hour12 === 12) return 0;
+      return hour12;
+    } else {
+      if (hour12 === 12) return 12;
+      return hour12 + 12;
+    }
+  };
+
+  // Update selectedTime (24h format) when 12h format changes
+  const updateTimeFrom12h = (hour12: string, minute: string, amPm: 'AM' | 'PM') => {
+    if (hour12 && minute) {
+      const hour12Num = parseInt(hour12, 10);
+      if (!isNaN(hour12Num) && hour12Num >= 1 && hour12Num <= 12) {
+        const hour24 = convert12hTo24h(hour12Num, amPm);
+        const time24h = `${String(hour24).padStart(2, '0')}:${minute}`;
+        setSelectedTime(time24h);
+      }
+    } else {
+      // Clear selectedTime if fields are incomplete
+      setSelectedTime('');
+    }
+  };
+
+  // Handle clock-in/out
+  const handleClockInOut = async (shift: any, type: 'in' | 'out') => {
+    setSelectedShift(shift);
+    setClockType(type);
+    setReasonText('');
+    setGpsError('');
+    setGeofenceStatus(null);
+
+    // Set default time to now (rounded to 15 min) in 12h format
+    const now = new Date();
+    const hour24 = now.getHours();
+    const minutes = Math.round(now.getMinutes() / 15) * 15;
+    const { hour12, amPm } = convert24hTo12h(hour24);
+    
+    setSelectedHour12(String(hour12));
+    setSelectedMinute(String(minutes).padStart(2, '0'));
+    setSelectedAmPm(amPm);
+    
+    // Also set in 24h format for backend
+    const roundedTime = `${String(hour24).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+    setSelectedTime(roundedTime);
+
+    // Try to get GPS location
+    setGpsLoading(true);
+    try {
+      await getCurrentLocation();
+    } catch (error) {
+      console.warn('GPS location failed:', error);
+    } finally {
+      setGpsLoading(false);
+    }
+
+    setShowClockModal(true);
+  };
+
+  // Submit attendance
+  const submitAttendance = async () => {
+    if (!selectedShift || !clockType) {
+      toast.error('Invalid shift or clock type');
+      return;
+    }
+
+    if (!selectedTime || !selectedTime.includes(':')) {
+      toast.error('Please select a time');
+      return;
+    }
+
+    // Ensure time is in valid format (HH:MM) with 15-minute increments
+    const [hours, minutes] = selectedTime.split(':').map(Number);
+    if (isNaN(hours) || isNaN(minutes) || hours < 0 || hours > 23 || ![0, 15, 30, 45].includes(minutes)) {
+      toast.error('Please select a valid time in 15-minute increments');
+      return;
+    }
+
+    // Use shift date, not workDate, to ensure correct date is used
+    const shiftDate = selectedShift.date; // Format: YYYY-MM-DD
+    const timeStr = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+    const timeSelectedLocal = `${shiftDate}T${timeStr}:00`;
+
+    setSubmitting(true);
+
+    try {
+      const payload: any = {
+        shift_id: selectedShift.id,
+        type: clockType,
+        time_selected_local: timeSelectedLocal,
+      };
+
+      // Add GPS location if available
+      if (gpsLocation) {
+        payload.gps = {
+          lat: gpsLocation.lat,
+          lng: gpsLocation.lng,
+          accuracy_m: gpsLocation.accuracy,
+          mocked: false,
+        };
+      }
+
+      // Check if supervisor is doing for another worker
+      const isWorkerOwner = currentUser && selectedShift?.worker_id && String(currentUser.id) === String(selectedShift.worker_id);
+      const isSupervisorDoingForOther = isSupervisorOrAdmin && selectedShift && !isWorkerOwner;
+      
+      // Add reason text if provided
+      if (isSupervisorDoingForOther) {
+        if (!reasonText || !reasonText.trim() || reasonText.trim().length < 15) {
+          toast.error('Reason text is required (minimum 15 characters) when supervisor clocks in/out for a worker');
+          setSubmitting(false);
+          return;
+        }
+        payload.reason_text = reasonText.trim();
+      } else if (reasonText && reasonText.trim()) {
+        payload.reason_text = reasonText.trim();
+      }
+
+      // Use regular attendance endpoint
+      const result = await api('POST', '/dispatch/attendance', payload);
+
+      if (result.status === 'approved') {
+        toast.success(`Clock-${clockType} approved successfully`);
+      } else if (result.status === 'pending') {
+        toast.success(`Clock-${clockType} submitted for approval`);
+      }
+
+      setSelectedShift(null);
+      setClockType(null);
+      setSelectedTime('');
+      setSelectedHour12('');
+      setSelectedMinute('');
+      setReasonText('');
+      setGpsLocation(null);
+      setGpsError('');
+      setShowClockModal(false);
+
+      // Refetch both shifts and attendances
+      await refetchShifts();
+      await refetchAttendances();
+      
+      // Refetch timesheet entries to show the new attendance
+      await refetch();
+      
+      // Invalidate timesheet logs to show new audit entry
+      queryClient.invalidateQueries({ queryKey: ['timesheetLogs', projectId] });
+    } catch (error: any) {
+      console.error('Error submitting attendance:', error);
+      // Extract error message from the error object
+      let errorMsg = 'Failed to submit attendance';
+      if (error.message) {
+        errorMsg = error.message;
+      } else if (error.response?.data?.detail) {
+        errorMsg = error.response.data.detail;
+      } else if (error.response?.data?.message) {
+        errorMsg = error.response.data.message;
+      }
+      toast.error(errorMsg);
+      // Log full error for debugging
+      console.error('Full error object:', error);
+      if (error.response?.data) {
+        console.error('Error response:', error.response.data);
+      }
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // Get attendance for a shift
+  const getAttendanceForShift = (shiftId: string, type: 'in' | 'out'): any => {
+    return (attendances || []).find((a: any) => a.shift_id === shiftId && a.type === type);
+  };
+
+  // Get status badge
+  const getStatusBadge = (status: string) => {
+    switch (status) {
+      case 'approved':
+        return <span className="px-1.5 py-0.5 rounded text-xs bg-green-100 text-green-800">Approved</span>;
+      case 'pending':
+        return <span className="px-1.5 py-0.5 rounded text-xs bg-yellow-100 text-yellow-800">Pending</span>;
+      case 'rejected':
+        return <span className="px-1.5 py-0.5 rounded text-xs bg-red-100 text-red-800">Rejected</span>;
+      default:
+        return null;
+    }
+  };
+
   const csvExport = async()=>{
     try{
       const qs = new URLSearchParams();
@@ -551,18 +921,102 @@ function TimesheetTab({ projectId }:{ projectId:string }){
       const a = document.createElement('a'); a.href = url; a.download = `timesheet_${projectId}_${month||'all'}.csv`; a.click(); URL.revokeObjectURL(url);
     }catch(_e){ toast.error('Export failed'); }
   };
+  
   return (
     <div className="grid md:grid-cols-3 gap-4">
       <div className="rounded-xl border bg-white p-4">
         <h4 className="font-semibold mb-2">Add Time Entry</h4>
         <div className="grid gap-2 text-sm">
-          <div><label className="text-xs text-gray-600">Employee (admin)</label><select className="w-full border rounded px-3 py-2" value={targetUser} onChange={e=>setTargetUser(e.target.value)}><option value="">Me</option>{(employees||[]).map((emp:any)=> <option key={emp.id} value={emp.id}>{emp.name||emp.username}</option>)}</select></div>
           <div><label className="text-xs text-gray-600">Date</label><input type="date" className="w-full border rounded px-3 py-2" value={workDate} onChange={e=>setWorkDate(e.target.value)} /></div>
-          <div className="grid grid-cols-2 gap-2"><div><label className="text-xs text-gray-600">Start</label><input type="time" className="w-full border rounded px-3 py-2" value={start} onChange={e=>setStart(e.target.value)} /></div><div><label className="text-xs text-gray-600">End</label><input type="time" className="w-full border rounded px-3 py-2" value={end} onChange={e=>setEnd(e.target.value)} /></div></div>
-          <div><label className="text-xs text-gray-600">Hours (fallback)</label><input className="w-full border rounded px-3 py-2" value={hours} onChange={e=>setHours(e.target.value)} /></div>
-          <div><label className="text-xs text-gray-600">Notes (required)</label><input className="w-full border rounded px-3 py-2" value={notes} onChange={e=>setNotes(e.target.value)} placeholder="Justification" /></div>
+          
+          {/* Clock In/Out for Shifts */}
+          {shifts && shifts.length > 0 ? (
+            <div>
+              <label className="text-xs text-gray-600 mb-2 block font-medium">Clock In/Out</label>
+              <div className="space-y-2 max-h-64 overflow-y-auto" style={{ scrollbarWidth: 'thin' }}>
+                {shifts.map((shift: any) => {
+                  const clockIn = getAttendanceForShift(shift.id, 'in');
+                  const clockOut = getAttendanceForShift(shift.id, 'out');
+                  const canClockIn = !clockIn || clockIn.status === 'rejected';
+                  const canClockOut = clockIn && (clockIn.status === 'approved' || clockIn.status === 'pending') && (!clockOut || clockOut.status === 'rejected');
+                  const worker = employees?.find((e: any) => e.id === shift.worker_id);
+
+                  return (
+                    <div key={shift.id} className="p-2 border rounded bg-gray-50 text-xs">
+                      <div className="font-medium mb-1.5 text-gray-900">
+                        {shift.start_time.slice(0, 5)} - {shift.end_time.slice(0, 5)}
+                        {shift.job_name && <span className="ml-1 text-gray-500 font-normal">({shift.job_name})</span>}
+                        {worker && <span className="ml-1 text-gray-600 font-normal">- {worker.name || worker.username}</span>}
+                      </div>
+                      <div className="space-y-1 mb-2">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-gray-600 w-8">In:</span>
+                          {clockIn ? (
+                            <div className="flex items-center gap-1.5 flex-1">
+                              {getStatusBadge(clockIn.status)}
+                              <span className="text-gray-700">
+                                {new Date(clockIn.time_selected_utc).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                              </span>
+                              {clockIn.source === 'supervisor' && (
+                                <span className="text-gray-500 text-[10px]">(Supervisor)</span>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-gray-400">Not clocked in</span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-gray-600 w-8">Out:</span>
+                          {clockOut ? (
+                            <div className="flex items-center gap-1.5 flex-1">
+                              {getStatusBadge(clockOut.status)}
+                              <span className="text-gray-700">
+                                {new Date(clockOut.time_selected_utc).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                              </span>
+                              {clockOut.source === 'supervisor' && (
+                                <span className="text-gray-500 text-[10px]">(Supervisor)</span>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-gray-400">Not clocked out</span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex gap-1.5">
+                        <button
+                          onClick={() => handleClockInOut(shift, 'in')}
+                          disabled={!canClockIn || submitting}
+                          className={`flex-1 px-2 py-1 rounded text-xs font-medium transition-colors ${
+                            canClockIn
+                              ? 'bg-green-600 hover:bg-green-700 text-white'
+                              : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                          }`}
+                        >
+                          Clock In
+                        </button>
+                        <button
+                          onClick={() => handleClockInOut(shift, 'out')}
+                          disabled={!canClockOut || submitting}
+                          className={`flex-1 px-2 py-1 rounded text-xs font-medium transition-colors ${
+                            canClockOut
+                              ? 'bg-red-600 hover:bg-red-700 text-white'
+                              : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                          }`}
+                        >
+                          Clock Out
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ) : (
+            <div className="text-xs text-gray-500 text-center py-4 bg-gray-50 rounded">
+              No shifts scheduled for this date
+            </div>
+          )}
         </div>
-        <div className="mt-3 text-right"><button onClick={async()=>{ try{ if(!notes.trim()){ toast.error('Notes required'); return; } let mins = Math.round(Number(hours||'0')*60); if(start && end){ const [sh,sm] = start.split(':').map(Number); const [eh,em] = end.split(':').map(Number); mins = Math.max(0,(eh*60+em)-(sh*60+sm)); } const payload:any = { work_date: workDate, minutes: mins, notes, start_time: start||null, end_time: end||null }; if(targetUser) payload.user_id = targetUser; await api('POST', `/projects/${projectId}/timesheet`, payload); setNotes(''); setStart(''); setEnd(''); await refetch(); toast.success('Saved'); }catch(_e){ toast.error('Failed'); } }} className="px-3 py-2 rounded bg-brand-red text-white">Add</button></div>
       </div>
       <div className="md:col-span-2 rounded-xl border bg-white">
         <div className="p-3 flex items-center justify-between gap-3">
@@ -598,8 +1052,8 @@ function TimesheetTab({ projectId }:{ projectId:string }){
                 {(futIcon||offIcon) && <span title={future? 'Future time': 'Logged after day end'}>{futIcon}{offIcon}</span>}
               </div>
               <div className="flex items-center gap-2">
-                <button onClick={async()=>{ const val = prompt('New hours', (e.minutes/60).toFixed(2)); if(val==null) return; const mins = Math.round(Number(val||'0')*60); try{ await api('PATCH', `/projects/${projectId}/timesheet/${e.id}`, { minutes: mins }); await refetch(); }catch(_e){ toast.error('Not authorized'); } }} className="px-2 py-1 rounded bg-gray-100">Edit</button>
-                <button onClick={async()=>{ if(!confirm('Delete entry?')) return; await api('DELETE', `/projects/${projectId}/timesheet/${e.id}`); await refetch(); }} className="px-2 py-1 rounded bg-gray-100">Delete</button>
+                <button onClick={async()=>{ const val = prompt('New hours', (e.minutes/60).toFixed(2)); if(val==null) return; const mins = Math.round(Number(val||'0')*60); try{ await api('PATCH', `/projects/${projectId}/timesheet/${e.id}`, { minutes: mins }); await refetch(); queryClient.invalidateQueries({ queryKey: ['timesheetLogs', projectId] }); }catch(_e){ toast.error('Not authorized'); } }} className="px-2 py-1 rounded bg-gray-100">Edit</button>
+                <button onClick={async()=>{ if(!confirm('Delete entry?')) return; await api('DELETE', `/projects/${projectId}/timesheet/${e.id}`); await refetch(); await refetchAttendances(); await refetchShifts(); queryClient.invalidateQueries({ queryKey: ['timesheetLogs', projectId] }); }} className="px-2 py-1 rounded bg-gray-100">Delete</button>
               </div>
             </div>
           );
@@ -607,6 +1061,237 @@ function TimesheetTab({ projectId }:{ projectId:string }){
         </div>
       </div>
       <TimeAudit projectId={projectId} month={month} />
+
+      {/* Clock In/Out Modal */}
+      {showClockModal && selectedShift && clockType && (
+        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl max-w-md w-full p-6 space-y-4">
+            <h3 className="text-lg font-semibold">
+              Clock {clockType === 'in' ? 'In' : 'Out'}
+            </h3>
+
+            {/* Time selector (12h format with AM/PM) */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Time *</label>
+              <div className="flex gap-2 items-center">
+                <select
+                  value={selectedHour12}
+                  onChange={(e) => {
+                    const hour12 = e.target.value;
+                    setSelectedHour12(hour12);
+                    updateTimeFrom12h(hour12, selectedMinute, selectedAmPm);
+                  }}
+                  className="flex-1 border rounded px-3 py-2"
+                  required
+                >
+                  <option value="">Hour</option>
+                  {Array.from({ length: 12 }, (_, i) => (
+                    <option key={i + 1} value={String(i + 1)}>
+                      {i + 1}
+                    </option>
+                  ))}
+                </select>
+                <span className="text-gray-500 font-medium">:</span>
+                <select
+                  value={selectedMinute}
+                  onChange={(e) => {
+                    const minute = e.target.value;
+                    setSelectedMinute(minute);
+                    updateTimeFrom12h(selectedHour12, minute, selectedAmPm);
+                  }}
+                  className="flex-1 border rounded px-3 py-2"
+                  required
+                >
+                  <option value="">Min</option>
+                  {[0, 15, 30, 45].map((m) => (
+                    <option key={m} value={String(m).padStart(2, '0')}>
+                      {String(m).padStart(2, '0')}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  value={selectedAmPm}
+                  onChange={(e) => {
+                    const amPm = e.target.value as 'AM' | 'PM';
+                    setSelectedAmPm(amPm);
+                    updateTimeFrom12h(selectedHour12, selectedMinute, amPm);
+                  }}
+                  className="flex-1 border rounded px-3 py-2"
+                  required
+                >
+                  <option value="AM">AM</option>
+                  <option value="PM">PM</option>
+                </select>
+              </div>
+              <p className="text-xs text-gray-500 mt-1">
+                Time must be in 15-minute increments (00, 15, 30, 45)
+              </p>
+            </div>
+
+            {/* GPS Status */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <label className="block text-sm font-medium text-gray-700">Location</label>
+                          <button
+                            type="button"
+                            onClick={getCurrentLocation}
+                            disabled={gpsLoading}
+                            className="text-xs px-2 py-1 rounded border hover:bg-gray-50"
+                          >
+                            {gpsLoading ? 'Getting location...' : 'Try GPS again'}
+                          </button>
+              </div>
+                          {gpsLocation ? (
+                            <>
+                              <div className="p-3 bg-green-50 border border-green-200 rounded text-sm">
+                                <div className="text-green-800">✓ Location captured</div>
+                                <div className="text-xs text-green-600 mt-1">
+                                  Accuracy: {Math.round(gpsLocation.accuracy)}m
+                                </div>
+                              </div>
+                  {selectedShift?.geofences && selectedShift.geofences.length > 0 ? (
+                    geofenceStatus && (
+                      <div className={`p-3 border rounded text-sm mt-2 ${
+                        geofenceStatus.inside
+                          ? 'bg-green-50 border-green-200 text-green-800'
+                          : 'bg-orange-50 border-orange-200 text-orange-800'
+                      }`}>
+                        {geofenceStatus.inside ? (
+                          <div>
+                            <div className="font-medium">✓ Great! You are at the right site to clock-in/out</div>
+                            {geofenceStatus.distance !== undefined && (
+                              <div className="text-xs mt-1 opacity-75">
+                                Distance from site: {geofenceStatus.distance}m (within {geofenceStatus.radius}m radius)
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <div>
+                            <div className="font-medium">⚠ You are not at the correct site</div>
+                            {geofenceStatus.distance !== undefined && (
+                              <div className="text-xs mt-1 opacity-75">
+                                Distance from site: {geofenceStatus.distance}m (required: within {geofenceStatus.radius}m)
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  ) : (
+                    <div className="p-3 bg-blue-50 border border-blue-200 rounded text-sm text-blue-800 mt-2">
+                      <div className="font-medium">ℹ Location validation not required</div>
+                      <div className="text-xs mt-1 opacity-75">
+                        No geofence is defined for this shift. Your location has been captured but will not be validated.
+                      </div>
+                    </div>
+                  )}
+                </>
+              ) : gpsError ? (
+                <div className="p-3 bg-yellow-50 border border-yellow-200 rounded text-sm text-yellow-800">
+                  {gpsError}
+                </div>
+              ) : (
+                <div className="p-3 bg-gray-50 border border-gray-200 rounded text-sm text-gray-600">
+                  No location data
+                </div>
+              )}
+            </div>
+
+            {/* Reason text */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Reason {
+                  (() => {
+                    // Check if supervisor is doing for another worker
+                    const isWorkerOwner = currentUser && selectedShift?.worker_id && String(currentUser.id) === String(selectedShift.worker_id);
+                    const isSupervisorDoingForOther = isSupervisorOrAdmin && selectedShift && !isWorkerOwner;
+                    // Require reason if: supervisor doing for other worker OR not inside geofence
+                    const requiresReason = isSupervisorDoingForOther || (geofenceStatus && !geofenceStatus.inside);
+                    return requiresReason && <span className="text-red-500">*</span>;
+                  })()
+                }
+              </label>
+              <textarea
+                value={reasonText}
+                onChange={(e) => setReasonText(e.target.value)}
+                placeholder="Describe the reason for this attendance entry..."
+                className="w-full border rounded px-3 py-2 h-24"
+                minLength={15}
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                {(() => {
+                  // Check if supervisor is doing for another worker
+                  const isWorkerOwner = currentUser && selectedShift?.worker_id && String(currentUser.id) === String(selectedShift.worker_id);
+                  const isSupervisorDoingForOther = isSupervisorOrAdmin && selectedShift && !isWorkerOwner;
+                  
+                  if (isSupervisorDoingForOther) {
+                    return (
+                      <span className="text-red-600 font-medium">
+                        Required (minimum 15 characters): Supervisor clock-in/out for another worker always requires a reason.
+                      </span>
+                    );
+                  }
+                  
+                  // Check geofence status
+                  if (geofenceStatus && !geofenceStatus.inside) {
+                    return (
+                      <span className="text-red-600 font-medium">
+                        Required (minimum 15 characters): You are not at the correct site. Please describe the reason.
+                      </span>
+                    );
+                  }
+                  
+                  if (!gpsLocation || gpsError) {
+                    return (
+                      <span className="text-orange-600 font-medium">
+                        Recommended (minimum 15 characters): Location cannot be validated. Reason is optional but recommended.
+                      </span>
+                    );
+                  }
+                  
+                  // If inside geofence, reason is optional (even if outside tolerance)
+                  if (geofenceStatus && geofenceStatus.inside) {
+                    return 'Optional: You are at the correct site. Reason is only required if time is significantly outside the expected window.';
+                  }
+                  
+                  return 'Optional, but recommended. Required if you are not at the correct site or time is outside tolerance window (±30 minutes).';
+                })()}
+              </p>
+            </div>
+
+            {/* Privacy notice */}
+            <div className="p-3 bg-blue-50 border border-blue-200 rounded text-xs text-blue-800">
+              <strong>Privacy Notice:</strong> Your location is used only for attendance validation at the time of clock-in/out.
+            </div>
+
+            {/* Actions */}
+            <div className="flex justify-end gap-2 pt-4 border-t">
+              <button
+                onClick={() => {
+                  setShowClockModal(false);
+                  setSelectedShift(null);
+                  setClockType(null);
+                  setSelectedTime('');
+                  setSelectedHour12('');
+                  setSelectedMinute('');
+                  setReasonText('');
+                }}
+                className="px-4 py-2 rounded border bg-gray-100 hover:bg-gray-200"
+                disabled={submitting}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={submitAttendance}
+                disabled={submitting || !selectedTime || !selectedHour12 || !selectedMinute}
+                className="px-4 py-2 rounded bg-brand-red text-white hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {submitting ? 'Submitting...' : 'Submit'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -647,10 +1332,38 @@ function TimeAudit({ projectId, month }:{ projectId:string, month:string }){
                         <div className="text-gray-500">Notes</div>
                         <div className="truncate" title={`${before.notes||''} → ${after.notes||''}`}>{(before.notes||'-') + ' → ' + (after.notes||'-')}</div>
                       </div>
+                      {(before.start_time || after.start_time) && (
+                        <div>
+                          <div className="text-gray-500">Start Time</div>
+                          <div>{(before.start_time||'-') + ' → ' + (after.start_time||'-')}</div>
+                        </div>
+                      )}
+                      {(before.end_time || after.end_time) && (
+                        <div>
+                          <div className="text-gray-500">End Time</div>
+                          <div>{(before.end_time||'-') + ' → ' + (after.end_time||'-')}</div>
+                        </div>
+                      )}
                     </div>
                   )}
                   {(l.action!=='update' && l.changes) && (
-                    <div className="mt-1 text-[11px] text-gray-700">{JSON.stringify(l.changes)}</div>
+                    <div className="mt-1 text-[11px] text-gray-700">
+                      {(() => {
+                        // Try to format the changes in a more readable way
+                        if (typeof l.changes === 'object' && l.changes !== null) {
+                          const formatted: string[] = [];
+                          if (l.changes.work_date) formatted.push(`Date: ${String(l.changes.work_date).slice(0,10)}`);
+                          if (l.changes.minutes !== undefined) formatted.push(`Hours: ${(Number(l.changes.minutes)/60).toFixed(2)}h`);
+                          if (l.changes.start_time) formatted.push(`Start: ${l.changes.start_time}`);
+                          if (l.changes.end_time) formatted.push(`End: ${l.changes.end_time}`);
+                          if (l.changes.notes) formatted.push(`Notes: ${l.changes.notes}`);
+                          if (formatted.length > 0) {
+                            return formatted.join(' • ');
+                          }
+                        }
+                        return JSON.stringify(l.changes);
+                      })()}
+                    </div>
                   )}
                 </div>
               </div>

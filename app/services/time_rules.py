@@ -1,0 +1,126 @@
+"""
+Time rules and validation service.
+Handles 15-minute rounding, ±30min tolerance, and timezone conversions.
+"""
+from datetime import datetime, time, timedelta
+from typing import Optional
+import pytz
+from ..config import settings
+
+
+def round_to_15_minutes(dt: datetime) -> datetime:
+    """
+    Round datetime to nearest 15-minute increment.
+    
+    Args:
+        dt: Datetime to round
+    
+    Returns:
+        Rounded datetime
+    """
+    minutes = dt.minute
+    rounded_minutes = (minutes // 15) * 15
+    if minutes % 15 >= 8:  # Round up if >= 8 minutes
+        rounded_minutes += 15
+        if rounded_minutes >= 60:
+            rounded_minutes = 0
+            dt = dt + timedelta(hours=1)
+    
+    return dt.replace(minute=rounded_minutes, second=0, microsecond=0)
+
+
+def is_within_tolerance(
+    actual_time: datetime,
+    expected_time: datetime,
+    tolerance_minutes: Optional[int] = None
+) -> bool:
+    """
+    Check if actual time is within tolerance window of expected time.
+    
+    Args:
+        actual_time: Actual time (UTC, timezone-aware or naive)
+        expected_time: Expected time (UTC, timezone-aware or naive)
+        tolerance_minutes: Tolerance in minutes (default from settings)
+    
+    Returns:
+        True if within tolerance
+    """
+    if tolerance_minutes is None:
+        tolerance_minutes = settings.tolerance_window_min
+    
+    # Ensure both are timezone-aware for comparison
+    if actual_time.tzinfo is None:
+        actual_time = actual_time.replace(tzinfo=pytz.UTC)
+    if expected_time.tzinfo is None:
+        expected_time = expected_time.replace(tzinfo=pytz.UTC)
+    
+    diff = abs((actual_time - expected_time).total_seconds() / 60)
+    return diff <= tolerance_minutes
+
+
+def local_to_utc(local_datetime: datetime, timezone_str: str) -> datetime:
+    """
+    Convert local datetime to UTC.
+    
+    Args:
+        local_datetime: Local datetime (naive)
+        timezone_str: Timezone string (e.g., "America/Vancouver")
+    
+    Returns:
+        UTC datetime (timezone-aware)
+    """
+    try:
+        tz = pytz.timezone(timezone_str)
+        # Localize to the timezone
+        if local_datetime.tzinfo is None:
+            local_dt = tz.localize(local_datetime)
+        else:
+            local_dt = local_datetime.astimezone(tz)
+        # Convert to UTC
+        return local_dt.astimezone(pytz.UTC)
+    except Exception:
+        # Fallback to UTC if timezone is invalid
+        return local_datetime.replace(tzinfo=pytz.UTC)
+
+
+def utc_to_local(utc_datetime: datetime, timezone_str: str) -> datetime:
+    """
+    Convert UTC datetime to local timezone.
+    
+    Args:
+        utc_datetime: UTC datetime (timezone-aware)
+        timezone_str: Timezone string (e.g., "America/Vancouver")
+    
+    Returns:
+        Local datetime (timezone-aware)
+    """
+    try:
+        tz = pytz.timezone(timezone_str)
+        if utc_datetime.tzinfo is None:
+            utc_dt = utc_datetime.replace(tzinfo=pytz.UTC)
+        else:
+            utc_dt = utc_datetime.astimezone(pytz.UTC)
+        return utc_dt.astimezone(tz)
+    except Exception:
+        return utc_datetime
+
+
+def combine_date_time(date_val, time_val, timezone_str: str) -> datetime:
+    """
+    Combine date and time into a timezone-aware datetime, then convert to UTC.
+    
+    Args:
+        date_val: Date object
+        time_val: Time object
+        timezone_str: Timezone string
+    
+    Returns:
+        UTC datetime (timezone-aware)
+    """
+    naive_dt = datetime.combine(date_val, time_val)
+    utc_dt = local_to_utc(naive_dt, timezone_str)
+    # Ensure it's timezone-aware
+    if utc_dt.tzinfo is None:
+        utc_dt = utc_dt.replace(tzinfo=pytz.UTC)
+    return utc_dt
+

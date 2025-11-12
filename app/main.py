@@ -65,6 +65,8 @@ def create_app() -> FastAPI:
     app.include_router(reviews_router)
     app.include_router(chat_router)
     app.include_router(tasks_router)
+    from .routes import dispatch
+    app.include_router(dispatch.router)
     # Legacy UI redirects to new React routes (exact paths)
     legacy_map = {
         "/ui/login.html": "/login",
@@ -263,6 +265,176 @@ def create_app() -> FastAPI:
                             conn.execute(text("ALTER TABLE project_events ADD COLUMN overrides TEXT"))
                         except Exception:
                             pass
+                        # Dispatch & Time Tracking tables for SQLite
+                        # Add fields to projects table
+                        try:
+                            conn.execute(text("ALTER TABLE projects ADD COLUMN address TEXT"))
+                        except Exception:
+                            pass
+                        try:
+                            conn.execute(text("ALTER TABLE projects ADD COLUMN lat REAL"))
+                        except Exception:
+                            pass
+                        try:
+                            conn.execute(text("ALTER TABLE projects ADD COLUMN lng REAL"))
+                        except Exception:
+                            pass
+                        try:
+                            conn.execute(text("ALTER TABLE projects ADD COLUMN timezone TEXT DEFAULT 'America/Vancouver'"))
+                        except Exception:
+                            pass
+                        # Add lat/lng to client_sites table for SQLite
+                        try:
+                            conn.execute(text("ALTER TABLE client_sites ADD COLUMN site_lat REAL"))
+                        except Exception:
+                            pass
+                        try:
+                            conn.execute(text("ALTER TABLE client_sites ADD COLUMN site_lng REAL"))
+                        except Exception:
+                            pass
+                        try:
+                            conn.execute(text("ALTER TABLE projects ADD COLUMN status TEXT"))
+                        except Exception:
+                            pass
+                        # Add fields to users table
+                        try:
+                            conn.execute(text("ALTER TABLE users ADD COLUMN mobile TEXT"))
+                        except Exception:
+                            pass
+                        try:
+                            conn.execute(text("ALTER TABLE users ADD COLUMN preferred_notification TEXT"))
+                        except Exception:
+                            pass
+                        try:
+                            conn.execute(text("ALTER TABLE users ADD COLUMN status TEXT DEFAULT 'active'"))
+                        except Exception:
+                            pass
+                        # Shifts table
+                        try:
+                            conn.execute(text("CREATE TABLE IF NOT EXISTS shifts (\n"
+                                               "id TEXT PRIMARY KEY,\n"
+                                               "project_id TEXT NOT NULL,\n"
+                                               "worker_id TEXT NOT NULL,\n"
+                                               "date TEXT NOT NULL,\n"
+                                               "start_time TEXT NOT NULL,\n"
+                                               "end_time TEXT NOT NULL,\n"
+                                               "status TEXT DEFAULT 'scheduled',\n"
+                                               "default_break_min INTEGER DEFAULT 30,\n"
+                                               "geofences TEXT,\n"
+                                               "job_id TEXT,\n"
+                                               "job_name TEXT,\n"
+                                               "created_by TEXT NOT NULL,\n"
+                                               "created_at TEXT DEFAULT CURRENT_TIMESTAMP,\n"
+                                               "updated_at TEXT,\n"
+                                               "cancelled_at TEXT,\n"
+                                               "cancelled_by TEXT,\n"
+                                               "FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,\n"
+                                               "FOREIGN KEY(worker_id) REFERENCES users(id) ON DELETE CASCADE,\n"
+                                               "FOREIGN KEY(created_by) REFERENCES users(id) ON DELETE SET NULL,\n"
+                                               "FOREIGN KEY(cancelled_by) REFERENCES users(id) ON DELETE SET NULL\n"
+                                               ")"))
+                        except Exception:
+                            pass
+                        try:
+                            conn.execute(text("ALTER TABLE shifts ADD COLUMN job_id TEXT"))
+                        except Exception:
+                            pass
+                        try:
+                            conn.execute(text("ALTER TABLE shifts ADD COLUMN job_name TEXT"))
+                        except Exception:
+                            pass
+                        # Attendance table
+                        try:
+                            conn.execute(text("CREATE TABLE IF NOT EXISTS attendance (\n"
+                                               "id TEXT PRIMARY KEY,\n"
+                                               "shift_id TEXT NOT NULL,\n"
+                                               "worker_id TEXT NOT NULL,\n"
+                                               "type TEXT NOT NULL,\n"
+                                               "time_entered_utc TEXT NOT NULL,\n"
+                                               "time_selected_utc TEXT NOT NULL,\n"
+                                               "status TEXT DEFAULT 'pending',\n"
+                                               "source TEXT DEFAULT 'app',\n"
+                                               "created_by TEXT,\n"
+                                               "reason_text TEXT,\n"
+                                               "gps_lat REAL,\n"
+                                               "gps_lng REAL,\n"
+                                               "gps_accuracy_m REAL,\n"
+                                               "mocked_flag INTEGER DEFAULT 0,\n"
+                                               "attachments TEXT,\n"
+                                               "created_at TEXT DEFAULT CURRENT_TIMESTAMP,\n"
+                                               "approved_at TEXT,\n"
+                                               "approved_by TEXT,\n"
+                                               "rejected_at TEXT,\n"
+                                               "rejected_by TEXT,\n"
+                                               "rejection_reason TEXT,\n"
+                                               "FOREIGN KEY(shift_id) REFERENCES shifts(id) ON DELETE CASCADE,\n"
+                                               "FOREIGN KEY(worker_id) REFERENCES users(id) ON DELETE CASCADE,\n"
+                                               "FOREIGN KEY(created_by) REFERENCES users(id) ON DELETE SET NULL,\n"
+                                               "FOREIGN KEY(approved_by) REFERENCES users(id) ON DELETE SET NULL,\n"
+                                               "FOREIGN KEY(rejected_by) REFERENCES users(id) ON DELETE SET NULL\n"
+                                               ")"))
+                        except Exception:
+                            pass
+                        # Audit logs table
+                        try:
+                            conn.execute(text("CREATE TABLE IF NOT EXISTS audit_logs (\n"
+                                               "id TEXT PRIMARY KEY,\n"
+                                               "entity_type TEXT NOT NULL,\n"
+                                               "entity_id TEXT NOT NULL,\n"
+                                               "action TEXT NOT NULL,\n"
+                                               "actor_id TEXT,\n"
+                                               "actor_role TEXT,\n"
+                                               "source TEXT,\n"
+                                               "changes_json TEXT,\n"
+                                               "timestamp_utc TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,\n"
+                                               "context TEXT,\n"
+                                               "integrity_hash TEXT,\n"
+                                               "FOREIGN KEY(actor_id) REFERENCES users(id) ON DELETE SET NULL\n"
+                                               ")"))
+                        except Exception:
+                            pass
+                        # Notifications table
+                        try:
+                            conn.execute(text("CREATE TABLE IF NOT EXISTS notifications (\n"
+                                               "id TEXT PRIMARY KEY,\n"
+                                               "user_id TEXT NOT NULL,\n"
+                                               "channel TEXT NOT NULL,\n"
+                                               "template_key TEXT,\n"
+                                               "payload_json TEXT,\n"
+                                               "sent_at TEXT,\n"
+                                               "status TEXT DEFAULT 'pending',\n"
+                                               "error_message TEXT,\n"
+                                               "created_at TEXT DEFAULT CURRENT_TIMESTAMP,\n"
+                                               "FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE\n"
+                                               ")"))
+                        except Exception:
+                            pass
+                        # User notification preferences table
+                        try:
+                            conn.execute(text("CREATE TABLE IF NOT EXISTS user_notification_preferences (\n"
+                                               "id TEXT PRIMARY KEY,\n"
+                                               "user_id TEXT NOT NULL UNIQUE,\n"
+                                               "push INTEGER DEFAULT 1,\n"
+                                               "email INTEGER DEFAULT 1,\n"
+                                               "quiet_hours TEXT,\n"
+                                               "updated_at TEXT DEFAULT CURRENT_TIMESTAMP,\n"
+                                               "FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE\n"
+                                               ")"))
+                        except Exception:
+                            pass
+                        # Consent logs table
+                        try:
+                            conn.execute(text("CREATE TABLE IF NOT EXISTS consent_logs (\n"
+                                               "id TEXT PRIMARY KEY,\n"
+                                               "user_id TEXT NOT NULL,\n"
+                                               "policy_version TEXT NOT NULL,\n"
+                                               "timestamp_utc TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,\n"
+                                               "ip_address TEXT,\n"
+                                               "user_agent TEXT,\n"
+                                               "FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE\n"
+                                               ")"))
+                        except Exception:
+                            pass
                 except Exception:
                     pass
             if settings.database_url.startswith("postgres"):
@@ -328,6 +500,8 @@ def create_app() -> FastAPI:
                     conn.execute(text("ALTER TABLE client_sites ADD COLUMN IF NOT EXISTS site_province VARCHAR(100)"))
                     conn.execute(text("ALTER TABLE client_sites ADD COLUMN IF NOT EXISTS site_postal_code VARCHAR(50)"))
                     conn.execute(text("ALTER TABLE client_sites ADD COLUMN IF NOT EXISTS site_country VARCHAR(100)"))
+                    conn.execute(text("ALTER TABLE client_sites ADD COLUMN IF NOT EXISTS site_lat NUMERIC(10, 7)"))
+                    conn.execute(text("ALTER TABLE client_sites ADD COLUMN IF NOT EXISTS site_lng NUMERIC(10, 7)"))
                     conn.execute(text("ALTER TABLE client_sites ADD COLUMN IF NOT EXISTS site_notes VARCHAR(1000)"))
                     conn.execute(text("ALTER TABLE client_sites ADD COLUMN IF NOT EXISTS sort_index INTEGER DEFAULT 0"))
                     # Link files to sites optionally
@@ -536,6 +710,220 @@ def create_app() -> FastAPI:
                         pass
                     try:
                         conn.execute(text("ALTER TABLE project_events ADD COLUMN IF NOT EXISTS overrides JSONB"))
+                    except Exception:
+                        pass
+                    # Dispatch & Time Tracking tables
+                    # Add fields to projects table
+                    try:
+                        conn.execute(text("ALTER TABLE projects ADD COLUMN IF NOT EXISTS address VARCHAR(500)"))
+                    except Exception:
+                        pass
+                    try:
+                        conn.execute(text("ALTER TABLE projects ADD COLUMN IF NOT EXISTS lat NUMERIC(10, 7)"))
+                    except Exception:
+                        pass
+                    try:
+                        conn.execute(text("ALTER TABLE projects ADD COLUMN IF NOT EXISTS lng NUMERIC(10, 7)"))
+                    except Exception:
+                        pass
+                    try:
+                        conn.execute(text("ALTER TABLE projects ADD COLUMN IF NOT EXISTS timezone VARCHAR(100) DEFAULT 'America/Vancouver'"))
+                    except Exception:
+                        pass
+                    try:
+                        conn.execute(text("ALTER TABLE projects ADD COLUMN IF NOT EXISTS status VARCHAR(50)"))
+                    except Exception:
+                        pass
+                    # Add fields to users table
+                    try:
+                        conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS mobile VARCHAR(50)"))
+                    except Exception:
+                        pass
+                    try:
+                        conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS preferred_notification JSONB"))
+                    except Exception:
+                        pass
+                    try:
+                        conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS status VARCHAR(50) DEFAULT 'active'"))
+                    except Exception:
+                        pass
+                    # Shifts table
+                    conn.execute(text("CREATE TABLE IF NOT EXISTS shifts (\n"
+                                       "id UUID PRIMARY KEY,\n"
+                                       "project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,\n"
+                                       "worker_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,\n"
+                                       "date DATE NOT NULL,\n"
+                                       "start_time TIME NOT NULL,\n"
+                                       "end_time TIME NOT NULL,\n"
+                                       "status VARCHAR(50) DEFAULT 'scheduled',\n"
+                                       "default_break_min INTEGER DEFAULT 30,\n"
+                                       "geofences JSONB,\n"
+                                       "job_id UUID,\n"
+                                       "job_name VARCHAR(255),\n"
+                                       "created_by UUID NOT NULL REFERENCES users(id) ON DELETE SET NULL,\n"
+                                       "created_at TIMESTAMPTZ DEFAULT NOW(),\n"
+                                       "updated_at TIMESTAMPTZ,\n"
+                                       "cancelled_at TIMESTAMPTZ,\n"
+                                       "cancelled_by UUID REFERENCES users(id) ON DELETE SET NULL\n"
+                                       ")"))
+                    try:
+                        conn.execute(text("ALTER TABLE shifts ADD COLUMN IF NOT EXISTS job_id UUID"))
+                    except Exception:
+                        pass
+                    try:
+                        conn.execute(text("ALTER TABLE shifts ADD COLUMN IF NOT EXISTS job_name VARCHAR(255)"))
+                    except Exception:
+                        pass
+                    try:
+                        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_shifts_job_id ON shifts(job_id)"))
+                    except Exception:
+                        pass
+                    try:
+                        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_shifts_project_id ON shifts(project_id)"))
+                    except Exception:
+                        pass
+                    try:
+                        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_shifts_worker_id ON shifts(worker_id)"))
+                    except Exception:
+                        pass
+                    try:
+                        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_shifts_worker_date_time ON shifts(worker_id, date, start_time, end_time)"))
+                    except Exception:
+                        pass
+                    try:
+                        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_shifts_project_date ON shifts(project_id, date)"))
+                    except Exception:
+                        pass
+                    # Attendance table
+                    conn.execute(text("CREATE TABLE IF NOT EXISTS attendance (\n"
+                                       "id UUID PRIMARY KEY,\n"
+                                       "shift_id UUID NOT NULL REFERENCES shifts(id) ON DELETE CASCADE,\n"
+                                       "worker_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,\n"
+                                       "type VARCHAR(10) NOT NULL,\n"
+                                       "time_entered_utc TIMESTAMPTZ NOT NULL,\n"
+                                       "time_selected_utc TIMESTAMPTZ NOT NULL,\n"
+                                       "status VARCHAR(20) DEFAULT 'pending',\n"
+                                       "source VARCHAR(20) DEFAULT 'app',\n"
+                                       "created_by UUID REFERENCES users(id) ON DELETE SET NULL,\n"
+                                       "reason_text TEXT,\n"
+                                       "gps_lat NUMERIC(10, 7),\n"
+                                       "gps_lng NUMERIC(10, 7),\n"
+                                       "gps_accuracy_m NUMERIC(10, 2),\n"
+                                       "mocked_flag BOOLEAN DEFAULT FALSE,\n"
+                                       "attachments JSONB,\n"
+                                       "created_at TIMESTAMPTZ DEFAULT NOW(),\n"
+                                       "approved_at TIMESTAMPTZ,\n"
+                                       "approved_by UUID REFERENCES users(id) ON DELETE SET NULL,\n"
+                                       "rejected_at TIMESTAMPTZ,\n"
+                                       "rejected_by UUID REFERENCES users(id) ON DELETE SET NULL,\n"
+                                       "rejection_reason TEXT\n"
+                                       ")"))
+                    try:
+                        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_attendance_shift_id ON attendance(shift_id)"))
+                    except Exception:
+                        pass
+                    try:
+                        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_attendance_worker_id ON attendance(worker_id)"))
+                    except Exception:
+                        pass
+                    try:
+                        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_attendance_worker_time ON attendance(worker_id, time_selected_utc)"))
+                    except Exception:
+                        pass
+                    try:
+                        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_attendance_shift_type ON attendance(shift_id, type)"))
+                    except Exception:
+                        pass
+                    try:
+                        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_attendance_status ON attendance(status)"))
+                    except Exception:
+                        pass
+                    # Audit logs table
+                    conn.execute(text("CREATE TABLE IF NOT EXISTS audit_logs (\n"
+                                       "id UUID PRIMARY KEY,\n"
+                                       "entity_type VARCHAR(50) NOT NULL,\n"
+                                       "entity_id UUID NOT NULL,\n"
+                                       "action VARCHAR(50) NOT NULL,\n"
+                                       "actor_id UUID REFERENCES users(id) ON DELETE SET NULL,\n"
+                                       "actor_role VARCHAR(50),\n"
+                                       "source VARCHAR(50),\n"
+                                       "changes_json JSONB,\n"
+                                       "timestamp_utc TIMESTAMPTZ NOT NULL DEFAULT NOW(),\n"
+                                       "context JSONB,\n"
+                                       "integrity_hash VARCHAR(64)\n"
+                                       ")"))
+                    try:
+                        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_audit_entity_type ON audit_logs(entity_type)"))
+                    except Exception:
+                        pass
+                    try:
+                        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_audit_entity_id ON audit_logs(entity_id)"))
+                    except Exception:
+                        pass
+                    try:
+                        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_audit_actor_id ON audit_logs(actor_id)"))
+                    except Exception:
+                        pass
+                    try:
+                        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_audit_timestamp_utc ON audit_logs(timestamp_utc)"))
+                    except Exception:
+                        pass
+                    try:
+                        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_audit_entity ON audit_logs(entity_type, entity_id)"))
+                    except Exception:
+                        pass
+                    try:
+                        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_audit_actor ON audit_logs(actor_id, timestamp_utc)"))
+                    except Exception:
+                        pass
+                    # Notifications table
+                    conn.execute(text("CREATE TABLE IF NOT EXISTS notifications (\n"
+                                       "id UUID PRIMARY KEY,\n"
+                                       "user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,\n"
+                                       "channel VARCHAR(20) NOT NULL,\n"
+                                       "template_key VARCHAR(100),\n"
+                                       "payload_json JSONB,\n"
+                                       "sent_at TIMESTAMPTZ,\n"
+                                       "status VARCHAR(20) DEFAULT 'pending',\n"
+                                       "error_message TEXT,\n"
+                                       "created_at TIMESTAMPTZ DEFAULT NOW()\n"
+                                       ")"))
+                    try:
+                        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_notifications_user_id ON notifications(user_id)"))
+                    except Exception:
+                        pass
+                    try:
+                        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_notifications_user_status ON notifications(user_id, status)"))
+                    except Exception:
+                        pass
+                    try:
+                        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_notifications_created ON notifications(created_at)"))
+                    except Exception:
+                        pass
+                    # User notification preferences table
+                    conn.execute(text("CREATE TABLE IF NOT EXISTS user_notification_preferences (\n"
+                                       "id UUID PRIMARY KEY,\n"
+                                       "user_id UUID NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,\n"
+                                       "push BOOLEAN DEFAULT TRUE,\n"
+                                       "email BOOLEAN DEFAULT TRUE,\n"
+                                       "quiet_hours JSONB,\n"
+                                       "updated_at TIMESTAMPTZ DEFAULT NOW()\n"
+                                       ")"))
+                    try:
+                        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_user_notification_preferences_user_id ON user_notification_preferences(user_id)"))
+                    except Exception:
+                        pass
+                    # Consent logs table
+                    conn.execute(text("CREATE TABLE IF NOT EXISTS consent_logs (\n"
+                                       "id UUID PRIMARY KEY,\n"
+                                       "user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,\n"
+                                       "policy_version VARCHAR(50) NOT NULL,\n"
+                                       "timestamp_utc TIMESTAMPTZ NOT NULL DEFAULT NOW(),\n"
+                                       "ip_address VARCHAR(50),\n"
+                                       "user_agent VARCHAR(500)\n"
+                                       ")"))
+                    try:
+                        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_consent_logs_user_id ON consent_logs(user_id)"))
                     except Exception:
                         pass
         except Exception:

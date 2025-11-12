@@ -43,6 +43,9 @@ class Settings(BaseSettings):
     bamboohr_subdomain: Optional[str] = Field(default=None, alias="BAMBOOHR_SUBDOMAIN")
     bamboohr_api_key: Optional[str] = Field(default=None, alias="BAMBOOHR_API_KEY")
 
+    # Google Maps / Places
+    google_places_api_key: Optional[str] = Field(default=None, alias="GOOGLE_PLACES_API_KEY")
+
     # Mail / Public
     public_base_url: str = Field(default="http://localhost:8000", alias="PUBLIC_BASE_URL")
     smtp_host: Optional[str] = Field(default=None, alias="SMTP_HOST")
@@ -57,6 +60,16 @@ class Settings(BaseSettings):
 
     # Rate limit
     rate_limit: str = Field(default="100/minute")
+
+    # Dispatch & Time Tracking
+    geo_radius_m_default: int = Field(default=150, alias="GEO_RADIUS_M_DEFAULT")
+    tolerance_window_min: int = Field(default=30, alias="TOLERANCE_WINDOW_MIN")
+    default_break_min: int = Field(default=30, alias="DEFAULT_BREAK_MIN")
+    gps_accuracy_risk_m: int = Field(default=100, alias="GPS_ACCURACY_RISK_M")
+    require_reason_min_chars: int = Field(default=15, alias="REQUIRE_REASON_MIN_CHARS")
+    allow_supervisor_autoapprove_when_on_site: bool = Field(default=True, alias="ALLOW_SUPERVISOR_AUTOAPPROVE")
+    enable_push: bool = Field(default=True, alias="ENABLE_PUSH")
+    enable_email: bool = Field(default=True, alias="ENABLE_EMAIL")
 
     class Config:
         env_file = ".env"

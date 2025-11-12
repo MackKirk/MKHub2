@@ -194,12 +194,119 @@ def create_site(client_id: str, payload: ClientSiteCreate, db: Session = Depends
 
 @router.patch("/{client_id}/sites/{site_id}")
 def update_site(client_id: str, site_id: str, payload: dict, db: Session = Depends(get_db), _=Depends(require_permissions("clients:write"))):
+    from ..models.models import Project, Shift
+    from datetime import datetime, timezone
+    
     row = db.query(ClientSite).filter(ClientSite.id == site_id, ClientSite.client_id == client_id).first()
     if not row:
         raise HTTPException(status_code=404, detail="Not found")
+    
+    # Check if coordinates (site_lat/site_lng) are being updated
+    old_lat = getattr(row, 'site_lat', None)
+    old_lng = getattr(row, 'site_lng', None)
+    new_lat = payload.get('site_lat')
+    new_lng = payload.get('site_lng')
+    
+    # Check if coordinates actually changed
+    coordinates_changed = False
+    if new_lat is not None or new_lng is not None:
+        # Convert to float for comparison if they exist
+        if new_lat is not None:
+            new_lat = float(new_lat)
+        if new_lng is not None:
+            new_lng = float(new_lng)
+        if old_lat is not None:
+            old_lat = float(old_lat)
+        if old_lng is not None:
+            old_lng = float(old_lng)
+        
+        # Check if coordinates changed (with small tolerance for floating point)
+        if (new_lat is not None and old_lat is None) or (new_lat is None and old_lat is not None):
+            coordinates_changed = True
+        elif new_lat is not None and old_lat is not None:
+            if abs(new_lat - old_lat) > 0.0001:  # ~11 meters tolerance
+                coordinates_changed = True
+        
+        if (new_lng is not None and old_lng is None) or (new_lng is None and old_lng is not None):
+            coordinates_changed = True
+        elif new_lng is not None and old_lng is not None:
+            if abs(new_lng - old_lng) > 0.0001:  # ~11 meters tolerance
+                coordinates_changed = True
+    
+    # Update site
     for k, v in payload.items():
         setattr(row, k, v)
     db.commit()
+    
+    # If coordinates changed, update projects that use this site
+    if coordinates_changed:
+        # Get final coordinates (use new values if provided, otherwise keep old ones)
+        final_lat = new_lat if new_lat is not None else old_lat
+        final_lng = new_lng if new_lng is not None else old_lng
+        
+        # Only update if we have valid coordinates
+        if final_lat is not None and final_lng is not None:
+            # Get all projects that use this site
+            projects = db.query(Project).filter(Project.site_id == site_id).all()
+            
+            # Update each project's coordinates
+            for project in projects:
+                # Save old project coordinates before updating
+                old_project_lat = getattr(project, 'lat', None)
+                old_project_lng = getattr(project, 'lng', None)
+                
+                # Check if project's coordinates match the old site coordinates (within tolerance)
+                project_uses_site_coords = False
+                if old_project_lat is not None and old_project_lng is not None:
+                    if old_lat is not None and old_lng is not None:
+                        lat_diff = abs(float(old_project_lat) - float(old_lat))
+                        lng_diff = abs(float(old_project_lng) - float(old_lng))
+                        if lat_diff < 0.0001 and lng_diff < 0.0001:
+                            project_uses_site_coords = True
+                elif old_project_lat is None and old_project_lng is None and old_lat is not None and old_lng is not None:
+                    # Project doesn't have coordinates but site had them, assume they should match
+                    project_uses_site_coords = True
+                
+                # Update project coordinates if they matched the old site coordinates
+                if project_uses_site_coords or (old_project_lat is None and old_project_lng is None):
+                    project.lat = final_lat
+                    project.lng = final_lng
+                    db.commit()
+                    
+                    # Now update shifts for this project (same logic as in update_project)
+                    # Use old_project_lat/lng to compare with shift geofences
+                    shifts = db.query(Shift).filter(Shift.project_id == project.id).all()
+                    updated_shifts_count = 0
+                    for shift in shifts:
+                        # If shift has no geofences or empty geofences, it already uses project coordinates
+                        if not shift.geofences or len(shift.geofences) == 0:
+                            continue
+                        
+                        # Check if shift's geofences match the old project coordinates
+                        shift_uses_project_coords = False
+                        if shift.geofences and len(shift.geofences) > 0:
+                            for geofence in shift.geofences:
+                                if isinstance(geofence, dict):
+                                    geofence_lat = geofence.get('lat')
+                                    geofence_lng = geofence.get('lng')
+                                    if geofence_lat is not None and geofence_lng is not None:
+                                        # Check if geofence matches old project coordinates (within tolerance)
+                                        if old_project_lat is not None and old_project_lng is not None:
+                                            lat_diff = abs(float(geofence_lat) - float(old_project_lat))
+                                            lng_diff = abs(float(geofence_lng) - float(old_project_lng))
+                                            if lat_diff < 0.0001 and lng_diff < 0.0001:
+                                                shift_uses_project_coords = True
+                                                break
+                        
+                        # If shift's geofences match old project coordinates, clear them to use new project coordinates
+                        if shift_uses_project_coords:
+                            shift.geofences = None  # Clear geofences to use project coordinates in real-time
+                            shift.updated_at = datetime.now(timezone.utc)
+                            updated_shifts_count += 1
+                    
+                    if updated_shifts_count > 0:
+                        db.commit()
+    
     return {"status": "ok"}
 
 

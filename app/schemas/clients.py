@@ -98,6 +98,8 @@ class ClientSiteBase(BaseModel):
     site_province: Optional[str] = None
     site_postal_code: Optional[str] = None
     site_country: Optional[str] = None
+    site_lat: Optional[float] = None
+    site_lng: Optional[float] = None
     site_notes: Optional[str] = None
     sort_index: Optional[int] = 0
 

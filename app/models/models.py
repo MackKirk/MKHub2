@@ -13,9 +13,12 @@ from sqlalchemy import (
     Table,
     Integer,
     Float,
+    Numeric,
     JSON,
     UniqueConstraint,
     BigInteger,
+    Text,
+    Index,
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship, Mapped, mapped_column
@@ -60,6 +63,10 @@ class User(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
     last_login_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     permissions_override: Mapped[Optional[dict]] = mapped_column(JSON)
+    # Dispatch & Time Tracking fields
+    mobile: Mapped[Optional[str]] = mapped_column(String(50))  # Mobile phone for notifications
+    preferred_notification: Mapped[Optional[dict]] = mapped_column(JSON)  # Notification preferences {push: bool, email: bool, quiet_hours: dict}
+    status: Mapped[Optional[str]] = mapped_column(String(50), default="active")  # User status: active|inactive|suspended
 
     roles = relationship("Role", secondary=user_roles, back_populates="users")
 
@@ -141,9 +148,14 @@ class Project(Base):
     slug: Mapped[Optional[str]] = mapped_column(String(255), index=True)
     client_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
     site_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
+    address: Mapped[Optional[str]] = mapped_column(String(500))  # Full address for dispatch
     address_city: Mapped[Optional[str]] = mapped_column(String(100))
     address_province: Mapped[Optional[str]] = mapped_column(String(100))
     address_country: Mapped[Optional[str]] = mapped_column(String(100))
+    lat: Mapped[Optional[float]] = mapped_column(Numeric(10, 7))  # Latitude for geofence
+    lng: Mapped[Optional[float]] = mapped_column(Numeric(10, 7))  # Longitude for geofence
+    timezone: Mapped[Optional[str]] = mapped_column(String(100), default="America/Vancouver")  # Project timezone
+    status: Mapped[Optional[str]] = mapped_column(String(50))  # Project status
     division_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
     status_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
     # UI-friendly fields
@@ -333,6 +345,8 @@ class ClientSite(Base):
     site_province: Mapped[Optional[str]] = mapped_column(String(100))
     site_postal_code: Mapped[Optional[str]] = mapped_column(String(50))
     site_country: Mapped[Optional[str]] = mapped_column(String(100))
+    site_lat: Mapped[Optional[float]] = mapped_column(Numeric(10, 7))  # Latitude for geofence
+    site_lng: Mapped[Optional[float]] = mapped_column(Numeric(10, 7))  # Longitude for geofence
     site_notes: Mapped[Optional[str]] = mapped_column(String(1000))
     sort_index: Mapped[int] = mapped_column(Integer, default=0)
 
@@ -906,3 +920,135 @@ class Task(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
     updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+
+
+# Dispatch & Time Tracking Models
+
+class Shift(Base):
+    """Shift scheduling for workers on projects"""
+    __tablename__ = "shifts"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    project_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True)
+    worker_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    date: Mapped[Date] = mapped_column(Date, nullable=False)  # Local date
+    start_time: Mapped[Time] = mapped_column(Time(timezone=False), nullable=False)  # Local time
+    end_time: Mapped[Time] = mapped_column(Time(timezone=False), nullable=False)  # Local time
+    status: Mapped[str] = mapped_column(String(50), default="scheduled")  # scheduled|cancelled
+    default_break_min: Mapped[int] = mapped_column(Integer, default=30)  # Break duration in minutes
+    geofences: Mapped[Optional[list]] = mapped_column(JSON)  # List of {lat, lng, radius_m} geofences
+    job_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), index=True)  # Job type/task identifier (to be linked to Job model when available)
+    job_name: Mapped[Optional[str]] = mapped_column(String(255))  # Job name snapshot (for reference)
+    created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    cancelled_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    cancelled_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+
+    # Indexes for conflict checking
+    __table_args__ = (
+        Index('idx_shifts_worker_date_time', 'worker_id', 'date', 'start_time', 'end_time'),
+        Index('idx_shifts_project_date', 'project_id', 'date'),
+    )
+
+
+class Attendance(Base):
+    """Worker clock-in/out attendance records"""
+    __tablename__ = "attendance"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    shift_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("shifts.id", ondelete="CASCADE"), nullable=False, index=True)
+    worker_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    type: Mapped[str] = mapped_column(String(10), nullable=False)  # in|out
+    time_entered_utc: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)  # When record was created
+    time_selected_utc: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)  # Selected time (after rounding)
+    status: Mapped[str] = mapped_column(String(20), default="pending")  # approved|pending|rejected
+    source: Mapped[str] = mapped_column(String(20), default="app")  # app|supervisor|kiosk|system
+    created_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+    reason_text: Mapped[Optional[str]] = mapped_column(Text)  # Free-text justification when outside rules
+    gps_lat: Mapped[Optional[float]] = mapped_column(Numeric(10, 7))  # GPS latitude
+    gps_lng: Mapped[Optional[float]] = mapped_column(Numeric(10, 7))  # GPS longitude
+    gps_accuracy_m: Mapped[Optional[float]] = mapped_column(Numeric(10, 2))  # GPS accuracy in meters
+    mocked_flag: Mapped[bool] = mapped_column(Boolean, default=False)  # Flag if GPS was mocked
+    attachments: Mapped[Optional[list]] = mapped_column(JSON)  # List of file attachments
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    approved_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+    rejected_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    rejected_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+    rejection_reason: Mapped[Optional[str]] = mapped_column(Text)
+
+    # Indexes for queries
+    __table_args__ = (
+        Index('idx_attendance_worker_time', 'worker_id', 'time_selected_utc'),
+        Index('idx_attendance_shift_type', 'shift_id', 'type'),
+        Index('idx_attendance_status', 'status'),
+    )
+
+
+class AuditLog(Base):
+    """Append-only audit log for all dispatch actions"""
+    __tablename__ = "audit_logs"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    entity_type: Mapped[str] = mapped_column(String(50), nullable=False, index=True)  # shift|attendance|project|user
+    entity_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
+    action: Mapped[str] = mapped_column(String(50), nullable=False)  # CREATE|UPDATE|APPROVE|REJECT|DELETE|CLOCK_IN|CLOCK_OUT
+    actor_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), index=True)
+    actor_role: Mapped[Optional[str]] = mapped_column(String(50))  # admin|supervisor|worker|system
+    source: Mapped[Optional[str]] = mapped_column(String(50))  # app|supervisor|kiosk|system|api
+    changes_json: Mapped[Optional[dict]] = mapped_column(JSON)  # Before/after diff
+    timestamp_utc: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, nullable=False, index=True)
+    context: Mapped[Optional[dict]] = mapped_column(JSON)  # Additional context: {project_id, worker_id, gps_lat, gps_lng, gps_accuracy_m, mocked_flag, reason_text, attachments}
+    integrity_hash: Mapped[Optional[str]] = mapped_column(String(64))  # SHA256 hash for integrity verification
+
+    # Indexes for common queries
+    __table_args__ = (
+        Index('idx_audit_entity', 'entity_type', 'entity_id'),
+        Index('idx_audit_actor', 'actor_id', 'timestamp_utc'),
+    )
+
+
+class Notification(Base):
+    """Notification records for push and email"""
+    __tablename__ = "notifications"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    channel: Mapped[str] = mapped_column(String(20), nullable=False)  # push|email
+    template_key: Mapped[Optional[str]] = mapped_column(String(100))  # Template identifier
+    payload_json: Mapped[Optional[dict]] = mapped_column(JSON)  # Notification payload
+    sent_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    status: Mapped[str] = mapped_column(String(20), default="pending")  # pending|sent|failed|delivered
+    error_message: Mapped[Optional[str]] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+
+    # Indexes
+    __table_args__ = (
+        Index('idx_notifications_user_status', 'user_id', 'status'),
+        Index('idx_notifications_created', 'created_at'),
+    )
+
+
+class UserNotificationPreference(Base):
+    """User notification preferences"""
+    __tablename__ = "user_notification_preferences"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), unique=True, nullable=False, index=True)
+    push: Mapped[bool] = mapped_column(Boolean, default=True)
+    email: Mapped[bool] = mapped_column(Boolean, default=True)
+    quiet_hours: Mapped[Optional[dict]] = mapped_column(JSON)  # {start: "HH:MM", end: "HH:MM", timezone: "America/Vancouver"}
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+
+
+class ConsentLog(Base):
+    """Consent tracking for policies"""
+    __tablename__ = "consent_logs"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    policy_version: Mapped[str] = mapped_column(String(50), nullable=False)
+    timestamp_utc: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
+    ip_address: Mapped[Optional[str]] = mapped_column(String(50))
+    user_agent: Mapped[Optional[str]] = mapped_column(String(500))

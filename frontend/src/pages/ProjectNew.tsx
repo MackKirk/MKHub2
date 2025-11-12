@@ -3,11 +3,11 @@ import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
-import GeoSelect from '@/components/GeoSelect';
 import ImagePicker from '@/components/ImagePicker';
+import AddressAutocomplete from '@/components/AddressAutocomplete';
 
 type Client = { id:string, display_name?:string, name?:string };
-type Site = { id:string, site_name?:string, site_address_line1?:string, site_city?:string, site_province?:string, site_country?:string, site_postal_code?:string, site_address_line2?:string, site_notes?:string };
+type Site = { id:string, site_name?:string, site_address_line1?:string, site_city?:string, site_province?:string, site_country?:string, site_postal_code?:string, site_address_line2?:string, site_lat?:number, site_lng?:number, site_notes?:string };
 
 export default function ProjectNew(){
   const nav = useNavigate();
@@ -19,7 +19,7 @@ export default function ProjectNew(){
   const [desc, setDesc] = useState<string>('');
   const [siteId, setSiteId] = useState<string>('');
   const [createSite, setCreateSite] = useState<boolean>(false);
-  const [siteForm, setSiteForm] = useState<any>({ site_name:'', site_address_line1:'', site_address_line2:'', site_city:'', site_province:'', site_country:'', site_postal_code:'', site_notes:'' });
+  const [siteForm, setSiteForm] = useState<any>({ site_name:'', site_address_line1:'', site_address_line2:'', site_city:'', site_province:'', site_country:'', site_postal_code:'', site_lat:null, site_lng:null, site_notes:'' });
   const setSiteField = (k:string, v:any)=> setSiteForm((s:any)=> ({ ...s, [k]: v }));
   const [step, setStep] = useState<number>(1);
   const [statusLabel, setStatusLabel] = useState<string>('');
@@ -137,19 +137,75 @@ export default function ProjectNew(){
                       <input className={`w-full border rounded px-3 py-2 ${clientValid && !siteValid? 'border-red-500':''}`} value={siteForm.site_name||''} onChange={e=>setSiteField('site_name', e.target.value)} />
                       {clientValid && !siteValid && <div className="text-[11px] text-red-600 mt-1">Provide at least a name or address</div>}
                     </div>
-                    <div><label className="text-xs text-gray-600">Address 1</label><input className="w-full border rounded px-3 py-2" value={siteForm.site_address_line1||''} onChange={e=>setSiteField('site_address_line1', e.target.value)} /></div>
-                    <div><label className="text-xs text-gray-600">Address 2</label><input className="w-full border rounded px-3 py-2" value={siteForm.site_address_line2||''} onChange={e=>setSiteField('site_address_line2', e.target.value)} /></div>
-                    <div className="md:col-span-2">
-                      <label className="text-xs text-gray-600">Location</label>
-                      <div className="mt-1">
-                        <GeoSelect country={siteForm.site_country||''} state={siteForm.site_province||''} city={siteForm.site_city||''} onChange={(v)=>{
-                          if('country' in v) setSiteField('site_country', v.country||'');
-                          if('state' in v) setSiteField('site_province', v.state||'');
-                          if('city' in v) setSiteField('site_city', v.city||'');
-                        }} labels={{ country:'Country', state:'Province/State', city:'City' }} />
-                      </div>
+                    <div>
+                      <label className="text-xs text-gray-600">Address 1</label>
+                      <AddressAutocomplete
+                        value={siteForm.site_address_line1||''}
+                        onChange={(value) => setSiteField('site_address_line1', value)}
+                        onAddressSelect={(address) => {
+                          console.log('onAddressSelect called with:', address);
+                          // Update all address fields at once
+                          setSiteForm((prev: any) => ({
+                            ...prev,
+                            site_address_line1: address.address_line1 || prev.site_address_line1,
+                            site_address_line2: address.address_line2 !== undefined ? address.address_line2 : prev.site_address_line2,
+                            site_city: address.city !== undefined ? address.city : prev.site_city,
+                            site_province: address.province !== undefined ? address.province : prev.site_province,
+                            site_country: address.country !== undefined ? address.country : prev.site_country,
+                            site_postal_code: address.postal_code !== undefined ? address.postal_code : prev.site_postal_code,
+                            site_lat: address.lat !== undefined ? address.lat : prev.site_lat,
+                            site_lng: address.lng !== undefined ? address.lng : prev.site_lng,
+                          }));
+                        }}
+                        placeholder="Start typing an address..."
+                        className="w-full border rounded px-3 py-2"
+                      />
                     </div>
-                    <div><label className="text-xs text-gray-600">Postal code</label><input className="w-full border rounded px-3 py-2" value={siteForm.site_postal_code||''} onChange={e=>setSiteField('site_postal_code', e.target.value)} /></div>
+                    <div>
+                      <label className="text-xs text-gray-600">Address 2</label>
+                      <input
+                        className="w-full border rounded px-3 py-2"
+                        value={siteForm.site_address_line2||''}
+                        onChange={e=>setSiteField('site_address_line2', e.target.value)}
+                        placeholder="Apartment, suite, unit, etc. (optional)"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-600">Country</label>
+                      <input 
+                        className="w-full border rounded px-3 py-2 bg-gray-50 cursor-not-allowed" 
+                        value={siteForm.site_country||''} 
+                        readOnly
+                        placeholder="Auto-filled from address"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-600">Province/State</label>
+                      <input 
+                        className="w-full border rounded px-3 py-2 bg-gray-50 cursor-not-allowed" 
+                        value={siteForm.site_province||''} 
+                        readOnly
+                        placeholder="Auto-filled from address"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-600">City</label>
+                      <input 
+                        className="w-full border rounded px-3 py-2 bg-gray-50 cursor-not-allowed" 
+                        value={siteForm.site_city||''} 
+                        readOnly
+                        placeholder="Auto-filled from address"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-600">Postal code</label>
+                      <input 
+                        className="w-full border rounded px-3 py-2 bg-gray-50 cursor-not-allowed" 
+                        value={siteForm.site_postal_code||''} 
+                        readOnly
+                        placeholder="Auto-filled from address"
+                      />
+                    </div>
                     <div className="md:col-span-2"><label className="text-xs text-gray-600">Notes</label><textarea rows={3} className="w-full border rounded px-3 py-2" value={siteForm.site_notes||''} onChange={e=>setSiteField('site_notes', e.target.value)} /></div>
                   </div>
                 )}
