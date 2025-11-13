@@ -28,6 +28,7 @@ from .routes.estimate import router as estimate_router
 from .routes.reviews import router as reviews_router
 from .routes.chat import router as chat_router
 from .routes.tasks import router as tasks_router
+from .routes.notifications import router as notifications_router
 
 
 def create_app() -> FastAPI:
@@ -65,6 +66,7 @@ def create_app() -> FastAPI:
     app.include_router(reviews_router)
     app.include_router(chat_router)
     app.include_router(tasks_router)
+    app.include_router(notifications_router)
     from .routes import dispatch
     app.include_router(dispatch.router)
     # Legacy UI redirects to new React routes (exact paths)

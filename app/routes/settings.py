@@ -24,6 +24,7 @@ def get_settings_bundle(db: Session = Depends(get_db)):
     out.setdefault("divisions", [])
     out.setdefault("project_statuses", [])
     out.setdefault("lead_sources", [])
+    out.setdefault("timesheet", [])
     # Add Google Places API key (if configured)
     if settings.google_places_api_key:
         out["google_places_api_key"] = settings.google_places_api_key

@@ -13,7 +13,8 @@ import pytz
 from ..db import get_db
 from ..models.models import (
     Shift, Attendance, AuditLog, Project, User, 
-    UserNotificationPreference, ProjectTimeEntry, ProjectTimeEntryLog
+    UserNotificationPreference, ProjectTimeEntry, ProjectTimeEntryLog,
+    EmployeeProfile
 )
 from ..auth.security import get_current_user
 from ..config import settings
@@ -687,6 +688,8 @@ def create_attendance(
     import logging
     logger = logging.getLogger(__name__)
     
+    logger.info(f"Received attendance request from user {user.id}: {payload}")
+    
     try:
         shift_id = payload.get("shift_id")
         if not shift_id:
@@ -698,16 +701,42 @@ def create_attendance(
             logger.error(f"Shift not found: {shift_id}")
             raise HTTPException(status_code=404, detail="Shift not found")
         
-        # Check if worker owns this shift, or if user is admin/supervisor
+        # Check if worker owns this shift, or if user is admin/supervisor/on-site lead
         from ..services.permissions import is_admin, is_supervisor
         is_worker_owner = str(shift.worker_id) == str(user.id)
-        is_authorized_supervisor = (is_admin(user, db) or is_supervisor(user, db))
         
-        logger.info(f"User {user.id} clock-in/out for shift {shift_id}. Worker owner: {is_worker_owner}, Authorized supervisor: {is_authorized_supervisor}")
+        # Check if user is authorized to clock-in/out for this worker
+        is_authorized_supervisor = False
+        is_admin_user = is_admin(user, db)
+        if is_admin_user:
+            is_authorized_supervisor = True  # Admin can always do it
+            logger.info(f"User {user.id} is admin - authorized to clock-in/out for any worker")
+        elif not is_worker_owner:
+            # Check if user is direct supervisor of the worker
+            worker_profile = db.query(EmployeeProfile).filter(EmployeeProfile.user_id == shift.worker_id).first()
+            is_worker_supervisor = worker_profile and worker_profile.manager_user_id and str(worker_profile.manager_user_id) == str(user.id)
+            
+            # Check if user is on-site lead of the project
+            project = db.query(Project).filter(Project.id == shift.project_id).first()
+            is_onsite_lead = project and project.onsite_lead_id and str(project.onsite_lead_id) == str(user.id)
+            
+            is_authorized_supervisor = is_worker_supervisor or is_onsite_lead
+            
+            logger.info(
+                f"Permission check for user {user.id} clock-in/out for worker {shift.worker_id} in project {shift.project_id}: "
+                f"is_worker_supervisor={is_worker_supervisor} (worker_profile exists: {worker_profile is not None}, "
+                f"manager_user_id: {worker_profile.manager_user_id if worker_profile else None}), "
+                f"is_onsite_lead={is_onsite_lead} (project onsite_lead_id: {project.onsite_lead_id if project else None})"
+            )
+        
+        logger.info(f"User {user.id} clock-in/out for shift {shift_id}. Worker owner: {is_worker_owner}, Authorized supervisor: {is_authorized_supervisor}, Is admin: {is_admin_user}")
         
         if not is_worker_owner and not is_authorized_supervisor:
             logger.warning(f"User {user.id} not authorized for shift {shift_id}. Worker: {shift.worker_id}")
-            raise HTTPException(status_code=403, detail="You can only clock in/out for your own shifts")
+            raise HTTPException(
+                status_code=403, 
+                detail="You can only clock in/out for your own shifts, or if you are the worker's direct supervisor or the on-site lead of this project"
+            )
         
         # Allow clock-in/out even if shift is not "scheduled" if:
         # 1. Worker is doing it for their own shift, OR
@@ -744,7 +773,31 @@ def create_attendance(
         
         # Convert to UTC
         project = db.query(Project).filter(Project.id == shift.project_id).first()
+        if not project:
+            logger.error(f"Project not found for shift {shift_id}")
+            raise HTTPException(status_code=404, detail="Project not found")
         project_timezone = project.timezone if project else settings.tz_default
+        
+        # Check if user is on-site lead of the project or supervisor of the worker
+        is_onsite_lead = project.onsite_lead_id and str(project.onsite_lead_id) == str(user.id)
+        
+        # Get worker's employee profile to check supervisor
+        worker_employee_profile = db.query(EmployeeProfile).filter(
+            EmployeeProfile.user_id == shift.worker_id
+        ).first()
+        is_worker_supervisor = (
+            worker_employee_profile and 
+            worker_employee_profile.manager_user_id and 
+            str(worker_employee_profile.manager_user_id) == str(user.id)
+        )
+        
+        # Auto-approve if user is on-site lead OR worker's supervisor (when doing clock-in/out for another worker)
+        is_authorized_for_auto_approval = is_onsite_lead or is_worker_supervisor
+        
+        logger.info(
+            f"Authorization check - On-site lead: {is_onsite_lead}, Worker supervisor: {is_worker_supervisor}, "
+            f"Authorized for auto-approval: {is_authorized_for_auto_approval}"
+        )
         
         # Ensure time_selected_local is naive for conversion
         if time_selected_local.tzinfo is not None:
@@ -768,17 +821,23 @@ def create_attendance(
         
         logger.info(f"GPS data - lat: {gps_lat}, lng: {gps_lng}, accuracy: {gps_accuracy_m}")
         
-        # Get expected time from shift
+        # Check tolerance: compare selected time with CURRENT time (when clock-in/out is being done)
+        # This allows users to record the actual time they worked, as long as it's within tolerance of when they're submitting
+        # Example: If it's 11:08 now and user selects 10:45, difference is 23min (within 30min tolerance) → approved
+        within_tolerance = is_within_tolerance(time_selected_utc, time_entered_utc)
+        # Calculate difference for detailed logging
+        diff_minutes = abs((time_selected_utc - time_entered_utc).total_seconds() / 60)
+        tolerance_minutes = settings.tolerance_window_min
+        logger.info(f"Tolerance check - Selected time: {time_selected_utc}, Current time: {time_entered_utc}, Diff: {diff_minutes:.1f}min, Tolerance: {tolerance_minutes}min, Within: {within_tolerance}")
+        
+        # Also log expected shift time for reference (but not used for tolerance check)
         expected_datetime_local = combine_date_time(shift.date, shift.start_time if attendance_type == "in" else shift.end_time, project_timezone)
         expected_datetime_utc = local_to_utc(expected_datetime_local.replace(tzinfo=None), project_timezone)
-        # Ensure timezone-aware
         if expected_datetime_utc.tzinfo is None:
             from pytz import UTC
             expected_datetime_utc = expected_datetime_utc.replace(tzinfo=UTC)
-        
-        # Check tolerance (both should be timezone-aware)
-        within_tolerance = is_within_tolerance(time_selected_utc, expected_datetime_utc)
-        logger.info(f"Within tolerance: {within_tolerance}. Selected: {time_selected_utc}, Expected: {expected_datetime_utc}")
+        expected_diff_minutes = abs((time_selected_utc - expected_datetime_utc).total_seconds() / 60)
+        logger.info(f"Shift time reference - Expected shift time: {expected_datetime_utc}, Selected time diff from expected: {expected_diff_minutes:.1f}min")
         
         # Check geofence - use project location if shift has no geofences
         project = db.query(Project).filter(Project.id == shift.project_id).first()
@@ -830,26 +889,42 @@ def create_attendance(
         
         # Determine status
         # For worker doing clock-in/out on their own shift:
-        #   - Auto-approve ONLY if BOTH inside geofence AND within 30min tolerance AND not risky GPS
+        #   - If worker is on-site lead of the project: auto-approve immediately (no geofence/tolerance check needed)
+        #   - Otherwise, auto-approve ONLY if BOTH inside geofence AND within 30min tolerance of CURRENT time
+        #   - Tolerance is checked against current time (when submitting), not expected shift time
+        #   - This allows users to record actual work time as long as it's within 30min of when they submit
+        #   - geo_risk is logged but doesn't block auto-approval if location and time are correct
         #   - Otherwise, status is pending (requires supervisor approval)
         # For supervisor doing clock-in/out for another worker:
         #   - Auto-approve if rules met (reason already checked above)
         if is_worker_owner:
             # Worker doing clock-in/out on their own shift
-            if inside_geo and within_tolerance and not geo_risk:
-                # Both location and time tolerance requirements met → auto-approve
+            # If worker is on-site lead of the project, auto-approve immediately
+            if is_onsite_lead:
                 status = "approved"
-                logger.info(f"Status: approved (worker's own shift - rules met: inside_geo={inside_geo}, within_tolerance={within_tolerance}, geo_risk={geo_risk})")
+                logger.info(f"Status: APPROVED (worker's own shift - on-site lead) - auto-approved regardless of geofence/tolerance")
+            elif inside_geo and within_tolerance:
+                # Both location and time tolerance requirements met → auto-approve
+                # Note: geo_risk is logged for monitoring but doesn't block auto-approval
+                # if the user is at the correct location (inside geofence) and within time tolerance
+                status = "approved"
+                logger.info(f"Status: APPROVED (worker's own shift) - inside_geo={inside_geo}, within_tolerance={within_tolerance} (diff: {diff_minutes:.1f}min), geo_risk={geo_risk}")
             else:
                 # Location OR time tolerance requirement not met → pending (requires supervisor approval)
                 status = "pending"
-                logger.info(f"Status: pending (worker's own shift - rules not met: inside_geo={inside_geo}, within_tolerance={within_tolerance}, geo_risk={geo_risk})")
+                reason_pending = []
+                if not inside_geo:
+                    reason_pending.append("outside geofence")
+                if not within_tolerance:
+                    reason_pending.append(f"outside time tolerance (diff: {diff_minutes:.1f}min, allowed: {tolerance_minutes}min)")
+                logger.info(f"Status: PENDING (worker's own shift) - Reasons: {', '.join(reason_pending) if reason_pending else 'unknown'} - inside_geo={inside_geo}, within_tolerance={within_tolerance}, geo_risk={geo_risk}")
                 
                 # Require reason if outside geofence (not at the correct site)
                 # If inside geofence but outside tolerance, reason is optional (location is correct, just timing)
                 if not inside_geo:
+                    logger.info(f"Checking reason_text requirement. Inside geo: {inside_geo}, Reason text length: {len(reason_text) if reason_text else 0}, Required: {settings.require_reason_min_chars}")
                     if not reason_text or len(reason_text) < settings.require_reason_min_chars:
-                        logger.error(f"Reason text required. Inside geo: {inside_geo}, Within tolerance: {within_tolerance}, Provided length: {len(reason_text)}")
+                        logger.error(f"Reason text required but not provided or too short. Inside geo: {inside_geo}, Within tolerance: {within_tolerance}, Provided length: {len(reason_text) if reason_text else 0}, Required: {settings.require_reason_min_chars}")
                         raise HTTPException(
                             status_code=400,
                             detail=f"Reason text is required (minimum {settings.require_reason_min_chars} characters) when you are not at the correct site. Please describe the reason; your entry will be sent for supervisor review."
@@ -858,10 +933,20 @@ def create_attendance(
                 # We'll create the attendance as pending and let supervisor review, but don't require reason
         elif is_authorized_supervisor and not is_worker_owner:
             # Supervisor doing clock-in/out for another worker
-            if inside_geo and within_tolerance and not geo_risk:
-                # Supervisor actions for others: auto-approve if rules met (reason already checked above)
+            # Check if user is on-site lead OR worker's supervisor - if so, auto-approve (but still require reason_text)
+            if is_authorized_for_auto_approval:
+                # On-site lead or worker's supervisor: auto-approve immediately (reason_text already checked above)
                 status = "approved"
-                logger.info("Status: approved (supervisor action - rules met)")
+                logger.info(
+                    f"Status: APPROVED (on-site lead or worker supervisor action - "
+                    f"on-site lead: {is_onsite_lead}, worker supervisor: {is_worker_supervisor}, "
+                    f"inside_geo={inside_geo}, within_tolerance={within_tolerance}, geo_risk={geo_risk})"
+                )
+            elif inside_geo and within_tolerance:
+                # Other supervisor actions: auto-approve if rules met (reason already checked above)
+                # Note: geo_risk is logged but doesn't block auto-approval if location and time are correct
+                status = "approved"
+                logger.info(f"Status: approved (supervisor action - rules met: inside_geo={inside_geo}, within_tolerance={within_tolerance}, geo_risk={geo_risk})")
             else:
                 # Rules not met: status is pending
                 status = "pending"
@@ -872,6 +957,29 @@ def create_attendance(
             logger.warning(f"Status: pending (fallback case)")
         
         # Create attendance record
+        # Safely convert GPS values to float
+        gps_lat_float = None
+        gps_lng_float = None
+        gps_accuracy_float = None
+        
+        if gps_lat is not None:
+            try:
+                gps_lat_float = float(gps_lat)
+            except (ValueError, TypeError) as e:
+                logger.warning(f"Invalid gps_lat value: {gps_lat}, error: {str(e)}")
+        
+        if gps_lng is not None:
+            try:
+                gps_lng_float = float(gps_lng)
+            except (ValueError, TypeError) as e:
+                logger.warning(f"Invalid gps_lng value: {gps_lng}, error: {str(e)}")
+        
+        if gps_accuracy_m is not None:
+            try:
+                gps_accuracy_float = float(gps_accuracy_m)
+            except (ValueError, TypeError) as e:
+                logger.warning(f"Invalid gps_accuracy_m value: {gps_accuracy_m}, error: {str(e)}")
+        
         attendance = Attendance(
             shift_id=shift_id,
             worker_id=worker_id,
@@ -882,9 +990,9 @@ def create_attendance(
             source=source,
             created_by=user.id,
             reason_text=reason_text if reason_text else None,
-            gps_lat=float(gps_lat) if gps_lat else None,
-            gps_lng=float(gps_lng) if gps_lng else None,
-            gps_accuracy_m=float(gps_accuracy_m) if gps_accuracy_m else None,
+            gps_lat=gps_lat_float,
+            gps_lng=gps_lng_float,
+            gps_accuracy_m=gps_accuracy_float,
             mocked_flag=mocked_flag,
             attachments=payload.get("attachments"),
         )
@@ -894,6 +1002,35 @@ def create_attendance(
         db.refresh(attendance)
         
         logger.info(f"Attendance created: {attendance.id}, Status: {attendance.status}")
+        
+        # If status is pending, send notification to worker's supervisor
+        if status == "pending":
+            # Get worker's supervisor
+            worker_profile = db.query(EmployeeProfile).filter(EmployeeProfile.user_id == worker_id).first()
+            if worker_profile and worker_profile.manager_user_id:
+                supervisor_id = str(worker_profile.manager_user_id)
+                logger.info(f"Sending pending attendance notification to supervisor {supervisor_id} for worker {worker_id}")
+                
+                # Get project timezone for notification
+                project = db.query(Project).filter(Project.id == shift.project_id).first()
+                project_timezone = project.timezone if project else settings.tz_default
+                
+                # Send notification to supervisor
+                send_attendance_notification(
+                    db=db,
+                    user_id=supervisor_id,
+                    notification_type="pending",
+                    attendance_data={
+                        "id": str(attendance.id),
+                        "type": attendance_type,
+                        "status": status,
+                        "worker_id": worker_id,
+                        "shift_id": shift_id,
+                        "project_id": str(shift.project_id),
+                        "time_selected_utc": attendance.time_selected_utc.isoformat() if attendance.time_selected_utc else None,
+                    },
+                    timezone_str=project_timezone
+                )
         
         # Create audit log
         # Determine actor role (we already have is_authorized_supervisor, but need to check admin vs supervisor)
@@ -929,7 +1066,7 @@ def create_attendance(
         
         # If approved, create/update timesheet entry
         if status == "approved":
-            _create_or_update_timesheet_from_attendance(db, attendance, shift, project_timezone)
+            _create_or_update_timesheet_from_attendance(db, attendance, shift, project_timezone, inside_geo)
         
         return {
             "id": str(attendance.id),
@@ -943,10 +1080,14 @@ def create_attendance(
             "within_tolerance": within_tolerance,
             "gps_risk": geo_risk,
         }
-    except HTTPException:
+    except HTTPException as e:
+        # Re-raise HTTPException with detailed logging
+        logger.error(f"HTTPException in create_attendance: {e.status_code} - {e.detail}")
         raise
     except Exception as e:
+        # Log unexpected errors with full traceback
         logger.error(f"Unexpected error in create_attendance: {str(e)}", exc_info=True)
+        logger.error(f"Payload that caused error: {payload}")
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 
@@ -960,11 +1101,12 @@ def create_attendance_supervisor(
     Supervisor clocks in/out on behalf of worker.
     Requires reason_text ALWAYS.
     Auto-approves only if supervisor is on-site and within tolerance.
-    """
-    # Check permissions
-    if not (is_admin(user, db) or is_supervisor(user, db)):
-        raise HTTPException(status_code=403, detail="Only supervisors and admins can create attendance for workers")
     
+    Permission rules:
+    - User must be admin, OR
+    - User must be direct supervisor of the worker (can clock-in/out in any project), OR
+    - User must be on-site lead of the project where the shift is registered (can clock-in/out for any worker with shift in that project)
+    """
     shift_id = payload.get("shift_id")
     if not shift_id:
         raise HTTPException(status_code=400, detail="shift_id is required")
@@ -973,13 +1115,35 @@ def create_attendance_supervisor(
     if not shift:
         raise HTTPException(status_code=404, detail="Shift not found")
     
-    # Check supervisor has access to this project
-    if not (is_admin(user, db) or is_supervisor(user, db, str(shift.project_id))):
-        raise HTTPException(status_code=403, detail="Access denied to this project")
-    
     worker_id = payload.get("worker_id")
     if not worker_id:
         raise HTTPException(status_code=400, detail="worker_id is required")
+    
+    # Check permissions: Admin can always do it
+    is_admin_user = is_admin(user, db)
+    if is_admin_user:
+        logger.info(f"User {user.id} is admin - authorized to clock-in/out for any worker")
+    else:
+        # Check if user is direct supervisor of the worker
+        worker_profile = db.query(EmployeeProfile).filter(EmployeeProfile.user_id == worker_id).first()
+        is_worker_supervisor = worker_profile and worker_profile.manager_user_id and str(worker_profile.manager_user_id) == str(user.id)
+        
+        # Check if user is on-site lead of the project
+        project = db.query(Project).filter(Project.id == shift.project_id).first()
+        is_onsite_lead = project and project.onsite_lead_id and str(project.onsite_lead_id) == str(user.id)
+        
+        logger.info(
+            f"Permission check for user {user.id} clock-in/out for worker {worker_id} in project {shift.project_id}: "
+            f"is_worker_supervisor={is_worker_supervisor} (worker_profile exists: {worker_profile is not None}, "
+            f"manager_user_id: {worker_profile.manager_user_id if worker_profile else None}), "
+            f"is_onsite_lead={is_onsite_lead} (project onsite_lead_id: {project.onsite_lead_id if project else None})"
+        )
+        
+        if not (is_worker_supervisor or is_onsite_lead):
+            raise HTTPException(
+                status_code=403,
+                detail="You can only clock-in/out for workers if you are their direct supervisor or the on-site lead of this project"
+            )
     
     # If worker doesn't match shift, find or use a shift for that worker on the same date
     if str(shift.worker_id) != worker_id:
@@ -1149,6 +1313,31 @@ def create_attendance_supervisor(
         timezone_str=project_timezone
     )
     
+    # If status is pending, send notification to worker's supervisor
+    if status == "pending":
+        # Get worker's supervisor
+        worker_profile = db.query(EmployeeProfile).filter(EmployeeProfile.user_id == worker_id).first()
+        if worker_profile and worker_profile.manager_user_id:
+            supervisor_id = str(worker_profile.manager_user_id)
+            logger.info(f"Sending pending attendance notification to supervisor {supervisor_id} for worker {worker_id}")
+            
+            # Send notification to supervisor
+            send_attendance_notification(
+                db=db,
+                user_id=supervisor_id,
+                notification_type="pending",
+                attendance_data={
+                    "id": str(attendance.id),
+                    "type": attendance_type,
+                    "status": status,
+                    "worker_id": worker_id,
+                    "shift_id": shift_id,
+                    "project_id": str(shift.project_id),
+                    "time_selected_utc": attendance.time_selected_utc.isoformat() if attendance.time_selected_utc else None,
+                },
+                timezone_str=project_timezone
+            )
+    
     return {
         "id": str(attendance.id),
         "shift_id": str(attendance.shift_id),
@@ -1225,7 +1414,23 @@ def approve_attendance(
     
     # Create/update timesheet entry when approved
     if shift:
-        _create_or_update_timesheet_from_attendance(db, attendance, shift, project_timezone)
+        # Recalculate geofence status for logging (use stored GPS data if available)
+        project = db.query(Project).filter(Project.id == shift.project_id).first()
+        geofences_to_check = get_geofences_for_shift(shift, project, db)
+        inside_geo = False
+        if geofences_to_check and len(geofences_to_check) > 0:
+            if attendance.gps_lat and attendance.gps_lng:
+                inside_geo, _, _ = inside_geofence(
+                    float(attendance.gps_lat),
+                    float(attendance.gps_lng),
+                    geofences_to_check,
+                    float(attendance.gps_accuracy_m) if attendance.gps_accuracy_m else None
+                )
+        else:
+            # No geofences - location validation not required
+            inside_geo = True
+        
+        _create_or_update_timesheet_from_attendance(db, attendance, shift, project_timezone, inside_geo)
     
     return {
         "id": str(attendance.id),
@@ -1669,7 +1874,8 @@ def _create_or_update_timesheet_from_attendance(
     db: Session,
     attendance: Attendance,
     shift: Shift,
-    project_timezone: str
+    project_timezone: str,
+    inside_geofence: bool
 ):
     """
     Create or update ProjectTimeEntry from approved attendance.
@@ -1710,6 +1916,44 @@ def _create_or_update_timesheet_from_attendance(
                     existing_entry.minutes = int(diff.total_seconds() / 60)
             existing_entry.notes = existing_entry.notes or f"Clock-in via attendance system"
             db.commit()
+            
+            # Create log for update
+            log_changes = {
+                "before": {
+                    "start_time": None,
+                    "minutes": existing_entry.minutes,
+                },
+                "after": {
+                    "start_time": start_time_local.isoformat(),
+                    "minutes": existing_entry.minutes,
+                },
+                "attendance_type": "clock-in",
+                "worker_id": str(attendance.worker_id),
+                "performed_by": str(attendance.created_by),
+                "time_selected": attendance.time_selected_utc.isoformat() if attendance.time_selected_utc else None,
+                "time_entered": attendance.time_entered_utc.isoformat() if attendance.time_entered_utc else None,
+                "status": attendance.status,
+                "reason_text": attendance.reason_text,
+                "gps_lat": float(attendance.gps_lat) if attendance.gps_lat is not None else None,
+                "gps_lng": float(attendance.gps_lng) if attendance.gps_lng is not None else None,
+                "gps_accuracy_m": float(attendance.gps_accuracy_m) if attendance.gps_accuracy_m is not None else None,
+                "inside_geofence": inside_geofence,
+            }
+            # Add worker name if different from performer
+            if str(attendance.worker_id) != str(attendance.created_by):
+                worker_user = db.query(User).filter(User.id == attendance.worker_id).first()
+                if worker_user:
+                    log_changes["worker_name"] = worker_user.username or worker_user.email or str(attendance.worker_id)
+            
+            log = ProjectTimeEntryLog(
+                entry_id=existing_entry.id,
+                project_id=existing_entry.project_id,
+                user_id=attendance.created_by,
+                action="update",
+                changes=log_changes
+            )
+            db.add(log)
+            db.commit()
         else:
             # Create new entry
             entry = ProjectTimeEntry(
@@ -1725,18 +1969,36 @@ def _create_or_update_timesheet_from_attendance(
             db.commit()
             db.refresh(entry)
             
-            # Create log
+            # Create log with comprehensive attendance information
+            log_changes = {
+                "minutes": entry.minutes,
+                "work_date": entry.work_date.isoformat(),
+                "notes": entry.notes,
+                "start_time": start_time_local.isoformat(),
+                "attendance_type": "clock-in",
+                "worker_id": str(attendance.worker_id),
+                "performed_by": str(attendance.created_by),
+                "time_selected": attendance.time_selected_utc.isoformat() if attendance.time_selected_utc else None,
+                "time_entered": attendance.time_entered_utc.isoformat() if attendance.time_entered_utc else None,
+                "status": attendance.status,
+                "reason_text": attendance.reason_text,
+                "gps_lat": float(attendance.gps_lat) if attendance.gps_lat is not None else None,
+                "gps_lng": float(attendance.gps_lng) if attendance.gps_lng is not None else None,
+                "gps_accuracy_m": float(attendance.gps_accuracy_m) if attendance.gps_accuracy_m is not None else None,
+                "inside_geofence": inside_geofence,
+            }
+            # Add worker name if different from performer
+            if str(attendance.worker_id) != str(attendance.created_by):
+                worker_user = db.query(User).filter(User.id == attendance.worker_id).first()
+                if worker_user:
+                    log_changes["worker_name"] = worker_user.username or worker_user.email or str(attendance.worker_id)
+            
             log = ProjectTimeEntryLog(
                 entry_id=entry.id,
                 project_id=entry.project_id,
                 user_id=attendance.created_by,
                 action="create",
-                changes={
-                    "minutes": entry.minutes,
-                    "work_date": entry.work_date.isoformat(),
-                    "notes": entry.notes,
-                    "start_time": start_time_local.isoformat(),
-                }
+                changes=log_changes
             )
             db.add(log)
             db.commit()
@@ -1777,22 +2039,40 @@ def _create_or_update_timesheet_from_attendance(
             existing_entry.notes = existing_entry.notes or f"Clock-out via attendance system"
             db.commit()
             
-            # Create log
+            # Create log with comprehensive attendance information
+            log_changes = {
+                "before": {
+                    "end_time": None,
+                    "minutes": existing_entry.minutes,
+                },
+                "after": {
+                    "end_time": end_time_local.isoformat(),
+                    "minutes": existing_entry.minutes,
+                },
+                "attendance_type": "clock-out",
+                "worker_id": str(attendance.worker_id),
+                "performed_by": str(attendance.created_by),
+                "time_selected": attendance.time_selected_utc.isoformat() if attendance.time_selected_utc else None,
+                "time_entered": attendance.time_entered_utc.isoformat() if attendance.time_entered_utc else None,
+                "status": attendance.status,
+                "reason_text": attendance.reason_text,
+                "gps_lat": float(attendance.gps_lat) if attendance.gps_lat is not None else None,
+                "gps_lng": float(attendance.gps_lng) if attendance.gps_lng is not None else None,
+                "gps_accuracy_m": float(attendance.gps_accuracy_m) if attendance.gps_accuracy_m is not None else None,
+                "inside_geofence": inside_geofence,
+            }
+            # Add worker name if different from performer
+            if str(attendance.worker_id) != str(attendance.created_by):
+                worker_user = db.query(User).filter(User.id == attendance.worker_id).first()
+                if worker_user:
+                    log_changes["worker_name"] = worker_user.username or worker_user.email or str(attendance.worker_id)
+            
             log = ProjectTimeEntryLog(
                 entry_id=existing_entry.id,
                 project_id=existing_entry.project_id,
                 user_id=attendance.created_by,
                 action="update",
-                changes={
-                    "before": {
-                        "end_time": None,
-                        "minutes": existing_entry.minutes,
-                    },
-                    "after": {
-                        "end_time": end_time_local.isoformat(),
-                        "minutes": existing_entry.minutes,
-                    }
-                }
+                changes=log_changes
             )
             db.add(log)
             db.commit()
@@ -1823,19 +2103,37 @@ def _create_or_update_timesheet_from_attendance(
             db.commit()
             db.refresh(entry)
             
-            # Create log
+            # Create log with comprehensive attendance information
+            log_changes = {
+                "minutes": entry.minutes,
+                "work_date": entry.work_date.isoformat(),
+                "notes": entry.notes,
+                "start_time": entry.start_time.isoformat(),
+                "end_time": entry.end_time.isoformat(),
+                "attendance_type": "clock-out",
+                "worker_id": str(attendance.worker_id),
+                "performed_by": str(attendance.created_by),
+                "time_selected": attendance.time_selected_utc.isoformat() if attendance.time_selected_utc else None,
+                "time_entered": attendance.time_entered_utc.isoformat() if attendance.time_entered_utc else None,
+                "status": attendance.status,
+                "reason_text": attendance.reason_text,
+                "gps_lat": float(attendance.gps_lat) if attendance.gps_lat is not None else None,
+                "gps_lng": float(attendance.gps_lng) if attendance.gps_lng is not None else None,
+                "gps_accuracy_m": float(attendance.gps_accuracy_m) if attendance.gps_accuracy_m is not None else None,
+                "inside_geofence": inside_geofence,
+            }
+            # Add worker name if different from performer
+            if str(attendance.worker_id) != str(attendance.created_by):
+                worker_user = db.query(User).filter(User.id == attendance.worker_id).first()
+                if worker_user:
+                    log_changes["worker_name"] = worker_user.username or worker_user.email or str(attendance.worker_id)
+            
             log = ProjectTimeEntryLog(
                 entry_id=entry.id,
                 project_id=entry.project_id,
                 user_id=attendance.created_by,
                 action="create",
-                changes={
-                    "minutes": entry.minutes,
-                    "work_date": entry.work_date.isoformat(),
-                    "notes": entry.notes,
-                    "start_time": entry.start_time.isoformat(),
-                    "end_time": entry.end_time.isoformat(),
-                }
+                changes=log_changes
             )
             db.add(log)
             db.commit()

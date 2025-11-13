@@ -7,6 +7,19 @@ import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
 
+// Helper function to convert 24h time (HH:MM:SS or HH:MM) to 12h format (h:mm AM/PM)
+function formatTime12h(timeStr: string | null | undefined): string {
+  if (!timeStr || timeStr === '--:--' || timeStr === '-') return timeStr || '--:--';
+  const parts = timeStr.split(':');
+  if (parts.length < 2) return timeStr;
+  const hours = parseInt(parts[0], 10);
+  const minutes = parts[1];
+  if (isNaN(hours)) return timeStr;
+  const period = hours >= 12 ? 'PM' : 'AM';
+  const hours12 = hours === 0 ? 12 : hours > 12 ? hours - 12 : hours;
+  return `${hours12}:${minutes} ${period}`;
+}
+
 interface Shift {
   id: string;
   project_id: string;
@@ -329,7 +342,7 @@ export default function TimeSheet({ projectId, userId }: TimeSheetProps) {
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-2">
                       <span className="font-semibold text-gray-900">
-                        {shift.start_time.slice(0, 5)} - {shift.end_time.slice(0, 5)}
+                        {formatTime12h(shift.start_time)} - {formatTime12h(shift.end_time)}
                       </span>
                       {shift.job_name && (
                         <span className="px-2 py-1 rounded text-xs bg-blue-100 text-blue-800">
@@ -345,9 +358,10 @@ export default function TimeSheet({ projectId, userId }: TimeSheetProps) {
                         <div className="flex items-center gap-2">
                           {getStatusBadge(clockIn.status)}
                           <span className="text-sm text-gray-700">
-                            {new Date(clockIn.time_selected_utc).toLocaleTimeString([], {
-                              hour: '2-digit',
+                            {new Date(clockIn.time_selected_utc).toLocaleTimeString('en-US', {
+                              hour: 'numeric',
                               minute: '2-digit',
+                              hour12: true,
                             })}
                           </span>
                           {clockIn.source === 'supervisor' && (
@@ -371,9 +385,10 @@ export default function TimeSheet({ projectId, userId }: TimeSheetProps) {
                         <div className="flex items-center gap-2">
                           {getStatusBadge(clockOut.status)}
                           <span className="text-sm text-gray-700">
-                            {new Date(clockOut.time_selected_utc).toLocaleTimeString([], {
-                              hour: '2-digit',
+                            {new Date(clockOut.time_selected_utc).toLocaleTimeString('en-US', {
+                              hour: 'numeric',
                               minute: '2-digit',
+                              hour12: true,
                             })}
                           </span>
                           {clockOut.source === 'supervisor' && (

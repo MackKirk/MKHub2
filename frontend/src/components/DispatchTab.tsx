@@ -6,6 +6,19 @@ import { useConfirm } from '@/components/ConfirmProvider';
 import EditShiftModal from '@/components/EditShiftModal';
 import { JOB_TYPES } from '@/constants/jobTypes';
 
+// Helper function to convert 24h time (HH:MM:SS or HH:MM) to 12h format (h:mm AM/PM)
+function formatTime12h(timeStr: string | null | undefined): string {
+  if (!timeStr || timeStr === '--:--' || timeStr === '-') return timeStr || '--:--';
+  const parts = timeStr.split(':');
+  if (parts.length < 2) return timeStr;
+  const hours = parseInt(parts[0], 10);
+  const minutes = parts[1];
+  if (isNaN(hours)) return timeStr;
+  const period = hours >= 12 ? 'PM' : 'AM';
+  const hours12 = hours === 0 ? 12 : hours > 12 ? hours - 12 : hours;
+  return `${hours12}:${minutes} ${period}`;
+}
+
 export default function DispatchTab({ projectId }: { projectId: string }) {
   const confirm = useConfirm();
   const queryClient = useQueryClient();
@@ -86,6 +99,28 @@ export default function DispatchTab({ projectId }: { projectId: string }) {
     queryKey: ['project', projectId],
     queryFn: () => api<any>('GET', `/projects/${projectId}`),
   });
+
+  const { data: settings } = useQuery({
+    queryKey: ['settings-bundle'],
+    queryFn: () => api<Record<string, any[]>>('GET', '/settings'),
+  });
+
+  // Get default values from settings
+  const defaultBreakMin = useMemo(() => {
+    if (!settings) return 30; // Default value while loading
+    const timesheetItems = (settings.timesheet || []) as any[];
+    const breakItem = timesheetItems.find((i: any) => i.label === 'default_break_minutes');
+    const value = breakItem?.value ? parseInt(breakItem.value, 10) : 30;
+    return isNaN(value) ? 30 : value; // Ensure it's always a valid number
+  }, [settings]);
+
+  const defaultGeofenceRadius = useMemo(() => {
+    if (!settings) return 150; // Default value while loading
+    const timesheetItems = (settings.timesheet || []) as any[];
+    const radiusItem = timesheetItems.find((i: any) => i.label === 'default_geofence_radius_meters');
+    const value = radiusItem?.value ? parseInt(radiusItem.value, 10) : 150;
+    return isNaN(value) ? 150 : value; // Ensure it's always a valid number
+  }, [settings]);
 
   const [createShiftModal, setCreateShiftModal] = useState(false);
   const [editShiftModal, setEditShiftModal] = useState<any>(null);
@@ -422,7 +457,7 @@ export default function DispatchTab({ projectId }: { projectId: string }) {
                                       ? 'Click to deselect'
                                       : 'Click to select for deletion'
                                     : 'Cannot delete shifts from past dates'
-                                  : `${worker?.name || shift.worker_id}: ${shift.start_time.slice(0, 5)} - ${shift.end_time.slice(0, 5)}`
+                                  : `${worker?.name || shift.worker_id}: ${formatTime12h(shift.start_time)} - ${formatTime12h(shift.end_time)}`
                               }
                               onMouseDown={(e) => e.stopPropagation()}
                               onClick={(e) => {
@@ -482,7 +517,7 @@ export default function DispatchTab({ projectId }: { projectId: string }) {
                                     {worker?.name || shift.worker_id}
                                   </div>
                                   <span className="text-[9px] text-gray-600">
-                                    {shift.start_time.slice(0, 5)} - {shift.end_time.slice(0, 5)}
+                                    {formatTime12h(shift.start_time)} - {formatTime12h(shift.end_time)}
                                   </span>
                                   {shift.job_name && (
                                     <div className="text-[9px] text-gray-500 mt-0.5 truncate">
@@ -619,6 +654,8 @@ export default function DispatchTab({ projectId }: { projectId: string }) {
               projectId={projectId}
               project={project}
               employees={employees}
+              defaultBreakMin={defaultBreakMin}
+              defaultGeofenceRadius={defaultGeofenceRadius}
               onClose={() => setCreateShiftModal(false)}
               onSave={async () => {
                 await refetchShifts();
@@ -739,12 +776,16 @@ function CreateShiftModal({
   projectId,
   project,
   employees,
+  defaultBreakMin,
+  defaultGeofenceRadius,
   onClose,
   onSave,
 }: {
   projectId: string;
   project: any;
   employees: any[];
+  defaultBreakMin: number;
+  defaultGeofenceRadius: number;
   onClose: () => void;
   onSave: () => Promise<void>;
 }) {
@@ -760,8 +801,6 @@ function CreateShiftModal({
   const [excludeWeekends, setExcludeWeekends] = useState(false);
   const [startTime, setStartTime] = useState('09:00');
   const [endTime, setEndTime] = useState('17:00');
-  const [breakMin, setBreakMin] = useState(30);
-  const [geofenceRadius, setGeofenceRadius] = useState(150);
   const [jobType, setJobType] = useState('');
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
@@ -864,6 +903,10 @@ function CreateShiftModal({
     setSaving(true);
 
     try {
+      // Use the provided default values (they should always be valid numbers)
+      const geofenceRadius = defaultGeofenceRadius ?? 150;
+      const breakMin = defaultBreakMin ?? 30;
+      
       const geofences = project?.lat && project?.lng
         ? [
             {
@@ -1178,27 +1221,6 @@ function CreateShiftModal({
             </div>
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Break (minutes)</label>
-            <input
-              type="number"
-              value={breakMin}
-              onChange={(e) => setBreakMin(parseInt(e.target.value) || 30)}
-              min="0"
-              className="w-full border rounded px-3 py-2"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Geofence Radius (meters)</label>
-            <input
-              type="number"
-              value={geofenceRadius}
-              onChange={(e) => setGeofenceRadius(parseInt(e.target.value) || 150)}
-              min="0"
-              className="w-full border rounded px-3 py-2"
-            />
-          </div>
 
           {/* Job Type Selection (Optional) */}
           <div>

@@ -2,10 +2,12 @@ import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { useMemo, useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
+import { useConfirm } from '@/components/ConfirmProvider';
 
 type Item = { id:string, label:string, value?:string, sort_index?:number, meta?: any };
 
 export default function SystemSettings(){
+  const confirm = useConfirm();
   const { data, refetch, isLoading } = useQuery({ queryKey:['settings-bundle'], queryFn: ()=>api<Record<string, Item[]>>('GET','/settings') });
   const lists = Object.entries(data||{}).sort(([a],[b])=> a.localeCompare(b));
   const [sel, setSel] = useState<string>('client_statuses');
@@ -15,7 +17,21 @@ export default function SystemSettings(){
   const [edits, setEdits] = useState<Record<string, Item>>({});
   const isColorList = useMemo(()=> sel.toLowerCase().includes('status'), [sel]);
   const isDivisionList = useMemo(()=> sel.toLowerCase().includes('division'), [sel]);
+  const isTimesheetConfig = useMemo(()=> sel === 'timesheet', [sel]);
   const getEdit = (it: Item): Item => edits[it.id] || it;
+  
+  // Timesheet configuration values
+  const timesheetItems = (data?.timesheet||[]) as Item[];
+  const breakMinItem = timesheetItems.find(i=> i.label === 'default_break_minutes');
+  const geofenceRadiusItem = timesheetItems.find(i=> i.label === 'default_geofence_radius_meters');
+  const [breakMin, setBreakMin] = useState<string>(breakMinItem?.value || '30');
+  const [geofenceRadius, setGeofenceRadius] = useState<string>(geofenceRadiusItem?.value || '150');
+  
+  // Update local state when items change
+  useEffect(()=>{
+    if(breakMinItem?.value) setBreakMin(breakMinItem.value);
+    if(geofenceRadiusItem?.value) setGeofenceRadius(geofenceRadiusItem.value);
+  }, [breakMinItem?.value, geofenceRadiusItem?.value]);
   const brandingList = (data?.branding||[]) as Item[];
   const heroItem = brandingList.find(i=> ['user_hero_background_url','hero_background_url','user hero background','hero background'].includes(String(i.label||'').toLowerCase()));
   const overlayItem = brandingList.find(i=> ['customer_hero_overlay_url','hero_overlay_url','customer hero overlay','hero overlay'].includes(String(i.label||'').toLowerCase()));
@@ -196,69 +212,138 @@ export default function SystemSettings(){
           </div>
         </div>
         <div className="md:col-span-2 rounded-xl border bg-white p-3">
-          <div className="flex items-center justify-between mb-2">
-            <h4 className="font-semibold">{sel}</h4>
-            <div className="flex items-center gap-2">
-              <input className="border rounded px-2 py-1 text-sm" placeholder="Label" value={label} onChange={e=>setLabel(e.target.value)} />
-              {isDivisionList ? (
-                <>
-                  <input className="border rounded px-2 py-1 text-sm w-28" placeholder="Abbr" value={(value||'').split('|')[0]||''} onChange={e=>{ const parts = (value||'').split('|'); parts[0] = e.target.value; setValue(parts.join('|')); }} />
-                  <input type="color" title="Color" className="border rounded w-10 h-8 p-0" value={((value||'').split('|')[1]||'#cccccc')} onChange={e=>{ const parts = (value||'').split('|'); parts[1] = e.target.value; setValue(parts.join('|')); }} />
-                </>
-              ) : isColorList ? (
-                <input type="color" title="Color" className="border rounded w-10 h-8 p-0" value={value||'#cccccc'} onChange={e=>setValue(e.target.value)} />
-              ) : (
-                <input className="border rounded px-2 py-1 text-sm" placeholder="Value" value={value} onChange={e=>setValue(e.target.value)} />
-              )}
-              <button onClick={async()=>{ if(!label){ toast.error('Label required'); return; } try{ await api('POST', `/settings/${encodeURIComponent(sel)}`, undefined, { 'Content-Type':'application/x-www-form-urlencoded' }); }catch{} try{ let url = `/settings/${encodeURIComponent(sel)}?label=${encodeURIComponent(label)}`; if(isDivisionList){ const [abbr, color] = (value||'').split('|'); url += `&abbr=${encodeURIComponent(abbr||'')}&color=${encodeURIComponent(color||'#cccccc')}`; } else if (isColorList){ url += `&value=${encodeURIComponent(value||'#cccccc')}`; } else { url += `&value=${encodeURIComponent(value||'')}`; } await api('POST', url); setLabel(''); setValue(''); await refetch(); toast.success('Added'); }catch(_e){ toast.error('Failed'); } }} className="px-3 py-1.5 rounded bg-brand-red text-white">Add</button>
-            </div>
-          </div>
-          <div className="rounded border overflow-hidden divide-y">
-            {isLoading? <div className="p-3"><div className="h-6 bg-gray-100 animate-pulse rounded"/></div> : items.length? items.map(it=> {
-              const e = getEdit(it);
-              return (
-                <div key={it.id} className="px-3 py-2 text-sm flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-2 flex-1 min-w-0">
-                    <input className="border rounded px-2 py-1 text-sm w-48" value={e.label} onChange={ev=> setEdits(s=>({ ...s, [it.id]: { ...(s[it.id]||it), label: ev.target.value } }))} />
-                    {isDivisionList ? (
-                      <>
-                        <input className="border rounded px-2 py-1 text-sm w-24" placeholder="Abbr" value={e.meta?.abbr||''} onChange={ev=> setEdits(s=>({ ...s, [it.id]: { ...(s[it.id]||it), meta: { ...(s[it.id]?.meta||it.meta||{}), abbr: ev.target.value } } }))} />
-                        <input type="color" title="Color" className="border rounded w-10 h-8 p-0" value={e.meta?.color||'#cccccc'} onChange={ev=> setEdits(s=>({ ...s, [it.id]: { ...(s[it.id]||it), meta: { ...(s[it.id]?.meta||it.meta||{}), color: ev.target.value } } }))} />
-                      </>
-                    ) : isColorList ? (
-                      <>
-                        <input type="color" title="Color" className="border rounded w-10 h-8 p-0" value={e.value||'#cccccc'} onChange={ev=> setEdits(s=>({ ...s, [it.id]: { ...(s[it.id]||it), value: ev.target.value } }))} />
-                        <span className="text-[11px] text-gray-500">{e.value}</span>
-                        {sel === 'project_statuses' && (
-                          <div className="flex items-center gap-3 ml-2">
-                            <label className="flex items-center gap-1 text-xs text-gray-700">
-                              <input type="checkbox" checked={!!e.meta?.allow_edit_proposal} onChange={ev=> setEdits(s=>({ ...s, [it.id]: { ...(s[it.id]||it), meta: { ...(s[it.id]?.meta||it.meta||{}), allow_edit_proposal: ev.target.checked } } }))} />
-                              Allow edit proposal/estimate
-                            </label>
-                            <label className="flex items-center gap-1 text-xs text-gray-700">
-                              <input type="checkbox" checked={!!e.meta?.sets_start_date} onChange={ev=> setEdits(s=>({ ...s, [it.id]: { ...(s[it.id]||it), meta: { ...(s[it.id]?.meta||it.meta||{}), sets_start_date: ev.target.checked } } }))} />
-                              Sets start date
-                            </label>
-                            <label className="flex items-center gap-1 text-xs text-gray-700">
-                              <input type="checkbox" checked={!!e.meta?.sets_end_date} onChange={ev=> setEdits(s=>({ ...s, [it.id]: { ...(s[it.id]||it), meta: { ...(s[it.id]?.meta||it.meta||{}), sets_end_date: ev.target.checked } } }))} />
-                              Sets end date
-                            </label>
-                          </div>
-                        )}
-                      </>
-                    ) : (
-                      <input className="border rounded px-2 py-1 text-sm w-40" placeholder="Value" value={e.value||''} onChange={ev=> setEdits(s=>({ ...s, [it.id]: { ...(s[it.id]||it), value: ev.target.value } }))} />
-                    )}
-                    {/* sort index is now auto-assigned and not user-editable */}
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <button onClick={async()=>{ try{ let url = `/settings/${encodeURIComponent(sel)}/${encodeURIComponent(it.id)}?label=${encodeURIComponent(e.label||'')}`; if (isDivisionList){ url += `&abbr=${encodeURIComponent(e.meta?.abbr||'')}&color=${encodeURIComponent(e.meta?.color||'')}`; } else if (isColorList){ url += `&value=${encodeURIComponent(e.value||'')}`; if (sel === 'project_statuses'){ const allowEdit = e.meta?.allow_edit_proposal; const setsStart = e.meta?.sets_start_date; const setsEnd = e.meta?.sets_end_date; url += `&allow_edit_proposal=${(allowEdit === true || allowEdit === 'true' || allowEdit === 1) ? 'true' : 'false'}`; url += `&sets_start_date=${(setsStart === true || setsStart === 'true' || setsStart === 1) ? 'true' : 'false'}`; url += `&sets_end_date=${(setsEnd === true || setsEnd === 'true' || setsEnd === 1) ? 'true' : 'false'}`; } } else { url += `&value=${encodeURIComponent(e.value||'')}`; } await api('PUT', url); await refetch(); toast.success('Saved'); }catch(_e){ toast.error('Failed'); } }} className="px-2 py-1 rounded bg-black text-white">Save</button>
-                    <button onClick={async()=>{ if(!confirm('Delete item?')) return; try{ await api('DELETE', `/settings/${encodeURIComponent(sel)}/${encodeURIComponent(it.id)}`); await refetch(); toast.success('Deleted'); }catch(_e){ toast.error('Failed'); } }} className="px-2 py-1 rounded bg-gray-100">Delete</button>
-                  </div>
+          {isTimesheetConfig ? (
+            <div className="space-y-4">
+              <div>
+                <h4 className="font-semibold mb-2">Timesheet Configuration</h4>
+                <div className="text-sm text-gray-600 mb-4">Configure default values for shift creation.</div>
+              </div>
+              
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Default Break (minutes)</label>
+                  <input
+                    type="number"
+                    value={breakMin}
+                    onChange={(e) => setBreakMin(e.target.value)}
+                    min="0"
+                    className="w-full border rounded px-3 py-2"
+                    placeholder="30"
+                  />
+                  <div className="text-xs text-gray-500 mt-1">Default break duration in minutes for new shifts.</div>
                 </div>
-              );
-            }) : <div className="p-3 text-sm text-gray-600">No items</div>}
-          </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Default Geofence Radius (meters)</label>
+                  <input
+                    type="number"
+                    value={geofenceRadius}
+                    onChange={(e) => setGeofenceRadius(e.target.value)}
+                    min="0"
+                    className="w-full border rounded px-3 py-2"
+                    placeholder="150"
+                  />
+                  <div className="text-xs text-gray-500 mt-1">Default geofence radius in meters for new shifts.</div>
+                </div>
+                
+                <div className="flex justify-end">
+                  <button
+                    onClick={async () => {
+                      try {
+                        // Save or update default_break_minutes
+                        if (breakMinItem) {
+                          await api('PUT', `/settings/timesheet/${encodeURIComponent(breakMinItem.id)}?label=default_break_minutes&value=${encodeURIComponent(breakMin)}`);
+                        } else {
+                          await api('POST', `/settings/timesheet?label=default_break_minutes&value=${encodeURIComponent(breakMin)}`);
+                        }
+                        
+                        // Save or update default_geofence_radius_meters
+                        if (geofenceRadiusItem) {
+                          await api('PUT', `/settings/timesheet/${encodeURIComponent(geofenceRadiusItem.id)}?label=default_geofence_radius_meters&value=${encodeURIComponent(geofenceRadius)}`);
+                        } else {
+                          await api('POST', `/settings/timesheet?label=default_geofence_radius_meters&value=${encodeURIComponent(geofenceRadius)}`);
+                        }
+                        
+                        await refetch();
+                        toast.success('Timesheet settings saved');
+                      } catch (_e) {
+                        toast.error('Failed to save');
+                      }
+                    }}
+                    className="px-4 py-2 rounded bg-brand-red text-white"
+                  >
+                    Save Settings
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <>
+              <div className="flex items-center justify-between mb-2">
+                <h4 className="font-semibold">{sel}</h4>
+                <div className="flex items-center gap-2">
+                  <input className="border rounded px-2 py-1 text-sm" placeholder="Label" value={label} onChange={e=>setLabel(e.target.value)} />
+                  {isDivisionList ? (
+                    <>
+                      <input className="border rounded px-2 py-1 text-sm w-28" placeholder="Abbr" value={(value||'').split('|')[0]||''} onChange={e=>{ const parts = (value||'').split('|'); parts[0] = e.target.value; setValue(parts.join('|')); }} />
+                      <input type="color" title="Color" className="border rounded w-10 h-8 p-0" value={((value||'').split('|')[1]||'#cccccc')} onChange={e=>{ const parts = (value||'').split('|'); parts[1] = e.target.value; setValue(parts.join('|')); }} />
+                    </>
+                  ) : isColorList ? (
+                    <input type="color" title="Color" className="border rounded w-10 h-8 p-0" value={value||'#cccccc'} onChange={e=>setValue(e.target.value)} />
+                  ) : (
+                    <input className="border rounded px-2 py-1 text-sm" placeholder="Value" value={value} onChange={e=>setValue(e.target.value)} />
+                  )}
+                  <button onClick={async()=>{ if(!label){ toast.error('Label required'); return; } try{ await api('POST', `/settings/${encodeURIComponent(sel)}`, undefined, { 'Content-Type':'application/x-www-form-urlencoded' }); }catch{} try{ let url = `/settings/${encodeURIComponent(sel)}?label=${encodeURIComponent(label)}`; if(isDivisionList){ const [abbr, color] = (value||'').split('|'); url += `&abbr=${encodeURIComponent(abbr||'')}&color=${encodeURIComponent(color||'#cccccc')}`; } else if (isColorList){ url += `&value=${encodeURIComponent(value||'#cccccc')}`; } else { url += `&value=${encodeURIComponent(value||'')}`; } await api('POST', url); setLabel(''); setValue(''); await refetch(); toast.success('Added'); }catch(_e){ toast.error('Failed'); } }} className="px-3 py-1.5 rounded bg-brand-red text-white">Add</button>
+                </div>
+              </div>
+              <div className="rounded border overflow-hidden divide-y">
+                {isLoading? <div className="p-3"><div className="h-6 bg-gray-100 animate-pulse rounded"/></div> : items.length? items.map(it=> {
+                  const e = getEdit(it);
+                  return (
+                    <div key={it.id} className="px-3 py-2 text-sm flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2 flex-1 min-w-0">
+                        <input className="border rounded px-2 py-1 text-sm w-48" value={e.label} onChange={ev=> setEdits(s=>({ ...s, [it.id]: { ...(s[it.id]||it), label: ev.target.value } }))} />
+                        {isDivisionList ? (
+                          <>
+                            <input className="border rounded px-2 py-1 text-sm w-24" placeholder="Abbr" value={e.meta?.abbr||''} onChange={ev=> setEdits(s=>({ ...s, [it.id]: { ...(s[it.id]||it), meta: { ...(s[it.id]?.meta||it.meta||{}), abbr: ev.target.value } } }))} />
+                            <input type="color" title="Color" className="border rounded w-10 h-8 p-0" value={e.meta?.color||'#cccccc'} onChange={ev=> setEdits(s=>({ ...s, [it.id]: { ...(s[it.id]||it), meta: { ...(s[it.id]?.meta||it.meta||{}), color: ev.target.value } } }))} />
+                          </>
+                        ) : isColorList ? (
+                          <>
+                            <input type="color" title="Color" className="border rounded w-10 h-8 p-0" value={e.value||'#cccccc'} onChange={ev=> setEdits(s=>({ ...s, [it.id]: { ...(s[it.id]||it), value: ev.target.value } }))} />
+                            <span className="text-[11px] text-gray-500">{e.value}</span>
+                            {sel === 'project_statuses' && (
+                              <div className="flex items-center gap-3 ml-2">
+                                <label className="flex items-center gap-1 text-xs text-gray-700">
+                                  <input type="checkbox" checked={!!e.meta?.allow_edit_proposal} onChange={ev=> setEdits(s=>({ ...s, [it.id]: { ...(s[it.id]||it), meta: { ...(s[it.id]?.meta||it.meta||{}), allow_edit_proposal: ev.target.checked } } }))} />
+                                  Allow edit proposal/estimate
+                                </label>
+                                <label className="flex items-center gap-1 text-xs text-gray-700">
+                                  <input type="checkbox" checked={!!e.meta?.sets_start_date} onChange={ev=> setEdits(s=>({ ...s, [it.id]: { ...(s[it.id]||it), meta: { ...(s[it.id]?.meta||it.meta||{}), sets_start_date: ev.target.checked } } }))} />
+                                  Sets start date
+                                </label>
+                                <label className="flex items-center gap-1 text-xs text-gray-700">
+                                  <input type="checkbox" checked={!!e.meta?.sets_end_date} onChange={ev=> setEdits(s=>({ ...s, [it.id]: { ...(s[it.id]||it), meta: { ...(s[it.id]?.meta||it.meta||{}), sets_end_date: ev.target.checked } } }))} />
+                                  Sets end date
+                                </label>
+                              </div>
+                            )}
+                          </>
+                        ) : (
+                          <input className="border rounded px-2 py-1 text-sm w-40" placeholder="Value" value={e.value||''} onChange={ev=> setEdits(s=>({ ...s, [it.id]: { ...(s[it.id]||it), value: ev.target.value } }))} />
+                        )}
+                        {/* sort index is now auto-assigned and not user-editable */}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button onClick={async()=>{ try{ let url = `/settings/${encodeURIComponent(sel)}/${encodeURIComponent(it.id)}?label=${encodeURIComponent(e.label||'')}`; if (isDivisionList){ url += `&abbr=${encodeURIComponent(e.meta?.abbr||'')}&color=${encodeURIComponent(e.meta?.color||'')}`; } else if (isColorList){ url += `&value=${encodeURIComponent(e.value||'')}`; if (sel === 'project_statuses'){ const allowEdit = e.meta?.allow_edit_proposal; const setsStart = e.meta?.sets_start_date; const setsEnd = e.meta?.sets_end_date; url += `&allow_edit_proposal=${(allowEdit === true || allowEdit === 'true' || allowEdit === 1) ? 'true' : 'false'}`; url += `&sets_start_date=${(setsStart === true || setsStart === 'true' || setsStart === 1) ? 'true' : 'false'}`; url += `&sets_end_date=${(setsEnd === true || setsEnd === 'true' || setsEnd === 1) ? 'true' : 'false'}`; } } else { url += `&value=${encodeURIComponent(e.value||'')}`; } await api('PUT', url); await refetch(); toast.success('Saved'); }catch(_e){ toast.error('Failed'); } }} className="px-2 py-1 rounded bg-black text-white">Save</button>
+                        <button onClick={async()=>{ if(!(await confirm({ title: 'Delete item?', description: 'This action cannot be undone.' }))) return; try{ await api('DELETE', `/settings/${encodeURIComponent(sel)}/${encodeURIComponent(it.id)}`); await refetch(); toast.success('Deleted'); }catch(_e){ toast.error('Failed'); } }} className="px-2 py-1 rounded bg-gray-100">Delete</button>
+                      </div>
+                    </div>
+                  );
+                }) : <div className="p-3 text-sm text-gray-600">No items</div>}
+              </div>
+            </>
+          )}
         </div>
       </div>
     </div>

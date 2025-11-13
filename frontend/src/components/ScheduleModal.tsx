@@ -3,6 +3,19 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
 
+// Helper function to convert 24h time (HH:MM:SS or HH:MM) to 12h format (h:mm AM/PM)
+function formatTime12h(timeStr: string | null | undefined): string {
+  if (!timeStr || timeStr === '--:--' || timeStr === '-') return timeStr || '--:--';
+  const parts = timeStr.split(':');
+  if (parts.length < 2) return timeStr;
+  const hours = parseInt(parts[0], 10);
+  const minutes = parts[1];
+  if (isNaN(hours)) return timeStr;
+  const period = hours >= 12 ? 'PM' : 'AM';
+  const hours12 = hours === 0 ? 12 : hours > 12 ? hours - 12 : hours;
+  return `${hours12}:${minutes} ${period}`;
+}
+
 type Shift = {
   id: string;
   project_id: string;
@@ -136,6 +149,13 @@ export default function ScheduleModal({ onClose }: ScheduleModalProps) {
     queryKey: ['project', selectedShift?.project_id],
     queryFn: () => api<any>('GET', `/projects/${selectedShift?.project_id}`),
     enabled: !!selectedShift?.project_id,
+  });
+
+  // Fetch worker's employee profile to get supervisor
+  const { data: workerProfile } = useQuery({
+    queryKey: ['worker-profile', selectedShift?.worker_id],
+    queryFn: () => api<any>('GET', `/users/${selectedShift?.worker_id}`),
+    enabled: !!selectedShift?.worker_id,
   });
 
   // Fetch all attendances for shifts in the current month
@@ -339,7 +359,7 @@ export default function ScheduleModal({ onClose }: ScheduleModalProps) {
   // Check if GPS location is inside geofence
   const checkGeofence = (lat: number, lng: number, geofences: any[] | null | undefined) => {
     if (!geofences || geofences.length === 0) {
-      setGeofenceStatus({ inside: true });
+      setGeofenceStatus(null); // No geofence - don't set status, message won't show
       return;
     }
 
@@ -395,10 +415,10 @@ export default function ScheduleModal({ onClose }: ScheduleModalProps) {
           setGpsLocation(location);
           
           // Check geofence if shift has geofences
-          if (selectedShift?.geofences) {
+          if (selectedShift?.geofences && selectedShift.geofences.length > 0) {
             checkGeofence(location.lat, location.lng, selectedShift.geofences);
           } else {
-            setGeofenceStatus({ inside: true });
+            setGeofenceStatus(null); // No geofence - don't set status, message won't show
           }
           
           resolve(location);
@@ -435,6 +455,7 @@ export default function ScheduleModal({ onClose }: ScheduleModalProps) {
     setClockType(type);
     setReasonText('');
     setGpsError('');
+    setGpsLocation(null); // Clear previous location
     setGeofenceStatus(null);
 
     // Set default time to now (rounded to 15 min) in 12h format
@@ -479,17 +500,19 @@ export default function ScheduleModal({ onClose }: ScheduleModalProps) {
       setSelectedShift(tempShift);
     }
 
-    // Try to get GPS location
+    // Open modal first so user can see it
+    setShowClockModal(true);
+
+    // Try to get GPS location automatically when modal opens
     setGpsLoading(true);
     try {
       await getCurrentLocation();
     } catch (error) {
       console.warn('GPS location failed:', error);
+      // Error is already set by getCurrentLocation, so user will see it in the modal
     } finally {
       setGpsLoading(false);
     }
-
-    setShowClockModal(true);
   };
 
   // Submit attendance
@@ -824,10 +847,10 @@ export default function ScheduleModal({ onClose }: ScheduleModalProps) {
                                     ? 'bg-blue-200 border-blue-400'
                                     : 'bg-blue-50 border-blue-200 hover:bg-blue-100'
                                 }`}
-                                title={`${shift.project_name || 'Project'}: ${shift.start_time.slice(0, 5)} - ${shift.end_time.slice(0, 5)}`}
+                                title={`${shift.project_name || 'Project'}: ${formatTime12h(shift.start_time)} - ${formatTime12h(shift.end_time)}`}
                               >
                                 <div className="font-medium text-sm mb-1">
-                                  {shift.start_time.slice(0, 5)} - {shift.end_time.slice(0, 5)}
+                                  {formatTime12h(shift.start_time)} - {formatTime12h(shift.end_time)}
                                 </div>
                                 {shift.project_name && (
                                   <div className="text-xs text-gray-600 mb-1">
@@ -845,9 +868,10 @@ export default function ScheduleModal({ onClose }: ScheduleModalProps) {
                                         shiftClockIn.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
                                         'bg-red-100 text-red-800'
                                       }`}>
-                                        In: {new Date(shiftClockIn.time_selected_utc).toLocaleTimeString([], {
-                                          hour: '2-digit',
+                                        In: {new Date(shiftClockIn.time_selected_utc).toLocaleTimeString('en-US', {
+                                          hour: 'numeric',
                                           minute: '2-digit',
+                                          hour12: true,
                                         })}
                                       </span>
                                     </div>
@@ -859,9 +883,10 @@ export default function ScheduleModal({ onClose }: ScheduleModalProps) {
                                         shiftClockOut.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
                                         'bg-red-100 text-red-800'
                                       }`}>
-                                        Out: {new Date(shiftClockOut.time_selected_utc).toLocaleTimeString([], {
-                                          hour: '2-digit',
+                                        Out: {new Date(shiftClockOut.time_selected_utc).toLocaleTimeString('en-US', {
+                                          hour: 'numeric',
                                           minute: '2-digit',
+                                          hour12: true,
                                         })}
                                       </span>
                                     </div>
@@ -898,7 +923,7 @@ export default function ScheduleModal({ onClose }: ScheduleModalProps) {
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Date & Time</label>
                     <div className="text-gray-900">
-                      {new Date(selectedShift.date).toLocaleDateString()} • {selectedShift.start_time.slice(0, 5)} - {selectedShift.end_time.slice(0, 5)}
+                      {new Date(selectedShift.date).toLocaleDateString()} • {formatTime12h(selectedShift.start_time)} - {formatTime12h(selectedShift.end_time)}
                     </div>
                   </div>
 
@@ -907,6 +932,19 @@ export default function ScheduleModal({ onClose }: ScheduleModalProps) {
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">Worker</label>
                       <div className="text-gray-900">{worker.name || worker.username}</div>
+                    </div>
+                  )}
+
+                  {/* Supervisor of Worker */}
+                  {workerProfile?.manager_user_id && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Supervisor</label>
+                      <div className="text-gray-900">
+                        {(() => {
+                          const supervisor = employees?.find((e: any) => e.id === workerProfile.manager_user_id);
+                          return supervisor?.name || supervisor?.username || 'N/A';
+                        })()}
+                      </div>
                     </div>
                   )}
 
@@ -950,14 +988,14 @@ export default function ScheduleModal({ onClose }: ScheduleModalProps) {
                     </div>
                   )}
 
-                  {/* Supervisor - if available in project */}
-                  {project?.supervisor_user_id && (
+                  {/* On-site Lead */}
+                  {project?.onsite_lead_id && (
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Supervisor</label>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">On-site Lead</label>
                       <div className="text-gray-900">
                         {(() => {
-                          const supervisor = employees?.find((e: any) => e.id === project.supervisor_user_id);
-                          return supervisor?.name || supervisor?.username || 'N/A';
+                          const onsiteLead = employees?.find((e: any) => e.id === project.onsite_lead_id);
+                          return onsiteLead?.name || onsiteLead?.username || 'N/A';
                         })()}
                       </div>
                     </div>
@@ -973,9 +1011,10 @@ export default function ScheduleModal({ onClose }: ScheduleModalProps) {
                           <div className="flex items-center gap-2">
                             {getStatusBadge(clockIn.status)}
                             <span className="text-sm text-gray-900">
-                              {new Date(clockIn.time_selected_utc).toLocaleTimeString([], {
-                                hour: '2-digit',
+                              {new Date(clockIn.time_selected_utc).toLocaleTimeString('en-US', {
+                                hour: 'numeric',
                                 minute: '2-digit',
+                                hour12: true,
                               })}
                             </span>
                             {clockIn.source === 'supervisor' && (
@@ -992,9 +1031,10 @@ export default function ScheduleModal({ onClose }: ScheduleModalProps) {
                           <div className="flex items-center gap-2">
                             {getStatusBadge(clockOut.status)}
                             <span className="text-sm text-gray-900">
-                              {new Date(clockOut.time_selected_utc).toLocaleTimeString([], {
-                                hour: '2-digit',
+                              {new Date(clockOut.time_selected_utc).toLocaleTimeString('en-US', {
+                                hour: 'numeric',
                                 minute: '2-digit',
+                                hour12: true,
                               })}
                             </span>
                             {clockOut.source === 'supervisor' && (
@@ -1122,9 +1162,10 @@ export default function ScheduleModal({ onClose }: ScheduleModalProps) {
                                 <div className="flex items-center gap-2">
                                   {getStatusBadge(todayClockIn.status)}
                                   <span className="text-gray-900">
-                                    {new Date(todayClockIn.time_selected_utc).toLocaleTimeString([], {
-                                      hour: '2-digit',
+                                    {new Date(todayClockIn.time_selected_utc).toLocaleTimeString('en-US', {
+                                      hour: 'numeric',
                                       minute: '2-digit',
+                                      hour12: true,
                                     })}
                                   </span>
                                 </div>
@@ -1135,9 +1176,10 @@ export default function ScheduleModal({ onClose }: ScheduleModalProps) {
                                   <div className="flex items-center gap-2">
                                     {getStatusBadge(todayClockOut.status)}
                                     <span className="text-gray-900">
-                                      {new Date(todayClockOut.time_selected_utc).toLocaleTimeString([], {
-                                        hour: '2-digit',
+                                      {new Date(todayClockOut.time_selected_utc).toLocaleTimeString('en-US', {
+                                        hour: 'numeric',
                                         minute: '2-digit',
+                                        hour12: true,
                                       })}
                                     </span>
                                   </div>
@@ -1224,23 +1266,24 @@ export default function ScheduleModal({ onClose }: ScheduleModalProps) {
 
             {/* GPS Status */}
             <div>
-              <div className="flex items-center justify-between mb-2">
-                <label className="block text-sm font-medium text-gray-700">Location</label>
-                        <button
-                          type="button"
-                          onClick={getCurrentLocation}
-                          disabled={gpsLoading}
-                          className="text-xs px-2 py-1 rounded border hover:bg-gray-50"
-                        >
-                          {gpsLoading ? 'Getting location...' : 'Try GPS again'}
-                        </button>
-              </div>
               {gpsLocation ? (
                 <>
                   <div className="p-3 bg-green-50 border border-green-200 rounded text-sm">
-                    <div className="text-green-800">✓ Location captured</div>
-                    <div className="text-xs text-green-600 mt-1">
-                      Accuracy: {Math.round(gpsLocation.accuracy)}m
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className="text-green-800">✓ Location captured</div>
+                        <div className="text-xs text-green-600 mt-1">
+                          Accuracy: {Math.round(gpsLocation.accuracy)}m
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={getCurrentLocation}
+                        disabled={gpsLoading}
+                        className="text-xs px-2 py-1 rounded border hover:bg-gray-50 bg-white"
+                      >
+                        {gpsLoading ? 'Getting location...' : 'Try GPS again'}
+                      </button>
                     </div>
                   </div>
                   {selectedShift?.geofences && selectedShift.geofences.length > 0 ? (
@@ -1280,6 +1323,13 @@ export default function ScheduleModal({ onClose }: ScheduleModalProps) {
                     </div>
                   ) : null}
                 </>
+              ) : gpsLoading ? (
+                <div className="p-3 bg-blue-50 border border-blue-200 rounded text-sm text-blue-800">
+                  <div className="flex items-center gap-2">
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-800"></div>
+                    <span>Getting location...</span>
+                  </div>
+                </div>
               ) : gpsError ? (
                 <div className="p-3 bg-yellow-50 border border-yellow-200 rounded text-sm text-yellow-800">
                   {gpsError}
@@ -1298,7 +1348,29 @@ export default function ScheduleModal({ onClose }: ScheduleModalProps) {
                   (() => {
                     const isWorkerOwner = currentUser && selectedShift?.worker_id && String(currentUser.id) === String(selectedShift.worker_id);
                     const isSupervisorDoingForOther = isSupervisorOrAdmin && selectedShift && !isWorkerOwner;
-                    const requiresReason = isSupervisorDoingForOther || (geofenceStatus && !geofenceStatus.inside);
+                    
+                    // Check if time is outside tolerance (30 minutes)
+                    let isOutsideTimeTolerance = false;
+                    if (selectedShift && selectedTime && selectedHour12 && selectedMinute) {
+                      try {
+                        const now = new Date();
+                        const shiftDate = selectedShift.date; // YYYY-MM-DD
+                        const hour24 = selectedAmPm === 'PM' && parseInt(selectedHour12) !== 12 
+                          ? parseInt(selectedHour12) + 12 
+                          : selectedAmPm === 'AM' && parseInt(selectedHour12) === 12 
+                          ? 0 
+                          : parseInt(selectedHour12);
+                        const selectedDateTime = new Date(`${shiftDate}T${String(hour24).padStart(2, '0')}:${selectedMinute}:00`);
+                        const diffMinutes = Math.abs((selectedDateTime.getTime() - now.getTime()) / (1000 * 60));
+                        isOutsideTimeTolerance = diffMinutes > 30;
+                      } catch (e) {
+                        // Ignore errors in calculation
+                      }
+                    }
+                    
+                    // Require reason if: supervisor doing for other worker OR not inside geofence OR outside time tolerance
+                    const isOutsideGeofence = geofenceStatus && !geofenceStatus.inside;
+                    const requiresReason = isSupervisorDoingForOther || isOutsideGeofence || isOutsideTimeTolerance;
                     return requiresReason && <span className="text-red-500">*</span>;
                   })()
                 }
@@ -1327,10 +1399,33 @@ export default function ScheduleModal({ onClose }: ScheduleModalProps) {
                     );
                   }
                   
-                  if (geofenceStatus && !geofenceStatus.inside) {
+                  // Check if time is outside tolerance (30 minutes)
+                  let isOutsideTimeTolerance = false;
+                  if (selectedShift && selectedTime && selectedHour12 && selectedMinute) {
+                    try {
+                      const now = new Date();
+                      const shiftDate = selectedShift.date; // YYYY-MM-DD
+                      const hour24 = selectedAmPm === 'PM' && parseInt(selectedHour12) !== 12 
+                        ? parseInt(selectedHour12) + 12 
+                        : selectedAmPm === 'AM' && parseInt(selectedHour12) === 12 
+                        ? 0 
+                        : parseInt(selectedHour12);
+                      const selectedDateTime = new Date(`${shiftDate}T${String(hour24).padStart(2, '0')}:${selectedMinute}:00`);
+                      const diffMinutes = Math.abs((selectedDateTime.getTime() - now.getTime()) / (1000 * 60));
+                      isOutsideTimeTolerance = diffMinutes > 30;
+                    } catch (e) {
+                      // Ignore errors in calculation
+                    }
+                  }
+                  
+                  // Check if outside geofence OR outside time tolerance
+                  const isOutsideGeofence = geofenceStatus && !geofenceStatus.inside;
+                  const requiresReason = isOutsideGeofence || isOutsideTimeTolerance;
+                  
+                  if (requiresReason) {
                     return (
                       <span className="text-red-600 font-medium">
-                        Required (minimum 15 characters): You are not at the correct site. Please describe the reason.
+                        ⚠ REQUIRED (minimum 15 characters): You are attempting to clock in/out outside the allowed location or outside the permitted time range (±30 minutes). You must provide a written reason explaining why. Your entry will be sent for supervisor review.
                       </span>
                     );
                   }
@@ -1343,8 +1438,9 @@ export default function ScheduleModal({ onClose }: ScheduleModalProps) {
                     );
                   }
                   
+                  // If inside geofence and within time tolerance, reason is optional
                   if (geofenceStatus && geofenceStatus.inside) {
-                    return 'Optional: You are at the correct site. Reason is only required if time is significantly outside the expected window.';
+                    return 'Optional: You are at the correct site and within the time tolerance. Reason is not required.';
                   }
                   
                   return 'Optional, but recommended. Required if you are not at the correct site or time is outside tolerance window (±30 minutes).';
@@ -1353,9 +1449,9 @@ export default function ScheduleModal({ onClose }: ScheduleModalProps) {
             </div>
 
             {/* Privacy notice */}
-            <div className="p-3 bg-blue-50 border border-blue-200 rounded text-xs text-blue-800">
+            <p className="text-xs text-gray-500 mt-2">
               <strong>Privacy Notice:</strong> Your location is used only for attendance validation at the time of clock-in/out.
-            </div>
+            </p>
 
             {/* Actions */}
             <div className="flex justify-end gap-2 pt-4 border-t">

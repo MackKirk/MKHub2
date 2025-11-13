@@ -25,6 +25,7 @@ def _user_to_dict(u: User, ep: Optional[EmployeeProfile]) -> dict:
         "name": name or None,
         "roles": roles,
         "profile_photo_file_id": str(getattr(ep, 'profile_photo_file_id')) if (ep and getattr(ep, 'profile_photo_file_id', None)) else None,
+        "manager_user_id": str(ep.manager_user_id) if (ep and ep.manager_user_id) else None,
     }
 
 
