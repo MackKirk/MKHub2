@@ -28,6 +28,7 @@ from .routes.estimate import router as estimate_router
 from .routes.reviews import router as reviews_router
 from .routes.chat import router as chat_router
 from .routes.tasks import router as tasks_router
+from .routes.company_files import router as company_files_router
 
 
 def create_app() -> FastAPI:
@@ -65,6 +66,7 @@ def create_app() -> FastAPI:
     app.include_router(reviews_router)
     app.include_router(chat_router)
     app.include_router(tasks_router)
+    app.include_router(company_files_router)
     from .routes import dispatch
     app.include_router(dispatch.router)
     # Legacy UI redirects to new React routes (exact paths)
@@ -200,6 +202,15 @@ def create_app() -> FastAPI:
                             pass
                         try:
                             conn.execute(text("ALTER TABLE suppliers ADD COLUMN updated_at TEXT"))
+                        except Exception:
+                            pass
+                        # client_folders columns for SQLite
+                        try:
+                            conn.execute(text("ALTER TABLE client_folders ADD COLUMN project_id TEXT"))
+                        except Exception:
+                            pass
+                        try:
+                            conn.execute(text("ALTER TABLE client_folders ADD COLUMN access_permissions TEXT"))
                         except Exception:
                             pass
                         # Project events table for SQLite
@@ -506,6 +517,9 @@ def create_app() -> FastAPI:
                     conn.execute(text("ALTER TABLE client_sites ADD COLUMN IF NOT EXISTS sort_index INTEGER DEFAULT 0"))
                     # Link files to sites optionally
                     conn.execute(text("ALTER TABLE client_files ADD COLUMN IF NOT EXISTS site_id UUID"))
+                    # client_folders columns for PostgreSQL
+                    conn.execute(text("ALTER TABLE client_folders ADD COLUMN IF NOT EXISTS project_id UUID"))
+                    conn.execute(text("ALTER TABLE client_folders ADD COLUMN IF NOT EXISTS access_permissions JSONB"))
                     # Proposal drafts table
                     conn.execute(text("CREATE TABLE IF NOT EXISTS proposal_drafts (\n"
                                        "id UUID PRIMARY KEY,\n"

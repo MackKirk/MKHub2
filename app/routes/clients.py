@@ -18,7 +18,12 @@ router = APIRouter(prefix="/clients", tags=["clients"])
 
 
 @router.post("", response_model=ClientResponse)
-def create_client(payload: ClientCreate, db: Session = Depends(get_db), _=Depends(require_permissions("clients:write"))):
+def create_client(
+    payload: ClientCreate, 
+    create_default_folders: bool = False,
+    db: Session = Depends(get_db), 
+    _=Depends(require_permissions("clients:write"))
+):
     try:
         data = payload.dict(exclude_unset=True)
         # Drop explicit nulls to avoid touching columns that might not exist in older DBs
@@ -39,6 +44,15 @@ def create_client(payload: ClientCreate, db: Session = Depends(get_db), _=Depend
         db.add(c)
         db.commit()
         db.refresh(c)
+        
+        # Optionally create default folder structure at client root
+        if create_default_folders:
+            try:
+                create_default_folders_for_parent(db, c.id, None, None)
+            except Exception:
+                # If folder creation fails, don't fail client creation
+                pass
+        
         return c
     except Exception as e:
         db.rollback()
@@ -326,6 +340,7 @@ def list_files(
     client_id: str,
     site_id: Optional[str] = None,
     project_id: Optional[str] = None,
+    category: Optional[str] = None,
     limit: Optional[int] = None,
     offset: Optional[int] = None,
     db: Session = Depends(get_db),
@@ -335,6 +350,8 @@ def list_files(
     q = q.filter(ClientFile.client_id == client_id)
     if site_id:
         q = q.filter(ClientFile.site_id == site_id)
+    if category:
+        q = q.filter(ClientFile.category == category)
     q = q.order_by(ClientFile.uploaded_at.desc())
     # Optional pagination when provided
     if offset is not None and isinstance(offset, int) and offset >= 0:
@@ -362,6 +379,20 @@ def list_files(
                 sort_index = int(client_sort.get(str(client_id), 0) or 0)
         except Exception:
             sort_index = 0
+        
+        # Get project information if file belongs to a project
+        project_info = None
+        file_project_id = None
+        if fo and getattr(fo, 'project_id', None):
+            file_project_id = str(fo.project_id)
+            proj = db.query(Project).filter(Project.id == fo.project_id).first()
+            if proj:
+                project_info = {
+                    "id": str(proj.id),
+                    "name": getattr(proj, 'name', None),
+                    "code": getattr(proj, 'code', None),
+                }
+        
         out.append({
             "id": str(cf.id),
             "file_object_id": str(cf.file_object_id),
@@ -369,7 +400,8 @@ def list_files(
             "key": cf.key,
             "original_name": cf.original_name,
             "site_id": str(cf.site_id) if getattr(cf, 'site_id', None) else None,
-            "project_id": str(getattr(fo, 'project_id', '')) if fo and getattr(fo, 'project_id', None) else None,
+            "project_id": file_project_id,
+            "project": project_info,  # Include project details for better UI display
             "uploaded_at": cf.uploaded_at.isoformat() if cf.uploaded_at else None,
             "uploaded_by": str(cf.uploaded_by) if cf.uploaded_by else None,
             "content_type": ct,
@@ -428,20 +460,131 @@ def attach_file(client_id: str, file_object_id: str, category: Optional[str] = N
     return {"id": str(row.id)}
 
 
+# ===== File Categories =====
+@router.get("/file-categories")
+def list_file_categories():
+    """
+    Returns standard file categories that can be used for organizing files.
+    These categories can be used for both client and project files.
+    """
+    return [
+        {"id": "general", "name": "Geral", "icon": "📁"},
+        {"id": "designs", "name": "Designs", "icon": "🎨"},
+        {"id": "prints", "name": "Impressões", "icon": "🖨️"},
+        {"id": "photos", "name": "Fotos", "icon": "📷"},
+        {"id": "documents", "name": "Documentos", "icon": "📄"},
+        {"id": "contracts", "name": "Contratos", "icon": "📋"},
+        {"id": "invoices", "name": "Faturas", "icon": "🧾"},
+        {"id": "estimates", "name": "Orçamentos", "icon": "💰"},
+        {"id": "reports", "name": "Relatórios", "icon": "📊"},
+        {"id": "plans", "name": "Plantas", "icon": "📐"},
+        {"id": "other", "name": "Outros", "icon": "📦"},
+    ]
+
+
+def get_default_folder_structure():
+    """
+    Returns the default folder structure that can be created for projects or clients.
+    Returns a list of folder names with their sort order.
+    """
+    return [
+        {"name": "Designs", "sort_index": 1},
+        {"name": "Impressões", "sort_index": 2},
+        {"name": "Fotos", "sort_index": 3},
+        {"name": "Documentos", "sort_index": 4},
+        {"name": "Contratos", "sort_index": 5},
+        {"name": "Faturas", "sort_index": 6},
+        {"name": "Orçamentos", "sort_index": 7},
+        {"name": "Relatórios", "sort_index": 8},
+        {"name": "Plantas", "sort_index": 9},
+        {"name": "Outros", "sort_index": 10},
+    ]
+
+
+def create_default_folders_for_parent(
+    db: Session, 
+    client_id,  # Can be str or UUID
+    parent_folder_id: Optional[uuid.UUID],
+    project_id: Optional[uuid.UUID] = None
+):
+    """
+    Creates default folder structure under a parent folder.
+    Used for both project folders and general client folders.
+    """
+    # Convert client_id to UUID if it's a string
+    try:
+        if isinstance(client_id, str):
+            client_uuid = uuid.UUID(client_id)
+        else:
+            client_uuid = client_id
+    except Exception:
+        raise ValueError(f"Invalid client_id: {client_id}")
+    
+    default_folders = get_default_folder_structure()
+    created_folders = []
+    
+    for folder_def in default_folders:
+        # Check if folder already exists
+        existing = db.query(ClientFolder).filter(
+            ClientFolder.client_id == client_uuid,
+            ClientFolder.name == folder_def["name"],
+            ClientFolder.parent_id == parent_folder_id
+        ).first()
+        
+        if not existing:
+            folder = ClientFolder(
+                client_id=client_uuid,
+                name=folder_def["name"],
+                parent_id=parent_folder_id,
+                project_id=project_id,
+                sort_index=folder_def["sort_index"]
+            )
+            db.add(folder)
+            created_folders.append(folder)
+    
+    if created_folders:
+        db.commit()
+        for folder in created_folders:
+            db.refresh(folder)
+    
+    return created_folders
+
+
 # ===== Client Folders & Documents =====
 @router.get("/{client_id}/folders")
 def list_client_folders(client_id: str, db: Session = Depends(get_db), _=Depends(require_permissions("clients:read"))):
     rows = db.query(ClientFolder).filter(ClientFolder.client_id == client_id).order_by(ClientFolder.sort_index.asc(), ClientFolder.name.asc()).all()
-    return [{
-        "id": str(f.id),
-        "name": f.name,
-        "parent_id": str(f.parent_id) if getattr(f, 'parent_id', None) else None,
-        "sort_index": f.sort_index,
-    } for f in rows]
+    out = []
+    for f in rows:
+        folder_data = {
+            "id": str(f.id),
+            "name": f.name,
+            "parent_id": str(f.parent_id) if getattr(f, 'parent_id', None) else None,
+            "sort_index": f.sort_index,
+        }
+        # Include project information if this folder is linked to a project
+        if getattr(f, 'project_id', None):
+            proj = db.query(Project).filter(Project.id == f.project_id).first()
+            if proj:
+                folder_data["project_id"] = str(proj.id)
+                folder_data["project"] = {
+                    "id": str(proj.id),
+                    "name": getattr(proj, 'name', None),
+                    "code": getattr(proj, 'code', None),
+                }
+        out.append(folder_data)
+    return out
 
 
 @router.post("/{client_id}/folders")
-def create_client_folder(client_id: str, name: str = Body(...), parent_id: Optional[str] = Body(None), db: Session = Depends(get_db), _=Depends(require_permissions("clients:write"))):
+def create_client_folder(
+    client_id: str, 
+    name: str = Body(...), 
+    parent_id: Optional[str] = Body(None),
+    create_default_subfolders: bool = Body(False),
+    db: Session = Depends(get_db), 
+    _=Depends(require_permissions("clients:write"))
+):
     pid = None
     try:
         pid = uuid.UUID(str(parent_id)) if parent_id else None
@@ -452,7 +595,49 @@ def create_client_folder(client_id: str, name: str = Body(...), parent_id: Optio
         raise HTTPException(status_code=400, detail="Folder name required")
     db.add(f)
     db.commit()
+    db.refresh(f)
+    
+    # Optionally create default subfolders
+    if create_default_subfolders:
+        try:
+            create_default_folders_for_parent(db, client_id, f.id, None)
+        except Exception:
+            # If subfolder creation fails, don't fail folder creation
+            pass
+    
     return {"id": str(f.id)}
+
+
+@router.post("/{client_id}/folders/initialize-defaults")
+def initialize_default_folders(
+    client_id: str,
+    parent_folder_id: Optional[str] = Body(None),
+    project_id: Optional[str] = Body(None),
+    db: Session = Depends(get_db),
+    _=Depends(require_permissions("clients:write"))
+):
+    """
+    Initialize default folder structure for a client or project.
+    Can be called to create standard folders (Designs, Impressões, etc.)
+    at the client root level or under a specific parent folder.
+    """
+    parent_id = None
+    proj_id = None
+    
+    try:
+        if parent_folder_id:
+            parent_id = uuid.UUID(str(parent_folder_id))
+        if project_id:
+            proj_id = uuid.UUID(str(project_id))
+    except Exception:
+        pass
+    
+    created = create_default_folders_for_parent(db, client_id, parent_id, proj_id)
+    return {
+        "status": "ok",
+        "created_count": len(created),
+        "folders": [{"id": str(f.id), "name": f.name} for f in created]
+    }
 
 
 @router.put("/{client_id}/folders/{folder_id}")

@@ -373,9 +373,15 @@ class ClientFolder(Base):
     client_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("clients.id", ondelete="CASCADE"), index=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     parent_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("client_folders.id", ondelete="SET NULL"))
+    project_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("projects.id", ondelete="SET NULL"), index=True)
     sort_index: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
     created_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
+    # Access permissions for company files
+    # JSON format: {"allowed_user_ids": [uuid, ...], "allowed_divisions": [string, ...], "is_public": bool}
+    # If is_public is true or permissions is null/empty, all users can access
+    # If is_public is false, only users in allowed_user_ids or with divisions in allowed_divisions can access
+    access_permissions: Mapped[Optional[dict]] = mapped_column(JSON)
 
 
 class ClientDocument(Base):

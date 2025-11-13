@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { useMemo, useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
@@ -186,6 +186,34 @@ export default function SystemSettings(){
           </div>
         </div>
       </div>
+      {/* Company Files Configuration */}
+      <div className="rounded-xl border bg-white p-4">
+        <h3 className="font-semibold mb-3">Company Files Organization</h3>
+        <p className="text-sm text-gray-600 mb-4">
+          Configure file categories and standard file categories to standardize file organization across the system.
+        </p>
+        <div className="grid md:grid-cols-2 gap-6">
+          {/* File Categories Section */}
+          <div>
+            <h4 className="font-semibold mb-2 text-sm">File Categories</h4>
+            <p className="text-xs text-gray-500 mb-3">
+              File categories are top-level folders for company-wide files (e.g., HR, Finance, Operations, Marketing).
+              Each category can have its own folder structure.
+            </p>
+            <CompanyFilesDepartments />
+          </div>
+          {/* Standard Categories Section */}
+          <div>
+            <h4 className="font-semibold mb-2 text-sm">Standard File Categories</h4>
+            <p className="text-xs text-gray-500 mb-3">
+              These categories are used for all file uploads to standardize organization.
+              They are automatically created as subfolders in new projects.
+            </p>
+            <StandardFileCategories />
+          </div>
+        </div>
+      </div>
+
       <div className="grid md:grid-cols-3 gap-4">
         <div className="rounded-xl border bg-white p-3">
           <h4 className="font-semibold mb-2">Lists</h4>
@@ -261,6 +289,172 @@ export default function SystemSettings(){
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+// Company Files Departments Component
+function CompanyFilesDepartments(){
+  const qc = useQueryClient();
+  const { data: departments, isLoading } = useQuery({
+    queryKey: ['departments'],
+    queryFn: ()=>api<Item[]>('GET', '/settings/departments')
+  });
+  const [newDept, setNewDept] = useState('');
+  const [edits, setEdits] = useState<Record<string, Item>>({});
+
+  const createMutation = useMutation({
+    mutationFn: (label: string)=>api('POST', `/settings/departments?label=${encodeURIComponent(label)}`),
+    onSuccess: ()=>{
+      qc.invalidateQueries({ queryKey: ['departments'] });
+      qc.invalidateQueries({ queryKey: ['settings-bundle'] });
+      setNewDept('');
+      toast.success('File category created');
+    },
+    onError: (e: any)=>toast.error(e?.message || 'Failed to create')
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string)=>api('DELETE', `/settings/departments/${encodeURIComponent(id)}`),
+    onSuccess: ()=>{
+      qc.invalidateQueries({ queryKey: ['departments'] });
+      qc.invalidateQueries({ queryKey: ['settings-bundle'] });
+      toast.success('Deleted');
+    },
+    onError: (e: any)=>toast.error(e?.message || 'Failed to delete')
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: (payload: { id:string; label?:string; sort_index?:number })=>{
+      const params = new URLSearchParams();
+      if (payload.label !== undefined) params.set('label', payload.label);
+      if (payload.sort_index !== undefined) params.set('sort_index', String(payload.sort_index));
+      return api('PUT', `/settings/departments/${encodeURIComponent(payload.id)}?${params.toString()}`);
+    },
+    onSuccess: ()=>{
+      qc.invalidateQueries({ queryKey: ['departments'] });
+      qc.invalidateQueries({ queryKey: ['settings-bundle'] });
+      toast.success('Updated');
+    },
+    onError: (e: any)=>toast.error(e?.message || 'Failed to update')
+  });
+
+  const sortedDepartments = useMemo(()=>{
+    return (departments||[]).slice().sort((a,b)=>(a.sort_index||0)-(b.sort_index||0));
+  },[departments]);
+
+  const move = (idx: number, dir: -1|1)=>{
+    if (!sortedDepartments) return;
+    const next = idx + dir;
+    if (next < 0 || next >= sortedDepartments.length) return;
+    const a = sortedDepartments[idx], b = sortedDepartments[next];
+    updateMutation.mutate({ id: a.id, sort_index: (b.sort_index??0) });
+    updateMutation.mutate({ id: b.id, sort_index: (a.sort_index??0) });
+  };
+
+  const getEdit = (it: Item): Item => edits[it.id] || it;
+
+  return (
+    <div className="space-y-2">
+      <div className="flex gap-2">
+        <input
+          value={newDept}
+          onChange={e=>setNewDept(e.target.value)}
+          placeholder="File category name"
+          className="border rounded px-2 py-1 text-sm flex-1"
+          onKeyDown={e=>{ if(e.key==='Enter' && newDept.trim()){ createMutation.mutate(newDept.trim()); } }}
+        />
+        <button
+          onClick={()=>newDept.trim() && createMutation.mutate(newDept.trim())}
+          className="px-3 py-1 rounded bg-brand-red text-white text-sm"
+          disabled={createMutation.isPending}
+        >
+          Add
+        </button>
+      </div>
+      <div className="border rounded divide-y max-h-64 overflow-y-auto">
+        {isLoading ? (
+          <div className="p-3 text-sm text-gray-500">Loading...</div>
+        ) : sortedDepartments.length === 0 ? (
+          <div className="p-3 text-sm text-gray-500">No file categories yet</div>
+        ) : (
+          sortedDepartments.map((d, i)=> {
+            const e = getEdit(d);
+            return (
+              <div key={d.id} className="px-2 py-2 flex items-center justify-between gap-2">
+                <div className="flex items-center gap-1 flex-1 min-w-0">
+                  <button
+                    className="px-1.5 py-0.5 border rounded text-xs disabled:opacity-30"
+                    disabled={i===0}
+                    onClick={()=>move(i,-1)}
+                    title="Move up"
+                  >↑</button>
+                  <button
+                    className="px-1.5 py-0.5 border rounded text-xs disabled:opacity-30"
+                    disabled={i===sortedDepartments.length-1}
+                    onClick={()=>move(i,1)}
+                    title="Move down"
+                  >↓</button>
+                  <input
+                    value={e.label}
+                    onChange={ev=> setEdits(s=>({ ...s, [d.id]: { ...(s[d.id]||d), label: ev.target.value } }))}
+                    onBlur={()=>{
+                      const v = edits[d.id]?.label?.trim();
+                      if(v && v !== d.label){
+                        updateMutation.mutate({ id: d.id, label: v });
+                        setEdits(s=>{ const {[d.id]:_, ...rest} = s; return rest; });
+                      }
+                    }}
+                    className="border rounded px-2 py-1 text-sm flex-1 min-w-0"
+                  />
+                </div>
+                <button
+                  onClick={()=>{
+                    if(confirm(`Delete file category "${d.label}"?`)){
+                      deleteMutation.mutate(d.id);
+                    }
+                  }}
+                  className="px-2 py-1 text-xs text-red-600 hover:underline"
+                  disabled={deleteMutation.isPending}
+                >
+                  Delete
+                </button>
+              </div>
+            );
+          })
+        )}
+      </div>
+    </div>
+  );
+}
+
+// Standard File Categories Component
+function StandardFileCategories(){
+  const { data: categories, isLoading } = useQuery({
+    queryKey: ['file-categories'],
+    queryFn: ()=>api<any[]>('GET', '/clients/file-categories')
+  });
+
+  return (
+    <div>
+      {isLoading ? (
+        <div className="text-sm text-gray-500">Loading...</div>
+      ) : (
+        <div className="grid grid-cols-2 gap-2 border rounded p-2 max-h-64 overflow-y-auto">
+          {(categories||[]).map((c:any)=>(
+            <div key={c.id} className="flex items-center gap-2 p-2 border rounded bg-gray-50">
+              <span className="text-lg">{c.icon}</span>
+              <div className="flex-1 min-w-0">
+                <div className="font-medium text-xs">{c.name}</div>
+                <div className="text-[10px] text-gray-500 truncate">{c.id}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      <p className="text-xs text-gray-500 mt-2">
+        These categories are automatically created as subfolders when new projects are created.
+      </p>
     </div>
   );
 }

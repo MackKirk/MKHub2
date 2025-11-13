@@ -33,6 +33,7 @@ import MyReviews from './pages/MyReviews';
 import ReviewsCompare from './pages/ReviewsCompare';
 import UserDetail from './pages/UserDetail';
 import LogHours from './pages/LogHours';
+import CompanyFiles from './pages/CompanyFiles';
 
 import { getToken } from './lib/api';
 function Home(){ return <Navigate to={getToken()? '/home':'/login'} replace />; }
@@ -68,6 +69,7 @@ export default function App(){
           <Route path="/projects/new" element={<AppShell><ProjectNew/></AppShell>} />
           <Route path="/projects/:id" element={<AppShell><ProjectDetail/></AppShell>} />
           <Route path="/settings" element={<AppShell><SystemSettings/></AppShell>} />
+          <Route path="/company-files" element={<AppShell><CompanyFiles/></AppShell>} />
           <Route path="/log-hours" element={<AppShell><LogHours/></AppShell>} />
           <Route path="/users" element={<AppShell><Users/></AppShell>} />
           <Route path="/users/:userId" element={<AppShell><UserInfo/></AppShell>} />

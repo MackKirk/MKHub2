@@ -65,11 +65,26 @@ def create_project(payload: dict, db: Session = Depends(get_db)):
                     parent = db.query(ClientFolder).filter(ClientFolder.client_id == proj.client_id, ClientFolder.name == sname, ClientFolder.parent_id == None).first()
                     if parent:
                         parent_id = parent.id
-            exists = db.query(ClientFolder).filter(ClientFolder.client_id == proj.client_id, ClientFolder.name == name, ClientFolder.parent_id == parent_id).first()
+            # Check if folder already exists for this project
+            exists = db.query(ClientFolder).filter(ClientFolder.project_id == proj.id).first()
             if not exists:
-                f = ClientFolder(client_id=proj.client_id, name=name, parent_id=parent_id)
+                # Also check by name to avoid duplicates
+                exists = db.query(ClientFolder).filter(ClientFolder.client_id == proj.client_id, ClientFolder.name == name, ClientFolder.parent_id == parent_id).first()
+            if not exists:
+                f = ClientFolder(client_id=proj.client_id, name=name, parent_id=parent_id, project_id=proj.id)
                 db.add(f)
                 db.commit()
+                db.refresh(f)
+                # Create default subfolders for the project
+                try:
+                    # Import here to avoid circular dependency
+                    from ..routes.clients import create_default_folders_for_parent
+                    create_default_folders_for_parent(db, proj.client_id, f.id, proj.id)
+                except Exception as e:
+                    # If subfolder creation fails, don't fail project creation
+                    import logging
+                    logging.getLogger(__name__).warning(f"Failed to create default subfolders: {e}")
+                    pass
     except Exception:
         db.rollback()
     return {"id": str(proj.id)}
@@ -223,10 +238,26 @@ def update_project(project_id: str, payload: dict, db: Session = Depends(get_db)
             if abs(new_lng - old_lng) > 0.0001:  # ~11 meters tolerance
                 coordinates_changed = True
     
+    # Check if project name is being updated (to sync folder name)
+    old_name = getattr(p, 'name', None)
+    new_name = payload.get('name')
+    name_changed = new_name is not None and new_name != old_name
+    
     # Update project
     for k, v in payload.items():
         setattr(p, k, v)
     db.commit()
+    
+    # If project name changed, update the associated folder name
+    if name_changed and new_name:
+        try:
+            project_folder = db.query(ClientFolder).filter(ClientFolder.project_id == project_id).first()
+            if project_folder:
+                project_folder.name = new_name.strip()
+                db.commit()
+        except Exception:
+            # If folder update fails, don't fail the project update
+            pass
     
     # If coordinates changed, update shifts to use new coordinates
     if coordinates_changed:
