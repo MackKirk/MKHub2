@@ -109,3 +109,5 @@ def can_approve_attendance(user: User, attendance, db: Session) -> bool:
     return False
 
 
+
+

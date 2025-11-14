@@ -196,3 +196,5 @@ def send_attendance_notification(
     create_notification(db, user_id, "email", template_key, payload, timezone_str)
 
 
+
+

@@ -23,6 +23,17 @@ function formatTime12h(timeStr: string | null | undefined): string {
   return `${hours12}:${minutes} ${period}`;
 }
 
+// Helper function to format hours and minutes in a readable format (e.g., "8h30min")
+function formatHoursMinutes(totalMinutes: number): string {
+  if (totalMinutes <= 0) return '0h';
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = Math.round(totalMinutes % 60);
+  if (minutes === 0) {
+    return `${hours}h`;
+  }
+  return `${hours}h${minutes}min`;
+}
+
 type Project = { id:string, code?:string, name?:string, client_id?:string, client_display_name?:string, address_city?:string, address_province?:string, address_country?:string, address_postal_code?:string, description?:string, status_id?:string, division_id?:string, estimator_id?:string, onsite_lead_id?:string, contact_id?:string, contact_name?:string, contact_email?:string, contact_phone?:string, date_start?:string, date_eta?:string, date_end?:string, cost_estimated?:number, cost_actual?:number, service_value?:number, progress?:number, site_id?:string, site_name?:string, site_address_line1?:string, site_city?:string, site_province?:string, site_country?:string, site_postal_code?:string, status_label?:string };
 type ProjectFile = { id:string, file_object_id:string, is_image?:boolean, content_type?:string, category?:string, original_name?:string, uploaded_at?:string };
 type Update = { id:string, timestamp?:string, text?:string, images?:any };
@@ -705,7 +716,7 @@ function TimesheetTab({ projectId }:{ projectId:string }){
     return { minutesTotal: total, breakTotal };
   }, [entries, shiftsByUserAndDate, defaultBreakMin]);
   
-  const hoursTotal = ((minutesTotal - breakTotal) / 60).toFixed(1);
+  const hoursTotalMinutes = minutesTotal - breakTotal;
   const { data:employees } = useQuery({ queryKey:['employees'], queryFn: ()=>api<any[]>('GET','/employees') });
   
   // Get current user info to check if supervisor/admin
@@ -1088,8 +1099,16 @@ function TimesheetTab({ projectId }:{ projectId:string }){
       if (month) qs.set('month', month);
       if (userFilter) qs.set('user_id', userFilter);
       const rows:any[] = await api('GET', `/projects/${projectId}/timesheet?${qs.toString()}`);
-      const header = ['Date','User','Hours','Notes'];
-      const csv = [header.join(',')].concat(rows.map(r=> [r.work_date, JSON.stringify(r.user_name||''), (r.minutes/60).toFixed(2), JSON.stringify(r.notes||'')].join(','))).join('\n');
+      const header = ['Date','User','Hours','Break','Hours (after break)','Notes'];
+      const csv = [header.join(',')].concat(rows.map(r=> {
+        const key = `${r.user_id}_${r.work_date}`;
+        const shiftsForEntry = shiftsByUserAndDate[key] || [];
+        const breakMin = shiftsForEntry.length > 0 && shiftsForEntry[0].default_break_min 
+          ? shiftsForEntry[0].default_break_min 
+          : defaultBreakMin;
+        const hoursAfterBreak = Math.max(0, (r.minutes || 0) - breakMin);
+        return [r.work_date, JSON.stringify(r.user_name||''), (r.minutes/60).toFixed(2), breakMin, formatHoursMinutes(hoursAfterBreak), JSON.stringify(r.notes||'')].join(',');
+      })).join('\n');
       const blob = new Blob([csv], { type:'text/csv;charset=utf-8;' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a'); a.href = url; a.download = `timesheet_${projectId}_${month||'all'}.csv`; a.click(); URL.revokeObjectURL(url);
@@ -1197,7 +1216,7 @@ function TimesheetTab({ projectId }:{ projectId:string }){
           <div className="flex items-center gap-2"><label className="text-xs text-gray-600">Month</label><input type="month" className="border rounded px-2 py-1" value={month} onChange={e=>{ setMonth(e.target.value); }} /></div>
           <div className="flex items-center gap-2"><label className="text-xs text-gray-600">Employee</label><select className="border rounded px-2 py-1 text-sm" value={userFilter} onChange={e=>setUserFilter(e.target.value)}><option value="">All</option>{(employees||[]).map((emp:any)=> <option key={emp.id} value={emp.id}>{emp.name||emp.username}</option>)}</select></div>
           <div className="flex items-center gap-3">
-            <div className="text-sm text-gray-700">Total: {hoursTotal}h <span className="text-xs text-gray-500">(after break)</span></div>
+            <div className="text-sm text-gray-700">Total: {formatHoursMinutes(hoursTotalMinutes)} <span className="text-xs text-gray-500">(after break)</span></div>
             <button onClick={csvExport} className="px-2 py-1 rounded bg-gray-100 text-sm">Export CSV</button>
           </div>
         </div>
@@ -1208,7 +1227,7 @@ function TimesheetTab({ projectId }:{ projectId:string }){
             <div className="w-24">Employee</div>
             <div className="w-12">Date</div>
             <div className="w-20">Time</div>
-            <div className="w-14">Hours</div>
+            <div className="w-20">Hours</div>
             <div className="w-16">Break</div>
             <div className="flex-1">Notes</div>
             <div className="w-24"></div>
@@ -1233,6 +1252,8 @@ function TimesheetTab({ projectId }:{ projectId:string }){
             const breakMin = shiftsForEntry.length > 0 && shiftsForEntry[0].default_break_min 
               ? shiftsForEntry[0].default_break_min 
               : defaultBreakMin;
+            // Calculate hours after deducting break
+            const hoursAfterBreak = Math.max(0, e.minutes - breakMin);
             
             return (
             <div key={e.id} className="px-3 py-2 text-sm flex items-center justify-between">
@@ -1241,8 +1262,8 @@ function TimesheetTab({ projectId }:{ projectId:string }){
                 <div className="w-24 text-gray-700 truncate">{e.user_name||''}</div>
                 <div className="w-12 text-gray-600">{String(e.work_date).slice(5,10)}</div>
                 <div className="w-20 text-gray-600">{formatTime12h(e.start_time)} - {formatTime12h(e.end_time)}</div>
-                <div className="w-14 font-medium">{(e.minutes/60).toFixed(2)}h</div>
-                <div className="w-16 text-gray-500 text-xs">{breakMin}m</div>
+                <div className="w-20 font-medium">{formatHoursMinutes(hoursAfterBreak)}</div>
+                <div className="w-16 font-medium">{breakMin}m</div>
                 <div className="flex-1 text-gray-600 truncate">{e.notes||''}</div>
                 {(futIcon||offIcon) && <span title={future? 'Future time': 'Logged after day end'}>{futIcon}{offIcon}</span>}
               </div>
