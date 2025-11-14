@@ -88,3 +88,14 @@ class ProjectOrderResponse(ProjectOrderBase):
 class GenerateOrdersRequest(BaseModel):
     estimate_id: int
 
+
+class CreateExtraOrderRequest(BaseModel):
+    project_id: uuid.UUID
+    order_type: str  # 'supplier', 'shop_misc', 'subcontractor'
+    supplier_id: Optional[uuid.UUID] = None
+    supplier_name: Optional[str] = None  # For custom suppliers
+    supplier_email: Optional[str] = None  # For custom suppliers
+    recipient_email: Optional[str] = None  # For shop_misc orders
+    recipient_user_id: Optional[uuid.UUID] = None  # For shop_misc orders
+    items: List[ProjectOrderItemCreate]
+

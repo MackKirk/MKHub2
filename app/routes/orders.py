@@ -15,7 +15,7 @@ from ..models.models import (
 )
 from ..schemas.orders import (
     ProjectOrderCreate, ProjectOrderUpdate, ProjectOrderResponse,
-    ProjectOrderItemResponse, GenerateOrdersRequest
+    ProjectOrderItemResponse, GenerateOrdersRequest, CreateExtraOrderRequest
 )
 
 router = APIRouter(prefix="/orders", tags=["orders"])
@@ -77,9 +77,10 @@ def list_project_orders(
         if order.recipient_user_id:
             user = db.query(User).filter(User.id == order.recipient_user_id).first()
             if user:
-                order_dict["recipient_name"] = user.name or user.username
-                if user.email and not order.recipient_email:
-                    order_dict["recipient_email"] = user.email
+                order_dict["recipient_name"] = user.username
+                email = user.email_corporate or user.email_personal
+                if email and not order.recipient_email:
+                    order_dict["recipient_email"] = email
         
         # Get items
         items = db.query(ProjectOrderItem).filter(
@@ -522,6 +523,94 @@ def update_order(
     db.refresh(order)
     
     return get_order(order_id, db)
+
+
+@router.post("/projects/{project_id}/extra")
+def create_extra_order(
+    project_id: uuid.UUID,
+    body: CreateExtraOrderRequest,
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user),
+    _=Depends(require_permissions("inventory:write"))
+):
+    """Create an extra order manually (not from estimate)"""
+    # Validate project exists
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    
+    # Validate items
+    if not body.items or len(body.items) == 0:
+        raise HTTPException(status_code=400, detail="Order must have at least one item")
+    
+    # Get the next order number for this project and order type
+    order_type_prefix = {'supplier': 'SUP', 'shop_misc': 'SHOP', 'subcontractor': 'SUB'}.get(body.order_type, 'ORD')
+    existing_orders_same_type = db.query(ProjectOrder).filter(
+        ProjectOrder.project_id == project_id,
+        ProjectOrder.order_type == body.order_type
+    ).all()
+    order_number = len(existing_orders_same_type) + 1
+    
+    # Get supplier info if supplier order
+    supplier_email = None
+    supplier_name = None
+    if body.order_type == 'supplier':
+        if body.supplier_id:
+            supplier = db.query(Supplier).filter(Supplier.id == body.supplier_id).first()
+            if supplier:
+                supplier_email = supplier.email
+                supplier_name = supplier.name
+        elif body.supplier_name:
+            # Custom supplier
+            supplier_name = body.supplier_name
+            supplier_email = body.supplier_email
+    
+    # Create order
+    order = ProjectOrder(
+        project_id=project_id,
+        estimate_id=None,  # Extra orders are not linked to estimates
+        order_type=body.order_type,
+        supplier_id=body.supplier_id,
+        supplier_email=supplier_email,
+        recipient_email=body.recipient_email,
+        recipient_user_id=body.recipient_user_id,
+        status='draft',
+        order_code=generate_order_code(db, project_id, order_type_prefix, order_number),
+        created_by=user.id,
+        created_at=datetime.utcnow()
+    )
+    db.add(order)
+    db.flush()
+    
+    # Add items
+    for item_data in body.items:
+        # Calculate total if not provided
+        total_price = item_data.total_price if hasattr(item_data, 'total_price') and item_data.total_price else (
+            (item_data.quantity or 0.0) * (item_data.unit_price or 0.0)
+        )
+        
+        order_item = ProjectOrderItem(
+            order_id=order.id,
+            estimate_item_id=None,  # Extra orders are not linked to estimate items
+            material_id=item_data.material_id,
+            item_type=item_data.item_type or 'product',
+            name=item_data.name,
+            description=item_data.description,
+            quantity=item_data.quantity,
+            unit=item_data.unit,
+            unit_price=item_data.unit_price,
+            total_price=total_price,
+            section=item_data.section,
+            supplier_name=item_data.supplier_name,
+            is_ordered=False,
+            created_at=datetime.utcnow()
+        )
+        db.add(order_item)
+    
+    db.commit()
+    db.refresh(order)
+    
+    return get_order(order.id, db)
 
 
 @router.delete("/projects/{project_id}/all")
