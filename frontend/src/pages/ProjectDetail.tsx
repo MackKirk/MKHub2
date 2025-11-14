@@ -4,11 +4,12 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
 import ImagePicker from '@/components/ImagePicker';
-import EstimateBuilder from '@/components/EstimateBuilder';
+import EstimateBuilder, { type EstimateBuilderRef } from '@/components/EstimateBuilder';
 import ProposalForm from '@/components/ProposalForm';
 import { useConfirm } from '@/components/ConfirmProvider';
 import CalendarMock from '@/components/CalendarMock';
 import DispatchTab from '@/components/DispatchTab';
+import OrdersTab from '@/components/OrdersTab';
 
 // Helper function to convert 24h time (HH:MM:SS or HH:MM) to 12h format (h:mm AM/PM)
 function formatTime12h(timeStr: string | null | undefined): string {
@@ -55,15 +56,16 @@ export default function ProjectDetail(){
   const { data:projectEstimates } = useQuery({ queryKey:['projectEstimates', id], queryFn: ()=>api<any[]>('GET', `/estimate/estimates?project_id=${encodeURIComponent(String(id||''))}`) });
   // Check for tab query parameter
   const searchParams = new URLSearchParams(location.search);
-  const initialTab = (searchParams.get('tab') as 'overview'|'general'|'reports'|'dispatch'|'timesheet'|'files'|'photos'|'proposal'|'estimate'|null) || 'overview';
-  const [tab, setTab] = useState<'overview'|'general'|'reports'|'dispatch'|'timesheet'|'files'|'photos'|'proposal'|'estimate'>(initialTab);
+  const initialTab = (searchParams.get('tab') as 'overview'|'general'|'reports'|'dispatch'|'timesheet'|'files'|'photos'|'proposal'|'estimate'|'orders'|null) || 'overview';
+  const [tab, setTab] = useState<'overview'|'general'|'reports'|'dispatch'|'timesheet'|'files'|'photos'|'proposal'|'estimate'|'orders'>(initialTab);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const estimateBuilderRef = useRef<EstimateBuilderRef>(null);
   
   // Update tab when URL search params change
   useEffect(() => {
     const searchParams = new URLSearchParams(location.search);
-    const tabParam = searchParams.get('tab') as 'overview'|'general'|'reports'|'dispatch'|'timesheet'|'files'|'photos'|'proposal'|'estimate'|null;
-    if (tabParam && ['overview','general','reports','dispatch','timesheet','files','photos','proposal','estimate'].includes(tabParam)) {
+    const tabParam = searchParams.get('tab') as 'overview'|'general'|'reports'|'dispatch'|'timesheet'|'files'|'photos'|'proposal'|'estimate'|'orders'|null;
+    if (tabParam && ['overview','general','reports','dispatch','timesheet','files','photos','proposal','estimate','orders'].includes(tabParam)) {
       setTab(tabParam);
     }
   }, [location.search]);
@@ -130,13 +132,13 @@ export default function ProjectDetail(){
                   </div>
                 </div>
                 <button onClick={async()=>{
-                  const ok = await confirm({ 
+                  const result = await confirm({ 
                     title: 'Delete Project', 
                     message: `Are you sure you want to delete "${proj?.name||'this project'}"? This action cannot be undone. All related data (updates, reports, timesheets) will also be deleted.`,
                     confirmText: 'Delete',
                     cancelText: 'Cancel'
                   });
-                  if (!ok) return;
+                  if (result !== 'confirm') return;
                   try{
                     await api('DELETE', `/projects/${encodeURIComponent(String(id||''))}`);
                     toast.success('Project deleted');
@@ -150,8 +152,35 @@ export default function ProjectDetail(){
               </div>
               <div className="mt-auto flex gap-3 items-center justify-between w-full">
                 <div className="flex gap-3">
-                  {(['overview','reports','dispatch','timesheet','files','photos','proposal','estimate'] as const).map(k=> (
-                    <button key={k} onClick={()=>setTab(k)} className={`px-4 py-2 rounded-full ${tab===k?'bg-black text-white':'bg-white text-black'}`}>{k === 'dispatch' ? 'Schedule' : k[0].toUpperCase()+k.slice(1)}</button>
+                  {(['overview','reports','dispatch','timesheet','files','photos','proposal','estimate','orders'] as const).map(k=> (
+                    <button key={k} onClick={async () => {
+                      // If leaving estimate tab and there are unsaved changes, show confirmation
+                      if (tab === 'estimate' && k !== 'estimate' && estimateBuilderRef.current?.hasUnsavedChanges()) {
+                        const result = await confirm({
+                          title: 'Unsaved Changes',
+                          message: 'You have unsaved changes in the Estimate tab. What would you like to do?',
+                          confirmText: 'Save and Continue',
+                          cancelText: 'Cancel',
+                          showDiscard: true,
+                          discardText: 'Discard Changes'
+                        });
+                        
+                        if (result === 'confirm') {
+                          // Save before leaving
+                          const saved = await estimateBuilderRef.current?.save();
+                          if (saved) {
+                            setTab(k);
+                          }
+                        } else if (result === 'discard') {
+                          // Discard changes and leave
+                          setTab(k);
+                        }
+                        // If cancelled, do nothing (stay on estimate tab)
+                      } else {
+                        // No unsaved changes or not leaving estimate tab, proceed normally
+                        setTab(k);
+                      }
+                    }} className={`px-4 py-2 rounded-full ${tab===k?'bg-black text-white':'bg-white text-black'}`}>{k === 'dispatch' ? 'Schedule' : k[0].toUpperCase()+k.slice(1)}</button>
                   ))}
                 </div>
                 <button 
@@ -212,8 +241,12 @@ export default function ProjectDetail(){
 
             {tab==='estimate' && (
               <div className="rounded-xl border bg-white p-4">
-                <EstimateBuilder projectId={String(id)} statusLabel={proj?.status_label||''} settings={settings||{}} />
+                <EstimateBuilder ref={estimateBuilderRef} projectId={String(id)} statusLabel={proj?.status_label||''} settings={settings||{}} />
               </div>
+            )}
+
+            {tab==='orders' && (
+              <OrdersTab projectId={String(id)} project={proj||{}} />
             )}
           </>
         )}
@@ -1283,13 +1316,13 @@ function TimesheetTab({ projectId }:{ projectId:string }){
                 </button>
                 <button 
                   onClick={async() => {
-                    const confirmed = await confirm({
+                    const result = await confirm({
                       title: 'Delete Time Entry',
                       message: 'Are you sure you want to delete this time entry?',
                       confirmText: 'Delete',
                       cancelText: 'Cancel'
                     });
-                    if (!confirmed) return;
+                    if (result !== 'confirm') return;
                     try {
                       await api('DELETE', `/projects/${projectId}/timesheet/${e.id}`);
                       await refetch();

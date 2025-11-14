@@ -30,6 +30,7 @@ from .routes.chat import router as chat_router
 from .routes.tasks import router as tasks_router
 from .routes.notifications import router as notifications_router
 from .routes.company_files import router as company_files_router
+from .routes.orders import router as orders_router
 
 
 def create_app() -> FastAPI:
@@ -69,6 +70,7 @@ def create_app() -> FastAPI:
     app.include_router(tasks_router)
     app.include_router(notifications_router)
     app.include_router(company_files_router)
+    app.include_router(orders_router)
     from .routes import dispatch
     app.include_router(dispatch.router)
     # Legacy UI redirects to new React routes (exact paths)
@@ -432,6 +434,62 @@ def create_app() -> FastAPI:
                                                "quiet_hours TEXT,\n"
                                                "updated_at TEXT DEFAULT CURRENT_TIMESTAMP,\n"
                                                "FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE\n"
+                                               ")"))
+                        except Exception:
+                            pass
+                        # Project Orders tables
+                        try:
+                            conn.execute(text("CREATE TABLE IF NOT EXISTS project_orders (\n"
+                                               "id TEXT PRIMARY KEY,\n"
+                                               "project_id TEXT NOT NULL,\n"
+                                               "estimate_id INTEGER,\n"
+                                               "order_type TEXT NOT NULL,\n"
+                                               "supplier_id TEXT,\n"
+                                               "supplier_email TEXT,\n"
+                                               "recipient_email TEXT,\n"
+                                               "recipient_user_id TEXT,\n"
+                                               "status TEXT NOT NULL DEFAULT 'draft',\n"
+                                               "order_code TEXT,\n"
+                                               "email_subject TEXT,\n"
+                                               "email_body TEXT,\n"
+                                               "email_cc TEXT,\n"
+                                               "email_sent INTEGER DEFAULT 0,\n"
+                                               "email_sent_at TEXT,\n"
+                                               "delivered_at TEXT,\n"
+                                               "delivered_by TEXT,\n"
+                                               "notes TEXT,\n"
+                                               "created_at TEXT DEFAULT CURRENT_TIMESTAMP,\n"
+                                               "created_by TEXT,\n"
+                                               "updated_at TEXT,\n"
+                                               "FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,\n"
+                                               "FOREIGN KEY(estimate_id) REFERENCES estimates(id) ON DELETE SET NULL,\n"
+                                               "FOREIGN KEY(supplier_id) REFERENCES suppliers(id) ON DELETE SET NULL,\n"
+                                               "FOREIGN KEY(recipient_user_id) REFERENCES users(id) ON DELETE SET NULL,\n"
+                                               "FOREIGN KEY(created_by) REFERENCES users(id) ON DELETE SET NULL,\n"
+                                               "FOREIGN KEY(delivered_by) REFERENCES users(id) ON DELETE SET NULL\n"
+                                               ")"))
+                        except Exception:
+                            pass
+                        try:
+                            conn.execute(text("CREATE TABLE IF NOT EXISTS project_order_items (\n"
+                                               "id TEXT PRIMARY KEY,\n"
+                                               "order_id TEXT NOT NULL,\n"
+                                               "estimate_item_id INTEGER,\n"
+                                               "material_id INTEGER,\n"
+                                               "item_type TEXT NOT NULL,\n"
+                                               "name TEXT NOT NULL,\n"
+                                               "description TEXT,\n"
+                                               "quantity REAL NOT NULL,\n"
+                                               "unit TEXT,\n"
+                                               "unit_price REAL NOT NULL,\n"
+                                               "total_price REAL NOT NULL,\n"
+                                               "section TEXT,\n"
+                                               "supplier_name TEXT,\n"
+                                               "is_ordered INTEGER DEFAULT 0,\n"
+                                               "created_at TEXT DEFAULT CURRENT_TIMESTAMP,\n"
+                                               "FOREIGN KEY(order_id) REFERENCES project_orders(id) ON DELETE CASCADE,\n"
+                                               "FOREIGN KEY(estimate_item_id) REFERENCES estimate_items(id) ON DELETE SET NULL,\n"
+                                               "FOREIGN KEY(material_id) REFERENCES materials(id) ON DELETE SET NULL\n"
                                                ")"))
                         except Exception:
                             pass
@@ -927,6 +985,71 @@ def create_app() -> FastAPI:
                                        ")"))
                     try:
                         conn.execute(text("CREATE INDEX IF NOT EXISTS idx_user_notification_preferences_user_id ON user_notification_preferences(user_id)"))
+                    except Exception:
+                        pass
+                    # Project Orders tables
+                    conn.execute(text("CREATE TABLE IF NOT EXISTS project_orders (\n"
+                                       "id UUID PRIMARY KEY,\n"
+                                       "project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,\n"
+                                       "estimate_id INTEGER REFERENCES estimates(id) ON DELETE SET NULL,\n"
+                                       "order_type VARCHAR(50) NOT NULL,\n"
+                                       "supplier_id UUID REFERENCES suppliers(id) ON DELETE SET NULL,\n"
+                                       "supplier_email VARCHAR(255),\n"
+                                       "recipient_email VARCHAR(255),\n"
+                                       "recipient_user_id UUID REFERENCES users(id) ON DELETE SET NULL,\n"
+                                       "status VARCHAR(50) NOT NULL DEFAULT 'draft',\n"
+                                       "order_code VARCHAR(100),\n"
+                                       "email_subject VARCHAR(500),\n"
+                                       "email_body TEXT,\n"
+                                       "email_cc VARCHAR(500),\n"
+                                       "email_sent BOOLEAN DEFAULT FALSE,\n"
+                                       "email_sent_at TIMESTAMPTZ,\n"
+                                       "delivered_at TIMESTAMPTZ,\n"
+                                       "delivered_by UUID REFERENCES users(id) ON DELETE SET NULL,\n"
+                                       "notes TEXT,\n"
+                                       "created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),\n"
+                                       "created_by UUID REFERENCES users(id) ON DELETE SET NULL,\n"
+                                       "updated_at TIMESTAMPTZ\n"
+                                       ")"))
+                    try:
+                        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_project_orders_project_id ON project_orders(project_id)"))
+                    except Exception:
+                        pass
+                    try:
+                        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_project_orders_estimate_id ON project_orders(estimate_id)"))
+                    except Exception:
+                        pass
+                    try:
+                        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_project_orders_supplier_id ON project_orders(supplier_id)"))
+                    except Exception:
+                        pass
+                    try:
+                        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_project_orders_status ON project_orders(status)"))
+                    except Exception:
+                        pass
+                    conn.execute(text("CREATE TABLE IF NOT EXISTS project_order_items (\n"
+                                       "id UUID PRIMARY KEY,\n"
+                                       "order_id UUID NOT NULL REFERENCES project_orders(id) ON DELETE CASCADE,\n"
+                                       "estimate_item_id INTEGER REFERENCES estimate_items(id) ON DELETE SET NULL,\n"
+                                       "material_id INTEGER REFERENCES materials(id) ON DELETE SET NULL,\n"
+                                       "item_type VARCHAR(50) NOT NULL,\n"
+                                       "name VARCHAR(255) NOT NULL,\n"
+                                       "description TEXT,\n"
+                                       "quantity NUMERIC(10, 2) NOT NULL,\n"
+                                       "unit VARCHAR(50),\n"
+                                       "unit_price NUMERIC(10, 2) NOT NULL,\n"
+                                       "total_price NUMERIC(10, 2) NOT NULL,\n"
+                                       "section VARCHAR(255),\n"
+                                       "supplier_name VARCHAR(255),\n"
+                                       "is_ordered BOOLEAN DEFAULT FALSE,\n"
+                                       "created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()\n"
+                                       ")"))
+                    try:
+                        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_project_order_items_order_id ON project_order_items(order_id)"))
+                    except Exception:
+                        pass
+                    try:
+                        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_project_order_items_estimate_item_id ON project_order_items(estimate_item_id)"))
                     except Exception:
                         pass
                     # Consent logs table

@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect, useRef, useCallback } from 'react';
+import { useMemo, useState, useEffect, useRef, useCallback, useImperativeHandle, forwardRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
@@ -7,7 +7,13 @@ import { useConfirm } from '@/components/ConfirmProvider';
 type Material = { id:number, name:string, supplier_name?:string, category?:string, unit?:string, price?:number, last_updated?:string, unit_type?:string, units_per_package?:number, coverage_sqs?:number, coverage_ft2?:number, coverage_m2?:number, description?:string, image_base64?:string };
 type Item = { material_id?:number, name:string, unit?:string, quantity:number, unit_price:number, section:string, description?:string, item_type?:string, supplier_name?:string, unit_type?:string, qty_required?:number, unit_required?:string, markup?:number, taxable?:boolean, units_per_package?:number, coverage_sqs?:number, coverage_ft2?:number, coverage_m2?:number, labour_journey?:number, labour_men?:number, labour_journey_type?:'days'|'hours'|'contract' };
 
-export default function EstimateBuilder({ projectId, estimateId, statusLabel, settings }: { projectId: string, estimateId?: number, statusLabel?: string, settings?: any }){
+export type EstimateBuilderRef = {
+  hasUnsavedChanges: () => boolean;
+  save: () => Promise<boolean>;
+};
+
+const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, estimateId?: number, statusLabel?: string, settings?: any }>(
+  function EstimateBuilder({ projectId, estimateId, statusLabel, settings }, ref) {
   const confirm = useConfirm();
   const queryClient = useQueryClient();
   const [items, setItems] = useState<Item[]>([]);
@@ -27,31 +33,36 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
   const [sectionNames, setSectionNames] = useState<Record<string, string>>({});
   const [addingToSection, setAddingToSection] = useState<{section: string, type: 'product' | 'labour' | 'subcontractor' | 'miscellaneous' | 'shop'} | null>(null);
   const [dirty, setDirty] = useState(false);
-  const savedStateRef = useRef<{ items: Item[], markup: number, pstRate: number, gstRate: number, profitRate: number, sectionOrder: string[] } | null>(null);
-  const autoSaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const isAutoSavingRef = useRef<boolean>(false);
-  const lastAutoSaveRef = useRef<number>(0);
+  const savedStateRef = useRef<{ items: Item[], markup: number, pstRate: number, gstRate: number, profitRate: number, sectionOrder: string[], sectionNames: Record<string, string> } | null>(null);
+  const isSavingRef = useRef<boolean>(false);
+  const pendingSaveRef = useRef<{ items: Item[], markup: number, pstRate: number, gstRate: number, profitRate: number, sectionOrder: string[], sectionNames: Record<string, string> } | null>(null);
   
   // Check if editing is allowed based on status
   const canEdit = useMemo(()=>{
-    if (!statusLabel) return true; // Default to allow if no status
+    // Always allow editing by default unless explicitly restricted
+    if (!statusLabel || !statusLabel.trim()) return true;
+    
     const statusLabelStr = String(statusLabel).trim();
-    const statusConfig = ((settings?.project_statuses||[]) as any[]).find((s:any)=> s.label === statusLabelStr);
-    // Allow editing if status is "estimating" or if allow_edit_proposal is true in meta
+    
+    // Always allow "estimating" status
     if (statusLabelStr.toLowerCase() === 'estimating') return true;
-    // Check both boolean true and string "true" for compatibility
+    
+    // If no settings or project_statuses, allow editing
+    if (!settings || !settings.project_statuses || !Array.isArray(settings.project_statuses)) return true;
+    
+    const statusConfig = (settings.project_statuses as any[]).find((s:any)=> s.label === statusLabelStr);
+    
+    // If status not found in config, allow editing by default
+    if (!statusConfig) return true;
+    
+    // Only restrict if explicitly set to false
     const allowEdit = statusConfig?.meta?.allow_edit_proposal;
-    // Debug log to help troubleshoot
-    if (statusConfig && statusLabelStr) {
-      console.log('[EstimateBuilder] Status check:', { 
-        statusLabel: statusLabelStr, 
-        found: !!statusConfig,
-        meta: statusConfig.meta, 
-        allowEdit,
-        canEdit: allowEdit === true || allowEdit === 'true' || allowEdit === 1
-      });
-    }
-    return allowEdit === true || allowEdit === 'true' || allowEdit === 1;
+    
+    // If allow_edit_proposal is explicitly false, deny editing
+    if (allowEdit === false || allowEdit === 'false' || allowEdit === 0) return false;
+    
+    // Otherwise allow editing (default behavior)
+    return true;
   }, [statusLabel, settings]);
   
   // Show warning if editing is restricted
@@ -60,6 +71,7 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
       toast.error(`Editing is restricted for projects with status "${statusLabel}"`, { duration: 5000 });
     }
   }, [canEdit, statusLabel]);
+
 
   // Fetch estimate by project_id if only projectId is provided
   const { data: projectEstimates } = useQuery({
@@ -88,9 +100,11 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
   
   // Invalidate and refetch estimate data when component mounts or when estimateId changes to ensure fresh data
   const hasLoadedRef = useRef<number | undefined>(undefined);
+  const hasInitializedRef = useRef<number | undefined>(undefined);
   useEffect(() => {
     if (currentEstimateId && hasLoadedRef.current !== currentEstimateId) {
       hasLoadedRef.current = currentEstimateId;
+      hasInitializedRef.current = undefined; // Reset initialization flag when estimateId changes
       // Invalidate cache and refetch to ensure we have the latest data
       queryClient.invalidateQueries({ queryKey: ['estimate', currentEstimateId] });
       refetchEstimate();
@@ -109,9 +123,10 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
     enabled: !!viewingProductId
   });
 
-  // Load estimate data on mount
+  // Load estimate data on mount - only once per estimateId
   useEffect(() => {
-    if (estimateData && currentEstimateId) {
+    if (estimateData && currentEstimateId && hasInitializedRef.current !== currentEstimateId) {
+      hasInitializedRef.current = currentEstimateId;
       const est = estimateData.estimate;
       const loadedItems = estimateData.items || [];
       
@@ -170,19 +185,20 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
         };
       });
       setItems(formattedItems);
-      // Update lastAutoSaveRef when estimate is loaded to prevent immediate auto-save
-      lastAutoSaveRef.current = Date.now();
       // Update savedStateRef to match loaded data so dirty check works correctly
+      const loadedSectionNames = estimateData.section_names || {};
       savedStateRef.current = { 
         items: formattedItems, 
         markup: est.markup !== undefined ? est.markup : markup, 
         pstRate: estimateData.pst_rate !== undefined && estimateData.pst_rate !== null ? estimateData.pst_rate : pstRate, 
         gstRate: estimateData.gst_rate !== undefined && estimateData.gst_rate !== null ? estimateData.gst_rate : gstRate, 
-        profitRate: estimateData.profit_rate !== undefined && estimateData.profit_rate !== null ? estimateData.profit_rate : profitRate, 
-        sectionOrder: estimateData.section_order || sectionOrder 
+        profitRate: estimateData.profit_rate !== undefined && estimateData.profit_rate !== null ? estimateData.profit_rate : profitRate,
+        sectionOrder: estimateData.section_order || sectionOrder,
+        sectionNames: loadedSectionNames
       };
+      setDirty(false);
     }
-  }, [estimateData, currentEstimateId, markup, pstRate, gstRate, profitRate, sectionOrder]);
+  }, [estimateData, currentEstimateId]);
 
   // Calculate item total based on item type
   const calculateItemTotal = (it: Item): number => {
@@ -236,17 +252,31 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
   
   const pst = useMemo(()=> (taxableTotal * (pstRate/100)), [taxableTotal, pstRate]);
 
-  // Auto-save function (silent save without toast)
-  const autoSave = useCallback(async () => {
-    // Don't auto-save if already saving or if no projectId
-    if (isAutoSavingRef.current || !projectId) return;
+  // Internal save function (used by manual save and beforeunload)
+  const performSave = useCallback(async (silent: boolean = false) => {
+    // Don't save if already saving or if no projectId
+    if (isSavingRef.current || !projectId || !canEdit) return false;
     
-    // Don't auto-save if less than 3 seconds since last save
-    const now = Date.now();
-    if (now - lastAutoSaveRef.current < 3000) return;
+    // Don't save if nothing changed
+    if (!dirty && currentEstimateId) {
+      return true;
+    }
 
     try {
-      isAutoSavingRef.current = true;
+      isSavingRef.current = true;
+      
+      // Store current state for save attempt
+      const currentState = {
+        items,
+        markup,
+        pstRate,
+        gstRate,
+        profitRate,
+        sectionOrder,
+        sectionNames
+      };
+      pendingSaveRef.current = currentState;
+      
       const payload = { 
         project_id: projectId, 
         markup, 
@@ -280,11 +310,6 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
         })) 
       };
       
-      if (!canEdit) {
-        toast.error('Editing is restricted for this project status');
-        return;
-      }
-      
       let estimateIdToUse = currentEstimateId;
       if (estimateIdToUse) {
         // Update existing estimate
@@ -295,19 +320,29 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
         estimateIdToUse = result.id;
         setCurrentEstimateId(estimateIdToUse);
       }
-      savedStateRef.current = { items, markup, pstRate, gstRate, profitRate, sectionOrder };
+      
+      // Only update savedStateRef if save was successful
+      savedStateRef.current = currentState;
       setDirty(false);
-      lastAutoSaveRef.current = Date.now();
+      pendingSaveRef.current = null;
       
       // Invalidate cache to ensure fresh data on remount
       queryClient.invalidateQueries({ queryKey: ['estimate', estimateIdToUse] });
       queryClient.invalidateQueries({ queryKey: ['projectEstimates', projectId] });
+      
+      if (!silent) {
+        toast.success('Changes saved');
+      }
+      return true;
     } catch (e) {
-      // Silent fail for auto-save
+      if (!silent) {
+        toast.error('Failed to save');
+      }
+      return false;
     } finally {
-      isAutoSavingRef.current = false;
+      isSavingRef.current = false;
     }
-  }, [projectId, markup, pstRate, gstRate, profitRate, sectionOrder, sectionNames, items, currentEstimateId, canEdit, queryClient]);
+  }, [projectId, markup, pstRate, gstRate, profitRate, sectionOrder, sectionNames, items, currentEstimateId, canEdit, queryClient, dirty]);
 
   // Show warning if editing is restricted
   useEffect(() => {
@@ -316,42 +351,95 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
     }
   }, [canEdit, statusLabel]);
 
-  // Auto-save on changes (debounced)
+  // Keep pendingSaveRef updated with current state whenever it changes
   useEffect(() => {
-    // Only auto-save if estimate is loaded or if we have items, and editing is allowed
-    if (!projectId || (items.length === 0 && !currentEstimateId) || !canEdit) return;
-
-    // Clear existing timeout
-    if (autoSaveTimeoutRef.current) {
-      clearTimeout(autoSaveTimeoutRef.current);
+    if (dirty && canEdit && projectId) {
+      pendingSaveRef.current = {
+        items,
+        markup,
+        pstRate,
+        gstRate,
+        profitRate,
+        sectionOrder,
+        sectionNames
+      };
     }
+  }, [items, markup, pstRate, gstRate, profitRate, sectionOrder, sectionNames, dirty, canEdit, projectId]);
 
-    // Set new timeout for auto-save (2 seconds after last change)
-    autoSaveTimeoutRef.current = setTimeout(() => {
-      if (canEdit) {
-        autoSave();
-      }
-    }, 2000);
-
-    return () => {
-      if (autoSaveTimeoutRef.current) {
-        clearTimeout(autoSaveTimeoutRef.current);
+  // Save before leaving page/component (visibilitychange and beforeunload)
+  useEffect(() => {
+    const handleVisibilityChange = async () => {
+      if (document.hidden && dirty && canEdit && projectId) {
+        // Page is being hidden (user switching tabs, minimizing, etc.)
+        // Try to save silently
+        await performSave(true);
       }
     };
-  }, [items, markup, pstRate, gstRate, profitRate, sectionOrder, projectId, currentEstimateId, autoSave]);
 
-  // Periodic auto-save (every 30 seconds)
-  useEffect(() => {
-    if (!projectId || (items.length === 0 && !currentEstimateId) || !canEdit) return;
-
-    const interval = setInterval(() => {
-      if (canEdit) {
-        autoSave();
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (dirty && canEdit && projectId && currentEstimateId && pendingSaveRef.current) {
+        // Warn user about unsaved changes
+        e.preventDefault();
+        e.returnValue = '';
+        
+        // Try to save synchronously as last resort
+        try {
+          const payload = {
+            project_id: projectId,
+            markup: pendingSaveRef.current.markup,
+            pst_rate: pendingSaveRef.current.pstRate,
+            gst_rate: pendingSaveRef.current.gstRate,
+            profit_rate: pendingSaveRef.current.profitRate,
+            section_order: pendingSaveRef.current.sectionOrder,
+            section_names: pendingSaveRef.current.sectionNames,
+            items: pendingSaveRef.current.items.map(it=> ({
+              material_id: it.material_id,
+              quantity: it.quantity,
+              unit_price: it.unit_price,
+              section: it.section,
+              description: it.description,
+              item_type: it.item_type,
+              name: it.name,
+              unit: it.unit,
+              markup: it.markup,
+              taxable: it.taxable,
+              qty_required: it.qty_required,
+              unit_required: it.unit_required,
+              supplier_name: it.supplier_name,
+              unit_type: it.unit_type,
+              units_per_package: it.units_per_package,
+              coverage_sqs: it.coverage_sqs,
+              coverage_ft2: it.coverage_ft2,
+              coverage_m2: it.coverage_m2,
+              labour_journey: it.labour_journey,
+              labour_men: it.labour_men,
+              labour_journey_type: it.labour_journey_type
+            }))
+          };
+          
+          const token = localStorage.getItem('user_token');
+          const xhr = new XMLHttpRequest();
+          xhr.open('PUT', `/estimate/estimates/${currentEstimateId}`, false);
+          xhr.setRequestHeader('Content-Type', 'application/json');
+          if (token) {
+            xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+          }
+          xhr.send(JSON.stringify(payload));
+        } catch (err) {
+          // If sync save fails, log error but don't block
+          console.error('Failed to save on page unload:', err);
+        }
       }
-    }, 30000); // 30 seconds
+    };
 
-    return () => clearInterval(interval);
-  }, [projectId, items.length, currentEstimateId, autoSave, canEdit]);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('beforeunload', handleBeforeUnload);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, [dirty, canEdit, projectId, currentEstimateId, performSave]);
 
   // Calculate quantity based on qty_required and unit_type
   const calculateQuantity = (item: Item): number => {
@@ -558,7 +646,7 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
   // Track dirty state
   useEffect(() => {
     if (!savedStateRef.current) {
-      savedStateRef.current = { items, markup, pstRate, gstRate, profitRate, sectionOrder };
+      savedStateRef.current = { items, markup, pstRate, gstRate, profitRate, sectionOrder, sectionNames };
       setDirty(false);
       return;
     }
@@ -567,69 +655,22 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
     const markupChanged = markup !== saved.markup;
     const profitRateChanged = profitRate !== saved.profitRate;
     const sectionOrderChanged = JSON.stringify(sectionOrder) !== JSON.stringify(saved.sectionOrder);
+    const sectionNamesChanged = JSON.stringify(sectionNames) !== JSON.stringify(saved.sectionNames);
     const pstRateChanged = pstRate !== saved.pstRate;
     const gstRateChanged = gstRate !== saved.gstRate;
-    setDirty(itemsChanged || markupChanged || pstRateChanged || gstRateChanged || profitRateChanged || sectionOrderChanged);
-  }, [items, markup, pstRate, gstRate, profitRate, sectionOrder]);
+    setDirty(itemsChanged || markupChanged || pstRateChanged || gstRateChanged || profitRateChanged || sectionOrderChanged || sectionNamesChanged);
+  }, [items, markup, pstRate, gstRate, profitRate, sectionOrder, sectionNames]);
 
-  // Manual save function
+  // Manual save function (user clicks Save button)
   const handleManualSave = useCallback(async () => {
-    if (!canEdit || !projectId) return;
-    
-    try {
-      const payload = { 
-        project_id: projectId, 
-        markup, 
-        pst_rate: pstRate,
-        gst_rate: gstRate,
-        profit_rate: profitRate,
-        section_order: sectionOrder,
-        section_names: sectionNames,
-        items: items.map(it=> ({ 
-          material_id: it.material_id, 
-          quantity: it.quantity, 
-          unit_price: it.unit_price, 
-          section: it.section, 
-          description: it.description, 
-          item_type: it.item_type,
-          name: it.name,
-          unit: it.unit,
-          markup: it.markup,
-          taxable: it.taxable,
-          qty_required: it.qty_required,
-          unit_required: it.unit_required,
-          supplier_name: it.supplier_name,
-          unit_type: it.unit_type,
-          units_per_package: it.units_per_package,
-          coverage_sqs: it.coverage_sqs,
-          coverage_ft2: it.coverage_ft2,
-          coverage_m2: it.coverage_m2,
-          labour_journey: it.labour_journey,
-          labour_men: it.labour_men,
-          labour_journey_type: it.labour_journey_type
-        })) 
-      };
-      
-      let estimateIdToUse = currentEstimateId;
-      if (estimateIdToUse) {
-        await api('PUT', `/estimate/estimates/${estimateIdToUse}`, payload);
-      } else {
-        const result = await api<any>('POST', '/estimate/estimates', payload);
-        estimateIdToUse = result.id;
-        setCurrentEstimateId(estimateIdToUse);
-      }
-      
-      savedStateRef.current = { items, markup, pstRate, gstRate, profitRate, sectionOrder };
-      setDirty(false);
-      toast.success('Changes saved');
-      
-      // Invalidate cache to ensure fresh data on remount
-      queryClient.invalidateQueries({ queryKey: ['estimate', estimateIdToUse] });
-      queryClient.invalidateQueries({ queryKey: ['projectEstimates', projectId] });
-    } catch (e) {
-      toast.error('Failed to save');
-    }
-  }, [canEdit, projectId, items, markup, pstRate, gstRate, profitRate, sectionOrder, sectionNames, currentEstimateId, queryClient]);
+    await performSave(false);
+  }, [performSave]);
+
+  // Expose methods to parent component via ref
+  useImperativeHandle(ref, () => ({
+    hasUnsavedChanges: () => dirty && canEdit,
+    save: () => performSave(false)
+  }), [dirty, canEdit, performSave]);
 
   // Sync section order with items (add new sections that appear in items)
   useEffect(()=>{
@@ -1573,16 +1614,20 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
       {canEdit && (
         <div className="fixed left-60 right-0 bottom-0 z-40">
           <div className="px-4">
-            <div className="mx-auto max-w-[1400px] rounded-t-xl border bg-white/95 backdrop-blur p-3 flex items-center justify-between shadow-[0_-6px_16px_rgba(0,0,0,0.08)]">
-              <div className={dirty ? 'text-[12px] text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5' : 'text-[12px] text-green-700 bg-green-50 border border-green-200 rounded-full px-2 py-0.5'}>
+            <div className="mx-auto max-w-[1400px] rounded-t-xl border bg-white/95 backdrop-blur p-4 flex items-center justify-between shadow-[0_-6px_16px_rgba(0,0,0,0.08)]">
+              {/* Left: Status indicator */}
+              <div className={dirty ? 'text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-3 py-1.5 font-medium' : 'text-sm text-green-700 bg-green-50 border border-green-200 rounded-full px-3 py-1.5 font-medium'}>
                 {dirty ? 'Unsaved changes' : 'All changes saved'}
               </div>
+              
+              {/* Center: Analysis and PDF */}
               <div className="flex items-center gap-2">
                 <button
                   onClick={()=>setSummaryOpen(true)}
-                  className="px-3 py-2 rounded bg-gray-100 hover:bg-gray-200">
+                  className="px-4 py-2 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium transition-colors">
                   Analysis
                 </button>
+                <div className="w-px h-5 bg-gray-300"></div>
                 <button
                   onClick={async()=>{
                     try{
@@ -1655,13 +1700,44 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
                     }
                   }}
                   disabled={isLoading || items.length === 0}
-                  className="px-3 py-2 rounded bg-gray-700 text-white disabled:opacity-60">
+                  className="px-4 py-2 rounded-lg bg-gray-400 hover:bg-gray-500 text-white font-medium disabled:opacity-60 disabled:cursor-not-allowed transition-colors">
                   {isLoading ? 'Generating...' : 'Generate PDF'}
                 </button>
+              </div>
+              
+              {/* Right: Generate Orders and Save */}
+              <div className="flex items-center gap-2">
+                <button 
+                  onClick={async () => {
+                    if (!currentEstimateId) {
+                      toast.error('Please save the estimate first');
+                      return;
+                    }
+                    try {
+                      setIsLoading(true);
+                      const response = await api('POST', `/orders/projects/${projectId}/generate`, { estimate_id: currentEstimateId });
+                      toast.success(`Generated ${response.orders_created || 0} orders successfully`);
+                      // Navigate to orders tab would be handled by parent
+                    } catch (error: any) {
+                      const errorMsg = error.response?.data?.detail || error.message || 'Failed to generate orders';
+                      toast.error(errorMsg);
+                    } finally {
+                      setIsLoading(false);
+                    }
+                  }}
+                  disabled={isLoading || !currentEstimateId || items.length === 0}
+                  className="px-4 py-2 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium disabled:opacity-60 disabled:cursor-not-allowed transition-colors">
+                  {isLoading ? 'Generating...' : 'Generate Orders'}
+                </button>
+                <div className="w-px h-5 bg-gray-300"></div>
                 <button 
                   disabled={!dirty} 
                   onClick={handleManualSave}
-                  className="px-5 py-2 rounded-xl bg-gradient-to-r from-brand-red to-[#ee2b2b] text-white font-semibold disabled:opacity-50">
+                  className={`px-5 py-2 rounded-lg text-white font-semibold disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm ${
+                    dirty 
+                      ? 'bg-gradient-to-r from-brand-red to-[#ee2b2b] hover:from-red-700 hover:to-red-800' 
+                      : 'bg-gray-400 hover:bg-gray-500'
+                  }`}>
                   Save
                 </button>
               </div>
@@ -1671,7 +1747,9 @@ export default function EstimateBuilder({ projectId, estimateId, statusLabel, se
       )}
     </div>
   );
-}
+});
+
+export default EstimateBuilder;
 
 function SummaryModal({ open, onClose, items, pstRate, gstRate, markup, profitRate, sectionNames, sectionOrder }: { open:boolean, onClose:()=>void, items:Item[], pstRate:number, gstRate:number, markup:number, profitRate:number, sectionNames:Record<string, string>, sectionOrder:string[] }){
   useEffect(() => {

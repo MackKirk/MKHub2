@@ -6,10 +6,12 @@ type ConfirmOptions = {
   message: string;
   confirmText?: string;
   cancelText?: string;
+  showDiscard?: boolean;
+  discardText?: string;
 };
 
 type ConfirmContextValue = {
-  confirm: (opts: ConfirmOptions) => Promise<boolean>;
+  confirm: (opts: ConfirmOptions) => Promise<'confirm' | 'discard' | 'cancel'>;
 };
 
 const ConfirmContext = createContext<ConfirmContextValue | null>(null);
@@ -21,15 +23,15 @@ export function useConfirm(){
 }
 
 export default function ConfirmProvider({ children }:{ children: any }){
-  const [state, setState] = useState<{ open:boolean, opts: ConfirmOptions, resolver?: (v:boolean)=>void }>({ open:false, opts:{ message:'' } });
+  const [state, setState] = useState<{ open:boolean, opts: ConfirmOptions, resolver?: (v:'confirm' | 'discard' | 'cancel')=>void }>({ open:false, opts:{ message:'' } });
 
   const open = useCallback((opts: ConfirmOptions) => {
-    return new Promise<boolean>((resolve) => {
+    return new Promise<'confirm' | 'discard' | 'cancel'>((resolve) => {
       setState({ open: true, opts, resolver: resolve });
     });
   }, []);
 
-  const onClose = (value: boolean)=>{
+  const onClose = (value: 'confirm' | 'discard' | 'cancel')=>{
     try{ state.resolver?.(value); }catch(_e){}
     setState(s=> ({ ...s, open:false, resolver: undefined }));
   };
@@ -45,8 +47,11 @@ export default function ConfirmProvider({ children }:{ children: any }){
         message={state.opts.message}
         confirmText={state.opts.confirmText || 'Confirm'}
         cancelText={state.opts.cancelText || 'Cancel'}
-        onConfirm={()=> onClose(true)}
-        onCancel={()=> onClose(false)}
+        showDiscard={state.opts.showDiscard}
+        discardText={state.opts.discardText || 'Discard'}
+        onConfirm={()=> onClose('confirm')}
+        onCancel={()=> onClose('cancel')}
+        onDiscard={state.opts.showDiscard ? ()=> onClose('discard') : undefined}
       />
     </ConfirmContext.Provider>
   );

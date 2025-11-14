@@ -1058,3 +1058,55 @@ class ConsentLog(Base):
     timestamp_utc: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
     ip_address: Mapped[Optional[str]] = mapped_column(String(50))
     user_agent: Mapped[Optional[str]] = mapped_column(String(500))
+
+
+# =====================
+# Project Orders domain
+# =====================
+
+class ProjectOrder(Base):
+    """Orders generated from project estimates"""
+    __tablename__ = "project_orders"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    project_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True)
+    estimate_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("estimates.id", ondelete="SET NULL"), index=True)
+    order_type: Mapped[str] = mapped_column(String(50), nullable=False)  # 'supplier', 'shop_misc', 'subcontractor'
+    supplier_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("suppliers.id", ondelete="SET NULL"), index=True)
+    supplier_email: Mapped[Optional[str]] = mapped_column(String(255))  # For shop/misc or when supplier email is missing
+    recipient_email: Mapped[Optional[str]] = mapped_column(String(255))  # For shop/misc orders
+    recipient_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+    status: Mapped[str] = mapped_column(String(50), default="draft", nullable=False)  # 'draft', 'awaiting_delivery', 'delivered'
+    order_code: Mapped[Optional[str]] = mapped_column(String(100))
+    email_subject: Mapped[Optional[str]] = mapped_column(String(500))
+    email_body: Mapped[Optional[str]] = mapped_column(Text)
+    email_cc: Mapped[Optional[str]] = mapped_column(String(500))
+    email_sent: Mapped[bool] = mapped_column(Boolean, default=False)
+    email_sent_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    delivered_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    delivered_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+    notes: Mapped[Optional[str]] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
+    created_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+    updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+
+
+class ProjectOrderItem(Base):
+    """Items in a project order"""
+    __tablename__ = "project_order_items"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    order_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("project_orders.id", ondelete="CASCADE"), nullable=False, index=True)
+    estimate_item_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("estimate_items.id", ondelete="SET NULL"), index=True)
+    material_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("materials.id", ondelete="SET NULL"))
+    item_type: Mapped[str] = mapped_column(String(50), nullable=False)  # 'product', 'labour', 'subcontractor', 'shop', 'miscellaneous'
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text)
+    quantity: Mapped[float] = mapped_column(Float, nullable=False)
+    unit: Mapped[Optional[str]] = mapped_column(String(50))
+    unit_price: Mapped[float] = mapped_column(Float, nullable=False)
+    total_price: Mapped[float] = mapped_column(Float, nullable=False)
+    section: Mapped[Optional[str]] = mapped_column(String(255))
+    supplier_name: Mapped[Optional[str]] = mapped_column(String(255))
+    is_ordered: Mapped[bool] = mapped_column(Boolean, default=False)  # Track if estimate item has been ordered
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
