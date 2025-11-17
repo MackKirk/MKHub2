@@ -6,11 +6,14 @@ type Props = {
   message: string;
   confirmText?: string;
   cancelText?: string;
+  showDiscard?: boolean;
+  discardText?: string;
   onConfirm: ()=>void;
   onCancel: ()=>void;
+  onDiscard?: ()=>void;
 };
 
-export default function ConfirmDialog({ open, title='Confirm', message, confirmText='Confirm', cancelText='Cancel', onConfirm, onCancel }: Props){
+export default function ConfirmDialog({ open, title='Confirm', message, confirmText='Confirm', cancelText='Cancel', showDiscard=false, discardText='Discard', onConfirm, onCancel, onDiscard }: Props){
   useEffect(()=>{
     const onKey=(e: KeyboardEvent)=>{ if(!open) return; if(e.key==='Escape'){ onCancel(); } if(e.key==='Enter'){ onConfirm(); } };
     window.addEventListener('keydown', onKey);
@@ -24,6 +27,9 @@ export default function ConfirmDialog({ open, title='Confirm', message, confirmT
         <div className="p-4 text-sm text-gray-800 whitespace-pre-wrap">{message}</div>
         <div className="p-3 flex items-center justify-end gap-2 border-t">
           <button className="px-3 py-2 rounded bg-gray-100" onClick={onCancel}>{cancelText}</button>
+          {showDiscard && onDiscard && (
+            <button className="px-3 py-2 rounded bg-gray-200 hover:bg-gray-300 text-gray-800" onClick={onDiscard}>{discardText}</button>
+          )}
           <button className="px-3 py-2 rounded bg-brand-red text-white" onClick={onConfirm}>{confirmText}</button>
         </div>
       </div>

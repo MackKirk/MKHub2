@@ -4,6 +4,19 @@ import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
 
+// Helper function to convert 24h time (HH:MM:SS or HH:MM) to 12h format (h:mm AM/PM)
+function formatTime12h(timeStr: string | null | undefined): string {
+  if (!timeStr || timeStr === '--:--' || timeStr === '-') return timeStr || '--:--';
+  const parts = timeStr.split(':');
+  if (parts.length < 2) return timeStr;
+  const hours = parseInt(parts[0], 10);
+  const minutes = parts[1];
+  if (isNaN(hours)) return timeStr;
+  const period = hours >= 12 ? 'PM' : 'AM';
+  const hours12 = hours === 0 ? 12 : hours > 12 ? hours - 12 : hours;
+  return `${hours12}:${minutes} ${period}`;
+}
+
 export default function UserDetail(){
   const { id } = useParams();
   const { data:user, refetch } = useQuery({ queryKey:['user', id], queryFn: ()=> api<any>('GET', `/users/${id}`) });
@@ -105,7 +118,7 @@ function UserTimesheet({ userId }:{ userId:string }){
         {(entries||[]).length? (entries||[]).map((e:any)=> (
           <div key={e.id} className="px-2 py-1 text-sm flex items-center gap-3">
             <div className="w-20 text-gray-600">{String(e.work_date).slice(0,10)}</div>
-            <div className="w-24 text-gray-700">{(e.start_time||'--:--')} - {(e.end_time||'--:--')}</div>
+            <div className="w-24 text-gray-700">{formatTime12h(e.start_time)} - {formatTime12h(e.end_time)}</div>
             <div className="w-16 font-medium">{(e.minutes/60).toFixed(2)}h</div>
             <div className="text-gray-600">{e.notes||''}</div>
           </div>

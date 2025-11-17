@@ -4,11 +4,36 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
 import ImagePicker from '@/components/ImagePicker';
-import EstimateBuilder from '@/components/EstimateBuilder';
+import EstimateBuilder, { type EstimateBuilderRef } from '@/components/EstimateBuilder';
 import ProposalForm from '@/components/ProposalForm';
 import { useConfirm } from '@/components/ConfirmProvider';
 import CalendarMock from '@/components/CalendarMock';
 import DispatchTab from '@/components/DispatchTab';
+import OrdersTab from '@/components/OrdersTab';
+
+// Helper function to convert 24h time (HH:MM:SS or HH:MM) to 12h format (h:mm AM/PM)
+function formatTime12h(timeStr: string | null | undefined): string {
+  if (!timeStr || timeStr === '--:--' || timeStr === '-') return timeStr || '--:--';
+  const parts = timeStr.split(':');
+  if (parts.length < 2) return timeStr;
+  const hours = parseInt(parts[0], 10);
+  const minutes = parts[1];
+  if (isNaN(hours)) return timeStr;
+  const period = hours >= 12 ? 'PM' : 'AM';
+  const hours12 = hours === 0 ? 12 : hours > 12 ? hours - 12 : hours;
+  return `${hours12}:${minutes} ${period}`;
+}
+
+// Helper function to format hours and minutes in a readable format (e.g., "8h30min")
+function formatHoursMinutes(totalMinutes: number): string {
+  if (totalMinutes <= 0) return '0h';
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = Math.round(totalMinutes % 60);
+  if (minutes === 0) {
+    return `${hours}h`;
+  }
+  return `${hours}h${minutes}min`;
+}
 
 type Project = { id:string, code?:string, name?:string, client_id?:string, client_display_name?:string, address_city?:string, address_province?:string, address_country?:string, address_postal_code?:string, description?:string, status_id?:string, division_id?:string, estimator_id?:string, onsite_lead_id?:string, contact_id?:string, contact_name?:string, contact_email?:string, contact_phone?:string, date_start?:string, date_eta?:string, date_end?:string, cost_estimated?:number, cost_actual?:number, service_value?:number, progress?:number, site_id?:string, site_name?:string, site_address_line1?:string, site_city?:string, site_province?:string, site_country?:string, site_postal_code?:string, status_label?:string };
 type ProjectFile = { id:string, file_object_id:string, is_image?:boolean, content_type?:string, category?:string, original_name?:string, uploaded_at?:string };
@@ -31,15 +56,16 @@ export default function ProjectDetail(){
   const { data:projectEstimates } = useQuery({ queryKey:['projectEstimates', id], queryFn: ()=>api<any[]>('GET', `/estimate/estimates?project_id=${encodeURIComponent(String(id||''))}`) });
   // Check for tab query parameter
   const searchParams = new URLSearchParams(location.search);
-  const initialTab = (searchParams.get('tab') as 'overview'|'general'|'reports'|'dispatch'|'timesheet'|'files'|'photos'|'proposal'|'estimate'|null) || 'overview';
-  const [tab, setTab] = useState<'overview'|'general'|'reports'|'dispatch'|'timesheet'|'files'|'photos'|'proposal'|'estimate'>(initialTab);
+  const initialTab = (searchParams.get('tab') as 'overview'|'general'|'reports'|'dispatch'|'timesheet'|'files'|'photos'|'proposal'|'estimate'|'orders'|null) || 'overview';
+  const [tab, setTab] = useState<'overview'|'general'|'reports'|'dispatch'|'timesheet'|'files'|'photos'|'proposal'|'estimate'|'orders'>(initialTab);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const estimateBuilderRef = useRef<EstimateBuilderRef>(null);
   
   // Update tab when URL search params change
   useEffect(() => {
     const searchParams = new URLSearchParams(location.search);
-    const tabParam = searchParams.get('tab') as 'overview'|'general'|'reports'|'dispatch'|'timesheet'|'files'|'photos'|'proposal'|'estimate'|null;
-    if (tabParam && ['overview','general','reports','dispatch','timesheet','files','photos','proposal','estimate'].includes(tabParam)) {
+    const tabParam = searchParams.get('tab') as 'overview'|'general'|'reports'|'dispatch'|'timesheet'|'files'|'photos'|'proposal'|'estimate'|'orders'|null;
+    if (tabParam && ['overview','general','reports','dispatch','timesheet','files','photos','proposal','estimate','orders'].includes(tabParam)) {
       setTab(tabParam);
     }
   }, [location.search]);
@@ -54,6 +80,8 @@ export default function ProjectDetail(){
     return row?.value || '';
   }, [settings]);
   const [overlayResolved, setOverlayResolved] = useState<string>('');
+  const [showAuditLogModal, setShowAuditLogModal] = useState(false);
+  const [auditLogSection, setAuditLogSection] = useState<'timesheet' | 'reports' | 'schedule' | 'files' | 'photos' | 'proposal' | 'estimate'>('timesheet');
   useEffect(()=>{
     (async()=>{
       try{
@@ -104,13 +132,13 @@ export default function ProjectDetail(){
                   </div>
                 </div>
                 <button onClick={async()=>{
-                  const ok = await confirm({ 
+                  const result = await confirm({ 
                     title: 'Delete Project', 
                     message: `Are you sure you want to delete "${proj?.name||'this project'}"? This action cannot be undone. All related data (updates, reports, timesheets) will also be deleted.`,
                     confirmText: 'Delete',
                     cancelText: 'Cancel'
                   });
-                  if (!ok) return;
+                  if (result !== 'confirm') return;
                   try{
                     await api('DELETE', `/projects/${encodeURIComponent(String(id||''))}`);
                     toast.success('Project deleted');
@@ -122,10 +150,45 @@ export default function ProjectDetail(){
                   }catch(_e){ toast.error('Failed to delete project'); }
                 }} className="px-4 py-2 rounded bg-red-600 hover:bg-red-700 text-white text-sm">Delete Project</button>
               </div>
-              <div className="mt-auto flex gap-3">
-                {(['overview','reports','dispatch','timesheet','files','photos','proposal','estimate'] as const).map(k=> (
-                  <button key={k} onClick={()=>setTab(k)} className={`px-4 py-2 rounded-full ${tab===k?'bg-black text-white':'bg-white text-black'}`}>{k === 'dispatch' ? 'Schedule' : k[0].toUpperCase()+k.slice(1)}</button>
-                ))}
+              <div className="mt-auto flex gap-3 items-center justify-between w-full">
+                <div className="flex gap-3">
+                  {(['overview','reports','dispatch','timesheet','files','photos','proposal','estimate','orders'] as const).map(k=> (
+                    <button key={k} onClick={async () => {
+                      // If leaving estimate tab and there are unsaved changes, show confirmation
+                      if (tab === 'estimate' && k !== 'estimate' && estimateBuilderRef.current?.hasUnsavedChanges()) {
+                        const result = await confirm({
+                          title: 'Unsaved Changes',
+                          message: 'You have unsaved changes in the Estimate tab. What would you like to do?',
+                          confirmText: 'Save and Continue',
+                          cancelText: 'Cancel',
+                          showDiscard: true,
+                          discardText: 'Discard Changes'
+                        });
+                        
+                        if (result === 'confirm') {
+                          // Save before leaving
+                          const saved = await estimateBuilderRef.current?.save();
+                          if (saved) {
+                            setTab(k);
+                          }
+                        } else if (result === 'discard') {
+                          // Discard changes and leave
+                          setTab(k);
+                        }
+                        // If cancelled, do nothing (stay on estimate tab)
+                      } else {
+                        // No unsaved changes or not leaving estimate tab, proceed normally
+                        setTab(k);
+                      }
+                    }} className={`px-4 py-2 rounded-full ${tab===k?'bg-black text-white':'bg-white text-black'}`}>{k === 'dispatch' ? 'Schedule' : k[0].toUpperCase()+k.slice(1)}</button>
+                  ))}
+                </div>
+                <button 
+                  onClick={() => setShowAuditLogModal(true)}
+                  className="px-4 py-2 rounded bg-gray-700 hover:bg-gray-800 text-white text-sm"
+                >
+                  Audit Log
+                </button>
               </div>
             </div>
           </div>
@@ -178,8 +241,12 @@ export default function ProjectDetail(){
 
             {tab==='estimate' && (
               <div className="rounded-xl border bg-white p-4">
-                <EstimateBuilder projectId={String(id)} statusLabel={proj?.status_label||''} settings={settings||{}} />
+                <EstimateBuilder ref={estimateBuilderRef} projectId={String(id)} statusLabel={proj?.status_label||''} settings={settings||{}} />
               </div>
+            )}
+
+            {tab==='orders' && (
+              <OrdersTab projectId={String(id)} project={proj||{id: String(id)}} />
             )}
           </>
         )}
@@ -197,6 +264,81 @@ export default function ProjectDetail(){
             setPickerOpen(false);
           }catch(e){ toast.error('Failed to update cover'); setPickerOpen(false); }
         }} />
+      )}
+
+      {/* Audit Log Modal */}
+      {showAuditLogModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl max-w-6xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+            <div className="sticky top-0 bg-white border-b p-4 flex items-center justify-between">
+              <h2 className="text-xl font-semibold">Audit Log</h2>
+              <button 
+                onClick={() => setShowAuditLogModal(false)} 
+                className="text-2xl font-bold text-gray-400 hover:text-gray-600"
+              >
+                ×
+              </button>
+            </div>
+            
+            <div className="flex-1 overflow-hidden flex">
+              {/* Left side - Section buttons */}
+              <div className="w-48 border-r bg-gray-50 p-4">
+                <div className="space-y-2">
+                  {(['timesheet', 'reports', 'schedule', 'files', 'photos', 'proposal', 'estimate'] as const).map((section) => (
+                    <button
+                      key={section}
+                      onClick={() => setAuditLogSection(section)}
+                      className={`w-full text-left px-3 py-2 rounded text-sm ${
+                        auditLogSection === section
+                          ? 'bg-blue-100 text-blue-800 font-medium'
+                          : 'bg-white text-gray-700 hover:bg-gray-100'
+                      }`}
+                    >
+                      {section[0].toUpperCase() + section.slice(1)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              
+              {/* Right side - Log content */}
+              <div className="flex-1 overflow-y-auto p-6">
+                {auditLogSection === 'timesheet' && (
+                  <TimesheetAuditSection projectId={String(id)} />
+                )}
+                {auditLogSection === 'reports' && (
+                  <div className="text-center text-gray-500 py-8">
+                    Reports audit log coming soon...
+                  </div>
+                )}
+                {auditLogSection === 'schedule' && (
+                  <div className="text-center text-gray-500 py-8">
+                    Schedule audit log coming soon...
+                  </div>
+                )}
+                {auditLogSection === 'files' && (
+                  <div className="text-center text-gray-500 py-8">
+                    Files audit log coming soon...
+                  </div>
+                )}
+                {auditLogSection === 'photos' && (
+                  <div className="text-center text-gray-500 py-8">
+                    Photos audit log coming soon...
+                  </div>
+                )}
+                {auditLogSection === 'proposal' && (
+                  <div className="text-center text-gray-500 py-8">
+                    Proposal audit log coming soon...
+                  </div>
+                )}
+                {auditLogSection === 'estimate' && (
+                  <div className="text-center text-gray-500 py-8">
+                    Estimate audit log coming soon...
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
@@ -524,8 +666,15 @@ function EmployeeSelect({ label, value, onChange, employees }:{ label:string, va
 
 function TimesheetTab({ projectId }:{ projectId:string }){
   const queryClient = useQueryClient();
+  const confirm = useConfirm();
   const [month, setMonth] = useState<string>(new Date().toISOString().slice(0,7));
   const [userFilter, setUserFilter] = useState<string>('');
+  
+  // Edit time entry modal state
+  const [editingEntry, setEditingEntry] = useState<any>(null);
+  const [editStartTime, setEditStartTime] = useState<string>('');
+  const [editEndTime, setEditEndTime] = useState<string>('');
+  
   const qs = useMemo(()=>{
     const p = new URLSearchParams();
     if (month) p.set('month', month);
@@ -536,8 +685,71 @@ function TimesheetTab({ projectId }:{ projectId:string }){
   const { data, refetch } = useQuery({ queryKey:['timesheet', projectId, qs], queryFn: ()=> api<any[]>(`GET`, `/projects/${projectId}/timesheet${qs}`), refetchInterval: 10000 });
   const entries = data||[];
   const [workDate, setWorkDate] = useState<string>(new Date().toISOString().slice(0,10));
-  const minutesTotal = (entries||[]).reduce((acc:number, e:any)=> acc + Number(e.minutes||0), 0);
-  const hoursTotal = (minutesTotal/60).toFixed(1);
+  
+  // Get timesheet settings for default break
+  const { data: settings } = useQuery({ queryKey:['settings-bundle'], queryFn: ()=>api<Record<string, any[]>>('GET','/settings') });
+  const defaultBreakMin = useMemo(() => {
+    const timesheetItems = (settings?.timesheet || []) as any[];
+    const breakItem = timesheetItems.find((i: any) => i.label === 'default_break_minutes');
+    return breakItem?.value ? parseInt(breakItem.value, 10) : 30;
+  }, [settings]);
+  
+  // Fetch all shifts for the project to get break minutes for each entry
+  // We need to fetch shifts for the month range to get break minutes
+  const monthRange = useMemo(() => {
+    if (!month) return null;
+    try {
+      const [year, monthNum] = month.split('-').map(Number);
+      const firstDay = new Date(year, monthNum - 1, 1);
+      const lastDay = new Date(year, monthNum, 0);
+      return `${firstDay.toISOString().slice(0, 10)},${lastDay.toISOString().slice(0, 10)}`;
+    } catch {
+      return null;
+    }
+  }, [month]);
+  
+  const { data: allShifts } = useQuery({
+    queryKey: ['dispatch-shifts-all', projectId, monthRange],
+    queryFn: () => api<any[]>('GET', `/dispatch/projects/${projectId}/shifts${monthRange ? `?date_range=${monthRange}` : ''}`),
+    enabled: !!projectId
+  });
+  
+  // Create a map of shifts by user_id and work_date for quick lookup
+  const shiftsByUserAndDate = useMemo(() => {
+    const map: Record<string, any> = {};
+    if (allShifts) {
+      allShifts.forEach((shift: any) => {
+        const key = `${shift.worker_id}_${shift.date}`;
+        if (!map[key] || !Array.isArray(map[key])) {
+          map[key] = [];
+        }
+        map[key].push(shift);
+      });
+    }
+    return map;
+  }, [allShifts]);
+  
+  // Calculate total minutes with break deduction
+  const { minutesTotal, breakTotal } = useMemo(() => {
+    let total = 0;
+    let breakTotal = 0;
+    entries.forEach((e: any) => {
+      const entryMinutes = Number(e.minutes || 0);
+      total += entryMinutes;
+      
+      // Find shift for this entry to get break minutes
+      const key = `${e.user_id}_${e.work_date}`;
+      const shiftsForEntry = shiftsByUserAndDate[key] || [];
+      // Use the first shift's break_min, or default from settings
+      const breakMin = shiftsForEntry.length > 0 && shiftsForEntry[0].default_break_min 
+        ? shiftsForEntry[0].default_break_min 
+        : defaultBreakMin;
+      breakTotal += breakMin;
+    });
+    return { minutesTotal: total, breakTotal };
+  }, [entries, shiftsByUserAndDate, defaultBreakMin]);
+  
+  const hoursTotalMinutes = minutesTotal - breakTotal;
   const { data:employees } = useQuery({ queryKey:['employees'], queryFn: ()=>api<any[]>('GET','/employees') });
   
   // Get current user info to check if supervisor/admin
@@ -623,7 +835,7 @@ function TimesheetTab({ projectId }:{ projectId:string }){
   // Check if GPS location is inside geofence
   const checkGeofence = (lat: number, lng: number, geofences: any[] | null | undefined) => {
     if (!geofences || geofences.length === 0) {
-      setGeofenceStatus({ inside: true }); // No geofence means always allowed
+      setGeofenceStatus(null); // No geofence - don't set status, message won't show
       return;
     }
 
@@ -658,7 +870,7 @@ function TimesheetTab({ projectId }:{ projectId:string }){
   };
 
   // Get GPS location
-  const getCurrentLocation = (): Promise<{ lat: number; lng: number; accuracy: number }> => {
+  const getCurrentLocation = (shiftForGeofence?: any): Promise<{ lat: number; lng: number; accuracy: number }> => {
     return new Promise((resolve, reject) => {
       if (!navigator.geolocation) {
         reject(new Error('Geolocation is not supported by your browser'));
@@ -679,10 +891,12 @@ function TimesheetTab({ projectId }:{ projectId:string }){
           setGpsLocation(location);
           
           // Check geofence if shift has geofences
-          if (selectedShift?.geofences) {
-            checkGeofence(location.lat, location.lng, selectedShift.geofences);
+          // Use shiftForGeofence if provided, otherwise use selectedShift
+          const shiftToCheck = shiftForGeofence || selectedShift;
+          if (shiftToCheck?.geofences && shiftToCheck.geofences.length > 0) {
+            checkGeofence(location.lat, location.lng, shiftToCheck.geofences);
           } else {
-            setGeofenceStatus({ inside: true }); // No geofence means always allowed
+            setGeofenceStatus(null); // No geofence - don't set status, message won't show
           }
           
           resolve(location);
@@ -751,6 +965,7 @@ function TimesheetTab({ projectId }:{ projectId:string }){
     setClockType(type);
     setReasonText('');
     setGpsError('');
+    setGpsLocation(null); // Clear previous location
     setGeofenceStatus(null);
 
     // Set default time to now (rounded to 15 min) in 12h format
@@ -767,17 +982,20 @@ function TimesheetTab({ projectId }:{ projectId:string }){
     const roundedTime = `${String(hour24).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
     setSelectedTime(roundedTime);
 
-    // Try to get GPS location
+    // Open modal first so user can see it
+    setShowClockModal(true);
+
+    // Try to get GPS location automatically when modal opens
+    // Pass shift directly to ensure geofence check uses the correct shift
     setGpsLoading(true);
     try {
-      await getCurrentLocation();
+      await getCurrentLocation(shift);
     } catch (error) {
       console.warn('GPS location failed:', error);
+      // Error is already set by getCurrentLocation, so user will see it in the modal
     } finally {
       setGpsLoading(false);
     }
-
-    setShowClockModal(true);
   };
 
   // Submit attendance
@@ -914,8 +1132,16 @@ function TimesheetTab({ projectId }:{ projectId:string }){
       if (month) qs.set('month', month);
       if (userFilter) qs.set('user_id', userFilter);
       const rows:any[] = await api('GET', `/projects/${projectId}/timesheet?${qs.toString()}`);
-      const header = ['Date','User','Hours','Notes'];
-      const csv = [header.join(',')].concat(rows.map(r=> [r.work_date, JSON.stringify(r.user_name||''), (r.minutes/60).toFixed(2), JSON.stringify(r.notes||'')].join(','))).join('\n');
+      const header = ['Date','User','Hours','Break','Hours (after break)','Notes'];
+      const csv = [header.join(',')].concat(rows.map(r=> {
+        const key = `${r.user_id}_${r.work_date}`;
+        const shiftsForEntry = shiftsByUserAndDate[key] || [];
+        const breakMin = shiftsForEntry.length > 0 && shiftsForEntry[0].default_break_min 
+          ? shiftsForEntry[0].default_break_min 
+          : defaultBreakMin;
+        const hoursAfterBreak = Math.max(0, (r.minutes || 0) - breakMin);
+        return [r.work_date, JSON.stringify(r.user_name||''), (r.minutes/60).toFixed(2), breakMin, formatHoursMinutes(hoursAfterBreak), JSON.stringify(r.notes||'')].join(',');
+      })).join('\n');
       const blob = new Blob([csv], { type:'text/csv;charset=utf-8;' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a'); a.href = url; a.download = `timesheet_${projectId}_${month||'all'}.csv`; a.click(); URL.revokeObjectURL(url);
@@ -944,7 +1170,7 @@ function TimesheetTab({ projectId }:{ projectId:string }){
                   return (
                     <div key={shift.id} className="p-2 border rounded bg-gray-50 text-xs">
                       <div className="font-medium mb-1.5 text-gray-900">
-                        {shift.start_time.slice(0, 5)} - {shift.end_time.slice(0, 5)}
+                        {formatTime12h(shift.start_time)} - {formatTime12h(shift.end_time)}
                         {shift.job_name && <span className="ml-1 text-gray-500 font-normal">({shift.job_name})</span>}
                         {worker && <span className="ml-1 text-gray-600 font-normal">- {worker.name || worker.username}</span>}
                       </div>
@@ -955,7 +1181,7 @@ function TimesheetTab({ projectId }:{ projectId:string }){
                             <div className="flex items-center gap-1.5 flex-1">
                               {getStatusBadge(clockIn.status)}
                               <span className="text-gray-700">
-                                {new Date(clockIn.time_selected_utc).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                {new Date(clockIn.time_selected_utc).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}
                               </span>
                               {clockIn.source === 'supervisor' && (
                                 <span className="text-gray-500 text-[10px]">(Supervisor)</span>
@@ -971,7 +1197,7 @@ function TimesheetTab({ projectId }:{ projectId:string }){
                             <div className="flex items-center gap-1.5 flex-1">
                               {getStatusBadge(clockOut.status)}
                               <span className="text-gray-700">
-                                {new Date(clockOut.time_selected_utc).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                {new Date(clockOut.time_selected_utc).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}
                               </span>
                               {clockOut.source === 'supervisor' && (
                                 <span className="text-gray-500 text-[10px]">(Supervisor)</span>
@@ -1023,11 +1249,24 @@ function TimesheetTab({ projectId }:{ projectId:string }){
           <div className="flex items-center gap-2"><label className="text-xs text-gray-600">Month</label><input type="month" className="border rounded px-2 py-1" value={month} onChange={e=>{ setMonth(e.target.value); }} /></div>
           <div className="flex items-center gap-2"><label className="text-xs text-gray-600">Employee</label><select className="border rounded px-2 py-1 text-sm" value={userFilter} onChange={e=>setUserFilter(e.target.value)}><option value="">All</option>{(employees||[]).map((emp:any)=> <option key={emp.id} value={emp.id}>{emp.name||emp.username}</option>)}</select></div>
           <div className="flex items-center gap-3">
-            <div className="text-sm text-gray-700">Total: {hoursTotal}h</div>
+            <div className="text-sm text-gray-700">Total: {formatHoursMinutes(hoursTotalMinutes)} <span className="text-xs text-gray-500">(after break)</span></div>
             <button onClick={csvExport} className="px-2 py-1 rounded bg-gray-100 text-sm">Export CSV</button>
           </div>
         </div>
-        <div className="border-t divide-y">
+        <div className="border-t">
+          {/* Header row */}
+          <div className="px-3 py-2 text-xs font-medium text-gray-600 border-b bg-gray-50 flex items-center gap-3">
+            <div className="w-6"></div>
+            <div className="w-24">Employee</div>
+            <div className="w-12">Date</div>
+            <div className="w-20">Time</div>
+            <div className="w-20">Hours</div>
+            <div className="w-16">Break</div>
+            <div className="flex-1">Notes</div>
+            <div className="w-24"></div>
+          </div>
+        </div>
+        <div className="divide-y">
           {entries.length? entries.map((e:any)=> {
             const now = new Date();
             const endDt = e.end_time? new Date(`${e.work_date}T${e.end_time}`) : new Date(`${e.work_date}T23:59:00`);
@@ -1040,27 +1279,155 @@ function TimesheetTab({ projectId }:{ projectId:string }){
               if(diffH>0){ if(diffH<=12) offIcon='🟢'; else if(diffH<=24) offIcon='🟡'; else offIcon='🔴'; }
             }
             const futIcon = future? '⏳' : '';
+            // Find shift for this entry to get break minutes
+            const key = `${e.user_id}_${e.work_date}`;
+            const shiftsForEntry = shiftsByUserAndDate[key] || [];
+            const breakMin = shiftsForEntry.length > 0 && shiftsForEntry[0].default_break_min 
+              ? shiftsForEntry[0].default_break_min 
+              : defaultBreakMin;
+            // Calculate hours after deducting break
+            const hoursAfterBreak = Math.max(0, e.minutes - breakMin);
+            
             return (
             <div key={e.id} className="px-3 py-2 text-sm flex items-center justify-between">
               <div className="flex items-center gap-3">
                 {e.user_avatar_file_id? <img src={`/files/${e.user_avatar_file_id}/thumbnail?w=64`} className="w-6 h-6 rounded-full"/> : <span className="w-6 h-6 rounded-full bg-gray-200 inline-block"/>}
                 <div className="w-24 text-gray-700 truncate">{e.user_name||''}</div>
                 <div className="w-12 text-gray-600">{String(e.work_date).slice(5,10)}</div>
-                <div className="w-20 text-gray-600">{(e.start_time||'--:--')} - {(e.end_time||'--:--')}</div>
-                <div className="w-14 font-medium">{(e.minutes/60).toFixed(2)}h</div>
-                <div className="text-gray-600">{e.notes||''}</div>
+                <div className="w-20 text-gray-600">{formatTime12h(e.start_time)} - {formatTime12h(e.end_time)}</div>
+                <div className="w-20 font-medium">{formatHoursMinutes(hoursAfterBreak)}</div>
+                <div className="w-16 font-medium">{breakMin}m</div>
+                <div className="flex-1 text-gray-600 truncate">{e.notes||''}</div>
                 {(futIcon||offIcon) && <span title={future? 'Future time': 'Logged after day end'}>{futIcon}{offIcon}</span>}
               </div>
               <div className="flex items-center gap-2">
-                <button onClick={async()=>{ const val = prompt('New hours', (e.minutes/60).toFixed(2)); if(val==null) return; const mins = Math.round(Number(val||'0')*60); try{ await api('PATCH', `/projects/${projectId}/timesheet/${e.id}`, { minutes: mins }); await refetch(); queryClient.invalidateQueries({ queryKey: ['timesheetLogs', projectId] }); }catch(_e){ toast.error('Not authorized'); } }} className="px-2 py-1 rounded bg-gray-100">Edit</button>
-                <button onClick={async()=>{ if(!confirm('Delete entry?')) return; await api('DELETE', `/projects/${projectId}/timesheet/${e.id}`); await refetch(); await refetchAttendances(); await refetchShifts(); queryClient.invalidateQueries({ queryKey: ['timesheetLogs', projectId] }); }} className="px-2 py-1 rounded bg-gray-100">Delete</button>
+                <button 
+                  onClick={() => {
+                    setEditingEntry(e);
+                    // Extract time from HH:MM:SS format to HH:MM
+                    const startTime = e.start_time ? e.start_time.slice(0, 5) : '';
+                    const endTime = e.end_time ? e.end_time.slice(0, 5) : '';
+                    setEditStartTime(startTime);
+                    setEditEndTime(endTime);
+                  }} 
+                  className="px-2 py-1 rounded bg-gray-100"
+                >
+                  Edit
+                </button>
+                <button 
+                  onClick={async() => {
+                    const result = await confirm({
+                      title: 'Delete Time Entry',
+                      message: 'Are you sure you want to delete this time entry?',
+                      confirmText: 'Delete',
+                      cancelText: 'Cancel'
+                    });
+                    if (result !== 'confirm') return;
+                    try {
+                      await api('DELETE', `/projects/${projectId}/timesheet/${e.id}`);
+                      await refetch();
+                      await refetchAttendances();
+                      await refetchShifts();
+                      queryClient.invalidateQueries({ queryKey: ['timesheetLogs', projectId] });
+                      toast.success('Time entry deleted');
+                    } catch (_e) {
+                      toast.error('Failed to delete time entry');
+                    }
+                  }} 
+                  className="px-2 py-1 rounded bg-gray-100"
+                >
+                  Delete
+                </button>
               </div>
             </div>
           );
           }) : <div className="p-3 text-sm text-gray-600">No time entries</div>}
         </div>
       </div>
-      <TimeAudit projectId={projectId} month={month} />
+      {/* Edit Time Entry Modal */}
+      {editingEntry && (
+        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl max-w-md w-full p-6 space-y-4">
+            <h3 className="text-lg font-semibold">Edit Time Entry</h3>
+            
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Start Time *</label>
+              <input
+                type="time"
+                value={editStartTime}
+                onChange={(e) => setEditStartTime(e.target.value)}
+                className="w-full border rounded px-3 py-2"
+                required
+              />
+            </div>
+            
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">End Time *</label>
+              <input
+                type="time"
+                value={editEndTime}
+                onChange={(e) => setEditEndTime(e.target.value)}
+                className="w-full border rounded px-3 py-2"
+                required
+              />
+            </div>
+            
+            <div className="flex justify-end gap-2 pt-4 border-t">
+              <button
+                onClick={() => {
+                  setEditingEntry(null);
+                  setEditStartTime('');
+                  setEditEndTime('');
+                }}
+                className="px-4 py-2 rounded border bg-gray-100 hover:bg-gray-200"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  if (!editStartTime || !editEndTime) {
+                    toast.error('Start time and end time are required');
+                    return;
+                  }
+                  
+                  try {
+                    // Calculate minutes from start and end time
+                    const [startH, startM] = editStartTime.split(':').map(Number);
+                    const [endH, endM] = editEndTime.split(':').map(Number);
+                    const startMinutes = startH * 60 + startM;
+                    const endMinutes = endH * 60 + endM;
+                    const minutes = endMinutes - startMinutes;
+                    
+                    if (minutes <= 0) {
+                      toast.error('End time must be after start time');
+                      return;
+                    }
+                    
+                    await api('PATCH', `/projects/${projectId}/timesheet/${editingEntry.id}`, {
+                      start_time: `${editStartTime}:00`,
+                      end_time: `${editEndTime}:00`,
+                      minutes: minutes
+                    });
+                    
+                    await refetch();
+                    queryClient.invalidateQueries({ queryKey: ['timesheetLogs', projectId] });
+                    toast.success('Time entry updated');
+                    
+                    setEditingEntry(null);
+                    setEditStartTime('');
+                    setEditEndTime('');
+                  } catch (_e) {
+                    toast.error('Failed to update time entry');
+                  }
+                }}
+                className="px-4 py-2 rounded bg-brand-red text-white hover:bg-red-700"
+              >
+                Save
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Clock In/Out Modal */}
       {showClockModal && selectedShift && clockType && (
@@ -1130,25 +1497,26 @@ function TimesheetTab({ projectId }:{ projectId:string }){
 
             {/* GPS Status */}
             <div>
-              <div className="flex items-center justify-between mb-2">
-                <label className="block text-sm font-medium text-gray-700">Location</label>
-                          <button
-                            type="button"
-                            onClick={getCurrentLocation}
-                            disabled={gpsLoading}
-                            className="text-xs px-2 py-1 rounded border hover:bg-gray-50"
-                          >
-                            {gpsLoading ? 'Getting location...' : 'Try GPS again'}
-                          </button>
-              </div>
-                          {gpsLocation ? (
-                            <>
-                              <div className="p-3 bg-green-50 border border-green-200 rounded text-sm">
-                                <div className="text-green-800">✓ Location captured</div>
-                                <div className="text-xs text-green-600 mt-1">
-                                  Accuracy: {Math.round(gpsLocation.accuracy)}m
-                                </div>
-                              </div>
+              {gpsLocation ? (
+                <>
+                  <div className="p-3 bg-green-50 border border-green-200 rounded text-sm">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className="text-green-800">✓ Location captured</div>
+                        <div className="text-xs text-green-600 mt-1">
+                          Accuracy: {Math.round(gpsLocation.accuracy)}m
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => getCurrentLocation(selectedShift)}
+                        disabled={gpsLoading}
+                        className="text-xs px-2 py-1 rounded border hover:bg-gray-50 bg-white"
+                      >
+                        {gpsLoading ? 'Getting location...' : 'Try GPS again'}
+                      </button>
+                    </div>
+                  </div>
                   {selectedShift?.geofences && selectedShift.geofences.length > 0 ? (
                     geofenceStatus && (
                       <div className={`p-3 border rounded text-sm mt-2 ${
@@ -1186,6 +1554,13 @@ function TimesheetTab({ projectId }:{ projectId:string }){
                     </div>
                   )}
                 </>
+              ) : gpsLoading ? (
+                <div className="p-3 bg-blue-50 border border-blue-200 rounded text-sm text-blue-800">
+                  <div className="flex items-center gap-2">
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-800"></div>
+                    <span>Getting location...</span>
+                  </div>
+                </div>
               ) : gpsError ? (
                 <div className="p-3 bg-yellow-50 border border-yellow-200 rounded text-sm text-yellow-800">
                   {gpsError}
@@ -1205,8 +1580,29 @@ function TimesheetTab({ projectId }:{ projectId:string }){
                     // Check if supervisor is doing for another worker
                     const isWorkerOwner = currentUser && selectedShift?.worker_id && String(currentUser.id) === String(selectedShift.worker_id);
                     const isSupervisorDoingForOther = isSupervisorOrAdmin && selectedShift && !isWorkerOwner;
-                    // Require reason if: supervisor doing for other worker OR not inside geofence
-                    const requiresReason = isSupervisorDoingForOther || (geofenceStatus && !geofenceStatus.inside);
+                    
+                    // Check if time is outside tolerance (30 minutes)
+                    let isOutsideTimeTolerance = false;
+                    if (selectedShift && selectedTime && selectedHour12 && selectedMinute) {
+                      try {
+                        const now = new Date();
+                        const shiftDate = selectedShift.date; // YYYY-MM-DD
+                        const hour24 = selectedAmPm === 'PM' && parseInt(selectedHour12) !== 12 
+                          ? parseInt(selectedHour12) + 12 
+                          : selectedAmPm === 'AM' && parseInt(selectedHour12) === 12 
+                          ? 0 
+                          : parseInt(selectedHour12);
+                        const selectedDateTime = new Date(`${shiftDate}T${String(hour24).padStart(2, '0')}:${selectedMinute}:00`);
+                        const diffMinutes = Math.abs((selectedDateTime.getTime() - now.getTime()) / (1000 * 60));
+                        isOutsideTimeTolerance = diffMinutes > 30;
+                      } catch (e) {
+                        // Ignore errors in calculation
+                      }
+                    }
+                    
+                    // Require reason if: supervisor doing for other worker OR not inside geofence OR outside time tolerance
+                    const isOutsideGeofence = geofenceStatus && !geofenceStatus.inside;
+                    const requiresReason = isSupervisorDoingForOther || isOutsideGeofence || isOutsideTimeTolerance;
                     return requiresReason && <span className="text-red-500">*</span>;
                   })()
                 }
@@ -1232,11 +1628,33 @@ function TimesheetTab({ projectId }:{ projectId:string }){
                     );
                   }
                   
-                  // Check geofence status
-                  if (geofenceStatus && !geofenceStatus.inside) {
+                  // Check if time is outside tolerance (30 minutes)
+                  let isOutsideTimeTolerance = false;
+                  if (selectedShift && selectedTime && selectedHour12 && selectedMinute) {
+                    try {
+                      const now = new Date();
+                      const shiftDate = selectedShift.date; // YYYY-MM-DD
+                      const hour24 = selectedAmPm === 'PM' && parseInt(selectedHour12) !== 12 
+                        ? parseInt(selectedHour12) + 12 
+                        : selectedAmPm === 'AM' && parseInt(selectedHour12) === 12 
+                        ? 0 
+                        : parseInt(selectedHour12);
+                      const selectedDateTime = new Date(`${shiftDate}T${String(hour24).padStart(2, '0')}:${selectedMinute}:00`);
+                      const diffMinutes = Math.abs((selectedDateTime.getTime() - now.getTime()) / (1000 * 60));
+                      isOutsideTimeTolerance = diffMinutes > 30;
+                    } catch (e) {
+                      // Ignore errors in calculation
+                    }
+                  }
+                  
+                  // Check if outside geofence OR outside time tolerance
+                  const isOutsideGeofence = geofenceStatus && !geofenceStatus.inside;
+                  const requiresReason = isOutsideGeofence || isOutsideTimeTolerance;
+                  
+                  if (requiresReason) {
                     return (
                       <span className="text-red-600 font-medium">
-                        Required (minimum 15 characters): You are not at the correct site. Please describe the reason.
+                        ⚠ REQUIRED (minimum 15 characters): You are attempting to clock in/out outside the allowed location or outside the permitted time range (±30 minutes). You must provide a written reason explaining why. Your entry will be sent for supervisor review.
                       </span>
                     );
                   }
@@ -1249,9 +1667,9 @@ function TimesheetTab({ projectId }:{ projectId:string }){
                     );
                   }
                   
-                  // If inside geofence, reason is optional (even if outside tolerance)
+                  // If inside geofence and within time tolerance, reason is optional
                   if (geofenceStatus && geofenceStatus.inside) {
-                    return 'Optional: You are at the correct site. Reason is only required if time is significantly outside the expected window.';
+                    return 'Optional: You are at the correct site and within the time tolerance. Reason is not required.';
                   }
                   
                   return 'Optional, but recommended. Required if you are not at the correct site or time is outside tolerance window (±30 minutes).';
@@ -1260,9 +1678,9 @@ function TimesheetTab({ projectId }:{ projectId:string }){
             </div>
 
             {/* Privacy notice */}
-            <div className="p-3 bg-blue-50 border border-blue-200 rounded text-xs text-blue-800">
+            <p className="text-xs text-gray-500 mt-2">
               <strong>Privacy Notice:</strong> Your location is used only for attendance validation at the time of clock-in/out.
-            </div>
+            </p>
 
             {/* Actions */}
             <div className="flex justify-end gap-2 pt-4 border-t">
@@ -1296,84 +1714,221 @@ function TimesheetTab({ projectId }:{ projectId:string }){
   );
 }
 
-function TimeAudit({ projectId, month }:{ projectId:string, month:string }){
+function TimesheetAuditSection({ projectId }:{ projectId:string }){
+  const [month, setMonth] = useState<string>(new Date().toISOString().slice(0,7));
   const [offset, setOffset] = useState<number>(0);
   const limit = 50;
   const qs = (()=>{ const p = new URLSearchParams(); if(month) p.set('month', month); p.set('limit', String(limit)); p.set('offset', String(offset)); const s=p.toString(); return s? ('?'+s): ''; })();
   const { data, refetch, isFetching } = useQuery({ queryKey:['timesheetLogs', projectId, month, offset], queryFn: ()=> api<any[]>('GET', `/projects/${projectId}/timesheet/logs${qs}`) });
   const logs = data||[];
   return (
-    <div className="md:col-span-3 mt-4 rounded-xl border bg-white">
-      <div className="p-3 font-semibold flex items-center justify-between">Audit Log {isFetching && <span className="text-[11px] text-gray-500">Loading...</span>}</div>
-      <div className="border-t divide-y">
-        {logs.length? logs.map((l:any)=> {
-          const ch = l.changes||{};
-          const before = ch.before||{}; const after = ch.after||{};
-          const bMin = typeof before.minutes==='number'? (before.minutes/60).toFixed(2): null;
-          const aMin = typeof after.minutes==='number'? (after.minutes/60).toFixed(2): null;
-          return (
-            <div key={l.id} className="px-3 py-2 text-sm">
-              <div className="flex items-start gap-2">
-                {l.user_avatar_file_id? <img src={`/files/${l.user_avatar_file_id}/thumbnail?w=64`} className="w-6 h-6 rounded-full"/> : <span className="w-6 h-6 rounded-full bg-gray-200 inline-block"/>}
-                <div className="flex-1 min-w-0">
-                  <div className="text-[11px] text-gray-500">{String(l.timestamp||'').slice(0,19).replace('T',' ')} · {l.user_name||''}</div>
-                  <div className="text-gray-800 capitalize">{l.action}</div>
-                  {(l.action==='update' && (before||after)) && (
-                    <div className="mt-1 grid grid-cols-3 gap-2 text-[11px] text-gray-700">
-                      <div>
-                        <div className="text-gray-500">Date</div>
-                        <div>{(before.work_date||'') ? String(before.work_date).slice(0,10) : '-' } → {(after.work_date||'') ? String(after.work_date).slice(0,10) : '-'}</div>
+    <div>
+      {/* Month filter */}
+      <div className="mb-4 flex items-center gap-2">
+        <label className="text-sm font-medium text-gray-700">Month:</label>
+        <input
+          type="month"
+          value={month}
+          onChange={(e) => {
+            setMonth(e.target.value);
+            setOffset(0);
+          }}
+          className="border rounded px-3 py-1 text-sm"
+        />
+      </div>
+      
+      <div className="border rounded-lg divide-y bg-white">
+        {isFetching && (
+          <div className="p-3 text-right bg-gray-50">
+            <span className="text-[11px] text-gray-500">Loading...</span>
+          </div>
+        )}
+        <div className="divide-y">
+          {logs.length? logs.map((l:any)=> {
+            const ch = l.changes||{};
+            const before = ch.before||{}; const after = ch.after||{};
+            const bMin = typeof before.minutes==='number'? (before.minutes/60).toFixed(2): null;
+            const aMin = typeof after.minutes==='number'? (after.minutes/60).toFixed(2): null;
+            
+            // Extract attendance information
+            const attendanceType = ch.attendance_type;
+            const workerName = ch.worker_name;
+            const performedBy = ch.performed_by;
+            const timeSelected = ch.time_selected;
+            const timeEntered = ch.time_entered;
+            const reasonText = ch.reason_text;
+            const status = ch.status;
+            const insideGeofence = ch.inside_geofence;
+            const gpsAccuracy = ch.gps_accuracy_m;
+            
+            // Determine if this is an attendance log
+            const isAttendanceLog = !!attendanceType;
+            
+            return (
+              <div key={l.id} className="px-3 py-3 text-sm border-b">
+                <div className="flex items-start gap-2">
+                  {l.user_avatar_file_id? <img src={`/files/${l.user_avatar_file_id}/thumbnail?w=64`} className="w-6 h-6 rounded-full"/> : <span className="w-6 h-6 rounded-full bg-gray-200 inline-block"/>}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <div className="text-[11px] text-gray-500">
+                        {new Date(l.timestamp).toLocaleString('en-US', { 
+                          month: 'short', 
+                          day: 'numeric', 
+                          year: 'numeric',
+                          hour: 'numeric',
+                          minute: '2-digit',
+                          hour12: true 
+                        })}
                       </div>
-                      <div>
-                        <div className="text-gray-500">Hours</div>
-                        <div>{bMin??'-'} → {aMin??'-'}</div>
-                      </div>
-                      <div className="col-span-3 md:col-span-1">
-                        <div className="text-gray-500">Notes</div>
-                        <div className="truncate" title={`${before.notes||''} → ${after.notes||''}`}>{(before.notes||'-') + ' → ' + (after.notes||'-')}</div>
-                      </div>
-                      {(before.start_time || after.start_time) && (
-                        <div>
-                          <div className="text-gray-500">Start Time</div>
-                          <div>{(before.start_time||'-') + ' → ' + (after.start_time||'-')}</div>
-                        </div>
-                      )}
-                      {(before.end_time || after.end_time) && (
-                        <div>
-                          <div className="text-gray-500">End Time</div>
-                          <div>{(before.end_time||'-') + ' → ' + (after.end_time||'-')}</div>
-                        </div>
+                      <span className="text-gray-400">·</span>
+                      <div className="text-[11px] text-gray-500 font-medium">{l.user_name||''}</div>
+                      {isAttendanceLog && workerName && workerName !== l.user_name && (
+                        <>
+                          <span className="text-gray-400">·</span>
+                          <div className="text-[11px] text-blue-600 font-medium">
+                            for {workerName}
+                          </div>
+                        </>
                       )}
                     </div>
-                  )}
-                  {(l.action!=='update' && l.changes) && (
-                    <div className="mt-1 text-[11px] text-gray-700">
-                      {(() => {
-                        // Try to format the changes in a more readable way
-                        if (typeof l.changes === 'object' && l.changes !== null) {
-                          const formatted: string[] = [];
-                          if (l.changes.work_date) formatted.push(`Date: ${String(l.changes.work_date).slice(0,10)}`);
-                          if (l.changes.minutes !== undefined) formatted.push(`Hours: ${(Number(l.changes.minutes)/60).toFixed(2)}h`);
-                          if (l.changes.start_time) formatted.push(`Start: ${l.changes.start_time}`);
-                          if (l.changes.end_time) formatted.push(`End: ${l.changes.end_time}`);
-                          if (l.changes.notes) formatted.push(`Notes: ${l.changes.notes}`);
-                          if (formatted.length > 0) {
-                            return formatted.join(' • ');
-                          }
-                        }
-                        return JSON.stringify(l.changes);
-                      })()}
+                    
+                    <div className="text-gray-800 font-medium capitalize mb-2">
+                      {isAttendanceLog ? `${attendanceType === 'clock-in' ? 'Clock-In' : 'Clock-Out'}` : l.action}
                     </div>
-                  )}
+                    
+                    {/* Attendance-specific information */}
+                    {isAttendanceLog && (
+                      <div className="mt-2 space-y-2 bg-gray-50 p-3 rounded border">
+                        <div className="grid grid-cols-2 gap-3 text-[11px]">
+                          <div>
+                            <div className="text-gray-500 font-medium mb-0.5">Time Selected</div>
+                            <div className="text-gray-800">
+                              {timeSelected ? new Date(timeSelected).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }) : '-'}
+                            </div>
+                          </div>
+                          <div>
+                            <div className="text-gray-500 font-medium mb-0.5">Time Entered</div>
+                            <div className="text-gray-800">
+                              {timeEntered ? new Date(timeEntered).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }) : '-'}
+                            </div>
+                          </div>
+                          <div>
+                            <div className="text-gray-500 font-medium mb-0.5">Status</div>
+                            <div className="text-gray-800">
+                              <span className={`px-1.5 py-0.5 rounded text-xs ${
+                                status === 'approved' ? 'bg-green-100 text-green-800' :
+                                status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+                                'bg-red-100 text-red-800'
+                              }`}>
+                                {status || '-'}
+                              </span>
+                            </div>
+                          </div>
+                          <div>
+                            <div className="text-gray-500 font-medium mb-0.5">Location</div>
+                            <div className="text-gray-800">
+                              {insideGeofence === true ? (
+                                <span className="text-green-600">✓ Inside geofence</span>
+                              ) : insideGeofence === false ? (
+                                <span className="text-red-600">✗ Outside geofence</span>
+                              ) : (
+                                <span className="text-gray-400">-</span>
+                              )}
+                              {gpsAccuracy && (
+                                <span className="text-gray-500 ml-1">({gpsAccuracy.toFixed(0)}m accuracy)</span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                        
+                        {/* Hours worked */}
+                        {(before.minutes !== undefined || after.minutes !== undefined || ch.minutes !== undefined) && (
+                          <div className="mt-2 pt-2 border-t">
+                            <div className="text-gray-500 font-medium mb-0.5 text-[11px]">Hours Worked</div>
+                            <div className="text-gray-800 text-sm font-medium">
+                              {l.action === 'update' ? (
+                                <>{bMin ?? '-'} → {aMin ?? '-'}h</>
+                              ) : (
+                                <>{ch.minutes !== undefined ? (Number(ch.minutes)/60).toFixed(2) : '-'}h</>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                        
+                        {/* Reason text */}
+                        {reasonText && (
+                          <div className="mt-2 pt-2 border-t">
+                            <div className="text-gray-500 font-medium mb-1 text-[11px]">Reason</div>
+                            <div className="text-gray-800 text-xs bg-white p-2 rounded border">
+                              {reasonText}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    
+                    {/* Regular timesheet entry changes (non-attendance) */}
+                    {!isAttendanceLog && (
+                      <>
+                        {(l.action==='update' && (before||after)) && (
+                          <div className="mt-1 grid grid-cols-3 gap-2 text-[11px] text-gray-700">
+                            <div>
+                              <div className="text-gray-500">Date</div>
+                              <div>{(before.work_date||'') ? String(before.work_date).slice(0,10) : '-' } → {(after.work_date||'') ? String(after.work_date).slice(0,10) : '-'}</div>
+                            </div>
+                            <div>
+                              <div className="text-gray-500">Hours</div>
+                              <div>{bMin??'-'} → {aMin??'-'}</div>
+                            </div>
+                            <div className="col-span-3 md:col-span-1">
+                              <div className="text-gray-500">Notes</div>
+                              <div className="truncate" title={`${before.notes||''} → ${after.notes||''}`}>{(before.notes||'-') + ' → ' + (after.notes||'-')}</div>
+                            </div>
+                            {(before.start_time || after.start_time) && (
+                              <div>
+                                <div className="text-gray-500">Start Time</div>
+                                <div>{formatTime12h(before.start_time || null) || '-'} → {formatTime12h(after.start_time || null) || '-'}</div>
+                              </div>
+                            )}
+                            {(before.end_time || after.end_time) && (
+                              <div>
+                                <div className="text-gray-500">End Time</div>
+                                <div>{formatTime12h(before.end_time || null) || '-'} → {formatTime12h(after.end_time || null) || '-'}</div>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                        {(l.action!=='update' && l.changes) && (
+                          <div className="mt-1 text-[11px] text-gray-700">
+                            {(() => {
+                              // Try to format the changes in a more readable way
+                              if (typeof l.changes === 'object' && l.changes !== null) {
+                                const formatted: string[] = [];
+                                if (l.changes.work_date) formatted.push(`Date: ${String(l.changes.work_date).slice(0,10)}`);
+                                if (l.changes.minutes !== undefined) formatted.push(`Hours: ${(Number(l.changes.minutes)/60).toFixed(2)}h`);
+                                if (l.changes.start_time) formatted.push(`Start: ${formatTime12h(l.changes.start_time)}`);
+                                if (l.changes.end_time) formatted.push(`End: ${formatTime12h(l.changes.end_time)}`);
+                                if (l.changes.notes) formatted.push(`Notes: ${l.changes.notes}`);
+                                if (formatted.length > 0) {
+                                  return formatted.join(' • ');
+                                }
+                              }
+                              return JSON.stringify(l.changes);
+                            })()}
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
                 </div>
               </div>
-            </div>
-          );
-        }) : <div className="p-3 text-sm text-gray-600">No changes yet</div>}
-      </div>
-      <div className="p-3 text-right">
-        <button onClick={()=>{ setOffset(o=> Math.max(0, o - limit)); refetch(); }} disabled={offset<=0} className="px-2 py-1 rounded bg-gray-100 text-sm mr-2 disabled:opacity-50">Prev</button>
-        <button onClick={()=>{ setOffset(o=> o + limit); refetch(); }} className="px-2 py-1 rounded bg-gray-100 text-sm">Load more</button>
+            );
+          }) : <div className="p-3 text-sm text-gray-600">No changes yet</div>}
+        </div>
+        <div className="p-3 text-right bg-gray-50">
+          <button onClick={()=>{ setOffset(o=> Math.max(0, o - limit)); refetch(); }} disabled={offset<=0} className="px-2 py-1 rounded bg-gray-100 text-sm mr-2 disabled:opacity-50">Prev</button>
+          <button onClick={()=>{ setOffset(o=> o + limit); refetch(); }} className="px-2 py-1 rounded bg-gray-100 text-sm">Load more</button>
+        </div>
       </div>
     </div>
   );

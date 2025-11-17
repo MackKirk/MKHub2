@@ -6,6 +6,19 @@ import toast from 'react-hot-toast';
 import GeoSelect from '@/components/GeoSelect';
 import { useConfirm } from '@/components/ConfirmProvider';
 
+// Helper function to convert 24h time (HH:MM:SS or HH:MM) to 12h format (h:mm AM/PM)
+function formatTime12h(timeStr: string | null | undefined): string {
+  if (!timeStr || timeStr === '--:--' || timeStr === '-') return timeStr || '--:--';
+  const parts = timeStr.split(':');
+  if (parts.length < 2) return timeStr;
+  const hours = parseInt(parts[0], 10);
+  const minutes = parts[1];
+  if (isNaN(hours)) return timeStr;
+  const period = hours >= 12 ? 'PM' : 'AM';
+  const hours12 = hours === 0 ? 12 : hours > 12 ? hours - 12 : hours;
+  return `${hours12}:${minutes} ${period}`;
+}
+
 function UserLabel({ id, fallback }:{ id:string, fallback:string }){
   const { data } = useQuery({ queryKey:['user-prof-opt', id], queryFn: ()=> api<any>('GET', `/auth/users/${id}/profile`), enabled: !!id });
   const fn = data?.profile?.preferred_name || data?.profile?.first_name || '';
@@ -593,7 +606,7 @@ function TimesheetBlock({ userId }:{ userId:string }){
         {(entries||[]).length? (entries||[]).map((e:any)=> (
           <div key={e.id} className="px-3 py-2 text-sm flex items-center gap-3">
             <div className="w-24 text-gray-600">{String(e.work_date).slice(0,10)}</div>
-            <div className="w-28 text-gray-700">{(e.start_time||'--:--')} - {(e.end_time||'--:--')}</div>
+            <div className="w-28 text-gray-700">{formatTime12h(e.start_time)} - {formatTime12h(e.end_time)}</div>
             <div className="w-20 font-medium">{(e.minutes/60).toFixed(2)}h</div>
             <div className="flex-1 text-gray-600 truncate">{e.project_code? `${e.project_code} — `:''}{e.project_name||''} {e.notes? '· '+e.notes:''}</div>
             <div className="flex items-center gap-2">

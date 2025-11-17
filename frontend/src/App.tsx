@@ -34,6 +34,7 @@ import ReviewsCompare from './pages/ReviewsCompare';
 import UserDetail from './pages/UserDetail';
 import LogHours from './pages/LogHours';
 import CompanyFiles from './pages/CompanyFiles';
+import Tasks from './pages/Tasks';
 
 import { getToken } from './lib/api';
 function Home(){ return <Navigate to={getToken()? '/home':'/login'} replace />; }
@@ -53,6 +54,7 @@ export default function App(){
           <Route path="/profile" element={<AppShell><Profile/></AppShell>} />
           <Route path="/customers" element={<AppShell><Customers/></AppShell>} />
           <Route path="/customers/new" element={<AppShell><CustomerNew/></AppShell>} />
+          <Route path="/tasks" element={<AppShell><Tasks/></AppShell>} />
           <Route path="/customers/:id" element={<AppShell><CustomerDetail/></AppShell>} />
           <Route path="/customers/:customerId/sites/:siteId" element={<AppShell><SiteDetail/></AppShell>} />
           <Route path="/inventory" element={<AppShell><Inventory/></AppShell>} />

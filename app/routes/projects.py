@@ -156,7 +156,7 @@ def get_project(project_id: str, db: Session = Depends(get_db)):
         "site_country": getattr(site, 'site_country', None),
         "site_postal_code": getattr(site, 'site_postal_code', None),
         "estimator_id": getattr(p, 'estimator_id', None),
-        "onsite_lead_id": getattr(p, 'onsite_lead_id', None),
+        "onsite_lead_id": str(getattr(p, 'onsite_lead_id', None)) if getattr(p, 'onsite_lead_id', None) else None,
         "contact_id": getattr(p, 'contact_id', None),
         "contact_name": getattr(contact, 'name', None) if contact else None,
         "contact_email": getattr(contact, 'email', None) if contact else None,
