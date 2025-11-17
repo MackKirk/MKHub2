@@ -18,6 +18,7 @@ export default function AppShell({ children }: PropsWithChildren){
           <NavLink to="/home" className={({isActive})=>`px-3 py-2 rounded ${isActive?'bg-brand-red':''}`}>Home</NavLink>
           <NavLink to="/profile" className={({isActive})=>`px-3 py-2 rounded ${isActive?'bg-brand-red':''}`}>My Information</NavLink>
           <NavLink to="/customers" className={({isActive})=>`px-3 py-2 rounded ${isActive?'bg-brand-red':''}`}>Customers</NavLink>
+          <NavLink to="/tasks" className={({isActive})=>`px-3 py-2 rounded ${isActive?'bg-brand-red':''}`}>Tasks</NavLink>
           <div className="mt-2 text-[11px] uppercase text-gray-400 px-1">Inventory</div>
           <NavLink to="/inventory/suppliers" className={({isActive})=>`px-3 py-2 rounded ${isActive?'bg-brand-red':''}`}>Suppliers</NavLink>
           <NavLink to="/inventory/products" className={({isActive})=>`px-3 py-2 rounded ${isActive?'bg-brand-red':''}`}>Products</NavLink>

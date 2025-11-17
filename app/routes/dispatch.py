@@ -14,7 +14,7 @@ from ..db import get_db
 from ..models.models import (
     Shift, Attendance, AuditLog, Project, User, 
     UserNotificationPreference, ProjectTimeEntry, ProjectTimeEntryLog,
-    EmployeeProfile
+    EmployeeProfile, Task
 )
 from ..auth.security import get_current_user
 from ..config import settings
@@ -1003,22 +1003,60 @@ def create_attendance(
         
         logger.info(f"Attendance created: {attendance.id}, Status: {attendance.status}")
         
-        # If status is pending, send notification to worker's supervisor
+        # If status is pending, send notification to worker's supervisor and create task
         if status == "pending":
             # Get worker's supervisor
             worker_profile = db.query(EmployeeProfile).filter(EmployeeProfile.user_id == worker_id).first()
             if worker_profile and worker_profile.manager_user_id:
-                supervisor_id = str(worker_profile.manager_user_id)
+                supervisor_id = worker_profile.manager_user_id
                 logger.info(f"Sending pending attendance notification to supervisor {supervisor_id} for worker {worker_id}")
                 
                 # Get project timezone for notification
                 project = db.query(Project).filter(Project.id == shift.project_id).first()
                 project_timezone = project.timezone if project else settings.tz_default
                 
+                # Get worker name for task title
+                worker_user = db.query(User).filter(User.id == worker_id).first()
+                worker_name = worker_user.username if worker_user else "Employee"
+                if worker_profile:
+                    name = (worker_profile.preferred_name or '').strip()
+                    if not name:
+                        first = (worker_profile.first_name or '').strip()
+                        last = (worker_profile.last_name or '').strip()
+                        name = ' '.join([x for x in [first, last] if x]) or None
+                    if name:
+                        worker_name = name
+                
+                # Format date for task title
+                date_str = attendance.time_selected_utc.strftime("%Y-%m-%d") if attendance.time_selected_utc else "N/A"
+                
+                # Create task for supervisor to approve attendance
+                try:
+                    task = Task(
+                        title=f"Approve attendance for {worker_name} – {date_str}",
+                        description=f"Review and approve attendance record for {worker_name} on {date_str}",
+                        task_type="attendance",
+                        status="todo",
+                        priority="normal",
+                        category="attendance",
+                        project_id=shift.project_id,
+                        assigned_to=supervisor_id,
+                        origin_source=f"Attendance {str(attendance.id)[:8]}",
+                        origin_id=attendance.id,
+                        created_by=user.id,
+                    )
+                    db.add(task)
+                    db.commit()
+                    # TODO: Trigger notification event (prepared but not active)
+                    # notify_task_created(task)
+                except Exception as e:
+                    logger.error(f"Failed to create task for attendance {attendance.id}: {e}")
+                    # Don't fail attendance creation if task creation fails
+                
                 # Send notification to supervisor
                 send_attendance_notification(
                     db=db,
-                    user_id=supervisor_id,
+                    user_id=str(supervisor_id),
                     notification_type="pending",
                     attendance_data={
                         "id": str(attendance.id),
@@ -1377,6 +1415,22 @@ def approve_attendance(
     attendance.approved_at = datetime.now(timezone.utc)
     attendance.approved_by = user.id
     
+    # Mark related task as done if exists
+    try:
+        task = db.query(Task).filter(
+            Task.origin_id == attendance.id,
+            Task.category == 'attendance'
+        ).first()
+        if task and task.status not in ['done', 'completed']:
+            task.status = 'done'
+            task.completed_at = datetime.now(timezone.utc)
+            task.updated_at = datetime.now(timezone.utc)
+            # TODO: Trigger notification event (prepared but not active)
+            # notify_task_status_changed(task, task.status, 'done')
+    except Exception as e:
+        logger.error(f"Failed to update task for attendance {attendance.id}: {e}")
+        # Don't fail attendance approval if task update fails
+    
     db.commit()
     db.refresh(attendance)
     
@@ -1627,6 +1681,22 @@ def reject_attendance(
     attendance.rejected_at = datetime.now(timezone.utc)
     attendance.rejected_by = user.id
     attendance.rejection_reason = rejection_reason
+    
+    # Mark related task as done if exists
+    try:
+        task = db.query(Task).filter(
+            Task.origin_id == attendance.id,
+            Task.category == 'attendance'
+        ).first()
+        if task and task.status not in ['done', 'completed']:
+            task.status = 'done'
+            task.completed_at = datetime.now(timezone.utc)
+            task.updated_at = datetime.now(timezone.utc)
+            # TODO: Trigger notification event (prepared but not active)
+            # notify_task_status_changed(task, task.status, 'done')
+    except Exception as e:
+        logger.error(f"Failed to update task for attendance {attendance.id}: {e}")
+        # Don't fail attendance rejection if task update fails
     
     db.commit()
     db.refresh(attendance)

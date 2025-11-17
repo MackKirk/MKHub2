@@ -493,6 +493,67 @@ def create_app() -> FastAPI:
                                                ")"))
                         except Exception:
                             pass
+                        # Tasks table migrations
+                        try:
+                            # Add new columns to tasks table
+                            conn.execute(text("ALTER TABLE tasks ADD COLUMN project_id TEXT"))
+                        except Exception:
+                            pass
+                        try:
+                            conn.execute(text("ALTER TABLE tasks ADD COLUMN due_date TEXT"))
+                        except Exception:
+                            pass
+                        try:
+                            conn.execute(text("ALTER TABLE tasks ADD COLUMN category TEXT DEFAULT 'manual'"))
+                        except Exception:
+                            pass
+                        try:
+                            conn.execute(text("ALTER TABLE tasks ADD COLUMN origin_source TEXT"))
+                        except Exception:
+                            pass
+                        try:
+                            conn.execute(text("ALTER TABLE tasks ADD COLUMN origin_id TEXT"))
+                        except Exception:
+                            pass
+                        # Create task_subtasks table
+                        try:
+                            conn.execute(text("CREATE TABLE IF NOT EXISTS task_subtasks (\n"
+                                               "id TEXT PRIMARY KEY,\n"
+                                               "task_id TEXT NOT NULL,\n"
+                                               "title TEXT NOT NULL,\n"
+                                               "is_completed INTEGER DEFAULT 0,\n"
+                                               "order INTEGER DEFAULT 0,\n"
+                                               "created_at TEXT DEFAULT CURRENT_TIMESTAMP,\n"
+                                               "completed_at TEXT,\n"
+                                               "FOREIGN KEY(task_id) REFERENCES tasks(id) ON DELETE CASCADE\n"
+                                               ")"))
+                        except Exception:
+                            pass
+                        # Create task_comments table
+                        try:
+                            conn.execute(text("CREATE TABLE IF NOT EXISTS task_comments (\n"
+                                               "id TEXT PRIMARY KEY,\n"
+                                               "task_id TEXT NOT NULL,\n"
+                                               "user_id TEXT NOT NULL,\n"
+                                               "text TEXT NOT NULL,\n"
+                                               "created_at TEXT DEFAULT CURRENT_TIMESTAMP,\n"
+                                               "updated_at TEXT,\n"
+                                               "FOREIGN KEY(task_id) REFERENCES tasks(id) ON DELETE CASCADE,\n"
+                                               "FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE\n"
+                                               ")"))
+                        except Exception:
+                            pass
+                        # Create task_assignees table
+                        try:
+                            conn.execute(text("CREATE TABLE IF NOT EXISTS task_assignees (\n"
+                                               "task_id TEXT NOT NULL,\n"
+                                               "user_id TEXT NOT NULL,\n"
+                                               "PRIMARY KEY(task_id, user_id),\n"
+                                               "FOREIGN KEY(task_id) REFERENCES tasks(id) ON DELETE CASCADE,\n"
+                                               "FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE\n"
+                                               ")"))
+                        except Exception:
+                            pass
                         # Consent logs table
                         try:
                             conn.execute(text("CREATE TABLE IF NOT EXISTS consent_logs (\n"
@@ -1050,6 +1111,73 @@ def create_app() -> FastAPI:
                         pass
                     try:
                         conn.execute(text("CREATE INDEX IF NOT EXISTS idx_project_order_items_estimate_item_id ON project_order_items(estimate_item_id)"))
+                    except Exception:
+                        pass
+                    # Tasks table migrations
+                    try:
+                        # Add new columns to tasks table
+                        conn.execute(text("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS project_id UUID"))
+                        conn.execute(text("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS due_date TIMESTAMPTZ"))
+                        conn.execute(text("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS category VARCHAR(50) DEFAULT 'manual'"))
+                        conn.execute(text("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS origin_source VARCHAR(255)"))
+                        conn.execute(text("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS origin_id UUID"))
+                        # Add foreign key constraint for project_id if it doesn't exist
+                        try:
+                            conn.execute(text("ALTER TABLE tasks ADD CONSTRAINT fk_tasks_project_id FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE"))
+                        except Exception:
+                            pass
+                        # Create indexes for new columns
+                        try:
+                            conn.execute(text("CREATE INDEX IF NOT EXISTS idx_tasks_project_id ON tasks(project_id)"))
+                        except Exception:
+                            pass
+                        try:
+                            conn.execute(text("CREATE INDEX IF NOT EXISTS idx_tasks_due_date ON tasks(due_date)"))
+                        except Exception:
+                            pass
+                        try:
+                            conn.execute(text("CREATE INDEX IF NOT EXISTS idx_tasks_origin_id ON tasks(origin_id)"))
+                        except Exception:
+                            pass
+                    except Exception:
+                        pass
+                    # Create task_subtasks table
+                    try:
+                        conn.execute(text("CREATE TABLE IF NOT EXISTS task_subtasks (\n"
+                                           "id UUID PRIMARY KEY,\n"
+                                           "task_id UUID NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,\n"
+                                           "title VARCHAR(255) NOT NULL,\n"
+                                           "is_completed BOOLEAN DEFAULT FALSE,\n"
+                                           "order INTEGER DEFAULT 0,\n"
+                                           "created_at TIMESTAMPTZ DEFAULT NOW(),\n"
+                                           "completed_at TIMESTAMPTZ\n"
+                                           ")"))
+                        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_task_subtasks_task_id ON task_subtasks(task_id)"))
+                    except Exception:
+                        pass
+                    # Create task_comments table
+                    try:
+                        conn.execute(text("CREATE TABLE IF NOT EXISTS task_comments (\n"
+                                           "id UUID PRIMARY KEY,\n"
+                                           "task_id UUID NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,\n"
+                                           "user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,\n"
+                                           "text TEXT NOT NULL,\n"
+                                           "created_at TIMESTAMPTZ DEFAULT NOW(),\n"
+                                           "updated_at TIMESTAMPTZ\n"
+                                           ")"))
+                        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_task_comments_task_id ON task_comments(task_id)"))
+                        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_task_comments_user_id ON task_comments(user_id)"))
+                    except Exception:
+                        pass
+                    # Create task_assignees table
+                    try:
+                        conn.execute(text("CREATE TABLE IF NOT EXISTS task_assignees (\n"
+                                           "task_id UUID NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,\n"
+                                           "user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,\n"
+                                           "PRIMARY KEY(task_id, user_id)\n"
+                                           ")"))
+                        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_task_assignees_task_id ON task_assignees(task_id)"))
+                        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_task_assignees_user_id ON task_assignees(user_id)"))
                     except Exception:
                         pass
                     # Consent logs table

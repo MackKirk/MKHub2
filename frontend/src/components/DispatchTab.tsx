@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useLocation } from 'react-router-dom';
 import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
 import { useConfirm } from '@/components/ConfirmProvider';
@@ -22,7 +23,23 @@ function formatTime12h(timeStr: string | null | undefined): string {
 export default function DispatchTab({ projectId }: { projectId: string }) {
   const confirm = useConfirm();
   const queryClient = useQueryClient();
-  const [view, setView] = useState<'calendar' | 'pending'>('calendar');
+  const location = useLocation();
+  
+  // Check for subtab query parameter
+  const searchParams = new URLSearchParams(location.search);
+  const initialView = (searchParams.get('subtab') === 'pending' ? 'pending' : 'calendar') as 'calendar' | 'pending';
+  const [view, setView] = useState<'calendar' | 'pending'>(initialView);
+  
+  // Update view when URL search params change
+  useEffect(() => {
+    const searchParams = new URLSearchParams(location.search);
+    const subtabParam = searchParams.get('subtab');
+    if (subtabParam === 'pending') {
+      setView('pending');
+    } else if (subtabParam === 'calendar' || !subtabParam) {
+      setView('calendar');
+    }
+  }, [location.search]);
   
   // Week view: anchor date is the Sunday of the current week
   const [anchorDate, setAnchorDate] = useState<Date>(() => {

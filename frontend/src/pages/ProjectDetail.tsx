@@ -246,7 +246,7 @@ export default function ProjectDetail(){
             )}
 
             {tab==='orders' && (
-              <OrdersTab projectId={String(id)} project={proj||{}} />
+              <OrdersTab projectId={String(id)} project={proj||{id: String(id)}} />
             )}
           </>
         )}
