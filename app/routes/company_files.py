@@ -109,6 +109,36 @@ def list_company_folders(
     """List folders for company files, optionally filtered by department and parent. Filters by user permissions."""
     company_id = get_company_client_id(db)
     
+    # If department_id is provided and no parent_id, we need to get or create the department root folder
+    dept_root_folder_id = None
+    if department_id and not parent_id:
+        dept_list = db.query(SettingList).filter(SettingList.name == "departments").first()
+        if dept_list:
+            dept = db.query(SettingItem).filter(
+                SettingItem.id == department_id,
+                SettingItem.list_id == dept_list.id
+            ).first()
+            if dept:
+                # Find or create the root folder for this department
+                dept_root = db.query(ClientFolder).filter(
+                    ClientFolder.client_id == company_id,
+                    ClientFolder.name == dept.label,
+                    ClientFolder.parent_id == None
+                ).first()
+                
+                if not dept_root:
+                    # Create the department root folder if it doesn't exist
+                    dept_root = ClientFolder(
+                        client_id=company_id,
+                        name=dept.label,
+                        parent_id=None
+                    )
+                    db.add(dept_root)
+                    db.commit()
+                    db.refresh(dept_root)
+                
+                dept_root_folder_id = dept_root.id
+    
     query = db.query(ClientFolder).filter(ClientFolder.client_id == company_id)
     
     # Filter by parent_id if provided
@@ -118,21 +148,12 @@ def list_company_folders(
             query = query.filter(ClientFolder.parent_id == pid)
         except Exception:
             pass
+    elif dept_root_folder_id:
+        # If we have a department root folder, show folders inside it
+        query = query.filter(ClientFolder.parent_id == dept_root_folder_id)
     else:
-        # If no parent_id, show only root folders (no parent)
+        # If no parent_id and no department, show only root folders (no parent)
         query = query.filter(ClientFolder.parent_id == None)
-    
-    # If department_id is provided, filter by department name
-    if department_id:
-        dept_list = db.query(SettingList).filter(SettingList.name == "departments").first()
-        if dept_list:
-            dept = db.query(SettingItem).filter(
-                SettingItem.id == department_id,
-                SettingItem.list_id == dept_list.id
-            ).first()
-            if dept:
-                # Find folders with this department name as parent or name
-                query = query.filter(ClientFolder.name == dept.label)
     
     rows = query.order_by(ClientFolder.sort_index.asc(), ClientFolder.name.asc()).all()
     
@@ -170,6 +191,34 @@ def create_company_folder(
             pid = uuid.UUID(str(parent_id))
         except Exception:
             pass
+    elif department_id:
+        # If no parent_id but department_id is provided, create folder inside department root
+        dept_list = db.query(SettingList).filter(SettingList.name == "departments").first()
+        if dept_list:
+            dept = db.query(SettingItem).filter(
+                SettingItem.id == department_id,
+                SettingItem.list_id == dept_list.id
+            ).first()
+            if dept:
+                # Find or create the root folder for this department
+                dept_root = db.query(ClientFolder).filter(
+                    ClientFolder.client_id == company_id,
+                    ClientFolder.name == dept.label,
+                    ClientFolder.parent_id == None
+                ).first()
+                
+                if not dept_root:
+                    # Create the department root folder if it doesn't exist
+                    dept_root = ClientFolder(
+                        client_id=company_id,
+                        name=dept.label,
+                        parent_id=None
+                    )
+                    db.add(dept_root)
+                    db.commit()
+                    db.refresh(dept_root)
+                
+                pid = dept_root.id
     
     folder = ClientFolder(
         client_id=company_id,

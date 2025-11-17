@@ -32,6 +32,8 @@ export default function CompanyFiles(){
   const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
   const [selectedDivisions, setSelectedDivisions] = useState<string[]>([]);
   const [userSearch, setUserSearch] = useState('');
+  const [uploadQueue, setUploadQueue] = useState<Array<{id:string, file:File, title?:string, progress:number, status:'pending'|'uploading'|'success'|'error', error?:string}>>([]);
+  const [isDragging, setIsDragging] = useState(false);
 
   const { data: departments } = useQuery({
     queryKey: ['departments'],
@@ -91,8 +93,13 @@ export default function CompanyFiles(){
 
   const topFolders = useMemo(()=>{
     if(activeFolderId !== 'all') return [];
+    // When a department is selected, show all folders returned (they're already filtered by backend)
+    // When no department is selected, show only root folders (no parent)
+    if(selectedDept) {
+      return folders || [];
+    }
     return (folders||[]).filter(f=> !f.parent_id);
-  }, [folders, activeFolderId]);
+  }, [folders, activeFolderId, selectedDept]);
 
   const childFolders = useMemo(()=>{
     if(activeFolderId === 'all') return [];
@@ -122,19 +129,17 @@ export default function CompanyFiles(){
     }
   };
 
-  const upload = async()=>{
+  const uploadSingleFile = async(file:File, customTitle?:string, folderId?:string)=>{
+    const targetFolderId = folderId || activeFolderId;
+    if(targetFolderId==='all'){
+      throw new Error('Select a folder first');
+    }
+    const name = file.name;
+    const type = file.type||'application/octet-stream';
+    
     try{
-      if(!fileObj){
-        toast.error('Select a file');
-        return;
-      }
-      if(activeFolderId==='all'){
-        toast.error('Open a folder first');
-        return;
-      }
-      const name=fileObj.name;
-      const type=fileObj.type||'application/octet-stream';
-      const up=await api('POST','/files/upload',{
+      // Step 1: Get upload URL
+      const up:any = await api('POST','/files/upload',{
         original_name:name,
         content_type:type,
         client_id:null,
@@ -142,61 +147,187 @@ export default function CompanyFiles(){
         employee_id:null,
         category_id:'company-files'
       });
-      await fetch(up.upload_url,{
-        method:'PUT',
-        headers:{ 'Content-Type':type,'x-ms-blob-type':'BlockBlob' },
-        body:fileObj
+      
+      if(!up?.upload_url){
+        throw new Error('Failed to get upload URL from server');
+      }
+      
+      if(!up?.key){
+        throw new Error('Failed to get upload key from server');
+      }
+      
+      console.log('Upload URL received:', {
+        url: up.upload_url?.substring(0, 100) + '...',
+        key: up.key,
+        fileName: name
       });
-      const conf=await api('POST','/files/confirm',{
-        key:up.key,
-        size_bytes:fileObj.size,
-        checksum_sha256:'na',
-        content_type:type
-      });
+      
+      // Step 2: Upload to Azure Blob Storage (try direct first, fallback to proxy)
+      let conf: any;
+      try{
+        // Try direct upload first
+        const putResp = await fetch(up.upload_url,{
+          method:'PUT',
+          headers:{ 
+            'Content-Type':type,
+            'x-ms-blob-type':'BlockBlob' 
+          },
+          body:file
+        });
+        
+        if(!putResp.ok){
+          let errorText = 'Unknown error';
+          try{
+            errorText = await putResp.text();
+          }catch(_e){
+            // Ignore error reading response
+          }
+          throw new Error(`Azure upload failed: ${putResp.status} ${putResp.statusText} - ${errorText}`);
+        }
+        
+        // Step 3: Confirm upload
+        conf = await api('POST','/files/confirm',{
+          key:up.key,
+          size_bytes:file.size,
+          checksum_sha256:'na',
+          content_type:type
+        });
+      }catch(fetchError:any){
+        // If direct upload fails (likely CORS), use proxy endpoint
+        console.warn('Direct upload failed, using proxy:', fetchError?.message);
+        
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('original_name', name);
+        formData.append('content_type', type);
+        formData.append('client_id', '');
+        formData.append('project_id', '');
+        formData.append('employee_id', '');
+        formData.append('category_id', 'company-files');
+        
+        try{
+          conf = await api('POST', '/files/upload-proxy', formData);
+        }catch(proxyError:any){
+          throw new Error(`Upload failed (both direct and proxy): ${proxyError?.message || 'Unknown error'}`);
+        }
+      }
+      
+      if(!conf?.id){
+        throw new Error('Failed to confirm upload - no file ID returned');
+      }
+      
+      // Step 4: Create document record
       await api('POST', '/company/files/documents', {
-        folder_id: activeFolderId,
-        title: title||name,
+        folder_id: targetFolderId,
+        title: customTitle||name,
         file_id: conf.id
       });
-      toast.success('Uploaded');
+      
+      return { success: true };
+    }catch(e:any){
+      const errorMsg = e?.message || String(e) || 'Upload failed';
+      console.error('Upload error:', errorMsg, e);
+      throw new Error(errorMsg);
+    }
+  };
+
+  const upload = async()=>{
+    if(!fileObj){
+      toast.error('Select a file');
+      return;
+    }
+    if(activeFolderId==='all'){
+      toast.error('Open a folder first');
+      return;
+    }
+    
+    const uploadId = `upload-${Date.now()}-${Math.random()}`;
+    setUploadQueue(prev=>[...prev, {
+      id: uploadId,
+      file: fileObj,
+      title: title||fileObj.name,
+      progress: 0,
+      status: 'pending'
+    }]);
+    
+    try{
+      setUploadQueue(prev=>prev.map(u=>u.id===uploadId ? {...u, status:'uploading', progress:50} : u));
+      await uploadSingleFile(fileObj, title);
+      setUploadQueue(prev=>prev.map(u=>u.id===uploadId ? {...u, status:'success', progress:100} : u));
       setShowUpload(false);
       setFileObj(null);
       setTitle('');
       await refetchDocs();
-    }catch(_e){
-      toast.error('Upload failed');
+      setTimeout(()=>{
+        setUploadQueue(prev=>prev.filter(u=>u.id!==uploadId));
+      }, 2000);
+    }catch(e:any){
+      setUploadQueue(prev=>prev.map(u=>u.id===uploadId ? {...u, status:'error', error:e.message} : u));
+      toast.error(e.message || 'Upload failed');
     }
   };
 
+  const uploadMultiple = async(files:FileList|File[], folderId?:string)=>{
+    const targetFolderId = folderId || activeFolderId;
+    if(targetFolderId==='all'){
+      toast.error('Select a folder first');
+      return;
+    }
+    
+    const fileArray = Array.from(files);
+    const uploads = fileArray.map((file, idx)=>({
+      id: `upload-${Date.now()}-${idx}-${Math.random()}`,
+      file,
+      progress: 0,
+      status: 'pending' as const
+    }));
+    
+    setUploadQueue(prev=>[...prev, ...uploads]);
+    
+    // Upload files sequentially to avoid overwhelming the server
+    for(const upload of uploads){
+      try{
+        setUploadQueue(prev=>prev.map(u=>u.id===upload.id ? {...u, status:'uploading', progress:10} : u));
+        await uploadSingleFile(upload.file, undefined, targetFolderId);
+        setUploadQueue(prev=>prev.map(u=>u.id===upload.id ? {...u, status:'success', progress:100} : u));
+      }catch(e:any){
+        const errorMsg = e?.message || 'Upload failed';
+        setUploadQueue(prev=>prev.map(u=>u.id===upload.id ? {...u, status:'error', error:errorMsg} : u));
+        console.error(`Upload failed for ${upload.file.name}:`, errorMsg);
+      }
+      // Small delay between uploads to avoid overwhelming the server
+      await new Promise(resolve=>setTimeout(resolve, 100));
+    }
+    
+    await refetchDocs();
+    
+    // Remove successful uploads after 3 seconds, keep errors visible longer
+    setTimeout(()=>{
+      setUploadQueue(prev=>prev.filter(u=>{
+        const upload = uploads.find(up=>up.id===u.id);
+        return !upload || u.status === 'error';
+      }));
+    }, 3000);
+  };
+
   const uploadToFolder = async(folderId:string, file:File)=>{
+    const uploadId = `upload-${Date.now()}-${Math.random()}`;
+    setUploadQueue(prev=>[...prev, {
+      id: uploadId,
+      file,
+      progress: 0,
+      status: 'pending'
+    }]);
+    
     try{
-      const type=file.type||'application/octet-stream';
-      const up=await api('POST','/files/upload',{
-        original_name:file.name,
-        content_type:type,
-        client_id:null,
-        project_id:null,
-        employee_id:null,
-        category_id:'company-files'
-      });
-      await fetch(up.upload_url,{
-        method:'PUT',
-        headers:{ 'Content-Type':type,'x-ms-blob-type':'BlockBlob' },
-        body:file
-      });
-      const conf=await api('POST','/files/confirm',{
-        key:up.key,
-        size_bytes:file.size,
-        checksum_sha256:'na',
-        content_type:type
-      });
-      await api('POST', '/company/files/documents', {
-        folder_id: folderId,
-        title: file.name,
-        file_id: conf.id
-      });
-    }catch(_e){
-      toast.error('Upload failed');
+      setUploadQueue(prev=>prev.map(u=>u.id===uploadId ? {...u, status:'uploading', progress:50} : u));
+      await uploadSingleFile(file, undefined, folderId);
+      setUploadQueue(prev=>prev.map(u=>u.id===uploadId ? {...u, status:'success', progress:100} : u));
+      setTimeout(()=>{
+        setUploadQueue(prev=>prev.filter(u=>u.id!==uploadId));
+      }, 2000);
+    }catch(e:any){
+      setUploadQueue(prev=>prev.map(u=>u.id===uploadId ? {...u, status:'error', error:e.message} : u));
     }
   };
 
@@ -331,7 +462,31 @@ export default function CompanyFiles(){
           </div>
 
           {/* Right Content Area - Folders and Documents */}
-          <div className="flex-1 overflow-y-auto p-4">
+          <div 
+            className={`flex-1 overflow-y-auto p-4 ${isDragging ? 'bg-blue-50 border-2 border-dashed border-blue-400' : ''}`}
+            onDragOver={(e)=>{
+              e.preventDefault();
+              e.stopPropagation();
+              if(activeFolderId !== 'all') setIsDragging(true);
+            }}
+            onDragLeave={(e)=>{
+              e.preventDefault();
+              e.stopPropagation();
+              setIsDragging(false);
+            }}
+            onDrop={async(e)=>{
+              e.preventDefault();
+              e.stopPropagation();
+              setIsDragging(false);
+              if(activeFolderId === 'all'){
+                toast.error('Select a folder first');
+                return;
+              }
+              if(e.dataTransfer.files?.length){
+                await uploadMultiple(e.dataTransfer.files);
+              }
+            }}
+          >
 
             {activeFolderId==='all' ? (
               <>
@@ -368,12 +523,7 @@ export default function CompanyFiles(){
                       onDrop={async(e)=>{
                         e.preventDefault();
                         if(e.dataTransfer.files?.length){
-                          const arr=Array.from(e.dataTransfer.files);
-                          for(const file of arr){
-                            await uploadToFolder(f.id, file as File);
-                          }
-                          toast.success('Uploaded');
-                          await refetchDocs();
+                          await uploadMultiple(e.dataTransfer.files, f.id);
                         }
                       }}
                     >
@@ -451,12 +601,7 @@ export default function CompanyFiles(){
                           onDrop={async(e)=>{
                             e.preventDefault();
                             if(e.dataTransfer.files?.length){
-                              const arr=Array.from(e.dataTransfer.files);
-                              for(const file of arr){
-                                await uploadToFolder(f.id, file as File);
-                              }
-                              toast.success('Uploaded');
-                              await refetchDocs();
+                              await uploadMultiple(e.dataTransfer.files, f.id);
                             }
                           }}
                         >
@@ -583,26 +728,27 @@ export default function CompanyFiles(){
 
       {/* Upload Modal */}
       {showUpload && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl w-full max-w-md p-4">
-            <div className="text-lg font-semibold mb-2">Upload File</div>
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={(e)=>e.target===e.currentTarget && setShowUpload(false)}>
+          <div className="bg-white rounded-xl w-full max-w-md p-4" onClick={(e)=>e.stopPropagation()}>
+            <div className="text-lg font-semibold mb-2">Upload Files</div>
             <div className="space-y-3">
               <div>
-                <div className="text-xs text-gray-600">File</div>
+                <div className="text-xs text-gray-600 mb-1">Files (multiple files supported)</div>
                 <input
                   type="file"
-                  onChange={e=> setFileObj(e.target.files?.[0]||null)}
+                  multiple
+                  onChange={async(e)=>{
+                    const files = e.target.files;
+                    if(files && files.length > 0){
+                      setShowUpload(false);
+                      await uploadMultiple(Array.from(files));
+                    }
+                  }}
                   className="w-full"
                 />
               </div>
-              <div>
-                <div className="text-xs text-gray-600">Title (optional)</div>
-                <input
-                  className="border rounded px-3 py-2 w-full"
-                  value={title}
-                  onChange={e=> setTitle(e.target.value)}
-                  placeholder="File name will be used if not provided"
-                />
+              <div className="text-xs text-gray-500">
+                You can also drag and drop files directly onto the folder area
               </div>
             </div>
             <div className="mt-4 flex justify-end gap-2">
@@ -614,11 +760,54 @@ export default function CompanyFiles(){
                 }}
                 className="px-3 py-2 rounded border"
               >Cancel</button>
-              <button
-                onClick={upload}
-                className="px-3 py-2 rounded bg-brand-red text-white"
-              >Upload</button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Upload Progress Modal */}
+      {uploadQueue.length > 0 && (
+        <div className="fixed bottom-4 right-4 bg-white rounded-lg shadow-2xl border w-80 max-h-96 overflow-hidden z-50">
+          <div className="p-3 border-b bg-gray-50 flex items-center justify-between">
+            <div className="font-semibold text-sm">Upload Progress</div>
+            <button
+              onClick={()=>setUploadQueue([])}
+              className="text-gray-500 hover:text-gray-700 text-xs"
+            >Clear</button>
+          </div>
+          <div className="overflow-y-auto max-h-80">
+            {uploadQueue.map((u)=>(
+              <div key={u.id} className="p-3 border-b">
+                <div className="flex items-start gap-2 mb-1">
+                  <div className="flex-1 min-w-0">
+                    <div className="text-xs font-medium truncate" title={u.file.name}>{u.file.name}</div>
+                    <div className="text-[10px] text-gray-500">
+                      {(u.file.size / 1024 / 1024).toFixed(2)} MB
+                    </div>
+                  </div>
+                  <div className="text-xs">
+                    {u.status === 'pending' && '⏳'}
+                    {u.status === 'uploading' && '⏳'}
+                    {u.status === 'success' && '✅'}
+                    {u.status === 'error' && '❌'}
+                  </div>
+                </div>
+                {u.status === 'uploading' && (
+                  <div className="w-full bg-gray-200 rounded-full h-1.5 mt-1">
+                    <div 
+                      className="bg-blue-600 h-1.5 rounded-full transition-all"
+                      style={{ width: `${u.progress}%` }}
+                    />
+                  </div>
+                )}
+                {u.status === 'success' && (
+                  <div className="text-[10px] text-green-600 mt-1">Upload complete</div>
+                )}
+                {u.status === 'error' && (
+                  <div className="text-[10px] text-red-600 mt-1" title={u.error}>{u.error || 'Upload failed'}</div>
+                )}
+              </div>
+            ))}
           </div>
         </div>
       )}
@@ -645,7 +834,11 @@ export default function CompanyFiles(){
                     }
                     try{
                       const body:any = { name };
-                      if(newFolderParentId) body.parent_id = newFolderParentId;
+                      if(newFolderParentId) {
+                        body.parent_id = newFolderParentId;
+                      } else if(selectedDept) {
+                        body.department_id = selectedDept;
+                      }
                       await api('POST', '/company/files/folders', body);
                       toast.success('Folder created');
                       setNewFolderOpen(false);
@@ -677,7 +870,11 @@ export default function CompanyFiles(){
                   }
                   try{
                     const body:any = { name };
-                    if(newFolderParentId) body.parent_id = newFolderParentId;
+                    if(newFolderParentId) {
+                      body.parent_id = newFolderParentId;
+                    } else if(selectedDept) {
+                      body.department_id = selectedDept;
+                    }
                     await api('POST', '/company/files/folders', body);
                     toast.success('Folder created');
                     setNewFolderOpen(false);
