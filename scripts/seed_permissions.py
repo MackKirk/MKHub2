@@ -55,191 +55,239 @@ def seed_permissions():
     db = SessionLocal()
     
     try:
-        # Verificar se já existem categorias
+        # Check if categories exist - if so, update them instead of skipping
         existing_categories = db.query(PermissionCategory).count()
-        if existing_categories > 0:
-            print("Permissions already seeded. Skipping...")
-            return
+        update_mode = existing_categories > 0
         
-        # Definir categorias e permissões
+        # Define implemented permissions (permissions that are actually checked in the codebase)
+        implemented_permissions = {
+            "users:read", "users:write",
+            "timesheet:read", "timesheet:write", "timesheet:approve",
+            "clients:read", "clients:write",
+            "inventory:read", "inventory:write",
+            "reviews:read", "reviews:admin",
+        }
+        
+        # Define categories and permissions
         categories_data = [
             {
                 "name": "profile",
-                "label": "Perfil do Funcionário",
-                "description": "Permissões relacionadas ao perfil pessoal e profissional do funcionário",
+                "label": "Employee Profile",
+                "description": "Permissions related to personal and professional profile information",
                 "sort_index": 1,
                 "permissions": [
                     {
                         "key": "profile:edit_personal",
-                        "label": "Editar Informações Pessoais",
-                        "description": "Permite editar informações pessoais (nome, telefone, endereço, etc.)",
+                        "label": "Edit Personal Information",
+                        "description": "Allows editing personal information (name, phone, address, etc.)",
                         "sort_index": 1,
+                        "is_implemented": False,
                     },
                     {
                         "key": "profile:edit_work",
-                        "label": "Editar Informações de Trabalho",
-                        "description": "Permite editar informações de trabalho (cargo, divisão, gerente, etc.)",
+                        "label": "Edit Work Information",
+                        "description": "Allows editing work information (job title, division, manager, etc.)",
                         "sort_index": 2,
+                        "is_implemented": False,
                     },
                     {
                         "key": "profile:edit_photo",
-                        "label": "Editar Foto de Perfil",
-                        "description": "Permite alterar a foto de perfil",
+                        "label": "Edit Profile Photo",
+                        "description": "Allows changing the profile photo",
                         "sort_index": 3,
+                        "is_implemented": False,
                     },
                     {
                         "key": "profile:view_salary",
-                        "label": "Visualizar Salário",
-                        "description": "Permite visualizar informações de salário",
+                        "label": "View Salary",
+                        "description": "Allows viewing salary information",
                         "sort_index": 4,
+                        "is_implemented": False,
                     },
                 ],
             },
             {
                 "name": "equipment",
-                "label": "Equipamentos e Ferramentas",
-                "description": "Permissões relacionadas ao gerenciamento de equipamentos e ferramentas",
+                "label": "Equipment & Tools",
+                "description": "Permissions related to equipment and tools management",
                 "sort_index": 2,
                 "permissions": [
                     {
                         "key": "equipment:view",
-                        "label": "Visualizar Equipamentos",
-                        "description": "Permite visualizar equipamentos atribuídos",
+                        "label": "View Equipment",
+                        "description": "Allows viewing assigned equipment",
                         "sort_index": 1,
+                        "is_implemented": False,
                     },
                     {
                         "key": "equipment:manage",
-                        "label": "Administrar Equipamentos",
-                        "description": "Permite atribuir, devolver e gerenciar equipamentos",
+                        "label": "Manage Equipment",
+                        "description": "Allows assigning, returning, and managing equipment",
                         "sort_index": 2,
+                        "is_implemented": False,
                     },
                 ],
             },
             {
                 "name": "salary",
-                "label": "Salário e Remuneração",
-                "description": "Permissões relacionadas a salário e histórico de remuneração",
+                "label": "Salary & Compensation",
+                "description": "Permissions related to salary and compensation history",
                 "sort_index": 3,
                 "permissions": [
                     {
                         "key": "salary:view_history",
-                        "label": "Visualizar Histórico de Salário",
-                        "description": "Permite visualizar o histórico de mudanças de salário",
+                        "label": "View Salary History",
+                        "description": "Allows viewing salary change history",
                         "sort_index": 1,
+                        "is_implemented": False,
                     },
                     {
                         "key": "salary:change",
-                        "label": "Alterar Salário",
-                        "description": "Permite criar novas entradas no histórico de salário",
+                        "label": "Change Salary",
+                        "description": "Allows creating new salary history entries",
                         "sort_index": 2,
+                        "is_implemented": False,
                     },
                 ],
             },
             {
                 "name": "loans",
-                "label": "Empréstimos",
-                "description": "Permissões relacionadas a empréstimos da empresa",
+                "label": "Loans",
+                "description": "Permissions related to company loans",
                 "sort_index": 4,
                 "permissions": [
                     {
                         "key": "loans:view",
-                        "label": "Visualizar Empréstimos",
-                        "description": "Permite visualizar empréstimos e pagamentos",
+                        "label": "View Loans",
+                        "description": "Allows viewing loans and payments",
                         "sort_index": 1,
+                        "is_implemented": False,
                     },
                     {
                         "key": "loans:manage",
-                        "label": "Gerenciar Empréstimos",
-                        "description": "Permite criar empréstimos e registrar pagamentos",
+                        "label": "Manage Loans",
+                        "description": "Allows creating loans and recording payments",
                         "sort_index": 2,
+                        "is_implemented": False,
                     },
                 ],
             },
             {
                 "name": "notices",
-                "label": "Ocorrências",
-                "description": "Permissões relacionadas a ocorrências e notificações",
+                "label": "Notices & Incidents",
+                "description": "Permissions related to employee notices and incidents",
                 "sort_index": 5,
                 "permissions": [
                     {
                         "key": "notices:view",
-                        "label": "Visualizar Ocorrências",
-                        "description": "Permite visualizar ocorrências do funcionário",
+                        "label": "View Notices",
+                        "description": "Allows viewing employee notices",
                         "sort_index": 1,
+                        "is_implemented": False,
                     },
                     {
                         "key": "notices:create",
-                        "label": "Criar Ocorrências",
-                        "description": "Permite criar novas ocorrências",
+                        "label": "Create Notices",
+                        "description": "Allows creating new notices",
                         "sort_index": 2,
+                        "is_implemented": False,
                     },
                 ],
             },
             {
                 "name": "fines_tickets",
-                "label": "Multas e Tickets",
-                "description": "Permissões relacionadas a multas e tickets",
+                "label": "Fines & Tickets",
+                "description": "Permissions related to fines and tickets",
                 "sort_index": 6,
                 "permissions": [
                     {
                         "key": "fines_tickets:view",
-                        "label": "Visualizar Multas e Tickets",
-                        "description": "Permite visualizar multas e tickets",
+                        "label": "View Fines & Tickets",
+                        "description": "Allows viewing fines and tickets",
                         "sort_index": 1,
+                        "is_implemented": False,
                     },
                     {
                         "key": "fines_tickets:manage",
-                        "label": "Gerenciar Multas e Tickets",
-                        "description": "Permite criar e atualizar multas e tickets",
+                        "label": "Manage Fines & Tickets",
+                        "description": "Allows creating and updating fines and tickets",
                         "sort_index": 2,
+                        "is_implemented": False,
                     },
                 ],
             },
             {
                 "name": "divisions",
-                "label": "Divisões",
-                "description": "Permissões relacionadas a divisões do funcionário",
+                "label": "Divisions",
+                "description": "Permissions related to employee divisions",
                 "sort_index": 7,
                 "permissions": [
                     {
                         "key": "divisions:view",
-                        "label": "Visualizar Divisões",
-                        "description": "Permite visualizar divisões do funcionário",
+                        "label": "View Divisions",
+                        "description": "Allows viewing employee divisions",
                         "sort_index": 1,
+                        "is_implemented": False,
                     },
                     {
                         "key": "divisions:manage",
-                        "label": "Gerenciar Divisões",
-                        "description": "Permite adicionar ou remover divisões do funcionário",
+                        "label": "Manage Divisions",
+                        "description": "Allows adding or removing employee divisions",
                         "sort_index": 2,
+                        "is_implemented": False,
                     },
                 ],
             },
         ]
         
-        # Criar categorias e permissões
+        # Create or update categories and permissions
         for cat_data in categories_data:
-            category = PermissionCategory(
-                name=cat_data["name"],
-                label=cat_data["label"],
-                description=cat_data.get("description"),
-                sort_index=cat_data["sort_index"],
-            )
-            db.add(category)
-            db.flush()  # Para obter o ID da categoria
+            # Find or create category
+            category = db.query(PermissionCategory).filter(PermissionCategory.name == cat_data["name"]).first()
+            if category:
+                # Update existing category
+                category.label = cat_data["label"]
+                category.description = cat_data.get("description")
+                category.sort_index = cat_data["sort_index"]
+                category.is_active = True
+            else:
+                # Create new category
+                category = PermissionCategory(
+                    name=cat_data["name"],
+                    label=cat_data["label"],
+                    description=cat_data.get("description"),
+                    sort_index=cat_data["sort_index"],
+                )
+                db.add(category)
+            
+            db.flush()  # To get the category ID
             
             for perm_data in cat_data["permissions"]:
-                permission = PermissionDefinition(
-                    category_id=category.id,
-                    key=perm_data["key"],
-                    label=perm_data["label"],
-                    description=perm_data.get("description"),
-                    sort_index=perm_data["sort_index"],
-                )
-                db.add(permission)
+                # Find or create permission
+                permission = db.query(PermissionDefinition).filter(PermissionDefinition.key == perm_data["key"]).first()
+                if permission:
+                    # Update existing permission
+                    permission.category_id = category.id
+                    permission.label = perm_data["label"]
+                    permission.description = perm_data.get("description")
+                    permission.sort_index = perm_data["sort_index"]
+                    permission.is_active = True
+                else:
+                    # Create new permission
+                    permission = PermissionDefinition(
+                        category_id=category.id,
+                        key=perm_data["key"],
+                        label=perm_data["label"],
+                        description=perm_data.get("description"),
+                        sort_index=perm_data["sort_index"],
+                    )
+                    db.add(permission)
         
         db.commit()
-        print(f"Successfully seeded {len(categories_data)} permission categories with their permissions.")
+        if update_mode:
+            print(f"Successfully updated {len(categories_data)} permission categories with their permissions.")
+        else:
+            print(f"Successfully seeded {len(categories_data)} permission categories with their permissions.")
         
     except Exception as e:
         db.rollback()

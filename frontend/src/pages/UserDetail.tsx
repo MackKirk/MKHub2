@@ -26,7 +26,10 @@ export default function UserDetail(){
   const [tab, setTab] = useState<'general'|'timesheet'|'permissions'>('general');
   
   // Check if user can edit permissions (admin or has users:write permission)
-  const canEditPermissions = !!(me?.roles?.includes('admin') || (me?.permissions||[]).includes('users:write'));
+  const canEditPermissions = !!(
+    (me?.roles || []).some((r: string) => String(r || '').toLowerCase() === 'admin') || 
+    (me?.permissions || []).includes('users:write')
+  );
   
   if(!user) return <div className="h-24 bg-gray-100 animate-pulse rounded"/>;
   const save = async()=>{
@@ -70,6 +73,15 @@ export default function UserDetail(){
     </div>
   );
 }
+
+// List of implemented permissions (permissions that are actually checked in the codebase)
+const IMPLEMENTED_PERMISSIONS = new Set([
+  "users:read", "users:write",
+  "timesheet:read", "timesheet:write", "timesheet:approve",
+  "clients:read", "clients:write",
+  "inventory:read", "inventory:write",
+  "reviews:read", "reviews:admin",
+]);
 
 function UserPermissions({ userId }:{ userId:string }){
   const { data:permissionsData, refetch } = useQuery({ 
@@ -118,10 +130,10 @@ function UserPermissions({ userId }:{ userId:string }){
 
   return (
     <div className="rounded-xl border bg-white p-4">
-      <div className="mb-4">
-        <h3 className="text-lg font-semibold mb-1">User Permissions</h3>
-        <p className="text-sm text-gray-600">Manage granular permissions for this user. Permissions from roles are combined with these overrides.</p>
-      </div>
+        <div className="mb-4">
+          <h3 className="text-lg font-semibold mb-1">User Permissions</h3>
+          <p className="text-sm text-gray-600">Manage granular permissions for this user. Permissions from roles are combined with these overrides. Permissions marked with [WIP] are not yet implemented in the system.</p>
+        </div>
 
       <div className="space-y-6">
         {permissionsData.permissions_by_category?.map((cat: any) => (
@@ -144,12 +156,19 @@ function UserPermissions({ userId }:{ userId:string }){
                     onChange={() => handleToggle(perm.key)}
                     className="mt-1 w-4 h-4 rounded border-gray-300 text-brand-red focus:ring-brand-red"
                   />
-                  <div className="flex-1">
-                    <div className="font-medium text-sm">{perm.label}</div>
-                    {perm.description && (
-                      <div className="text-xs text-gray-500 mt-0.5">{perm.description}</div>
-                    )}
-                  </div>
+                    <div className="flex-1">
+                      <div className="font-medium text-sm flex items-center gap-2">
+                        {perm.label}
+                        {!IMPLEMENTED_PERMISSIONS.has(perm.key) && (
+                          <span className="text-xs px-1.5 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300">
+                            [WIP]
+                          </span>
+                        )}
+                      </div>
+                      {perm.description && (
+                        <div className="text-xs text-gray-500 mt-0.5">{perm.description}</div>
+                      )}
+                    </div>
                 </label>
               ))}
             </div>
