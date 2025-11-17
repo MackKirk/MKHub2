@@ -1717,6 +1717,8 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
                       setIsLoading(true);
                       const response = await api('POST', `/orders/projects/${projectId}/generate`, { estimate_id: currentEstimateId });
                       toast.success(`Generated ${response.orders_created || 0} orders successfully`);
+                      // Invalidate orders query so they appear immediately in the orders tab
+                      queryClient.invalidateQueries({ queryKey: ['projectOrders', projectId] });
                       // Navigate to orders tab would be handled by parent
                     } catch (error: any) {
                       const errorMsg = error.response?.data?.detail || error.message || 'Failed to generate orders';

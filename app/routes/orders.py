@@ -11,7 +11,7 @@ from ..auth.security import require_permissions, get_current_user
 from ..db import get_db
 from ..models.models import (
     ProjectOrder, ProjectOrderItem, Estimate, EstimateItem, 
-    Material, Project, Supplier, User
+    Material, Project, Supplier, User, EmployeeProfile
 )
 from ..schemas.orders import (
     ProjectOrderCreate, ProjectOrderUpdate, ProjectOrderResponse,
@@ -159,9 +159,19 @@ def get_order(
     if order.recipient_user_id:
         user = db.query(User).filter(User.id == order.recipient_user_id).first()
         if user:
-            order_dict["recipient_name"] = user.name or user.username
-            if user.email and not order.recipient_email:
-                order_dict["recipient_email"] = user.email
+            # Get name from EmployeeProfile if available
+            ep = db.query(EmployeeProfile).filter(EmployeeProfile.user_id == user.id).first()
+            name = None
+            if ep:
+                name = (ep.preferred_name or '').strip()
+                if not name:
+                    first = (ep.first_name or '').strip()
+                    last = (ep.last_name or '').strip()
+                    name = ' '.join([x for x in [first, last] if x]) or None
+            order_dict["recipient_name"] = name or user.username
+            email = user.email_corporate or user.email_personal
+            if email and not order.recipient_email:
+                order_dict["recipient_email"] = email
     
     # Get items
     items = db.query(ProjectOrderItem).filter(
