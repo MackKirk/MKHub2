@@ -31,6 +31,8 @@ from .routes.tasks import router as tasks_router
 from .routes.notifications import router as notifications_router
 from .routes.company_files import router as company_files_router
 from .routes.orders import router as orders_router
+from .routes.employee_management import router as employee_management_router
+from .routes.permissions import router as permissions_router
 
 
 def create_app() -> FastAPI:
@@ -71,6 +73,8 @@ def create_app() -> FastAPI:
     app.include_router(notifications_router)
     app.include_router(company_files_router)
     app.include_router(orders_router)
+    app.include_router(employee_management_router)
+    app.include_router(permissions_router)
     from .routes import dispatch
     app.include_router(dispatch.router)
     # Legacy UI redirects to new React routes (exact paths)
@@ -124,6 +128,27 @@ def create_app() -> FastAPI:
             os.makedirs("var", exist_ok=True)
         if settings.auto_create_db:
             Base.metadata.create_all(bind=engine)
+            # Seed permissions if they don't exist
+            try:
+                from .models.models import PermissionCategory
+                from .db import SessionLocal
+                db = SessionLocal()
+                try:
+                    existing_count = db.query(PermissionCategory).count()
+                    if existing_count == 0:
+                        # Import and run seed function
+                        import sys
+                        import os
+                        sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+                        from scripts.seed_permissions import seed_permissions
+                        seed_permissions()
+                        print("✅ Permissions seeded successfully on startup")
+                except Exception as e:
+                    print(f"⚠️  Could not seed permissions on startup: {e}")
+                finally:
+                    db.close()
+            except Exception as e:
+                print(f"⚠️  Could not check/seed permissions on startup: {e}")
         # Lightweight dev-time migrations (PostgreSQL): add missing columns safely
         try:
             # SQLite lightweight migrations for local dev
