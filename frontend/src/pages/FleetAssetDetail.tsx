@@ -393,18 +393,25 @@ export default function FleetAssetDetail() {
                           {wo.status}
                         </span>
                       </div>
-                      {wo.photos && wo.photos.length > 0 && (
-                        <div className="flex gap-2 mt-2">
-                          {wo.photos.map((photoId, idx) => (
-                            <img
-                              key={idx}
-                              src={`/files/${photoId}/thumbnail?w=100`}
-                              alt={`Photo ${idx + 1}`}
-                              className="w-16 h-16 object-cover rounded border"
-                            />
-                          ))}
-                        </div>
-                      )}
+                      {wo.photos && (() => {
+                        const photoList = Array.isArray(wo.photos) 
+                          ? wo.photos 
+                          : (typeof wo.photos === 'object' && wo.photos !== null 
+                            ? [...(Array.isArray(wo.photos.before) ? wo.photos.before : []), ...(Array.isArray(wo.photos.after) ? wo.photos.after : [])]
+                            : []);
+                        return photoList.length > 0 && (
+                          <div className="flex gap-2 mt-2">
+                            {photoList.slice(0, 3).map((photoId: string, idx: number) => (
+                              <img
+                                key={idx}
+                                src={`/files/${photoId}/thumbnail?w=100`}
+                                alt={`Photo ${idx + 1}`}
+                                className="w-16 h-16 object-cover rounded border"
+                              />
+                            ))}
+                          </div>
+                        );
+                      })()}
                     </div>
                     <div className="text-sm text-gray-500 ml-4">
                       {new Date(wo.created_at).toLocaleDateString()}

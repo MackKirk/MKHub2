@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Union
 from enum import Enum
 
 from pydantic import BaseModel, field_validator
@@ -211,7 +211,7 @@ class WorkOrderBase(BaseModel):
     urgency: WorkOrderUrgency = WorkOrderUrgency.normal
     status: WorkOrderStatus = WorkOrderStatus.open
     assigned_to_user_id: Optional[uuid.UUID] = None
-    photos: Optional[List[uuid.UUID]] = None
+    photos: Optional[Union[List[uuid.UUID], Dict[str, List[uuid.UUID]]]] = None  # Array of file_object_ids OR { before: [ids], after: [ids] }
     costs: Optional[Dict[str, Any]] = None  # Legacy: {labor: 0, parts: 0, other: 0, total: 0} or New: {labor: [{description: str, amount: float, invoice_files: List[uuid.UUID]}], parts: [...], other: [...]}
     documents: Optional[List[uuid.UUID]] = None  # Array of file_object_ids for invoices and documents
     origin_source: Optional[str] = None  # "manual" or "inspection"
@@ -228,7 +228,7 @@ class WorkOrderUpdate(BaseModel):
     urgency: Optional[WorkOrderUrgency] = None
     status: Optional[WorkOrderStatus] = None
     assigned_to_user_id: Optional[uuid.UUID] = None
-    photos: Optional[List[uuid.UUID]] = None
+    photos: Optional[Union[List[uuid.UUID], Dict[str, List[uuid.UUID]]]] = None  # Array of file_object_ids OR { before: [ids], after: [ids] }
     costs: Optional[Dict[str, Any]] = None  # Legacy: {labor: 0, parts: 0, other: 0, total: 0} or New: {labor: [{description: str, amount: float, invoice_files: List[uuid.UUID]}], parts: [...], other: [...]}
     documents: Optional[List[uuid.UUID]] = None
     notes: Optional[str] = None
