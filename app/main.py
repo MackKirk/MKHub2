@@ -601,6 +601,7 @@ def create_app() -> FastAPI:
                                                "asset_type TEXT NOT NULL,\n"
                                                "name TEXT NOT NULL,\n"
                                                "vin TEXT,\n"
+                                               "license_plate TEXT,\n"
                                                "model TEXT,\n"
                                                "year INTEGER,\n"
                                                "division_id TEXT,\n"
@@ -618,6 +619,10 @@ def create_app() -> FastAPI:
                                                "FOREIGN KEY(division_id) REFERENCES setting_items(id) ON DELETE SET NULL,\n"
                                                "FOREIGN KEY(created_by) REFERENCES users(id) ON DELETE SET NULL\n"
                                                ")"))
+                            try:
+                                conn.execute(text("ALTER TABLE fleet_assets ADD COLUMN license_plate TEXT"))
+                            except Exception:
+                                pass
                             conn.execute(text("CREATE INDEX IF NOT EXISTS idx_fleet_asset_type ON fleet_assets(asset_type)"))
                             conn.execute(text("CREATE INDEX IF NOT EXISTS idx_fleet_asset_status ON fleet_assets(status)"))
                             conn.execute(text("CREATE INDEX IF NOT EXISTS idx_fleet_asset_type_status ON fleet_assets(asset_type, status)"))
@@ -660,6 +665,8 @@ def create_app() -> FastAPI:
                                                "photos TEXT,\n"
                                                "result TEXT DEFAULT 'pass',\n"
                                                "notes TEXT,\n"
+                                               "odometer_reading INTEGER,\n"
+                                               "hours_reading REAL,\n"
                                                "auto_generated_work_order_id TEXT,\n"
                                                "created_at TEXT DEFAULT CURRENT_TIMESTAMP,\n"
                                                "created_by TEXT,\n"
@@ -668,6 +675,14 @@ def create_app() -> FastAPI:
                                                "FOREIGN KEY(auto_generated_work_order_id) REFERENCES work_orders(id) ON DELETE SET NULL,\n"
                                                "FOREIGN KEY(created_by) REFERENCES users(id) ON DELETE SET NULL\n"
                                                ")"))
+                            try:
+                                conn.execute(text("ALTER TABLE fleet_inspections ADD COLUMN odometer_reading INTEGER"))
+                            except Exception:
+                                pass
+                            try:
+                                conn.execute(text("ALTER TABLE fleet_inspections ADD COLUMN hours_reading REAL"))
+                            except Exception:
+                                pass
                             conn.execute(text("CREATE INDEX IF NOT EXISTS idx_inspection_asset ON fleet_inspections(fleet_asset_id)"))
                             conn.execute(text("CREATE INDEX IF NOT EXISTS idx_inspection_date ON fleet_inspections(inspection_date)"))
                             conn.execute(text("CREATE INDEX IF NOT EXISTS idx_inspection_result ON fleet_inspections(result)"))
@@ -691,6 +706,8 @@ def create_app() -> FastAPI:
                                                "documents TEXT,\n"
                                                "origin_source TEXT,\n"
                                                "origin_id TEXT,\n"
+                                               "odometer_reading INTEGER,\n"
+                                               "hours_reading REAL,\n"
                                                "created_at TEXT DEFAULT CURRENT_TIMESTAMP,\n"
                                                "updated_at TEXT,\n"
                                                "closed_at TEXT,\n"
@@ -699,6 +716,14 @@ def create_app() -> FastAPI:
                                                "FOREIGN KEY(assigned_by_user_id) REFERENCES users(id) ON DELETE SET NULL,\n"
                                                "FOREIGN KEY(created_by) REFERENCES users(id) ON DELETE SET NULL\n"
                                                ")"))
+                            try:
+                                conn.execute(text("ALTER TABLE work_orders ADD COLUMN odometer_reading INTEGER"))
+                            except Exception:
+                                pass
+                            try:
+                                conn.execute(text("ALTER TABLE work_orders ADD COLUMN hours_reading REAL"))
+                            except Exception:
+                                pass
                             conn.execute(text("CREATE INDEX IF NOT EXISTS idx_work_order_number ON work_orders(work_order_number)"))
                             conn.execute(text("CREATE INDEX IF NOT EXISTS idx_work_order_entity_type ON work_orders(entity_type)"))
                             conn.execute(text("CREATE INDEX IF NOT EXISTS idx_work_order_entity_id ON work_orders(entity_id)"))
@@ -779,6 +804,30 @@ def create_app() -> FastAPI:
                             conn.execute(text("CREATE INDEX IF NOT EXISTS idx_equipment_log_type ON equipment_logs(log_type)"))
                             conn.execute(text("CREATE INDEX IF NOT EXISTS idx_equipment_log_date ON equipment_logs(log_date)"))
                             conn.execute(text("CREATE INDEX IF NOT EXISTS idx_equipment_log_equipment_date ON equipment_logs(equipment_id, log_date)"))
+                        except Exception:
+                            pass
+                        try:
+                            conn.execute(text("CREATE TABLE IF NOT EXISTS equipment_assignments (\n"
+                                               "id TEXT PRIMARY KEY,\n"
+                                               "equipment_id TEXT NOT NULL,\n"
+                                               "assigned_to_user_id TEXT NOT NULL,\n"
+                                               "assigned_at TEXT NOT NULL,\n"
+                                               "returned_at TEXT,\n"
+                                               "returned_to_user_id TEXT,\n"
+                                               "notes TEXT,\n"
+                                               "is_active INTEGER DEFAULT 1,\n"
+                                               "created_by TEXT,\n"
+                                               "created_at TEXT DEFAULT CURRENT_TIMESTAMP,\n"
+                                               "FOREIGN KEY(equipment_id) REFERENCES equipment(id) ON DELETE CASCADE,\n"
+                                               "FOREIGN KEY(assigned_to_user_id) REFERENCES users(id) ON DELETE CASCADE,\n"
+                                               "FOREIGN KEY(returned_to_user_id) REFERENCES users(id) ON DELETE SET NULL,\n"
+                                               "FOREIGN KEY(created_by) REFERENCES users(id) ON DELETE SET NULL\n"
+                                               ")"))
+                            conn.execute(text("CREATE INDEX IF NOT EXISTS idx_equipment_assignment_equipment ON equipment_assignments(equipment_id)"))
+                            conn.execute(text("CREATE INDEX IF NOT EXISTS idx_equipment_assignment_user ON equipment_assignments(assigned_to_user_id)"))
+                            conn.execute(text("CREATE INDEX IF NOT EXISTS idx_equipment_assignment_active ON equipment_assignments(is_active)"))
+                            conn.execute(text("CREATE INDEX IF NOT EXISTS idx_equipment_assignment_equipment_active ON equipment_assignments(equipment_id, is_active)"))
+                            conn.execute(text("CREATE INDEX IF NOT EXISTS idx_equipment_assignment_user_active ON equipment_assignments(assigned_to_user_id, is_active)"))
                         except Exception:
                             pass
                 except Exception:
@@ -1414,6 +1463,7 @@ def create_app() -> FastAPI:
                                            "asset_type VARCHAR(50) NOT NULL,\n"
                                            "name VARCHAR(255) NOT NULL,\n"
                                            "vin VARCHAR(100),\n"
+                                           "license_plate VARCHAR(50),\n"
                                            "model VARCHAR(255),\n"
                                            "year INTEGER,\n"
                                            "division_id UUID,\n"
@@ -1429,6 +1479,10 @@ def create_app() -> FastAPI:
                                            "updated_at TIMESTAMPTZ,\n"
                                            "created_by UUID REFERENCES users(id) ON DELETE SET NULL\n"
                                            ")"))
+                        try:
+                            conn.execute(text("CREATE INDEX IF NOT EXISTS idx_fleet_asset_license_plate ON fleet_assets(license_plate)"))
+                        except Exception:
+                            pass
                         conn.execute(text("CREATE INDEX IF NOT EXISTS idx_fleet_asset_type ON fleet_assets(asset_type)"))
                         conn.execute(text("CREATE INDEX IF NOT EXISTS idx_fleet_asset_status ON fleet_assets(status)"))
                         conn.execute(text("CREATE INDEX IF NOT EXISTS idx_fleet_asset_type_status ON fleet_assets(asset_type, status)"))
@@ -1470,6 +1524,8 @@ def create_app() -> FastAPI:
                                            "photos JSONB,\n"
                                            "result VARCHAR(50) DEFAULT 'pass',\n"
                                            "notes TEXT,\n"
+                                           "odometer_reading INTEGER,\n"
+                                           "hours_reading NUMERIC(10, 2),\n"
                                            "auto_generated_work_order_id UUID REFERENCES work_orders(id) ON DELETE SET NULL,\n"
                                            "created_at TIMESTAMPTZ DEFAULT NOW(),\n"
                                            "created_by UUID REFERENCES users(id) ON DELETE SET NULL\n"
@@ -1497,6 +1553,8 @@ def create_app() -> FastAPI:
                                            "documents JSONB,\n"
                                            "origin_source VARCHAR(50),\n"
                                            "origin_id UUID,\n"
+                                           "odometer_reading INTEGER,\n"
+                                           "hours_reading NUMERIC(10, 2),\n"
                                            "created_at TIMESTAMPTZ DEFAULT NOW(),\n"
                                            "updated_at TIMESTAMPTZ,\n"
                                            "closed_at TIMESTAMPTZ,\n"
@@ -1573,9 +1631,83 @@ def create_app() -> FastAPI:
                         conn.execute(text("CREATE INDEX IF NOT EXISTS idx_equipment_log_equipment_date ON equipment_logs(equipment_id, log_date)"))
                     except Exception:
                         pass
-                    # Add documents column to work_orders if it doesn't exist (migration for existing tables)
                     try:
-                        # Check if column exists, if not add it
+                        conn.execute(text("CREATE TABLE IF NOT EXISTS equipment_assignments (\n"
+                                           "id UUID PRIMARY KEY,\n"
+                                           "equipment_id UUID NOT NULL REFERENCES equipment(id) ON DELETE CASCADE,\n"
+                                           "assigned_to_user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,\n"
+                                           "assigned_at TIMESTAMPTZ NOT NULL,\n"
+                                           "returned_at TIMESTAMPTZ,\n"
+                                           "returned_to_user_id UUID REFERENCES users(id) ON DELETE SET NULL,\n"
+                                           "notes TEXT,\n"
+                                           "is_active BOOLEAN DEFAULT TRUE,\n"
+                                           "created_by UUID REFERENCES users(id) ON DELETE SET NULL,\n"
+                                           "created_at TIMESTAMPTZ DEFAULT NOW()\n"
+                                           ")"))
+                        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_equipment_assignment_equipment ON equipment_assignments(equipment_id)"))
+                        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_equipment_assignment_user ON equipment_assignments(assigned_to_user_id)"))
+                        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_equipment_assignment_active ON equipment_assignments(is_active)"))
+                        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_equipment_assignment_equipment_active ON equipment_assignments(equipment_id, is_active)"))
+                        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_equipment_assignment_user_active ON equipment_assignments(assigned_to_user_id, is_active)"))
+                    except Exception:
+                        pass
+                    # Migrations for existing tables - add new columns if they don't exist
+                    try:
+                        # Add license_plate to fleet_assets
+                        result = conn.execute(text("""
+                            SELECT column_name 
+                            FROM information_schema.columns 
+                            WHERE table_name='fleet_assets' AND column_name='license_plate'
+                        """))
+                        if result.fetchone() is None:
+                            conn.execute(text("ALTER TABLE fleet_assets ADD COLUMN license_plate VARCHAR(50)"))
+                            conn.execute(text("CREATE INDEX IF NOT EXISTS idx_fleet_asset_license_plate ON fleet_assets(license_plate)"))
+                    except Exception:
+                        pass
+                    try:
+                        # Add odometer_reading and hours_reading to fleet_inspections
+                        result = conn.execute(text("""
+                            SELECT column_name 
+                            FROM information_schema.columns 
+                            WHERE table_name='fleet_inspections' AND column_name='odometer_reading'
+                        """))
+                        if result.fetchone() is None:
+                            conn.execute(text("ALTER TABLE fleet_inspections ADD COLUMN odometer_reading INTEGER"))
+                    except Exception:
+                        pass
+                    try:
+                        result = conn.execute(text("""
+                            SELECT column_name 
+                            FROM information_schema.columns 
+                            WHERE table_name='fleet_inspections' AND column_name='hours_reading'
+                        """))
+                        if result.fetchone() is None:
+                            conn.execute(text("ALTER TABLE fleet_inspections ADD COLUMN hours_reading NUMERIC(10, 2)"))
+                    except Exception:
+                        pass
+                    try:
+                        # Add odometer_reading and hours_reading to work_orders
+                        result = conn.execute(text("""
+                            SELECT column_name 
+                            FROM information_schema.columns 
+                            WHERE table_name='work_orders' AND column_name='odometer_reading'
+                        """))
+                        if result.fetchone() is None:
+                            conn.execute(text("ALTER TABLE work_orders ADD COLUMN odometer_reading INTEGER"))
+                    except Exception:
+                        pass
+                    try:
+                        result = conn.execute(text("""
+                            SELECT column_name 
+                            FROM information_schema.columns 
+                            WHERE table_name='work_orders' AND column_name='hours_reading'
+                        """))
+                        if result.fetchone() is None:
+                            conn.execute(text("ALTER TABLE work_orders ADD COLUMN hours_reading NUMERIC(10, 2)"))
+                    except Exception:
+                        pass
+                    try:
+                        # Add documents column to work_orders if it doesn't exist
                         result = conn.execute(text("""
                             SELECT column_name 
                             FROM information_schema.columns 

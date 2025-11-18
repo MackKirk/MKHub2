@@ -16,6 +16,7 @@ from ..models.models import (
     EquipmentCheckout,
     FleetLog,
     EquipmentLog,
+    EquipmentAssignment,
     User,
 )
 from ..schemas.fleet import (
@@ -38,6 +39,9 @@ from ..schemas.fleet import (
     FleetLogResponse,
     EquipmentLogCreate,
     EquipmentLogResponse,
+    EquipmentAssignmentCreate,
+    EquipmentAssignmentReturn,
+    EquipmentAssignmentResponse,
     FleetDashboardResponse,
     FleetAssetType,
     EquipmentCategory,
@@ -84,6 +88,39 @@ def create_work_order_from_inspection(
     db.add(wo)
     db.flush()
     return wo
+
+
+# Helper function to update fleet asset's last service odometer/hours
+def update_fleet_asset_last_service(
+    fleet_asset_id: uuid.UUID,
+    odometer_reading: Optional[int] = None,
+    hours_reading: Optional[float] = None,
+    db: Session = None
+):
+    """Update fleet asset's odometer_last_service or hours_last_service from inspection/work order readings"""
+    if not db:
+        return
+    
+    asset = db.query(FleetAsset).filter(FleetAsset.id == fleet_asset_id).first()
+    if not asset:
+        return
+    
+    updated = False
+    if odometer_reading is not None and asset.asset_type == "vehicle":
+        # Update if this reading is higher than current last_service or if last_service is None
+        if asset.odometer_last_service is None or odometer_reading > asset.odometer_last_service:
+            asset.odometer_last_service = odometer_reading
+            updated = True
+    
+    if hours_reading is not None and (asset.asset_type == "heavy_machinery" or asset.asset_type == "other"):
+        # Update if this reading is higher than current last_service or if last_service is None
+        if asset.hours_last_service is None or hours_reading > asset.hours_last_service:
+            asset.hours_last_service = hours_reading
+            updated = True
+    
+    if updated:
+        asset.updated_at = datetime.now(timezone.utc)
+        db.flush()
 
 
 # ---------- DASHBOARD ----------
@@ -557,6 +594,110 @@ def get_overdue_equipment(
     return overdue
 
 
+# ---------- EQUIPMENT ASSIGNMENTS ----------
+@router.get("/equipment/{equipment_id}/assignments", response_model=List[EquipmentAssignmentResponse])
+def get_equipment_assignments(
+    equipment_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    _=Depends(require_permissions("equipment:read"))
+):
+    """Get assignment history for equipment"""
+    assignments = db.query(EquipmentAssignment).filter(
+        EquipmentAssignment.equipment_id == equipment_id
+    ).order_by(EquipmentAssignment.assigned_at.desc()).all()
+    return assignments
+
+
+@router.post("/equipment/{equipment_id}/assign", response_model=EquipmentAssignmentResponse)
+def assign_equipment(
+    equipment_id: uuid.UUID,
+    assignment: EquipmentAssignmentCreate,
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user),
+    _=Depends(require_permissions("equipment:write"))
+):
+    """Assign equipment to a user"""
+    equipment = db.query(Equipment).filter(Equipment.id == equipment_id).first()
+    if not equipment:
+        raise HTTPException(status_code=404, detail="Equipment not found")
+    
+    # Deactivate any existing active assignments
+    active_assignments = db.query(EquipmentAssignment).filter(
+        and_(
+            EquipmentAssignment.equipment_id == equipment_id,
+            EquipmentAssignment.is_active == True
+        )
+    ).all()
+    for active_assignment in active_assignments:
+        active_assignment.is_active = False
+        active_assignment.returned_at = assignment.assigned_at or datetime.now(timezone.utc)
+        active_assignment.returned_to_user_id = user.id
+    
+    # Create new assignment
+    new_assignment = EquipmentAssignment(
+        equipment_id=equipment_id,
+        assigned_to_user_id=assignment.assigned_to_user_id,
+        assigned_at=assignment.assigned_at or datetime.now(timezone.utc),
+        notes=assignment.notes,
+        is_active=True,
+        created_by=user.id,
+    )
+    db.add(new_assignment)
+    
+    # Create log entry
+    log = EquipmentLog(
+        equipment_id=equipment_id,
+        log_type="assignment",
+        log_date=datetime.now(timezone.utc),
+        user_id=user.id,
+        description=f"Equipment assigned to user {assignment.assigned_to_user_id}",
+        created_by=user.id,
+    )
+    db.add(log)
+    
+    db.commit()
+    db.refresh(new_assignment)
+    return new_assignment
+
+
+@router.put("/equipment/assignments/{assignment_id}/return", response_model=EquipmentAssignmentResponse)
+def return_equipment_assignment(
+    assignment_id: uuid.UUID,
+    return_data: EquipmentAssignmentReturn,
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user),
+    _=Depends(require_permissions("equipment:write"))
+):
+    """Return equipment assignment (unassign)"""
+    assignment = db.query(EquipmentAssignment).filter(EquipmentAssignment.id == assignment_id).first()
+    if not assignment:
+        raise HTTPException(status_code=404, detail="Assignment not found")
+    
+    if not assignment.is_active:
+        raise HTTPException(status_code=400, detail="Assignment is already returned")
+    
+    assignment.is_active = False
+    assignment.returned_at = return_data.returned_at or datetime.now(timezone.utc)
+    assignment.returned_to_user_id = return_data.returned_to_user_id or user.id
+    if return_data.notes:
+        assignment.notes = (assignment.notes or "") + f"\nReturn notes: {return_data.notes}"
+    
+    # Create log entry
+    log = EquipmentLog(
+        equipment_id=assignment.equipment_id,
+        log_type="return",
+        log_date=datetime.now(timezone.utc),
+        user_id=user.id,
+        description=f"Equipment returned from user {assignment.assigned_to_user_id}",
+        created_by=user.id,
+    )
+    db.add(log)
+    
+    db.commit()
+    db.refresh(assignment)
+    return assignment
+
+
 # ---------- INSPECTIONS ----------
 @router.get("/inspections", response_model=List[FleetInspectionResponse])
 def list_inspections(
@@ -607,6 +748,15 @@ def create_inspection(
     db.add(new_inspection)
     db.flush()
     
+    # Update fleet asset's last service odometer/hours if readings are provided
+    if inspection.odometer_reading is not None or inspection.hours_reading is not None:
+        update_fleet_asset_last_service(
+            inspection.fleet_asset_id,
+            inspection.odometer_reading,
+            inspection.hours_reading,
+            db
+        )
+    
     # If inspection failed, auto-generate work order
     if inspection.result == InspectionResult.fail.value or inspection.result == "fail":
         wo = create_work_order_from_inspection(new_inspection, db, user.id)
@@ -632,6 +782,15 @@ def update_inspection(
     update_data = inspection_update.dict(exclude_unset=True)
     for key, value in update_data.items():
         setattr(inspection, key, value)
+    
+    # Update fleet asset's last service odometer/hours if readings are provided
+    if inspection_update.odometer_reading is not None or inspection_update.hours_reading is not None:
+        update_fleet_asset_last_service(
+            inspection.fleet_asset_id,
+            inspection_update.odometer_reading,
+            inspection_update.hours_reading,
+            db
+        )
     
     # If result changed to fail and no work order exists, create one
     if inspection_update.result and (inspection_update.result == InspectionResult.fail.value or inspection_update.result == "fail") and not inspection.auto_generated_work_order_id:
@@ -730,6 +889,17 @@ def create_work_order(
         created_by=user.id,
     )
     db.add(wo)
+    db.flush()
+    
+    # Update fleet asset's last service odometer/hours if readings are provided and entity is fleet
+    if work_order.entity_type == "fleet" and (work_order.odometer_reading is not None or work_order.hours_reading is not None):
+        update_fleet_asset_last_service(
+            work_order.entity_id,
+            work_order.odometer_reading,
+            work_order.hours_reading,
+            db
+        )
+    
     db.commit()
     db.refresh(wo)
     return wo
@@ -750,6 +920,15 @@ def update_work_order(
     update_data = work_order_update.dict(exclude_unset=True)
     for key, value in update_data.items():
         setattr(wo, key, value)
+    
+    # Update fleet asset's last service odometer/hours if readings are provided and entity is fleet
+    if wo.entity_type == "fleet" and (work_order_update.odometer_reading is not None or work_order_update.hours_reading is not None):
+        update_fleet_asset_last_service(
+            wo.entity_id,
+            work_order_update.odometer_reading,
+            work_order_update.hours_reading,
+            db
+        )
     
     # If status changed to closed, set closed_at
     if work_order_update.status == WorkOrderStatus.closed and not wo.closed_at:

@@ -81,6 +81,7 @@ class FleetAssetBase(BaseModel):
     asset_type: FleetAssetType
     name: str
     vin: Optional[str] = None
+    license_plate: Optional[str] = None
     model: Optional[str] = None
     year: Optional[int] = None
     division_id: Optional[uuid.UUID] = None
@@ -101,6 +102,7 @@ class FleetAssetCreate(FleetAssetBase):
 class FleetAssetUpdate(BaseModel):
     name: Optional[str] = None
     vin: Optional[str] = None
+    license_plate: Optional[str] = None
     model: Optional[str] = None
     year: Optional[int] = None
     division_id: Optional[uuid.UUID] = None
@@ -177,6 +179,8 @@ class FleetInspectionBase(BaseModel):
     photos: Optional[List[uuid.UUID]] = None
     result: InspectionResult = InspectionResult.pass_result
     notes: Optional[str] = None
+    odometer_reading: Optional[int] = None
+    hours_reading: Optional[float] = None
 
 
 class FleetInspectionCreate(FleetInspectionBase):
@@ -190,6 +194,8 @@ class FleetInspectionUpdate(BaseModel):
     photos: Optional[List[uuid.UUID]] = None
     result: Optional[InspectionResult] = None
     notes: Optional[str] = None
+    odometer_reading: Optional[int] = None
+    hours_reading: Optional[float] = None
 
 
 class FleetInspectionResponse(FleetInspectionBase):
@@ -216,6 +222,8 @@ class WorkOrderBase(BaseModel):
     documents: Optional[List[uuid.UUID]] = None  # Array of file_object_ids for invoices and documents
     origin_source: Optional[str] = None  # "manual" or "inspection"
     origin_id: Optional[uuid.UUID] = None
+    odometer_reading: Optional[int] = None  # For fleet assets
+    hours_reading: Optional[float] = None  # For fleet assets
 
 
 class WorkOrderCreate(WorkOrderBase):
@@ -232,6 +240,8 @@ class WorkOrderUpdate(BaseModel):
     costs: Optional[Dict[str, Any]] = None  # Legacy: {labor: 0, parts: 0, other: 0, total: 0} or New: {labor: [{description: str, amount: float, invoice_files: List[uuid.UUID]}], parts: [...], other: [...]}
     documents: Optional[List[uuid.UUID]] = None
     notes: Optional[str] = None
+    odometer_reading: Optional[int] = None  # For fleet assets
+    hours_reading: Optional[float] = None  # For fleet assets
 
 
 class WorkOrderResponse(WorkOrderBase):
@@ -324,6 +334,36 @@ class EquipmentLogResponse(EquipmentLogBase):
     id: uuid.UUID
     created_at: datetime
     created_by: Optional[uuid.UUID] = None
+
+    class Config:
+        from_attributes = True
+
+
+# Equipment Assignment Schemas
+class EquipmentAssignmentBase(BaseModel):
+    equipment_id: uuid.UUID
+    assigned_to_user_id: uuid.UUID
+    assigned_at: datetime
+    notes: Optional[str] = None
+
+
+class EquipmentAssignmentCreate(EquipmentAssignmentBase):
+    pass
+
+
+class EquipmentAssignmentReturn(BaseModel):
+    returned_at: datetime
+    returned_to_user_id: Optional[uuid.UUID] = None
+    notes: Optional[str] = None
+
+
+class EquipmentAssignmentResponse(EquipmentAssignmentBase):
+    id: uuid.UUID
+    returned_at: Optional[datetime] = None
+    returned_to_user_id: Optional[uuid.UUID] = None
+    is_active: bool
+    created_by: Optional[uuid.UUID] = None
+    created_at: datetime
 
     class Config:
         from_attributes = True
