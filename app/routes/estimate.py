@@ -5,11 +5,12 @@ from typing import Optional, List
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, defer
+from sqlalchemy.exc import ProgrammingError
 
 from ..auth.security import require_permissions
 from ..db import get_db
-from ..models.models import Material, RelatedProduct, Estimate, EstimateItem, Project
+from ..models.models import Material, RelatedProduct, Estimate, EstimateItem, Project, Client
 
 
 router = APIRouter(prefix="/estimate", tags=["estimate"])
@@ -281,7 +282,15 @@ def list_estimates(project_id: Optional[uuid.UUID] = None, db: Session = Depends
                 est_dict["project_name"] = project.name
                 # Get client information
                 if project.client_id:
-                    client = db.query(Client).filter(Client.id == project.client_id).first()
+                    try:
+                        client = db.query(Client).filter(Client.id == project.client_id).first()
+                    except ProgrammingError as e:
+                        error_msg = str(e.orig) if hasattr(e, 'orig') else str(e)
+                        if 'is_system' in error_msg and 'does not exist' in error_msg:
+                            db.rollback()
+                            client = db.query(Client).options(defer(Client.is_system)).filter(Client.id == project.client_id).first()
+                        else:
+                            raise
                     if client:
                         est_dict["client_name"] = client.display_name or client.name
         

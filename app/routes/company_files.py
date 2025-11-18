@@ -5,7 +5,8 @@ Uses a special approach: we'll create a "Company" client or use department-based
 For now, we'll use department_id to organize files.
 """
 from fastapi import APIRouter, Depends, HTTPException, Body
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, defer
+from sqlalchemy.exc import ProgrammingError
 from typing import Optional, List
 import uuid
 
@@ -23,28 +24,48 @@ def get_company_client_id(db: Session) -> uuid.UUID:
     """
     from ..models.models import Client
     # Look for a client with code "COMPANY" or name "Company Files"
-    company = db.query(Client).filter(
-        (Client.code == "COMPANY") | (Client.name.ilike("%company%files%"))
-    ).first()
+    try:
+        company = db.query(Client).filter(
+            (Client.code == "COMPANY") | (Client.name.ilike("%company%files%"))
+        ).first()
+    except ProgrammingError as e:
+        error_msg = str(e.orig) if hasattr(e, 'orig') else str(e)
+        if 'is_system' in error_msg and 'does not exist' in error_msg:
+            db.rollback()
+            company = db.query(Client).options(defer(Client.is_system)).filter(
+                (Client.code == "COMPANY") | (Client.name.ilike("%company%files%"))
+            ).first()
+        else:
+            raise
     
     if not company:
         # Create company client if it doesn't exist
         # Mark it as system client so it doesn't appear in customer listings
-        company = Client(
-            code="COMPANY",
-            name="Company Files",
-            display_name="Company Files",
-            is_system=True
-        )
+        # Only set is_system if column exists
+        company_data = {
+            "code": "COMPANY",
+            "name": "Company Files",
+            "display_name": "Company Files",
+        }
+        # Try to set is_system, but don't fail if column doesn't exist
+        try:
+            company = Client(**company_data, is_system=True)
+        except Exception:
+            # Column doesn't exist, create without it
+            company = Client(**company_data)
         db.add(company)
         db.commit()
         db.refresh(company)
     else:
-        # Ensure existing company client is marked as system
-        if not getattr(company, 'is_system', False):
-            company.is_system = True
-            db.commit()
-            db.refresh(company)
+        # Ensure existing company client is marked as system (only if column exists)
+        try:
+            if not getattr(company, 'is_system', False):
+                company.is_system = True
+                db.commit()
+                db.refresh(company)
+        except (AttributeError, ProgrammingError):
+            # Column doesn't exist, skip setting it
+            pass
     
     return company.id
 

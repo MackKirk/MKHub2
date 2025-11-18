@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, defer
+from sqlalchemy.exc import ProgrammingError
 from typing import List, Optional
 
 from ..db import get_db
@@ -108,13 +109,30 @@ def update_setting_item(list_name: str, item_id: str, label: str = None, value: 
     db.commit()
     # Propagate label rename to referencing records (non-destructive; only on rename, not on delete)
     if label_changed and label:
-        if list_name == "client_statuses":
-            db.query(Client).filter(Client.client_status == old_label).update({Client.client_status: label}, synchronize_session=False)
-            db.commit()
-        elif list_name == "client_types":
-            db.query(Client).filter(Client.client_type == old_label).update({Client.client_type: label}, synchronize_session=False)
-            db.commit()
-        elif list_name == "lead_sources":
-            db.query(Client).filter(Client.lead_source == old_label).update({Client.lead_source: label}, synchronize_session=False)
-            db.commit()
+        try:
+            if list_name == "client_statuses":
+                db.query(Client).filter(Client.client_status == old_label).update({Client.client_status: label}, synchronize_session=False)
+                db.commit()
+            elif list_name == "client_types":
+                db.query(Client).filter(Client.client_type == old_label).update({Client.client_type: label}, synchronize_session=False)
+                db.commit()
+            elif list_name == "lead_sources":
+                db.query(Client).filter(Client.lead_source == old_label).update({Client.lead_source: label}, synchronize_session=False)
+                db.commit()
+        except ProgrammingError as e:
+            error_msg = str(e.orig) if hasattr(e, 'orig') else str(e)
+            if 'is_system' in error_msg and 'does not exist' in error_msg:
+                db.rollback()
+                # Retry with defer to avoid loading is_system column
+                if list_name == "client_statuses":
+                    db.query(Client).options(defer(Client.is_system)).filter(Client.client_status == old_label).update({Client.client_status: label}, synchronize_session=False)
+                    db.commit()
+                elif list_name == "client_types":
+                    db.query(Client).options(defer(Client.is_system)).filter(Client.client_type == old_label).update({Client.client_type: label}, synchronize_session=False)
+                    db.commit()
+                elif list_name == "lead_sources":
+                    db.query(Client).options(defer(Client.is_system)).filter(Client.lead_source == old_label).update({Client.lead_source: label}, synchronize_session=False)
+                    db.commit()
+            else:
+                raise
     return {"status": "ok"}

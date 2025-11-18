@@ -64,3 +64,8 @@ frontend/package-lock.json
 *.egg-info/
 dist/
 build/
+
+# Migration scripts (temporary/one-time use)
+scripts/add_is_system_column.py
+scripts/verify_is_system_column.py
+scripts/add_is_system_column.sql

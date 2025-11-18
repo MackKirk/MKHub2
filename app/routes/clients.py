@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Body
 import uuid
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, defer
 from sqlalchemy.exc import ProgrammingError
 from sqlalchemy import text
 from typing import Optional, List
@@ -38,9 +38,19 @@ def create_client(
             base = (data.get("name") or "client").lower().replace(" ", "-")[:20]
             code = base
             i = 1
-            while db.query(Client).filter(Client.code == code).first():
-                code = f"{base}-{i}"
-                i += 1
+            try:
+                while db.query(Client).filter(Client.code == code).first():
+                    code = f"{base}-{i}"
+                    i += 1
+            except ProgrammingError as e:
+                error_msg = str(e.orig) if hasattr(e, 'orig') else str(e)
+                if 'is_system' in error_msg and 'does not exist' in error_msg:
+                    db.rollback()
+                    while db.query(Client).options(defer(Client.is_system)).filter(Client.code == code).first():
+                        code = f"{base}-{i}"
+                        i += 1
+                else:
+                    raise
             data["code"] = code
         c = Client(**data)
         db.add(c)
@@ -64,32 +74,25 @@ def create_client(
 
 @router.get("", response_model=List[ClientResponse])
 def list_clients(city: Optional[str] = None, status: Optional[str] = None, type: Optional[str] = None, q: Optional[str] = None, db: Session = Depends(get_db), _=Depends(require_permissions("clients:read"))):
-    query = db.query(Client)
-    
-    # Exclude system clients (e.g., "Company Files") from normal customer listings
-    # Note: Column is_system should be created by startup migration in main.py
-    query = query.filter(Client.is_system == False)
-    
-    if city:
-        query = query.filter(Client.city == city)
-    if status:
-        query = query.filter(Client.status_id == status)
-    if type:
-        query = query.filter(Client.type_id == type)
-    if q:
-        # Search over display_name or name
-        query = query.filter((Client.name.ilike(f"%{q}%")) | (Client.display_name.ilike(f"%{q}%")))
-    
-    # Try to execute the query, retry without is_system filter if column doesn't exist yet
+    # Try normal query with is_system filter first
     try:
+        query = db.query(Client).filter(Client.is_system == False)
+        if city:
+            query = query.filter(Client.city == city)
+        if status:
+            query = query.filter(Client.status_id == status)
+        if type:
+            query = query.filter(Client.type_id == type)
+        if q:
+            query = query.filter((Client.name.ilike(f"%{q}%")) | (Client.display_name.ilike(f"%{q}%")))
         return query.order_by(Client.created_at.desc()).limit(500).all()
     except ProgrammingError as e:
-        # If the error is about missing is_system column, rollback and retry without that filter
+        # If is_system column doesn't exist, retry without that filter using defer
         error_msg = str(e.orig) if hasattr(e, 'orig') else str(e)
         if 'is_system' in error_msg and 'does not exist' in error_msg:
-            db.rollback()  # Rollback the failed transaction
-            # Rebuild query without is_system filter - SQLAlchemy will handle missing column gracefully
-            query = db.query(Client)
+            db.rollback()
+            # Rebuild query without is_system filter, using defer to avoid loading the column
+            query = db.query(Client).options(defer(Client.is_system))
             if city:
                 query = query.filter(Client.city == city)
             if status:
@@ -98,54 +101,21 @@ def list_clients(city: Optional[str] = None, status: Optional[str] = None, type:
                 query = query.filter(Client.type_id == type)
             if q:
                 query = query.filter((Client.name.ilike(f"%{q}%")) | (Client.display_name.ilike(f"%{q}%")))
-            # Use raw SQL to avoid selecting is_system column that doesn't exist
-            where_clauses = []
-            params = {}
-            if city:
-                where_clauses.append("city = :city")
-                params['city'] = city
-            if status:
-                where_clauses.append("status_id = :status_id")
-                params['status_id'] = status
-            if type:
-                where_clauses.append("type_id = :type_id")
-                params['type_id'] = type
-            if q:
-                where_clauses.append("(name ILIKE :q OR display_name ILIKE :q)")
-                params['q'] = f"%{q}%"
-            
-            where_sql = " AND ".join(where_clauses) if where_clauses else "1=1"
-            # Select all columns except is_system since it doesn't exist yet
-            sql = text(f"""
-                SELECT id, code, name, legal_name, display_name, client_type, client_status, lead_source, 
-                       estimator_id, description, address_line1, address_line2, city, province, postal_code, 
-                       country, billing_address_line1, billing_address_line2, billing_city, billing_province, 
-                       billing_postal_code, billing_country, billing_same_as_address, type_id, status_id, 
-                       payment_terms_id, billing_email, po_required, tax_number, dataforma_id, preferred_language, 
-                       preferred_channels, marketing_opt_in, invoice_delivery_method, statement_delivery_method, 
-                       cc_emails_for_invoices, cc_emails_for_estimates, do_not_contact, do_not_contact_reason, 
-                       created_at, created_by, updated_at, updated_by
-                FROM clients
-                WHERE {where_sql}
-                ORDER BY created_at DESC
-                LIMIT 500
-            """)
-            result = db.execute(sql, params)
-            rows = result.fetchall()
-            # Convert rows to Client objects, setting is_system=False since column doesn't exist yet
-            clients = []
-            for row in rows:
-                client_dict = dict(row._mapping)
-                client_dict['is_system'] = False  # Default value since column doesn't exist yet
-                client = Client(**client_dict)
-                clients.append(client)
-            return clients
+            return query.order_by(Client.created_at.desc()).limit(500).all()
         raise
 
 
 @router.get("/{client_id}", response_model=ClientResponse)
 def get_client(client_id: str, db: Session = Depends(get_db), _=Depends(require_permissions("clients:read"))):
-    c = db.query(Client).filter(Client.id == client_id).first()
+    try:
+        c = db.query(Client).filter(Client.id == client_id).first()
+    except ProgrammingError as e:
+        error_msg = str(e.orig) if hasattr(e, 'orig') else str(e)
+        if 'is_system' in error_msg and 'does not exist' in error_msg:
+            db.rollback()
+            c = db.query(Client).options(defer(Client.is_system)).filter(Client.id == client_id).first()
+        else:
+            raise
     if not c:
         raise HTTPException(status_code=404, detail="Not found")
     return c
@@ -153,18 +123,46 @@ def get_client(client_id: str, db: Session = Depends(get_db), _=Depends(require_
 
 @router.patch("/{client_id}")
 def update_client(client_id: str, payload: dict, db: Session = Depends(get_db), _=Depends(require_permissions("clients:write"))):
-    c = db.query(Client).filter(Client.id == client_id).first()
+    try:
+        c = db.query(Client).filter(Client.id == client_id).first()
+    except ProgrammingError as e:
+        error_msg = str(e.orig) if hasattr(e, 'orig') else str(e)
+        if 'is_system' in error_msg and 'does not exist' in error_msg:
+            db.rollback()
+            c = db.query(Client).options(defer(Client.is_system)).filter(Client.id == client_id).first()
+        else:
+            raise
     if not c:
         raise HTTPException(status_code=404, detail="Not found")
+    # Don't try to set is_system if column doesn't exist - just skip it if it's in payload
     for k, v in payload.items():
-        setattr(c, k, v)
+        if k == 'is_system':
+            # Only set is_system if we successfully queried without defer (meaning column exists)
+            # If we used defer, the column doesn't exist, so skip it
+            try:
+                # Try to access is_system to see if it exists
+                _ = getattr(c, 'is_system', None)
+                setattr(c, k, v)
+            except Exception:
+                # Column doesn't exist, skip it
+                pass
+        else:
+            setattr(c, k, v)
     db.commit()
     return {"status": "ok"}
 
 
 @router.delete("/{client_id}")
 def delete_client(client_id: str, db: Session = Depends(get_db), _=Depends(require_permissions("clients:write"))):
-    c = db.query(Client).filter(Client.id == client_id).first()
+    try:
+        c = db.query(Client).filter(Client.id == client_id).first()
+    except ProgrammingError as e:
+        error_msg = str(e.orig) if hasattr(e, 'orig') else str(e)
+        if 'is_system' in error_msg and 'does not exist' in error_msg:
+            db.rollback()
+            c = db.query(Client).options(defer(Client.is_system)).filter(Client.id == client_id).first()
+        else:
+            raise
     if not c:
         return {"status": "ok"}
     # Check for related projects and proposals - these are NOT cascade deleted
@@ -194,7 +192,15 @@ def add_contact(client_id: str, payload: ClientContactCreate, db: Session = Depe
             client_uuid = uuid.UUID(str(client_id))
         except Exception:
             raise HTTPException(status_code=400, detail="Invalid client id")
-        c = db.query(Client).filter(Client.id == client_uuid).first()
+        try:
+            c = db.query(Client).filter(Client.id == client_uuid).first()
+        except ProgrammingError as e:
+            error_msg = str(e.orig) if hasattr(e, 'orig') else str(e)
+            if 'is_system' in error_msg and 'does not exist' in error_msg:
+                db.rollback()
+                c = db.query(Client).options(defer(Client.is_system)).filter(Client.id == client_uuid).first()
+            else:
+                raise
         if not c:
             raise HTTPException(status_code=404, detail="Client not found")
         data = payload.dict(exclude_unset=True)

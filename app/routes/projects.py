@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, defer
+from sqlalchemy.exc import ProgrammingError
 from sqlalchemy import func, extract
 from typing import List, Optional
 
@@ -128,7 +129,17 @@ def get_project(project_id: str, db: Session = Depends(get_db)):
     p = db.query(Project).filter(Project.id == project_id).first()
     if not p:
         raise HTTPException(status_code=404, detail="Not found")
-    client = db.query(Client).filter(Client.id == p.client_id).first() if getattr(p,'client_id',None) else None
+    client = None
+    if getattr(p, 'client_id', None):
+        try:
+            client = db.query(Client).filter(Client.id == p.client_id).first()
+        except ProgrammingError as e:
+            error_msg = str(e.orig) if hasattr(e, 'orig') else str(e)
+            if 'is_system' in error_msg and 'does not exist' in error_msg:
+                db.rollback()
+                client = db.query(Client).options(defer(Client.is_system)).filter(Client.id == p.client_id).first()
+            else:
+                raise
     site = db.query(ClientSite).filter(ClientSite.id == getattr(p,'site_id',None)).first() if getattr(p,'site_id',None) else None
     contact = db.query(ClientContact).filter(ClientContact.id == getattr(p,'contact_id',None)).first() if getattr(p,'contact_id',None) else None
     return {
