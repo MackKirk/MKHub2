@@ -163,12 +163,24 @@ def list_company_folders(
         if not user_has_folder_access(db, user, f):
             continue
         
+        # Get last modified date from documents in this folder
+        last_modified = getattr(f, 'created_at', None)
+        if f.id:
+            latest_doc = db.query(ClientDocument).filter(
+                ClientDocument.client_id == company_id,
+                ClientDocument.doc_type == f"folder:{f.id}"
+            ).order_by(ClientDocument.created_at.desc()).first()
+            if latest_doc and getattr(latest_doc, 'created_at', None):
+                last_modified = latest_doc.created_at
+        
         folder_data = {
             "id": str(f.id),
             "name": f.name,
             "parent_id": str(f.parent_id) if getattr(f, 'parent_id', None) else None,
             "sort_index": f.sort_index,
             "access_permissions": getattr(f, 'access_permissions', None),
+            "created_at": f.created_at.isoformat() if getattr(f, 'created_at', None) else None,
+            "last_modified": last_modified.isoformat() if last_modified else None,
         }
         out.append(folder_data)
     return out

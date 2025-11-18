@@ -4,7 +4,7 @@ import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
 import { useConfirm } from '@/components/ConfirmProvider';
 
-type Folder = { id: string; name: string; parent_id?: string; sort_index?: number; access_permissions?: any };
+type Folder = { id: string; name: string; parent_id?: string; sort_index?: number; access_permissions?: any; created_at?: string; last_modified?: string };
 type Document = { id: string; folder_id?: string; title: string; notes?: string; file_id?: string; created_at?: string };
 type Department = { id: string; label: string; sort_index?: number };
 type User = { id: string; username: string; email?: string };
@@ -525,56 +525,73 @@ export default function CompanyFiles(){
                         + New Folder
                       </button>
                     </div>
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-2">
-                  {topFolders.map((f)=> (
-                    <div
-                      key={f.id}
-                      className="relative rounded-lg border p-3 h-28 bg-white hover:bg-gray-50 select-none group flex flex-col items-center justify-center cursor-pointer"
-                      onClick={(e)=>{
-                        const t=e.target as HTMLElement;
-                        if(t.closest('.folder-actions')) return;
-                        setActiveFolderId(f.id);
-                      }}
-                      onDragOver={(e)=>{ e.preventDefault(); }}
-                      onDrop={async(e)=>{
-                        e.preventDefault();
-                        if(e.dataTransfer.files?.length){
-                          await uploadMultiple(e.dataTransfer.files, f.id);
-                        }
-                      }}
-                    >
-                      <div className="text-4xl">📁</div>
-                      <div className="mt-1 text-sm font-medium truncate text-center w-full" title={f.name}>{f.name}</div>
-                      <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 folder-actions flex gap-1">
-                        <button
-                          onClick={(e)=>{
-                            e.stopPropagation();
-                            setPermissionsFolder({id: f.id, name: f.name});
-                          }}
-                          className="p-1 rounded bg-purple-600 hover:bg-purple-700 text-white text-[10px]"
-                          title="Configure access permissions"
-                        >🔒</button>
-                        <button
-                          onClick={(e)=>{
-                            e.stopPropagation();
-                            setRenameFolder({id: f.id, name: f.name});
-                          }}
-                          className="p-1 rounded bg-blue-600 hover:bg-blue-700 text-white text-[10px]"
-                          title="Rename folder"
-                        >✏️</button>
-                        <button
-                          onClick={(e)=>{
-                            e.stopPropagation();
-                            removeFolder(f.id, f.name);
-                          }}
-                          className="p-1 rounded bg-red-600 hover:bg-red-700 text-white text-[10px]"
-                          title="Delete folder"
-                        >🗑️</button>
-                      </div>
+                    <div className="rounded-lg border overflow-hidden bg-white">
+                      {topFolders.length === 0 ? (
+                        <div className="px-3 py-3 text-sm text-gray-600">No folders yet. Create one to get started.</div>
+                      ) : (
+                        topFolders.map((f)=> (
+                          <div
+                            key={f.id}
+                            className="flex items-center gap-3 px-3 py-2 hover:bg-gray-50 border-b last:border-b-0"
+                            onDragOver={(e)=>{ e.preventDefault(); }}
+                            onDrop={async(e)=>{
+                              e.preventDefault();
+                              if(e.dataTransfer.files?.length){
+                                await uploadMultiple(e.dataTransfer.files, f.id);
+                              }
+                            }}
+                          >
+                            <div 
+                              className="text-3xl cursor-pointer flex-shrink-0"
+                              onClick={()=>setActiveFolderId(f.id)}
+                            >
+                              📁
+                            </div>
+                            <div
+                              className="flex-1 min-w-0 cursor-pointer"
+                              onClick={()=>setActiveFolderId(f.id)}
+                            >
+                              <div className="font-medium truncate hover:underline">{f.name}</div>
+                              <div className="text-[11px] text-gray-600 truncate">
+                                {f.last_modified ? (
+                                  <>Last modified {String(f.last_modified).slice(0,10)}</>
+                                ) : f.created_at ? (
+                                  <>Created {String(f.created_at).slice(0,10)}</>
+                                ) : (
+                                  <>No activity</>
+                                )}
+                              </div>
+                            </div>
+                            <div className="ml-auto flex items-center gap-1">
+                              <button
+                                onClick={(e)=>{
+                                  e.stopPropagation();
+                                  setPermissionsFolder({id: f.id, name: f.name});
+                                }}
+                                title="Configure access permissions"
+                                className="p-2 rounded hover:bg-gray-100"
+                              >🔒</button>
+                              <button
+                                onClick={(e)=>{
+                                  e.stopPropagation();
+                                  setRenameFolder({id: f.id, name: f.name});
+                                }}
+                                title="Rename folder"
+                                className="p-2 rounded hover:bg-gray-100"
+                              >✏️</button>
+                              <button
+                                onClick={(e)=>{
+                                  e.stopPropagation();
+                                  removeFolder(f.id, f.name);
+                                }}
+                                title="Delete folder"
+                                className="p-2 rounded hover:bg-red-50 text-red-600"
+                              >🗑️</button>
+                            </div>
+                          </div>
+                        ))
+                      )}
                     </div>
-                  ))}
-                    {!topFolders.length && <div className="text-sm text-gray-600 col-span-full">No folders yet. Create one to get started.</div>}
-                  </div>
                   </>
                 )}
               </>
@@ -603,16 +620,11 @@ export default function CompanyFiles(){
                 {childFolders.length>0 && (
                   <div className="mb-3">
                     <div className="text-xs text-gray-600 mb-1">Subfolders</div>
-                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-2">
+                    <div className="rounded-lg border overflow-hidden bg-white">
                       {childFolders.map((f)=> (
                         <div
                           key={f.id}
-                          className="relative rounded-lg border p-3 h-28 bg-white hover:bg-gray-50 select-none group flex flex-col items-center justify-center cursor-pointer"
-                          onClick={(e)=>{
-                            const t=e.target as HTMLElement;
-                            if(t.closest('.folder-actions')) return;
-                            setActiveFolderId(f.id);
-                          }}
+                          className="flex items-center gap-3 px-3 py-2 hover:bg-gray-50 border-b last:border-b-0"
                           onDragOver={(e)=>{ e.preventDefault(); }}
                           onDrop={async(e)=>{
                             e.preventDefault();
@@ -621,32 +633,51 @@ export default function CompanyFiles(){
                             }
                           }}
                         >
-                          <div className="text-4xl">📁</div>
-                          <div className="mt-1 text-sm font-medium truncate text-center w-full" title={f.name}>{f.name}</div>
-                          <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 folder-actions flex gap-1">
+                          <div 
+                            className="text-3xl cursor-pointer flex-shrink-0"
+                            onClick={()=>setActiveFolderId(f.id)}
+                          >
+                            📁
+                          </div>
+                          <div
+                            className="flex-1 min-w-0 cursor-pointer"
+                            onClick={()=>setActiveFolderId(f.id)}
+                          >
+                            <div className="font-medium truncate hover:underline">{f.name}</div>
+                            <div className="text-[11px] text-gray-600 truncate">
+                              {f.last_modified ? (
+                                <>Last modified {String(f.last_modified).slice(0,10)}</>
+                              ) : f.created_at ? (
+                                <>Created {String(f.created_at).slice(0,10)}</>
+                              ) : (
+                                <>No activity</>
+                              )}
+                            </div>
+                          </div>
+                          <div className="ml-auto flex items-center gap-1">
                             <button
                               onClick={(e)=>{
                                 e.stopPropagation();
                                 setPermissionsFolder({id: f.id, name: f.name});
                               }}
-                              className="p-1 rounded bg-purple-600 hover:bg-purple-700 text-white text-[10px]"
                               title="Configure access permissions"
+                              className="p-2 rounded hover:bg-gray-100"
                             >🔒</button>
                             <button
                               onClick={(e)=>{
                                 e.stopPropagation();
                                 setRenameFolder({id: f.id, name: f.name});
                               }}
-                              className="p-1 rounded bg-blue-600 hover:bg-blue-700 text-white text-[10px]"
                               title="Rename folder"
+                              className="p-2 rounded hover:bg-gray-100"
                             >✏️</button>
                             <button
                               onClick={(e)=>{
                                 e.stopPropagation();
                                 removeFolder(f.id, f.name);
                               }}
-                              className="p-1 rounded bg-red-600 hover:bg-red-700 text-white text-[10px]"
                               title="Delete folder"
+                              className="p-2 rounded hover:bg-red-50 text-red-600"
                             >🗑️</button>
                           </div>
                         </div>
