@@ -8,7 +8,7 @@ from slugify import slugify
 
 from ..db import get_db
 from ..config import settings
-from ..models.models import User, Role, Invite, UsernameReservation, Task, EmployeeProfile
+from ..models.models import User, Role, Invite, UsernameReservation, EmployeeProfile
 from ..schemas.auth import (
     UsernameSuggestRequest,
     UsernameSuggestResponse,
@@ -139,91 +139,6 @@ def invite_user(req: InviteRequest, db: Session = Depends(get_db), user: User = 
         expires_at=datetime.now(timezone.utc) + timedelta(days=7),
     )
     db.add(inv)
-    db.flush()
-    
-    # Get division_id from invite (will be used for all tasks)
-    task_division_id = division_uuid
-    
-    # Create tasks based on requirements
-    # Note: Tasks are assigned to the division specified in the invite
-    # Each task type will be visible to users in that division
-    
-    if req.needs_email:
-        task = Task(
-            title=f"Create email account for {req.email_personal}",
-            description=f"Create email account for new employee: {req.email_personal}",
-            task_type="email",
-            division_id=task_division_id,
-            invite_id=inv.id,
-            created_by=user.id,
-            status="pending",
-        )
-        db.add(task)
-    
-    if req.needs_business_card:
-        task = Task(
-            title=f"Create business card for {req.email_personal}",
-            description=f"Create business card for new employee: {req.email_personal}",
-            task_type="business_card",
-            division_id=task_division_id,
-            invite_id=inv.id,
-            created_by=user.id,
-            status="pending",
-        )
-        db.add(task)
-    
-    if req.needs_phone:
-        task = Task(
-            title=f"Setup phone for {req.email_personal}",
-            description=f"Setup phone for new employee: {req.email_personal}",
-            task_type="phone",
-            division_id=task_division_id,
-            invite_id=inv.id,
-            created_by=user.id,
-            status="pending",
-        )
-        db.add(task)
-    
-    if req.needs_vehicle:
-        task = Task(
-            title=f"Assign vehicle for {req.email_personal}",
-            description=f"Assign vehicle for new employee: {req.email_personal}",
-            task_type="vehicle",
-            division_id=task_division_id,
-            invite_id=inv.id,
-            created_by=user.id,
-            status="pending",
-        )
-        db.add(task)
-    
-    if req.needs_equipment:
-        task = Task(
-            title=f"Provide equipment for {req.email_personal}",
-            description=f"Provide equipment for new employee: {req.email_personal}",
-            task_type="equipment",
-            division_id=task_division_id,
-            invite_id=inv.id,
-            created_by=user.id,
-            status="pending",
-            extra_data={"equipment_list": req.equipment_list} if req.equipment_list else None,
-        )
-        db.add(task)
-    
-    # Create document signing tasks if any
-    if req.document_ids:
-        for doc_id in req.document_ids:
-            task = Task(
-                title=f"Sign document for {req.email_personal}",
-                description=f"New employee needs to sign document",
-                task_type="document",
-                division_id=task_division_id,
-                invite_id=inv.id,
-                created_by=user.id,
-                status="pending",
-                extra_data={"document_id": doc_id},
-            )
-            db.add(task)
-    
     db.commit()
     
     # Get inviter information for email signature

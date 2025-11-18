@@ -1,5 +1,6 @@
 import uuid
 import json
+import logging
 from datetime import datetime
 from typing import Optional, List, Dict
 
@@ -11,12 +12,15 @@ from ..auth.security import require_permissions, get_current_user
 from ..db import get_db
 from ..models.models import (
     ProjectOrder, ProjectOrderItem, Estimate, EstimateItem, 
-    Material, Project, Supplier, User, EmployeeProfile, Task
+    Material, Project, Supplier, User, EmployeeProfile
 )
 from ..schemas.orders import (
     ProjectOrderCreate, ProjectOrderUpdate, ProjectOrderResponse,
     ProjectOrderItemResponse, GenerateOrdersRequest, CreateExtraOrderRequest
 )
+from ..services.task_service import create_task_item, complete_tasks_for_origin
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/orders", tags=["orders"])
 
@@ -514,23 +518,12 @@ def update_order(
         elif body.status == 'delivered' and order.status != 'delivered':
             order.delivered_at = datetime.utcnow()
             order.delivered_by = user.id
-            
-            # Mark related task as done if exists
-            if order.order_type == 'shop_misc':
-                try:
-                    task = db.query(Task).filter(
-                        Task.origin_id == order.id,
-                        Task.category == 'order'
-                    ).first()
-                    if task and task.status not in ['done', 'completed']:
-                        task.status = 'done'
-                        task.completed_at = datetime.utcnow()
-                        task.updated_at = datetime.utcnow()
-                        # TODO: Trigger notification event (prepared but not active)
-                        # notify_task_status_changed(task, task.status, 'done')
-                except Exception as e:
-                    # Don't fail order update if task update fails
-                    print(f"Failed to update task for order {order.id}: {e}")
+            complete_tasks_for_origin(
+                db,
+                origin_type="system_order",
+                origin_id=str(order.id),
+                concluded_by_id=user.id,
+            )
     
     if body.recipient_email is not None:
         order.recipient_email = body.recipient_email
@@ -636,35 +629,33 @@ def create_extra_order(
     
     db.commit()
     db.refresh(order)
-    
-    # Create task automatically for internal orders (shop_misc) with assigned user
+
+    # Internal orders assigned to an employee become actionable tasks
     if body.order_type == 'shop_misc' and body.recipient_user_id:
         try:
-            task = Task(
-                title=f"Internal order {order.order_code}",
-                description=f"Process internal order {order.order_code} for project",
-                task_type="order",
-                status="todo",
-                priority="normal",
-                category="order",
-                project_id=project_id,
-                assigned_to=body.recipient_user_id,
-                origin_source=f"Order #{order.order_code}",
-                origin_id=order.id,
-                created_by=user.id,
-            )
-            db.add(task)
-            db.commit()
-            # TODO: Trigger notification event (prepared but not active)
-            # notify_task_created(task)
-        except Exception as e:
-            # Don't fail order creation if task creation fails
-            print(f"Failed to create task for order {order.id}: {e}")
-            db.rollback()
-            # Re-commit the order
-            db.add(order)
-            db.commit()
-            db.refresh(order)
+            recipient_uuid = uuid.UUID(str(body.recipient_user_id))
+        except ValueError:
+            logger.warning(f"Invalid recipient user id for order {order.id}: {body.recipient_user_id}")
+        else:
+            try:
+                description = f"Process internal order {order.order_code} for project {project.code or project.name or ''}".strip()
+                create_task_item(
+                    db,
+                    title=f"Fulfill internal order {order.order_code}",
+                    description=description or f"Process internal order {order.order_code}",
+                    requested_by_id=user.id,
+                    assigned_to_id=recipient_uuid,
+                    priority="normal",
+                    due_date=None,
+                    project_id=project_id,
+                    origin_type="system_order",
+                    origin_reference=order.order_code,
+                    origin_id=str(order.id),
+                )
+                db.commit()
+            except Exception as exc:
+                logger.error(f"Failed to create task for order {order.id}: {exc}")
+                db.rollback()
     
     return get_order(order.id, db)
 

@@ -101,7 +101,7 @@ export default function InviteUserModal({ isOpen, onClose }: InviteModalProps) {
       <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
         <div className="p-6 border-b">
           <h2 className="text-2xl font-bold text-gray-900">Invite New User</h2>
-          <p className="text-sm text-gray-600 mt-1">Send an invitation to a new employee and create tasks for onboarding</p>
+          <p className="text-sm text-gray-600 mt-1">Send an invitation to a new employee</p>
         </div>
         
         <form onSubmit={handleSubmit} className="p-6 space-y-6">
@@ -142,7 +142,6 @@ export default function InviteUserModal({ isOpen, onClose }: InviteModalProps) {
                 </option>
               ))}
             </select>
-            <p className="text-xs text-gray-500 mt-1">Tasks will be assigned to this division</p>
           </div>
 
           <div>

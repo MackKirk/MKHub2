@@ -39,16 +39,6 @@ user_roles = Table(
     UniqueConstraint("user_id", "role_id", name="uq_user_role"),
 )
 
-# Association table for many-to-many Task<->User (assignees)
-task_assignees = Table(
-    "task_assignees",
-    Base.metadata,
-    Column("task_id", UUID(as_uuid=True), ForeignKey("tasks.id", ondelete="CASCADE"), primary_key=True),
-    Column("user_id", UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True),
-    UniqueConstraint("task_id", "user_id", name="uq_task_user"),
-)
-
-
 class Role(Base):
     __tablename__ = "roles"
 
@@ -905,75 +895,116 @@ class ChatMessageRead(Base):
 
 
 # =====================
-# Task/Ticket domain
+# Task Request & Execution domain
 # =====================
 
 
-class Task(Base):
-    __tablename__ = "tasks"
+class TaskRequest(Base):
+    __tablename__ = "task_requests"
 
     id: Mapped[uuid.UUID] = uuid_pk()
     title: Mapped[str] = mapped_column(String(255), nullable=False)
-    description: Mapped[Optional[str]] = mapped_column(Text)  # Changed to Text for longer descriptions
-    task_type: Mapped[str] = mapped_column(String(50), nullable=False, index=True)  # email, business_card, phone, vehicle, equipment, document, manual, order, attendance, dispatch
-    status: Mapped[str] = mapped_column(String(50), default="todo", index=True)  # todo, in_progress, waiting, done, pending, completed, cancelled
-    priority: Mapped[str] = mapped_column(String(20), default="normal")  # low, normal, high, urgent
-    project_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), index=True)  # Project this task belongs to
-    division_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), index=True)  # Division that should handle this task
-    invite_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("invites.id", ondelete="SET NULL"), index=True
-    )
-    user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+    description: Mapped[Optional[str]] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(50), default="new", index=True)
+    priority: Mapped[str] = mapped_column(String(20), default="normal")
+    due_date: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), index=True)
+
+    requested_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), index=True
     )
-    assigned_to: Mapped[Optional[uuid.UUID]] = mapped_column(
+    requested_by_name: Mapped[Optional[str]] = mapped_column(String(255))
+
+    target_type: Mapped[str] = mapped_column(String(20), default="user", index=True)  # user|division
+    target_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), index=True
-    )  # User responsible for the task
-    due_date: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), index=True)  # Due date for the task
-    category: Mapped[str] = mapped_column(String(50), default="manual")  # manual, order, attendance, dispatch, etc.
-    origin_source: Mapped[Optional[str]] = mapped_column(String(255))  # Origin identifier like "Order #XXXX", "Attendance YYYY", etc.
-    origin_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), index=True)  # ID of the origin entity (order_id, attendance_id, etc.)
-    extra_data: Mapped[Optional[dict]] = mapped_column(JSON)  # Extra data (equipment list, etc.)
-    created_by: Mapped[Optional[uuid.UUID]] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
     )
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
-    updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
-    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
-    
-    # Relationships
-    subtasks = relationship("TaskSubtask", back_populates="task", cascade="all, delete-orphan")
-    comments = relationship("TaskComment", back_populates="task", cascade="all, delete-orphan")
-    assignees = relationship("User", secondary="task_assignees", backref="assigned_tasks")
+    target_user_name: Mapped[Optional[str]] = mapped_column(String(255))
+    target_division_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), index=True)
+    target_division_label: Mapped[Optional[str]] = mapped_column(String(255))
+
+    project_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="SET NULL"), index=True
+    )
+    project_name: Mapped[Optional[str]] = mapped_column(String(255))
+    project_code: Mapped[Optional[str]] = mapped_column(String(50))
+
+    accepted_task_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), index=True)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, index=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+
+    messages = relationship(
+        "TaskRequestMessage",
+        back_populates="request",
+        cascade="all, delete-orphan",
+        order_by="TaskRequestMessage.created_at",
+    )
+    task = relationship("TaskItem", back_populates="request", uselist=False)
 
 
-class TaskSubtask(Base):
-    __tablename__ = "task_subtasks"
+class TaskRequestMessage(Base):
+    __tablename__ = "task_request_messages"
 
     id: Mapped[uuid.UUID] = uuid_pk()
-    task_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("tasks.id", ondelete="CASCADE"), nullable=False, index=True)
+    request_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("task_requests.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    sender_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+    sender_name: Mapped[Optional[str]] = mapped_column(String(255))
+    message_type: Mapped[str] = mapped_column(String(50), default="note")
+    body: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, index=True)
+
+    request = relationship("TaskRequest", back_populates="messages")
+
+
+class TaskItem(Base):
+    __tablename__ = "tasks_v2"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
     title: Mapped[str] = mapped_column(String(255), nullable=False)
-    is_completed: Mapped[bool] = mapped_column(Boolean, default=False)
-    order: Mapped[int] = mapped_column(Integer, default=0)  # Order within the task
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
-    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
-    
-    # Relationships
-    task = relationship("Task", back_populates="subtasks")
+    description: Mapped[Optional[str]] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(50), default="accepted", index=True)  # accepted|in_progress|done
+    priority: Mapped[str] = mapped_column(String(20), default="normal")
+    due_date: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), index=True)
 
+    requested_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), index=True
+    )
+    requested_by_name: Mapped[Optional[str]] = mapped_column(String(255))
 
-class TaskComment(Base):
-    __tablename__ = "task_comments"
+    assigned_to_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), index=True
+    )
+    assigned_to_name: Mapped[Optional[str]] = mapped_column(String(255))
+    assigned_division_label: Mapped[Optional[str]] = mapped_column(String(255), index=True)
 
-    id: Mapped[uuid.UUID] = uuid_pk()
-    task_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("tasks.id", ondelete="CASCADE"), nullable=False, index=True)
-    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
-    text: Mapped[str] = mapped_column(Text, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
-    updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
-    
-    # Relationships
-    task = relationship("Task", back_populates="comments")
+    project_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="SET NULL"), index=True
+    )
+    project_name: Mapped[Optional[str]] = mapped_column(String(255))
+    project_code: Mapped[Optional[str]] = mapped_column(String(50))
+
+    origin_type: Mapped[str] = mapped_column(String(50), default="manual_request", index=True)
+    origin_reference: Mapped[Optional[str]] = mapped_column(String(255))
+    origin_id: Mapped[Optional[str]] = mapped_column(String(255), index=True)
+
+    request_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("task_requests.id", ondelete="SET NULL"), index=True
+    )
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, index=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+
+    started_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), index=True)
+    started_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+    started_by_name: Mapped[Optional[str]] = mapped_column(String(255))
+
+    concluded_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), index=True)
+    concluded_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+    concluded_by_name: Mapped[Optional[str]] = mapped_column(String(255))
+
+    request = relationship("TaskRequest", back_populates="task")
 
 
 # Dispatch & Time Tracking Models
@@ -1158,3 +1189,21 @@ class ProjectOrderItem(Base):
     supplier_name: Mapped[Optional[str]] = mapped_column(String(255))
     is_ordered: Mapped[bool] = mapped_column(Boolean, default=False)  # Track if estimate item has been ordered
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
+
+
+class CommunityPost(Base):
+    __tablename__ = "community_posts"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    title: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    author_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    is_urgent: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    is_required: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    tags: Mapped[Optional[list]] = mapped_column(JSON, default=list)  # List of tags like ['Announcement', 'Mack Kirk News', 'Image']
+    likes_count: Mapped[int] = mapped_column(Integer, default=0)
+    comments_count: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, nullable=False, index=True)
+    updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+
+    author: Mapped["User"] = relationship("User", foreign_keys=[author_id], backref="community_posts")

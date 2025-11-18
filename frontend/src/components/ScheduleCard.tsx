@@ -632,7 +632,7 @@ export default function ScheduleCard() {
                                 setSelectedShift(shift);
                               }
                             }}
-                            className={`p-3 rounded border cursor-pointer min-w-[200px] ${
+                            className={`p-3 rounded border cursor-pointer w-[280px] flex-shrink-0 ${
                               isSelected
                                 ? 'bg-blue-200 border-blue-400'
                                 : 'bg-blue-50 border-blue-200 hover:bg-blue-100'

@@ -34,7 +34,10 @@ import ReviewsCompare from './pages/ReviewsCompare';
 import UserDetail from './pages/UserDetail';
 import LogHours from './pages/LogHours';
 import CompanyFiles from './pages/CompanyFiles';
+import TaskRequests from './pages/TaskRequests';
 import Tasks from './pages/Tasks';
+import Schedule from './pages/Schedule';
+import Community from './pages/Community';
 
 import { getToken } from './lib/api';
 function Home(){ return <Navigate to={getToken()? '/home':'/login'} replace />; }
@@ -52,9 +55,11 @@ export default function App(){
         <Route element={<Protected/>}>
           <Route path="/home" element={<AppShell><HomePage/></AppShell>} />
           <Route path="/profile" element={<AppShell><Profile/></AppShell>} />
+          <Route path="/schedule" element={<AppShell><Schedule/></AppShell>} />
+          <Route path="/task-requests" element={<AppShell><TaskRequests/></AppShell>} />
+          <Route path="/tasks" element={<AppShell><Tasks/></AppShell>} />
           <Route path="/customers" element={<AppShell><Customers/></AppShell>} />
           <Route path="/customers/new" element={<AppShell><CustomerNew/></AppShell>} />
-          <Route path="/tasks" element={<AppShell><Tasks/></AppShell>} />
           <Route path="/customers/:id" element={<AppShell><CustomerDetail/></AppShell>} />
           <Route path="/customers/:customerId/sites/:siteId" element={<AppShell><SiteDetail/></AppShell>} />
           <Route path="/inventory" element={<AppShell><Inventory/></AppShell>} />
@@ -75,6 +80,7 @@ export default function App(){
           <Route path="/log-hours" element={<AppShell><LogHours/></AppShell>} />
           <Route path="/users" element={<AppShell><Users/></AppShell>} />
           <Route path="/users/:userId" element={<AppShell><UserInfo/></AppShell>} />
+          <Route path="/community" element={<AppShell><Community/></AppShell>} />
           <Route path="/reviews/admin" element={<AppShell><ReviewsAdmin/></AppShell>} />
           <Route path="/reviews/compare" element={<AppShell><ReviewsCompare/></AppShell>} />
           <Route path="/reviews/my" element={<AppShell><MyReviews/></AppShell>} />

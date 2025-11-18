@@ -17,8 +17,10 @@ export default function AppShell({ children }: PropsWithChildren){
         <nav className="flex flex-col gap-2">
           <NavLink to="/home" className={({isActive})=>`px-3 py-2 rounded ${isActive?'bg-brand-red':''}`}>Home</NavLink>
           <NavLink to="/profile" className={({isActive})=>`px-3 py-2 rounded ${isActive?'bg-brand-red':''}`}>My Information</NavLink>
-          <NavLink to="/customers" className={({isActive})=>`px-3 py-2 rounded ${isActive?'bg-brand-red':''}`}>Customers</NavLink>
+          <NavLink to="/schedule" className={({isActive})=>`px-3 py-2 rounded ${isActive?'bg-brand-red':''}`}>Schedule</NavLink>
+          <NavLink to="/task-requests" className={({isActive})=>`px-3 py-2 rounded ${isActive?'bg-brand-red':''}`}>Task Request</NavLink>
           <NavLink to="/tasks" className={({isActive})=>`px-3 py-2 rounded ${isActive?'bg-brand-red':''}`}>Tasks</NavLink>
+          <NavLink to="/customers" className={({isActive})=>`px-3 py-2 rounded ${isActive?'bg-brand-red':''}`}>Customers</NavLink>
           <div className="mt-2 text-[11px] uppercase text-gray-400 px-1">Inventory</div>
           <NavLink to="/inventory/suppliers" className={({isActive})=>`px-3 py-2 rounded ${isActive?'bg-brand-red':''}`}>Suppliers</NavLink>
           <NavLink to="/inventory/products" className={({isActive})=>`px-3 py-2 rounded ${isActive?'bg-brand-red':''}`}>Products</NavLink>
@@ -31,6 +33,7 @@ export default function AppShell({ children }: PropsWithChildren){
           <NavLink to="/company-files" className={({isActive})=>`px-3 py-2 rounded ${isActive?'bg-brand-red':''}`}>Company Files</NavLink>
           <div className="mt-2 text-[11px] uppercase text-gray-400 px-1">Settings</div>
           <NavLink to="/users" className={({isActive})=>`px-3 py-2 rounded ${isActive?'bg-brand-red':''}`}>Users</NavLink>
+          <NavLink to="/community" className={({isActive})=>`px-3 py-2 rounded ${isActive?'bg-brand-red':''}`}>Community</NavLink>
           {((me?.roles||[]).includes('admin') || (me?.permissions||[]).includes('reviews:admin')) && (
             <>
               <NavLink to="/reviews/admin" className={({isActive})=>`px-3 py-2 rounded ${isActive?'bg-brand-red':''}`}>Reviews Admin</NavLink>
