@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Body
 import uuid
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import ProgrammingError
 from typing import Optional, List
 
 from ..db import get_db
@@ -65,6 +66,7 @@ def list_clients(city: Optional[str] = None, status: Optional[str] = None, type:
     query = db.query(Client)
     # Exclude system clients (e.g., "Company Files") from normal customer listings
     query = query.filter(Client.is_system == False)
+    
     if city:
         query = query.filter(Client.city == city)
     if status:
@@ -74,7 +76,25 @@ def list_clients(city: Optional[str] = None, status: Optional[str] = None, type:
     if q:
         # Search over display_name or name
         query = query.filter((Client.name.ilike(f"%{q}%")) | (Client.display_name.ilike(f"%{q}%")))
-    return query.order_by(Client.created_at.desc()).limit(500).all()
+    
+    # Try to execute the query, retry without is_system filter if column doesn't exist
+    try:
+        return query.order_by(Client.created_at.desc()).limit(500).all()
+    except ProgrammingError as e:
+        # If the error is about missing is_system column, retry without that filter
+        error_msg = str(e.orig) if hasattr(e, 'orig') else str(e)
+        if 'is_system' in error_msg and 'does not exist' in error_msg:
+            query = db.query(Client)
+            if city:
+                query = query.filter(Client.city == city)
+            if status:
+                query = query.filter(Client.status_id == status)
+            if type:
+                query = query.filter(Client.type_id == type)
+            if q:
+                query = query.filter((Client.name.ilike(f"%{q}%")) | (Client.display_name.ilike(f"%{q}%")))
+            return query.order_by(Client.created_at.desc()).limit(500).all()
+        raise
 
 
 @router.get("/{client_id}", response_model=ClientResponse)

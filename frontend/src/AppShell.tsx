@@ -24,11 +24,9 @@ export default function AppShell({ children }: PropsWithChildren){
           <div className="mt-2 text-[11px] uppercase text-gray-400 px-1">Inventory</div>
           <NavLink to="/inventory/suppliers" className={({isActive})=>`px-3 py-2 rounded ${isActive?'bg-brand-red':''}`}>Suppliers</NavLink>
           <NavLink to="/inventory/products" className={({isActive})=>`px-3 py-2 rounded ${isActive?'bg-brand-red':''}`}>Products</NavLink>
-          <NavLink to="/inventory/orders" className={({isActive})=>`px-3 py-2 rounded ${isActive?'bg-brand-red':''}`}>Orders</NavLink>
           <div className="mt-2 text-[11px] uppercase text-gray-400 px-1">Projects</div>
           <NavLink to="/projects" className={({isActive})=>`px-3 py-2 rounded ${isActive?'bg-brand-red':''}`}>Projects</NavLink>
           <NavLink to="/proposals" className={({isActive})=>`px-3 py-2 rounded ${isActive?'bg-brand-red':''}`}>Proposals</NavLink>
-          <NavLink to="/estimates" className={({isActive})=>`px-3 py-2 rounded ${isActive?'bg-brand-red':''}`}>Estimates</NavLink>
           <div className="mt-2 text-[11px] uppercase text-gray-400 px-1">Fleet & Equipment</div>
           <NavLink to="/fleet" className={({isActive})=>`px-3 py-2 rounded ${isActive?'bg-brand-red':''}`}>Fleet Dashboard</NavLink>
           <NavLink to="/fleet/vehicles" className={({isActive})=>`px-3 py-2 rounded ${isActive?'bg-brand-red':''}`}>Vehicles</NavLink>
