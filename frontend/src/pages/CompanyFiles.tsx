@@ -26,6 +26,7 @@ export default function CompanyFiles(){
   const [renameDoc, setRenameDoc] = useState<{id:string, title:string}|null>(null);
   const [moveDoc, setMoveDoc] = useState<{id:string}|null>(null);
   const [previewPdf, setPreviewPdf] = useState<{ url:string, name:string }|null>(null);
+  const [previewImage, setPreviewImage] = useState<{ url:string, name:string, downloadUrl?:string }|null>(null);
   const [permissionsFolder, setPermissionsFolder] = useState<{id:string, name:string}|null>(null);
   const [permissionsData, setPermissionsData] = useState<any>(null);
   const [isPublic, setIsPublic] = useState(true);
@@ -85,11 +86,16 @@ export default function CompanyFiles(){
   });
 
   useEffect(()=>{
-    if (!previewPdf) return;
-    const onKey = (e: KeyboardEvent)=>{ if(e.key==='Escape') setPreviewPdf(null); };
+    if (!previewPdf && !previewImage) return;
+    const onKey = (e: KeyboardEvent)=>{ 
+      if(e.key==='Escape') {
+        setPreviewPdf(null);
+        setPreviewImage(null);
+      }
+    };
     window.addEventListener('keydown', onKey);
     return ()=> window.removeEventListener('keydown', onKey);
-  }, [previewPdf]);
+  }, [previewPdf, previewImage]);
 
   const topFolders = useMemo(()=>{
     if(activeFolderId !== 'all') return [];
@@ -367,6 +373,16 @@ export default function CompanyFiles(){
     if(['DOC','DOCX','XLS','XLSX','PPT','PPTX'].includes(e)) return { bg:'bg-blue-500', txt:'text-white' };
     if(['JPG','JPEG','PNG','GIF','WEBP'].includes(e)) return { bg:'bg-green-500', txt:'text-white' };
     return { bg:'bg-gray-300', txt:'text-gray-800' };
+  };
+
+  const isImage = (ext:string)=>{
+    const e = ext.toUpperCase();
+    return ['JPG','JPEG','PNG','GIF','WEBP'].includes(e);
+  };
+
+  const isPdfOrExcel = (ext:string)=>{
+    const e = ext.toUpperCase();
+    return ['PDF','XLS','XLSX'].includes(e);
   };
 
   const filteredUsers = useMemo(()=>{
@@ -663,20 +679,63 @@ export default function CompanyFiles(){
                   {(docs||[]).map((d)=>{
                     const ext=fileExt(d.title).toUpperCase();
                     const s=extStyle(ext);
+                    const isImg = isImage(ext);
+                    const isPreviewable = isPdfOrExcel(ext) || isImg;
                     return (
                       <div key={d.id} className="flex items-center gap-3 px-3 py-2 hover:bg-gray-50">
-                        <div className={`w-10 h-12 rounded-lg ${s.bg} ${s.txt} flex items-center justify-center text-[10px] font-extrabold select-none`}>
-                          {ext||'FILE'}
-                        </div>
+                        {isImg ? (
+                          <div 
+                            className="w-16 h-16 rounded-lg overflow-hidden bg-gray-100 cursor-pointer flex-shrink-0"
+                            onClick={async()=>{
+                              try{
+                                const r:any = await api('GET', `/files/${encodeURIComponent(d.file_id||'')}/download`);
+                                const url=r.download_url||'';
+                                if(url) {
+                                  setPreviewImage({ url, name: d.title||'Preview', downloadUrl: url });
+                                }
+                              }catch(_e){
+                                toast.error('Preview not available');
+                              }
+                            }}
+                          >
+                            <img 
+                              src={`/files/${encodeURIComponent(d.file_id||'')}/thumbnail?w=64`}
+                              alt={d.title||'Preview'}
+                              className="w-full h-full object-cover"
+                              onError={(e)=>{
+                                const target = e.target as HTMLImageElement;
+                                target.style.display = 'none';
+                                const parent = target.parentElement;
+                                if(parent){
+                                  parent.innerHTML = `<div class="w-full h-full flex items-center justify-center ${s.bg} ${s.txt} text-xs font-bold">${ext||'IMG'}</div>`;
+                                }
+                              }}
+                            />
+                          </div>
+                        ) : (
+                          <div className={`w-10 h-12 rounded-lg ${s.bg} ${s.txt} flex items-center justify-center text-[10px] font-extrabold select-none flex-shrink-0`}>
+                            {ext||'FILE'}
+                          </div>
+                        )}
                         <div
                           className="flex-1 min-w-0 cursor-pointer"
                           onClick={async()=>{
+                            if(!isPreviewable) return;
                             try{
                               const r:any = await api('GET', `/files/${encodeURIComponent(d.file_id||'')}/download`);
                               const url=r.download_url||'';
                               if(url) {
-                                if(ext==='PDF') setPreviewPdf({ url, name: d.title||'Preview' });
-                                else window.open(url,'_blank');
+                                if(ext === 'PDF') {
+                                  setPreviewPdf({ url, name: d.title||'Preview' });
+                                } else if(['XLS','XLSX'].includes(ext)) {
+                                  // Excel files: use Office Online Viewer
+                                  const officeUrl = `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(url)}`;
+                                  setPreviewPdf({ url: officeUrl, name: d.title||'Preview' });
+                                } else if(isImg) {
+                                  setPreviewImage({ url, name: d.title||'Preview', downloadUrl: url });
+                                } else {
+                                  window.open(url,'_blank');
+                                }
                               }
                             }catch(_e){
                               toast.error('Preview not available');
@@ -1164,19 +1223,71 @@ export default function CompanyFiles(){
         </div>
       )}
 
-      {/* PDF Preview Modal */}
+      {/* PDF/Excel Preview Modal */}
       {previewPdf && (
         <div className="fixed inset-0 bg-black/90 flex items-center justify-center z-50" onClick={()=>setPreviewPdf(null)}>
-          <div className="w-full h-full flex items-center justify-center p-4">
+          <div className="w-full h-full flex items-center justify-center p-4 relative">
             <iframe
               src={previewPdf.url}
-              className="w-full h-full max-w-6xl max-h-[90vh] border rounded"
+              className="w-full h-full max-w-6xl max-h-[90vh] border rounded bg-white"
               title={previewPdf.name}
+              onClick={(e)=>e.stopPropagation()}
             />
-            <button
-              onClick={()=>setPreviewPdf(null)}
-              className="absolute top-4 right-4 bg-white text-black px-4 py-2 rounded"
-            >Close</button>
+            <div className="absolute top-4 right-4 flex gap-2">
+              <a
+                href={previewPdf.url}
+                download={previewPdf.name}
+                className="bg-white text-black px-4 py-2 rounded hover:bg-gray-100 flex items-center gap-2"
+                onClick={(e)=>e.stopPropagation()}
+              >
+                <span>⬇️</span>
+                <span>Download</span>
+              </a>
+              <button
+                onClick={()=>setPreviewPdf(null)}
+                className="bg-white text-black px-4 py-2 rounded hover:bg-gray-100"
+              >
+                ✕ Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Image Preview Modal */}
+      {previewImage && (
+        <div className="fixed inset-0 bg-black/90 flex items-center justify-center z-50" onClick={()=>setPreviewImage(null)}>
+          <div className="w-full h-full flex items-center justify-center p-4 relative">
+            <div className="max-w-7xl max-h-[90vh] flex flex-col items-center">
+              <img
+                src={previewImage.url}
+                alt={previewImage.name}
+                className="max-w-full max-h-[80vh] object-contain rounded-lg shadow-2xl"
+                onClick={(e)=>e.stopPropagation()}
+              />
+              <div className="mt-4 bg-white rounded-lg px-6 py-4 flex items-center gap-4 shadow-lg">
+                <div className="flex-1">
+                  <div className="font-semibold text-gray-900">{previewImage.name}</div>
+                </div>
+                <div className="flex gap-2">
+                  <a
+                    href={previewImage.downloadUrl || previewImage.url}
+                    download={previewImage.name}
+                    className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 flex items-center gap-2"
+                    onClick={(e)=>e.stopPropagation()}
+                  >
+                    <span>⬇️</span>
+                    <span>Download</span>
+                  </a>
+                  <button
+                    onClick={()=>setPreviewImage(null)}
+                    className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700"
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       )}
