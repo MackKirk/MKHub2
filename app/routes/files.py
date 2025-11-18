@@ -2,10 +2,11 @@ import os
 from datetime import datetime
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request, Form, File, UploadFile
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 from slugify import slugify
+import httpx
 
 # Register HEIF opener early to support HEIC/HEIF files
 try:
@@ -85,6 +86,81 @@ def upload(req: UploadRequest, storage: StorageProvider = Depends(get_storage)):
     )
     url = storage.generate_upload_url(key, req.content_type, expires_s=900)
     return UploadResponse(key=key, upload_url=url, expires_in=900)
+
+
+@router.post("/upload-proxy")
+async def upload_proxy(
+    file: UploadFile = File(...),
+    original_name: str = Form(...),
+    content_type: str = Form("application/octet-stream"),
+    project_id: Optional[str] = Form(None),
+    client_id: Optional[str] = Form(None),
+    employee_id: Optional[str] = Form(None),
+    category_id: str = Form("files"),
+    db: Session = Depends(get_db),
+    storage: StorageProvider = Depends(get_storage)
+):
+    """
+    Proxy endpoint for file uploads when direct Azure Blob upload fails due to CORS.
+    This endpoint receives the file data and uploads it to Azure Blob Storage on behalf of the client.
+    """
+    # Read file content
+    file_content = await file.read()
+    
+    # Use provided original_name or filename from upload
+    if not original_name or original_name == "upload":
+        original_name = file.filename or "upload"
+    
+    # Generate upload URL
+    key = canonical_key(
+        project_code=(project_id or client_id or "misc"),
+        slug=None,
+        category=category_id,
+        original_name=original_name,
+    )
+    upload_url = storage.generate_upload_url(key, content_type, expires_s=900)
+    
+    # Upload to Azure Blob Storage via backend
+    async with httpx.AsyncClient() as client:
+        try:
+            put_resp = await client.put(
+                upload_url,
+                content=file_content,
+                headers={
+                    "Content-Type": content_type,
+                    "x-ms-blob-type": "BlockBlob"
+                },
+                timeout=60.0
+            )
+            put_resp.raise_for_status()
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to upload to Azure: {str(e)}")
+    
+    # Confirm upload
+    try:
+        # Determine provider and container
+        if isinstance(storage, LocalStorageProvider):
+            provider = "local"
+            container = "local"
+        else:
+            provider = "blob"
+            container = settings.azure_blob_container or ""
+        
+        fo = FileObject(
+            provider=provider,
+            container=container,
+            key=key,
+            size_bytes=len(file_content),
+            checksum_sha256="na",
+            content_type=content_type,
+        )
+        db.add(fo)
+        db.commit()
+        db.refresh(fo)
+        return {"id": str(fo.id), "key": key}
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to confirm upload: {str(e)}")
 
 
 @router.post("/confirm")

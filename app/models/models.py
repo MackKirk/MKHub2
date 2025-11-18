@@ -39,6 +39,28 @@ user_roles = Table(
     UniqueConstraint("user_id", "role_id", name="uq_user_role"),
 )
 
+<<<<<<< HEAD
+=======
+# Association table for many-to-many Task<->User (assignees)
+task_assignees = Table(
+    "task_assignees",
+    Base.metadata,
+    Column("task_id", UUID(as_uuid=True), ForeignKey("tasks.id", ondelete="CASCADE"), primary_key=True),
+    Column("user_id", UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True),
+    UniqueConstraint("task_id", "user_id", name="uq_task_user"),
+)
+
+# Association table for many-to-many User<->Division (SettingItem)
+user_divisions = Table(
+    "user_divisions",
+    Base.metadata,
+    Column("user_id", UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True),
+    Column("division_id", UUID(as_uuid=True), ForeignKey("setting_items.id", ondelete="CASCADE"), primary_key=True),
+    UniqueConstraint("user_id", "division_id", name="uq_user_division"),
+)
+
+
+>>>>>>> 5950ecbf7e178ffd3d822a932a0eee030aae00c4
 class Role(Base):
     __tablename__ = "roles"
 
@@ -68,6 +90,7 @@ class User(Base):
     status: Mapped[Optional[str]] = mapped_column(String(50), default="active")  # User status: active|inactive|suspended
 
     roles = relationship("Role", secondary=user_roles, back_populates="users")
+    divisions = relationship("SettingItem", secondary="user_divisions", backref="users")
 
 
 class UsernameReservation(Base):
@@ -308,6 +331,10 @@ class Client(Base):
     do_not_contact: Mapped[bool] = mapped_column(Boolean, default=False)
     do_not_contact_reason: Mapped[Optional[str]] = mapped_column(String(500))
 
+    # System flag - marks clients that are system/internal (e.g., "Company Files")
+    # These clients should be hidden from normal customer listings
+    is_system: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    
     # Audit
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
     created_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
@@ -528,6 +555,44 @@ class SettingItem(Base):
     meta: Mapped[Optional[dict]] = mapped_column(JSON)
 
 
+class PermissionCategory(Base):
+    """Categorias de permissões para organização na UI"""
+    __tablename__ = "permission_categories"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    name: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)  # e.g., "profile", "equipment", "salary"
+    label: Mapped[str] = mapped_column(String(255), nullable=False)  # Nome amigável para exibição
+    description: Mapped[Optional[str]] = mapped_column(String(500))  # Descrição da categoria
+    sort_index: Mapped[int] = mapped_column(Integer, default=0)  # Ordem de exibição
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    
+    # Relationships
+    permissions = relationship("PermissionDefinition", back_populates="category", cascade="all, delete-orphan", order_by="PermissionDefinition.sort_index")
+
+
+class PermissionDefinition(Base):
+    """Definição de permissões disponíveis no sistema"""
+    __tablename__ = "permission_definitions"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    category_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("permission_categories.id", ondelete="CASCADE"), nullable=False, index=True)
+    key: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)  # e.g., "profile:edit_personal", "equipment:manage"
+    label: Mapped[str] = mapped_column(String(255), nullable=False)  # Nome amigável para exibição
+    description: Mapped[Optional[str]] = mapped_column(String(500))  # Descrição da permissão
+    sort_index: Mapped[int] = mapped_column(Integer, default=0)  # Ordem dentro da categoria
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    
+    # Relationships
+    category = relationship("PermissionCategory", back_populates="permissions")
+    
+    # Indexes
+    __table_args__ = (
+        Index('idx_permission_def_category', 'category_id', 'sort_index'),
+    )
+
+
 # Extended employee profile linked to users for onboarding
 class EmployeeProfile(Base):
     __tablename__ = "employee_profiles"
@@ -685,6 +750,156 @@ class EmployeeNote(Base):
     created_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
     updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     updated_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
+
+
+# =====================
+# Employee Management domain
+# =====================
+
+class EmployeeSalaryHistory(Base):
+    """Histórico de mudanças de salário do funcionário"""
+    __tablename__ = "employee_salary_history"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    previous_salary: Mapped[Optional[str]] = mapped_column(String(100))  # Salário anterior
+    new_salary: Mapped[str] = mapped_column(String(100), nullable=False)  # Novo salário
+    pay_type: Mapped[Optional[str]] = mapped_column(String(50))  # hourly|salary|contract
+    effective_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)  # Data de vigência
+    justification: Mapped[str] = mapped_column(Text, nullable=False)  # Justificativa da mudança
+    requested_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=False)  # Quem solicitou
+    approved_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))  # Quem aprovou (se necessário)
+    approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    notes: Mapped[Optional[str]] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    
+    # Indexes
+    __table_args__ = (
+        Index('idx_salary_history_user_date', 'user_id', 'effective_date'),
+    )
+
+
+class EmployeeLoan(Base):
+    """Empréstimos que funcionários pegam da empresa"""
+    __tablename__ = "employee_loans"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    loan_amount: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)  # Valor total do empréstimo
+    remaining_balance: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)  # Saldo restante
+    weekly_payment: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)  # Valor do pagamento semanal
+    loan_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)  # Data do empréstimo
+    status: Mapped[str] = mapped_column(String(50), default="active")  # active|paid_off|cancelled
+    description: Mapped[Optional[str]] = mapped_column(Text)  # Descrição do empréstimo
+    notes: Mapped[Optional[str]] = mapped_column(Text)
+    created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    paid_off_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    
+    # Relationships
+    payments = relationship("LoanPayment", back_populates="loan", cascade="all, delete-orphan", order_by="LoanPayment.payment_date.desc()")
+
+
+class LoanPayment(Base):
+    """Pagamentos semanais de empréstimos"""
+    __tablename__ = "loan_payments"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    loan_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("employee_loans.id", ondelete="CASCADE"), nullable=False, index=True)
+    payment_amount: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)  # Valor do pagamento
+    payment_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)  # Data do pagamento
+    balance_after: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)  # Saldo após o pagamento
+    notes: Mapped[Optional[str]] = mapped_column(Text)
+    created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    
+    # Relationships
+    loan = relationship("EmployeeLoan", back_populates="payments")
+    
+    # Indexes
+    __table_args__ = (
+        Index('idx_loan_payment_date', 'loan_id', 'payment_date'),
+    )
+
+
+class EmployeeNotice(Base):
+    """Ocorrências (positivas e negativas) do funcionário"""
+    __tablename__ = "employee_notices"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    notice_type: Mapped[str] = mapped_column(String(50), nullable=False)  # positive|negative|warning|commendation
+    title: Mapped[str] = mapped_column(String(255), nullable=False)  # Título da ocorrência
+    description: Mapped[str] = mapped_column(Text, nullable=False)  # Descrição detalhada
+    justification: Mapped[Optional[str]] = mapped_column(Text)  # Justificativa (para ocorrências negativas)
+    created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=False)  # Quem criou a ocorrência
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    incident_date: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))  # Data do incidente (pode ser diferente da data de criação)
+    attachments: Mapped[Optional[list]] = mapped_column(JSON)  # Lista de IDs de arquivos anexados
+    acknowledged_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))  # Funcionário que reconheceu
+    acknowledged_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    
+    # Indexes
+    __table_args__ = (
+        Index('idx_notice_user_type_date', 'user_id', 'notice_type', 'created_at'),
+    )
+
+
+class EmployeeFineTicket(Base):
+    """Multas e tickets do funcionário"""
+    __tablename__ = "employee_fines_tickets"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    type: Mapped[str] = mapped_column(String(50), nullable=False)  # fine|ticket|violation
+    title: Mapped[str] = mapped_column(String(255), nullable=False)  # Título da multa/ticket
+    description: Mapped[Optional[str]] = mapped_column(Text)  # Descrição
+    amount: Mapped[Optional[float]] = mapped_column(Numeric(10, 2))  # Valor da multa (se aplicável)
+    issue_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)  # Data da ocorrência
+    due_date: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))  # Data de vencimento do pagamento
+    status: Mapped[str] = mapped_column(String(50), default="pending")  # pending|paid|waived|cancelled
+    paid_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    paid_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+    notes: Mapped[Optional[str]] = mapped_column(Text)
+    created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    attachments: Mapped[Optional[list]] = mapped_column(JSON)  # Lista de IDs de arquivos anexados
+    
+    # Indexes
+    __table_args__ = (
+        Index('idx_fine_ticket_user_status', 'user_id', 'status'),
+        Index('idx_fine_ticket_due_date', 'due_date'),
+    )
+
+
+class EmployeeEquipment(Base):
+    """Ferramentas e equipamentos que o funcionário possui da empresa"""
+    __tablename__ = "employee_equipment"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    equipment_type: Mapped[str] = mapped_column(String(100), nullable=False)  # phone|notebook|tool|vehicle|other
+    name: Mapped[str] = mapped_column(String(255), nullable=False)  # Nome/descrição do equipamento
+    brand: Mapped[Optional[str]] = mapped_column(String(100))  # Marca
+    model: Mapped[Optional[str]] = mapped_column(String(100))  # Modelo
+    serial_number: Mapped[Optional[str]] = mapped_column(String(255))  # Número de série
+    asset_tag: Mapped[Optional[str]] = mapped_column(String(100))  # Tag de ativo da empresa
+    assigned_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)  # Data de atribuição
+    return_date: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))  # Data de devolução
+    status: Mapped[str] = mapped_column(String(50), default="assigned")  # assigned|returned|lost|damaged
+    condition: Mapped[Optional[str]] = mapped_column(String(50))  # new|good|fair|poor|damaged
+    value: Mapped[Optional[float]] = mapped_column(Numeric(10, 2))  # Valor do equipamento
+    notes: Mapped[Optional[str]] = mapped_column(Text)
+    created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    updated_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+    
+    # Indexes
+    __table_args__ = (
+        Index('idx_equipment_user_status', 'user_id', 'status'),
+        Index('idx_equipment_type', 'equipment_type'),
+    )
 
 class InventoryProduct(Base):
     __tablename__ = "inventory_products"
@@ -1191,6 +1406,7 @@ class ProjectOrderItem(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
 
 
+<<<<<<< HEAD
 class CommunityPost(Base):
     __tablename__ = "community_posts"
 
@@ -1207,3 +1423,246 @@ class CommunityPost(Base):
     updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
 
     author: Mapped["User"] = relationship("User", foreign_keys=[author_id], backref="community_posts")
+=======
+# =====================
+# Fleet & Equipment Management domain
+# =====================
+
+class FleetAsset(Base):
+    """Fleet assets: vehicles, heavy machinery, other fleet assets"""
+    __tablename__ = "fleet_assets"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    asset_type: Mapped[str] = mapped_column(String(50), nullable=False, index=True)  # vehicle|heavy_machinery|other
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    vin: Mapped[Optional[str]] = mapped_column(String(100))  # VIN for vehicles, serial for others
+    license_plate: Mapped[Optional[str]] = mapped_column(String(50), index=True)  # License plate for vehicles
+    model: Mapped[Optional[str]] = mapped_column(String(255))
+    year: Mapped[Optional[int]] = mapped_column(Integer)
+    division_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("setting_items.id", ondelete="SET NULL"), index=True)
+    odometer_current: Mapped[Optional[int]] = mapped_column(Integer)  # Current odometer reading
+    odometer_last_service: Mapped[Optional[int]] = mapped_column(Integer)  # Odometer at last service (auto-updated from inspections/work orders)
+    hours_current: Mapped[Optional[float]] = mapped_column(Float)  # Current hours (for machinery)
+    hours_last_service: Mapped[Optional[float]] = mapped_column(Float)  # Hours at last service (auto-updated from inspections/work orders)
+    status: Mapped[str] = mapped_column(String(50), default="active", index=True)  # active|inactive|retired|maintenance
+    photos: Mapped[Optional[list]] = mapped_column(JSON)  # Array of file_object_ids
+    documents: Mapped[Optional[list]] = mapped_column(JSON)  # Array of file_object_ids
+    notes: Mapped[Optional[str]] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    created_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+
+    # Relationships
+    inspections = relationship("FleetInspection", back_populates="fleet_asset", cascade="all, delete-orphan", order_by="FleetInspection.inspection_date.desc()")
+    logs = relationship("FleetLog", back_populates="fleet_asset", cascade="all, delete-orphan", order_by="FleetLog.log_date.desc()")
+
+    # Indexes
+    __table_args__ = (
+        Index('idx_fleet_asset_type_status', 'asset_type', 'status'),
+    )
+
+
+class Equipment(Base):
+    """Equipment items: generators, tools, electronics, small tools, safety equipment"""
+    __tablename__ = "equipment"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    category: Mapped[str] = mapped_column(String(50), nullable=False, index=True)  # generator|tool|electronics|small_tool|safety
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    serial_number: Mapped[Optional[str]] = mapped_column(String(255), index=True)
+    brand: Mapped[Optional[str]] = mapped_column(String(100))
+    model: Mapped[Optional[str]] = mapped_column(String(255))
+    value: Mapped[Optional[float]] = mapped_column(Numeric(10, 2))
+    warranty_expiry: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    purchase_date: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    status: Mapped[str] = mapped_column(String(50), default="available", index=True)  # available|checked_out|maintenance|retired
+    photos: Mapped[Optional[list]] = mapped_column(JSON)  # Array of file_object_ids
+    documents: Mapped[Optional[list]] = mapped_column(JSON)  # Array of file_object_ids
+    notes: Mapped[Optional[str]] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    created_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+
+    # Relationships
+    checkouts = relationship("EquipmentCheckout", back_populates="equipment", cascade="all, delete-orphan", order_by="EquipmentCheckout.checked_out_at.desc()")
+    logs = relationship("EquipmentLog", back_populates="equipment", cascade="all, delete-orphan", order_by="EquipmentLog.log_date.desc()")
+    assignments = relationship("EquipmentAssignment", back_populates="equipment", cascade="all, delete-orphan", order_by="EquipmentAssignment.assigned_at.desc()")
+
+    # Indexes
+    __table_args__ = (
+        Index('idx_equipment_category_status', 'category', 'status'),
+    )
+
+
+class FleetInspection(Base):
+    """Fleet inspections with checklist results"""
+    __tablename__ = "fleet_inspections"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    fleet_asset_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("fleet_assets.id", ondelete="CASCADE"), nullable=False, index=True)
+    inspection_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    inspector_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+    checklist_results: Mapped[Optional[dict]] = mapped_column(JSON)  # {tire_condition: pass/fail, oil_level: ..., lights: ..., seatbelts: ..., dashboard_warnings: ..., interior_condition: ..., exterior_condition: ...}
+    photos: Mapped[Optional[list]] = mapped_column(JSON)  # Array of file_object_ids
+    result: Mapped[str] = mapped_column(String(50), default="pass", index=True)  # pass|fail|conditional
+    notes: Mapped[Optional[str]] = mapped_column(Text)
+    odometer_reading: Mapped[Optional[int]] = mapped_column(Integer)  # Odometer reading at time of inspection
+    hours_reading: Mapped[Optional[float]] = mapped_column(Float)  # Hours reading at time of inspection
+    auto_generated_work_order_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("work_orders.id", ondelete="SET NULL"), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    created_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+
+    # Relationships
+    fleet_asset = relationship("FleetAsset", back_populates="inspections")
+    auto_generated_work_order = relationship("WorkOrder", foreign_keys=[auto_generated_work_order_id], post_update=True)
+
+    # Indexes
+    __table_args__ = (
+        Index('idx_inspection_asset_date', 'fleet_asset_id', 'inspection_date'),
+        Index('idx_inspection_result', 'result'),
+    )
+
+
+class WorkOrder(Base):
+    """Unified work orders for fleet and equipment"""
+    __tablename__ = "work_orders"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    work_order_number: Mapped[str] = mapped_column(String(50), unique=True, nullable=False, index=True)  # Auto-generated
+    entity_type: Mapped[str] = mapped_column(String(50), nullable=False, index=True)  # fleet|equipment
+    entity_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)  # FK to FleetAsset or Equipment
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    category: Mapped[str] = mapped_column(String(50), default="maintenance", index=True)  # maintenance|repair|inspection|other
+    urgency: Mapped[str] = mapped_column(String(20), default="normal", index=True)  # low|normal|high|urgent
+    status: Mapped[str] = mapped_column(String(50), default="open", index=True)  # open|in_progress|pending_parts|closed|cancelled
+    assigned_to_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), index=True)
+    assigned_by_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+    photos: Mapped[Optional[list]] = mapped_column(JSON)  # Array of file_object_ids
+    costs: Mapped[Optional[dict]] = mapped_column(JSON)  # Legacy: {labor: 0, parts: 0, other: 0, total: 0} or New: {labor: [{description, amount, invoice_files}], parts: [...], other: [...]}
+    documents: Mapped[Optional[list]] = mapped_column(JSON)  # Array of file_object_ids for invoices and documents
+    origin_source: Mapped[Optional[str]] = mapped_column(String(50))  # manual|inspection
+    origin_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), index=True)  # FK to inspection or other source
+    odometer_reading: Mapped[Optional[int]] = mapped_column(Integer)  # Odometer reading at time of work order (for fleet)
+    hours_reading: Mapped[Optional[float]] = mapped_column(Float)  # Hours reading at time of work order (for fleet)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    closed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    created_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+
+    # Relationships - Note: entity relationships are handled via queries, not direct relationships
+
+    # Indexes
+    __table_args__ = (
+        Index('idx_work_order_entity', 'entity_type', 'entity_id'),
+        Index('idx_work_order_status', 'status'),
+        Index('idx_work_order_assigned', 'assigned_to_user_id'),
+    )
+
+
+class EquipmentCheckout(Base):
+    """Equipment check-out/in tracking"""
+    __tablename__ = "equipment_checkouts"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    equipment_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("equipment.id", ondelete="CASCADE"), nullable=False, index=True)
+    checked_out_by_user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    checked_out_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    expected_return_date: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), index=True)
+    actual_return_date: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    condition_out: Mapped[str] = mapped_column(String(50), nullable=False)  # new|good|fair|poor
+    condition_in: Mapped[Optional[str]] = mapped_column(String(50))  # new|good|fair|poor
+    notes_out: Mapped[Optional[str]] = mapped_column(Text)
+    notes_in: Mapped[Optional[str]] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(50), default="checked_out", index=True)  # checked_out|returned|overdue
+    created_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+
+    # Relationships
+    equipment = relationship("Equipment", back_populates="checkouts")
+
+    # Indexes
+    __table_args__ = (
+        Index('idx_checkout_equipment_status', 'equipment_id', 'status'),
+        Index('idx_checkout_user', 'checked_out_by_user_id'),
+        Index('idx_checkout_expected_return', 'expected_return_date'),
+    )
+
+
+class FleetLog(Base):
+    """Fleet usage/status logs"""
+    __tablename__ = "fleet_logs"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    fleet_asset_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("fleet_assets.id", ondelete="CASCADE"), nullable=False, index=True)
+    log_type: Mapped[str] = mapped_column(String(50), nullable=False, index=True)  # usage|status_change|repair|inspection|other
+    log_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    user_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    odometer_snapshot: Mapped[Optional[int]] = mapped_column(Integer)  # Odometer at time of log
+    hours_snapshot: Mapped[Optional[float]] = mapped_column(Float)  # Hours at time of log
+    status_snapshot: Mapped[Optional[str]] = mapped_column(String(50))  # Status at time of log
+    related_work_order_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("work_orders.id", ondelete="SET NULL"), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    created_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+
+    # Relationships
+    fleet_asset = relationship("FleetAsset", back_populates="logs")
+
+    # Indexes
+    __table_args__ = (
+        Index('idx_fleet_log_asset_date', 'fleet_asset_id', 'log_date'),
+        Index('idx_fleet_log_type', 'log_type'),
+    )
+
+
+class EquipmentLog(Base):
+    """Equipment usage/issues logs"""
+    __tablename__ = "equipment_logs"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    equipment_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("equipment.id", ondelete="CASCADE"), nullable=False, index=True)
+    log_type: Mapped[str] = mapped_column(String(50), nullable=False, index=True)  # usage|issue|maintenance|checkout|checkin|other
+    log_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    user_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    related_work_order_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("work_orders.id", ondelete="SET NULL"), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    created_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+
+    # Relationships
+    equipment = relationship("Equipment", back_populates="logs")
+
+    # Indexes
+    __table_args__ = (
+        Index('idx_equipment_log_equipment_date', 'equipment_id', 'log_date'),
+        Index('idx_equipment_log_type', 'log_type'),
+    )
+
+
+class EquipmentAssignment(Base):
+    """Equipment assignment history - tracks when equipment is assigned to users"""
+    __tablename__ = "equipment_assignments"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    equipment_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("equipment.id", ondelete="CASCADE"), nullable=False, index=True)
+    assigned_to_user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    assigned_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    returned_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), index=True)
+    returned_to_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))  # User who received it back
+    notes: Mapped[Optional[str]] = mapped_column(Text)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)  # True if currently assigned
+    created_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+
+    # Relationships
+    equipment = relationship("Equipment", back_populates="assignments")
+    assigned_to_user = relationship("User", foreign_keys=[assigned_to_user_id])
+    returned_to_user = relationship("User", foreign_keys=[returned_to_user_id])
+
+    # Indexes
+    __table_args__ = (
+        Index('idx_equipment_assignment_equipment_active', 'equipment_id', 'is_active'),
+        Index('idx_equipment_assignment_user_active', 'assigned_to_user_id', 'is_active'),
+    )
+>>>>>>> 5950ecbf7e178ffd3d822a932a0eee030aae00c4

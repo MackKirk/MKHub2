@@ -5,9 +5,25 @@ export function getToken(){
 }
 
 export async function api<T=any>(method: HttpMethod, path: string, body?: any, headers?: Record<string,string>): Promise<T>{
-  const h: Record<string,string> = { 'Content-Type':'application/json', ...(headers||{}) };
+  const h: Record<string,string> = { ...(headers||{}) };
   const t = getToken(); if (t) h.Authorization = 'Bearer ' + t;
-  const r = await fetch(path, { method, headers: h, body: body ? JSON.stringify(body) : undefined });
+  
+  // If body is FormData, don't set Content-Type (browser will set it with boundary)
+  // Otherwise, default to application/json
+  let bodyData: any = undefined;
+  if (body) {
+    if (body instanceof FormData) {
+      // Don't set Content-Type for FormData - browser will set it automatically
+      bodyData = body;
+    } else {
+      h['Content-Type'] = 'application/json';
+      bodyData = JSON.stringify(body);
+    }
+  } else {
+    h['Content-Type'] = 'application/json';
+  }
+  
+  const r = await fetch(path, { method, headers: h, body: bodyData });
   if (r.status === 401) { localStorage.removeItem('user_token'); location.href = '/login'; throw new Error('Unauthorized'); }
   if (!r.ok) { 
     try{ const err = await r.json(); throw new Error(err.detail || err.message || `HTTP ${r.status}`); }

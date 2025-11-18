@@ -36,8 +36,26 @@ import LogHours from './pages/LogHours';
 import CompanyFiles from './pages/CompanyFiles';
 import TaskRequests from './pages/TaskRequests';
 import Tasks from './pages/Tasks';
+<<<<<<< HEAD
 import Schedule from './pages/Schedule';
 import Community from './pages/Community';
+=======
+import FleetDashboard from './pages/FleetDashboard';
+import FleetVehicles from './pages/FleetVehicles';
+import FleetHeavyMachinery from './pages/FleetHeavyMachinery';
+import FleetOtherAssets from './pages/FleetOtherAssets';
+import FleetAssetDetail from './pages/FleetAssetDetail';
+import FleetAssetNew from './pages/FleetAssetNew';
+import EquipmentList from './pages/EquipmentList';
+import EquipmentNew from './pages/EquipmentNew';
+import EquipmentDetail from './pages/EquipmentDetail';
+import WorkOrders from './pages/WorkOrders';
+import WorkOrderNew from './pages/WorkOrderNew';
+import WorkOrderDetail from './pages/WorkOrderDetail';
+import Inspections from './pages/Inspections';
+import InspectionNew from './pages/InspectionNew';
+import InspectionDetail from './pages/InspectionDetail';
+>>>>>>> 5950ecbf7e178ffd3d822a932a0eee030aae00c4
 
 import { getToken } from './lib/api';
 function Home(){ return <Navigate to={getToken()? '/home':'/login'} replace />; }
@@ -85,6 +103,21 @@ export default function App(){
           <Route path="/reviews/compare" element={<AppShell><ReviewsCompare/></AppShell>} />
           <Route path="/reviews/my" element={<AppShell><MyReviews/></AppShell>} />
           <Route path="/users/:id" element={<AppShell><UserDetail/></AppShell>} />
+          <Route path="/fleet" element={<AppShell><FleetDashboard/></AppShell>} />
+          <Route path="/fleet/vehicles" element={<AppShell><FleetVehicles/></AppShell>} />
+          <Route path="/fleet/heavy-machinery" element={<AppShell><FleetHeavyMachinery/></AppShell>} />
+          <Route path="/fleet/other-assets" element={<AppShell><FleetOtherAssets/></AppShell>} />
+          <Route path="/fleet/assets/new" element={<AppShell><FleetAssetNew/></AppShell>} />
+          <Route path="/fleet/assets/:id" element={<AppShell><FleetAssetDetail/></AppShell>} />
+          <Route path="/fleet/equipment" element={<AppShell><EquipmentList/></AppShell>} />
+          <Route path="/fleet/equipment/new" element={<AppShell><EquipmentNew/></AppShell>} />
+          <Route path="/fleet/equipment/:id" element={<AppShell><EquipmentDetail/></AppShell>} />
+          <Route path="/fleet/work-orders" element={<AppShell><WorkOrders/></AppShell>} />
+          <Route path="/fleet/work-orders/new" element={<AppShell><WorkOrderNew/></AppShell>} />
+          <Route path="/fleet/work-orders/:id" element={<AppShell><WorkOrderDetail/></AppShell>} />
+          <Route path="/fleet/inspections" element={<AppShell><Inspections/></AppShell>} />
+          <Route path="/fleet/inspections/new" element={<AppShell><InspectionNew/></AppShell>} />
+          <Route path="/fleet/inspections/:id" element={<AppShell><InspectionDetail/></AppShell>} />
         </Route>
         <Route path="*" element={<Navigate to={getToken()? '/home':'/login'} replace />} />
       </Routes>

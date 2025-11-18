@@ -16,9 +16,13 @@ export default function AppShell({ children }: PropsWithChildren){
         <div className="flex items-center gap-2 mb-4"><img src="/ui/assets/login/logo-light.svg" className="h-8"/><span className="text-sm text-gray-300">MK Hub</span></div>
         <nav className="flex flex-col gap-2">
           <NavLink to="/home" className={({isActive})=>`px-3 py-2 rounded ${isActive?'bg-brand-red':''}`}>Home</NavLink>
+<<<<<<< HEAD
           <NavLink to="/profile" className={({isActive})=>`px-3 py-2 rounded ${isActive?'bg-brand-red':''}`}>My Information</NavLink>
           <NavLink to="/schedule" className={({isActive})=>`px-3 py-2 rounded ${isActive?'bg-brand-red':''}`}>Schedule</NavLink>
           <NavLink to="/task-requests" className={({isActive})=>`px-3 py-2 rounded ${isActive?'bg-brand-red':''}`}>Task Request</NavLink>
+=======
+          <NavLink to="/customers" className={({isActive})=>`px-3 py-2 rounded ${isActive?'bg-brand-red':''}`}>Customers</NavLink>
+>>>>>>> 5950ecbf7e178ffd3d822a932a0eee030aae00c4
           <NavLink to="/tasks" className={({isActive})=>`px-3 py-2 rounded ${isActive?'bg-brand-red':''}`}>Tasks</NavLink>
           <NavLink to="/customers" className={({isActive})=>`px-3 py-2 rounded ${isActive?'bg-brand-red':''}`}>Customers</NavLink>
           <div className="mt-2 text-[11px] uppercase text-gray-400 px-1">Inventory</div>
@@ -29,6 +33,14 @@ export default function AppShell({ children }: PropsWithChildren){
           <NavLink to="/projects" className={({isActive})=>`px-3 py-2 rounded ${isActive?'bg-brand-red':''}`}>Projects</NavLink>
           <NavLink to="/proposals" className={({isActive})=>`px-3 py-2 rounded ${isActive?'bg-brand-red':''}`}>Proposals</NavLink>
           <NavLink to="/estimates" className={({isActive})=>`px-3 py-2 rounded ${isActive?'bg-brand-red':''}`}>Estimates</NavLink>
+          <div className="mt-2 text-[11px] uppercase text-gray-400 px-1">Fleet & Equipment</div>
+          <NavLink to="/fleet" className={({isActive})=>`px-3 py-2 rounded ${isActive?'bg-brand-red':''}`}>Fleet Dashboard</NavLink>
+          <NavLink to="/fleet/vehicles" className={({isActive})=>`px-3 py-2 rounded ${isActive?'bg-brand-red':''}`}>Vehicles</NavLink>
+          <NavLink to="/fleet/heavy-machinery" className={({isActive})=>`px-3 py-2 rounded ${isActive?'bg-brand-red':''}`}>Heavy Machinery</NavLink>
+          <NavLink to="/fleet/other-assets" className={({isActive})=>`px-3 py-2 rounded ${isActive?'bg-brand-red':''}`}>Other Fleet Assets</NavLink>
+          <NavLink to="/fleet/equipment" className={({isActive})=>`px-3 py-2 rounded ${isActive?'bg-brand-red':''}`}>Equipment</NavLink>
+          <NavLink to="/fleet/work-orders" className={({isActive})=>`px-3 py-2 rounded ${isActive?'bg-brand-red':''}`}>Work Orders</NavLink>
+          <NavLink to="/fleet/inspections" className={({isActive})=>`px-3 py-2 rounded ${isActive?'bg-brand-red':''}`}>Inspections</NavLink>
           <div className="mt-2 text-[11px] uppercase text-gray-400 px-1">Documents</div>
           <NavLink to="/company-files" className={({isActive})=>`px-3 py-2 rounded ${isActive?'bg-brand-red':''}`}>Company Files</NavLink>
           <div className="mt-2 text-[11px] uppercase text-gray-400 px-1">Settings</div>

@@ -30,9 +30,15 @@ from .routes.chat import router as chat_router
 from .routes.notifications import router as notifications_router
 from .routes.company_files import router as company_files_router
 from .routes.orders import router as orders_router
+<<<<<<< HEAD
 from .routes.task_requests import router as task_requests_router
 from .routes.tasks_v2 import router as tasks_router
 from .routes.community import router as community_router
+=======
+from .routes.employee_management import router as employee_management_router
+from .routes.permissions import router as permissions_router
+from .routes.fleet import router as fleet_router
+>>>>>>> 5950ecbf7e178ffd3d822a932a0eee030aae00c4
 
 
 def create_app() -> FastAPI:
@@ -75,6 +81,9 @@ def create_app() -> FastAPI:
     app.include_router(community_router)
     app.include_router(company_files_router)
     app.include_router(orders_router)
+    app.include_router(employee_management_router)
+    app.include_router(permissions_router)
+    app.include_router(fleet_router)
     from .routes import dispatch
     app.include_router(dispatch.router)
     # Legacy UI redirects to new React routes (exact paths)
@@ -128,6 +137,27 @@ def create_app() -> FastAPI:
             os.makedirs("var", exist_ok=True)
         if settings.auto_create_db:
             Base.metadata.create_all(bind=engine)
+            # Seed permissions if they don't exist
+            try:
+                from .models.models import PermissionCategory
+                from .db import SessionLocal
+                db = SessionLocal()
+                try:
+                    existing_count = db.query(PermissionCategory).count()
+                    if existing_count == 0:
+                        # Import and run seed function
+                        import sys
+                        import os
+                        sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+                        from scripts.seed_permissions import seed_permissions
+                        seed_permissions()
+                        print("✅ Permissions seeded successfully on startup")
+                except Exception as e:
+                    print(f"⚠️  Could not seed permissions on startup: {e}")
+                finally:
+                    db.close()
+            except Exception as e:
+                print(f"⚠️  Could not check/seed permissions on startup: {e}")
         # Lightweight dev-time migrations (PostgreSQL): add missing columns safely
         try:
             # SQLite lightweight migrations for local dev
@@ -219,6 +249,11 @@ def create_app() -> FastAPI:
                             pass
                         try:
                             conn.execute(text("ALTER TABLE client_folders ADD COLUMN access_permissions TEXT"))
+                        except Exception:
+                            pass
+                        # clients is_system column for SQLite
+                        try:
+                            conn.execute(text("ALTER TABLE clients ADD COLUMN is_system INTEGER DEFAULT 0"))
                         except Exception:
                             pass
                         # Project events table for SQLite
@@ -510,6 +545,242 @@ def create_app() -> FastAPI:
                                                ")"))
                         except Exception:
                             pass
+                        # Fleet & Equipment Management tables for SQLite
+                        try:
+                            conn.execute(text("CREATE TABLE IF NOT EXISTS fleet_assets (\n"
+                                               "id TEXT PRIMARY KEY,\n"
+                                               "asset_type TEXT NOT NULL,\n"
+                                               "name TEXT NOT NULL,\n"
+                                               "vin TEXT,\n"
+                                               "license_plate TEXT,\n"
+                                               "model TEXT,\n"
+                                               "year INTEGER,\n"
+                                               "division_id TEXT,\n"
+                                               "odometer_current INTEGER,\n"
+                                               "odometer_last_service INTEGER,\n"
+                                               "hours_current REAL,\n"
+                                               "hours_last_service REAL,\n"
+                                               "status TEXT DEFAULT 'active',\n"
+                                               "photos TEXT,\n"
+                                               "documents TEXT,\n"
+                                               "notes TEXT,\n"
+                                               "created_at TEXT DEFAULT CURRENT_TIMESTAMP,\n"
+                                               "updated_at TEXT,\n"
+                                               "created_by TEXT,\n"
+                                               "FOREIGN KEY(division_id) REFERENCES setting_items(id) ON DELETE SET NULL,\n"
+                                               "FOREIGN KEY(created_by) REFERENCES users(id) ON DELETE SET NULL\n"
+                                               ")"))
+                            try:
+                                conn.execute(text("ALTER TABLE fleet_assets ADD COLUMN license_plate TEXT"))
+                            except Exception:
+                                pass
+                            conn.execute(text("CREATE INDEX IF NOT EXISTS idx_fleet_asset_type ON fleet_assets(asset_type)"))
+                            conn.execute(text("CREATE INDEX IF NOT EXISTS idx_fleet_asset_status ON fleet_assets(status)"))
+                            conn.execute(text("CREATE INDEX IF NOT EXISTS idx_fleet_asset_type_status ON fleet_assets(asset_type, status)"))
+                            conn.execute(text("CREATE INDEX IF NOT EXISTS idx_fleet_asset_division ON fleet_assets(division_id)"))
+                        except Exception:
+                            pass
+                        try:
+                            conn.execute(text("CREATE TABLE IF NOT EXISTS equipment (\n"
+                                               "id TEXT PRIMARY KEY,\n"
+                                               "category TEXT NOT NULL,\n"
+                                               "name TEXT NOT NULL,\n"
+                                               "serial_number TEXT,\n"
+                                               "brand TEXT,\n"
+                                               "model TEXT,\n"
+                                               "value REAL,\n"
+                                               "warranty_expiry TEXT,\n"
+                                               "purchase_date TEXT,\n"
+                                               "status TEXT DEFAULT 'available',\n"
+                                               "photos TEXT,\n"
+                                               "documents TEXT,\n"
+                                               "notes TEXT,\n"
+                                               "created_at TEXT DEFAULT CURRENT_TIMESTAMP,\n"
+                                               "updated_at TEXT,\n"
+                                               "created_by TEXT,\n"
+                                               "FOREIGN KEY(created_by) REFERENCES users(id) ON DELETE SET NULL\n"
+                                               ")"))
+                            conn.execute(text("CREATE INDEX IF NOT EXISTS idx_equipment_category ON equipment(category)"))
+                            conn.execute(text("CREATE INDEX IF NOT EXISTS idx_equipment_status ON equipment(status)"))
+                            conn.execute(text("CREATE INDEX IF NOT EXISTS idx_equipment_serial ON equipment(serial_number)"))
+                            conn.execute(text("CREATE INDEX IF NOT EXISTS idx_equipment_category_status ON equipment(category, status)"))
+                        except Exception:
+                            pass
+                        try:
+                            conn.execute(text("CREATE TABLE IF NOT EXISTS fleet_inspections (\n"
+                                               "id TEXT PRIMARY KEY,\n"
+                                               "fleet_asset_id TEXT NOT NULL,\n"
+                                               "inspection_date TEXT NOT NULL,\n"
+                                               "inspector_user_id TEXT,\n"
+                                               "checklist_results TEXT,\n"
+                                               "photos TEXT,\n"
+                                               "result TEXT DEFAULT 'pass',\n"
+                                               "notes TEXT,\n"
+                                               "odometer_reading INTEGER,\n"
+                                               "hours_reading REAL,\n"
+                                               "auto_generated_work_order_id TEXT,\n"
+                                               "created_at TEXT DEFAULT CURRENT_TIMESTAMP,\n"
+                                               "created_by TEXT,\n"
+                                               "FOREIGN KEY(fleet_asset_id) REFERENCES fleet_assets(id) ON DELETE CASCADE,\n"
+                                               "FOREIGN KEY(inspector_user_id) REFERENCES users(id) ON DELETE SET NULL,\n"
+                                               "FOREIGN KEY(auto_generated_work_order_id) REFERENCES work_orders(id) ON DELETE SET NULL,\n"
+                                               "FOREIGN KEY(created_by) REFERENCES users(id) ON DELETE SET NULL\n"
+                                               ")"))
+                            try:
+                                conn.execute(text("ALTER TABLE fleet_inspections ADD COLUMN odometer_reading INTEGER"))
+                            except Exception:
+                                pass
+                            try:
+                                conn.execute(text("ALTER TABLE fleet_inspections ADD COLUMN hours_reading REAL"))
+                            except Exception:
+                                pass
+                            conn.execute(text("CREATE INDEX IF NOT EXISTS idx_inspection_asset ON fleet_inspections(fleet_asset_id)"))
+                            conn.execute(text("CREATE INDEX IF NOT EXISTS idx_inspection_date ON fleet_inspections(inspection_date)"))
+                            conn.execute(text("CREATE INDEX IF NOT EXISTS idx_inspection_result ON fleet_inspections(result)"))
+                            conn.execute(text("CREATE INDEX IF NOT EXISTS idx_inspection_asset_date ON fleet_inspections(fleet_asset_id, inspection_date)"))
+                        except Exception:
+                            pass
+                        try:
+                            conn.execute(text("CREATE TABLE IF NOT EXISTS work_orders (\n"
+                                               "id TEXT PRIMARY KEY,\n"
+                                               "work_order_number TEXT UNIQUE NOT NULL,\n"
+                                               "entity_type TEXT NOT NULL,\n"
+                                               "entity_id TEXT NOT NULL,\n"
+                                               "description TEXT NOT NULL,\n"
+                                               "category TEXT DEFAULT 'maintenance',\n"
+                                               "urgency TEXT DEFAULT 'normal',\n"
+                                               "status TEXT DEFAULT 'open',\n"
+                                               "assigned_to_user_id TEXT,\n"
+                                               "assigned_by_user_id TEXT,\n"
+                                               "photos TEXT,\n"
+                                               "costs TEXT,\n"
+                                               "documents TEXT,\n"
+                                               "origin_source TEXT,\n"
+                                               "origin_id TEXT,\n"
+                                               "odometer_reading INTEGER,\n"
+                                               "hours_reading REAL,\n"
+                                               "created_at TEXT DEFAULT CURRENT_TIMESTAMP,\n"
+                                               "updated_at TEXT,\n"
+                                               "closed_at TEXT,\n"
+                                               "created_by TEXT,\n"
+                                               "FOREIGN KEY(assigned_to_user_id) REFERENCES users(id) ON DELETE SET NULL,\n"
+                                               "FOREIGN KEY(assigned_by_user_id) REFERENCES users(id) ON DELETE SET NULL,\n"
+                                               "FOREIGN KEY(created_by) REFERENCES users(id) ON DELETE SET NULL\n"
+                                               ")"))
+                            try:
+                                conn.execute(text("ALTER TABLE work_orders ADD COLUMN odometer_reading INTEGER"))
+                            except Exception:
+                                pass
+                            try:
+                                conn.execute(text("ALTER TABLE work_orders ADD COLUMN hours_reading REAL"))
+                            except Exception:
+                                pass
+                            conn.execute(text("CREATE INDEX IF NOT EXISTS idx_work_order_number ON work_orders(work_order_number)"))
+                            conn.execute(text("CREATE INDEX IF NOT EXISTS idx_work_order_entity_type ON work_orders(entity_type)"))
+                            conn.execute(text("CREATE INDEX IF NOT EXISTS idx_work_order_entity_id ON work_orders(entity_id)"))
+                            conn.execute(text("CREATE INDEX IF NOT EXISTS idx_work_order_status ON work_orders(status)"))
+                            conn.execute(text("CREATE INDEX IF NOT EXISTS idx_work_order_assigned ON work_orders(assigned_to_user_id)"))
+                            conn.execute(text("CREATE INDEX IF NOT EXISTS idx_work_order_entity ON work_orders(entity_type, entity_id)"))
+                        except Exception:
+                            pass
+                        try:
+                            conn.execute(text("CREATE TABLE IF NOT EXISTS equipment_checkouts (\n"
+                                               "id TEXT PRIMARY KEY,\n"
+                                               "equipment_id TEXT NOT NULL,\n"
+                                               "checked_out_by_user_id TEXT NOT NULL,\n"
+                                               "checked_out_at TEXT NOT NULL,\n"
+                                               "expected_return_date TEXT,\n"
+                                               "actual_return_date TEXT,\n"
+                                               "condition_out TEXT NOT NULL,\n"
+                                               "condition_in TEXT,\n"
+                                               "notes_out TEXT,\n"
+                                               "notes_in TEXT,\n"
+                                               "status TEXT DEFAULT 'checked_out',\n"
+                                               "created_by TEXT,\n"
+                                               "created_at TEXT DEFAULT CURRENT_TIMESTAMP,\n"
+                                               "updated_at TEXT,\n"
+                                               "FOREIGN KEY(equipment_id) REFERENCES equipment(id) ON DELETE CASCADE,\n"
+                                               "FOREIGN KEY(checked_out_by_user_id) REFERENCES users(id) ON DELETE CASCADE,\n"
+                                               "FOREIGN KEY(created_by) REFERENCES users(id) ON DELETE SET NULL\n"
+                                               ")"))
+                            conn.execute(text("CREATE INDEX IF NOT EXISTS idx_checkout_equipment ON equipment_checkouts(equipment_id)"))
+                            conn.execute(text("CREATE INDEX IF NOT EXISTS idx_checkout_user ON equipment_checkouts(checked_out_by_user_id)"))
+                            conn.execute(text("CREATE INDEX IF NOT EXISTS idx_checkout_status ON equipment_checkouts(status)"))
+                            conn.execute(text("CREATE INDEX IF NOT EXISTS idx_checkout_expected_return ON equipment_checkouts(expected_return_date)"))
+                            conn.execute(text("CREATE INDEX IF NOT EXISTS idx_checkout_equipment_status ON equipment_checkouts(equipment_id, status)"))
+                        except Exception:
+                            pass
+                        try:
+                            conn.execute(text("CREATE TABLE IF NOT EXISTS fleet_logs (\n"
+                                               "id TEXT PRIMARY KEY,\n"
+                                               "fleet_asset_id TEXT NOT NULL,\n"
+                                               "log_type TEXT NOT NULL,\n"
+                                               "log_date TEXT NOT NULL,\n"
+                                               "user_id TEXT,\n"
+                                               "description TEXT NOT NULL,\n"
+                                               "odometer_snapshot INTEGER,\n"
+                                               "hours_snapshot REAL,\n"
+                                               "status_snapshot TEXT,\n"
+                                               "related_work_order_id TEXT,\n"
+                                               "created_at TEXT DEFAULT CURRENT_TIMESTAMP,\n"
+                                               "created_by TEXT,\n"
+                                               "FOREIGN KEY(fleet_asset_id) REFERENCES fleet_assets(id) ON DELETE CASCADE,\n"
+                                               "FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE SET NULL,\n"
+                                               "FOREIGN KEY(related_work_order_id) REFERENCES work_orders(id) ON DELETE SET NULL,\n"
+                                               "FOREIGN KEY(created_by) REFERENCES users(id) ON DELETE SET NULL\n"
+                                               ")"))
+                            conn.execute(text("CREATE INDEX IF NOT EXISTS idx_fleet_log_asset ON fleet_logs(fleet_asset_id)"))
+                            conn.execute(text("CREATE INDEX IF NOT EXISTS idx_fleet_log_type ON fleet_logs(log_type)"))
+                            conn.execute(text("CREATE INDEX IF NOT EXISTS idx_fleet_log_date ON fleet_logs(log_date)"))
+                            conn.execute(text("CREATE INDEX IF NOT EXISTS idx_fleet_log_asset_date ON fleet_logs(fleet_asset_id, log_date)"))
+                        except Exception:
+                            pass
+                        try:
+                            conn.execute(text("CREATE TABLE IF NOT EXISTS equipment_logs (\n"
+                                               "id TEXT PRIMARY KEY,\n"
+                                               "equipment_id TEXT NOT NULL,\n"
+                                               "log_type TEXT NOT NULL,\n"
+                                               "log_date TEXT NOT NULL,\n"
+                                               "user_id TEXT,\n"
+                                               "description TEXT NOT NULL,\n"
+                                               "related_work_order_id TEXT,\n"
+                                               "created_at TEXT DEFAULT CURRENT_TIMESTAMP,\n"
+                                               "created_by TEXT,\n"
+                                               "FOREIGN KEY(equipment_id) REFERENCES equipment(id) ON DELETE CASCADE,\n"
+                                               "FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE SET NULL,\n"
+                                               "FOREIGN KEY(related_work_order_id) REFERENCES work_orders(id) ON DELETE SET NULL,\n"
+                                               "FOREIGN KEY(created_by) REFERENCES users(id) ON DELETE SET NULL\n"
+                                               ")"))
+                            conn.execute(text("CREATE INDEX IF NOT EXISTS idx_equipment_log_equipment ON equipment_logs(equipment_id)"))
+                            conn.execute(text("CREATE INDEX IF NOT EXISTS idx_equipment_log_type ON equipment_logs(log_type)"))
+                            conn.execute(text("CREATE INDEX IF NOT EXISTS idx_equipment_log_date ON equipment_logs(log_date)"))
+                            conn.execute(text("CREATE INDEX IF NOT EXISTS idx_equipment_log_equipment_date ON equipment_logs(equipment_id, log_date)"))
+                        except Exception:
+                            pass
+                        try:
+                            conn.execute(text("CREATE TABLE IF NOT EXISTS equipment_assignments (\n"
+                                               "id TEXT PRIMARY KEY,\n"
+                                               "equipment_id TEXT NOT NULL,\n"
+                                               "assigned_to_user_id TEXT NOT NULL,\n"
+                                               "assigned_at TEXT NOT NULL,\n"
+                                               "returned_at TEXT,\n"
+                                               "returned_to_user_id TEXT,\n"
+                                               "notes TEXT,\n"
+                                               "is_active INTEGER DEFAULT 1,\n"
+                                               "created_by TEXT,\n"
+                                               "created_at TEXT DEFAULT CURRENT_TIMESTAMP,\n"
+                                               "FOREIGN KEY(equipment_id) REFERENCES equipment(id) ON DELETE CASCADE,\n"
+                                               "FOREIGN KEY(assigned_to_user_id) REFERENCES users(id) ON DELETE CASCADE,\n"
+                                               "FOREIGN KEY(returned_to_user_id) REFERENCES users(id) ON DELETE SET NULL,\n"
+                                               "FOREIGN KEY(created_by) REFERENCES users(id) ON DELETE SET NULL\n"
+                                               ")"))
+                            conn.execute(text("CREATE INDEX IF NOT EXISTS idx_equipment_assignment_equipment ON equipment_assignments(equipment_id)"))
+                            conn.execute(text("CREATE INDEX IF NOT EXISTS idx_equipment_assignment_user ON equipment_assignments(assigned_to_user_id)"))
+                            conn.execute(text("CREATE INDEX IF NOT EXISTS idx_equipment_assignment_active ON equipment_assignments(is_active)"))
+                            conn.execute(text("CREATE INDEX IF NOT EXISTS idx_equipment_assignment_equipment_active ON equipment_assignments(equipment_id, is_active)"))
+                            conn.execute(text("CREATE INDEX IF NOT EXISTS idx_equipment_assignment_user_active ON equipment_assignments(assigned_to_user_id, is_active)"))
+                        except Exception:
+                            pass
                 except Exception:
                     pass
             if settings.database_url.startswith("postgres"):
@@ -557,6 +828,7 @@ def create_app() -> FastAPI:
                     conn.execute(text("ALTER TABLE clients ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ"))
                     conn.execute(text("ALTER TABLE clients ADD COLUMN IF NOT EXISTS updated_by UUID"))
                     conn.execute(text("ALTER TABLE clients ADD COLUMN IF NOT EXISTS billing_same_as_address BOOLEAN DEFAULT FALSE"))
+                    conn.execute(text("ALTER TABLE clients ADD COLUMN IF NOT EXISTS is_system BOOLEAN DEFAULT FALSE"))
                     # Ensure client_contacts columns exist
                     conn.execute(text("ALTER TABLE client_contacts ADD COLUMN IF NOT EXISTS role_title VARCHAR(100)"))
                     conn.execute(text("ALTER TABLE client_contacts ADD COLUMN IF NOT EXISTS department VARCHAR(100)"))
@@ -1057,16 +1329,277 @@ def create_app() -> FastAPI:
                     except Exception:
                         pass
                     # Consent logs table
-                    conn.execute(text("CREATE TABLE IF NOT EXISTS consent_logs (\n"
-                                       "id UUID PRIMARY KEY,\n"
-                                       "user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,\n"
-                                       "policy_version VARCHAR(50) NOT NULL,\n"
-                                       "timestamp_utc TIMESTAMPTZ NOT NULL DEFAULT NOW(),\n"
-                                       "ip_address VARCHAR(50),\n"
-                                       "user_agent VARCHAR(500)\n"
-                                       ")"))
                     try:
+                        conn.execute(text("CREATE TABLE IF NOT EXISTS consent_logs (\n"
+                                           "id UUID PRIMARY KEY,\n"
+                                           "user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,\n"
+                                           "policy_version VARCHAR(50) NOT NULL,\n"
+                                           "timestamp_utc TIMESTAMPTZ NOT NULL DEFAULT NOW(),\n"
+                                           "ip_address VARCHAR(50),\n"
+                                           "user_agent VARCHAR(500)\n"
+                                           ")"))
                         conn.execute(text("CREATE INDEX IF NOT EXISTS idx_consent_logs_user_id ON consent_logs(user_id)"))
+                    except Exception:
+                        pass
+                    # Fleet & Equipment Management tables for PostgreSQL
+                    try:
+                        conn.execute(text("CREATE TABLE IF NOT EXISTS fleet_assets (\n"
+                                           "id UUID PRIMARY KEY,\n"
+                                           "asset_type VARCHAR(50) NOT NULL,\n"
+                                           "name VARCHAR(255) NOT NULL,\n"
+                                           "vin VARCHAR(100),\n"
+                                           "license_plate VARCHAR(50),\n"
+                                           "model VARCHAR(255),\n"
+                                           "year INTEGER,\n"
+                                           "division_id UUID,\n"
+                                           "odometer_current INTEGER,\n"
+                                           "odometer_last_service INTEGER,\n"
+                                           "hours_current NUMERIC(10, 2),\n"
+                                           "hours_last_service NUMERIC(10, 2),\n"
+                                           "status VARCHAR(50) DEFAULT 'active',\n"
+                                           "photos JSONB,\n"
+                                           "documents JSONB,\n"
+                                           "notes TEXT,\n"
+                                           "created_at TIMESTAMPTZ DEFAULT NOW(),\n"
+                                           "updated_at TIMESTAMPTZ,\n"
+                                           "created_by UUID REFERENCES users(id) ON DELETE SET NULL\n"
+                                           ")"))
+                        try:
+                            conn.execute(text("CREATE INDEX IF NOT EXISTS idx_fleet_asset_license_plate ON fleet_assets(license_plate)"))
+                        except Exception:
+                            pass
+                        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_fleet_asset_type ON fleet_assets(asset_type)"))
+                        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_fleet_asset_status ON fleet_assets(status)"))
+                        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_fleet_asset_type_status ON fleet_assets(asset_type, status)"))
+                        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_fleet_asset_division ON fleet_assets(division_id)"))
+                    except Exception:
+                        pass
+                    try:
+                        conn.execute(text("CREATE TABLE IF NOT EXISTS equipment (\n"
+                                           "id UUID PRIMARY KEY,\n"
+                                           "category VARCHAR(50) NOT NULL,\n"
+                                           "name VARCHAR(255) NOT NULL,\n"
+                                           "serial_number VARCHAR(255),\n"
+                                           "brand VARCHAR(100),\n"
+                                           "model VARCHAR(255),\n"
+                                           "value NUMERIC(10, 2),\n"
+                                           "warranty_expiry TIMESTAMPTZ,\n"
+                                           "purchase_date TIMESTAMPTZ,\n"
+                                           "status VARCHAR(50) DEFAULT 'available',\n"
+                                           "photos JSONB,\n"
+                                           "documents JSONB,\n"
+                                           "notes TEXT,\n"
+                                           "created_at TIMESTAMPTZ DEFAULT NOW(),\n"
+                                           "updated_at TIMESTAMPTZ,\n"
+                                           "created_by UUID REFERENCES users(id) ON DELETE SET NULL\n"
+                                           ")"))
+                        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_equipment_category ON equipment(category)"))
+                        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_equipment_status ON equipment(status)"))
+                        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_equipment_serial ON equipment(serial_number)"))
+                        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_equipment_category_status ON equipment(category, status)"))
+                    except Exception:
+                        pass
+                    try:
+                        conn.execute(text("CREATE TABLE IF NOT EXISTS fleet_inspections (\n"
+                                           "id UUID PRIMARY KEY,\n"
+                                           "fleet_asset_id UUID NOT NULL REFERENCES fleet_assets(id) ON DELETE CASCADE,\n"
+                                           "inspection_date TIMESTAMPTZ NOT NULL,\n"
+                                           "inspector_user_id UUID REFERENCES users(id) ON DELETE SET NULL,\n"
+                                           "checklist_results JSONB,\n"
+                                           "photos JSONB,\n"
+                                           "result VARCHAR(50) DEFAULT 'pass',\n"
+                                           "notes TEXT,\n"
+                                           "odometer_reading INTEGER,\n"
+                                           "hours_reading NUMERIC(10, 2),\n"
+                                           "auto_generated_work_order_id UUID REFERENCES work_orders(id) ON DELETE SET NULL,\n"
+                                           "created_at TIMESTAMPTZ DEFAULT NOW(),\n"
+                                           "created_by UUID REFERENCES users(id) ON DELETE SET NULL\n"
+                                           ")"))
+                        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_inspection_asset ON fleet_inspections(fleet_asset_id)"))
+                        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_inspection_date ON fleet_inspections(inspection_date)"))
+                        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_inspection_result ON fleet_inspections(result)"))
+                        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_inspection_asset_date ON fleet_inspections(fleet_asset_id, inspection_date)"))
+                    except Exception:
+                        pass
+                    try:
+                        conn.execute(text("CREATE TABLE IF NOT EXISTS work_orders (\n"
+                                           "id UUID PRIMARY KEY,\n"
+                                           "work_order_number VARCHAR(50) UNIQUE NOT NULL,\n"
+                                           "entity_type VARCHAR(50) NOT NULL,\n"
+                                           "entity_id UUID NOT NULL,\n"
+                                           "description TEXT NOT NULL,\n"
+                                           "category VARCHAR(50) DEFAULT 'maintenance',\n"
+                                           "urgency VARCHAR(20) DEFAULT 'normal',\n"
+                                           "status VARCHAR(50) DEFAULT 'open',\n"
+                                           "assigned_to_user_id UUID REFERENCES users(id) ON DELETE SET NULL,\n"
+                                           "assigned_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL,\n"
+                                           "photos JSONB,\n"
+                                           "costs JSONB,\n"
+                                           "documents JSONB,\n"
+                                           "origin_source VARCHAR(50),\n"
+                                           "origin_id UUID,\n"
+                                           "odometer_reading INTEGER,\n"
+                                           "hours_reading NUMERIC(10, 2),\n"
+                                           "created_at TIMESTAMPTZ DEFAULT NOW(),\n"
+                                           "updated_at TIMESTAMPTZ,\n"
+                                           "closed_at TIMESTAMPTZ,\n"
+                                           "created_by UUID REFERENCES users(id) ON DELETE SET NULL\n"
+                                           ")"))
+                        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_work_order_number ON work_orders(work_order_number)"))
+                        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_work_order_entity_type ON work_orders(entity_type)"))
+                        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_work_order_entity_id ON work_orders(entity_id)"))
+                        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_work_order_status ON work_orders(status)"))
+                        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_work_order_assigned ON work_orders(assigned_to_user_id)"))
+                        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_work_order_entity ON work_orders(entity_type, entity_id)"))
+                    except Exception:
+                        pass
+                    try:
+                        conn.execute(text("CREATE TABLE IF NOT EXISTS equipment_checkouts (\n"
+                                           "id UUID PRIMARY KEY,\n"
+                                           "equipment_id UUID NOT NULL REFERENCES equipment(id) ON DELETE CASCADE,\n"
+                                           "checked_out_by_user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,\n"
+                                           "checked_out_at TIMESTAMPTZ NOT NULL,\n"
+                                           "expected_return_date TIMESTAMPTZ,\n"
+                                           "actual_return_date TIMESTAMPTZ,\n"
+                                           "condition_out VARCHAR(50) NOT NULL,\n"
+                                           "condition_in VARCHAR(50),\n"
+                                           "notes_out TEXT,\n"
+                                           "notes_in TEXT,\n"
+                                           "status VARCHAR(50) DEFAULT 'checked_out',\n"
+                                           "created_by UUID REFERENCES users(id) ON DELETE SET NULL,\n"
+                                           "created_at TIMESTAMPTZ DEFAULT NOW(),\n"
+                                           "updated_at TIMESTAMPTZ\n"
+                                           ")"))
+                        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_checkout_equipment ON equipment_checkouts(equipment_id)"))
+                        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_checkout_user ON equipment_checkouts(checked_out_by_user_id)"))
+                        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_checkout_status ON equipment_checkouts(status)"))
+                        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_checkout_expected_return ON equipment_checkouts(expected_return_date)"))
+                        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_checkout_equipment_status ON equipment_checkouts(equipment_id, status)"))
+                    except Exception:
+                        pass
+                    try:
+                        conn.execute(text("CREATE TABLE IF NOT EXISTS fleet_logs (\n"
+                                           "id UUID PRIMARY KEY,\n"
+                                           "fleet_asset_id UUID NOT NULL REFERENCES fleet_assets(id) ON DELETE CASCADE,\n"
+                                           "log_type VARCHAR(50) NOT NULL,\n"
+                                           "log_date TIMESTAMPTZ NOT NULL,\n"
+                                           "user_id UUID REFERENCES users(id) ON DELETE SET NULL,\n"
+                                           "description TEXT NOT NULL,\n"
+                                           "odometer_snapshot INTEGER,\n"
+                                           "hours_snapshot NUMERIC(10, 2),\n"
+                                           "status_snapshot VARCHAR(50),\n"
+                                           "related_work_order_id UUID REFERENCES work_orders(id) ON DELETE SET NULL,\n"
+                                           "created_at TIMESTAMPTZ DEFAULT NOW(),\n"
+                                           "created_by UUID REFERENCES users(id) ON DELETE SET NULL\n"
+                                           ")"))
+                        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_fleet_log_asset ON fleet_logs(fleet_asset_id)"))
+                        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_fleet_log_type ON fleet_logs(log_type)"))
+                        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_fleet_log_date ON fleet_logs(log_date)"))
+                        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_fleet_log_asset_date ON fleet_logs(fleet_asset_id, log_date)"))
+                    except Exception:
+                        pass
+                    try:
+                        conn.execute(text("CREATE TABLE IF NOT EXISTS equipment_logs (\n"
+                                           "id UUID PRIMARY KEY,\n"
+                                           "equipment_id UUID NOT NULL REFERENCES equipment(id) ON DELETE CASCADE,\n"
+                                           "log_type VARCHAR(50) NOT NULL,\n"
+                                           "log_date TIMESTAMPTZ NOT NULL,\n"
+                                           "user_id UUID REFERENCES users(id) ON DELETE SET NULL,\n"
+                                           "description TEXT NOT NULL,\n"
+                                           "related_work_order_id UUID REFERENCES work_orders(id) ON DELETE SET NULL,\n"
+                                           "created_at TIMESTAMPTZ DEFAULT NOW(),\n"
+                                           "created_by UUID REFERENCES users(id) ON DELETE SET NULL\n"
+                                           ")"))
+                        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_equipment_log_equipment ON equipment_logs(equipment_id)"))
+                        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_equipment_log_type ON equipment_logs(log_type)"))
+                        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_equipment_log_date ON equipment_logs(log_date)"))
+                        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_equipment_log_equipment_date ON equipment_logs(equipment_id, log_date)"))
+                    except Exception:
+                        pass
+                    try:
+                        conn.execute(text("CREATE TABLE IF NOT EXISTS equipment_assignments (\n"
+                                           "id UUID PRIMARY KEY,\n"
+                                           "equipment_id UUID NOT NULL REFERENCES equipment(id) ON DELETE CASCADE,\n"
+                                           "assigned_to_user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,\n"
+                                           "assigned_at TIMESTAMPTZ NOT NULL,\n"
+                                           "returned_at TIMESTAMPTZ,\n"
+                                           "returned_to_user_id UUID REFERENCES users(id) ON DELETE SET NULL,\n"
+                                           "notes TEXT,\n"
+                                           "is_active BOOLEAN DEFAULT TRUE,\n"
+                                           "created_by UUID REFERENCES users(id) ON DELETE SET NULL,\n"
+                                           "created_at TIMESTAMPTZ DEFAULT NOW()\n"
+                                           ")"))
+                        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_equipment_assignment_equipment ON equipment_assignments(equipment_id)"))
+                        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_equipment_assignment_user ON equipment_assignments(assigned_to_user_id)"))
+                        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_equipment_assignment_active ON equipment_assignments(is_active)"))
+                        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_equipment_assignment_equipment_active ON equipment_assignments(equipment_id, is_active)"))
+                        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_equipment_assignment_user_active ON equipment_assignments(assigned_to_user_id, is_active)"))
+                    except Exception:
+                        pass
+                    # Migrations for existing tables - add new columns if they don't exist
+                    try:
+                        # Add license_plate to fleet_assets
+                        result = conn.execute(text("""
+                            SELECT column_name 
+                            FROM information_schema.columns 
+                            WHERE table_name='fleet_assets' AND column_name='license_plate'
+                        """))
+                        if result.fetchone() is None:
+                            conn.execute(text("ALTER TABLE fleet_assets ADD COLUMN license_plate VARCHAR(50)"))
+                            conn.execute(text("CREATE INDEX IF NOT EXISTS idx_fleet_asset_license_plate ON fleet_assets(license_plate)"))
+                    except Exception:
+                        pass
+                    try:
+                        # Add odometer_reading and hours_reading to fleet_inspections
+                        result = conn.execute(text("""
+                            SELECT column_name 
+                            FROM information_schema.columns 
+                            WHERE table_name='fleet_inspections' AND column_name='odometer_reading'
+                        """))
+                        if result.fetchone() is None:
+                            conn.execute(text("ALTER TABLE fleet_inspections ADD COLUMN odometer_reading INTEGER"))
+                    except Exception:
+                        pass
+                    try:
+                        result = conn.execute(text("""
+                            SELECT column_name 
+                            FROM information_schema.columns 
+                            WHERE table_name='fleet_inspections' AND column_name='hours_reading'
+                        """))
+                        if result.fetchone() is None:
+                            conn.execute(text("ALTER TABLE fleet_inspections ADD COLUMN hours_reading NUMERIC(10, 2)"))
+                    except Exception:
+                        pass
+                    try:
+                        # Add odometer_reading and hours_reading to work_orders
+                        result = conn.execute(text("""
+                            SELECT column_name 
+                            FROM information_schema.columns 
+                            WHERE table_name='work_orders' AND column_name='odometer_reading'
+                        """))
+                        if result.fetchone() is None:
+                            conn.execute(text("ALTER TABLE work_orders ADD COLUMN odometer_reading INTEGER"))
+                    except Exception:
+                        pass
+                    try:
+                        result = conn.execute(text("""
+                            SELECT column_name 
+                            FROM information_schema.columns 
+                            WHERE table_name='work_orders' AND column_name='hours_reading'
+                        """))
+                        if result.fetchone() is None:
+                            conn.execute(text("ALTER TABLE work_orders ADD COLUMN hours_reading NUMERIC(10, 2)"))
+                    except Exception:
+                        pass
+                    try:
+                        # Add documents column to work_orders if it doesn't exist
+                        result = conn.execute(text("""
+                            SELECT column_name 
+                            FROM information_schema.columns 
+                            WHERE table_name='work_orders' AND column_name='documents'
+                        """))
+                        if result.fetchone() is None:
+                            conn.execute(text("ALTER TABLE work_orders ADD COLUMN documents JSONB"))
                     except Exception:
                         pass
         except Exception:

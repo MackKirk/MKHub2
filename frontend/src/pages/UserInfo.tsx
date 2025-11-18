@@ -6,6 +6,123 @@ import toast from 'react-hot-toast';
 import GeoSelect from '@/components/GeoSelect';
 import { useConfirm } from '@/components/ConfirmProvider';
 
+// List of implemented permissions (permissions that are actually checked in the codebase)
+const IMPLEMENTED_PERMISSIONS = new Set([
+  "users:read", "users:write",
+  "timesheet:read", "timesheet:write", "timesheet:approve",
+  "clients:read", "clients:write",
+  "inventory:read", "inventory:write",
+  "reviews:read", "reviews:admin",
+]);
+
+function UserPermissions({ userId }:{ userId:string }){
+  const { data:permissionsData, refetch } = useQuery({ 
+    queryKey:['user-permissions', userId], 
+    queryFn: ()=> api<any>('GET', `/permissions/users/${userId}`) 
+  });
+  const [permissions, setPermissions] = useState<Record<string, boolean>>({});
+  const [saving, setSaving] = useState(false);
+
+  // Initialize permissions from API data
+  useEffect(() => {
+    if (permissionsData?.permissions_by_category) {
+      const perms: Record<string, boolean> = {};
+      permissionsData.permissions_by_category.forEach((cat: any) => {
+        cat.permissions.forEach((perm: any) => {
+          perms[perm.key] = perm.is_granted;
+        });
+      });
+      setPermissions(perms);
+    }
+  }, [permissionsData]);
+
+  const handleToggle = (key: string) => {
+    setPermissions((prev) => ({
+      ...prev,
+      [key]: !prev[key],
+    }));
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      await api('PUT', `/permissions/users/${userId}`, permissions);
+      toast.success('Permissions saved');
+      await refetch();
+    } catch (e: any) {
+      toast.error(e?.detail || 'Failed to save permissions');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (!permissionsData) {
+    return <div className="h-24 bg-gray-100 animate-pulse rounded" />;
+  }
+
+  return (
+    <div className="space-y-6 pb-24">
+      <div className="rounded-xl border bg-white p-4">
+        <div className="mb-4">
+          <h3 className="text-lg font-semibold mb-1">User Permissions</h3>
+          <p className="text-sm text-gray-600">Manage granular permissions for this user. Permissions from roles are combined with these overrides. Permissions marked with [WIP] are not yet implemented in the system.</p>
+        </div>
+
+        <div className="space-y-6">
+          {permissionsData.permissions_by_category?.map((cat: any) => (
+            <div key={cat.category.id} className="border rounded-lg p-4">
+              <div className="mb-3">
+                <h4 className="font-semibold text-base">{cat.category.label}</h4>
+                {cat.category.description && (
+                  <p className="text-xs text-gray-500 mt-1">{cat.category.description}</p>
+                )}
+              </div>
+              <div className="space-y-2">
+                {cat.permissions.map((perm: any) => (
+                  <label
+                    key={perm.id}
+                    className="flex items-start gap-3 p-2 rounded hover:bg-gray-50 cursor-pointer"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={permissions[perm.key] || false}
+                      onChange={() => handleToggle(perm.key)}
+                      className="mt-1 w-4 h-4 rounded border-gray-300 text-brand-red focus:ring-brand-red"
+                    />
+                    <div className="flex-1">
+                      <div className="font-medium text-sm flex items-center gap-2">
+                        {perm.label}
+                        {!IMPLEMENTED_PERMISSIONS.has(perm.key) && (
+                          <span className="text-xs px-1.5 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300">
+                            [WIP]
+                          </span>
+                        )}
+                      </div>
+                      {perm.description && (
+                        <div className="text-xs text-gray-500 mt-0.5">{perm.description}</div>
+                      )}
+                    </div>
+                  </label>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="mt-6 flex justify-end">
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="px-4 py-2 rounded bg-brand-red text-white disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {saving ? 'Saving...' : 'Save Permissions'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // Helper function to convert 24h time (HH:MM:SS or HH:MM) to 12h format (h:mm AM/PM)
 function formatTime12h(timeStr: string | null | undefined): string {
   if (!timeStr || timeStr === '--:--' || timeStr === '-') return timeStr || '--:--';
@@ -30,14 +147,18 @@ function UserLabel({ id, fallback }:{ id:string, fallback:string }){
 export default function UserInfo(){
   const { userId } = useParams();
   const [sp] = useSearchParams();
-  const tabParam = sp.get('tab') as ('personal'|'job'|'emergency'|'docs'|'timesheet') | null;
+  const tabParam = sp.get('tab') as ('personal'|'job'|'emergency'|'docs'|'timesheet'|'permissions') | null;
   const [tab, setTab] = useState<typeof tabParam | 'personal'>(tabParam || 'personal');
 
   const { data, isLoading } = useQuery({ queryKey:['userProfile', userId], queryFn: ()=> api<any>('GET', `/auth/users/${userId}/profile`) });
   const { data:me } = useQuery({ queryKey:['me'], queryFn: ()=> api<any>('GET','/auth/me') });
   const { data:settings } = useQuery({ queryKey:['settings'], queryFn: ()=> api<any>('GET','/settings') });
-  const canEdit = !!(me?.roles?.includes('admin') || (me?.permissions||[]).includes('users:write'));
+  const canEdit = !!(
+    (me?.roles || []).some((r: string) => String(r || '').toLowerCase() === 'admin') || 
+    (me?.permissions || []).includes('users:write')
+  );
   const canSelfEdit = me && userId && String(me.id) === String(userId);
+  const canEditPermissions = canEdit; // Same permission check
   const p = data?.profile || {};
   const u = data?.user || {};
   const [pending, setPending] = useState<any>({});
@@ -159,7 +280,7 @@ export default function UserInfo(){
               <div className="flex gap-2"></div>
             </div>
             <div className="mt-4 flex items-center gap-2">
-              {['personal','job','emergency','docs','timesheet'].map((k)=> (
+              {(['personal','job','emergency','docs','timesheet', ...(canEditPermissions ? ['permissions'] : [])] as const).map((k)=> (
                 <button
                   key={k}
                   onClick={()=>setTab(k as any)}
@@ -215,6 +336,7 @@ export default function UserInfo(){
               {tab==='emergency' && <EmergencyGrid p={p} keys={['sin_number','work_permit_status','visa_status','emergency_contact_name','emergency_contact_relationship','emergency_contact_phone']} />}
               {tab==='docs' && <UserDocuments userId={String(userId)} canEdit={canEdit} />}
               {tab==='timesheet' && <TimesheetBlock userId={String(userId)} />}
+              {tab==='permissions' && canEditPermissions && <UserPermissions userId={String(userId)} />}
             </>
           )}
         </div>
