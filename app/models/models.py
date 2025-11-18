@@ -328,6 +328,10 @@ class Client(Base):
     do_not_contact: Mapped[bool] = mapped_column(Boolean, default=False)
     do_not_contact_reason: Mapped[Optional[str]] = mapped_column(String(500))
 
+    # System flag - marks clients that are system/internal (e.g., "Company Files")
+    # These clients should be hidden from normal customer listings
+    is_system: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    
     # Audit
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
     created_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))

@@ -63,6 +63,8 @@ def create_client(
 @router.get("", response_model=List[ClientResponse])
 def list_clients(city: Optional[str] = None, status: Optional[str] = None, type: Optional[str] = None, q: Optional[str] = None, db: Session = Depends(get_db), _=Depends(require_permissions("clients:read"))):
     query = db.query(Client)
+    # Exclude system clients (e.g., "Company Files") from normal customer listings
+    query = query.filter(Client.is_system == False)
     if city:
         query = query.filter(Client.city == city)
     if status:

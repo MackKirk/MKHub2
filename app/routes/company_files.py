@@ -29,14 +29,22 @@ def get_company_client_id(db: Session) -> uuid.UUID:
     
     if not company:
         # Create company client if it doesn't exist
+        # Mark it as system client so it doesn't appear in customer listings
         company = Client(
             code="COMPANY",
             name="Company Files",
-            display_name="Company Files"
+            display_name="Company Files",
+            is_system=True
         )
         db.add(company)
         db.commit()
         db.refresh(company)
+    else:
+        # Ensure existing company client is marked as system
+        if not getattr(company, 'is_system', False):
+            company.is_system = True
+            db.commit()
+            db.refresh(company)
     
     return company.id
 

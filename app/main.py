@@ -244,6 +244,11 @@ def create_app() -> FastAPI:
                             conn.execute(text("ALTER TABLE client_folders ADD COLUMN access_permissions TEXT"))
                         except Exception:
                             pass
+                        # clients is_system column for SQLite
+                        try:
+                            conn.execute(text("ALTER TABLE clients ADD COLUMN is_system INTEGER DEFAULT 0"))
+                        except Exception:
+                            pass
                         # Project events table for SQLite
                         try:
                             conn.execute(text("CREATE TABLE IF NOT EXISTS project_events (\n"
@@ -877,6 +882,7 @@ def create_app() -> FastAPI:
                     conn.execute(text("ALTER TABLE clients ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ"))
                     conn.execute(text("ALTER TABLE clients ADD COLUMN IF NOT EXISTS updated_by UUID"))
                     conn.execute(text("ALTER TABLE clients ADD COLUMN IF NOT EXISTS billing_same_as_address BOOLEAN DEFAULT FALSE"))
+                    conn.execute(text("ALTER TABLE clients ADD COLUMN IF NOT EXISTS is_system BOOLEAN DEFAULT FALSE"))
                     # Ensure client_contacts columns exist
                     conn.execute(text("ALTER TABLE client_contacts ADD COLUMN IF NOT EXISTS role_title VARCHAR(100)"))
                     conn.execute(text("ALTER TABLE client_contacts ADD COLUMN IF NOT EXISTS department VARCHAR(100)"))
