@@ -36,10 +36,8 @@ import LogHours from './pages/LogHours';
 import CompanyFiles from './pages/CompanyFiles';
 import TaskRequests from './pages/TaskRequests';
 import Tasks from './pages/Tasks';
-<<<<<<< HEAD
 import Schedule from './pages/Schedule';
 import Community from './pages/Community';
-=======
 import FleetDashboard from './pages/FleetDashboard';
 import FleetVehicles from './pages/FleetVehicles';
 import FleetHeavyMachinery from './pages/FleetHeavyMachinery';
@@ -55,7 +53,6 @@ import WorkOrderDetail from './pages/WorkOrderDetail';
 import Inspections from './pages/Inspections';
 import InspectionNew from './pages/InspectionNew';
 import InspectionDetail from './pages/InspectionDetail';
->>>>>>> 5950ecbf7e178ffd3d822a932a0eee030aae00c4
 
 import { getToken } from './lib/api';
 function Home(){ return <Navigate to={getToken()? '/home':'/login'} replace />; }

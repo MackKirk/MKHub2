@@ -39,8 +39,6 @@ user_roles = Table(
     UniqueConstraint("user_id", "role_id", name="uq_user_role"),
 )
 
-<<<<<<< HEAD
-=======
 # Association table for many-to-many Task<->User (assignees)
 task_assignees = Table(
     "task_assignees",
@@ -60,7 +58,6 @@ user_divisions = Table(
 )
 
 
->>>>>>> 5950ecbf7e178ffd3d822a932a0eee030aae00c4
 class Role(Base):
     __tablename__ = "roles"
 
@@ -1406,7 +1403,6 @@ class ProjectOrderItem(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
 
 
-<<<<<<< HEAD
 class CommunityPost(Base):
     __tablename__ = "community_posts"
 
@@ -1423,7 +1419,8 @@ class CommunityPost(Base):
     updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
 
     author: Mapped["User"] = relationship("User", foreign_keys=[author_id], backref="community_posts")
-=======
+
+
 # =====================
 # Fleet & Equipment Management domain
 # =====================
@@ -1665,4 +1662,3 @@ class EquipmentAssignment(Base):
         Index('idx_equipment_assignment_equipment_active', 'equipment_id', 'is_active'),
         Index('idx_equipment_assignment_user_active', 'assigned_to_user_id', 'is_active'),
     )
->>>>>>> 5950ecbf7e178ffd3d822a932a0eee030aae00c4

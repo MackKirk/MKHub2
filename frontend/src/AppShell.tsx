@@ -16,13 +16,9 @@ export default function AppShell({ children }: PropsWithChildren){
         <div className="flex items-center gap-2 mb-4"><img src="/ui/assets/login/logo-light.svg" className="h-8"/><span className="text-sm text-gray-300">MK Hub</span></div>
         <nav className="flex flex-col gap-2">
           <NavLink to="/home" className={({isActive})=>`px-3 py-2 rounded ${isActive?'bg-brand-red':''}`}>Home</NavLink>
-<<<<<<< HEAD
           <NavLink to="/profile" className={({isActive})=>`px-3 py-2 rounded ${isActive?'bg-brand-red':''}`}>My Information</NavLink>
           <NavLink to="/schedule" className={({isActive})=>`px-3 py-2 rounded ${isActive?'bg-brand-red':''}`}>Schedule</NavLink>
           <NavLink to="/task-requests" className={({isActive})=>`px-3 py-2 rounded ${isActive?'bg-brand-red':''}`}>Task Request</NavLink>
-=======
-          <NavLink to="/customers" className={({isActive})=>`px-3 py-2 rounded ${isActive?'bg-brand-red':''}`}>Customers</NavLink>
->>>>>>> 5950ecbf7e178ffd3d822a932a0eee030aae00c4
           <NavLink to="/tasks" className={({isActive})=>`px-3 py-2 rounded ${isActive?'bg-brand-red':''}`}>Tasks</NavLink>
           <NavLink to="/customers" className={({isActive})=>`px-3 py-2 rounded ${isActive?'bg-brand-red':''}`}>Customers</NavLink>
           <div className="mt-2 text-[11px] uppercase text-gray-400 px-1">Inventory</div>
