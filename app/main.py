@@ -30,15 +30,12 @@ from .routes.chat import router as chat_router
 from .routes.notifications import router as notifications_router
 from .routes.company_files import router as company_files_router
 from .routes.orders import router as orders_router
-<<<<<<< HEAD
 from .routes.task_requests import router as task_requests_router
 from .routes.tasks_v2 import router as tasks_router
 from .routes.community import router as community_router
-=======
 from .routes.employee_management import router as employee_management_router
 from .routes.permissions import router as permissions_router
 from .routes.fleet import router as fleet_router
->>>>>>> 5950ecbf7e178ffd3d822a932a0eee030aae00c4
 
 
 def create_app() -> FastAPI:
