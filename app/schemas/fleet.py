@@ -80,16 +80,29 @@ class Condition(str, Enum):
 class FleetAssetBase(BaseModel):
     asset_type: FleetAssetType
     name: str
+    unit_number: Optional[str] = None
     vin: Optional[str] = None
     license_plate: Optional[str] = None
+    make: Optional[str] = None
     model: Optional[str] = None
     year: Optional[int] = None
+    condition: Optional[str] = None  # new|good|fair|poor
+    body_style: Optional[str] = None
     division_id: Optional[uuid.UUID] = None
     odometer_current: Optional[int] = None
     odometer_last_service: Optional[int] = None
     hours_current: Optional[float] = None
     hours_last_service: Optional[float] = None
     status: FleetAssetStatus = FleetAssetStatus.active
+    # Driver/Assignment information (driver info comes from User model via driver_id relationship)
+    driver_id: Optional[uuid.UUID] = None
+    # Registration information
+    icbc_registration_no: Optional[str] = None
+    vancouver_decals: Optional[List[str]] = None
+    # Note: inspection_expiry and crane_inspection_expiry removed - can be calculated from FleetInspection records
+    # Physical specifications
+    ferry_length: Optional[str] = None
+    gvw_kg: Optional[int] = None
     photos: Optional[List[uuid.UUID]] = None
     documents: Optional[List[uuid.UUID]] = None
     notes: Optional[str] = None
@@ -101,16 +114,29 @@ class FleetAssetCreate(FleetAssetBase):
 
 class FleetAssetUpdate(BaseModel):
     name: Optional[str] = None
+    unit_number: Optional[str] = None
     vin: Optional[str] = None
     license_plate: Optional[str] = None
+    make: Optional[str] = None
     model: Optional[str] = None
     year: Optional[int] = None
+    condition: Optional[str] = None
+    body_style: Optional[str] = None
     division_id: Optional[uuid.UUID] = None
     odometer_current: Optional[int] = None
     odometer_last_service: Optional[int] = None
     hours_current: Optional[float] = None
     hours_last_service: Optional[float] = None
     status: Optional[FleetAssetStatus] = None
+    # Driver/Assignment information (driver info comes from User model via driver_id relationship)
+    driver_id: Optional[uuid.UUID] = None
+    # Registration information
+    icbc_registration_no: Optional[str] = None
+    vancouver_decals: Optional[List[str]] = None
+    # Note: inspection_expiry and crane_inspection_expiry removed - can be calculated from FleetInspection records
+    # Physical specifications
+    ferry_length: Optional[str] = None
+    gvw_kg: Optional[int] = None
     photos: Optional[List[uuid.UUID]] = None
     documents: Optional[List[uuid.UUID]] = None
     notes: Optional[str] = None
@@ -358,6 +384,36 @@ class EquipmentAssignmentReturn(BaseModel):
 
 
 class EquipmentAssignmentResponse(EquipmentAssignmentBase):
+    id: uuid.UUID
+    returned_at: Optional[datetime] = None
+    returned_to_user_id: Optional[uuid.UUID] = None
+    is_active: bool
+    created_by: Optional[uuid.UUID] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+# Fleet Asset Assignment Schemas
+class FleetAssetAssignmentBase(BaseModel):
+    fleet_asset_id: uuid.UUID
+    assigned_to_user_id: uuid.UUID
+    assigned_at: datetime
+    notes: Optional[str] = None
+
+
+class FleetAssetAssignmentCreate(FleetAssetAssignmentBase):
+    pass
+
+
+class FleetAssetAssignmentReturn(BaseModel):
+    returned_at: datetime
+    returned_to_user_id: Optional[uuid.UUID] = None
+    notes: Optional[str] = None
+
+
+class FleetAssetAssignmentResponse(FleetAssetAssignmentBase):
     id: uuid.UUID
     returned_at: Optional[datetime] = None
     returned_to_user_id: Optional[uuid.UUID] = None

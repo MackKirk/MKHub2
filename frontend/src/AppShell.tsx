@@ -1,15 +1,19 @@
 import { PropsWithChildren, useState } from 'react';
-import { Link, NavLink } from 'react-router-dom';
+import { Link, NavLink, useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 
 export default function AppShell({ children }: PropsWithChildren){
+  const location = useLocation();
   const { data:meProfile } = useQuery({ queryKey:['me-profile'], queryFn: ()=>api<any>('GET','/auth/me/profile') });
   const { data:me } = useQuery({ queryKey:['me'], queryFn: ()=>api<any>('GET','/auth/me') });
   const displayName = (meProfile?.profile?.preferred_name) || ([meProfile?.profile?.first_name, meProfile?.profile?.last_name].filter(Boolean).join(' ') || meProfile?.user?.username || 'User');
   const avatarId = meProfile?.profile?.profile_photo_file_id;
   const avatarUrl = avatarId ? `/files/${avatarId}/thumbnail?w=96` : '/ui/assets/login/logo-light.svg';
   const [open, setOpen] = useState(false);
+  
+  // Check if we're exactly on the fleet dashboard (not on any sub-route)
+  const isFleetDashboard = location.pathname === '/fleet';
   return (
     <div className="min-h-screen flex">
       <aside className="w-60 text-white p-4 bg-gradient-to-b from-gray-800 via-gray-700 to-gray-600">
@@ -28,15 +32,18 @@ export default function AppShell({ children }: PropsWithChildren){
           <NavLink to="/projects" className={({isActive})=>`px-3 py-2 rounded ${isActive?'bg-brand-red':''}`}>Projects</NavLink>
           <NavLink to="/proposals" className={({isActive})=>`px-3 py-2 rounded ${isActive?'bg-brand-red':''}`}>Proposals</NavLink>
           <div className="mt-2 text-[11px] uppercase text-gray-400 px-1">Fleet & Equipment</div>
-          <NavLink to="/fleet" className={({isActive})=>`px-3 py-2 rounded ${isActive?'bg-brand-red':''}`}>Fleet Dashboard</NavLink>
-          <NavLink to="/fleet/vehicles" className={({isActive})=>`px-3 py-2 rounded ${isActive?'bg-brand-red':''}`}>Vehicles</NavLink>
-          <NavLink to="/fleet/heavy-machinery" className={({isActive})=>`px-3 py-2 rounded ${isActive?'bg-brand-red':''}`}>Heavy Machinery</NavLink>
-          <NavLink to="/fleet/other-assets" className={({isActive})=>`px-3 py-2 rounded ${isActive?'bg-brand-red':''}`}>Other Fleet Assets</NavLink>
+          <NavLink to="/fleet" className={`px-3 py-2 rounded ${isFleetDashboard?'bg-brand-red':''}`}>Fleet Dashboard</NavLink>
+          <NavLink to="/fleet/assets" className={({isActive})=>`px-3 py-2 rounded ${isActive?'bg-brand-red':''}`}>Fleet Assets</NavLink>
           <NavLink to="/fleet/equipment" className={({isActive})=>`px-3 py-2 rounded ${isActive?'bg-brand-red':''}`}>Equipment</NavLink>
           <NavLink to="/fleet/work-orders" className={({isActive})=>`px-3 py-2 rounded ${isActive?'bg-brand-red':''}`}>Work Orders</NavLink>
-          <NavLink to="/fleet/inspections" className={({isActive})=>`px-3 py-2 rounded ${isActive?'bg-brand-red':''}`}>Inspections</NavLink>
           <div className="mt-2 text-[11px] uppercase text-gray-400 px-1">Documents</div>
           <NavLink to="/company-files" className={({isActive})=>`px-3 py-2 rounded ${isActive?'bg-brand-red':''}`}>Company Files</NavLink>
+          <div className="mt-2 text-[11px] uppercase text-gray-400 px-1">Training & Learning</div>
+          <NavLink to="/training" className={({isActive})=>`px-3 py-2 rounded ${isActive?'bg-brand-red':''}`}>My Training</NavLink>
+          <NavLink to="/training/certificates" className={({isActive})=>`px-3 py-2 rounded ${isActive?'bg-brand-red':''}`}>My Certificates</NavLink>
+          {((me?.roles||[]).includes('admin') || (me?.permissions||[]).includes('users:write')) && (
+            <NavLink to="/training/admin" className={({isActive})=>`px-3 py-2 rounded ${isActive?'bg-brand-red':''}`}>Training Admin</NavLink>
+          )}
           <div className="mt-2 text-[11px] uppercase text-gray-400 px-1">Settings</div>
           <NavLink to="/users" className={({isActive})=>`px-3 py-2 rounded ${isActive?'bg-brand-red':''}`}>Users</NavLink>
           <NavLink to="/community" className={({isActive})=>`px-3 py-2 rounded ${isActive?'bg-brand-red':''}`}>Community</NavLink>

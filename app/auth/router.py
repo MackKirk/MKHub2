@@ -517,6 +517,14 @@ def register(payload: RegisterPayload, db: Session = Depends(get_db)):
         structlog.get_logger().warning("profile_create_failed", error=str(e))
         db.rollback()
 
+    # Assign onboarding training courses
+    try:
+        from ..services.training import assign_onboarding_courses
+        assign_onboarding_courses(user.id, db)
+    except Exception as e:
+        structlog.get_logger().warning("training_assignment_failed", error=str(e))
+        # Don't fail registration if training assignment fails
+
     access = create_access_token(str(user.id), roles=[r.name for r in user.roles])
     refresh = create_refresh_token(str(user.id))
     # Send username email if SMTP configured

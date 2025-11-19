@@ -1500,24 +1500,39 @@ class FleetAsset(Base):
     id: Mapped[uuid.UUID] = uuid_pk()
     asset_type: Mapped[str] = mapped_column(String(50), nullable=False, index=True)  # vehicle|heavy_machinery|other
     name: Mapped[str] = mapped_column(String(255), nullable=False)
+    unit_number: Mapped[Optional[str]] = mapped_column(String(50), index=True)  # UNIT # from maintenance sheet
     vin: Mapped[Optional[str]] = mapped_column(String(100))  # VIN for vehicles, serial for others
     license_plate: Mapped[Optional[str]] = mapped_column(String(50), index=True)  # License plate for vehicles
+    make: Mapped[Optional[str]] = mapped_column(String(100))  # MAKE (brand/manufacturer)
     model: Mapped[Optional[str]] = mapped_column(String(255))
     year: Mapped[Optional[int]] = mapped_column(Integer)
+    condition: Mapped[Optional[str]] = mapped_column(String(50))  # Condition: new|good|fair|poor
+    body_style: Mapped[Optional[str]] = mapped_column(String(100))  # BODY STYLE: SUV, PICKUP, VAN, etc.
     division_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("setting_items.id", ondelete="SET NULL"), index=True)
     odometer_current: Mapped[Optional[int]] = mapped_column(Integer)  # Current odometer reading
     odometer_last_service: Mapped[Optional[int]] = mapped_column(Integer)  # Odometer at last service (auto-updated from inspections/work orders)
     hours_current: Mapped[Optional[float]] = mapped_column(Float)  # Current hours (for machinery)
     hours_last_service: Mapped[Optional[float]] = mapped_column(Float)  # Hours at last service (auto-updated from inspections/work orders)
     status: Mapped[str] = mapped_column(String(50), default="active", index=True)  # active|inactive|retired|maintenance
+    # Driver/Assignment information (driver info comes from User model via driver_id relationship)
+    driver_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), index=True)  # DRIVER
+    # Registration information
+    icbc_registration_no: Mapped[Optional[str]] = mapped_column(String(50))  # ICBC REGISTRATION NO.
+    vancouver_decals: Mapped[Optional[list]] = mapped_column(JSON)  # VANCOUVER DECAL # (array of decal numbers)
+    # Note: inspection_expiry and crane_inspection_expiry removed - can be calculated from FleetInspection records
+    # Physical specifications
+    ferry_length: Mapped[Optional[str]] = mapped_column(String(50))  # FERRY LENGTH (e.g., "22L 8H")
+    gvw_kg: Mapped[Optional[int]] = mapped_column(Integer)  # GVW (KG) - Gross Vehicle Weight in kg
     photos: Mapped[Optional[list]] = mapped_column(JSON)  # Array of file_object_ids
     documents: Mapped[Optional[list]] = mapped_column(JSON)  # Array of file_object_ids
     notes: Mapped[Optional[str]] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
     updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     created_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
-
+    
     # Relationships
+    driver = relationship("User", foreign_keys=[driver_id])
+    assignments = relationship("FleetAssetAssignment", back_populates="fleet_asset", cascade="all, delete-orphan", order_by="FleetAssetAssignment.assigned_at.desc()")
     inspections = relationship("FleetInspection", back_populates="fleet_asset", cascade="all, delete-orphan", order_by="FleetInspection.inspection_date.desc()")
     logs = relationship("FleetLog", back_populates="fleet_asset", cascade="all, delete-orphan", order_by="FleetLog.log_date.desc()")
 
@@ -1654,6 +1669,33 @@ class EquipmentCheckout(Base):
     )
 
 
+class FleetAssetAssignment(Base):
+    """Fleet asset assignment history - tracks when vehicles/assets are assigned to users"""
+    __tablename__ = "fleet_asset_assignments"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    fleet_asset_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("fleet_assets.id", ondelete="CASCADE"), nullable=False, index=True)
+    assigned_to_user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    assigned_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    returned_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), index=True)
+    returned_to_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))  # User who received it back
+    notes: Mapped[Optional[str]] = mapped_column(Text)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)  # True if currently assigned
+    created_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+
+    # Relationships
+    fleet_asset = relationship("FleetAsset", back_populates="assignments")
+    assigned_to_user = relationship("User", foreign_keys=[assigned_to_user_id])
+    returned_to_user = relationship("User", foreign_keys=[returned_to_user_id])
+
+    # Indexes
+    __table_args__ = (
+        Index('idx_fleet_assignment_asset_active', 'fleet_asset_id', 'is_active'),
+        Index('idx_fleet_assignment_user_active', 'assigned_to_user_id', 'is_active'),
+    )
+
+
 class FleetLog(Base):
     """Fleet usage/status logs"""
     __tablename__ = "fleet_logs"
@@ -1729,4 +1771,242 @@ class EquipmentAssignment(Base):
     __table_args__ = (
         Index('idx_equipment_assignment_equipment_active', 'equipment_id', 'is_active'),
         Index('idx_equipment_assignment_user_active', 'assigned_to_user_id', 'is_active'),
+    )
+
+
+# =====================
+# Training & Certification domain
+# =====================
+
+# Association tables for many-to-many relationships
+training_course_required_roles = Table(
+    "training_course_required_roles",
+    Base.metadata,
+    Column("course_id", UUID(as_uuid=True), ForeignKey("training_courses.id", ondelete="CASCADE"), primary_key=True),
+    Column("role_id", UUID(as_uuid=True), ForeignKey("roles.id", ondelete="CASCADE"), primary_key=True),
+    UniqueConstraint("course_id", "role_id", name="uq_training_course_role"),
+)
+
+training_course_required_divisions = Table(
+    "training_course_required_divisions",
+    Base.metadata,
+    Column("course_id", UUID(as_uuid=True), ForeignKey("training_courses.id", ondelete="CASCADE"), primary_key=True),
+    Column("division_id", UUID(as_uuid=True), ForeignKey("setting_items.id", ondelete="CASCADE"), primary_key=True),
+    UniqueConstraint("course_id", "division_id", name="uq_training_course_division"),
+)
+
+training_course_required_users = Table(
+    "training_course_required_users",
+    Base.metadata,
+    Column("course_id", UUID(as_uuid=True), ForeignKey("training_courses.id", ondelete="CASCADE"), primary_key=True),
+    Column("user_id", UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True),
+    UniqueConstraint("course_id", "user_id", name="uq_training_course_user"),
+)
+
+
+class TrainingCourse(Base):
+    """Training courses with modules, lessons, and certificates"""
+    __tablename__ = "training_courses"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    title: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    description: Mapped[Optional[str]] = mapped_column(Text)
+    category_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("setting_items.id", ondelete="SET NULL"), index=True)
+    status: Mapped[str] = mapped_column(String(50), default="draft", index=True)  # draft|published
+    thumbnail_file_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("file_objects.id", ondelete="SET NULL"))
+    estimated_duration_minutes: Mapped[Optional[int]] = mapped_column(Integer)
+    tags: Mapped[Optional[list]] = mapped_column(JSON)  # List of tag strings
+    
+    # Requirements
+    is_required: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    renewal_frequency: Mapped[str] = mapped_column(String(50), default="none")  # none|weekly|monthly|annual|days_X|every_new_job
+    renewal_frequency_days: Mapped[Optional[int]] = mapped_column(Integer)  # For "days_X" option
+    
+    # Certificate settings
+    generates_certificate: Mapped[bool] = mapped_column(Boolean, default=False)
+    certificate_validity_days: Mapped[Optional[int]] = mapped_column(Integer)
+    certificate_text: Mapped[Optional[str]] = mapped_column(Text)  # Custom certificate text
+    
+    # Metadata
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    created_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+    updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    last_published_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    cloned_from_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("training_courses.id", ondelete="SET NULL"))
+    
+    # Relationships
+    category = relationship("SettingItem", foreign_keys=[category_id])
+    modules = relationship("TrainingModule", back_populates="course", cascade="all, delete-orphan", order_by="TrainingModule.order_index")
+    certificates = relationship("TrainingCertificate", back_populates="course", cascade="all, delete-orphan")
+    progress_records = relationship("TrainingProgress", back_populates="course", cascade="all, delete-orphan")
+    required_roles = relationship("Role", secondary=training_course_required_roles, backref="required_courses")
+    required_divisions = relationship("SettingItem", secondary=training_course_required_divisions, backref="required_courses")
+    required_users = relationship("User", secondary=training_course_required_users, backref="required_courses")
+    cloned_from = relationship("TrainingCourse", remote_side=[id], foreign_keys=[cloned_from_id])
+    
+    # Indexes
+    __table_args__ = (
+        Index('idx_training_course_status', 'status'),
+        Index('idx_training_course_category', 'category_id'),
+    )
+
+
+class TrainingModule(Base):
+    """Course modules/units containing lessons"""
+    __tablename__ = "training_modules"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    course_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("training_courses.id", ondelete="CASCADE"), nullable=False, index=True)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    order_index: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    
+    # Relationships
+    course = relationship("TrainingCourse", back_populates="modules")
+    lessons = relationship("TrainingLesson", back_populates="module", cascade="all, delete-orphan", order_by="TrainingLesson.order_index")
+    
+    # Indexes
+    __table_args__ = (
+        Index('idx_training_module_course_order', 'course_id', 'order_index'),
+    )
+
+
+class TrainingLesson(Base):
+    """Individual lessons within a module"""
+    __tablename__ = "training_lessons"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    module_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("training_modules.id", ondelete="CASCADE"), nullable=False, index=True)
+    lesson_type: Mapped[str] = mapped_column(String(50), nullable=False, index=True)  # video|pdf|text|image|quiz
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    order_index: Mapped[int] = mapped_column(Integer, default=0)
+    requires_completion: Mapped[bool] = mapped_column(Boolean, default=True)
+    content: Mapped[Optional[dict]] = mapped_column(JSON)  # Content varies by type
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    
+    # Relationships
+    module = relationship("TrainingModule", back_populates="lessons")
+    quiz = relationship("TrainingQuiz", back_populates="lesson", uselist=False, cascade="all, delete-orphan")
+    completed_by = relationship("TrainingCompletedLesson", back_populates="lesson", cascade="all, delete-orphan")
+    
+    # Indexes
+    __table_args__ = (
+        Index('idx_training_lesson_module_order', 'module_id', 'order_index'),
+        Index('idx_training_lesson_type', 'lesson_type'),
+    )
+
+
+class TrainingQuiz(Base):
+    """Quiz/assessment for lessons"""
+    __tablename__ = "training_quizzes"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    lesson_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("training_lessons.id", ondelete="CASCADE"), index=True)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    passing_score_percent: Mapped[int] = mapped_column(Integer, default=70)
+    allow_retry: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    
+    # Relationships
+    lesson = relationship("TrainingLesson", back_populates="quiz", foreign_keys=[lesson_id])
+    questions = relationship("TrainingQuizQuestion", back_populates="quiz", cascade="all, delete-orphan", order_by="TrainingQuizQuestion.order_index")
+    
+    # Indexes
+    __table_args__ = (
+        Index('idx_training_quiz_lesson', 'lesson_id'),
+    )
+
+
+class TrainingQuizQuestion(Base):
+    """Quiz questions"""
+    __tablename__ = "training_quiz_questions"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    quiz_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("training_quizzes.id", ondelete="CASCADE"), nullable=False, index=True)
+    question_text: Mapped[str] = mapped_column(Text, nullable=False)
+    question_type: Mapped[str] = mapped_column(String(50), nullable=False)  # multiple_choice|true_false
+    order_index: Mapped[int] = mapped_column(Integer, default=0)
+    correct_answer: Mapped[str] = mapped_column(String(255), nullable=False)  # Answer key or index
+    options: Mapped[Optional[list]] = mapped_column(JSON)  # Array of option strings for multiple choice
+    
+    # Relationships
+    quiz = relationship("TrainingQuiz", back_populates="questions")
+    
+    # Indexes
+    __table_args__ = (
+        Index('idx_training_quiz_question_order', 'quiz_id', 'order_index'),
+    )
+
+
+class TrainingProgress(Base):
+    """User progress tracking for courses"""
+    __tablename__ = "training_progress"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    course_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("training_courses.id", ondelete="CASCADE"), nullable=False, index=True)
+    started_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), index=True)
+    last_accessed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    progress_percent: Mapped[int] = mapped_column(Integer, default=0)
+    current_module_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("training_modules.id", ondelete="SET NULL"))
+    current_lesson_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("training_lessons.id", ondelete="SET NULL"))
+    
+    # Relationships
+    user = relationship("User", foreign_keys=[user_id])
+    course = relationship("TrainingCourse", back_populates="progress_records")
+    current_module = relationship("TrainingModule", foreign_keys=[current_module_id])
+    current_lesson = relationship("TrainingLesson", foreign_keys=[current_lesson_id])
+    completed_lessons = relationship("TrainingCompletedLesson", back_populates="progress", cascade="all, delete-orphan")
+    
+    # Indexes
+    __table_args__ = (
+        Index('idx_training_progress_user_course', 'user_id', 'course_id'),
+        Index('idx_training_progress_completed', 'completed_at'),
+    )
+
+
+class TrainingCompletedLesson(Base):
+    """Track completed lessons by users"""
+    __tablename__ = "training_completed_lessons"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    progress_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("training_progress.id", ondelete="CASCADE"), nullable=False, index=True)
+    lesson_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("training_lessons.id", ondelete="CASCADE"), nullable=False, index=True)
+    completed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    quiz_score: Mapped[Optional[int]] = mapped_column(Integer)  # Score percentage if lesson has quiz
+    
+    # Relationships
+    progress = relationship("TrainingProgress", back_populates="completed_lessons")
+    lesson = relationship("TrainingLesson", back_populates="completed_by")
+    
+    # Indexes
+    __table_args__ = (
+        Index('idx_training_completed_lesson_progress', 'progress_id', 'lesson_id'),
+        UniqueConstraint("progress_id", "lesson_id", name="uq_training_completed_lesson"),
+    )
+
+
+class TrainingCertificate(Base):
+    """Generated certificates for completed courses"""
+    __tablename__ = "training_certificates"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    course_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("training_courses.id", ondelete="CASCADE"), nullable=False, index=True)
+    issued_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
+    expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), index=True)
+    certificate_file_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("file_objects.id", ondelete="SET NULL"))
+    qr_code_data: Mapped[Optional[str]] = mapped_column(String(500))  # QR code data for validation
+    certificate_number: Mapped[str] = mapped_column(String(100), unique=True, nullable=False, index=True)
+    
+    # Relationships
+    user = relationship("User", foreign_keys=[user_id])
+    course = relationship("TrainingCourse", back_populates="certificates")
+    certificate_file = relationship("FileObject", foreign_keys=[certificate_file_id])
+    
+    # Indexes
+    __table_args__ = (
+        Index('idx_training_certificate_user_course', 'user_id', 'course_id'),
+        Index('idx_training_certificate_expires', 'expires_at'),
     )
