@@ -103,7 +103,11 @@ async def upload_proxy(
     """
     Proxy endpoint for file uploads when direct Azure Blob upload fails due to CORS.
     This endpoint receives the file data and uploads it to Azure Blob Storage on behalf of the client.
+    For HEIC files, it converts them to JPG before saving.
     """
+    import logging
+    logger = logging.getLogger(__name__)
+    
     # Read file content
     file_content = await file.read()
     
@@ -111,23 +115,126 @@ async def upload_proxy(
     if not original_name or original_name == "upload":
         original_name = file.filename or "upload"
     
-    # Generate upload URL
-    key = canonical_key(
+    # Check if this is a HEIC file that needs conversion
+    is_heic = False
+    if 'heic' in content_type.lower() or 'heif' in content_type.lower():
+        is_heic = True
+    if original_name.lower().endswith(('.heic', '.heif')):
+        is_heic = True
+    
+    # If HEIC, convert to JPG first
+    final_content = file_content
+    final_content_type = content_type
+    final_key = canonical_key(
         project_code=(project_id or client_id or "misc"),
         slug=None,
         category=category_id,
         original_name=original_name,
     )
-    upload_url = storage.generate_upload_url(key, content_type, expires_s=900)
+    
+    if is_heic:
+        logger.info(f"Detected HEIC file in upload-proxy: {original_name}, converting to JPG")
+        try:
+            import io
+            from PIL import Image as PILImage
+            
+            # Try to register pillow-heif
+            pillow_heif_available = False
+            try:
+                from pillow_heif import register_heif_opener
+                register_heif_opener()
+                pillow_heif_available = True
+                logger.info("pillow-heif opener registered successfully in upload-proxy")
+            except Exception as heif_err:
+                logger.warning(f"Could not register pillow-heif opener: {heif_err}")
+            
+            if pillow_heif_available:
+                # Convert using pillow-heif
+                try:
+                    buf = io.BytesIO(file_content)
+                    im = PILImage.open(buf)
+                    if im.mode != "RGB":
+                        im = im.convert("RGB")
+                    out = io.BytesIO()
+                    im.save(out, format="JPEG", quality=95)
+                    final_content = out.getvalue()
+                    final_content_type = "image/jpeg"
+                    # Update key to use .jpg extension
+                    if final_key.lower().endswith(('.heic', '.heif')):
+                        final_key = final_key.rsplit('.', 1)[0] + '.jpg'
+                    else:
+                        final_key = final_key + '.jpg'
+                    im.close()
+                    logger.info(f"Successfully converted HEIC to JPG: {original_name}")
+                except Exception as convert_err:
+                    logger.error(f"Failed to convert HEIC using pillow-heif: {convert_err}")
+                    # Try CLI fallback if available
+                    try:
+                        import tempfile
+                        import subprocess
+                        import platform
+                        # Check if we're on Windows - heif-convert may not be available
+                        if platform.system() == 'Windows':
+                            raise Exception("heif-convert not available on Windows")
+                        with tempfile.TemporaryDirectory() as td:
+                            src_path = os.path.join(td, "in.heic")
+                            dst_path = os.path.join(td, "out.jpg")
+                            with open(src_path, "wb") as fsrc:
+                                fsrc.write(file_content)
+                            subprocess.run(["heif-convert", "-q", "95", src_path, dst_path], check=True, timeout=30)
+                            with open(dst_path, "rb") as fdst:
+                                final_content = fdst.read()
+                        final_content_type = "image/jpeg"
+                        if final_key.lower().endswith(('.heic', '.heif')):
+                            final_key = final_key.rsplit('.', 1)[0] + '.jpg'
+                        else:
+                            final_key = final_key + '.jpg'
+                        logger.info(f"Successfully converted HEIC to JPG using heif-convert: {original_name}")
+                    except Exception as cli_err:
+                        logger.error(f"HEIC conversion failed completely: {cli_err}. The file will be saved as HEIC and conversion will be attempted on access.")
+                        raise HTTPException(status_code=400, detail=f"Cannot convert HEIC file. Please install pillow-heif: pip install pillow-heif. Error: {convert_err}")
+            else:
+                # Try CLI fallback if available (non-Windows)
+                try:
+                    import tempfile
+                    import subprocess
+                    import platform
+                    if platform.system() == 'Windows':
+                        raise Exception("heif-convert not available on Windows, pillow-heif required")
+                    with tempfile.TemporaryDirectory() as td:
+                        src_path = os.path.join(td, "in.heic")
+                        dst_path = os.path.join(td, "out.jpg")
+                        with open(src_path, "wb") as fsrc:
+                            fsrc.write(file_content)
+                        subprocess.run(["heif-convert", "-q", "95", src_path, dst_path], check=True, timeout=30)
+                        with open(dst_path, "rb") as fdst:
+                            final_content = fdst.read()
+                    final_content_type = "image/jpeg"
+                    if final_key.lower().endswith(('.heic', '.heif')):
+                        final_key = final_key.rsplit('.', 1)[0] + '.jpg'
+                    else:
+                        final_key = final_key + '.jpg'
+                    logger.info(f"Successfully converted HEIC to JPG using heif-convert: {original_name}")
+                except Exception as cli_err:
+                    logger.error(f"HEIC conversion failed: {cli_err}")
+                    raise HTTPException(status_code=400, detail=f"Cannot convert HEIC file. Please install pillow-heif: pip install pillow-heif")
+        except HTTPException:
+            raise
+        except Exception as conv_err:
+            logger.error(f"HEIC conversion error: {conv_err}")
+            raise HTTPException(status_code=400, detail=f"Cannot convert HEIC file. Please install pillow-heif: pip install pillow-heif. Error: {conv_err}")
+    
+    # Generate upload URL with final key and content type
+    upload_url = storage.generate_upload_url(final_key, final_content_type, expires_s=900)
     
     # Upload to Azure Blob Storage via backend
     async with httpx.AsyncClient() as client:
         try:
             put_resp = await client.put(
                 upload_url,
-                content=file_content,
+                content=final_content,
                 headers={
-                    "Content-Type": content_type,
+                    "Content-Type": final_content_type,
                     "x-ms-blob-type": "BlockBlob"
                 },
                 timeout=60.0
@@ -149,15 +256,15 @@ async def upload_proxy(
         fo = FileObject(
             provider=provider,
             container=container,
-            key=key,
-            size_bytes=len(file_content),
+            key=final_key,
+            size_bytes=len(final_content),
             checksum_sha256="na",
-            content_type=content_type,
+            content_type=final_content_type,
         )
         db.add(fo)
         db.commit()
         db.refresh(fo)
-        return {"id": str(fo.id), "key": key}
+        return {"id": str(fo.id), "key": final_key}
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Failed to confirm upload: {str(e)}")
