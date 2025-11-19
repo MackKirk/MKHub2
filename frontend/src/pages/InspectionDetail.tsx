@@ -8,24 +8,34 @@ type Inspection = {
   fleet_asset_id: string;
   inspection_date: string;
   inspector_user_id?: string;
-  checklist_results?: Record<string, string>;
+  checklist_results?: {
+    _metadata?: Record<string, string>;
+    [key: string]: any; // Allow checklist items with keys like A1, B1, etc.
+  } | Record<string, any>;
   photos?: string[];
   result: string;
   notes?: string;
+  odometer_reading?: number;
+  hours_reading?: number;
   auto_generated_work_order_id?: string;
   created_at: string;
 };
 
-const checklistItems = [
-  { key: 'tire_condition', label: 'Tire Condition' },
-  { key: 'oil_level', label: 'Oil Level' },
-  { key: 'fluids', label: 'Fluids' },
-  { key: 'lights', label: 'Lights' },
-  { key: 'seatbelts', label: 'Seatbelts' },
-  { key: 'dashboard_warnings', label: 'Dashboard Warnings' },
-  { key: 'interior_condition', label: 'Interior Condition' },
-  { key: 'exterior_condition', label: 'Exterior Condition' },
-];
+type ChecklistTemplate = {
+  sections: Array<{
+    id: string;
+    title: string;
+    items: Array<{
+      key: string;
+      label: string;
+      category: string;
+    }>;
+  }>;
+  status_options: Array<{
+    value: string;
+    label: string;
+  }>;
+};
 
 export default function InspectionDetail() {
   const { id } = useParams();
@@ -38,6 +48,11 @@ export default function InspectionDetail() {
     queryKey: ['inspection', id],
     queryFn: () => api<Inspection>('GET', `/fleet/inspections/${id}`),
     enabled: isValidId,
+  });
+
+  const { data: checklistTemplate } = useQuery<ChecklistTemplate>({
+    queryKey: ['inspectionChecklistTemplate'],
+    queryFn: () => api<ChecklistTemplate>('GET', '/fleet/inspections/checklist-template'),
   });
 
   const generateWOMutation = useMutation({
@@ -109,22 +124,109 @@ export default function InspectionDetail() {
           </div>
         </div>
 
-        {inspection.checklist_results && (
+        {/* Metadata Display */}
+        {inspection.checklist_results && typeof inspection.checklist_results === 'object' && '_metadata' in inspection.checklist_results && inspection.checklist_results._metadata && (
+          <div className="bg-gray-50 p-4 rounded-lg border">
+            <h3 className="text-sm font-semibold text-gray-700 mb-3">Inspection Information</h3>
+            <div className="grid grid-cols-3 gap-4 text-sm">
+              {inspection.checklist_results._metadata.unit_number && (
+                <div>
+                  <span className="text-gray-600">Unit #:</span> {inspection.checklist_results._metadata.unit_number}
+                </div>
+              )}
+              {inspection.checklist_results._metadata.km && (
+                <div>
+                  <span className="text-gray-600">KM:</span> {inspection.checklist_results._metadata.km}
+                </div>
+              )}
+              {inspection.checklist_results._metadata.hours && (
+                <div>
+                  <span className="text-gray-600">Hours:</span> {inspection.checklist_results._metadata.hours}
+                </div>
+              )}
+              {inspection.checklist_results._metadata.mechanic && (
+                <div>
+                  <span className="text-gray-600">Mechanic:</span> {inspection.checklist_results._metadata.mechanic}
+                </div>
+              )}
+              {inspection.checklist_results._metadata.next_pm_due && (
+                <div>
+                  <span className="text-gray-600">Next PM Due:</span> {inspection.checklist_results._metadata.next_pm_due}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Odometer/Hours Reading */}
+        {(inspection.odometer_reading || inspection.hours_reading) && (
+          <div className="grid grid-cols-2 gap-4">
+            {inspection.odometer_reading && (
+              <div>
+                <label className="text-sm text-gray-600">Odometer Reading</label>
+                <div className="font-medium mt-1">{inspection.odometer_reading.toLocaleString()} km</div>
+              </div>
+            )}
+            {inspection.hours_reading && (
+              <div>
+                <label className="text-sm text-gray-600">Hours Reading</label>
+                <div className="font-medium mt-1">{inspection.hours_reading.toFixed(1)} hours</div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Complete Checklist Display */}
+        {inspection.checklist_results && checklistTemplate && (
           <div>
-            <label className="text-sm text-gray-600 mb-2 block">Checklist Results</label>
-            <div className="space-y-2">
-              {checklistItems.map(item => {
-                const result = inspection.checklist_results?.[item.key];
+            <label className="text-sm text-gray-600 mb-3 block font-medium">Checklist Results</label>
+            <div className="space-y-6 border rounded-lg p-4 bg-white">
+              {checklistTemplate.sections.map((section) => {
+                // Filter out _metadata from checklist items
+                const checklistItems = inspection.checklist_results && typeof inspection.checklist_results === 'object'
+                  ? Object.fromEntries(
+                      Object.entries(inspection.checklist_results).filter(([key]) => key !== '_metadata')
+                    )
+                  : inspection.checklist_results;
+                
+                const sectionItems = section.items.filter(item => {
+                  return checklistItems && item.key in checklistItems;
+                });
+                
+                if (sectionItems.length === 0) return null;
+
                 return (
-                  <div key={item.key} className="flex items-center justify-between p-2 border rounded">
-                    <span className="text-sm">{item.label}</span>
-                    <span className={`px-2 py-1 rounded text-xs ${
-                      result === 'pass' ? 'bg-green-100 text-green-800' :
-                      result === 'fail' ? 'bg-red-100 text-red-800' :
-                      'bg-gray-100 text-gray-800'
-                    }`}>
-                      {result || 'N/A'}
-                    </span>
+                  <div key={section.id} className="border-b pb-4 last:border-b-0 last:pb-0">
+                    <h4 className="text-base font-semibold text-gray-800 mb-3">
+                      {section.id}. {section.title}
+                    </h4>
+                    <div className="space-y-2">
+                      {sectionItems.map((item) => {
+                        const itemResult = checklistItems?.[item.key];
+                        const status = typeof itemResult === 'object' ? itemResult?.status : itemResult;
+                        const comments = typeof itemResult === 'object' ? itemResult?.comments : null;
+                        
+                        return (
+                          <div key={item.key} className="grid grid-cols-12 gap-2 items-center py-2 border-b border-gray-100 last:border-b-0">
+                            <div className="col-span-5 text-sm text-gray-700">
+                              {item.key}. {item.label}
+                            </div>
+                            <div className="col-span-3">
+                              {status ? (
+                                <span className="px-2 py-1 rounded text-xs bg-blue-100 text-blue-800">
+                                  {checklistTemplate.status_options.find(opt => opt.value === status)?.label || status}
+                                </span>
+                              ) : (
+                                <span className="text-gray-400 text-xs">-</span>
+                              )}
+                            </div>
+                            <div className="col-span-4 text-sm text-gray-600">
+                              {comments || '-'}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
                 );
               })}

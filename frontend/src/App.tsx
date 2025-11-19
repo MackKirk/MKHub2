@@ -50,6 +50,11 @@ import WorkOrderDetail from './pages/WorkOrderDetail';
 import Inspections from './pages/Inspections';
 import InspectionNew from './pages/InspectionNew';
 import InspectionDetail from './pages/InspectionDetail';
+import Training from './pages/Training';
+import TrainingCourse from './pages/TrainingCourse';
+import TrainingCertificates from './pages/TrainingCertificates';
+import TrainingAdmin from './pages/TrainingAdmin';
+import TrainingCourseEdit from './pages/TrainingCourseEdit';
 
 import { getToken } from './lib/api';
 function Home(){ return <Navigate to={getToken()? '/home':'/login'} replace />; }
@@ -109,6 +114,12 @@ export default function App(){
           <Route path="/fleet/inspections" element={<AppShell><Inspections/></AppShell>} />
           <Route path="/fleet/inspections/new" element={<AppShell><InspectionNew/></AppShell>} />
           <Route path="/fleet/inspections/:id" element={<AppShell><InspectionDetail/></AppShell>} />
+          <Route path="/training" element={<AppShell><Training/></AppShell>} />
+          <Route path="/training/:courseId" element={<AppShell><TrainingCourse/></AppShell>} />
+          <Route path="/training/certificates" element={<AppShell><TrainingCertificates/></AppShell>} />
+          <Route path="/training/admin" element={<AppShell><TrainingAdmin/></AppShell>} />
+          <Route path="/training/admin/new" element={<AppShell><TrainingCourseEdit/></AppShell>} />
+          <Route path="/training/admin/:courseId" element={<AppShell><TrainingCourseEdit/></AppShell>} />
         </Route>
         <Route path="*" element={<Navigate to={getToken()? '/home':'/login'} replace />} />
       </Routes>

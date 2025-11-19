@@ -699,6 +699,133 @@ def return_equipment_assignment(
 
 
 # ---------- INSPECTIONS ----------
+@router.get("/inspections/checklist-template")
+def get_inspection_checklist_template():
+    """
+    Returns the complete inspection checklist template based on company standards.
+    This template includes all sections and items that need to be inspected.
+    """
+    return {
+        "sections": [
+            {
+                "id": "A",
+                "title": "Engine",
+                "items": [
+                    {"key": "A1", "label": "Change oil and filter", "category": "maintenance"},
+                    {"key": "A2", "label": "Change fuel lines and tank cap", "category": "maintenance"},
+                    {"key": "A3", "label": "Check fuel filter (25,000 mil)", "category": "inspection"},
+                    {"key": "A4", "label": "Check air filter if needed", "category": "inspection"},
+                    {"key": "A5", "label": "Check all hoses under pressure", "category": "inspection"},
+                    {"key": "A6", "label": "Check all belts & tensioners", "category": "inspection"},
+                    {"key": "A7", "label": "Check water pump and fan bearing", "category": "inspection"},
+                    {"key": "A8", "label": "Check complete exhaust system", "category": "inspection"},
+                    {"key": "A9", "label": "Check for engine oil leaks", "category": "inspection"},
+                ]
+            },
+            {
+                "id": "B",
+                "title": "Under The Hood Fluid Levels",
+                "items": [
+                    {"key": "B1", "label": "Radiator- note strength", "category": "inspection"},
+                    {"key": "B2", "label": "Brake", "category": "inspection"},
+                    {"key": "B3", "label": "Steering", "category": "inspection"},
+                    {"key": "B4", "label": "Windshield washer", "category": "inspection"},
+                    {"key": "B5", "label": "Automatic transmission", "category": "inspection"},
+                    {"key": "B6", "label": "Rear end fluid", "category": "inspection"},
+                    {"key": "B7", "label": "Check AC (blows cold)", "category": "inspection"},
+                ]
+            },
+            {
+                "id": "C",
+                "title": "Chassis",
+                "items": [
+                    {"key": "C1", "label": "Check steering play", "category": "inspection"},
+                    {"key": "C2", "label": "Check power steering hose", "category": "inspection"},
+                    {"key": "C3", "label": "Check steering pitman arm, drag link & idler arm", "category": "inspection"},
+                    {"key": "C4", "label": "Check tie rod ends", "category": "inspection"},
+                    {"key": "C5", "label": "Check front springs", "category": "inspection"},
+                    {"key": "C6", "label": "Check front shocks", "category": "inspection"},
+                    {"key": "C7", "label": "Check ball joints", "category": "inspection"},
+                    {"key": "C8", "label": "Check rear springs", "category": "inspection"},
+                    {"key": "C9", "label": "Check rear shocks", "category": "inspection"},
+                    {"key": "C10", "label": "Check bell housing bolts", "category": "inspection"},
+                    {"key": "C11", "label": "Check transmission mounts", "category": "inspection"},
+                    {"key": "C12", "label": "Check U-joints & grease", "category": "maintenance"},
+                    {"key": "C13", "label": "Check carrier bearings", "category": "inspection"},
+                    {"key": "C14", "label": "Check slip joint & grease", "category": "maintenance"},
+                    {"key": "C15", "label": "Check wheels and axle seals", "category": "inspection"},
+                ]
+            },
+            {
+                "id": "E",
+                "title": "Brakes",
+                "items": [
+                    {"key": "E1", "label": "Check for fluid leaks", "category": "inspection"},
+                    {"key": "E2", "label": "Check front pads & rotors", "category": "inspection"},
+                    {"key": "E3", "label": "Check rear brakes & adjustment", "category": "inspection"},
+                    {"key": "E4", "label": "Check parking brake operation", "category": "inspection"},
+                ]
+            },
+            {
+                "id": "F",
+                "title": "Drivability Checks",
+                "items": [
+                    {"key": "F1", "label": "Check window glass and operation", "category": "inspection"},
+                    {"key": "F2", "label": "Check emergency exits", "category": "inspection"},
+                    {"key": "F3", "label": "Check mirrors", "category": "inspection"},
+                    {"key": "F4", "label": "Check wiper blades", "category": "inspection"},
+                    {"key": "F5", "label": "Check if washer fluid sprays", "category": "inspection"},
+                    {"key": "F6", "label": "Check heater & AC fans", "category": "inspection"},
+                    {"key": "F7", "label": "Check accelerator & linkage", "category": "inspection"},
+                    {"key": "F8", "label": "Check fuel tank & mounting", "category": "inspection"},
+                    {"key": "F9", "label": "Check tire condition & match", "category": "inspection"},
+                    {"key": "F10", "label": "Check tire rims & lug nuts", "category": "inspection"},
+                    {"key": "F11", "label": "Check tire inflation", "category": "inspection"},
+                    {"key": "F12", "label": "Check mud flaps", "category": "inspection"},
+                ]
+            },
+            {
+                "id": "G",
+                "title": "Safety / Emergency Items",
+                "items": [
+                    {"key": "G1", "label": "Fire extinguisher", "category": "safety"},
+                    {"key": "G2", "label": "First aid kit", "category": "safety"},
+                    {"key": "G3", "label": "Operating flashlight", "category": "safety"},
+                    {"key": "G4", "label": "Reflective triangles", "category": "safety"},
+                    {"key": "G5", "label": "Ice scraper (season applicable)", "category": "safety"},
+                    {"key": "G6", "label": "Blanket", "category": "safety"},
+                    {"key": "G7", "label": "Toolkit", "category": "safety"},
+                ]
+            },
+            {
+                "id": "H",
+                "title": "Wrap-Up",
+                "items": [
+                    {"key": "H1", "label": "Check for leaks", "category": "inspection"},
+                    {"key": "H2", "label": "Recheck oil level", "category": "inspection"},
+                    {"key": "H3", "label": "Wash engine & chassis if applicable", "category": "maintenance"},
+                    {"key": "H4", "label": "Install next PM due mileage in pocket", "category": "maintenance"},
+                    {"key": "H5", "label": "Note any other repairs needed", "category": "notes"},
+                ]
+            }
+        ],
+        "status_options": [
+            {"value": "inspected", "label": "Inspected"},
+            {"value": "okay", "label": "Okay"},
+            {"value": "repaired_adjusted", "label": "Repaired & Adjusted"},
+            {"value": "greased_lubed", "label": "Greased & Lubed"},
+        ],
+        "metadata_fields": [
+            {"key": "unit_number", "label": "Unit #", "type": "text"},
+            {"key": "km", "label": "KM", "type": "number"},
+            {"key": "hours", "label": "Hours", "type": "number"},
+            {"key": "mechanic", "label": "Mechanic", "type": "text"},
+            {"key": "date", "label": "Date", "type": "date"},
+            {"key": "next_pm_due", "label": "Next PM Due On", "type": "date"},
+        ]
+    }
+
+
 @router.get("/inspections", response_model=List[FleetInspectionResponse])
 def list_inspections(
     fleet_asset_id: Optional[uuid.UUID] = Query(None),

@@ -4,16 +4,26 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
 
-const checklistItems = [
-  { key: 'tire_condition', label: 'Tire Condition' },
-  { key: 'oil_level', label: 'Oil Level' },
-  { key: 'fluids', label: 'Fluids' },
-  { key: 'lights', label: 'Lights' },
-  { key: 'seatbelts', label: 'Seatbelts' },
-  { key: 'dashboard_warnings', label: 'Dashboard Warnings' },
-  { key: 'interior_condition', label: 'Interior Condition' },
-  { key: 'exterior_condition', label: 'Exterior Condition' },
-];
+type ChecklistTemplate = {
+  sections: Array<{
+    id: string;
+    title: string;
+    items: Array<{
+      key: string;
+      label: string;
+      category: string;
+    }>;
+  }>;
+  status_options: Array<{
+    value: string;
+    label: string;
+  }>;
+  metadata_fields: Array<{
+    key: string;
+    label: string;
+    type: string;
+  }>;
+};
 
 export default function InspectionNew() {
   const nav = useNavigate();
@@ -30,33 +40,66 @@ export default function InspectionNew() {
     queryFn: () => api<any[]>('GET', '/fleet/assets'),
   });
 
+  const { data: checklistTemplate } = useQuery<ChecklistTemplate>({
+    queryKey: ['inspectionChecklistTemplate'],
+    queryFn: () => api<ChecklistTemplate>('GET', '/fleet/inspections/checklist-template'),
+  });
+
   const [form, setForm] = useState({
     fleet_asset_id: assetId,
     inspection_date: new Date().toISOString().split('T')[0],
     inspector_user_id: '',
     result: 'pass',
     notes: '',
+    odometer_reading: '',
+    hours_reading: '',
   });
 
-  const [checklist, setChecklist] = useState<Record<string, string>>({});
+  const [checklist, setChecklist] = useState<Record<string, { status?: string; comments?: string }>>({});
+  const [metadata, setMetadata] = useState<Record<string, string>>({
+    unit_number: '',
+    km: '',
+    hours: '',
+    mechanic: '',
+    next_pm_due: '',
+  });
 
   const updateField = (field: string, value: any) => {
     setForm(prev => ({ ...prev, [field]: value }));
   };
 
-  const updateChecklist = (key: string, value: string) => {
-    setChecklist(prev => ({ ...prev, [key]: value }));
+  const updateChecklist = (key: string, field: 'status' | 'comments', value: string) => {
+    setChecklist(prev => ({
+      ...prev,
+      [key]: {
+        ...prev[key],
+        [field]: value,
+      },
+    }));
+  };
+
+  const updateMetadata = (key: string, value: string) => {
+    setMetadata(prev => ({ ...prev, [key]: value }));
   };
 
   const createMutation = useMutation({
     mutationFn: async () => {
+      // Build checklist results - merge metadata into items structure
+      // The backend expects a flat dict, so we'll include metadata as special keys
+      const checklistResults: any = {
+        ...checklist,
+        _metadata: metadata, // Store metadata with underscore prefix to avoid conflicts
+      };
+
       const payload: any = {
         fleet_asset_id: form.fleet_asset_id,
         inspection_date: new Date(form.inspection_date).toISOString(),
         inspector_user_id: form.inspector_user_id || null,
-        checklist_results: Object.keys(checklist).length > 0 ? checklist : null,
+        checklist_results: Object.keys(checklist).length > 0 ? checklistResults : null,
         result: form.result,
         notes: form.notes.trim() || null,
+        odometer_reading: form.odometer_reading ? parseInt(form.odometer_reading) : null,
+        hours_reading: form.hours_reading ? parseFloat(form.hours_reading) : null,
       };
       return api('POST', '/fleet/inspections', payload);
     },
@@ -98,6 +141,62 @@ export default function InspectionNew() {
           }}
           className="space-y-6"
         >
+          {/* Metadata Fields */}
+          <div className="bg-gray-50 p-4 rounded-lg border">
+            <h3 className="text-sm font-semibold text-gray-700 mb-3">Inspection Information</h3>
+            <div className="grid grid-cols-3 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Unit #</label>
+                <input
+                  type="text"
+                  value={metadata.unit_number}
+                  onChange={(e) => updateMetadata('unit_number', e.target.value)}
+                  className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-red"
+                  placeholder="Unit number"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">KM</label>
+                <input
+                  type="number"
+                  value={metadata.km}
+                  onChange={(e) => updateMetadata('km', e.target.value)}
+                  className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-red"
+                  placeholder="Kilometers"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Hours</label>
+                <input
+                  type="number"
+                  value={metadata.hours}
+                  onChange={(e) => updateMetadata('hours', e.target.value)}
+                  className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-red"
+                  placeholder="Hours"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Mechanic</label>
+                <input
+                  type="text"
+                  value={metadata.mechanic}
+                  onChange={(e) => updateMetadata('mechanic', e.target.value)}
+                  className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-red"
+                  placeholder="Mechanic name"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Next PM Due On</label>
+                <input
+                  type="date"
+                  value={metadata.next_pm_due}
+                  onChange={(e) => updateMetadata('next_pm_due', e.target.value)}
+                  className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-red"
+                />
+              </div>
+            </div>
+          </div>
+
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -164,26 +263,83 @@ export default function InspectionNew() {
                 <option value="conditional">Conditional</option>
               </select>
             </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Odometer Reading
+              </label>
+              <input
+                type="number"
+                value={form.odometer_reading}
+                onChange={(e) => updateField('odometer_reading', e.target.value)}
+                className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-red"
+                placeholder="Current odometer"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Hours Reading
+              </label>
+              <input
+                type="number"
+                step="0.1"
+                value={form.hours_reading}
+                onChange={(e) => updateField('hours_reading', e.target.value)}
+                className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-red"
+                placeholder="Current hours"
+              />
+            </div>
           </div>
 
+          {/* Complete Checklist */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Checklist Results</label>
-            <div className="space-y-2">
-              {checklistItems.map(item => (
-                <div key={item.key} className="flex items-center justify-between p-2 border rounded">
-                  <span className="text-sm">{item.label}</span>
-                  <select
-                    value={checklist[item.key] || ''}
-                    onChange={(e) => updateChecklist(item.key, e.target.value)}
-                    className="px-2 py-1 border rounded text-sm"
-                  >
-                    <option value="">N/A</option>
-                    <option value="pass">Pass</option>
-                    <option value="fail">Fail</option>
-                  </select>
-                </div>
-              ))}
-            </div>
+            <label className="block text-sm font-medium text-gray-700 mb-3">Inspection Checklist</label>
+            {checklistTemplate ? (
+              <div className="space-y-6 border rounded-lg p-4 bg-white">
+                {checklistTemplate.sections.map((section) => (
+                  <div key={section.id} className="border-b pb-4 last:border-b-0 last:pb-0">
+                    <h4 className="text-base font-semibold text-gray-800 mb-3">
+                      {section.id}. {section.title}
+                    </h4>
+                    <div className="space-y-2">
+                      {section.items.map((item) => (
+                        <div key={item.key} className="grid grid-cols-12 gap-2 items-center py-2 border-b border-gray-100 last:border-b-0">
+                          <div className="col-span-5 text-sm text-gray-700">
+                            {item.key}. {item.label}
+                          </div>
+                          <div className="col-span-3">
+                            <select
+                              value={checklist[item.key]?.status || ''}
+                              onChange={(e) => updateChecklist(item.key, 'status', e.target.value)}
+                              className="w-full px-2 py-1 border rounded text-sm focus:outline-none focus:ring-1 focus:ring-brand-red"
+                            >
+                              <option value="">-</option>
+                              {checklistTemplate.status_options.map((opt) => (
+                                <option key={opt.value} value={opt.value}>
+                                  {opt.label}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                          <div className="col-span-4">
+                            <input
+                              type="text"
+                              value={checklist[item.key]?.comments || ''}
+                              onChange={(e) => updateChecklist(item.key, 'comments', e.target.value)}
+                              className="w-full px-2 py-1 border rounded text-sm focus:outline-none focus:ring-1 focus:ring-brand-red"
+                              placeholder="Comments & Parts List"
+                            />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-8 text-gray-500">Loading checklist template...</div>
+            )}
           </div>
 
           <div>

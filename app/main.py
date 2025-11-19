@@ -36,6 +36,7 @@ from .routes.community import router as community_router
 from .routes.employee_management import router as employee_management_router
 from .routes.permissions import router as permissions_router
 from .routes.fleet import router as fleet_router
+from .routes.training import router as training_router
 
 
 def create_app() -> FastAPI:
@@ -81,6 +82,7 @@ def create_app() -> FastAPI:
     app.include_router(employee_management_router)
     app.include_router(permissions_router)
     app.include_router(fleet_router)
+    app.include_router(training_router)
     from .routes import dispatch
     app.include_router(dispatch.router)
     # Legacy UI redirects to new React routes (exact paths)
@@ -548,16 +550,25 @@ def create_app() -> FastAPI:
                                                "id TEXT PRIMARY KEY,\n"
                                                "asset_type TEXT NOT NULL,\n"
                                                "name TEXT NOT NULL,\n"
+                                               "unit_number TEXT,\n"
                                                "vin TEXT,\n"
                                                "license_plate TEXT,\n"
+                                               "make TEXT,\n"
                                                "model TEXT,\n"
                                                "year INTEGER,\n"
+                                               "condition TEXT,\n"
+                                               "body_style TEXT,\n"
                                                "division_id TEXT,\n"
                                                "odometer_current INTEGER,\n"
                                                "odometer_last_service INTEGER,\n"
                                                "hours_current REAL,\n"
                                                "hours_last_service REAL,\n"
                                                "status TEXT DEFAULT 'active',\n"
+                                               "driver_id TEXT,\n"
+                                               "icbc_registration_no TEXT,\n"
+                                               "vancouver_decals TEXT,\n"
+                                               "ferry_length TEXT,\n"
+                                               "gvw_kg INTEGER,\n"
                                                "photos TEXT,\n"
                                                "documents TEXT,\n"
                                                "notes TEXT,\n"
@@ -565,12 +576,33 @@ def create_app() -> FastAPI:
                                                "updated_at TEXT,\n"
                                                "created_by TEXT,\n"
                                                "FOREIGN KEY(division_id) REFERENCES setting_items(id) ON DELETE SET NULL,\n"
+                                               "FOREIGN KEY(driver_id) REFERENCES users(id) ON DELETE SET NULL,\n"
                                                "FOREIGN KEY(created_by) REFERENCES users(id) ON DELETE SET NULL\n"
                                                ")"))
+                            # Migrations for SQLite - add new columns if they don't exist
+                            sqlite_new_fields = [
+                                ("unit_number", "TEXT"),
+                                ("make", "TEXT"),
+                                ("condition", "TEXT"),
+                                ("body_style", "TEXT"),
+                                ("driver_id", "TEXT"),
+                                ("icbc_registration_no", "TEXT"),
+                                ("vancouver_decals", "TEXT"),
+                                ("ferry_length", "TEXT"),
+                                ("gvw_kg", "INTEGER"),
+                            ]
+                            for field_name, field_type in sqlite_new_fields:
+                                try:
+                                    conn.execute(text(f"ALTER TABLE fleet_assets ADD COLUMN {field_name} {field_type}"))
+                                except Exception:
+                                    pass
                             try:
                                 conn.execute(text("ALTER TABLE fleet_assets ADD COLUMN license_plate TEXT"))
                             except Exception:
                                 pass
+                            conn.execute(text("CREATE INDEX IF NOT EXISTS idx_fleet_asset_unit_number ON fleet_assets(unit_number)"))
+                            conn.execute(text("CREATE INDEX IF NOT EXISTS idx_fleet_asset_license_plate ON fleet_assets(license_plate)"))
+                            conn.execute(text("CREATE INDEX IF NOT EXISTS idx_fleet_asset_driver ON fleet_assets(driver_id)"))
                             conn.execute(text("CREATE INDEX IF NOT EXISTS idx_fleet_asset_type ON fleet_assets(asset_type)"))
                             conn.execute(text("CREATE INDEX IF NOT EXISTS idx_fleet_asset_status ON fleet_assets(status)"))
                             conn.execute(text("CREATE INDEX IF NOT EXISTS idx_fleet_asset_type_status ON fleet_assets(asset_type, status)"))
@@ -1344,16 +1376,25 @@ def create_app() -> FastAPI:
                                            "id UUID PRIMARY KEY,\n"
                                            "asset_type VARCHAR(50) NOT NULL,\n"
                                            "name VARCHAR(255) NOT NULL,\n"
+                                           "unit_number VARCHAR(50),\n"
                                            "vin VARCHAR(100),\n"
                                            "license_plate VARCHAR(50),\n"
+                                           "make VARCHAR(100),\n"
                                            "model VARCHAR(255),\n"
                                            "year INTEGER,\n"
+                                           "condition VARCHAR(50),\n"
+                                           "body_style VARCHAR(100),\n"
                                            "division_id UUID,\n"
                                            "odometer_current INTEGER,\n"
                                            "odometer_last_service INTEGER,\n"
                                            "hours_current NUMERIC(10, 2),\n"
                                            "hours_last_service NUMERIC(10, 2),\n"
                                            "status VARCHAR(50) DEFAULT 'active',\n"
+                                           "driver_id UUID REFERENCES users(id) ON DELETE SET NULL,\n"
+                                           "icbc_registration_no VARCHAR(50),\n"
+                                           "vancouver_decals JSONB,\n"
+                                           "ferry_length VARCHAR(50),\n"
+                                           "gvw_kg INTEGER,\n"
                                            "photos JSONB,\n"
                                            "documents JSONB,\n"
                                            "notes TEXT,\n"
@@ -1362,7 +1403,9 @@ def create_app() -> FastAPI:
                                            "created_by UUID REFERENCES users(id) ON DELETE SET NULL\n"
                                            ")"))
                         try:
+                            conn.execute(text("CREATE INDEX IF NOT EXISTS idx_fleet_asset_unit_number ON fleet_assets(unit_number)"))
                             conn.execute(text("CREATE INDEX IF NOT EXISTS idx_fleet_asset_license_plate ON fleet_assets(license_plate)"))
+                            conn.execute(text("CREATE INDEX IF NOT EXISTS idx_fleet_asset_driver ON fleet_assets(driver_id)"))
                         except Exception:
                             pass
                         conn.execute(text("CREATE INDEX IF NOT EXISTS idx_fleet_asset_type ON fleet_assets(asset_type)"))
@@ -1544,6 +1587,43 @@ def create_app() -> FastAPI:
                         if result.fetchone() is None:
                             conn.execute(text("ALTER TABLE fleet_assets ADD COLUMN license_plate VARCHAR(50)"))
                             conn.execute(text("CREATE INDEX IF NOT EXISTS idx_fleet_asset_license_plate ON fleet_assets(license_plate)"))
+                    except Exception:
+                        pass
+                    # Add new fields from maintenance sheet
+                    new_fleet_fields = [
+                        ("unit_number", "VARCHAR(50)", "idx_fleet_asset_unit_number"),
+                        ("make", "VARCHAR(100)", None),
+                        ("condition", "VARCHAR(50)", None),
+                        ("body_style", "VARCHAR(100)", None),
+                        ("icbc_registration_no", "VARCHAR(50)", None),
+                        ("vancouver_decals", "JSONB", None),
+                        ("ferry_length", "VARCHAR(50)", None),
+                        ("gvw_kg", "INTEGER", None),
+                    ]
+                    for field_name, field_type, index_name in new_fleet_fields:
+                        try:
+                            result = conn.execute(text(f"""
+                                SELECT column_name 
+                                FROM information_schema.columns 
+                                WHERE table_name='fleet_assets' AND column_name='{field_name}'
+                            """))
+                            if result.fetchone() is None:
+                                conn.execute(text(f"ALTER TABLE fleet_assets ADD COLUMN {field_name} {field_type}"))
+                                if index_name:
+                                    conn.execute(text(f"CREATE INDEX IF NOT EXISTS {index_name} ON fleet_assets({field_name})"))
+                        except Exception:
+                            pass
+                    # Add driver_id separately because it needs foreign key constraint
+                    try:
+                        result = conn.execute(text("""
+                            SELECT column_name 
+                            FROM information_schema.columns 
+                            WHERE table_name='fleet_assets' AND column_name='driver_id'
+                        """))
+                        if result.fetchone() is None:
+                            conn.execute(text("ALTER TABLE fleet_assets ADD COLUMN driver_id UUID"))
+                            conn.execute(text("ALTER TABLE fleet_assets ADD CONSTRAINT fk_fleet_asset_driver FOREIGN KEY (driver_id) REFERENCES users(id) ON DELETE SET NULL"))
+                            conn.execute(text("CREATE INDEX IF NOT EXISTS idx_fleet_asset_driver ON fleet_assets(driver_id)"))
                     except Exception:
                         pass
                     try:

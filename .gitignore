@@ -69,3 +69,6 @@ build/
 scripts/add_is_system_column.py
 scripts/verify_is_system_column.py
 scripts/add_is_system_column.sql
+scripts/add_license_plate_column.py
+scripts/add_fleet_inspections_columns.py
+scripts/add_work_orders_columns.py

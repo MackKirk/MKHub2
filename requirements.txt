@@ -21,6 +21,7 @@ pytz==2024.1
 reportlab==4.2.2
 PyPDF2==3.0.1
 pillow==11.0.0
+qrcode[pil]==7.4.2
 # pillow-heif is optional - installs libheif system dependencies
 # If installation fails, the app will continue without HEIC support
 # pillow-heif==0.16.0
