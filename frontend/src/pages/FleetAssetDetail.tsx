@@ -9,15 +9,23 @@ type FleetAsset = {
   id: string;
   asset_type: string;
   name: string;
+  unit_number?: string;
   vin?: string;
+  license_plate?: string;
+  make?: string;
   model?: string;
   year?: number;
+  condition?: string;
+  body_style?: string;
   division_id?: string;
   odometer_current?: number;
   odometer_last_service?: number;
   hours_current?: number;
   hours_last_service?: number;
   status: string;
+  icbc_registration_no?: string;
+  ferry_length?: string;
+  gvw_kg?: number;
   photos?: string[];
   documents?: string[];
   notes?: string;
@@ -88,6 +96,8 @@ export default function FleetAssetDetail() {
   const [tab, setTab] = useState<'general' | 'inspections' | 'work-orders' | 'logs'>(initialTab);
   const [showInspectionForm, setShowInspectionForm] = useState(false);
   const [showWorkOrderForm, setShowWorkOrderForm] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editForm, setEditForm] = useState<any>({});
 
   useEffect(() => {
     const searchParams = new URLSearchParams(location.search);
@@ -127,6 +137,83 @@ export default function FleetAssetDetail() {
     queryKey: ['employees'],
     queryFn: () => api<any[]>('GET', '/employees'),
   });
+
+  const { data: settings } = useQuery({
+    queryKey: ['settings'],
+    queryFn: () => api<any>('GET', '/settings'),
+  });
+  const divisions = Array.isArray(settings?.divisions) ? settings.divisions : [];
+
+  // Initialize edit form when entering edit mode
+  useEffect(() => {
+    if (isEditing && asset) {
+      setEditForm({
+        name: asset.name || '',
+        vin: asset.vin || '',
+        license_plate: asset.license_plate || '',
+        make: asset.make || '',
+        model: asset.model || '',
+        year: asset.year || '',
+        unit_number: asset.unit_number || '',
+        condition: asset.condition || '',
+        body_style: asset.body_style || '',
+        division_id: asset.division_id || '',
+        odometer_current: asset.odometer_current || '',
+        odometer_last_service: asset.odometer_last_service || '',
+        hours_current: asset.hours_current || '',
+        hours_last_service: asset.hours_last_service || '',
+        status: asset.status || 'active',
+        icbc_registration_no: asset.icbc_registration_no || '',
+        ferry_length: asset.ferry_length || '',
+        gvw_kg: asset.gvw_kg || '',
+        notes: asset.notes || '',
+      });
+    }
+  }, [isEditing, asset]);
+
+  const updateMutation = useMutation({
+    mutationFn: async (data: any) => {
+      return api('PUT', `/fleet/assets/${id}`, data);
+    },
+    onSuccess: () => {
+      toast.success('Asset updated successfully');
+      setIsEditing(false);
+      queryClient.invalidateQueries({ queryKey: ['fleetAsset', id] });
+    },
+    onError: (error: any) => {
+      toast.error(error?.message || 'Failed to update asset');
+    },
+  });
+
+  const handleSave = () => {
+    const payload: any = {
+      name: editForm.name.trim(),
+      vin: editForm.vin.trim() || null,
+      license_plate: editForm.license_plate?.trim() || null,
+      make: editForm.make?.trim() || null,
+      model: editForm.model?.trim() || null,
+      year: editForm.year ? parseInt(editForm.year) : null,
+      unit_number: editForm.unit_number?.trim() || null,
+      condition: editForm.condition || null,
+      body_style: editForm.body_style?.trim() || null,
+      division_id: editForm.division_id || null,
+      status: editForm.status,
+      icbc_registration_no: editForm.icbc_registration_no?.trim() || null,
+      ferry_length: editForm.ferry_length?.trim() || null,
+      gvw_kg: editForm.gvw_kg ? parseInt(editForm.gvw_kg) : null,
+      notes: editForm.notes?.trim() || null,
+    };
+
+    if (asset?.asset_type === 'vehicle') {
+      payload.odometer_current = editForm.odometer_current ? parseInt(editForm.odometer_current) : null;
+      payload.odometer_last_service = editForm.odometer_last_service ? parseInt(editForm.odometer_last_service) : null;
+    } else {
+      payload.hours_current = editForm.hours_current ? parseFloat(editForm.hours_current) : null;
+      payload.hours_last_service = editForm.hours_last_service ? parseFloat(editForm.hours_last_service) : null;
+    }
+
+    updateMutation.mutate(payload);
+  };
 
   const statusColors: Record<string, string> = {
     active: 'bg-green-100 text-green-800',
@@ -199,62 +286,364 @@ export default function FleetAssetDetail() {
       <div className="rounded-xl border bg-white p-6">
         {tab === 'general' && (
           <div className="space-y-6">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="font-semibold text-lg">General Information</h3>
+              {!isEditing ? (
+                <button
+                  onClick={() => setIsEditing(true)}
+                  className="px-4 py-2 bg-brand-red text-white rounded-lg hover:bg-red-700 text-sm"
+                >
+                  Edit
+                </button>
+              ) : (
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setIsEditing(false)}
+                    className="px-4 py-2 border rounded-lg hover:bg-gray-50 text-sm"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleSave}
+                    disabled={updateMutation.isPending}
+                    className="px-4 py-2 bg-brand-red text-white rounded-lg hover:bg-red-700 text-sm disabled:opacity-50"
+                  >
+                    {updateMutation.isPending ? 'Saving...' : 'Save'}
+                  </button>
+                </div>
+              )}
+            </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="text-sm text-gray-600">Name</label>
-                <div className="font-medium">{asset.name}</div>
+                {isEditing ? (
+                  <input
+                    type="text"
+                    value={editForm.name}
+                    onChange={(e) => setEditForm({...editForm, name: e.target.value})}
+                    className="w-full px-3 py-2 border rounded-lg mt-1"
+                    required
+                  />
+                ) : (
+                  <div className="font-medium">{asset.name}</div>
+                )}
               </div>
               <div>
                 <label className="text-sm text-gray-600">VIN/Serial</label>
-                <div className="font-medium">{asset.vin || '-'}</div>
+                {isEditing ? (
+                  <input
+                    type="text"
+                    value={editForm.vin}
+                    onChange={(e) => setEditForm({...editForm, vin: e.target.value})}
+                    className="w-full px-3 py-2 border rounded-lg mt-1"
+                  />
+                ) : (
+                  <div className="font-medium">{asset.vin || '-'}</div>
+                )}
+              </div>
+              <div>
+                <label className="text-sm text-gray-600">License Plate</label>
+                {isEditing ? (
+                  <input
+                    type="text"
+                    value={editForm.license_plate || ''}
+                    onChange={(e) => setEditForm({...editForm, license_plate: e.target.value})}
+                    className="w-full px-3 py-2 border rounded-lg mt-1"
+                  />
+                ) : (
+                  <div className="font-medium">{asset.license_plate || '-'}</div>
+                )}
+              </div>
+              <div>
+                <label className="text-sm text-gray-600">Unit Number</label>
+                {isEditing ? (
+                  <input
+                    type="text"
+                    value={editForm.unit_number || ''}
+                    onChange={(e) => setEditForm({...editForm, unit_number: e.target.value})}
+                    className="w-full px-3 py-2 border rounded-lg mt-1"
+                  />
+                ) : (
+                  <div className="font-medium">{asset.unit_number || '-'}</div>
+                )}
+              </div>
+              <div>
+                <label className="text-sm text-gray-600">Make</label>
+                {isEditing ? (
+                  <input
+                    type="text"
+                    value={editForm.make || ''}
+                    onChange={(e) => setEditForm({...editForm, make: e.target.value})}
+                    className="w-full px-3 py-2 border rounded-lg mt-1"
+                  />
+                ) : (
+                  <div className="font-medium">{asset.make || '-'}</div>
+                )}
               </div>
               <div>
                 <label className="text-sm text-gray-600">Model</label>
-                <div className="font-medium">{asset.model || '-'}</div>
+                {isEditing ? (
+                  <input
+                    type="text"
+                    value={editForm.model || ''}
+                    onChange={(e) => setEditForm({...editForm, model: e.target.value})}
+                    className="w-full px-3 py-2 border rounded-lg mt-1"
+                  />
+                ) : (
+                  <div className="font-medium">{asset.model || '-'}</div>
+                )}
               </div>
               <div>
                 <label className="text-sm text-gray-600">Year</label>
-                <div className="font-medium">{asset.year || '-'}</div>
+                {isEditing ? (
+                  <input
+                    type="number"
+                    value={editForm.year || ''}
+                    onChange={(e) => setEditForm({...editForm, year: e.target.value})}
+                    className="w-full px-3 py-2 border rounded-lg mt-1"
+                    min="1900"
+                    max={new Date().getFullYear() + 1}
+                  />
+                ) : (
+                  <div className="font-medium">{asset.year || '-'}</div>
+                )}
+              </div>
+              <div>
+                <label className="text-sm text-gray-600">Condition</label>
+                {isEditing ? (
+                  <select
+                    value={editForm.condition || ''}
+                    onChange={(e) => setEditForm({...editForm, condition: e.target.value})}
+                    className="w-full px-3 py-2 border rounded-lg mt-1"
+                  >
+                    <option value="">Select condition</option>
+                    <option value="new">New</option>
+                    <option value="good">Good</option>
+                    <option value="fair">Fair</option>
+                    <option value="poor">Poor</option>
+                  </select>
+                ) : (
+                  <div className="font-medium capitalize">{asset.condition || '-'}</div>
+                )}
+              </div>
+              <div>
+                <label className="text-sm text-gray-600">Body Style</label>
+                {isEditing ? (
+                  <input
+                    type="text"
+                    value={editForm.body_style || ''}
+                    onChange={(e) => setEditForm({...editForm, body_style: e.target.value})}
+                    className="w-full px-3 py-2 border rounded-lg mt-1"
+                  />
+                ) : (
+                  <div className="font-medium">{asset.body_style || '-'}</div>
+                )}
+              </div>
+              <div>
+                <label className="text-sm text-gray-600">Division</label>
+                {isEditing ? (
+                  <select
+                    value={editForm.division_id || ''}
+                    onChange={(e) => setEditForm({...editForm, division_id: e.target.value})}
+                    className="w-full px-3 py-2 border rounded-lg mt-1"
+                  >
+                    <option value="">None</option>
+                    {divisions.map((div: any) => (
+                      <option key={div.id} value={div.id}>
+                        {div.label || div.value}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <div className="font-medium">
+                    {divisions.find((d: any) => d.id === asset.division_id)?.label || '-'}
+                  </div>
+                )}
               </div>
               <div>
                 <label className="text-sm text-gray-600">Status</label>
-                <div>
-                  <span className={`px-2 py-1 rounded text-xs font-medium ${statusColors[asset.status] || 'bg-gray-100 text-gray-800'}`}>
-                    {asset.status}
-                  </span>
-                </div>
+                {isEditing ? (
+                  <select
+                    value={editForm.status}
+                    onChange={(e) => setEditForm({...editForm, status: e.target.value})}
+                    className="w-full px-3 py-2 border rounded-lg mt-1"
+                  >
+                    <option value="active">Active</option>
+                    <option value="inactive">Inactive</option>
+                    <option value="maintenance">Maintenance</option>
+                    <option value="retired">Retired</option>
+                  </select>
+                ) : (
+                  <div>
+                    <span className={`px-2 py-1 rounded text-xs font-medium ${statusColors[asset.status] || 'bg-gray-100 text-gray-800'}`}>
+                      {asset.status}
+                    </span>
+                  </div>
+                )}
               </div>
               {asset.asset_type === 'vehicle' && (
                 <>
                   <div>
-                    <label className="text-sm text-gray-600">Current Odometer</label>
-                    <div className="font-medium">{asset.odometer_current?.toLocaleString() || '-'}</div>
+                    <label className="text-sm text-gray-600">ICBC Registration No.</label>
+                    {isEditing ? (
+                      <input
+                        type="text"
+                        value={editForm.icbc_registration_no || ''}
+                        onChange={(e) => setEditForm({...editForm, icbc_registration_no: e.target.value})}
+                        className="w-full px-3 py-2 border rounded-lg mt-1"
+                      />
+                    ) : (
+                      <div className="font-medium">{asset.icbc_registration_no || '-'}</div>
+                    )}
                   </div>
                   <div>
-                    <label className="text-sm text-gray-600">Last Service Odometer</label>
-                    <div className="font-medium">{asset.odometer_last_service?.toLocaleString() || '-'}</div>
+                    <label className="text-sm text-gray-600">Ferry Length</label>
+                    {isEditing ? (
+                      <input
+                        type="text"
+                        value={editForm.ferry_length || ''}
+                        onChange={(e) => setEditForm({...editForm, ferry_length: e.target.value})}
+                        className="w-full px-3 py-2 border rounded-lg mt-1"
+                        placeholder="e.g., 22L 8H"
+                      />
+                    ) : (
+                      <div className="font-medium">{asset.ferry_length || '-'}</div>
+                    )}
+                  </div>
+                  <div>
+                    <label className="text-sm text-gray-600">GVW (kg)</label>
+                    {isEditing ? (
+                      <input
+                        type="number"
+                        value={editForm.gvw_kg || ''}
+                        onChange={(e) => setEditForm({...editForm, gvw_kg: e.target.value})}
+                        className="w-full px-3 py-2 border rounded-lg mt-1"
+                        min="0"
+                      />
+                    ) : (
+                      <div className="font-medium">{asset.gvw_kg ? asset.gvw_kg.toLocaleString() : '-'}</div>
+                    )}
                   </div>
                 </>
               )}
-              {(asset.asset_type === 'heavy_machinery' || asset.asset_type === 'other') && (
+              {(asset.asset_type === 'vehicle' || asset.asset_type === 'heavy_machinery') && (
+                <>
+                  {asset.asset_type === 'vehicle' && (
+                    <>
+                      <div>
+                        <label className="text-sm text-gray-600">Current Odometer</label>
+                        {isEditing ? (
+                          <input
+                            type="number"
+                            value={editForm.odometer_current || ''}
+                            onChange={(e) => setEditForm({...editForm, odometer_current: e.target.value})}
+                            className="w-full px-3 py-2 border rounded-lg mt-1"
+                            min="0"
+                          />
+                        ) : (
+                          <div className="font-medium">{asset.odometer_current?.toLocaleString() || '-'}</div>
+                        )}
+                      </div>
+                      <div>
+                        <label className="text-sm text-gray-600">Last Service Odometer</label>
+                        {isEditing ? (
+                          <input
+                            type="number"
+                            value={editForm.odometer_last_service || ''}
+                            onChange={(e) => setEditForm({...editForm, odometer_last_service: e.target.value})}
+                            className="w-full px-3 py-2 border rounded-lg mt-1"
+                            min="0"
+                          />
+                        ) : (
+                          <div className="font-medium">{asset.odometer_last_service?.toLocaleString() || '-'}</div>
+                        )}
+                      </div>
+                    </>
+                  )}
+                  {asset.asset_type === 'heavy_machinery' && (
+                    <>
+                      <div>
+                        <label className="text-sm text-gray-600">Current Hours</label>
+                        {isEditing ? (
+                          <input
+                            type="number"
+                            step="0.1"
+                            value={editForm.hours_current || ''}
+                            onChange={(e) => setEditForm({...editForm, hours_current: e.target.value})}
+                            className="w-full px-3 py-2 border rounded-lg mt-1"
+                            min="0"
+                          />
+                        ) : (
+                          <div className="font-medium">{asset.hours_current?.toLocaleString() || '-'}</div>
+                        )}
+                      </div>
+                      <div>
+                        <label className="text-sm text-gray-600">Last Service Hours</label>
+                        {isEditing ? (
+                          <input
+                            type="number"
+                            step="0.1"
+                            value={editForm.hours_last_service || ''}
+                            onChange={(e) => setEditForm({...editForm, hours_last_service: e.target.value})}
+                            className="w-full px-3 py-2 border rounded-lg mt-1"
+                            min="0"
+                          />
+                        ) : (
+                          <div className="font-medium">{asset.hours_last_service?.toLocaleString() || '-'}</div>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </>
+              )}
+              {asset.asset_type === 'other' && (
                 <>
                   <div>
                     <label className="text-sm text-gray-600">Current Hours</label>
-                    <div className="font-medium">{asset.hours_current?.toLocaleString() || '-'}</div>
+                    {isEditing ? (
+                      <input
+                        type="number"
+                        step="0.1"
+                        value={editForm.hours_current || ''}
+                        onChange={(e) => setEditForm({...editForm, hours_current: e.target.value})}
+                        className="w-full px-3 py-2 border rounded-lg mt-1"
+                        min="0"
+                      />
+                    ) : (
+                      <div className="font-medium">{asset.hours_current?.toLocaleString() || '-'}</div>
+                    )}
                   </div>
                   <div>
                     <label className="text-sm text-gray-600">Last Service Hours</label>
-                    <div className="font-medium">{asset.hours_last_service?.toLocaleString() || '-'}</div>
+                    {isEditing ? (
+                      <input
+                        type="number"
+                        step="0.1"
+                        value={editForm.hours_last_service || ''}
+                        onChange={(e) => setEditForm({...editForm, hours_last_service: e.target.value})}
+                        className="w-full px-3 py-2 border rounded-lg mt-1"
+                        min="0"
+                      />
+                    ) : (
+                      <div className="font-medium">{asset.hours_last_service?.toLocaleString() || '-'}</div>
+                    )}
                   </div>
                 </>
               )}
             </div>
-            {asset.notes && (
-              <div>
-                <label className="text-sm text-gray-600">Notes</label>
-                <div className="mt-1 p-3 bg-gray-50 rounded">{asset.notes}</div>
-              </div>
-            )}
+            <div>
+              <label className="text-sm text-gray-600">Notes</label>
+              {isEditing ? (
+                <textarea
+                  value={editForm.notes || ''}
+                  onChange={(e) => setEditForm({...editForm, notes: e.target.value})}
+                  rows={4}
+                  className="w-full px-3 py-2 border rounded-lg mt-1"
+                />
+              ) : (
+                <div className="mt-1 p-3 bg-gray-50 rounded">{asset.notes || '-'}</div>
+              )}
+            </div>
             {asset.photos && asset.photos.length > 0 && (
               <div>
                 <label className="text-sm text-gray-600 mb-2 block">Photos</label>

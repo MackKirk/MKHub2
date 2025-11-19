@@ -36,9 +36,7 @@ import Tasks from './pages/Tasks';
 import Schedule from './pages/Schedule';
 import Community from './pages/Community';
 import FleetDashboard from './pages/FleetDashboard';
-import FleetVehicles from './pages/FleetVehicles';
-import FleetHeavyMachinery from './pages/FleetHeavyMachinery';
-import FleetOtherAssets from './pages/FleetOtherAssets';
+import FleetAssets from './pages/FleetAssets';
 import FleetAssetDetail from './pages/FleetAssetDetail';
 import FleetAssetNew from './pages/FleetAssetNew';
 import EquipmentList from './pages/EquipmentList';
@@ -100,9 +98,10 @@ export default function App(){
           <Route path="/reviews/my" element={<AppShell><MyReviews/></AppShell>} />
           <Route path="/users/:id" element={<AppShell><UserDetail/></AppShell>} />
           <Route path="/fleet" element={<AppShell><FleetDashboard/></AppShell>} />
-          <Route path="/fleet/vehicles" element={<AppShell><FleetVehicles/></AppShell>} />
-          <Route path="/fleet/heavy-machinery" element={<AppShell><FleetHeavyMachinery/></AppShell>} />
-          <Route path="/fleet/other-assets" element={<AppShell><FleetOtherAssets/></AppShell>} />
+          <Route path="/fleet/assets" element={<AppShell><FleetAssets/></AppShell>} />
+          <Route path="/fleet/vehicles" element={<AppShell><FleetAssets/></AppShell>} />
+          <Route path="/fleet/heavy-machinery" element={<AppShell><FleetAssets/></AppShell>} />
+          <Route path="/fleet/other-assets" element={<AppShell><FleetAssets/></AppShell>} />
           <Route path="/fleet/assets/new" element={<AppShell><FleetAssetNew/></AppShell>} />
           <Route path="/fleet/assets/:id" element={<AppShell><FleetAssetDetail/></AppShell>} />
           <Route path="/fleet/equipment" element={<AppShell><EquipmentList/></AppShell>} />

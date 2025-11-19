@@ -1576,6 +1576,26 @@ def create_app() -> FastAPI:
                         conn.execute(text("CREATE INDEX IF NOT EXISTS idx_equipment_assignment_user_active ON equipment_assignments(assigned_to_user_id, is_active)"))
                     except Exception:
                         pass
+                    try:
+                        conn.execute(text("CREATE TABLE IF NOT EXISTS fleet_asset_assignments (\n"
+                                           "id UUID PRIMARY KEY,\n"
+                                           "fleet_asset_id UUID NOT NULL REFERENCES fleet_assets(id) ON DELETE CASCADE,\n"
+                                           "assigned_to_user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,\n"
+                                           "assigned_at TIMESTAMPTZ NOT NULL,\n"
+                                           "returned_at TIMESTAMPTZ,\n"
+                                           "returned_to_user_id UUID REFERENCES users(id) ON DELETE SET NULL,\n"
+                                           "notes TEXT,\n"
+                                           "is_active BOOLEAN DEFAULT TRUE,\n"
+                                           "created_by UUID REFERENCES users(id) ON DELETE SET NULL,\n"
+                                           "created_at TIMESTAMPTZ DEFAULT NOW()\n"
+                                           ")"))
+                        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_fleet_assignment_asset ON fleet_asset_assignments(fleet_asset_id)"))
+                        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_fleet_assignment_user ON fleet_asset_assignments(assigned_to_user_id)"))
+                        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_fleet_assignment_active ON fleet_asset_assignments(is_active)"))
+                        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_fleet_assignment_asset_active ON fleet_asset_assignments(fleet_asset_id, is_active)"))
+                        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_fleet_assignment_user_active ON fleet_asset_assignments(assigned_to_user_id, is_active)"))
+                    except Exception:
+                        pass
                     # Migrations for existing tables - add new columns if they don't exist
                     try:
                         # Add license_plate to fleet_assets

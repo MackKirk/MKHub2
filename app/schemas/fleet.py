@@ -395,6 +395,36 @@ class EquipmentAssignmentResponse(EquipmentAssignmentBase):
         from_attributes = True
 
 
+# Fleet Asset Assignment Schemas
+class FleetAssetAssignmentBase(BaseModel):
+    fleet_asset_id: uuid.UUID
+    assigned_to_user_id: uuid.UUID
+    assigned_at: datetime
+    notes: Optional[str] = None
+
+
+class FleetAssetAssignmentCreate(FleetAssetAssignmentBase):
+    pass
+
+
+class FleetAssetAssignmentReturn(BaseModel):
+    returned_at: datetime
+    returned_to_user_id: Optional[uuid.UUID] = None
+    notes: Optional[str] = None
+
+
+class FleetAssetAssignmentResponse(FleetAssetAssignmentBase):
+    id: uuid.UUID
+    returned_at: Optional[datetime] = None
+    returned_to_user_id: Optional[uuid.UUID] = None
+    is_active: bool
+    created_by: Optional[uuid.UUID] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
 # Dashboard Schema
 class FleetDashboardResponse(BaseModel):
     total_fleet_assets: int

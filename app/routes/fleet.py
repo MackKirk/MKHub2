@@ -17,6 +17,7 @@ from ..models.models import (
     FleetLog,
     EquipmentLog,
     EquipmentAssignment,
+    FleetAssetAssignment,
     User,
 )
 from ..schemas.fleet import (
@@ -42,6 +43,9 @@ from ..schemas.fleet import (
     EquipmentAssignmentCreate,
     EquipmentAssignmentReturn,
     EquipmentAssignmentResponse,
+    FleetAssetAssignmentCreate,
+    FleetAssetAssignmentReturn,
+    FleetAssetAssignmentResponse,
     FleetDashboardResponse,
     FleetAssetType,
     EquipmentCategory,
@@ -689,6 +693,120 @@ def return_equipment_assignment(
         log_date=datetime.now(timezone.utc),
         user_id=user.id,
         description=f"Equipment returned from user {assignment.assigned_to_user_id}",
+        created_by=user.id,
+    )
+    db.add(log)
+    
+    db.commit()
+    db.refresh(assignment)
+    return assignment
+
+
+# ---------- FLEET ASSET ASSIGNMENTS ----------
+@router.get("/assets/{asset_id}/assignments", response_model=List[FleetAssetAssignmentResponse])
+def get_fleet_asset_assignments(
+    asset_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    _=Depends(require_permissions("fleet:read"))
+):
+    """Get assignment history for fleet asset"""
+    assignments = db.query(FleetAssetAssignment).filter(
+        FleetAssetAssignment.fleet_asset_id == asset_id
+    ).order_by(FleetAssetAssignment.assigned_at.desc()).all()
+    return assignments
+
+
+@router.post("/assets/{asset_id}/assign", response_model=FleetAssetAssignmentResponse)
+def assign_fleet_asset(
+    asset_id: uuid.UUID,
+    assignment: FleetAssetAssignmentCreate,
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user),
+    _=Depends(require_permissions("fleet:write"))
+):
+    """Assign fleet asset to a user"""
+    asset = db.query(FleetAsset).filter(FleetAsset.id == asset_id).first()
+    if not asset:
+        raise HTTPException(status_code=404, detail="Fleet asset not found")
+    
+    # Deactivate any existing active assignments
+    active_assignments = db.query(FleetAssetAssignment).filter(
+        and_(
+            FleetAssetAssignment.fleet_asset_id == asset_id,
+            FleetAssetAssignment.is_active == True
+        )
+    ).all()
+    for active_assignment in active_assignments:
+        active_assignment.is_active = False
+        active_assignment.returned_at = assignment.assigned_at or datetime.now(timezone.utc)
+        active_assignment.returned_to_user_id = user.id
+    
+    # Update driver_id on asset
+    asset.driver_id = assignment.assigned_to_user_id
+    asset.updated_at = datetime.now(timezone.utc)
+    
+    # Create new assignment
+    new_assignment = FleetAssetAssignment(
+        fleet_asset_id=asset_id,
+        assigned_to_user_id=assignment.assigned_to_user_id,
+        assigned_at=assignment.assigned_at or datetime.now(timezone.utc),
+        notes=assignment.notes,
+        is_active=True,
+        created_by=user.id,
+    )
+    db.add(new_assignment)
+    
+    # Create log entry
+    log = FleetLog(
+        fleet_asset_id=asset_id,
+        log_type="assignment",
+        log_date=datetime.now(timezone.utc),
+        user_id=user.id,
+        description=f"Fleet asset assigned to user {assignment.assigned_to_user_id}",
+        created_by=user.id,
+    )
+    db.add(log)
+    
+    db.commit()
+    db.refresh(new_assignment)
+    return new_assignment
+
+
+@router.put("/assets/assignments/{assignment_id}/return", response_model=FleetAssetAssignmentResponse)
+def return_fleet_asset_assignment(
+    assignment_id: uuid.UUID,
+    return_data: FleetAssetAssignmentReturn,
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user),
+    _=Depends(require_permissions("fleet:write"))
+):
+    """Return fleet asset assignment (unassign)"""
+    assignment = db.query(FleetAssetAssignment).filter(FleetAssetAssignment.id == assignment_id).first()
+    if not assignment:
+        raise HTTPException(status_code=404, detail="Assignment not found")
+    
+    if not assignment.is_active:
+        raise HTTPException(status_code=400, detail="Assignment is already returned")
+    
+    assignment.is_active = False
+    assignment.returned_at = return_data.returned_at or datetime.now(timezone.utc)
+    assignment.returned_to_user_id = return_data.returned_to_user_id or user.id
+    if return_data.notes:
+        assignment.notes = (assignment.notes or "") + f"\nReturn notes: {return_data.notes}"
+    
+    # Clear driver_id on asset
+    asset = db.query(FleetAsset).filter(FleetAsset.id == assignment.fleet_asset_id).first()
+    if asset:
+        asset.driver_id = None
+        asset.updated_at = datetime.now(timezone.utc)
+    
+    # Create log entry
+    log = FleetLog(
+        fleet_asset_id=assignment.fleet_asset_id,
+        log_type="return",
+        log_date=datetime.now(timezone.utc),
+        user_id=user.id,
+        description=f"Fleet asset returned from user {assignment.assigned_to_user_id}",
         created_by=user.id,
     )
     db.add(log)

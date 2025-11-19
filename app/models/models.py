@@ -1464,6 +1464,7 @@ class FleetAsset(Base):
     
     # Relationships
     driver = relationship("User", foreign_keys=[driver_id])
+    assignments = relationship("FleetAssetAssignment", back_populates="fleet_asset", cascade="all, delete-orphan", order_by="FleetAssetAssignment.assigned_at.desc()")
     inspections = relationship("FleetInspection", back_populates="fleet_asset", cascade="all, delete-orphan", order_by="FleetInspection.inspection_date.desc()")
     logs = relationship("FleetLog", back_populates="fleet_asset", cascade="all, delete-orphan", order_by="FleetLog.log_date.desc()")
 
@@ -1597,6 +1598,33 @@ class EquipmentCheckout(Base):
         Index('idx_checkout_equipment_status', 'equipment_id', 'status'),
         Index('idx_checkout_user', 'checked_out_by_user_id'),
         Index('idx_checkout_expected_return', 'expected_return_date'),
+    )
+
+
+class FleetAssetAssignment(Base):
+    """Fleet asset assignment history - tracks when vehicles/assets are assigned to users"""
+    __tablename__ = "fleet_asset_assignments"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    fleet_asset_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("fleet_assets.id", ondelete="CASCADE"), nullable=False, index=True)
+    assigned_to_user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    assigned_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    returned_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), index=True)
+    returned_to_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))  # User who received it back
+    notes: Mapped[Optional[str]] = mapped_column(Text)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)  # True if currently assigned
+    created_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+
+    # Relationships
+    fleet_asset = relationship("FleetAsset", back_populates="assignments")
+    assigned_to_user = relationship("User", foreign_keys=[assigned_to_user_id])
+    returned_to_user = relationship("User", foreign_keys=[returned_to_user_id])
+
+    # Indexes
+    __table_args__ = (
+        Index('idx_fleet_assignment_asset_active', 'fleet_asset_id', 'is_active'),
+        Index('idx_fleet_assignment_user_active', 'assigned_to_user_id', 'is_active'),
     )
 
 

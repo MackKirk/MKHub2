@@ -162,14 +162,14 @@ export default function FleetDashboard() {
       {/* Quick Links */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <button
-          onClick={() => nav('/fleet/vehicles')}
+          onClick={() => nav('/fleet/assets?type=vehicle')}
           className="rounded-xl border bg-white p-4 text-left hover:shadow-md transition-shadow"
         >
           <div className="font-semibold mb-1">Vehicles</div>
           <div className="text-sm text-gray-600">Manage vehicle fleet</div>
         </button>
         <button
-          onClick={() => nav('/fleet/heavy-machinery')}
+          onClick={() => nav('/fleet/assets?type=heavy_machinery')}
           className="rounded-xl border bg-white p-4 text-left hover:shadow-md transition-shadow"
         >
           <div className="font-semibold mb-1">Heavy Machinery</div>
