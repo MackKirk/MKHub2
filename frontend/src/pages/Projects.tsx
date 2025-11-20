@@ -11,7 +11,7 @@ type ClientFile = { id:string, file_object_id:string, is_image?:boolean, content
 export default function Projects(){
   const [q, setQ] = useState('');
   const qs = useMemo(()=> q? ('?q='+encodeURIComponent(q)) : '', [q]);
-  const { data, isLoading, refetch } = useQuery({ queryKey:['projects', qs], queryFn: ()=>api<Project[]>('GET', `/projects${qs}`) });
+  const { data, isLoading, refetch } = useQuery({ queryKey:['projects', qs], queryFn: ()=>api<Project[]>('GET', `/projects?is_bidding=false${qs}`) });
   const arr = data||[];
   const [pickerOpen, setPickerOpen] = useState<{ open:boolean, clientId?:string, projectId?:string }|null>(null);
   const [newOpen, setNewOpen] = useState(false);

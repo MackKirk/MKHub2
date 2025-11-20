@@ -35,7 +35,7 @@ function formatHoursMinutes(totalMinutes: number): string {
   return `${hours}h${minutes}min`;
 }
 
-type Project = { id:string, code?:string, name?:string, client_id?:string, client_display_name?:string, address_city?:string, address_province?:string, address_country?:string, address_postal_code?:string, description?:string, status_id?:string, division_id?:string, estimator_id?:string, onsite_lead_id?:string, contact_id?:string, contact_name?:string, contact_email?:string, contact_phone?:string, date_start?:string, date_eta?:string, date_end?:string, cost_estimated?:number, cost_actual?:number, service_value?:number, progress?:number, site_id?:string, site_name?:string, site_address_line1?:string, site_city?:string, site_province?:string, site_country?:string, site_postal_code?:string, status_label?:string };
+type Project = { id:string, code?:string, name?:string, client_id?:string, client_display_name?:string, address_city?:string, address_province?:string, address_country?:string, address_postal_code?:string, description?:string, status_id?:string, division_id?:string, estimator_id?:string, onsite_lead_id?:string, contact_id?:string, contact_name?:string, contact_email?:string, contact_phone?:string, date_start?:string, date_eta?:string, date_end?:string, cost_estimated?:number, cost_actual?:number, service_value?:number, progress?:number, site_id?:string, site_name?:string, site_address_line1?:string, site_city?:string, site_province?:string, site_country?:string, site_postal_code?:string, status_label?:string, is_bidding?:boolean };
 type ProjectFile = { id:string, file_object_id:string, is_image?:boolean, content_type?:string, category?:string, original_name?:string, uploaded_at?:string };
 type Update = { id:string, timestamp?:string, text?:string, images?:any };
 type Report = { id:string, category_id?:string, division_id?:string, description?:string, images?:any, status?:string };
@@ -45,6 +45,7 @@ export default function ProjectDetail(){
   const location = useLocation();
   const nav = useNavigate();
   const confirm = useConfirm();
+  const queryClient = useQueryClient();
   const { id } = useParams();
   const { data:proj, isLoading } = useQuery({ queryKey:['project', id], queryFn: ()=>api<Project>('GET', `/projects/${id}`) });
   const { data:settings } = useQuery({ queryKey:['settings'], queryFn: ()=>api<any>('GET','/settings') });
@@ -99,8 +100,8 @@ export default function ProjectDetail(){
   return (
     <div>
       <div className="mb-3 rounded-xl border bg-gradient-to-br from-[#7f1010] to-[#a31414] text-white p-4">
-        <div className="text-2xl font-extrabold">Project Information</div>
-        <div className="text-sm opacity-90">Overview, files, schedule and contacts.</div>
+        <div className="text-2xl font-extrabold">{proj?.is_bidding ? 'Bidding Information' : 'Project Information'}</div>
+        <div className="text-sm opacity-90">{proj?.is_bidding ? 'Overview, files, proposal and estimate.' : 'Overview, files, schedule and contacts.'}</div>
       </div>
       <div className="rounded-xl border bg-white overflow-hidden relative">
         <div className="relative rounded-t-xl p-5 text-white overflow-hidden" style={{ backgroundImage: 'linear-gradient(135deg, #6b7280, #1f2937)' }}>
@@ -131,28 +132,61 @@ export default function ProjectDetail(){
                     </div>
                   </div>
                 </div>
-                <button onClick={async()=>{
-                  const result = await confirm({ 
-                    title: 'Delete Project', 
-                    message: `Are you sure you want to delete "${proj?.name||'this project'}"? This action cannot be undone. All related data (updates, reports, timesheets) will also be deleted.`,
-                    confirmText: 'Delete',
-                    cancelText: 'Cancel'
-                  });
-                  if (result !== 'confirm') return;
-                  try{
-                    await api('DELETE', `/projects/${encodeURIComponent(String(id||''))}`);
-                    toast.success('Project deleted');
-                    if(proj?.client_id){
-                      nav(`/customers/${encodeURIComponent(String(proj?.client_id))}`);
-                    } else {
-                      nav('/projects');
-                    }
-                  }catch(_e){ toast.error('Failed to delete project'); }
-                }} className="px-4 py-2 rounded bg-red-600 hover:bg-red-700 text-white text-sm">Delete Project</button>
+                <div className="flex gap-2">
+                  {proj?.is_bidding && (
+                    <button onClick={async()=>{
+                      const result = await confirm({
+                        title: 'Convert to Project',
+                        message: `Are you sure you want to convert "${proj?.name||'this bidding'}" to an active project? This will enable all project features including reports, schedule, timesheet, photos, and orders.`,
+                        confirmText: 'Convert',
+                        cancelText: 'Cancel'
+                      });
+                      if (result !== 'confirm') return;
+                      try {
+                        const response = await api('POST', `/projects/${encodeURIComponent(String(id||''))}/convert-to-project`);
+                        // Only show success if we got a valid response
+                        if (response) {
+                          // Invalidate all related queries
+                          await Promise.all([
+                            queryClient.invalidateQueries({ queryKey: ['project', id] }),
+                            queryClient.invalidateQueries({ queryKey: ['clientProjects'] }),
+                            queryClient.invalidateQueries({ queryKey: ['clientBiddings'] }),
+                            queryClient.invalidateQueries({ queryKey: ['projects'] }),
+                            queryClient.invalidateQueries({ queryKey: ['biddings'] })
+                          ]);
+                          toast.success('Bidding converted to project');
+                          // Redirect to project page instead of reloading
+                          nav(`/projects/${encodeURIComponent(String(id||''))}`, { replace: true });
+                        }
+                      } catch (e: any) {
+                        console.error('Failed to convert bidding:', e);
+                        toast.error(e?.response?.data?.detail || e?.message || 'Failed to convert bidding');
+                      }
+                    }} className="px-4 py-2 rounded bg-green-600 hover:bg-green-700 text-white text-sm">Convert to Project</button>
+                  )}
+                  <button onClick={async()=>{
+                    const result = await confirm({ 
+                      title: proj?.is_bidding ? 'Delete Bidding' : 'Delete Project', 
+                      message: `Are you sure you want to delete "${proj?.name||(proj?.is_bidding ? 'this bidding' : 'this project')}"? This action cannot be undone.${proj?.is_bidding ? '' : ' All related data (updates, reports, timesheets) will also be deleted.'}`,
+                      confirmText: 'Delete',
+                      cancelText: 'Cancel'
+                    });
+                    if (result !== 'confirm') return;
+                    try{
+                      await api('DELETE', `/projects/${encodeURIComponent(String(id||''))}`);
+                      toast.success(proj?.is_bidding ? 'Bidding deleted' : 'Project deleted');
+                      if(proj?.client_id){
+                        nav(`/customers/${encodeURIComponent(String(proj?.client_id))}`);
+                      } else {
+                        nav(proj?.is_bidding ? '/biddings' : '/projects');
+                      }
+                    }catch(_e){ toast.error(proj?.is_bidding ? 'Failed to delete bidding' : 'Failed to delete project'); }
+                  }} className="px-4 py-2 rounded bg-red-600 hover:bg-red-700 text-white text-sm">{proj?.is_bidding ? 'Delete Bidding' : 'Delete Project'}</button>
+                </div>
               </div>
               <div className="mt-auto flex gap-3 items-center justify-between w-full">
                 <div className="flex gap-3">
-                  {(['overview','reports','dispatch','timesheet','files','photos','proposal','estimate','orders'] as const).map(k=> (
+                  {((proj?.is_bidding ? ['overview','files','proposal','estimate'] : ['overview','reports','dispatch','timesheet','files','photos','proposal','estimate','orders']) as const).map(k=> (
                     <button key={k} onClick={async () => {
                       // If leaving estimate tab and there are unsaved changes, show confirmation
                       if (tab === 'estimate' && k !== 'estimate' && estimateBuilderRef.current?.hasUnsavedChanges()) {
@@ -208,10 +242,12 @@ export default function ProjectDetail(){
                   <ProjectEtaEdit projectId={String(id)} proj={proj||{}} settings={settings||{}} />
                 </div>
                 <ProjectCostsSummary projectId={String(id)} estimates={projectEstimates||[]} />
-                <div className="md:col-span-3 rounded-xl border bg-white p-4">
-                  <h4 className="font-semibold mb-2">Schedule</h4>
-                  <CalendarMock title="Project Calendar" projectId={String(id)} />
-                </div>
+                {!proj?.is_bidding && (
+                  <div className="md:col-span-3 rounded-xl border bg-white p-4">
+                    <h4 className="font-semibold mb-2">Schedule</h4>
+                    <CalendarMock title="Project Calendar" projectId={String(id)} />
+                  </div>
+                )}
               </div>
             )}
 

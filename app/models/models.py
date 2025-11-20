@@ -193,6 +193,7 @@ class Project(Base):
     service_value: Mapped[Optional[int]] = mapped_column(BigInteger)
     description: Mapped[Optional[str]] = mapped_column(String(2000))
     notes: Mapped[Optional[str]] = mapped_column(String(2000))
+    is_bidding: Mapped[bool] = mapped_column(Boolean, default=False)  # True if this is a bidding (quote), False if it's an active project
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
 
 

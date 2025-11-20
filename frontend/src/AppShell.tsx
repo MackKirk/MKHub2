@@ -1,7 +1,126 @@
-import { PropsWithChildren, useState } from 'react';
+import { PropsWithChildren, useState, useMemo } from 'react';
 import { Link, NavLink, useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
+
+type MenuItem = {
+  id: string;
+  label: string;
+  path: string;
+  icon: React.ReactNode;
+  category?: string;
+};
+
+type MenuCategory = {
+  id: string;
+  label: string;
+  icon: React.ReactNode;
+  items: MenuItem[];
+};
+
+const IconHome = () => (
+  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+  </svg>
+);
+
+const IconUser = () => (
+  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+  </svg>
+);
+
+const IconCalendar = () => (
+  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+  </svg>
+);
+
+const IconClipboard = () => (
+  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+  </svg>
+);
+
+const IconUsers = () => (
+  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+  </svg>
+);
+
+const IconBox = () => (
+  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+  </svg>
+);
+
+const IconFolder = () => (
+  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+  </svg>
+);
+
+const IconTruck = () => (
+  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+  </svg>
+);
+
+const IconDocument = () => (
+  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+  </svg>
+);
+
+const IconAcademic = () => (
+  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+  </svg>
+);
+
+const IconSettings = () => (
+  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+  </svg>
+);
+
+const IconBriefcase = () => (
+  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+  </svg>
+);
+
+const IconFileText = () => (
+  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+  </svg>
+);
+
+const IconShoppingCart = () => (
+  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
+  </svg>
+);
+
+const IconWrench = () => (
+  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+  </svg>
+);
+
+const IconUsersGroup = () => (
+  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+  </svg>
+);
+
+const IconStar = () => (
+  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
+  </svg>
+);
 
 export default function AppShell({ children }: PropsWithChildren){
   const location = useLocation();
@@ -11,49 +130,189 @@ export default function AppShell({ children }: PropsWithChildren){
   const avatarId = meProfile?.profile?.profile_photo_file_id;
   const avatarUrl = avatarId ? `/files/${avatarId}/thumbnail?w=96` : '/ui/assets/login/logo-light.svg';
   const [open, setOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   
-  // Check if we're exactly on the fleet dashboard (not on any sub-route)
-  const isFleetDashboard = location.pathname === '/fleet';
+  const menuCategories: MenuCategory[] = useMemo(() => [
+    {
+      id: 'personal',
+      label: 'Personal',
+      icon: <IconUser />,
+      items: [
+        { id: 'home', label: 'Home', path: '/home', icon: <IconHome /> },
+        { id: 'profile', label: 'My Information', path: '/profile', icon: <IconUser /> },
+        { id: 'schedule', label: 'Schedule', path: '/schedule', icon: <IconCalendar /> },
+        { id: 'task-requests', label: 'Task Request', path: '/task-requests', icon: <IconClipboard /> },
+        { id: 'tasks', label: 'Tasks', path: '/tasks', icon: <IconClipboard /> },
+      ]
+    },
+    {
+      id: 'business',
+      label: 'Business',
+      icon: <IconBriefcase />,
+      items: [
+        { id: 'customers', label: 'Customers', path: '/customers', icon: <IconUsers /> },
+        { id: 'biddings', label: 'Biddings', path: '/biddings', icon: <IconFileText /> },
+        { id: 'projects', label: 'Projects', path: '/projects', icon: <IconBriefcase /> },
+        { id: 'proposals', label: 'Proposals', path: '/proposals', icon: <IconFileText /> },
+      ]
+    },
+    {
+      id: 'inventory',
+      label: 'Inventory',
+      icon: <IconBox />,
+      items: [
+        { id: 'suppliers', label: 'Suppliers', path: '/inventory/suppliers', icon: <IconShoppingCart /> },
+        { id: 'products', label: 'Products', path: '/inventory/products', icon: <IconBox /> },
+      ]
+    },
+    {
+      id: 'fleet',
+      label: 'Fleet & Equipment',
+      icon: <IconTruck />,
+      items: [
+        { id: 'fleet-dashboard', label: 'Dashboard', path: '/fleet', icon: <IconTruck /> },
+        { id: 'fleet-assets', label: 'Fleet Assets', path: '/fleet/assets', icon: <IconTruck /> },
+        { id: 'equipment', label: 'Equipment', path: '/fleet/equipment', icon: <IconWrench /> },
+        { id: 'work-orders', label: 'Work Orders', path: '/fleet/work-orders', icon: <IconClipboard /> },
+      ]
+    },
+    {
+      id: 'documents',
+      label: 'Documents',
+      icon: <IconDocument />,
+      items: [
+        { id: 'company-files', label: 'Company Files', path: '/company-files', icon: <IconFolder /> },
+      ]
+    },
+    {
+      id: 'training',
+      label: 'Training & Learning',
+      icon: <IconAcademic />,
+      items: [
+        { id: 'my-training', label: 'My Training', path: '/training', icon: <IconAcademic /> },
+        { id: 'certificates', label: 'My Certificates', path: '/training/certificates', icon: <IconDocument /> },
+        ...(((me?.roles||[]).includes('admin') || (me?.permissions||[]).includes('users:write')) ? [
+          { id: 'training-admin', label: 'Training Admin', path: '/training/admin', icon: <IconSettings /> }
+        ] : []),
+      ]
+    },
+    {
+      id: 'settings',
+      label: 'Settings',
+      icon: <IconSettings />,
+      items: [
+        { id: 'users', label: 'Users', path: '/users', icon: <IconUsersGroup /> },
+        { id: 'community', label: 'Community', path: '/community', icon: <IconUsersGroup /> },
+        ...(((me?.roles||[]).includes('admin') || (me?.permissions||[]).includes('reviews:admin')) ? [
+          { id: 'reviews-admin', label: 'Reviews Admin', path: '/reviews/admin', icon: <IconStar /> },
+          { id: 'reviews-compare', label: 'Reviews Compare', path: '/reviews/compare', icon: <IconStar /> }
+        ] : []),
+        { id: 'system-settings', label: 'System Settings', path: '/settings', icon: <IconSettings /> },
+      ]
+    },
+  ], [me]);
+
+  const isCategoryActive = (category: MenuCategory) => {
+    return category.items.some(item => location.pathname === item.path || location.pathname.startsWith(item.path + '/'));
+  };
+
+  const activeCategory = useMemo(() => {
+    return menuCategories.find(cat => isCategoryActive(cat));
+  }, [location.pathname, menuCategories]);
+
   return (
     <div className="min-h-screen flex">
-      <aside className="w-60 text-white p-4 bg-gradient-to-b from-gray-800 via-gray-700 to-gray-600">
-        <div className="flex items-center gap-2 mb-4"><img src="/ui/assets/login/logo-light.svg" className="h-8"/><span className="text-sm text-gray-300">MK Hub</span></div>
-        <nav className="flex flex-col gap-2">
-          <NavLink to="/home" className={({isActive})=>`px-3 py-2 rounded ${isActive?'bg-brand-red':''}`}>Home</NavLink>
-          <NavLink to="/profile" className={({isActive})=>`px-3 py-2 rounded ${isActive?'bg-brand-red':''}`}>My Information</NavLink>
-          <NavLink to="/schedule" className={({isActive})=>`px-3 py-2 rounded ${isActive?'bg-brand-red':''}`}>Schedule</NavLink>
-          <NavLink to="/task-requests" className={({isActive})=>`px-3 py-2 rounded ${isActive?'bg-brand-red':''}`}>Task Request</NavLink>
-          <NavLink to="/tasks" className={({isActive})=>`px-3 py-2 rounded ${isActive?'bg-brand-red':''}`}>Tasks</NavLink>
-          <NavLink to="/customers" className={({isActive})=>`px-3 py-2 rounded ${isActive?'bg-brand-red':''}`}>Customers</NavLink>
-          <div className="mt-2 text-[11px] uppercase text-gray-400 px-1">Inventory</div>
-          <NavLink to="/inventory/suppliers" className={({isActive})=>`px-3 py-2 rounded ${isActive?'bg-brand-red':''}`}>Suppliers</NavLink>
-          <NavLink to="/inventory/products" className={({isActive})=>`px-3 py-2 rounded ${isActive?'bg-brand-red':''}`}>Products</NavLink>
-          <div className="mt-2 text-[11px] uppercase text-gray-400 px-1">Projects</div>
-          <NavLink to="/projects" className={({isActive})=>`px-3 py-2 rounded ${isActive?'bg-brand-red':''}`}>Projects</NavLink>
-          <NavLink to="/proposals" className={({isActive})=>`px-3 py-2 rounded ${isActive?'bg-brand-red':''}`}>Proposals</NavLink>
-          <div className="mt-2 text-[11px] uppercase text-gray-400 px-1">Fleet & Equipment</div>
-          <NavLink to="/fleet" className={`px-3 py-2 rounded ${isFleetDashboard?'bg-brand-red':''}`}>Fleet Dashboard</NavLink>
-          <NavLink to="/fleet/assets" className={({isActive})=>`px-3 py-2 rounded ${isActive?'bg-brand-red':''}`}>Fleet Assets</NavLink>
-          <NavLink to="/fleet/equipment" className={({isActive})=>`px-3 py-2 rounded ${isActive?'bg-brand-red':''}`}>Equipment</NavLink>
-          <NavLink to="/fleet/work-orders" className={({isActive})=>`px-3 py-2 rounded ${isActive?'bg-brand-red':''}`}>Work Orders</NavLink>
-          <div className="mt-2 text-[11px] uppercase text-gray-400 px-1">Documents</div>
-          <NavLink to="/company-files" className={({isActive})=>`px-3 py-2 rounded ${isActive?'bg-brand-red':''}`}>Company Files</NavLink>
-          <div className="mt-2 text-[11px] uppercase text-gray-400 px-1">Training & Learning</div>
-          <NavLink to="/training" className={({isActive})=>`px-3 py-2 rounded ${isActive?'bg-brand-red':''}`}>My Training</NavLink>
-          <NavLink to="/training/certificates" className={({isActive})=>`px-3 py-2 rounded ${isActive?'bg-brand-red':''}`}>My Certificates</NavLink>
-          {((me?.roles||[]).includes('admin') || (me?.permissions||[]).includes('users:write')) && (
-            <NavLink to="/training/admin" className={({isActive})=>`px-3 py-2 rounded ${isActive?'bg-brand-red':''}`}>Training Admin</NavLink>
-          )}
-          <div className="mt-2 text-[11px] uppercase text-gray-400 px-1">Settings</div>
-          <NavLink to="/users" className={({isActive})=>`px-3 py-2 rounded ${isActive?'bg-brand-red':''}`}>Users</NavLink>
-          <NavLink to="/community" className={({isActive})=>`px-3 py-2 rounded ${isActive?'bg-brand-red':''}`}>Community</NavLink>
-          {((me?.roles||[]).includes('admin') || (me?.permissions||[]).includes('reviews:admin')) && (
+      <aside className={`${sidebarCollapsed ? 'w-16' : 'w-64'} text-white bg-gradient-to-b from-gray-800 via-gray-700 to-gray-600 transition-all duration-300 flex flex-col`}>
+        <div className={`p-4 flex items-center ${sidebarCollapsed ? 'justify-center' : 'justify-between'} border-b border-gray-600`}>
+          {!sidebarCollapsed ? (
             <>
-              <NavLink to="/reviews/admin" className={({isActive})=>`px-3 py-2 rounded ${isActive?'bg-brand-red':''}`}>Reviews Admin</NavLink>
-              <NavLink to="/reviews/compare" className={({isActive})=>`px-3 py-2 rounded ${isActive?'bg-brand-red':''}`}>Reviews Compare</NavLink>
+              <div className="flex items-center gap-2">
+                <img src="/ui/assets/login/logo-light.svg" className="h-8"/>
+                <span className="text-sm text-gray-300 font-semibold">MK Hub</span>
+              </div>
+              <button
+                onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+                className="text-gray-300 hover:text-white p-1 rounded hover:bg-gray-600 transition-colors"
+                title="Collapse sidebar"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                </svg>
+              </button>
             </>
+          ) : (
+            <button
+              onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+              className="text-gray-300 hover:text-white p-1 rounded hover:bg-gray-600 transition-colors w-full flex items-center justify-center"
+              title="Expand sidebar"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+            </button>
           )}
-          <NavLink to="/settings" className={({isActive})=>`px-3 py-2 rounded ${isActive?'bg-brand-red':''}`}>System Settings</NavLink>
+        </div>
+        <nav className="flex-1 overflow-y-auto p-2">
+          {menuCategories.map(category => {
+            const isActive = isCategoryActive(category);
+            const showSubItems = !sidebarCollapsed && isActive;
+            
+            if (sidebarCollapsed) {
+              // When collapsed, show only category icons
+              return (
+                <div key={category.id} className="mb-2">
+                  <NavLink
+                    to={category.items[0]?.path || '#'}
+                    className={({isActive: navActive}) => 
+                      `flex items-center justify-center px-3 py-2 rounded-lg transition-colors ${
+                        (isActive || navActive) ? 'bg-brand-red text-white' : 'text-gray-300 hover:bg-gray-600 hover:text-white'
+                      }`
+                    }
+                    title={category.label}
+                  >
+                    <span className="flex-shrink-0">{category.icon}</span>
+                  </NavLink>
+                </div>
+              );
+            }
+            
+            return (
+              <div key={category.id} className="mb-2">
+                <NavLink
+                  to={category.items[0]?.path || '#'}
+                  className={({isActive: navActive}) => 
+                    `flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${
+                      (isActive || navActive) ? 'bg-brand-red text-white' : 'text-gray-300 hover:bg-gray-600 hover:text-white'
+                    }`
+                  }
+                >
+                  <span className="flex-shrink-0">{category.icon}</span>
+                  <span className="font-medium flex-1">{category.label}</span>
+                </NavLink>
+                {showSubItems && (
+                  <div className="mt-1 ml-4 space-y-1">
+                    {category.items.map(item => {
+                      const isItemActive = location.pathname === item.path || location.pathname.startsWith(item.path + '/');
+                      return (
+                        <NavLink
+                          key={item.id}
+                          to={item.path}
+                          className={({isActive: navActive}) =>
+                            `flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${
+                              (isItemActive || navActive) ? 'bg-brand-red/80 text-white' : 'text-gray-400 hover:bg-gray-600 hover:text-white'
+                            }`
+                          }
+                        >
+                          <span className="flex-shrink-0">{item.icon}</span>
+                          <span className="text-sm">{item.label}</span>
+                        </NavLink>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </nav>
       </aside>
       <main className="flex-1 min-w-0">

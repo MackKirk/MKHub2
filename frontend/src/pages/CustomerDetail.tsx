@@ -15,7 +15,7 @@ type Contact = { id:string, name?:string, email?:string, phone?:string, is_prima
 export default function CustomerDetail(){
   const location = useLocation();
   const { id } = useParams();
-  const [tab, setTab] = useState<'overview'|'general'|'files'|'contacts'|'sites'|'projects'>('overview');
+  const [tab, setTab] = useState<'overview'|'general'|'files'|'contacts'|'sites'|'projects'|'biddings'>('overview');
   const [newProjectOpen, setNewProjectOpen] = useState(false);
   const [newProjectName, setNewProjectName] = useState('');
   const { data:client, isLoading } = useQuery({ queryKey:['client', id], queryFn: ()=>api<Client>('GET', `/clients/${id}`) });
@@ -83,7 +83,8 @@ export default function CustomerDetail(){
     return () => window.removeEventListener('keydown', onKey);
   }, [newProjectOpen]);
   const leadSources = (settings?.lead_sources||[]) as any[];
-  const { data:projects } = useQuery({ queryKey:['clientProjects', id], queryFn: ()=>api<Project[]>('GET', `/projects?client=${encodeURIComponent(String(id||''))}`) });
+  const { data:projects } = useQuery({ queryKey:['clientProjects', id], queryFn: ()=>api<Project[]>('GET', `/projects?client=${encodeURIComponent(String(id||''))}&is_bidding=false`) });
+  const { data:biddings } = useQuery({ queryKey:['clientBiddings', id], queryFn: ()=>api<Project[]>('GET', `/projects?client=${encodeURIComponent(String(id||''))}&is_bidding=true`) });
   const { data:contacts } = useQuery({ queryKey:['clientContacts', id], queryFn: ()=>api<Contact[]>('GET', `/clients/${id}/contacts`) });
   const { data:employees } = useQuery({ queryKey:['employees'], queryFn: ()=> api<any[]>('GET','/employees') });
   const primaryContact = (contacts||[]).find(c=>c.is_primary) || (contacts||[])[0];
@@ -150,7 +151,7 @@ export default function CustomerDetail(){
                 )}
               </div>
               <div className="mt-auto flex gap-2">
-                {(['overview','general','files','contacts','sites','projects'] as const).map(k=> (
+                {(['overview','general','files','contacts','sites','biddings','projects'] as const).map(k=> (
                   <button key={k} onClick={()=>setTab(k)} className={`px-4 py-2 rounded-lg border ${tab===k?'bg-black/30 border-white/30 text-white':'bg-white text-black'}`}>{k[0].toUpperCase()+k.slice(1)}</button>
                 ))}
               </div>
@@ -429,31 +430,44 @@ export default function CustomerDetail(){
                   </div>
                 </div>
               )}
-              {tab==='projects' && (
+              {tab==='biddings' && (
                 <div>
                   <div className="mb-3 flex items-center justify-between">
-                    <h3 className="font-semibold">Projects</h3>
-                    <Link to={`/projects/new?client_id=${encodeURIComponent(String(id||''))}`} state={{ backgroundLocation: location }} className="px-3 py-1.5 rounded bg-brand-red text-white">New Project</Link>
+                    <h3 className="font-semibold">Biddings</h3>
+                    <Link to={`/projects/new?client_id=${encodeURIComponent(String(id||''))}&is_bidding=true`} state={{ backgroundLocation: location }} className="px-3 py-1.5 rounded bg-brand-red text-white">New Bidding</Link>
                   </div>
                   <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
-                    {(projects||[]).map(p=> {
+                    {(biddings||[]).map(p=> {
                       const pfiles = (files||[]).filter(f=> String((f as any).project_id||'')===String(p.id));
                       const cover = pfiles.find(f=> String(f.category||'')==='project-cover-derived') || pfiles.find(f=> (f.is_image===true) || String(f.content_type||'').startsWith('image/'));
                       const src = cover? `/files/${cover.file_object_id}/thumbnail?w=600` : '/ui/assets/login/logo-light.svg';
                       return (
-                        <Link to={`/projects/${encodeURIComponent(String(p.id))}`} key={p.id} className="group rounded-xl border bg-white overflow-hidden block">
+                        <Link to={`/biddings/${encodeURIComponent(String(p.id))}`} key={p.id} className="group rounded-xl border bg-white overflow-hidden block">
                           <div className="aspect-square bg-gray-100 relative">
                             <img className="w-full h-full object-cover" src={src} />
                             <button onClick={(e)=>{ e.preventDefault(); e.stopPropagation(); setProjectPicker({ open:true, projectId: String(p.id) }); }} className="absolute right-2 top-2 text-xs px-2 py-1 rounded bg-black/70 text-white">Change cover</button>
                           </div>
                           <div className="p-2 text-sm">
-                            <div className="font-semibold text-sm group-hover:underline truncate">{p.name||'Project'} {p.code? `· ${p.code}`:''}</div>
+                            <div className="font-semibold text-sm group-hover:underline truncate">{p.name||'Bidding'} {p.code? `· ${p.code}`:''}</div>
                             <div className="text-[11px] text-gray-500 mt-1">{(p.date_start||p.created_at||'').slice(0,10)}</div>
                           </div>
                         </Link>
                       );
                     })}
-                    {(!projects||!projects.length) && <div className="text-sm text-gray-600">No projects</div>}
+                    {(!biddings||!biddings.length) && <div className="text-sm text-gray-600">No biddings</div>}
+                  </div>
+                </div>
+              )}
+              {tab==='projects' && (
+                <div>
+                  <div className="mb-3">
+                    <h3 className="font-semibold">Projects</h3>
+                  </div>
+                  <div className="rounded-xl border bg-white divide-y">
+                    {(projects||[]).map(p=> (
+                      <ProjectRow key={p.id} project={p} files={files||[]} onCoverClick={(projectId)=>{ setProjectPicker({ open:true, projectId }); }} />
+                    ))}
+                    {(!projects||!projects.length) && <div className="p-4 text-sm text-gray-600">No projects</div>}
                   </div>
                 </div>
               )}
@@ -500,6 +514,43 @@ export default function CustomerDetail(){
         }} />
       )}
     </div>
+  );
+}
+
+function ProjectRow({ project, files, onCoverClick }:{ project: Project, files: ClientFile[], onCoverClick: (projectId: string)=>void }){
+  const { data:details } = useQuery({ queryKey:['project-detail-row', project.id], queryFn: ()=> api<any>('GET', `/projects/${encodeURIComponent(String(project.id))}`), staleTime: 60_000 });
+  const pfiles = (files||[]).filter(f=> String((f as any).project_id||'')===String(project.id));
+  const cover = pfiles.find(f=> String(f.category||'')==='project-cover-derived') || pfiles.find(f=> (f.is_image===true) || String(f.content_type||'').startsWith('image/'));
+  const src = cover? `/files/${cover.file_object_id}/thumbnail?w=192` : '/ui/assets/login/logo-light.svg';
+  const status = details?.status_label || '';
+  const progress = Math.max(0, Math.min(100, Number(details?.progress ?? 0)));
+  const start = (project.date_start || details?.date_start || project.created_at || '').slice(0,10);
+  return (
+    <Link to={`/projects/${encodeURIComponent(String(project.id))}`} className="p-4 flex items-center justify-between hover:bg-gray-50 cursor-pointer">
+      <div className="flex items-center gap-4 min-w-0 flex-1">
+        <img src={src} className="w-24 h-24 rounded-lg border object-cover"/>
+        <div className="min-w-0 flex-1">
+          <div className="font-medium text-base truncate">{project.name||'Project'}</div>
+          <div className="text-sm text-gray-600 truncate mt-1">{project.code||''}</div>
+          <div className="text-sm text-gray-500 truncate mt-1">Start: {start||'—'}</div>
+        </div>
+      </div>
+      <div className="flex items-center gap-3 text-sm" onClick={e=> e.stopPropagation()}>
+        {status && (
+          <>
+            <span className="text-gray-600">Status:</span>
+            <span className="px-2 py-0.5 rounded-full border bg-gray-50 text-gray-800">{status}</span>
+          </>
+        )}
+        <div className="flex items-center gap-2">
+          <div className="h-2 w-20 bg-gray-100 rounded-full overflow-hidden">
+            <div className="h-full bg-brand-red" style={{ width: `${progress}%` }} />
+          </div>
+          <span className="text-xs text-gray-600">{progress}%</span>
+        </div>
+        <button onClick={(e)=>{ e.preventDefault(); e.stopPropagation(); onCoverClick(String(project.id)); }} className="ml-2 px-3 py-1.5 rounded bg-gray-100 hover:bg-gray-200 text-sm" title="Change cover">Cover</button>
+      </div>
+    </Link>
   );
 }
 
