@@ -151,7 +151,7 @@ export default function AppShell({ children }: PropsWithChildren){
       icon: <IconBriefcase />,
       items: [
         { id: 'customers', label: 'Customers', path: '/customers', icon: <IconUsers /> },
-        { id: 'biddings', label: 'Biddings', path: '/biddings', icon: <IconFileText /> },
+        { id: 'opportunities', label: 'Opportunities', path: '/opportunities', icon: <IconFileText /> },
         { id: 'projects', label: 'Projects', path: '/projects', icon: <IconBriefcase /> },
         { id: 'proposals', label: 'Proposals', path: '/proposals', icon: <IconFileText /> },
       ]
@@ -212,13 +212,44 @@ export default function AppShell({ children }: PropsWithChildren){
     },
   ], [me]);
 
+  // Check if current route is a project that is an opportunity
+  const projectIdMatch = location.pathname.match(/^\/projects\/([^\/]+)$/);
+  const opportunityIdMatch = location.pathname.match(/^\/opportunities\/([^\/]+)$/);
+  const projectId = projectIdMatch?.[1] || opportunityIdMatch?.[1];
+  const { data: currentProject } = useQuery({
+    queryKey: ['project-for-nav', projectId],
+    queryFn: () => projectId ? api<{ is_bidding?: boolean }>('GET', `/projects/${projectId}`) : null,
+    enabled: !!projectId,
+    staleTime: 60_000
+  });
+  
+  // Determine if we're viewing an opportunity (either via /projects/:id or /opportunities/:id)
+  const isViewingOpportunity = (projectIdMatch && currentProject?.is_bidding) || !!opportunityIdMatch;
+
   const isCategoryActive = (category: MenuCategory) => {
-    return category.items.some(item => location.pathname === item.path || location.pathname.startsWith(item.path + '/'));
+    // Special handling for Business category: if we're viewing an opportunity, 
+    // check against opportunities path instead of projects path
+    if (category.id === 'business' && isViewingOpportunity) {
+      const opportunitiesItem = category.items.find(item => item.id === 'opportunities');
+      const projectsItem = category.items.find(item => item.id === 'projects');
+      if (opportunitiesItem && projectsItem) {
+        // If it's an opportunity, only consider opportunities as active, not projects
+        return location.pathname === opportunitiesItem.path || location.pathname.startsWith(opportunitiesItem.path + '/') || 
+               (location.pathname.startsWith('/projects/') && currentProject?.is_bidding);
+      }
+    }
+    return category.items.some(item => {
+      // If we're viewing an opportunity, don't match projects item
+      if (item.id === 'projects' && isViewingOpportunity) {
+        return false;
+      }
+      return location.pathname === item.path || location.pathname.startsWith(item.path + '/');
+    });
   };
 
   const activeCategory = useMemo(() => {
     return menuCategories.find(cat => isCategoryActive(cat));
-  }, [location.pathname, menuCategories]);
+  }, [location.pathname, menuCategories, currentProject, isViewingOpportunity]);
 
   return (
     <div className="min-h-screen flex">
@@ -292,7 +323,16 @@ export default function AppShell({ children }: PropsWithChildren){
                 {showSubItems && (
                   <div className="mt-1 ml-4 space-y-1">
                     {category.items.map(item => {
-                      const isItemActive = location.pathname === item.path || location.pathname.startsWith(item.path + '/');
+                      // Special handling: if we're viewing an opportunity, 
+                      // don't highlight any individual items, only the category
+                      let isItemActive = false;
+                      if (isViewingOpportunity) {
+                        // When viewing an opportunity, don't highlight individual items
+                        isItemActive = false;
+                      } else {
+                        // Normal logic when not viewing an opportunity
+                        isItemActive = location.pathname === item.path || location.pathname.startsWith(item.path + '/');
+                      }
                       return (
                         <NavLink
                           key={item.id}

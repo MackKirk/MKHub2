@@ -35,7 +35,7 @@ function formatHoursMinutes(totalMinutes: number): string {
   return `${hours}h${minutes}min`;
 }
 
-type Project = { id:string, code?:string, name?:string, client_id?:string, client_display_name?:string, address_city?:string, address_province?:string, address_country?:string, address_postal_code?:string, description?:string, status_id?:string, division_id?:string, estimator_id?:string, onsite_lead_id?:string, contact_id?:string, contact_name?:string, contact_email?:string, contact_phone?:string, date_start?:string, date_eta?:string, date_end?:string, cost_estimated?:number, cost_actual?:number, service_value?:number, progress?:number, site_id?:string, site_name?:string, site_address_line1?:string, site_city?:string, site_province?:string, site_country?:string, site_postal_code?:string, status_label?:string, is_bidding?:boolean };
+type Project = { id:string, code?:string, name?:string, client_id?:string, client_display_name?:string, address_city?:string, address_province?:string, address_country?:string, address_postal_code?:string, description?:string, status_id?:string, division_id?:string, estimator_id?:string, onsite_lead_id?:string, division_onsite_leads?:Record<string, string>, contact_id?:string, contact_name?:string, contact_email?:string, contact_phone?:string, date_start?:string, date_eta?:string, date_end?:string, cost_estimated?:number, cost_actual?:number, service_value?:number, progress?:number, site_id?:string, site_name?:string, site_address_line1?:string, site_city?:string, site_province?:string, site_country?:string, site_postal_code?:string, status_label?:string, is_bidding?:boolean };
 type ProjectFile = { id:string, file_object_id:string, is_image?:boolean, content_type?:string, category?:string, original_name?:string, uploaded_at?:string };
 type Update = { id:string, timestamp?:string, text?:string, images?:any };
 type Report = { id:string, category_id?:string, division_id?:string, description?:string, images?:any, status?:string };
@@ -100,7 +100,7 @@ export default function ProjectDetail(){
   return (
     <div>
       <div className="mb-3 rounded-xl border bg-gradient-to-br from-[#7f1010] to-[#a31414] text-white p-4">
-        <div className="text-2xl font-extrabold">{proj?.is_bidding ? 'Bidding Information' : 'Project Information'}</div>
+        <div className="text-2xl font-extrabold">{proj?.is_bidding ? 'Opportunity Information' : 'Project Information'}</div>
         <div className="text-sm opacity-90">{proj?.is_bidding ? 'Overview, files, proposal and estimate.' : 'Overview, files, schedule and contacts.'}</div>
       </div>
       <div className="rounded-xl border bg-white overflow-hidden relative">
@@ -137,7 +137,7 @@ export default function ProjectDetail(){
                     <button onClick={async()=>{
                       const result = await confirm({
                         title: 'Convert to Project',
-                        message: `Are you sure you want to convert "${proj?.name||'this bidding'}" to an active project? This will enable all project features including reports, schedule, timesheet, photos, and orders.`,
+                        message: `Are you sure you want to convert "${proj?.name||'this opportunity'}" to an active project? This will enable all project features including reports, schedule, timesheet, photos, and orders.`,
                         confirmText: 'Convert',
                         cancelText: 'Cancel'
                       });
@@ -150,38 +150,38 @@ export default function ProjectDetail(){
                           await Promise.all([
                             queryClient.invalidateQueries({ queryKey: ['project', id] }),
                             queryClient.invalidateQueries({ queryKey: ['clientProjects'] }),
-                            queryClient.invalidateQueries({ queryKey: ['clientBiddings'] }),
+                            queryClient.invalidateQueries({ queryKey: ['clientOpportunities'] }),
                             queryClient.invalidateQueries({ queryKey: ['projects'] }),
-                            queryClient.invalidateQueries({ queryKey: ['biddings'] })
+                            queryClient.invalidateQueries({ queryKey: ['opportunities'] })
                           ]);
-                          toast.success('Bidding converted to project');
+                          toast.success('Opportunity converted to project');
                           // Redirect to project page instead of reloading
                           nav(`/projects/${encodeURIComponent(String(id||''))}`, { replace: true });
                         }
                       } catch (e: any) {
-                        console.error('Failed to convert bidding:', e);
-                        toast.error(e?.response?.data?.detail || e?.message || 'Failed to convert bidding');
+                        console.error('Failed to convert opportunity:', e);
+                        toast.error(e?.response?.data?.detail || e?.message || 'Failed to convert opportunity');
                       }
                     }} className="px-4 py-2 rounded bg-green-600 hover:bg-green-700 text-white text-sm">Convert to Project</button>
                   )}
                   <button onClick={async()=>{
                     const result = await confirm({ 
-                      title: proj?.is_bidding ? 'Delete Bidding' : 'Delete Project', 
-                      message: `Are you sure you want to delete "${proj?.name||(proj?.is_bidding ? 'this bidding' : 'this project')}"? This action cannot be undone.${proj?.is_bidding ? '' : ' All related data (updates, reports, timesheets) will also be deleted.'}`,
+                      title: proj?.is_bidding ? 'Delete Opportunity' : 'Delete Project', 
+                      message: `Are you sure you want to delete "${proj?.name||(proj?.is_bidding ? 'this opportunity' : 'this project')}"? This action cannot be undone.${proj?.is_bidding ? '' : ' All related data (updates, reports, timesheets) will also be deleted.'}`,
                       confirmText: 'Delete',
                       cancelText: 'Cancel'
                     });
                     if (result !== 'confirm') return;
                     try{
                       await api('DELETE', `/projects/${encodeURIComponent(String(id||''))}`);
-                      toast.success(proj?.is_bidding ? 'Bidding deleted' : 'Project deleted');
+                      toast.success(proj?.is_bidding ? 'Opportunity deleted' : 'Project deleted');
                       if(proj?.client_id){
                         nav(`/customers/${encodeURIComponent(String(proj?.client_id))}`);
                       } else {
-                        nav(proj?.is_bidding ? '/biddings' : '/projects');
+                        nav(proj?.is_bidding ? '/opportunities' : '/projects');
                       }
-                    }catch(_e){ toast.error(proj?.is_bidding ? 'Failed to delete bidding' : 'Failed to delete project'); }
-                  }} className="px-4 py-2 rounded bg-red-600 hover:bg-red-700 text-white text-sm">{proj?.is_bidding ? 'Delete Bidding' : 'Delete Project'}</button>
+                    }catch(_e){ toast.error(proj?.is_bidding ? 'Failed to delete opportunity' : 'Failed to delete project'); }
+                  }} className="px-4 py-2 rounded bg-red-600 hover:bg-red-700 text-white text-sm">{proj?.is_bidding ? 'Delete Opportunity' : 'Delete Project'}</button>
                 </div>
               </div>
               <div className="mt-auto flex gap-3 items-center justify-between w-full">
@@ -1975,11 +1975,27 @@ function ProjectQuickEdit({ projectId, proj, settings }:{ projectId:string, proj
   const [divs, setDivs] = useState<string[]>(Array.isArray(proj?.division_ids)? proj.division_ids : []);
   const [progress, setProgress] = useState<number>(Number(proj?.progress||0));
   const [estimator, setEstimator] = useState<string>(proj?.estimator_id||'');
-  const [lead, setLead] = useState<string>(proj?.onsite_lead_id||'');
+  const [divisionLeads, setDivisionLeads] = useState<Record<string, string>>(proj?.division_onsite_leads || {});
   const statuses = (settings?.project_statuses||[]) as any[];
   const divisions = (settings?.divisions||[]) as any[];
   const { data:employees } = useQuery({ queryKey:['employees'], queryFn: ()=>api<any[]>('GET','/employees') });
-  const toggleDiv = (id:string)=> setDivs(prev=> prev.includes(id)? prev.filter(x=>x!==id) : [...prev, id]);
+  const toggleDiv = (id:string)=> {
+    setDivs(prev=> {
+      const newDivs = prev.includes(id)? prev.filter(x=>x!==id) : [...prev, id];
+      // Remove lead for division if division is removed
+      if (prev.includes(id) && !newDivs.includes(id)) {
+        setDivisionLeads(prevLeads => {
+          const newLeads = { ...prevLeads };
+          delete newLeads[id];
+          return newLeads;
+        });
+      }
+      return newDivs;
+    });
+  };
+  const setDivisionLead = (divisionId: string, leadId: string) => {
+    setDivisionLeads(prev => ({ ...prev, [divisionId]: leadId }));
+  };
   return (
     <div className="rounded-xl border bg-white p-4">
       <h4 className="font-semibold mb-2">Quick Edit</h4>
@@ -2013,9 +2029,60 @@ function ProjectQuickEdit({ projectId, proj, settings }:{ projectId:string, proj
           </div>
         </div>
         <EmployeeSelect label="Estimator" value={estimator} onChange={setEstimator} employees={employees||[]} />
-        <EmployeeSelect label="On-site lead" value={lead} onChange={setLead} employees={employees||[]} />
+        {!proj?.is_bidding && divs.length > 0 && (
+          <div className="col-span-2">
+            <label className="text-xs text-gray-600 mb-2 block">On-site Leads by Division</label>
+            <div className="space-y-2">
+              {divs.map((divId) => {
+                const div = divisions.find((d:any) => String(d.id||d.label||d.value) === divId);
+                const divLabel = div?.meta?.abbr || div?.label || divId;
+                const divColor = div?.meta?.color || '#eef2f7';
+                return (
+                  <div key={divId} className="flex items-center gap-2">
+                    <span className="px-2 py-1 rounded text-xs border flex-shrink-0" style={{ backgroundColor: divColor, minWidth: '60px', textAlign: 'center' }}>{divLabel}</span>
+                    <select 
+                      className="flex-1 border rounded px-2 py-1.5 text-sm" 
+                      value={divisionLeads[divId] || ''} 
+                      onChange={e => setDivisionLead(divId, e.target.value)}
+                    >
+                      <option value="">Select on-site lead...</option>
+                      {(employees||[]).map((emp:any) => (
+                        <option key={emp.id} value={emp.id}>{emp.name||emp.username}</option>
+                      ))}
+                    </select>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
         <div className="col-span-2 text-right">
-          <button onClick={async()=>{ try{ await api('PATCH', `/projects/${projectId}`, { status_label: status||null, division_ids: divs, progress, estimator_id: estimator||null, onsite_lead_id: lead||null }); toast.success('Saved'); location.reload(); }catch(_e){ toast.error('Failed to save'); } }} className="px-3 py-2 rounded bg-brand-red text-white">Save</button>
+          <button onClick={async()=>{ 
+            try{ 
+              // Clean up division_onsite_leads to only include divisions that are still selected
+              const cleanedLeads: Record<string, string> = {};
+              divs.forEach(divId => {
+                if (divisionLeads[divId]) {
+                  cleanedLeads[divId] = divisionLeads[divId];
+                }
+              });
+              const payload: any = { 
+                status_label: status||null, 
+                division_ids: divs, 
+                progress, 
+                estimator_id: estimator||null
+              };
+              // Only include division_onsite_leads if not a bidding
+              if (!proj?.is_bidding) {
+                payload.division_onsite_leads = cleanedLeads;
+              }
+              await api('PATCH', `/projects/${projectId}`, payload); 
+              toast.success('Saved'); 
+              location.reload(); 
+            }catch(_e){ 
+              toast.error('Failed to save'); 
+            } 
+          }} className="px-3 py-2 rounded bg-brand-red text-white">Save</button>
         </div>
       </div>
     </div>

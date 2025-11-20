@@ -22,8 +22,8 @@ import SiteDetail from './pages/SiteDetail';
 import Projects from './pages/Projects';
 import ProjectNew from './pages/ProjectNew';
 import ProjectDetail from './pages/ProjectDetail';
-import Biddings from './pages/Biddings';
-import BiddingDetail from './pages/BiddingDetail';
+import Opportunities from './pages/Opportunities';
+import OpportunityDetail from './pages/OpportunityDetail';
 import SystemSettings from './pages/SystemSettings';
 import Users from './pages/Users';
 import UserInfo from './pages/UserInfo';
@@ -89,8 +89,8 @@ export default function App(){
           <Route path="/projects" element={<AppShell><Projects/></AppShell>} />
           <Route path="/projects/new" element={<AppShell><ProjectNew/></AppShell>} />
           <Route path="/projects/:id" element={<AppShell><ProjectDetail/></AppShell>} />
-          <Route path="/biddings" element={<AppShell><Biddings/></AppShell>} />
-          <Route path="/biddings/:id" element={<AppShell><BiddingDetail/></AppShell>} />
+          <Route path="/opportunities" element={<AppShell><Opportunities/></AppShell>} />
+          <Route path="/opportunities/:id" element={<AppShell><OpportunityDetail/></AppShell>} />
           <Route path="/settings" element={<AppShell><SystemSettings/></AppShell>} />
           <Route path="/company-files" element={<AppShell><CompanyFiles/></AppShell>} />
           <Route path="/log-hours" element={<AppShell><LogHours/></AppShell>} />

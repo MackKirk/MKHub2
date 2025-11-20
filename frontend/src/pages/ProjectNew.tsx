@@ -111,7 +111,9 @@ export default function ProjectNew(){
         const created:any = await api('POST', `/clients/${encodeURIComponent(clientId)}/sites`, siteForm);
         newSiteId = String(created?.id||'');
       }
-      const payload:any = { name, description: desc||null, client_id: clientId, site_id: newSiteId||null, status_label: statusLabel||null, division_ids: divisionIds, estimator_id: estimatorId||null, onsite_lead_id: leadId||null, contact_id: contactId||null, is_bidding: isBidding && !createAsProject };
+      // For opportunities, automatically set status to "Prospecting" if not creating as project
+      const finalStatusLabel = (isBidding && !createAsProject) ? 'Prospecting' : (statusLabel || null);
+      const payload:any = { name, description: desc||null, client_id: clientId, site_id: newSiteId||null, status_label: finalStatusLabel, division_ids: divisionIds, estimator_id: estimatorId||null, onsite_lead_id: leadId||null, contact_id: contactId||null, is_bidding: isBidding && !createAsProject };
       const proj:any = await api('POST','/projects', payload);
       if(coverBlob){
         try{
@@ -121,9 +123,9 @@ export default function ProjectNew(){
           await api('POST', `/projects/${encodeURIComponent(String(proj?.id||''))}/files?file_object_id=${encodeURIComponent(conf.id)}&category=project-cover-derived&original_name=project-cover.jpg`);
         }catch(_e){ /* silent */ }
       }
-      toast.success(isBidding && !createAsProject ? 'Bidding created' : 'Project created');
+      toast.success(isBidding && !createAsProject ? 'Opportunity created' : 'Project created');
       if (isBidding && !createAsProject) {
-        nav(`/biddings/${encodeURIComponent(String(proj?.id||''))}`);
+        nav(`/opportunities/${encodeURIComponent(String(proj?.id||''))}`);
       } else {
         nav(`/projects/${encodeURIComponent(String(proj?.id||''))}`);
       }
@@ -136,7 +138,7 @@ export default function ProjectNew(){
       <div className="w-[900px] max-w-[95vw] max-h-[90vh] bg-white rounded-xl overflow-hidden flex flex-col">
         <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] p-6 relative">
           <button onClick={()=> nav(-1)} className="absolute top-4 right-4 text-white/80 hover:text-white text-2xl font-bold w-8 h-8 flex items-center justify-center rounded hover:bg-white/10" title="Close">×</button>
-          <div className="text-2xl font-extrabold text-white">{isBidding ? 'New Bidding' : 'New Project'}</div>
+          <div className="text-2xl font-extrabold text-white">{isBidding ? 'New Opportunity' : 'New Project'}</div>
           <div className="text-sm text-white/80 mt-1">{step===1? 'Provide basic details and site' : 'Setup options and cover'}</div>
         </div>
         <div className="overflow-y-auto">
@@ -153,9 +155,9 @@ export default function ProjectNew(){
               <div className="md:col-span-2">
                 <label className="text-xs text-gray-600 flex items-center gap-2">
                   <input type="checkbox" checked={createAsProject} onChange={e=>setCreateAsProject(e.target.checked)} />
-                  <span>Create as active project (skip bidding stage)</span>
+                  <span>Create as active project (skip opportunity stage)</span>
                 </label>
-                <div className="text-[11px] text-gray-500 mt-1 ml-6">If checked, this will be created as a full project with all features enabled. Otherwise, it will be created as a bidding.</div>
+                <div className="text-[11px] text-gray-500 mt-1 ml-6">If checked, this will be created as a full project with all features enabled. Otherwise, it will be created as an opportunity.</div>
               </div>
             )}
             <div className="md:col-span-2">
@@ -165,7 +167,7 @@ export default function ProjectNew(){
             </div>
                 
             <div>
-              <label className="text-xs text-gray-600">Client *</label>
+              <label className="text-xs text-gray-600">Customer *</label>
               {initialClientId ? (
                 <div className="relative">
                   <input 
@@ -181,7 +183,7 @@ export default function ProjectNew(){
                     <div className="flex-1 relative">
                       <input 
                         className={`w-full border rounded px-3 py-2 ${!clientValid? 'border-red-500':''}`} 
-                        placeholder="Search client..." 
+                        placeholder="Search customer..." 
                         value={clientSearch} 
                         onChange={e=> {
                           const value = e.target.value;
@@ -239,7 +241,7 @@ export default function ProjectNew(){
                       )}
                       {showClientDropdown && clientSearch.trim() && !selectedClient && filteredClients.length === 0 && clientSearchResults && (
                         <div className="absolute z-10 w-full mt-1 bg-white border rounded-lg shadow-lg p-3 text-sm text-gray-500">
-                          No clients found
+                          No customers found
                         </div>
                       )}
                     </div>
@@ -247,7 +249,7 @@ export default function ProjectNew(){
                       type="button"
                       onClick={() => setClientModalOpen(true)}
                       className="px-3 py-2 rounded border text-gray-600 hover:bg-gray-50 flex-shrink-0"
-                      title="Browse all clients"
+                      title="Browse all customers"
                     >
                       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
@@ -258,6 +260,15 @@ export default function ProjectNew(){
               )}
               {!clientValid && <div className="text-[11px] text-red-600 mt-1">Required</div>}
             </div>
+            {!!clientId && (
+              <div className="md:col-span-2">
+                <label className="text-xs text-gray-600">Customer contact</label>
+                <select className="w-full border rounded px-3 py-2" value={contactId} onChange={e=> setContactId(e.target.value)}>
+                  <option value="">Select...</option>
+                  {(contacts||[]).map((c:any)=> <option key={c.id} value={c.id}>{c.name||c.email||c.phone||c.id}</option>)}
+                </select>
+              </div>
+            )}
             <div className="md:col-span-2"><label className="text-xs text-gray-600">Description</label><textarea className="w-full border rounded px-3 py-2" rows={3} value={desc} onChange={e=>setDesc(e.target.value)} /></div>
 
             {!!clientId && (
@@ -355,13 +366,15 @@ export default function ProjectNew(){
             </>
             ) : (
               <>
-                <div>
-                  <label className="text-xs text-gray-600">Status</label>
-                  <select className="w-full border rounded px-3 py-2" value={statusLabel} onChange={e=> setStatusLabel(e.target.value)}>
-                    <option value="">Select...</option>
-                    {(settings?.project_statuses||[]).map((s:any)=> <option key={s.label} value={s.label}>{s.label}</option>)}
-                  </select>
-                </div>
+                {!(isBidding && !createAsProject) && (
+                  <div>
+                    <label className="text-xs text-gray-600">Status</label>
+                    <select className="w-full border rounded px-3 py-2" value={statusLabel} onChange={e=> setStatusLabel(e.target.value)}>
+                      <option value="">Select...</option>
+                      {(settings?.project_statuses||[]).map((s:any)=> <option key={s.label} value={s.label}>{s.label}</option>)}
+                    </select>
+                  </div>
+                )}
                 <div className="md:col-span-2">
                   <label className="text-xs text-gray-600">Divisions</label>
                   <div className="flex flex-wrap gap-2 mt-1">
@@ -383,19 +396,12 @@ export default function ProjectNew(){
                     {(employees||[]).map((emp:any)=> <option key={emp.id} value={emp.id}>{emp.name||emp.username}</option>)}
                   </select>
                 </div>
-                <div>
-                  <label className="text-xs text-gray-600">On-site lead</label>
-                  <select className="w-full border rounded px-3 py-2" value={leadId} onChange={e=> setLeadId(e.target.value)}>
-                    <option value="">Select...</option>
-                    {(employees||[]).map((emp:any)=> <option key={emp.id} value={emp.id}>{emp.name||emp.username}</option>)}
-                  </select>
-                </div>
-                {!!clientId && (
-                  <div className="md:col-span-2">
-                    <label className="text-xs text-gray-600">Customer contact</label>
-                    <select className="w-full border rounded px-3 py-2" value={contactId} onChange={e=> setContactId(e.target.value)}>
+                {!(isBidding && !createAsProject) && (
+                  <div>
+                    <label className="text-xs text-gray-600">On-site lead</label>
+                    <select className="w-full border rounded px-3 py-2" value={leadId} onChange={e=> setLeadId(e.target.value)}>
                       <option value="">Select...</option>
-                      {(contacts||[]).map((c:any)=> <option key={c.id} value={c.id}>{c.name||c.email||c.phone||c.id}</option>)}
+                      {(employees||[]).map((emp:any)=> <option key={emp.id} value={emp.id}>{emp.name||emp.username}</option>)}
                     </select>
                   </div>
                 )}
@@ -496,15 +502,15 @@ function ClientSelectModal({ open, onClose, onSelect }: { open: boolean, onClose
     <div className="fixed inset-0 z-[60] bg-black/60 flex items-center justify-center">
       <div className="w-[720px] max-w-[95vw] bg-white rounded-xl overflow-hidden max-h-[90vh] flex flex-col">
         <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] p-6 flex items-center gap-6 relative flex-shrink-0">
-          <div className="font-semibold text-lg text-white">Select Client</div>
+          <div className="font-semibold text-lg text-white">Select Customer</div>
           <button onClick={onClose} className="ml-auto text-white hover:text-gray-200 text-2xl font-bold w-8 h-8 flex items-center justify-center rounded hover:bg-white/20" title="Close">×</button>
         </div>
         <div className="p-4 space-y-3 overflow-y-auto flex-1">
           <div className="flex-1">
-            <label className="text-xs text-gray-600">Search Client:</label>
+            <label className="text-xs text-gray-600">Search Customer:</label>
             <input 
               className="w-full border rounded px-3 py-2" 
-              placeholder="Type client name, city, or address..." 
+              placeholder="Type customer name, city, or address..." 
               value={q} 
               onChange={e => setQ(e.target.value)}
               autoFocus
@@ -535,12 +541,12 @@ function ClientSelectModal({ open, onClose, onSelect }: { open: boolean, onClose
           )}
           {q.trim() && list.length === 0 && (
             <div className="text-center py-8 text-gray-500">
-              No clients found matching "{q}"
+              No customers found matching "{q}"
             </div>
           )}
           {!q.trim() && list.length === 0 && (
             <div className="text-center py-8 text-gray-500">
-              No clients available
+              No customers available
             </div>
           )}
         </div>

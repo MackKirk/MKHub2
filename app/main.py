@@ -353,6 +353,10 @@ def create_app() -> FastAPI:
                             conn.execute(text("ALTER TABLE projects ADD COLUMN is_bidding INTEGER DEFAULT 0"))
                         except Exception:
                             pass
+                        try:
+                            conn.execute(text("ALTER TABLE projects ADD COLUMN division_onsite_leads TEXT"))
+                        except Exception:
+                            pass
                         # Add fields to users table
                         try:
                             conn.execute(text("ALTER TABLE users ADD COLUMN mobile TEXT"))
@@ -1119,6 +1123,7 @@ def create_app() -> FastAPI:
                         pass
                     try:
                         conn.execute(text("ALTER TABLE projects ADD COLUMN IF NOT EXISTS is_bidding BOOLEAN DEFAULT FALSE"))
+                        conn.execute(text("ALTER TABLE projects ADD COLUMN IF NOT EXISTS division_onsite_leads JSONB"))
                     except Exception:
                         pass
                     # Add fields to users table

@@ -181,7 +181,8 @@ class Project(Base):
     status_label: Mapped[Optional[str]] = mapped_column(String(100))
     division_ids: Mapped[Optional[list]] = mapped_column(JSON)
     estimator_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
-    onsite_lead_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
+    onsite_lead_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))  # Legacy field, kept for backward compatibility
+    division_onsite_leads: Mapped[Optional[dict]] = mapped_column(JSON)  # Maps division_id -> onsite_lead_id
     contact_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
     date_start: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     date_eta: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
