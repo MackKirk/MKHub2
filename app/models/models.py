@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from typing import Optional
+from typing import Optional, List
 
 from sqlalchemy import (
     Column,
@@ -1411,8 +1411,13 @@ class CommunityPost(Base):
     title: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     content: Mapped[str] = mapped_column(Text, nullable=False)
     author_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    photo_file_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("file_objects.id", ondelete="SET NULL"), index=True)
+    document_file_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("file_objects.id", ondelete="SET NULL"), index=True)
     is_urgent: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
     is_required: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    requires_read_confirmation: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    target_type: Mapped[str] = mapped_column(String(20), default="all", index=True)  # all|divisions
+    target_division_ids: Mapped[Optional[list]] = mapped_column(JSON, default=list)  # List of division UUIDs as strings
     tags: Mapped[Optional[list]] = mapped_column(JSON, default=list)  # List of tags like ['Announcement', 'Mack Kirk News', 'Image']
     likes_count: Mapped[int] = mapped_column(Integer, default=0)
     comments_count: Mapped[int] = mapped_column(Integer, default=0)
@@ -1420,6 +1425,69 @@ class CommunityPost(Base):
     updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
 
     author: Mapped["User"] = relationship("User", foreign_keys=[author_id], backref="community_posts")
+    read_confirmations: Mapped[List["CommunityPostReadConfirmation"]] = relationship("CommunityPostReadConfirmation", back_populates="post", cascade="all, delete-orphan")
+
+
+class CommunityPostReadConfirmation(Base):
+    __tablename__ = "community_post_read_confirmations"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    post_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("community_posts.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    confirmed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, nullable=False, index=True)
+
+    post: Mapped["CommunityPost"] = relationship("CommunityPost", back_populates="read_confirmations")
+    user: Mapped["User"] = relationship("User", foreign_keys=[user_id])
+
+    __table_args__ = (
+        UniqueConstraint("post_id", "user_id", name="uq_post_user_confirmation"),
+    )
+
+
+class CommunityPostView(Base):
+    __tablename__ = "community_post_views"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    post_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("community_posts.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    viewed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, nullable=False, index=True)
+
+    post: Mapped["CommunityPost"] = relationship("CommunityPost", foreign_keys=[post_id])
+    user: Mapped["User"] = relationship("User", foreign_keys=[user_id])
+
+    __table_args__ = (
+        UniqueConstraint("post_id", "user_id", name="uq_post_user_view"),
+    )
+
+
+class CommunityPostLike(Base):
+    __tablename__ = "community_post_likes"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    post_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("community_posts.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    liked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, nullable=False, index=True)
+
+    post: Mapped["CommunityPost"] = relationship("CommunityPost", foreign_keys=[post_id])
+    user: Mapped["User"] = relationship("User", foreign_keys=[user_id])
+
+    __table_args__ = (
+        UniqueConstraint("post_id", "user_id", name="uq_post_user_like"),
+    )
+
+
+class CommunityPostComment(Base):
+    __tablename__ = "community_post_comments"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    post_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("community_posts.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, nullable=False, index=True)
+    updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+
+    post: Mapped["CommunityPost"] = relationship("CommunityPost", foreign_keys=[post_id])
+    user: Mapped["User"] = relationship("User", foreign_keys=[user_id])
 
 
 # =====================

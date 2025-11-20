@@ -43,10 +43,16 @@ export default function ImagePicker({
   const [ty, setTy] = useState(0);
   const dragging = useRef<{x:number, y:number, tx:number, ty:number}|null>(null);
   const [isPanning] = useState(true);
+  const blobUrlRef = useRef<string | null>(null);
 
   useEffect(()=>{
     if(!isOpen){
       setImg(null); setZoom(1); setTx(0); setTy(0); setOriginalFileObjectId(undefined); setTab('upload');
+      // Revoke any blob URLs when closing
+      if (blobUrlRef.current) {
+        URL.revokeObjectURL(blobUrlRef.current);
+        blobUrlRef.current = null;
+      }
     }
   }, [isOpen]);
 
@@ -115,12 +121,120 @@ export default function ImagePicker({
       setShowProgress(true);
       setProgressMessage('Uploading image to storage...');
       if (!clientId){
-        // Fallback to local preview if we don't have context to persist
+        // For HEIC files or when we need backend processing, use proxy upload even without clientId
+        if (isHeic || !file.type || !file.type.startsWith('image/')){
+          // Use proxy upload for HEIC or non-image files to allow backend conversion
+          const formData = new FormData();
+          formData.append('file', file);
+          formData.append('original_name', file.name || 'upload');
+          formData.append('content_type', contentType);
+          formData.append('project_id', '');
+          formData.append('client_id', '');
+          formData.append('employee_id', '');
+          formData.append('category_id', 'image-picker-temp');
+          
+          const conf:any = await api('POST', '/files/upload-proxy', formData);
+          const fileObjectId = conf.id;
+          
+          // Load from uploaded file
+          const image = new Image();
+          let imageLoaded = false;
+          const loadTimeout = setTimeout(()=>{
+            if (!imageLoaded) {
+              setIsLoading(false);
+              toast.error('Timeout loading image. The file may be processing.');
+              setShowProgress(false);
+              setProgressMessage('');
+            }
+          }, 30000);
+          setProgressMessage('Generating preview...');
+          image.onload = ()=>{
+            imageLoaded = true;
+            clearTimeout(loadTimeout);
+            setImg(image); 
+            setZoom(1); 
+            setTx(0); 
+            setTy(0); 
+            setOriginalFileObjectId(fileObjectId); 
+            setIsLoading(false);
+            setShowProgress(false);
+            setProgressMessage('');
+          };
+          image.onerror = ()=>{
+            imageLoaded = true;
+            clearTimeout(loadTimeout);
+            toast.error('Failed to load image. The file may still be processing.');
+            setIsLoading(false);
+            setShowProgress(false);
+            setProgressMessage('');
+          };
+          image.crossOrigin = 'anonymous';
+          image.src = `/files/${fileObjectId}/thumbnail?w=1200&cb=${Date.now()}`;
+          return;
+        }
+        
+        // Fallback to local preview for regular images when we don't have context to persist
+        // Revoke any previous blob URL
+        if (blobUrlRef.current) {
+          URL.revokeObjectURL(blobUrlRef.current);
+        }
         const url = URL.createObjectURL(file);
+        blobUrlRef.current = url; // Keep track of blob URL
         const image = new Image();
-        image.onload = ()=>{ setImg(image); setZoom(1); setTx(0); setTy(0); setOriginalFileObjectId(undefined); setIsLoading(false); setShowProgress(false); setProgressMessage(''); };
-        image.onerror = ()=>{ toast.error('Failed to load image'); setIsLoading(false); setShowProgress(false); setProgressMessage(''); };
-        image.src = url; return;
+        image.onload = ()=>{ 
+          // Don't revoke blob URL here - keep it alive while image is displayed
+          setImg(image); 
+          setZoom(1); 
+          setTx(0); 
+          setTy(0); 
+          setOriginalFileObjectId(undefined); 
+          setIsLoading(false); 
+          setShowProgress(false); 
+          setProgressMessage(''); 
+        };
+        image.onerror = ()=>{ 
+          URL.revokeObjectURL(url);
+          blobUrlRef.current = null;
+          // If local preview fails, try proxy upload as fallback
+          const formData = new FormData();
+          formData.append('file', file);
+          formData.append('original_name', file.name || 'upload');
+          formData.append('content_type', contentType);
+          formData.append('project_id', '');
+          formData.append('client_id', '');
+          formData.append('employee_id', '');
+          formData.append('category_id', 'image-picker-temp');
+          
+          api('POST', '/files/upload-proxy', formData).then((conf:any)=>{
+            const fileObjectId = conf.id;
+            const img2 = new Image();
+            img2.onload = ()=>{
+              setImg(img2); 
+              setZoom(1); 
+              setTx(0); 
+              setTy(0); 
+              setOriginalFileObjectId(fileObjectId); 
+              setIsLoading(false); 
+              setShowProgress(false); 
+              setProgressMessage('');
+            };
+            img2.onerror = ()=>{
+              toast.error('Failed to load image');
+              setIsLoading(false); 
+              setShowProgress(false); 
+              setProgressMessage('');
+            };
+            img2.crossOrigin = 'anonymous';
+            img2.src = `/files/${fileObjectId}/thumbnail?w=1200&cb=${Date.now()}`;
+          }).catch((e:any)=>{
+            toast.error('Failed to load image');
+            setIsLoading(false); 
+            setShowProgress(false); 
+            setProgressMessage('');
+          });
+        };
+        image.src = url; 
+        return;
       }
       // Persist original to library first (keeps history and enables HEIC and large previews)
       // For HEIC files, preserve the extension so backend can detect and convert
@@ -199,6 +313,11 @@ export default function ImagePicker({
 
   const loadFromFileObject = async (fileObjectId:string)=>{
     try{
+      // Revoke any previous blob URL when loading from library
+      if (blobUrlRef.current) {
+        URL.revokeObjectURL(blobUrlRef.current);
+        blobUrlRef.current = null;
+      }
       const image = new Image();
       setIsLoading(true);
       setShowProgress(true);
@@ -211,14 +330,46 @@ export default function ImagePicker({
     }catch(e){ toast.error('Failed to open image'); }
   };
 
-  const handleWheel = (e: React.WheelEvent)=>{
-    if(!allowEdit || !img) return;
-    e.preventDefault();
-    const factor = e.deltaY < 0 ? 1.06 : 1/1.06;
-    const nz = Math.min(6, Math.max(1, zoom * factor));
-    const { x, y } = clamp(tx, ty, nz);
-    setZoom(nz); setTx(x); setTy(y);
-  };
+  // Use refs to access current values in event handler
+  const zoomRef = useRef(zoom);
+  const txRef = useRef(tx);
+  const tyRef = useRef(ty);
+  
+  useEffect(() => {
+    zoomRef.current = zoom;
+    txRef.current = tx;
+    tyRef.current = ty;
+  }, [zoom, tx, ty]);
+
+  // Use direct event listener with passive: false to allow preventDefault
+  useEffect(() => {
+    if (!isOpen || !containerRef.current || !allowEdit || !img) return;
+    
+    const handleWheel = (e: WheelEvent)=>{
+      e.preventDefault();
+      const factor = e.deltaY < 0 ? 1.06 : 1/1.06;
+      const currentZoom = zoomRef.current;
+      const currentTx = txRef.current;
+      const currentTy = tyRef.current;
+      const nz = Math.min(6, Math.max(1, currentZoom * factor));
+      // Recalculate clamp values using current img and coverScale
+      const dw = img.naturalWidth * coverScale * nz;
+      const dh = img.naturalHeight * coverScale * nz;
+      const minX = cw - dw;
+      const minY = ch - dh;
+      const x = Math.min(0, Math.max(minX, currentTx));
+      const y = Math.min(0, Math.max(minY, currentTy));
+      setZoom(nz);
+      setTx(x);
+      setTy(y);
+    };
+    
+    const container = containerRef.current;
+    container.addEventListener('wheel', handleWheel, { passive: false });
+    return () => {
+      container.removeEventListener('wheel', handleWheel);
+    };
+  }, [isOpen, allowEdit, img, coverScale, cw, ch]);
 
   const onPointerDown = (e: React.PointerEvent)=>{
     if(!allowEdit || !img || !isPanning) return;
@@ -261,7 +412,7 @@ export default function ImagePicker({
       <div className="w-[900px] max-w-[95vw] bg-white rounded-xl overflow-hidden">
         <div className="px-4 py-3 border-b flex items-center justify-between">
           <div className="font-semibold">Image Picker</div>
-          <button onClick={onClose} className="text-gray-500 hover:text-gray-700 text-2xl font-bold w-8 h-8 flex items-center justify-center rounded hover:bg-gray-100" title="Close">×</button>
+          <button type="button" onClick={onClose} className="text-gray-500 hover:text-gray-700 text-2xl font-bold w-8 h-8 flex items-center justify-center rounded hover:bg-gray-100" title="Close">×</button>
         </div>
         <div className="grid grid-cols-3 gap-0">
           <div className="border-r">
@@ -270,26 +421,26 @@ export default function ImagePicker({
                 <div className="mb-2 flex items-center justify-between">
                   <div className="text-sm font-semibold">Library</div>
                   <div className="flex items-center gap-2">
-                    <button disabled={isLoadingLibrary} onClick={()=>loadLibrary(true)} className="text-xs px-2 py-1 rounded bg-gray-100 disabled:opacity-50">Reload</button>
+                    <button type="button" disabled={isLoadingLibrary} onClick={()=>loadLibrary(true)} className="text-xs px-2 py-1 rounded bg-gray-100 disabled:opacity-50">Reload</button>
                   </div>
                 </div>
                 {!libraryLoaded && (
                   <div className="py-6 text-center">
-                    <button disabled={isLoadingLibrary} onClick={()=>loadLibrary(true)} className="px-3 py-2 rounded bg-gray-800 text-white disabled:opacity-50">Load gallery</button>
+                    <button type="button" disabled={isLoadingLibrary} onClick={()=>loadLibrary(true)} className="px-3 py-2 rounded bg-gray-800 text-white disabled:opacity-50">Load gallery</button>
                   </div>
                 )}
                 {libraryLoaded && (
                   <>
                     <div className="grid grid-cols-3 gap-2 max-h-[320px] overflow-auto">
                       {files.map(f=> (
-                        <button key={f.id} className="border rounded overflow-hidden" onClick={()=>loadFromFileObject(f.file_object_id)}>
+                        <button type="button" key={f.id} className="border rounded overflow-hidden" onClick={()=>loadFromFileObject(f.file_object_id)}>
                           <img className="w-full h-20 object-cover" src={`/files/${f.file_object_id}/thumbnail?w=160`} />
                         </button>
                       ))}
                     </div>
                     <div className="mt-3 text-center">
                       {libraryHasMore ? (
-                        <button disabled={isLoadingLibrary} onClick={()=>loadLibrary(false)} className="px-3 py-1.5 rounded bg-gray-100 disabled:opacity-50">
+                        <button type="button" disabled={isLoadingLibrary} onClick={()=>loadLibrary(false)} className="px-3 py-1.5 rounded bg-gray-100 disabled:opacity-50">
                           {isLoadingLibrary ? 'Loading...' : 'Load more'}
                         </button>
                       ) : (
@@ -308,7 +459,7 @@ export default function ImagePicker({
           <div className="col-span-2">
             <div className="p-4">
               <div className="mb-3 text-sm text-gray-600">Target: {targetWidth}×{targetHeight}px</div>
-              <div ref={containerRef} className="relative bg-gray-100 overflow-hidden" style={{ width: cw, height: ch, userSelect:'none', cursor: (img && isPanning)? (dragging.current? 'grabbing':'grab') : 'default', touchAction:'none' as any }} onWheel={handleWheel} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp}>
+              <div ref={containerRef} className="relative bg-gray-100 overflow-hidden" style={{ width: cw, height: ch, userSelect:'none', cursor: (img && isPanning)? (dragging.current? 'grabbing':'grab') : 'default', touchAction:'none' as any }} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp}>
                 {img && (
                   <img src={img.src} draggable={false} onDragStart={(e)=>e.preventDefault()} style={{ position:'absolute', left: tx, top: ty, width: img.naturalWidth*coverScale*zoom, height: img.naturalHeight*coverScale*zoom, maxWidth:'none', maxHeight:'none', userSelect:'none' }} />
                 )}
@@ -318,9 +469,9 @@ export default function ImagePicker({
               <div className="mt-3 flex items-center gap-3">
                 <label className="text-sm text-gray-600">Zoom</label>
                 <input type="range" min={1} max={6} step={0.01} disabled={!img || !allowEdit} value={zoom} onChange={(e)=>{ const nz = Math.min(6, Math.max(1, parseFloat(e.target.value||'1'))); const { x, y } = clamp(tx, ty, nz); setZoom(nz); setTx(x); setTy(y); }} />
-                <button disabled={!img || !allowEdit} onClick={()=>{ const { x, y } = clamp(0,0,1); setZoom(1); setTx(x); setTy(y); }} className="px-3 py-1.5 rounded bg-gray-100 disabled:opacity-50">Reset</button>
+                <button type="button" disabled={!img || !allowEdit} onClick={()=>{ const { x, y } = clamp(0,0,1); setZoom(1); setTx(x); setTy(y); }} className="px-3 py-1.5 rounded bg-gray-100 disabled:opacity-50">Reset</button>
                 <div className="ml-auto" />
-                <button disabled={!img || isLoading} onClick={confirm} className="px-4 py-2 rounded bg-brand-red text-white disabled:opacity-50">Confirm</button>
+                <button type="button" disabled={!img || isLoading} onClick={confirm} className="px-4 py-2 rounded bg-brand-red text-white disabled:opacity-50">Confirm</button>
               </div>
             </div>
           </div>
