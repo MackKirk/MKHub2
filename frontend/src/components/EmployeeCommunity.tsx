@@ -80,6 +80,8 @@ export default function EmployeeCommunity({ expanded = false }: EmployeeCommunit
     onSuccess: () => {
       // Mark as viewed silently, don't show toast
       queryClient.invalidateQueries({ queryKey: ['community-posts'] });
+      // Also invalidate my-posts to update views count in My Announcements
+      queryClient.invalidateQueries({ queryKey: ['my-community-posts'] });
     },
     onError: (err: any) => {
       // Silently fail, don't show error
