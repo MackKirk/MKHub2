@@ -35,16 +35,17 @@ function formatHoursMinutes(totalMinutes: number): string {
   return `${hours}h${minutes}min`;
 }
 
-type Project = { id:string, code?:string, name?:string, client_id?:string, client_display_name?:string, address_city?:string, address_province?:string, address_country?:string, address_postal_code?:string, description?:string, status_id?:string, division_id?:string, estimator_id?:string, onsite_lead_id?:string, contact_id?:string, contact_name?:string, contact_email?:string, contact_phone?:string, date_start?:string, date_eta?:string, date_end?:string, cost_estimated?:number, cost_actual?:number, service_value?:number, progress?:number, site_id?:string, site_name?:string, site_address_line1?:string, site_city?:string, site_province?:string, site_country?:string, site_postal_code?:string, status_label?:string };
+type Project = { id:string, code?:string, name?:string, client_id?:string, client_display_name?:string, address_city?:string, address_province?:string, address_country?:string, address_postal_code?:string, description?:string, status_id?:string, division_id?:string, division_ids?:string[], estimator_id?:string, onsite_lead_id?:string, division_onsite_leads?:Record<string, string>, contact_id?:string, contact_name?:string, contact_email?:string, contact_phone?:string, date_start?:string, date_eta?:string, date_end?:string, cost_estimated?:number, cost_actual?:number, service_value?:number, progress?:number, site_id?:string, site_name?:string, site_address_line1?:string, site_city?:string, site_province?:string, site_country?:string, site_postal_code?:string, status_label?:string, is_bidding?:boolean };
 type ProjectFile = { id:string, file_object_id:string, is_image?:boolean, content_type?:string, category?:string, original_name?:string, uploaded_at?:string };
 type Update = { id:string, timestamp?:string, text?:string, images?:any };
-type Report = { id:string, category_id?:string, division_id?:string, description?:string, images?:any, status?:string };
+type Report = { id:string, category_id?:string, division_id?:string, description?:string, images?:any, status?:string, created_at?:string };
 type Proposal = { id:string, title?:string, order_number?:string, created_at?:string };
 
 export default function ProjectDetail(){
   const location = useLocation();
   const nav = useNavigate();
   const confirm = useConfirm();
+  const queryClient = useQueryClient();
   const { id } = useParams();
   const { data:proj, isLoading } = useQuery({ queryKey:['project', id], queryFn: ()=>api<Project>('GET', `/projects/${id}`) });
   const { data:settings } = useQuery({ queryKey:['settings'], queryFn: ()=>api<any>('GET','/settings') });
@@ -54,11 +55,13 @@ export default function ProjectDetail(){
   const { data:reports, refetch: refetchReports } = useQuery({ queryKey:['projectReports', id], queryFn: ()=>api<Report[]>('GET', `/projects/${id}/reports`) });
   const { data:proposals } = useQuery({ queryKey:['projectProposals', id], queryFn: ()=>api<Proposal[]>('GET', `/proposals?project_id=${encodeURIComponent(String(id||''))}`) });
   const { data:projectEstimates } = useQuery({ queryKey:['projectEstimates', id], queryFn: ()=>api<any[]>('GET', `/estimate/estimates?project_id=${encodeURIComponent(String(id||''))}`) });
+  const { data:employees } = useQuery({ queryKey:['employees'], queryFn: ()=>api<any[]>('GET','/employees') });
   // Check for tab query parameter
   const searchParams = new URLSearchParams(location.search);
-  const initialTab = (searchParams.get('tab') as 'overview'|'general'|'reports'|'dispatch'|'timesheet'|'files'|'photos'|'proposal'|'estimate'|'orders'|null) || 'overview';
-  const [tab, setTab] = useState<'overview'|'general'|'reports'|'dispatch'|'timesheet'|'files'|'photos'|'proposal'|'estimate'|'orders'>(initialTab);
+  const initialTab = (searchParams.get('tab') as 'overview'|'general'|'reports'|'dispatch'|'timesheet'|'files'|'photos'|'proposal'|'estimate'|'orders'|null) || null;
+  const [tab, setTab] = useState<'overview'|'general'|'reports'|'dispatch'|'timesheet'|'files'|'photos'|'proposal'|'estimate'|'orders'|null>(initialTab);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [showOnSiteLeadsModal, setShowOnSiteLeadsModal] = useState(false);
   const estimateBuilderRef = useRef<EstimateBuilderRef>(null);
   
   // Update tab when URL search params change
@@ -67,6 +70,8 @@ export default function ProjectDetail(){
     const tabParam = searchParams.get('tab') as 'overview'|'general'|'reports'|'dispatch'|'timesheet'|'files'|'photos'|'proposal'|'estimate'|'orders'|null;
     if (tabParam && ['overview','general','reports','dispatch','timesheet','files','photos','proposal','estimate','orders'].includes(tabParam)) {
       setTab(tabParam);
+    } else {
+      setTab(null);
     }
   }, [location.search]);
   
@@ -96,161 +101,352 @@ export default function ProjectDetail(){
     })();
   }, [overlayUrl]);
 
+  const availableTabs = proj?.is_bidding 
+    ? (['overview','files','proposal','estimate'] as const)
+    : (['overview','reports','dispatch','timesheet','files','photos','proposal','estimate','orders'] as const);
+
+  const handleTabClick = async (newTab: typeof availableTabs[number]) => {
+    // If leaving estimate tab and there are unsaved changes, show confirmation
+    if (tab === 'estimate' && newTab !== 'estimate' && estimateBuilderRef.current?.hasUnsavedChanges()) {
+      const result = await confirm({
+        title: 'Unsaved Changes',
+        message: 'You have unsaved changes in the Estimate tab. What would you like to do?',
+        confirmText: 'Save and Continue',
+        cancelText: 'Cancel',
+        showDiscard: true,
+        discardText: 'Discard Changes'
+      });
+      
+      if (result === 'confirm') {
+        // Save before leaving
+        const saved = await estimateBuilderRef.current?.save();
+        if (saved) {
+          setTab(newTab);
+          nav(`${location.pathname}?tab=${newTab}`, { replace: true });
+        }
+      } else if (result === 'discard') {
+        // Discard changes and leave
+        setTab(newTab);
+        nav(`${location.pathname}?tab=${newTab}`, { replace: true });
+      }
+      // If cancelled, do nothing (stay on estimate tab)
+    } else {
+      // No unsaved changes or not leaving estimate tab, proceed normally
+      setTab(newTab);
+      nav(`${location.pathname}?tab=${newTab}`, { replace: true });
+    }
+  };
+
+  const handleBackToCards = () => {
+    setTab(null);
+    nav(location.pathname, { replace: true });
+  };
+
+  const estimator = employees?.find((e:any) => String(e.id) === String(proj?.estimator_id));
+  const statusLabel = String((proj as any)?.status_label||'').trim();
+  const statusColor = ((settings||{}).project_statuses||[]).find((s:any)=>s.label===statusLabel)?.value || '#e5e7eb';
+
   return (
     <div>
-      <div className="mb-3 rounded-xl border bg-gradient-to-br from-[#7f1010] to-[#a31414] text-white p-4">
-        <div className="text-2xl font-extrabold">Project Information</div>
-        <div className="text-sm opacity-90">Overview, files, schedule and contacts.</div>
+      {/* Title Bar */}
+      <div className="mb-4 rounded-xl border bg-gradient-to-br from-[#7f1010] to-[#a31414] text-white p-4">
+        <div className="text-2xl font-extrabold">{proj?.is_bidding ? 'Opportunity Information' : 'Project Information'}</div>
+        <div className="text-sm opacity-90">{proj?.is_bidding ? 'Overview, files, proposal and estimate.' : 'Overview, files, schedule and contacts.'}</div>
       </div>
-      <div className="rounded-xl border bg-white overflow-hidden relative">
-        <div className="relative rounded-t-xl p-5 text-white overflow-hidden" style={{ backgroundImage: 'linear-gradient(135deg, #6b7280, #1f2937)' }}>
-          <img src={cover} alt="" className="pointer-events-none select-none absolute right-0 top-0 h-[160%] w-auto opacity-15 -translate-x-20 scale-150 object-contain" />
-          {overlayResolved && (
-            <img src={overlayResolved} alt="" className="pointer-events-none select-none absolute right-0 top-0 h-full w-auto opacity-80" style={{ WebkitMaskImage: 'linear-gradient(to left, black 70%, transparent 100%)', maskImage: 'linear-gradient(to left, black 70%, transparent 100%)' }} />
-          )}
-          <div className="flex gap-4 items-stretch min-h-[220px] relative">
-            <div className="w-[260px] relative group">
-              <img src={cover} className="w-full h-full object-cover rounded-xl border-2 border-brand-red" />
-              <button onClick={()=>setPickerOpen(true)} className="absolute inset-0 rounded-xl bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white">✏️ Change</button>
+
+      {/* Hero Section - Based on Mockup */}
+      <div className="mb-4 rounded-xl border bg-white overflow-hidden">
+        <div className="p-6">
+          <div className="flex gap-6 items-start">
+            {/* Left Section - Image (not square) */}
+            <div className="w-64 h-48 rounded-xl border overflow-hidden flex-shrink-0 group relative">
+              <img src={cover} className="w-full h-full object-cover" />
+              <button onClick={()=>setPickerOpen(true)} className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white transition-opacity">✏️ Change</button>
             </div>
-            <div className="flex-1 flex flex-col justify-start">
-              <div className="flex items-start justify-between">
-                <div className="flex-1">
-                  <div className="text-3xl font-extrabold">{proj?.name||'Project'}</div>
-                  <div className="text-sm opacity-90 mt-1">{proj?.code||''} · {proj?.client_id ? (<Link className="underline" to={`/customers/${encodeURIComponent(String(proj?.client_id||''))}`}>{proj?.client_display_name||''}</Link>): (proj?.client_display_name||'')}</div>
-                  <div className="text-sm opacity-90">
-                    {proj?.site_id ? (
-                      <Link to={`/customers/${encodeURIComponent(String(proj?.client_id||''))}/sites/${encodeURIComponent(String(proj?.site_id||''))}`} state={{ backgroundLocation: location }} className="underline">{(proj?.site_name||proj?.site_id)}{(proj?.site_address_line1||proj?.site_city||proj?.site_province||proj?.site_country)? ` (${[proj?.site_address_line1, proj?.site_city, proj?.site_province, proj?.site_country].filter(Boolean).join(', ')})` : ''}</Link>
-                    ) : ''}
+            
+            {/* Middle Section - General Information */}
+            <div className="flex-1 min-w-0">
+              <h3 className="font-semibold text-lg mb-4">General Information</h3>
+              <div className="grid grid-cols-2 gap-4 mb-4">
+                <div>
+                  <label className="text-xs text-gray-600 block mb-1">Project Name</label>
+                  <div className="text-sm font-medium">{proj?.name||'—'}</div>
+                </div>
+                <div>
+                  <label className="text-xs text-gray-600 block mb-1">Code</label>
+                  <div className="text-sm font-medium">{proj?.code||'—'}</div>
+                </div>
+                <div className="col-span-2">
+                  <label className="text-xs text-gray-600 block mb-1">Address</label>
+                  <div className="text-sm font-medium">
+                    {(() => {
+                      const city = proj?.address_city||proj?.site_city;
+                      const province = proj?.address_province||proj?.site_province;
+                      const postal = proj?.address_postal_code||proj?.site_postal_code;
+                      const country = proj?.address_country||proj?.site_country;
+                      const parts = [city, province, postal, country].filter(Boolean);
+                      return parts.length > 0 ? parts.join(', ') : '—';
+                    })()}
                   </div>
-                  <div className="mt-2 flex items-center gap-3">
-                    {(() => { const statusLabel = String((proj as any)?.status_label||'').trim(); const color = ((settings||{}).project_statuses||[]).find((s:any)=>s.label===statusLabel)?.value || '#e5e7eb'; return (<span className="px-2 py-0.5 rounded-full border text-black" style={{ backgroundColor: color }}>{statusLabel||'—'}</span>); })()}
-                    <div className="flex items-center gap-2">
-                      <div className="h-2 w-40 bg-white/40 rounded-full overflow-hidden"><div className="h-full bg-black" style={{ width: `${Math.max(0,Math.min(100,Number(proj?.progress||0)))}%` }} /></div>
-                      <span className="text-sm">{Math.max(0,Math.min(100,Number(proj?.progress||0)))}%</span>
+                </div>
+              </div>
+              
+              {/* Progress and Status moved here */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-xs text-gray-600 block mb-2">Status</label>
+                  <span className="px-3 py-1.5 rounded text-sm font-medium inline-block" style={{ backgroundColor: statusColor, color: '#000' }}>{statusLabel||'—'}</span>
+                </div>
+                <div>
+                  <label className="text-xs text-gray-600 block mb-2">Progress</label>
+                  <div className="flex items-center gap-3">
+                    <div className="flex-1 h-3 bg-gray-200 rounded-full overflow-hidden">
+                      <div className="h-full bg-brand-red rounded-full transition-all" style={{ width: `${Math.max(0,Math.min(100,Number(proj?.progress||0)))}%` }} />
+                    </div>
+                    <span className="text-sm font-semibold text-gray-700 w-12 text-right">{Math.max(0,Math.min(100,Number(proj?.progress||0)))}%</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            {/* Right Section - Estimator, On-site Leads, ETA */}
+            <div className="w-80 flex-shrink-0">
+              <div className="mb-6">
+                <label className="text-xs text-gray-600 block mb-2">Estimator</label>
+                {estimator ? (
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-full bg-indigo-600 flex items-center justify-center text-white font-semibold">
+                      {(estimator.name||estimator.username||'E')[0].toUpperCase()}
+                    </div>
+                    <div className="flex-1">
+                      <div className="text-sm font-medium">{estimator.name||estimator.username}</div>
                     </div>
                   </div>
-                </div>
-                <button onClick={async()=>{
-                  const result = await confirm({ 
-                    title: 'Delete Project', 
-                    message: `Are you sure you want to delete "${proj?.name||'this project'}"? This action cannot be undone. All related data (updates, reports, timesheets) will also be deleted.`,
-                    confirmText: 'Delete',
-                    cancelText: 'Cancel'
-                  });
-                  if (result !== 'confirm') return;
-                  try{
-                    await api('DELETE', `/projects/${encodeURIComponent(String(id||''))}`);
-                    toast.success('Project deleted');
-                    if(proj?.client_id){
-                      nav(`/customers/${encodeURIComponent(String(proj?.client_id))}`);
-                    } else {
-                      nav('/projects');
-                    }
-                  }catch(_e){ toast.error('Failed to delete project'); }
-                }} className="px-4 py-2 rounded bg-red-600 hover:bg-red-700 text-white text-sm">Delete Project</button>
+                ) : (
+                  <div className="text-sm text-gray-400">—</div>
+                )}
               </div>
-              <div className="mt-auto flex gap-3 items-center justify-between w-full">
-                <div className="flex gap-3">
-                  {(['overview','reports','dispatch','timesheet','files','photos','proposal','estimate','orders'] as const).map(k=> (
-                    <button key={k} onClick={async () => {
-                      // If leaving estimate tab and there are unsaved changes, show confirmation
-                      if (tab === 'estimate' && k !== 'estimate' && estimateBuilderRef.current?.hasUnsavedChanges()) {
-                        const result = await confirm({
-                          title: 'Unsaved Changes',
-                          message: 'You have unsaved changes in the Estimate tab. What would you like to do?',
-                          confirmText: 'Save and Continue',
-                          cancelText: 'Cancel',
-                          showDiscard: true,
-                          discardText: 'Discard Changes'
-                        });
-                        
-                        if (result === 'confirm') {
-                          // Save before leaving
-                          const saved = await estimateBuilderRef.current?.save();
-                          if (saved) {
-                            setTab(k);
-                          }
-                        } else if (result === 'discard') {
-                          // Discard changes and leave
-                          setTab(k);
-                        }
-                        // If cancelled, do nothing (stay on estimate tab)
-                      } else {
-                        // No unsaved changes or not leaving estimate tab, proceed normally
-                        setTab(k);
-                      }
-                    }} className={`px-4 py-2 rounded-full ${tab===k?'bg-black text-white':'bg-white text-black'}`}>{k === 'dispatch' ? 'Schedule' : k[0].toUpperCase()+k.slice(1)}</button>
-                  ))}
+
+              {!proj?.is_bidding && (
+                <div className="mb-6">
+                  <label className="text-xs text-gray-600 block mb-2">On-site Leads</label>
+                  <button
+                    onClick={() => setShowOnSiteLeadsModal(true)}
+                    className="px-4 py-2 rounded border bg-white hover:bg-gray-50 text-sm font-medium text-gray-700 flex items-center gap-2"
+                  >
+                    <span>Manage On-site Leads</span>
+                    {proj?.division_onsite_leads && Object.keys(proj.division_onsite_leads).length > 0 && (
+                      <span className="px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 text-xs font-semibold">
+                        {Object.keys(proj.division_onsite_leads).length}
+                      </span>
+                    )}
+                  </button>
                 </div>
-                <button 
-                  onClick={() => setShowAuditLogModal(true)}
-                  className="px-4 py-2 rounded bg-gray-700 hover:bg-gray-800 text-white text-sm"
-                >
-                  Audit Log
-                </button>
-              </div>
+              )}
+              
+              {proj?.date_eta && (
+                <div>
+                  <label className="text-xs text-gray-600 block mb-2">ETA</label>
+                  <div className="text-sm font-medium text-gray-900">{proj.date_eta.slice(0,10)}</div>
+                </div>
+              )}
             </div>
           </div>
         </div>
       </div>
 
-      <div className="mt-4">
-        {isLoading? <div className="h-24 bg-gray-100 animate-pulse rounded"/> : (
-          <>
-            {tab==='overview' && (
-              <div className="grid md:grid-cols-3 gap-4">
-                <ProjectGeneralInfoCard projectId={String(id)} proj={proj||{}} />
-                <ProjectQuickEdit projectId={String(id)} proj={proj||{}} settings={settings||{}} />
-                <ProjectContactCard projectId={String(id)} proj={proj||{}} clientId={proj?.client_id ? String(proj.client_id) : undefined} clientFiles={clientFiles||[]} />
+      {/* Tab Cards */}
+      {!tab && (
+        <>
+          <div className="mb-4">
+            <ProjectTabCards availableTabs={availableTabs} onTabClick={handleTabClick} proj={proj} />
+          </div>
+
+          {/* Calendar and Costs Cards */}
+          {!proj?.is_bidding && (
+            <>
+              <div className="mb-4 grid md:grid-cols-2 gap-4">
                 <div className="rounded-xl border bg-white p-4">
-                  <h4 className="font-semibold mb-2">Estimated Time of Completion</h4>
-                  <ProjectEtaEdit projectId={String(id)} proj={proj||{}} settings={settings||{}} />
-                </div>
-                <ProjectCostsSummary projectId={String(id)} estimates={projectEstimates||[]} />
-                <div className="md:col-span-3 rounded-xl border bg-white p-4">
-                  <h4 className="font-semibold mb-2">Schedule</h4>
+                  <h4 className="font-semibold mb-3">Schedule</h4>
                   <CalendarMock title="Project Calendar" projectId={String(id)} />
                 </div>
+                <div className="rounded-xl border bg-white p-4">
+                  <h4 className="font-semibold mb-3">Costs Summary</h4>
+                  <ProjectCostsSummary projectId={String(id)} estimates={projectEstimates||[]} />
+                </div>
               </div>
-            )}
-
-            {tab==='reports' && (
-              <ReportsTabEnhanced projectId={String(id)} items={reports||[]} onRefresh={refetchReports} />
-            )}
-
-            {tab==='dispatch' && (
-              <DispatchTab projectId={String(id)} />
-            )}
-
-            {tab==='timesheet' && (
-              <TimesheetTab projectId={String(id)} />
-            )}
-
-            {tab==='files' && (
-              <ProjectFilesTab projectId={String(id)} files={files||[]} onRefresh={refetchFiles} />
-            )}
-
-            {tab==='photos' && (
-              <PhotosTab files={(files||[]).filter(f=> (f.is_image===true) || String(f.content_type||'').startsWith('image/'))} />
-            )}
-
-            {tab==='proposal' && (
-              <ProjectProposalTab projectId={String(id)} clientId={String(proj?.client_id||'')} siteId={String(proj?.site_id||'')} proposals={proposals||[]} statusLabel={proj?.status_label||''} settings={settings||{}} />
-            )}
-
-            {tab==='estimate' && (
-              <div className="rounded-xl border bg-white p-4">
-                <EstimateBuilder ref={estimateBuilderRef} projectId={String(id)} statusLabel={proj?.status_label||''} settings={settings||{}} />
+              
+              {/* Last Reports and Project Team Cards */}
+              <div className="mb-4 grid md:grid-cols-2 gap-4">
+                <LastReportsCard reports={reports||[]} />
+                <ProjectTeamCard projectId={String(id)} employees={employees||[]} />
               </div>
-            )}
+            </>
+          )}
+        </>
+      )}
 
-            {tab==='orders' && (
-              <OrdersTab projectId={String(id)} project={proj||{id: String(id)}} />
-            )}
-          </>
-        )}
-      </div>
+      {/* Convert to Project Button (for opportunities) */}
+      {!tab && proj?.is_bidding && (
+        <div className="mb-4">
+          <button onClick={async()=>{
+            const result = await confirm({
+              title: 'Convert to Project',
+              message: `Are you sure you want to convert "${proj?.name||'this opportunity'}" to an active project? This will enable all project features including reports, schedule, timesheet, photos, and orders.`,
+              confirmText: 'Convert',
+              cancelText: 'Cancel'
+            });
+            if (result !== 'confirm') return;
+            try {
+              const response = await api('POST', `/projects/${encodeURIComponent(String(id||''))}/convert-to-project`);
+              if (response) {
+                await Promise.all([
+                  queryClient.invalidateQueries({ queryKey: ['project', id] }),
+                  queryClient.invalidateQueries({ queryKey: ['clientProjects'] }),
+                  queryClient.invalidateQueries({ queryKey: ['clientOpportunities'] }),
+                  queryClient.invalidateQueries({ queryKey: ['projects'] }),
+                  queryClient.invalidateQueries({ queryKey: ['opportunities'] })
+                ]);
+                toast.success('Opportunity converted to project');
+                nav(`/projects/${encodeURIComponent(String(id||''))}`, { replace: true });
+              }
+            } catch (e: any) {
+              console.error('Failed to convert opportunity:', e);
+              toast.error(e?.response?.data?.detail || e?.message || 'Failed to convert opportunity');
+            }
+          }} className="px-4 py-2 rounded bg-green-600 hover:bg-green-700 text-white text-sm font-medium">Convert to Project</button>
+        </div>
+      )}
+
+      {/* Danger Zone */}
+      {!tab && (
+        <div className="mt-6 rounded-xl border border-red-200 bg-red-50 p-4">
+          <h3 className="text-sm font-semibold text-red-900 mb-3">Danger Zone</h3>
+          <div className="flex gap-3">
+            <button onClick={async()=>{
+              const result = await confirm({ 
+                title: proj?.is_bidding ? 'Delete Opportunity' : 'Delete Project', 
+                message: `Are you sure you want to delete "${proj?.name||(proj?.is_bidding ? 'this opportunity' : 'this project')}"? This action cannot be undone.${proj?.is_bidding ? '' : ' All related data (updates, reports, timesheets) will also be deleted.'}`,
+                confirmText: 'Delete',
+                cancelText: 'Cancel'
+              });
+              if (result !== 'confirm') return;
+              try{
+                await api('DELETE', `/projects/${encodeURIComponent(String(id||''))}`);
+                toast.success(proj?.is_bidding ? 'Opportunity deleted' : 'Project deleted');
+                if(proj?.client_id){
+                  nav(`/customers/${encodeURIComponent(String(proj?.client_id))}`);
+                } else {
+                  nav(proj?.is_bidding ? '/opportunities' : '/projects');
+                }
+              }catch(_e){ toast.error(proj?.is_bidding ? 'Failed to delete opportunity' : 'Failed to delete project'); }
+            }} className="px-4 py-2 rounded bg-red-600 hover:bg-red-700 text-white text-sm font-medium">{proj?.is_bidding ? 'Delete Opportunity' : 'Delete Project'}</button>
+            <button 
+              onClick={() => setShowAuditLogModal(true)}
+              className="px-4 py-2 rounded border border-red-300 bg-white hover:bg-red-50 text-red-700 text-sm font-medium"
+            >
+              Audit Log
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Tab Content */}
+      {isLoading? <div className="h-24 bg-gray-100 animate-pulse rounded"/> : (
+        <>
+          {tab ? (
+            // Show tab content with back button
+            <>
+              <div className="mb-4">
+                <button 
+                  onClick={handleBackToCards}
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg border bg-white hover:bg-gray-50 text-gray-700 font-medium"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                  </svg>
+                  Back to {proj?.is_bidding ? 'Opportunity' : 'Project'} Overview
+                </button>
+              </div>
+              {tab==='overview' && (
+                <div className="grid md:grid-cols-3 gap-4">
+                  <ProjectGeneralInfoCard projectId={String(id)} proj={proj||{}} />
+                  <ProjectQuickEdit projectId={String(id)} proj={proj||{}} settings={settings||{}} />
+                  <ProjectContactCard projectId={String(id)} proj={proj||{}} clientId={proj?.client_id ? String(proj.client_id) : undefined} clientFiles={clientFiles||[]} />
+                  <div className="rounded-xl border bg-white p-4">
+                    <h4 className="font-semibold mb-2">Estimated Time of Completion</h4>
+                    <ProjectEtaEdit projectId={String(id)} proj={proj||{}} settings={settings||{}} />
+                  </div>
+                  <ProjectCostsSummary projectId={String(id)} estimates={projectEstimates||[]} />
+                  {!proj?.is_bidding && (
+                    <div className="md:col-span-3 rounded-xl border bg-white p-4">
+                      <h4 className="font-semibold mb-2">Schedule</h4>
+                      <CalendarMock title="Project Calendar" projectId={String(id)} />
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {tab==='reports' && (
+                <ReportsTabEnhanced projectId={String(id)} items={reports||[]} onRefresh={refetchReports} />
+              )}
+
+              {tab==='dispatch' && (
+                <DispatchTab projectId={String(id)} />
+              )}
+
+              {tab==='timesheet' && (
+                <TimesheetTab projectId={String(id)} />
+              )}
+
+              {tab==='files' && (
+                <ProjectFilesTab projectId={String(id)} files={files||[]} onRefresh={refetchFiles} />
+              )}
+
+              {tab==='photos' && (
+                <PhotosTab files={(files||[]).filter(f=> (f.is_image===true) || String(f.content_type||'').startsWith('image/'))} />
+              )}
+
+              {tab==='proposal' && (
+                <ProjectProposalTab projectId={String(id)} clientId={String(proj?.client_id||'')} siteId={String(proj?.site_id||'')} proposals={proposals||[]} statusLabel={proj?.status_label||''} settings={settings||{}} />
+              )}
+
+              {tab==='estimate' && (
+                <div className="rounded-xl border bg-white p-4">
+                  <EstimateBuilder ref={estimateBuilderRef} projectId={String(id)} statusLabel={proj?.status_label||''} settings={settings||{}} />
+                </div>
+              )}
+
+              {tab==='orders' && (
+                <OrdersTab projectId={String(id)} project={proj||{id: String(id)}} />
+              )}
+            </>
+          ) : null}
+        </>
+      )}
+
+      {showOnSiteLeadsModal && !proj?.is_bidding && (
+        <OnSiteLeadsModal
+          projectId={String(id||'')}
+          originalDivisions={proj?.division_ids || []}
+          divisionLeads={proj?.division_onsite_leads || {}}
+          settings={settings||{}}
+          employees={employees||[]}
+          onClose={() => setShowOnSiteLeadsModal(false)}
+          onUpdate={async (updatedLeads, updatedDivisions) => {
+            try {
+              await api('PATCH', `/projects/${encodeURIComponent(String(id||''))}`, { 
+                division_onsite_leads: updatedLeads,
+                division_ids: updatedDivisions
+              });
+              await queryClient.invalidateQueries({ queryKey: ['project', id] });
+              toast.success('On-site leads updated');
+            } catch (e: any) {
+              toast.error('Failed to update on-site leads');
+            }
+          }}
+        />
+      )}
 
       {pickerOpen && (
         <ImagePicker isOpen={true} onClose={()=>setPickerOpen(false)} clientId={String(proj?.client_id||'')} targetWidth={800} targetHeight={800} allowEdit={true} onConfirm={async(blob)=>{
@@ -371,44 +567,299 @@ function UpdatesTab({ projectId, items, onRefresh }:{ projectId:string, items: U
 }
 
 function ReportsTabEnhanced({ projectId, items, onRefresh }:{ projectId:string, items: Report[], onRefresh: ()=>any }){
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [previewAttachment, setPreviewAttachment] = useState<{file_object_id: string, original_name: string, content_type: string}|null>(null);
+  const { data:me } = useQuery({ queryKey:['me'], queryFn: ()=>api<any>('GET','/auth/me') });
+  const { data:settings } = useQuery({ queryKey:['settings'], queryFn: ()=>api<any>('GET','/settings') });
+  const avatar = me?.profile_photo_file_id ? `/files/${me.profile_photo_file_id}/thumbnail?w=64` : '/ui/assets/login/logo-light.svg';
+  
+  const reportCategories = (settings?.report_categories || []) as any[];
+
+  const sortedReports = useMemo(() => {
+    return [...items].sort((a, b) => {
+      const dateA = a.created_at ? new Date(a.created_at).getTime() : 0;
+      const dateB = b.created_at ? new Date(b.created_at).getTime() : 0;
+      return dateB - dateA;
+    });
+  }, [items]);
+
+
+  const getAttachmentIcon = (contentType: string, originalName: string) => {
+    const isImage = contentType?.startsWith('image/') || /\.(jpg|jpeg|png|gif|webp)$/i.test(originalName);
+    if (isImage) return '📷';
+    if (contentType?.includes('pdf')) return '📄';
+    if (contentType?.includes('word') || /\.(doc|docx)$/i.test(originalName)) return '📝';
+    if (contentType?.includes('excel') || /\.(xls|xlsx)$/i.test(originalName)) return '📊';
+    return '📎';
+  };
+
+  const handleAttachmentClick = async (attachment: any) => {
+    try {
+      const isImage = attachment.content_type?.startsWith('image/') || /\.(jpg|jpeg|png|gif|webp)$/i.test(attachment.original_name);
+      if (isImage) {
+        setPreviewAttachment(attachment);
+      } else {
+        const r: any = await api('GET', `/files/${attachment.file_object_id}/download`);
+        if (r.download_url) {
+          window.open(r.download_url, '_blank');
+        }
+      }
+    } catch (e: any) {
+      toast.error('Failed to open attachment');
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h3 className="text-lg font-semibold">Project Reports</h3>
+        <button
+          onClick={() => setShowCreateModal(true)}
+          className="px-4 py-2 rounded bg-brand-red hover:bg-red-700 text-white text-sm font-medium flex items-center gap-2"
+        >
+          <span>+</span>
+          <span>New Report</span>
+        </button>
+      </div>
+
+      <div className="rounded-xl border bg-white divide-y">
+        {sortedReports.length ? sortedReports.map(r => {
+          const reportDate = r.created_at ? new Date(r.created_at) : null;
+          const categoryLabel = reportCategories.find(c => c.value === r.category_id)?.label || r.category_id || 'General';
+          const attachments = r.images?.attachments || [];
+          
+          return (
+            <div key={r.id} className="p-4 hover:bg-gray-50 transition-colors">
+              <div className="flex items-start gap-3">
+                <img src={avatar} className="w-10 h-10 rounded-full flex-shrink-0" alt={me?.username || 'User'} />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="font-semibold text-sm text-gray-900">{me?.name || me?.username || 'Project Lead'}</span>
+                    <span className="text-xs text-gray-500">•</span>
+                    <span className="text-xs text-gray-500">
+                      {reportDate ? reportDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : ''}
+                    </span>
+                    {r.category_id && (
+                      <>
+                        <span className="text-xs text-gray-500">•</span>
+                        <span className="text-xs px-2 py-0.5 rounded bg-blue-100 text-blue-700 font-medium">
+                          {reportCategories.find(c => (c.value || c.label) === r.category_id)?.label || r.category_id}
+                        </span>
+                      </>
+                    )}
+                  </div>
+                  <div className="text-sm text-gray-800 whitespace-pre-wrap mb-2">{r.description || ''}</div>
+                  {attachments.length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {attachments.map((a: any, i: number) => (
+                        <button
+                          key={i}
+                          onClick={() => handleAttachmentClick(a)}
+                          className="flex items-center gap-2 px-2 py-1 rounded border bg-white hover:bg-gray-50 text-sm text-gray-700"
+                        >
+                          <span className="text-base">{getAttachmentIcon(a.content_type || '', a.original_name || '')}</span>
+                          <span className="text-xs">{a.original_name || 'attachment'}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <button
+                  onClick={async () => {
+                    if (!confirm('Delete this report?')) return;
+                    try {
+                      await api('DELETE', `/projects/${projectId}/reports/${r.id}`);
+                      await onRefresh();
+                      toast.success('Report deleted');
+                    } catch (_e) {
+                      toast.error('Failed to delete report');
+                    }
+                  }}
+                  className="px-2 py-1 rounded text-gray-500 hover:bg-red-50 hover:text-red-600 text-sm flex-shrink-0"
+                  title="Delete report"
+                >
+                  🗑️
+                </button>
+              </div>
+            </div>
+          );
+        }) : (
+          <div className="p-8 text-center text-gray-500">
+            <div className="text-lg mb-2">No reports yet</div>
+            <div className="text-sm">Click "New Report" to create your first project report</div>
+          </div>
+        )}
+      </div>
+
+      {showCreateModal && (
+        <CreateReportModal
+          projectId={projectId}
+          reportCategories={reportCategories}
+          onClose={() => setShowCreateModal(false)}
+          onSuccess={async () => {
+            setShowCreateModal(false);
+            await onRefresh();
+            toast.success('Report created');
+          }}
+        />
+      )}
+
+      {previewAttachment && (
+        <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4" onClick={() => setPreviewAttachment(null)}>
+          <div className="max-w-4xl max-h-[90vh] bg-white rounded-lg overflow-hidden" onClick={(e) => e.stopPropagation()}>
+            <div className="p-4 border-b flex items-center justify-between">
+              <h3 className="font-semibold">{previewAttachment.original_name}</h3>
+              <button
+                onClick={() => setPreviewAttachment(null)}
+                className="text-2xl font-bold text-gray-400 hover:text-gray-600"
+              >
+                ×
+              </button>
+            </div>
+            <div className="p-4 overflow-auto max-h-[calc(90vh-80px)]">
+              <img
+                src={`/files/${previewAttachment.file_object_id}/thumbnail?w=1200`}
+                alt={previewAttachment.original_name}
+                className="max-w-full h-auto"
+              />
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CreateReportModal({ projectId, reportCategories, onClose, onSuccess }: {
+  projectId: string,
+  reportCategories: any[],
+  onClose: () => void,
+  onSuccess: () => Promise<void>
+}){
   const [category, setCategory] = useState('');
   const [desc, setDesc] = useState('');
   const [file, setFile] = useState<File|null>(null);
-  const { data:me } = useQuery({ queryKey:['me'], queryFn: ()=>api<any>('GET','/auth/me') });
-  const avatar = me?.profile_photo_file_id ? `/files/${me.profile_photo_file_id}/thumbnail?w=64` : '/ui/assets/login/logo-light.svg';
+  const { data:project } = useQuery({ queryKey:['project', projectId], queryFn: ()=>api<any>('GET', `/projects/${projectId}`) });
+
+  const handleCreate = async () => {
+    if (!desc.trim()) {
+      toast.error('Please enter a description');
+      return;
+    }
+    try {
+      let imgMeta: any = undefined;
+      if (file) {
+        const up: any = await api('POST', '/files/upload', {
+          project_id: projectId,
+          client_id: project?.client_id || null,
+          employee_id: null,
+          category_id: 'project-report',
+          original_name: file.name,
+          content_type: file.type || 'application/octet-stream'
+        });
+        await fetch(up.upload_url, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': file.type || 'application/octet-stream',
+            'x-ms-blob-type': 'BlockBlob'
+          },
+          body: file
+        });
+        const conf: any = await api('POST', '/files/confirm', {
+          key: up.key,
+          size_bytes: file.size,
+          checksum_sha256: 'na',
+          content_type: file.type || 'application/octet-stream'
+        });
+        imgMeta = {
+          file_object_id: conf.id,
+          original_name: file.name,
+          content_type: file.type || 'application/octet-stream'
+        };
+      }
+      await api('POST', `/projects/${projectId}/reports`, {
+        category_id: category || null,
+        description: desc,
+        images: imgMeta ? { attachments: [imgMeta] } : undefined
+      });
+      setCategory('');
+      setDesc('');
+      setFile(null);
+      await onSuccess();
+    } catch (_e) {
+      toast.error('Failed to create report');
+    }
+  };
+
   return (
-    <div className="grid md:grid-cols-3 gap-4">
-      <div className="md:col-span-1 rounded-xl border bg-white p-4">
-        <h4 className="font-semibold mb-3">New Report</h4>
-        <div className="flex items-center gap-2 mb-2"><img src={avatar} className="w-6 h-6 rounded-full" /><span className="text-sm">{me?.username||'me'}</span></div>
-        <input className="w-full border rounded px-3 py-2 mb-2" placeholder="Category" value={category} onChange={e=>setCategory(e.target.value)} />
-        <textarea className="w-full border rounded px-3 py-2 h-28" placeholder="Description" value={desc} onChange={e=>setDesc(e.target.value)} />
-        <div className="mt-2 flex items-center gap-2"><input type="file" onChange={e=>setFile(e.target.files?.[0]||null)} /><span className="text-[11px] text-gray-500">(optional)</span></div>
-        <div className="mt-3 text-right"><button onClick={async()=>{ try{ let imgMeta:any = undefined; if(file){ const up:any = await api('POST','/files/upload',{ project_id: projectId, client_id:null, employee_id:null, category_id:'project-report', original_name:file.name, content_type: file.type||'application/octet-stream' }); await fetch(up.upload_url, { method:'PUT', headers:{ 'Content-Type': file.type||'application/octet-stream', 'x-ms-blob-type': 'BlockBlob' }, body: file }); const conf:any = await api('POST','/files/confirm',{ key: up.key, size_bytes: file.size, checksum_sha256:'na', content_type: file.type||'application/octet-stream' }); imgMeta = { file_object_id: conf.id, original_name: file.name, content_type: file.type||'application/octet-stream' }; }
-          await api('POST', `/projects/${projectId}/reports`, { category_id: category||null, description: desc||null, images: imgMeta? { attachments:[imgMeta] } : undefined }); setCategory(''); setDesc(''); setFile(null); await onRefresh(); toast.success('Report created'); }catch(_e){ toast.error('Failed'); } }} className="px-3 py-2 rounded bg-brand-red text-white">Create Report</button></div>
-      </div>
-      <div className="md:col-span-2 rounded-xl border bg-white divide-y">
-        {items.length? items.map(r=> (
-          <div key={r.id} className="p-3 text-sm">
-            <div className="flex items-start justify-between">
-              <div className="flex items-start gap-2">
-                <img src={avatar} className="w-6 h-6 rounded-full" />
-                <div>
-                  <div className="text-gray-800 whitespace-pre-wrap">{r.description||''}</div>
-                  <div className="text-[11px] text-gray-500">{(r as any).created_at? String((r as any).created_at).slice(0,19).replace('T',' ') : ''} · {r.category_id||''}</div>
-                  {r.images?.attachments?.length? (
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      {r.images.attachments.map((a:any, i:number)=> (
-                        <a key={i} href={`/files/${a.file_object_id}/download`} target="_blank" className="text-[11px] underline">{a.original_name||'attachment'}</a>
-                      ))}
-                    </div>
-                  ) : null}
+    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
+      <div className="bg-white rounded-xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+        <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] p-6 flex items-center justify-between flex-shrink-0">
+          <h2 className="text-xl font-semibold text-white">Create Project Report</h2>
+          <button
+            onClick={onClose}
+            className="text-2xl font-bold text-white hover:text-gray-200 w-8 h-8 flex items-center justify-center rounded hover:bg-white/20"
+          >
+            ×
+          </button>
+        </div>
+        <div className="p-6 overflow-y-auto flex-1">
+          <div className="space-y-4">
+            <div>
+              <label className="text-xs text-gray-600 block mb-1">Category</label>
+              <select
+                className="w-full border rounded px-3 py-2 text-sm"
+                value={category}
+                onChange={e => setCategory(e.target.value)}
+              >
+                <option value="">Select category...</option>
+                {reportCategories.map(cat => (
+                  <option key={cat.id || cat.value || cat.label} value={cat.value || cat.label}>{cat.label}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs text-gray-600 block mb-1">Description *</label>
+              <textarea
+                className="w-full border rounded px-3 py-2 text-sm"
+                rows={6}
+                placeholder="Describe what happened, how the day went, or any events on site..."
+                value={desc}
+                onChange={e => setDesc(e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="text-xs text-gray-600 block mb-1">Attachment (optional)</label>
+              <input
+                type="file"
+                onChange={e => setFile(e.target.files?.[0] || null)}
+                className="w-full border rounded px-3 py-2 text-sm"
+                accept="image/*,.pdf,.doc,.docx"
+              />
+              {file && (
+                <div className="mt-2 text-sm text-gray-600 flex items-center gap-2">
+                  <span>📎</span>
+                  <span>{file.name}</span>
+                  <button onClick={() => setFile(null)} className="text-red-600 hover:text-red-700">×</button>
                 </div>
-              </div>
-              <button onClick={async()=>{ if(!confirm('Delete this report?')) return; try{ await api('DELETE', `/projects/${projectId}/reports/${r.id}`); await onRefresh(); toast.success('Deleted'); }catch(_e){ toast.error('Failed'); } }} className="px-2 py-1 rounded bg-gray-100">Delete</button>
+              )}
             </div>
           </div>
-        )) : <div className="p-3 text-sm text-gray-600">No reports yet</div>}
+        </div>
+        <div className="p-4 border-t bg-gray-50 flex justify-end gap-2 flex-shrink-0">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 rounded border bg-white hover:bg-gray-50 text-gray-700 text-sm font-medium"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleCreate}
+            className="px-4 py-2 rounded bg-brand-red hover:bg-red-700 text-white text-sm font-medium"
+          >
+            Create Report
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -1934,16 +2385,344 @@ function TimesheetAuditSection({ projectId }:{ projectId:string }){
   );
 }
 
+function OnSiteLeadsModal({ projectId, originalDivisions, divisionLeads, settings, employees, onClose, onUpdate }: {
+  projectId: string,
+  originalDivisions: string[],
+  divisionLeads: Record<string, string>,
+  settings: any,
+  employees: any[],
+  onClose: () => void,
+  onUpdate: (updatedLeads: Record<string, string>, updatedDivisions: string[]) => Promise<void>
+}){
+  const [localDivisions, setLocalDivisions] = useState<string[]>(originalDivisions);
+  const [localLeads, setLocalLeads] = useState<Record<string, string>>(divisionLeads);
+  const [isSaving, setIsSaving] = useState(false);
+  const [showAddDropdown, setShowAddDropdown] = useState(false);
+
+  useEffect(() => {
+    setLocalDivisions(originalDivisions);
+    setLocalLeads(divisionLeads);
+  }, [originalDivisions, divisionLeads]);
+
+  const allAvailableDivisions = (settings?.divisions||[]).map((d:any) => String(d.id||d.label||d.value));
+  const availableToAdd = allAvailableDivisions.filter((divId: string) => !localDivisions.includes(divId));
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    if (!showAddDropdown) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (!target.closest('.on-site-leads-modal')) {
+        setShowAddDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showAddDropdown]);
+
+  const handleLeadChange = async (divId: string, leadId: string) => {
+    const updated = { ...localLeads, [divId]: leadId };
+    setLocalLeads(updated);
+    setIsSaving(true);
+    try {
+      await onUpdate(updated, localDivisions);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleAddDivision = async (divId: string) => {
+    const updated = [...localDivisions, divId];
+    setLocalDivisions(updated);
+    setShowAddDropdown(false);
+    setIsSaving(true);
+    try {
+      await onUpdate(localLeads, updated);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleRemoveDivision = async (divId: string) => {
+    // Only allow removing divisions that were added manually (not in original)
+    if (originalDivisions.includes(divId)) {
+      toast.error('Cannot remove original project divisions');
+      return;
+    }
+    const updated = localDivisions.filter(d => d !== divId);
+    const updatedLeads = { ...localLeads };
+    delete updatedLeads[divId];
+    setLocalDivisions(updated);
+    setLocalLeads(updatedLeads);
+    setIsSaving(true);
+    try {
+      await onUpdate(updatedLeads, updated);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  if (localDivisions.length === 0 && availableToAdd.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
+      <div className="bg-white rounded-xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col on-site-leads-modal">
+        <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] p-6 flex items-center justify-between flex-shrink-0">
+          <h2 className="text-xl font-semibold text-white">On-site Leads by Division</h2>
+          <button
+            onClick={onClose}
+            className="text-2xl font-bold text-white hover:text-gray-200 w-8 h-8 flex items-center justify-center rounded hover:bg-white/20"
+          >
+            ×
+          </button>
+        </div>
+        <div className="p-6 overflow-y-auto flex-1">
+          <div className="flex items-center justify-between mb-4">
+            <div className="text-sm text-gray-600">
+              {localDivisions.length} division{localDivisions.length !== 1 ? 's' : ''} configured
+            </div>
+            <div className="flex items-center gap-2">
+              {isSaving && <span className="text-xs text-gray-500">Saving...</span>}
+              {availableToAdd.length > 0 && (
+                <div className="relative">
+                  <button
+                    onClick={() => setShowAddDropdown(!showAddDropdown)}
+                    className="px-3 py-1.5 rounded bg-blue-500 hover:bg-blue-600 text-white text-sm font-medium flex items-center gap-2"
+                    title="Add division"
+                  >
+                    <span>+</span>
+                    <span>Add Division</span>
+                  </button>
+                  {showAddDropdown && (
+                    <div className="absolute top-full right-0 mt-1 bg-white border rounded-lg shadow-lg z-10 min-w-[200px] max-h-60 overflow-auto">
+                      {availableToAdd.map((divId: string) => {
+                        const div = (settings?.divisions||[]).find((d:any) => String(d.id||d.label||d.value) === divId);
+                        const divLabel = div?.meta?.abbr || div?.label || divId;
+                        return (
+                          <button
+                            key={divId}
+                            onClick={() => handleAddDivision(divId)}
+                            className="w-full text-left px-3 py-2 hover:bg-gray-50 border-b last:border-b-0 text-sm"
+                          >
+                            {divLabel}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+          <div className="space-y-3">
+            {localDivisions.map((divId: string) => {
+          const div = (settings?.divisions||[]).find((d:any) => String(d.id||d.label||d.value) === divId);
+          const divLabel = div?.meta?.abbr || div?.label || divId;
+          const divColor = div?.meta?.color || '#eef2f7';
+          const leadId = localLeads[divId] || '';
+          const lead = leadId ? employees.find((e:any) => String(e.id) === String(leadId)) : null;
+          const canRemove = !originalDivisions.includes(divId);
+          return (
+            <div key={divId} className="p-3 rounded-lg border hover:bg-gray-50 transition-colors">
+              <div className="mb-2 flex items-center justify-between">
+                <span className="px-3 py-1.5 rounded text-xs border font-semibold inline-block" style={{ backgroundColor: divColor }}>{divLabel}</span>
+                {canRemove && (
+                  <button
+                    onClick={() => handleRemoveDivision(divId)}
+                    className="w-6 h-6 rounded-full bg-red-100 hover:bg-red-200 text-red-600 flex items-center justify-center text-xs transition-colors"
+                    title="Remove division"
+                  >
+                    🗑️
+                  </button>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                <select
+                  value={leadId}
+                  onChange={(e) => handleLeadChange(divId, e.target.value)}
+                  className="flex-1 border rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-red focus:border-transparent"
+                >
+                  <option value="">Select lead...</option>
+                  {employees.map((emp:any) => (
+                    <option key={emp.id} value={emp.id}>{emp.name||emp.username}</option>
+                  ))}
+                </select>
+                {lead && (
+                  <div className="w-9 h-9 rounded-full bg-indigo-600 flex items-center justify-center text-white text-xs font-semibold flex-shrink-0">
+                    {(lead.name||lead.username||'L')[0].toUpperCase()}
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })}
+          </div>
+        </div>
+        <div className="p-4 border-t bg-gray-50 flex justify-end gap-2 flex-shrink-0">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 rounded border bg-white hover:bg-gray-50 text-gray-700 text-sm font-medium"
+          >
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function LastReportsCard({ reports }: { reports: Report[] }){
+  const recentReports = useMemo(() => {
+    return (reports||[]).slice(0, 5).sort((a, b) => {
+      const dateA = a.created_at ? new Date(a.created_at).getTime() : 0;
+      const dateB = b.created_at ? new Date(b.created_at).getTime() : 0;
+      return dateB - dateA;
+    });
+  }, [reports]);
+
+  return (
+    <div className="rounded-xl border bg-white p-4">
+      <h4 className="font-semibold mb-3">Last Reports</h4>
+      {recentReports.length > 0 ? (
+        <div className="space-y-2">
+          {recentReports.map((report) => (
+            <div key={report.id} className="p-2 rounded border hover:bg-gray-50 transition-colors">
+              <div className="text-sm font-medium text-gray-900">{report.description || 'No description'}</div>
+              {report.created_at && (
+                <div className="text-xs text-gray-500 mt-1">
+                  {new Date(report.created_at).toLocaleDateString()}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="text-sm text-gray-500">No reports yet</div>
+      )}
+    </div>
+  );
+}
+
+function ProjectTeamCard({ projectId, employees }: { projectId: string, employees: any[] }){
+  const { data: shifts = [] } = useQuery({
+    queryKey: ['projectShifts', projectId],
+    queryFn: () => projectId ? api<any[]>('GET', `/dispatch/projects/${projectId}/shifts`) : Promise.resolve([]),
+    enabled: !!projectId,
+  });
+
+  // Extract unique worker IDs from shifts
+  const workerIds = useMemo(() => {
+    const ids = new Set<string>();
+    shifts.forEach((shift: any) => {
+      if (shift.worker_id) {
+        ids.add(String(shift.worker_id));
+      }
+    });
+    return Array.from(ids);
+  }, [shifts]);
+
+  // Get employee details for these IDs
+  const teamMembers = useMemo(() => {
+    return workerIds.map(wid => employees.find((e: any) => String(e.id) === String(wid))).filter(Boolean);
+  }, [workerIds, employees]);
+
+  return (
+    <div className="rounded-xl border bg-white p-4">
+      <h4 className="font-semibold mb-3">Project Team</h4>
+      {teamMembers.length > 0 ? (
+        <div className="grid grid-cols-2 gap-2">
+          {teamMembers.map((member: any) => (
+            <div key={member.id} className="flex items-center gap-2 p-2 rounded border hover:bg-gray-50 transition-colors">
+              <div className="w-8 h-8 rounded-full bg-indigo-600 flex items-center justify-center text-white text-xs font-semibold flex-shrink-0">
+                {(member.name||member.username||'U')[0].toUpperCase()}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-medium text-gray-900 truncate">{member.name||member.username}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="text-sm text-gray-500">No team members assigned yet</div>
+      )}
+    </div>
+  );
+}
+
+function ProjectTabCards({ availableTabs, onTabClick, proj }: { 
+  availableTabs: readonly ('overview'|'reports'|'dispatch'|'timesheet'|'files'|'photos'|'proposal'|'estimate'|'orders')[], 
+  onTabClick: (tab: typeof availableTabs[number]) => void,
+  proj: any 
+}){
+  const tabConfig: Record<string, { label: string, icon: string, description: string, color: string }> = {
+    reports: { label: 'Reports', icon: '📝', description: 'Project reports and updates', color: 'bg-green-100 text-green-600' },
+    dispatch: { label: 'Schedule', icon: '📅', description: 'Project schedule and calendar', color: 'bg-purple-100 text-purple-600' },
+    timesheet: { label: 'Timesheet', icon: '⏰', description: 'Time tracking and hours', color: 'bg-orange-100 text-orange-600' },
+    files: { label: 'Files', icon: '📁', description: 'Documents and files', color: 'bg-gray-100 text-gray-600' },
+    photos: { label: 'Photos', icon: '📷', description: 'Project photos and images', color: 'bg-pink-100 text-pink-600' },
+    proposal: { label: 'Proposal', icon: '📄', description: 'Project proposals', color: 'bg-indigo-100 text-indigo-600' },
+    estimate: { label: 'Estimate', icon: '💰', description: 'Cost estimates and budgets', color: 'bg-yellow-100 text-yellow-600' },
+    orders: { label: 'Orders', icon: '🛒', description: 'Purchase orders and supplies', color: 'bg-red-100 text-red-600' },
+  };
+
+  // Filter out 'overview' from available tabs since we're already on overview
+  const tabsToShow = availableTabs.filter(t => t !== 'overview');
+
+  return (
+    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-2 xl:grid-cols-3 gap-3">
+      {tabsToShow.map(tabKey => {
+        const config = tabConfig[tabKey];
+        if (!config) return null;
+        return (
+          <button
+            key={tabKey}
+            onClick={() => onTabClick(tabKey)}
+            className="rounded-lg border bg-white p-4 hover:shadow-md transition-all text-left group"
+          >
+            <div className="flex items-center gap-3">
+              <div className={`w-12 h-12 rounded-lg ${config.color} flex items-center justify-center text-xl flex-shrink-0 group-hover:scale-110 transition-transform`}>
+                {config.icon}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="font-semibold text-base text-gray-900 mb-0.5">{config.label}</div>
+                <div className="text-xs text-gray-500 line-clamp-1">{config.description}</div>
+              </div>
+            </div>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 function ProjectQuickEdit({ projectId, proj, settings }:{ projectId:string, proj:any, settings:any }){
   const [status, setStatus] = useState<string>(proj?.status_label||'');
   const [divs, setDivs] = useState<string[]>(Array.isArray(proj?.division_ids)? proj.division_ids : []);
   const [progress, setProgress] = useState<number>(Number(proj?.progress||0));
   const [estimator, setEstimator] = useState<string>(proj?.estimator_id||'');
-  const [lead, setLead] = useState<string>(proj?.onsite_lead_id||'');
+  const [divisionLeads, setDivisionLeads] = useState<Record<string, string>>(proj?.division_onsite_leads || {});
   const statuses = (settings?.project_statuses||[]) as any[];
   const divisions = (settings?.divisions||[]) as any[];
   const { data:employees } = useQuery({ queryKey:['employees'], queryFn: ()=>api<any[]>('GET','/employees') });
-  const toggleDiv = (id:string)=> setDivs(prev=> prev.includes(id)? prev.filter(x=>x!==id) : [...prev, id]);
+  const toggleDiv = (id:string)=> {
+    setDivs(prev=> {
+      const newDivs = prev.includes(id)? prev.filter(x=>x!==id) : [...prev, id];
+      // Remove lead for division if division is removed
+      if (prev.includes(id) && !newDivs.includes(id)) {
+        setDivisionLeads(prevLeads => {
+          const newLeads = { ...prevLeads };
+          delete newLeads[id];
+          return newLeads;
+        });
+      }
+      return newDivs;
+    });
+  };
+  const setDivisionLead = (divisionId: string, leadId: string) => {
+    setDivisionLeads(prev => ({ ...prev, [divisionId]: leadId }));
+  };
   return (
     <div className="rounded-xl border bg-white p-4">
       <h4 className="font-semibold mb-2">Quick Edit</h4>
@@ -1977,9 +2756,60 @@ function ProjectQuickEdit({ projectId, proj, settings }:{ projectId:string, proj
           </div>
         </div>
         <EmployeeSelect label="Estimator" value={estimator} onChange={setEstimator} employees={employees||[]} />
-        <EmployeeSelect label="On-site lead" value={lead} onChange={setLead} employees={employees||[]} />
+        {!proj?.is_bidding && divs.length > 0 && (
+          <div className="col-span-2">
+            <label className="text-xs text-gray-600 mb-2 block">On-site Leads by Division</label>
+            <div className="space-y-2">
+              {divs.map((divId) => {
+                const div = divisions.find((d:any) => String(d.id||d.label||d.value) === divId);
+                const divLabel = div?.meta?.abbr || div?.label || divId;
+                const divColor = div?.meta?.color || '#eef2f7';
+                return (
+                  <div key={divId} className="flex items-center gap-2">
+                    <span className="px-2 py-1 rounded text-xs border flex-shrink-0" style={{ backgroundColor: divColor, minWidth: '60px', textAlign: 'center' }}>{divLabel}</span>
+                    <select 
+                      className="flex-1 border rounded px-2 py-1.5 text-sm" 
+                      value={divisionLeads[divId] || ''} 
+                      onChange={e => setDivisionLead(divId, e.target.value)}
+                    >
+                      <option value="">Select on-site lead...</option>
+                      {(employees||[]).map((emp:any) => (
+                        <option key={emp.id} value={emp.id}>{emp.name||emp.username}</option>
+                      ))}
+                    </select>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
         <div className="col-span-2 text-right">
-          <button onClick={async()=>{ try{ await api('PATCH', `/projects/${projectId}`, { status_label: status||null, division_ids: divs, progress, estimator_id: estimator||null, onsite_lead_id: lead||null }); toast.success('Saved'); location.reload(); }catch(_e){ toast.error('Failed to save'); } }} className="px-3 py-2 rounded bg-brand-red text-white">Save</button>
+          <button onClick={async()=>{ 
+            try{ 
+              // Clean up division_onsite_leads to only include divisions that are still selected
+              const cleanedLeads: Record<string, string> = {};
+              divs.forEach(divId => {
+                if (divisionLeads[divId]) {
+                  cleanedLeads[divId] = divisionLeads[divId];
+                }
+              });
+              const payload: any = { 
+                status_label: status||null, 
+                division_ids: divs, 
+                progress, 
+                estimator_id: estimator||null
+              };
+              // Only include division_onsite_leads if not a bidding
+              if (!proj?.is_bidding) {
+                payload.division_onsite_leads = cleanedLeads;
+              }
+              await api('PATCH', `/projects/${projectId}`, payload); 
+              toast.success('Saved'); 
+              location.reload(); 
+            }catch(_e){ 
+              toast.error('Failed to save'); 
+            } 
+          }} className="px-3 py-2 rounded bg-brand-red text-white">Save</button>
         </div>
       </div>
     </div>

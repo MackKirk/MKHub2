@@ -92,7 +92,7 @@ def create_project(payload: dict, db: Session = Depends(get_db)):
 
 
 @router.get("")
-def list_projects(client: Optional[str] = None, site: Optional[str] = None, status: Optional[str] = None, q: Optional[str] = None, year: Optional[int] = None, db: Session = Depends(get_db)):
+def list_projects(client: Optional[str] = None, site: Optional[str] = None, status: Optional[str] = None, q: Optional[str] = None, year: Optional[int] = None, is_bidding: Optional[bool] = None, db: Session = Depends(get_db)):
     query = db.query(Project)
     if client:
         query = query.filter(Project.client_id == client)
@@ -106,6 +106,8 @@ def list_projects(client: Optional[str] = None, site: Optional[str] = None, stat
     if year:
         from sqlalchemy import extract
         query = query.filter(extract('year', Project.created_at) == int(year))
+    if is_bidding is not None:
+        query = query.filter(Project.is_bidding == is_bidding)
     return [
         {
             "id": str(p.id),
@@ -119,6 +121,7 @@ def list_projects(client: Optional[str] = None, site: Optional[str] = None, stat
             "progress": getattr(p, 'progress', None),
             "status_label": getattr(p, 'status_label', None),
             "division_ids": getattr(p, 'division_ids', None),
+            "is_bidding": getattr(p, 'is_bidding', False),
         }
         for p in query.order_by(Project.created_at.desc()).limit(100).all()
     ]
@@ -168,6 +171,7 @@ def get_project(project_id: str, db: Session = Depends(get_db)):
         "site_postal_code": getattr(site, 'site_postal_code', None),
         "estimator_id": getattr(p, 'estimator_id', None),
         "onsite_lead_id": str(getattr(p, 'onsite_lead_id', None)) if getattr(p, 'onsite_lead_id', None) else None,
+        "division_onsite_leads": getattr(p, 'division_onsite_leads', None) or {},
         "contact_id": getattr(p, 'contact_id', None),
         "contact_name": getattr(contact, 'name', None) if contact else None,
         "contact_email": getattr(contact, 'email', None) if contact else None,
@@ -182,6 +186,7 @@ def get_project(project_id: str, db: Session = Depends(get_db)):
         "lat": float(p.lat) if getattr(p, 'lat', None) is not None else None,
         "lng": float(p.lng) if getattr(p, 'lng', None) is not None else None,
         "timezone": getattr(p, 'timezone', None),
+        "is_bidding": getattr(p, 'is_bidding', False),
         "created_at": p.created_at.isoformat() if getattr(p, 'created_at', None) else None,
     }
 
@@ -1058,4 +1063,17 @@ def timesheet_by_user(month: Optional[str] = None, user_id: Optional[str] = None
             "is_approved": bool(getattr(r,'is_approved', False)),
         })
     return out
+
+
+@router.post("/{project_id}/convert-to-project")
+def convert_to_project(project_id: str, db: Session = Depends(get_db)):
+    """Convert a bidding to an active project"""
+    p = db.query(Project).filter(Project.id == project_id).first()
+    if not p:
+        raise HTTPException(status_code=404, detail="Not found")
+    if not getattr(p, 'is_bidding', False):
+        raise HTTPException(status_code=400, detail="This is already a project, not a bidding")
+    p.is_bidding = False
+    db.commit()
+    return {"status": "ok", "id": str(p.id)}
 

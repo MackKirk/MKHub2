@@ -157,6 +157,33 @@ def create_app() -> FastAPI:
                     db.close()
             except Exception as e:
                 print(f"⚠️  Could not check/seed permissions on startup: {e}")
+            # Seed report categories if they don't exist
+            try:
+                from .models.models import SettingList, SettingItem
+                db = SessionLocal()
+                try:
+                    setting_list = db.query(SettingList).filter(SettingList.name == "report_categories").first()
+                    if not setting_list:
+                        # Import and run seed function
+                        import sys
+                        import os
+                        sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+                        from scripts.seed_report_categories import seed_report_categories
+                        seed_report_categories()
+                        print("✅ Report categories seeded successfully on startup")
+                    else:
+                        # Check if any categories exist
+                        count = db.query(SettingItem).filter(SettingItem.list_id == setting_list.id).count()
+                        if count == 0:
+                            from scripts.seed_report_categories import seed_report_categories
+                            seed_report_categories()
+                            print("✅ Report categories seeded successfully on startup")
+                except Exception as e:
+                    print(f"⚠️  Could not seed report categories on startup: {e}")
+                finally:
+                    db.close()
+            except Exception as e:
+                print(f"⚠️  Could not check/seed report categories on startup: {e}")
         # Lightweight dev-time migrations (PostgreSQL): add missing columns safely
         try:
             # SQLite lightweight migrations for local dev
@@ -318,6 +345,26 @@ def create_app() -> FastAPI:
                             conn.execute(text("ALTER TABLE project_events ADD COLUMN overrides TEXT"))
                         except Exception:
                             pass
+                        # Migrate project_reports category_id from UUID to TEXT for SQLite
+                        try:
+                            # SQLite doesn't have strict types, but we need to ensure the column exists as TEXT
+                            # If it was created as UUID (stored as TEXT), we can just ensure it exists
+                            conn.execute(text("ALTER TABLE project_reports ADD COLUMN category_id TEXT"))
+                        except Exception:
+                            # Column might already exist, try to recreate it if needed
+                            try:
+                                # SQLite doesn't support ALTER COLUMN, so we'd need to recreate the table
+                                # But for now, just ensure the column exists - existing data will work
+                                pass
+                            except Exception:
+                                pass
+                        # Migrate project_reports description to TEXT for SQLite (no-op since SQLite is already TEXT)
+                        # SQLite doesn't have strict VARCHAR limits, so this is mainly for consistency
+                        try:
+                            conn.execute(text("ALTER TABLE project_reports ADD COLUMN description TEXT"))
+                        except Exception:
+                            # Column already exists, which is fine
+                            pass
                         # Dispatch & Time Tracking tables for SQLite
                         # Add fields to projects table
                         try:
@@ -347,6 +394,14 @@ def create_app() -> FastAPI:
                             pass
                         try:
                             conn.execute(text("ALTER TABLE projects ADD COLUMN status TEXT"))
+                        except Exception:
+                            pass
+                        try:
+                            conn.execute(text("ALTER TABLE projects ADD COLUMN is_bidding INTEGER DEFAULT 0"))
+                        except Exception:
+                            pass
+                        try:
+                            conn.execute(text("ALTER TABLE projects ADD COLUMN division_onsite_leads TEXT"))
                         except Exception:
                             pass
                         # Add fields to users table
@@ -921,6 +976,27 @@ def create_app() -> FastAPI:
                     # Extend project reports with audit fields
                     conn.execute(text("ALTER TABLE project_reports ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW()"))
                     conn.execute(text("ALTER TABLE project_reports ADD COLUMN IF NOT EXISTS created_by UUID"))
+                    # Migrate category_id from UUID to VARCHAR for report categories from settings
+                    # PostgreSQL: Since we're changing from UUID to VARCHAR and there's no data to preserve,
+                    # we can safely drop and recreate the column
+                    try:
+                        # Try to drop the old UUID column (will fail silently if it doesn't exist or is already VARCHAR)
+                        conn.execute(text("ALTER TABLE project_reports DROP COLUMN IF EXISTS category_id"))
+                    except Exception:
+                        pass
+                    try:
+                        # Add the new VARCHAR column
+                        conn.execute(text("ALTER TABLE project_reports ADD COLUMN IF NOT EXISTS category_id VARCHAR(100)"))
+                    except Exception:
+                        # Column might already exist as VARCHAR, which is fine
+                        pass
+                    # Migrate description from VARCHAR(2000) to TEXT for unlimited length
+                    try:
+                        # PostgreSQL: Change column type from VARCHAR(2000) to TEXT
+                        conn.execute(text("ALTER TABLE project_reports ALTER COLUMN description TYPE TEXT"))
+                    except Exception:
+                        # Column might already be TEXT or migration might have failed
+                        pass
                     # Timesheets
                     conn.execute(text("CREATE TABLE IF NOT EXISTS project_time_entries (\n"
                                        "id UUID PRIMARY KEY,\n"
@@ -1111,6 +1187,11 @@ def create_app() -> FastAPI:
                         pass
                     try:
                         conn.execute(text("ALTER TABLE projects ADD COLUMN IF NOT EXISTS status VARCHAR(50)"))
+                    except Exception:
+                        pass
+                    try:
+                        conn.execute(text("ALTER TABLE projects ADD COLUMN IF NOT EXISTS is_bidding BOOLEAN DEFAULT FALSE"))
+                        conn.execute(text("ALTER TABLE projects ADD COLUMN IF NOT EXISTS division_onsite_leads JSONB"))
                     except Exception:
                         pass
                     # Add fields to users table

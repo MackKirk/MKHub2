@@ -22,6 +22,8 @@ import SiteDetail from './pages/SiteDetail';
 import Projects from './pages/Projects';
 import ProjectNew from './pages/ProjectNew';
 import ProjectDetail from './pages/ProjectDetail';
+import Opportunities from './pages/Opportunities';
+import OpportunityDetail from './pages/OpportunityDetail';
 import SystemSettings from './pages/SystemSettings';
 import Users from './pages/Users';
 import UserInfo from './pages/UserInfo';
@@ -87,6 +89,8 @@ export default function App(){
           <Route path="/projects" element={<AppShell><Projects/></AppShell>} />
           <Route path="/projects/new" element={<AppShell><ProjectNew/></AppShell>} />
           <Route path="/projects/:id" element={<AppShell><ProjectDetail/></AppShell>} />
+          <Route path="/opportunities" element={<AppShell><Opportunities/></AppShell>} />
+          <Route path="/opportunities/:id" element={<AppShell><OpportunityDetail/></AppShell>} />
           <Route path="/settings" element={<AppShell><SystemSettings/></AppShell>} />
           <Route path="/company-files" element={<AppShell><CompanyFiles/></AppShell>} />
           <Route path="/log-hours" element={<AppShell><LogHours/></AppShell>} />
