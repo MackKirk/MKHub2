@@ -384,6 +384,46 @@ def attach_project_file(project_id: str, file_object_id: str, category: Optional
     return {"id": str(row.id)}
 
 
+@router.put("/{project_id}/files/{file_id}")
+def update_project_file(project_id: str, file_id: str, payload: dict, db: Session = Depends(get_db)):
+    """Update a project file (e.g., change category)"""
+    proj = db.query(Project).filter(Project.id == project_id).first()
+    if not proj:
+        raise HTTPException(status_code=404, detail="Project not found")
+    cf = db.query(ClientFile).filter(ClientFile.id == file_id, ClientFile.client_id == proj.client_id).first()
+    if not cf:
+        raise HTTPException(status_code=404, detail="File not found")
+    # Verify file belongs to this project
+    fo = db.query(FileObject).filter(FileObject.id == cf.file_object_id).first()
+    if not fo or str(getattr(fo, 'project_id', '') or '') != str(project_id):
+        raise HTTPException(status_code=404, detail="File not found in project")
+    # Update category if provided
+    if "category" in payload:
+        cf.category = payload["category"]
+    if "original_name" in payload:
+        cf.original_name = payload["original_name"]
+    db.commit()
+    return {"id": str(cf.id)}
+
+
+@router.delete("/{project_id}/files/{file_id}")
+def delete_project_file(project_id: str, file_id: str, db: Session = Depends(get_db)):
+    """Delete a project file"""
+    proj = db.query(Project).filter(Project.id == project_id).first()
+    if not proj:
+        raise HTTPException(status_code=404, detail="Project not found")
+    cf = db.query(ClientFile).filter(ClientFile.id == file_id, ClientFile.client_id == proj.client_id).first()
+    if not cf:
+        raise HTTPException(status_code=404, detail="File not found")
+    # Verify file belongs to this project
+    fo = db.query(FileObject).filter(FileObject.id == cf.file_object_id).first()
+    if not fo or str(getattr(fo, 'project_id', '') or '') != str(project_id):
+        raise HTTPException(status_code=404, detail="File not found in project")
+    db.delete(cf)
+    db.commit()
+    return {"status": "ok"}
+
+
 # ---- Updates ----
 @router.get("/{project_id}/updates")
 def list_project_updates(project_id: str, db: Session = Depends(get_db)):
@@ -427,11 +467,12 @@ def delete_project_update(project_id: str, update_id: str, db: Session = Depends
 # ---- Reports ----
 @router.get("/{project_id}/reports")
 def list_project_reports(project_id: str, db: Session = Depends(get_db)):
-    rows = db.query(ProjectReport).filter(ProjectReport.project_id == project_id).order_by(ProjectReport.timestamp.desc() if hasattr(ProjectReport, 'timestamp') else ProjectReport.id.desc()).all()
+    rows = db.query(ProjectReport).filter(ProjectReport.project_id == project_id).order_by(ProjectReport.created_at.desc() if hasattr(ProjectReport, 'created_at') else ProjectReport.id.desc()).all()
     out = []
     for r in rows:
         out.append({
             "id": str(r.id),
+            "title": getattr(r, 'title', None),
             "category_id": getattr(r, 'category_id', None),
             "division_id": getattr(r, 'division_id', None),
             "description": getattr(r, 'description', None),
@@ -447,6 +488,7 @@ def list_project_reports(project_id: str, db: Session = Depends(get_db)):
 def create_project_report(project_id: str, payload: dict, db: Session = Depends(get_db), user=Depends(get_current_user)):
     row = ProjectReport(
         project_id=project_id,
+        title=payload.get("title"),
         category_id=payload.get("category_id"),
         division_id=payload.get("division_id"),
         description=payload.get("description"),

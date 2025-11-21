@@ -38,7 +38,7 @@ function formatHoursMinutes(totalMinutes: number): string {
 type Project = { id:string, code?:string, name?:string, client_id?:string, client_display_name?:string, address_city?:string, address_province?:string, address_country?:string, address_postal_code?:string, description?:string, status_id?:string, division_id?:string, division_ids?:string[], estimator_id?:string, onsite_lead_id?:string, division_onsite_leads?:Record<string, string>, contact_id?:string, contact_name?:string, contact_email?:string, contact_phone?:string, date_start?:string, date_eta?:string, date_end?:string, cost_estimated?:number, cost_actual?:number, service_value?:number, progress?:number, site_id?:string, site_name?:string, site_address_line1?:string, site_city?:string, site_province?:string, site_country?:string, site_postal_code?:string, status_label?:string, is_bidding?:boolean };
 type ProjectFile = { id:string, file_object_id:string, is_image?:boolean, content_type?:string, category?:string, original_name?:string, uploaded_at?:string };
 type Update = { id:string, timestamp?:string, text?:string, images?:any };
-type Report = { id:string, category_id?:string, division_id?:string, description?:string, images?:any, status?:string, created_at?:string };
+type Report = { id:string, title?:string, category_id?:string, division_id?:string, description?:string, images?:any, status?:string, created_at?:string, created_by?:string };
 type Proposal = { id:string, title?:string, order_number?:string, created_at?:string };
 
 export default function ProjectDetail(){
@@ -59,16 +59,17 @@ export default function ProjectDetail(){
   // Check for tab query parameter
   const searchParams = new URLSearchParams(location.search);
   const initialTab = (searchParams.get('tab') as 'overview'|'general'|'reports'|'dispatch'|'timesheet'|'files'|'photos'|'proposal'|'estimate'|'orders'|null) || null;
-  const [tab, setTab] = useState<'overview'|'general'|'reports'|'dispatch'|'timesheet'|'files'|'photos'|'proposal'|'estimate'|'orders'|null>(initialTab);
+  const [tab, setTab] = useState<'overview'|'general'|'reports'|'dispatch'|'timesheet'|'files'|'proposal'|'estimate'|'orders'|null>(initialTab);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [showOnSiteLeadsModal, setShowOnSiteLeadsModal] = useState(false);
+  const [isHeroCollapsed, setIsHeroCollapsed] = useState(false);
   const estimateBuilderRef = useRef<EstimateBuilderRef>(null);
   
   // Update tab when URL search params change
   useEffect(() => {
     const searchParams = new URLSearchParams(location.search);
     const tabParam = searchParams.get('tab') as 'overview'|'general'|'reports'|'dispatch'|'timesheet'|'files'|'photos'|'proposal'|'estimate'|'orders'|null;
-    if (tabParam && ['overview','general','reports','dispatch','timesheet','files','photos','proposal','estimate','orders'].includes(tabParam)) {
+    if (tabParam && ['overview','general','reports','dispatch','timesheet','files','proposal','estimate','orders'].includes(tabParam)) {
       setTab(tabParam);
     } else {
       setTab(null);
@@ -86,7 +87,7 @@ export default function ProjectDetail(){
   }, [settings]);
   const [overlayResolved, setOverlayResolved] = useState<string>('');
   const [showAuditLogModal, setShowAuditLogModal] = useState(false);
-  const [auditLogSection, setAuditLogSection] = useState<'timesheet' | 'reports' | 'schedule' | 'files' | 'photos' | 'proposal' | 'estimate'>('timesheet');
+  const [auditLogSection, setAuditLogSection] = useState<'timesheet' | 'reports' | 'schedule' | 'files' | 'proposal' | 'estimate'>('timesheet');
   useEffect(()=>{
     (async()=>{
       try{
@@ -103,7 +104,7 @@ export default function ProjectDetail(){
 
   const availableTabs = proj?.is_bidding 
     ? (['overview','files','proposal','estimate'] as const)
-    : (['overview','reports','dispatch','timesheet','files','photos','proposal','estimate','orders'] as const);
+    : (['overview','reports','dispatch','timesheet','files','proposal','estimate','orders'] as const);
 
   const handleTabClick = async (newTab: typeof availableTabs[number]) => {
     // If leaving estimate tab and there are unsaved changes, show confirmation
@@ -155,105 +156,171 @@ export default function ProjectDetail(){
       </div>
 
       {/* Hero Section - Based on Mockup */}
-      <div className="mb-4 rounded-xl border bg-white overflow-hidden">
-        <div className="p-6">
-          <div className="flex gap-6 items-start">
-            {/* Left Section - Image (not square) */}
-            <div className="w-64 h-48 rounded-xl border overflow-hidden flex-shrink-0 group relative">
-              <img src={cover} className="w-full h-full object-cover" />
-              <button onClick={()=>setPickerOpen(true)} className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white transition-opacity">✏️ Change</button>
-            </div>
-            
-            {/* Middle Section - General Information */}
-            <div className="flex-1 min-w-0">
-              <h3 className="font-semibold text-lg mb-4">General Information</h3>
-              <div className="grid grid-cols-2 gap-4 mb-4">
-                <div>
-                  <label className="text-xs text-gray-600 block mb-1">Project Name</label>
-                  <div className="text-sm font-medium">{proj?.name||'—'}</div>
-                </div>
-                <div>
-                  <label className="text-xs text-gray-600 block mb-1">Code</label>
-                  <div className="text-sm font-medium">{proj?.code||'—'}</div>
-                </div>
-                <div className="col-span-2">
-                  <label className="text-xs text-gray-600 block mb-1">Address</label>
-                  <div className="text-sm font-medium">
-                    {(() => {
-                      const city = proj?.address_city||proj?.site_city;
-                      const province = proj?.address_province||proj?.site_province;
-                      const postal = proj?.address_postal_code||proj?.site_postal_code;
-                      const country = proj?.address_country||proj?.site_country;
-                      const parts = [city, province, postal, country].filter(Boolean);
-                      return parts.length > 0 ? parts.join(', ') : '—';
-                    })()}
-                  </div>
-                </div>
+      {isHeroCollapsed ? (
+        /* Collapsed View - Single Line */
+        <div className="mb-4 rounded-xl border bg-white overflow-hidden relative">
+          <div className="p-4">
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex-1 min-w-0">
+                <h3 className="text-lg font-semibold text-gray-900 truncate">{proj?.name||'—'}</h3>
               </div>
-              
-              {/* Progress and Status moved here */}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="text-xs text-gray-600 block mb-2">Status</label>
-                  <span className="px-3 py-1.5 rounded text-sm font-medium inline-block" style={{ backgroundColor: statusColor, color: '#000' }}>{statusLabel||'—'}</span>
-                </div>
-                <div>
-                  <label className="text-xs text-gray-600 block mb-2">Progress</label>
-                  <div className="flex items-center gap-3">
-                    <div className="flex-1 h-3 bg-gray-200 rounded-full overflow-hidden">
-                      <div className="h-full bg-brand-red rounded-full transition-all" style={{ width: `${Math.max(0,Math.min(100,Number(proj?.progress||0)))}%` }} />
-                    </div>
-                    <span className="text-sm font-semibold text-gray-700 w-12 text-right">{Math.max(0,Math.min(100,Number(proj?.progress||0)))}%</span>
+              <div className="flex items-center gap-6 flex-shrink-0 pr-10">
+                {/* Progress */}
+                <div className="flex items-center gap-3">
+                  <div className="w-24 h-2 bg-gray-200 rounded-full overflow-hidden">
+                    <div className="h-full bg-brand-red rounded-full transition-all" style={{ width: `${Math.max(0,Math.min(100,Number(proj?.progress||0)))}%` }} />
                   </div>
+                  <span className="text-sm font-semibold text-gray-700 w-10 text-right">{Math.max(0,Math.min(100,Number(proj?.progress||0)))}%</span>
                 </div>
-              </div>
-            </div>
-            
-            {/* Right Section - Estimator, On-site Leads, ETA */}
-            <div className="w-80 flex-shrink-0">
-              <div className="mb-6">
-                <label className="text-xs text-gray-600 block mb-2">Estimator</label>
+                {/* Estimator */}
                 {estimator ? (
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-indigo-600 flex items-center justify-center text-white font-semibold">
+                  <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-full bg-indigo-600 flex items-center justify-center text-white font-semibold text-xs">
                       {(estimator.name||estimator.username||'E')[0].toUpperCase()}
                     </div>
-                    <div className="flex-1">
-                      <div className="text-sm font-medium">{estimator.name||estimator.username}</div>
-                    </div>
+                    <div className="text-sm font-medium text-gray-700">{estimator.name||estimator.username}</div>
                   </div>
                 ) : (
                   <div className="text-sm text-gray-400">—</div>
                 )}
               </div>
-
-              {!proj?.is_bidding && (
-                <div className="mb-6">
-                  <label className="text-xs text-gray-600 block mb-2">On-site Leads</label>
-                  <button
-                    onClick={() => setShowOnSiteLeadsModal(true)}
-                    className="px-4 py-2 rounded border bg-white hover:bg-gray-50 text-sm font-medium text-gray-700 flex items-center gap-2"
-                  >
-                    <span>Manage On-site Leads</span>
-                    {proj?.division_onsite_leads && Object.keys(proj.division_onsite_leads).length > 0 && (
-                      <span className="px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 text-xs font-semibold">
-                        {Object.keys(proj.division_onsite_leads).length}
-                      </span>
-                    )}
-                  </button>
-                </div>
-              )}
-              
-              {proj?.date_eta && (
-                <div>
-                  <label className="text-xs text-gray-600 block mb-2">ETA</label>
-                  <div className="text-sm font-medium text-gray-900">{proj.date_eta.slice(0,10)}</div>
-                </div>
-              )}
             </div>
           </div>
+          
+          {/* Expand button - bottom right corner of card */}
+          <button
+            onClick={() => setIsHeroCollapsed(!isHeroCollapsed)}
+            className="absolute bottom-0 right-0 w-8 h-8 rounded-tl-lg border-t border-l bg-white hover:bg-gray-50 transition-colors flex items-center justify-center shadow-sm"
+            title="Expand"
+          >
+            <svg 
+              className="w-4 h-4 text-gray-600" 
+              fill="none" 
+              stroke="currentColor" 
+              viewBox="0 0 24 24"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
         </div>
-      </div>
+      ) : (
+        /* Expanded View - Full Hero Section */
+        <div className="mb-4 rounded-xl border bg-white overflow-hidden relative">
+          <div className="p-6">
+            <div className="flex gap-6 items-start">
+              {/* Left Section - Image (not square) */}
+              <div className="w-64 h-48 rounded-xl border overflow-hidden flex-shrink-0 group relative">
+                <img src={cover} className="w-full h-full object-cover" />
+                <button onClick={()=>setPickerOpen(true)} className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white transition-opacity">✏️ Change</button>
+              </div>
+              
+              {/* Middle Section - General Information */}
+              <div className="flex-1 min-w-0">
+                <h3 className="font-semibold text-lg mb-4">General Information</h3>
+                <div className="grid grid-cols-2 gap-4 mb-4">
+                  <div>
+                    <label className="text-xs text-gray-600 block mb-1">Project Name</label>
+                    <div className="text-sm font-medium">{proj?.name||'—'}</div>
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-600 block mb-1">Code</label>
+                    <div className="text-sm font-medium">{proj?.code||'—'}</div>
+                  </div>
+                  <div className="col-span-2">
+                    <label className="text-xs text-gray-600 block mb-1">Address</label>
+                    <div className="text-sm font-medium">
+                      {(() => {
+                        const city = proj?.address_city||proj?.site_city;
+                        const province = proj?.address_province||proj?.site_province;
+                        const postal = proj?.address_postal_code||proj?.site_postal_code;
+                        const country = proj?.address_country||proj?.site_country;
+                        const parts = [city, province, postal, country].filter(Boolean);
+                        return parts.length > 0 ? parts.join(', ') : '—';
+                      })()}
+                    </div>
+                  </div>
+                </div>
+                
+                {/* Progress and Status moved here */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-xs text-gray-600 block mb-2">Status</label>
+                    <span className="px-3 py-1.5 rounded text-sm font-medium inline-block" style={{ backgroundColor: statusColor, color: '#000' }}>{statusLabel||'—'}</span>
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-600 block mb-2">Progress</label>
+                    <div className="flex items-center gap-3">
+                      <div className="flex-1 h-3 bg-gray-200 rounded-full overflow-hidden">
+                        <div className="h-full bg-brand-red rounded-full transition-all" style={{ width: `${Math.max(0,Math.min(100,Number(proj?.progress||0)))}%` }} />
+                      </div>
+                      <span className="text-sm font-semibold text-gray-700 w-12 text-right">{Math.max(0,Math.min(100,Number(proj?.progress||0)))}%</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              
+              {/* Right Section - Estimator, On-site Leads, ETA */}
+              <div className="w-80 flex-shrink-0">
+                <div className="mb-6">
+                  <label className="text-xs text-gray-600 block mb-2">Estimator</label>
+                  {estimator ? (
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-full bg-indigo-600 flex items-center justify-center text-white font-semibold">
+                        {(estimator.name||estimator.username||'E')[0].toUpperCase()}
+                      </div>
+                      <div className="flex-1">
+                        <div className="text-sm font-medium">{estimator.name||estimator.username}</div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-sm text-gray-400">—</div>
+                  )}
+                </div>
+
+                {!proj?.is_bidding && (
+                  <div className="mb-6">
+                    <label className="text-xs text-gray-600 block mb-2">On-site Leads</label>
+                    <button
+                      onClick={() => setShowOnSiteLeadsModal(true)}
+                      className="px-4 py-2 rounded border bg-white hover:bg-gray-50 text-sm font-medium text-gray-700 flex items-center gap-2"
+                    >
+                      <span>Manage On-site Leads</span>
+                      {proj?.division_onsite_leads && Object.keys(proj.division_onsite_leads).length > 0 && (
+                        <span className="px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 text-xs font-semibold">
+                          {Object.keys(proj.division_onsite_leads).length}
+                        </span>
+                      )}
+                    </button>
+                  </div>
+                )}
+                
+                {proj?.date_eta && (
+                  <div>
+                    <label className="text-xs text-gray-600 block mb-2">ETA</label>
+                    <div className="text-sm font-medium text-gray-900">{proj.date_eta.slice(0,10)}</div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+          
+          {/* Collapse button - bottom right corner of card */}
+          <button
+            onClick={() => setIsHeroCollapsed(!isHeroCollapsed)}
+            className="absolute bottom-0 right-0 w-8 h-8 rounded-tl-lg border-t border-l bg-white hover:bg-gray-50 transition-colors flex items-center justify-center shadow-sm"
+            title="Collapse"
+          >
+            <svg 
+              className="w-4 h-4 text-gray-600" 
+              fill="none" 
+              stroke="currentColor" 
+              viewBox="0 0 24 24"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+            </svg>
+          </button>
+        </div>
+      )}
 
       {/* Tab Cards */}
       {!tab && (
@@ -355,19 +422,8 @@ export default function ProjectDetail(){
       {isLoading? <div className="h-24 bg-gray-100 animate-pulse rounded"/> : (
         <>
           {tab ? (
-            // Show tab content with back button
+            // Show tab content
             <>
-              <div className="mb-4">
-                <button 
-                  onClick={handleBackToCards}
-                  className="flex items-center gap-2 px-4 py-2 rounded-lg border bg-white hover:bg-gray-50 text-gray-700 font-medium"
-                >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-                  </svg>
-                  Back to {proj?.is_bidding ? 'Opportunity' : 'Project'} Overview
-                </button>
-              </div>
               {tab==='overview' && (
                 <div className="grid md:grid-cols-3 gap-4">
                   <ProjectGeneralInfoCard projectId={String(id)} proj={proj||{}} />
@@ -400,11 +456,7 @@ export default function ProjectDetail(){
               )}
 
               {tab==='files' && (
-                <ProjectFilesTab projectId={String(id)} files={files||[]} onRefresh={refetchFiles} />
-              )}
-
-              {tab==='photos' && (
-                <PhotosTab files={(files||[]).filter(f=> (f.is_image===true) || String(f.content_type||'').startsWith('image/'))} />
+                <ProjectFilesTabEnhanced projectId={String(id)} files={files||[]} onRefresh={refetchFiles} />
               )}
 
               {tab==='proposal' && (
@@ -412,8 +464,29 @@ export default function ProjectDetail(){
               )}
 
               {tab==='estimate' && (
-                <div className="rounded-xl border bg-white p-4">
-                  <EstimateBuilder ref={estimateBuilderRef} projectId={String(id)} statusLabel={proj?.status_label||''} settings={settings||{}} />
+                <div className="space-y-4">
+                  {/* Minimalist header */}
+                  <div className="mb-4">
+                    <div className="flex items-center gap-3">
+                      <button
+                        onClick={handleBackToCards}
+                        className="p-2 rounded-lg border hover:bg-gray-50 transition-colors flex items-center justify-center"
+                        title="Back to Overview"
+                      >
+                        <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                        </svg>
+                      </button>
+                      <div>
+                        <h3 className="text-lg font-semibold text-gray-900">Estimate</h3>
+                        <p className="text-xs text-gray-500">Cost estimates and budgets</p>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div className="rounded-xl border bg-white p-4">
+                    <EstimateBuilder ref={estimateBuilderRef} projectId={String(id)} statusLabel={proj?.status_label||''} settings={settings||{}} />
+                  </div>
                 </div>
               )}
 
@@ -568,10 +641,11 @@ function UpdatesTab({ projectId, items, onRefresh }:{ projectId:string, items: U
 
 function ReportsTabEnhanced({ projectId, items, onRefresh }:{ projectId:string, items: Report[], onRefresh: ()=>any }){
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [selectedReportId, setSelectedReportId] = useState<string | null>(null);
   const [previewAttachment, setPreviewAttachment] = useState<{file_object_id: string, original_name: string, content_type: string}|null>(null);
   const { data:me } = useQuery({ queryKey:['me'], queryFn: ()=>api<any>('GET','/auth/me') });
   const { data:settings } = useQuery({ queryKey:['settings'], queryFn: ()=>api<any>('GET','/settings') });
-  const avatar = me?.profile_photo_file_id ? `/files/${me.profile_photo_file_id}/thumbnail?w=64` : '/ui/assets/login/logo-light.svg';
+  const { data:employees } = useQuery({ queryKey:['employees'], queryFn: ()=>api<any>('GET','/employees') });
   
   const reportCategories = (settings?.report_categories || []) as any[];
 
@@ -583,6 +657,32 @@ function ReportsTabEnhanced({ projectId, items, onRefresh }:{ projectId:string, 
     });
   }, [items]);
 
+  const selectedReport = useMemo(() => {
+    return selectedReportId ? sortedReports.find(r => r.id === selectedReportId) : null;
+  }, [selectedReportId, sortedReports]);
+
+  // Auto-select first report if none selected and reports exist
+  useEffect(() => {
+    if (!selectedReportId && sortedReports.length > 0) {
+      setSelectedReportId(sortedReports[0].id);
+    }
+  }, [sortedReports, selectedReportId]);
+
+  const getPreviewText = (text: string, maxLength: number = 100) => {
+    if (!text) return '';
+    if (text.length <= maxLength) return text;
+    return text.substring(0, maxLength).trim() + '...';
+  };
+
+  const getAuthorInfo = (createdBy: string | null | undefined) => {
+    if (!createdBy || !employees) return { name: 'Unknown', avatar: '/ui/assets/login/logo-light.svg' };
+    const author = employees.find((e: any) => e.id === createdBy);
+    if (!author) return { name: 'Unknown', avatar: '/ui/assets/login/logo-light.svg' };
+    return {
+      name: author.name || author.username || 'Unknown',
+      avatar: author.profile_photo_file_id ? `/files/${author.profile_photo_file_id}/thumbnail?w=40` : '/ui/assets/login/logo-light.svg'
+    };
+  };
 
   const getAttachmentIcon = (contentType: string, originalName: string) => {
     const isImage = contentType?.startsWith('image/') || /\.(jpg|jpeg|png|gif|webp)$/i.test(originalName);
@@ -609,86 +709,207 @@ function ReportsTabEnhanced({ projectId, items, onRefresh }:{ projectId:string, 
     }
   };
 
+  const location = useLocation();
+  const nav = useNavigate();
+  const handleBackToOverview = () => {
+    nav(location.pathname, { replace: true });
+  };
+
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h3 className="text-lg font-semibold">Project Reports</h3>
-        <button
-          onClick={() => setShowCreateModal(true)}
-          className="px-4 py-2 rounded bg-brand-red hover:bg-red-700 text-white text-sm font-medium flex items-center gap-2"
-        >
-          <span>+</span>
-          <span>New Report</span>
-        </button>
+    <div className="flex flex-col h-full">
+      {/* Minimalist header */}
+      <div className="mb-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={handleBackToOverview}
+              className="p-2 rounded-lg border hover:bg-gray-50 transition-colors flex items-center justify-center"
+              title="Back to Overview"
+            >
+              <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+              </svg>
+            </button>
+            <div>
+              <h3 className="text-lg font-semibold text-gray-900">Project Reports</h3>
+              <p className="text-xs text-gray-500">Daily updates and site events</p>
+            </div>
+          </div>
+          <button
+            onClick={() => setShowCreateModal(true)}
+            className="px-4 py-2 rounded bg-brand-red hover:bg-red-700 text-white text-sm font-medium flex items-center gap-2"
+          >
+            <span>+</span>
+            <span>New Report</span>
+          </button>
+        </div>
       </div>
 
-      <div className="rounded-xl border bg-white divide-y">
-        {sortedReports.length ? sortedReports.map(r => {
-          const reportDate = r.created_at ? new Date(r.created_at) : null;
-          const categoryLabel = reportCategories.find(c => c.value === r.category_id)?.label || r.category_id || 'General';
-          const attachments = r.images?.attachments || [];
-          
-          return (
-            <div key={r.id} className="p-4 hover:bg-gray-50 transition-colors">
-              <div className="flex items-start gap-3">
-                <img src={avatar} className="w-10 h-10 rounded-full flex-shrink-0" alt={me?.username || 'User'} />
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="font-semibold text-sm text-gray-900">{me?.name || me?.username || 'Project Lead'}</span>
-                    <span className="text-xs text-gray-500">•</span>
-                    <span className="text-xs text-gray-500">
-                      {reportDate ? reportDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : ''}
-                    </span>
-                    {r.category_id && (
-                      <>
-                        <span className="text-xs text-gray-500">•</span>
-                        <span className="text-xs px-2 py-0.5 rounded bg-blue-100 text-blue-700 font-medium">
-                          {reportCategories.find(c => (c.value || c.label) === r.category_id)?.label || r.category_id}
+      {/* Two-column layout */}
+      <div className="flex-1 flex gap-4 min-h-0">
+        {/* Left sidebar - Reports list (30%) */}
+        <div className="w-[30%] flex flex-col border rounded-xl bg-white overflow-hidden">
+          <div className="overflow-y-auto flex-1 divide-y">
+            {sortedReports.length ? sortedReports.map(r => {
+              const reportDate = r.created_at ? new Date(r.created_at) : null;
+              const attachments = r.images?.attachments || [];
+              const isSelected = selectedReportId === r.id;
+              const authorInfo = getAuthorInfo(r.created_by);
+              const preview = getPreviewText(r.description || '');
+              
+              return (
+                <div 
+                  key={r.id} 
+                  className={`p-3 hover:bg-gray-50 transition-colors cursor-pointer border-l-2 ${
+                    isSelected ? 'bg-blue-50 border-l-blue-500' : 'border-l-transparent'
+                  }`}
+                  onClick={() => setSelectedReportId(r.id)}
+                >
+                  <div className="flex items-start gap-2">
+                    <img src={authorInfo.avatar} className="w-8 h-8 rounded-full flex-shrink-0" alt={authorInfo.name} />
+                    <div className="flex-1 min-w-0">
+                      <div className={`font-semibold text-sm mb-1 ${isSelected ? 'text-gray-900' : 'text-gray-800'}`}>
+                        {r.title || 'Untitled Report'}
+                      </div>
+                      <div className="text-xs text-gray-500 mb-1">
+                        {authorInfo.name}
+                      </div>
+                      {preview && (
+                        <div className="text-xs text-gray-600 line-clamp-2 mb-1">
+                          {preview}
+                        </div>
+                      )}
+                      <div className="flex items-center gap-2 text-xs text-gray-400 mt-1">
+                        <span>
+                          {reportDate ? reportDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : ''}
                         </span>
-                      </>
-                    )}
+                        {attachments.length > 0 && (
+                          <>
+                            <span>•</span>
+                            <span>{attachments.length} 📎</span>
+                          </>
+                        )}
+                        {r.category_id && (
+                          <>
+                            <span>•</span>
+                            <span className="px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 text-[10px]">
+                              {reportCategories.find(c => (c.value || c.label) === r.category_id)?.label || r.category_id}
+                            </span>
+                          </>
+                        )}
+                      </div>
+                    </div>
                   </div>
-                  <div className="text-sm text-gray-800 whitespace-pre-wrap mb-2">{r.description || ''}</div>
+                </div>
+              );
+            }) : (
+              <div className="p-8 text-center text-gray-500">
+                <div className="text-sm mb-2">No reports yet</div>
+                <div className="text-xs">Click "New Report" to create your first project report</div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Right panel - Report content (70%) */}
+        <div className="flex-1 border rounded-xl bg-white overflow-hidden flex flex-col">
+          {selectedReport ? (() => {
+            const reportDate = selectedReport.created_at ? new Date(selectedReport.created_at) : null;
+            const attachments = selectedReport.images?.attachments || [];
+            const authorInfo = getAuthorInfo(selectedReport.created_by);
+            const categoryLabel = reportCategories.find(c => c.value === selectedReport.category_id)?.label || selectedReport.category_id || 'General';
+            
+            return (
+              <>
+                {/* Header */}
+                <div className="p-4 border-b bg-gray-50 flex-shrink-0">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex-1">
+                      <h2 className="text-xl font-semibold text-gray-900 mb-2">
+                        {selectedReport.title || 'Untitled Report'}
+                      </h2>
+                      <div className="flex items-center gap-3 flex-wrap">
+                        <div className="flex items-center gap-2">
+                          <img src={authorInfo.avatar} className="w-8 h-8 rounded-full" alt={authorInfo.name} />
+                          <div>
+                            <div className="text-sm font-medium text-gray-900">{authorInfo.name}</div>
+                            <div className="text-xs text-gray-500">
+                              {reportDate ? reportDate.toLocaleDateString('en-US', { 
+                                weekday: 'long',
+                                month: 'long', 
+                                day: 'numeric', 
+                                year: 'numeric',
+                                hour: '2-digit', 
+                                minute: '2-digit' 
+                              }) : ''}
+                            </div>
+                          </div>
+                        </div>
+                        {selectedReport.category_id && (
+                          <span className="px-2 py-1 rounded bg-blue-100 text-blue-700 text-xs font-medium">
+                            {categoryLabel}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <button
+                      onClick={async () => {
+                        if (!confirm('Delete this report?')) return;
+                        try {
+                          await api('DELETE', `/projects/${projectId}/reports/${selectedReport.id}`);
+                          await onRefresh();
+                          setSelectedReportId(null);
+                          toast.success('Report deleted');
+                        } catch (_e) {
+                          toast.error('Failed to delete report');
+                        }
+                      }}
+                      className="px-3 py-1.5 rounded text-gray-500 hover:bg-red-50 hover:text-red-600 text-sm flex-shrink-0"
+                      title="Delete report"
+                    >
+                      🗑️ Delete
+                    </button>
+                  </div>
+                </div>
+
+                {/* Content */}
+                <div className="p-6 overflow-y-auto flex-1">
+                  <div className="prose max-w-none">
+                    <div className="text-gray-800 whitespace-pre-wrap leading-relaxed">
+                      {selectedReport.description || 'No description provided.'}
+                    </div>
+                  </div>
+
+                  {/* Attachments */}
                   {attachments.length > 0 && (
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      {attachments.map((a: any, i: number) => (
-                        <button
-                          key={i}
-                          onClick={() => handleAttachmentClick(a)}
-                          className="flex items-center gap-2 px-2 py-1 rounded border bg-white hover:bg-gray-50 text-sm text-gray-700"
-                        >
-                          <span className="text-base">{getAttachmentIcon(a.content_type || '', a.original_name || '')}</span>
-                          <span className="text-xs">{a.original_name || 'attachment'}</span>
-                        </button>
-                      ))}
+                    <div className="mt-6 pt-6 border-t">
+                      <h3 className="text-sm font-semibold text-gray-900 mb-3">Attachments ({attachments.length})</h3>
+                      <div className="flex flex-wrap gap-2">
+                        {attachments.map((a: any, i: number) => (
+                          <button
+                            key={i}
+                            onClick={() => handleAttachmentClick(a)}
+                            className="flex items-center gap-2 px-3 py-2 rounded border bg-white hover:bg-gray-50 text-sm text-gray-700 transition-colors"
+                          >
+                            <span className="text-lg">{getAttachmentIcon(a.content_type || '', a.original_name || '')}</span>
+                            <span>{a.original_name || 'attachment'}</span>
+                          </button>
+                        ))}
+                      </div>
                     </div>
                   )}
                 </div>
-                <button
-                  onClick={async () => {
-                    if (!confirm('Delete this report?')) return;
-                    try {
-                      await api('DELETE', `/projects/${projectId}/reports/${r.id}`);
-                      await onRefresh();
-                      toast.success('Report deleted');
-                    } catch (_e) {
-                      toast.error('Failed to delete report');
-                    }
-                  }}
-                  className="px-2 py-1 rounded text-gray-500 hover:bg-red-50 hover:text-red-600 text-sm flex-shrink-0"
-                  title="Delete report"
-                >
-                  🗑️
-                </button>
+              </>
+            );
+          })() : (
+            <div className="flex-1 flex items-center justify-center text-gray-500">
+              <div className="text-center">
+                <div className="text-lg mb-2">Select a report to view</div>
+                <div className="text-sm">Choose a report from the list on the left</div>
               </div>
             </div>
-          );
-        }) : (
-          <div className="p-8 text-center text-gray-500">
-            <div className="text-lg mb-2">No reports yet</div>
-            <div className="text-sm">Click "New Report" to create your first project report</div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
       {showCreateModal && (
@@ -736,12 +957,17 @@ function CreateReportModal({ projectId, reportCategories, onClose, onSuccess }: 
   onClose: () => void,
   onSuccess: () => Promise<void>
 }){
+  const [title, setTitle] = useState('');
   const [category, setCategory] = useState('');
   const [desc, setDesc] = useState('');
   const [file, setFile] = useState<File|null>(null);
   const { data:project } = useQuery({ queryKey:['project', projectId], queryFn: ()=>api<any>('GET', `/projects/${projectId}`) });
 
   const handleCreate = async () => {
+    if (!title.trim()) {
+      toast.error('Please enter a title');
+      return;
+    }
     if (!desc.trim()) {
       toast.error('Please enter a description');
       return;
@@ -778,10 +1004,12 @@ function CreateReportModal({ projectId, reportCategories, onClose, onSuccess }: 
         };
       }
       await api('POST', `/projects/${projectId}/reports`, {
+        title: title.trim(),
         category_id: category || null,
         description: desc,
         images: imgMeta ? { attachments: [imgMeta] } : undefined
       });
+      setTitle('');
       setCategory('');
       setDesc('');
       setFile(null);
@@ -805,6 +1033,16 @@ function CreateReportModal({ projectId, reportCategories, onClose, onSuccess }: 
         </div>
         <div className="p-6 overflow-y-auto flex-1">
           <div className="space-y-4">
+            <div>
+              <label className="text-xs text-gray-600 block mb-1">Title *</label>
+              <input
+                type="text"
+                className="w-full border rounded px-3 py-2 text-sm"
+                placeholder="Enter report title..."
+                value={title}
+                onChange={e => setTitle(e.target.value)}
+              />
+            </div>
             <div>
               <label className="text-xs text-gray-600 block mb-1">Category</label>
               <select
@@ -941,35 +1179,497 @@ function ProjectFilesTab({ projectId, files, onRefresh }:{ projectId:string, fil
   );
 }
 
-function PhotosTab({ files }:{ files: ProjectFile[] }){
-  const groups = useMemo(()=>{
-    const m: Record<string, ProjectFile[]> = {};
-    files.forEach(f=>{
-      const d = (f.uploaded_at||'').slice(0,10) || 'Unknown';
-      m[d] = m[d] || []; m[d].push(f);
+function ProjectFilesTabEnhanced({ projectId, files, onRefresh }:{ projectId:string, files: ProjectFile[], onRefresh: ()=>any }){
+  const location = useLocation();
+  const nav = useNavigate();
+  const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  const [isDragging, setIsDragging] = useState(false);
+  const [draggedFileId, setDraggedFileId] = useState<string | null>(null);
+  const [showUpload, setShowUpload] = useState(false);
+  const [uploadQueue, setUploadQueue] = useState<Array<{id:string, file:File, progress:number, status:'pending'|'uploading'|'success'|'error', error?:string}>>([]);
+  const [previewImage, setPreviewImage] = useState<{ url:string, name:string }|null>(null);
+  const [previewPdf, setPreviewPdf] = useState<{ url:string, name:string }|null>(null);
+  
+  const { data: categories } = useQuery({
+    queryKey: ['file-categories'],
+    queryFn: ()=>api<any[]>('GET', '/clients/file-categories')
+  });
+  
+  const { data: project } = useQuery({
+    queryKey: ['project', projectId],
+    queryFn: ()=>api<any>('GET', `/projects/${projectId}`)
+  });
+
+  const handleBackToOverview = () => {
+    nav(location.pathname, { replace: true });
+  };
+
+  // Organize files by category
+  const filesByCategory = useMemo(() => {
+    const grouped: Record<string, ProjectFile[]> = { 'all': [], 'uncategorized': [] };
+    files.forEach(f => {
+      const cat = f.category || 'uncategorized';
+      if (!grouped[cat]) grouped[cat] = [];
+      grouped[cat].push(f);
+      grouped['all'].push(f);
     });
-    return Object.entries(m).sort(([a], [b])=> b.localeCompare(a));
+    return grouped;
   }, [files]);
+
+  const currentFiles = useMemo(() => {
+    return filesByCategory[selectedCategory] || [];
+  }, [filesByCategory, selectedCategory]);
+
+  const iconFor = (f:ProjectFile)=>{
+    const name = String(f.original_name||'');
+    const ext = (name.includes('.')? name.split('.').pop() : '').toLowerCase();
+    const ct = String(f.content_type||'').toLowerCase();
+    const is = (x:string)=> ct.includes(x) || ext===x;
+    if (is('pdf')) return { label:'PDF', color:'bg-red-500' };
+    if (['xlsx','xls','csv'].includes(ext) || ct.includes('excel') || ct.includes('spreadsheet')) return { label:'XLS', color:'bg-green-600' };
+    if (['doc','docx'].includes(ext) || ct.includes('word')) return { label:'DOC', color:'bg-blue-600' };
+    if (['ppt','pptx'].includes(ext) || ct.includes('powerpoint')) return { label:'PPT', color:'bg-orange-500' };
+    if (['zip','rar','7z'].includes(ext) || ct.includes('zip')) return { label:'ZIP', color:'bg-gray-700' };
+    if (is('txt')) return { label:'TXT', color:'bg-gray-500' };
+    return { label: (ext||'FILE').toUpperCase().slice(0,4), color:'bg-gray-600' };
+  };
+
   const fetchDownloadUrl = async (fid:string)=>{
     try{ const r:any = await api('GET', `/files/${fid}/download`); return String(r.download_url||''); }catch(_e){ toast.error('Download link unavailable'); return ''; }
   };
+
+  const uploadMultiple = async (fileList: File[], targetCategory?: string) => {
+    const category = targetCategory !== undefined 
+      ? (targetCategory === 'uncategorized' ? null : targetCategory)
+      : (selectedCategory === 'all' || selectedCategory === 'uncategorized' ? undefined : selectedCategory);
+    const newQueue = Array.from(fileList).map((file, idx) => ({
+      id: `${Date.now()}-${idx}`,
+      file,
+      progress: 0,
+      status: 'pending' as const
+    }));
+    setUploadQueue(prev => [...prev, ...newQueue]);
+
+    for (const item of newQueue) {
+      try {
+        setUploadQueue(prev => prev.map(u => u.id === item.id ? { ...u, status: 'uploading' } : u));
+        
+        const up: any = await api('POST', '/files/upload', {
+          project_id: projectId,
+          client_id: project?.client_id || null,
+          employee_id: null,
+          category_id: 'project-files',
+          original_name: item.file.name,
+          content_type: item.file.type || 'application/octet-stream'
+        });
+        
+        await fetch(up.upload_url, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': item.file.type || 'application/octet-stream',
+            'x-ms-blob-type': 'BlockBlob'
+          },
+          body: item.file
+        });
+        
+        const conf: any = await api('POST', '/files/confirm', {
+          key: up.key,
+          size_bytes: item.file.size,
+          checksum_sha256: 'na',
+          content_type: item.file.type || 'application/octet-stream'
+        });
+        
+        await api('POST', `/projects/${projectId}/files?file_object_id=${encodeURIComponent(conf.id)}&category=${encodeURIComponent(category || '')}&original_name=${encodeURIComponent(item.file.name)}`);
+        
+        setUploadQueue(prev => prev.map(u => u.id === item.id ? { ...u, status: 'success', progress: 100 } : u));
+      } catch (e: any) {
+        setUploadQueue(prev => prev.map(u => u.id === item.id ? { ...u, status: 'error', error: e.message || 'Upload failed' } : u));
+      }
+    }
+    
+    await onRefresh();
+    setTimeout(() => {
+      setUploadQueue(prev => prev.filter(u => !newQueue.find(nq => nq.id === u.id)));
+    }, 2000);
+  };
+
+  const handleMoveFile = async (fileId: string, newCategory: string) => {
+    try {
+      await api('PUT', `/projects/${projectId}/files/${fileId}`, {
+        category: newCategory === 'uncategorized' ? null : newCategory
+      });
+      await onRefresh();
+      toast.success('File moved');
+    } catch (_e) {
+      toast.error('Failed to move file');
+    }
+  };
+
+  const handleDeleteFile = async (fileId: string) => {
+    if (!confirm('Delete this file?')) return;
+    try {
+      await api('DELETE', `/projects/${projectId}/files/${fileId}`);
+      await onRefresh();
+      toast.success('File deleted');
+    } catch (_e) {
+      toast.error('Failed to delete file');
+    }
+  };
+
   return (
-    <div className="space-y-6">
-      {groups.length? groups.map(([date, arr])=> (
-        <div key={date}>
-          <div className="text-sm font-semibold mb-2">{date}</div>
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3">
-            {arr.map(f=> (
-              <div key={f.id} className="relative group">
-                <img className="w-full h-24 object-cover rounded border" src={`/files/${f.file_object_id}/thumbnail?w=600`} />
-                <div className="absolute right-2 top-2 hidden group-hover:flex gap-1">
-                  <button onClick={async()=>{ const url = await fetchDownloadUrl(f.file_object_id); if(url) window.open(url,'_blank'); }} className="bg-black/70 hover:bg-black/80 text-white text-[11px] px-2 py-1 rounded" title="Zoom">🔍</button>
+    <div className="space-y-4">
+      {/* Minimalist header with back button */}
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-3">
+          <button
+            onClick={handleBackToOverview}
+            className="p-2 rounded-lg border hover:bg-gray-50 transition-colors flex items-center justify-center"
+            title="Back to Overview"
+          >
+            <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+            </svg>
+          </button>
+          <div>
+            <h3 className="text-lg font-semibold text-gray-900">Project Files</h3>
+            <p className="text-xs text-gray-500">Organize files by category</p>
+          </div>
+        </div>
+      </div>
+
+      <div className="rounded-xl border bg-white overflow-hidden">
+        <div className="flex h-[calc(100vh-300px)]">
+          {/* Left Sidebar - Categories */}
+          <div className="w-64 border-r bg-gray-50 flex flex-col">
+            <div className="p-4 border-b">
+              <div className="text-sm font-semibold text-gray-700 mb-2">File Categories</div>
+            </div>
+            <div className="flex-1 overflow-y-auto">
+              <button
+                onClick={() => setSelectedCategory('all')}
+                className={`w-full text-left px-4 py-3 border-b hover:bg-white transition-colors ${
+                  selectedCategory === 'all' ? 'bg-white border-l-4 border-l-brand-red font-semibold' : 'text-gray-700'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <span>📁</span>
+                  <span>All Files</span>
+                  <span className="ml-auto text-xs text-gray-500">({filesByCategory['all']?.length || 0})</span>
                 </div>
+              </button>
+              {(categories || []).map((cat: any) => {
+                const count = filesByCategory[cat.id]?.length || 0;
+                return (
+                  <button
+                    key={cat.id}
+                    onClick={() => setSelectedCategory(cat.id)}
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setIsDragging(true);
+                    }}
+                    onDragLeave={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setIsDragging(false);
+                    }}
+                    onDrop={async (e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setIsDragging(false);
+                      
+                      // Check if dropping files from system (upload)
+                      if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                        await uploadMultiple(Array.from(e.dataTransfer.files), cat.id);
+                        return;
+                      }
+                      
+                      // Check if moving existing file
+                      if (draggedFileId) {
+                        await handleMoveFile(draggedFileId, cat.id);
+                        setDraggedFileId(null);
+                      }
+                    }}
+                    className={`w-full text-left px-4 py-3 border-b hover:bg-white transition-colors ${
+                      selectedCategory === cat.id ? 'bg-white border-l-4 border-l-brand-red font-semibold' : 'text-gray-700'
+                    } ${isDragging ? 'bg-blue-50' : ''}`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <span>{cat.icon || '📁'}</span>
+                      <span>{cat.name}</span>
+                      <span className="ml-auto text-xs text-gray-500">({count})</span>
+                    </div>
+                  </button>
+                );
+              })}
+              {filesByCategory['uncategorized']?.length > 0 && (
+                <button
+                  onClick={() => setSelectedCategory('uncategorized')}
+                  className={`w-full text-left px-4 py-3 border-b hover:bg-white transition-colors ${
+                    selectedCategory === 'uncategorized' ? 'bg-white border-l-4 border-l-brand-red font-semibold' : 'text-gray-700'
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <span>📦</span>
+                    <span>Uncategorized</span>
+                    <span className="ml-auto text-xs text-gray-500">({filesByCategory['uncategorized']?.length || 0})</span>
+                  </div>
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Right Content Area */}
+          <div 
+            className={`flex-1 overflow-y-auto p-4 ${isDragging ? 'bg-blue-50 border-2 border-dashed border-blue-400' : ''}`}
+            onDragOver={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              setIsDragging(true);
+            }}
+            onDragLeave={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              setIsDragging(false);
+            }}
+            onDrop={async (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              setIsDragging(false);
+              
+              // Check if dropping files from system (upload)
+              if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                const category = selectedCategory === 'all' ? undefined : (selectedCategory === 'uncategorized' ? null : selectedCategory);
+                await uploadMultiple(Array.from(e.dataTransfer.files), category);
+                return;
+              }
+              
+              // Check if moving existing file
+              if (draggedFileId && selectedCategory !== 'all' && selectedCategory !== 'uncategorized') {
+                await handleMoveFile(draggedFileId, selectedCategory);
+                setDraggedFileId(null);
+              }
+            }}
+          >
+            <div className="mb-3 flex items-center justify-between">
+              <div className="text-sm font-semibold">
+                {selectedCategory === 'all' ? 'All Files' : 
+                 selectedCategory === 'uncategorized' ? 'Uncategorized Files' :
+                 categories?.find((c: any) => c.id === selectedCategory)?.name || 'Files'}
+                <span className="ml-2 text-gray-500">({currentFiles.length})</span>
+              </div>
+              <button
+                onClick={() => setShowUpload(true)}
+                className="px-3 py-1.5 rounded bg-brand-red text-white text-sm"
+              >
+                + Upload File
+              </button>
+            </div>
+
+            <div className="rounded-lg border overflow-hidden bg-white">
+              {currentFiles.length > 0 ? (
+                <div className="divide-y">
+                  {currentFiles.map((f) => {
+                    const icon = iconFor(f);
+                    const isImg = f.is_image || String(f.content_type || '').startsWith('image/');
+                    const name = f.original_name || f.file_object_id;
+                    
+                    return (
+                      <div
+                        key={f.id}
+                        draggable
+                        onDragStart={() => setDraggedFileId(f.id)}
+                        onDragEnd={() => setDraggedFileId(null)}
+                        className="flex items-center gap-3 px-3 py-2 hover:bg-gray-50 cursor-move"
+                      >
+                        {isImg ? (
+                          <div 
+                            className="w-16 h-16 rounded-lg overflow-hidden bg-gray-100 cursor-pointer flex-shrink-0"
+                            onClick={async () => {
+                              try {
+                                const r: any = await api('GET', `/files/${f.file_object_id}/download`);
+                                const url = r.download_url || '';
+                                if (url) {
+                                  setPreviewImage({ url, name });
+                                }
+                              } catch (_e) {
+                                toast.error('Preview not available');
+                              }
+                            }}
+                          >
+                            <img 
+                              src={`/files/${f.file_object_id}/thumbnail?w=64`}
+                              alt={name}
+                              className="w-full h-full object-cover"
+                            />
+                          </div>
+                        ) : (
+                          <div className={`w-10 h-12 rounded-lg ${icon.color} text-white flex items-center justify-center text-[10px] font-extrabold select-none flex-shrink-0`}>
+                            {icon.label}
+                          </div>
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <div className="font-medium truncate">{name}</div>
+                          <div className="text-[11px] text-gray-500">
+                            {(f.uploaded_at || '').slice(0, 10)}
+                            {f.category && (
+                              <span className="ml-2">• {categories?.find((c: any) => c.id === f.category)?.name || f.category}</span>
+                            )}
+                          </div>
+                        </div>
+                        <div className="ml-auto flex items-center gap-1">
+                          <button
+                            onClick={async () => {
+                              const url = await fetchDownloadUrl(f.file_object_id);
+                              if (url) window.open(url, '_blank');
+                            }}
+                            title="Download"
+                            className="p-2 rounded hover:bg-gray-100"
+                          >
+                            ⬇️
+                          </button>
+                          <button
+                            onClick={() => {
+                              const newCat = prompt('Move to category (leave empty for uncategorized):');
+                              if (newCat !== null) {
+                                handleMoveFile(f.id, newCat || 'uncategorized');
+                              }
+                            }}
+                            title="Move to category"
+                            className="p-2 rounded hover:bg-gray-100"
+                          >
+                            📦
+                          </button>
+                          <button
+                            onClick={() => handleDeleteFile(f.id)}
+                            title="Delete"
+                            className="p-2 rounded hover:bg-red-50 text-red-600"
+                          >
+                            🗑️
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="px-3 py-8 text-center text-gray-500">
+                  <div className="text-4xl mb-3">📁</div>
+                  <div className="text-sm">No files in this category</div>
+                  <div className="text-xs mt-1">Drag and drop files here or click "Upload File"</div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Upload Modal */}
+      {showUpload && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={(e) => e.target === e.currentTarget && setShowUpload(false)}>
+          <div className="bg-white rounded-xl w-full max-w-md p-4" onClick={(e) => e.stopPropagation()}>
+            <div className="text-lg font-semibold mb-2">Upload Files</div>
+            <div className="space-y-3">
+              <div>
+                <div className="text-xs text-gray-600 mb-1">Files (multiple files supported)</div>
+                <input
+                  type="file"
+                  multiple
+                  onChange={async (e) => {
+                    const fileList = e.target.files;
+                    if (fileList && fileList.length > 0) {
+                      setShowUpload(false);
+                      await uploadMultiple(Array.from(fileList));
+                    }
+                  }}
+                  className="w-full"
+                />
+              </div>
+              <div className="text-xs text-gray-500">
+                You can also drag and drop files directly onto the category area
+              </div>
+            </div>
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                onClick={() => setShowUpload(false)}
+                className="px-3 py-2 rounded border"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Upload Progress */}
+      {uploadQueue.length > 0 && (
+        <div className="fixed bottom-4 right-4 bg-white rounded-lg shadow-2xl border w-80 max-h-96 overflow-hidden z-50">
+          <div className="p-3 border-b bg-gray-50 flex items-center justify-between">
+            <div className="font-semibold text-sm">Upload Progress</div>
+            <button
+              onClick={() => setUploadQueue([])}
+              className="text-gray-500 hover:text-gray-700 text-xs"
+            >
+              Clear
+            </button>
+          </div>
+          <div className="overflow-y-auto max-h-80">
+            {uploadQueue.map((u) => (
+              <div key={u.id} className="p-3 border-b">
+                <div className="flex items-start gap-2 mb-1">
+                  <div className="flex-1 min-w-0">
+                    <div className="text-xs font-medium truncate" title={u.file.name}>{u.file.name}</div>
+                    <div className="text-[10px] text-gray-500">
+                      {(u.file.size / 1024 / 1024).toFixed(2)} MB
+                    </div>
+                  </div>
+                  <div className="text-xs">
+                    {u.status === 'pending' && '⏳'}
+                    {u.status === 'uploading' && '⏳'}
+                    {u.status === 'success' && '✅'}
+                    {u.status === 'error' && '❌'}
+                  </div>
+                </div>
+                {u.status === 'uploading' && (
+                  <div className="w-full bg-gray-200 rounded-full h-1.5 mt-1">
+                    <div 
+                      className="bg-blue-600 h-1.5 rounded-full transition-all"
+                      style={{ width: `${u.progress}%` }}
+                    />
+                  </div>
+                )}
+                {u.status === 'error' && (
+                  <div className="text-[10px] text-red-600 mt-1" title={u.error}>{u.error || 'Upload failed'}</div>
+                )}
               </div>
             ))}
           </div>
         </div>
-      )) : <div className="text-sm text-gray-600">No photos</div>}
+      )}
+
+      {/* Image Preview Modal */}
+      {previewImage && (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" onClick={() => setPreviewImage(null)}>
+          <div className="max-w-4xl max-h-[90vh] bg-white rounded-lg overflow-hidden" onClick={(e) => e.stopPropagation()}>
+            <div className="p-4 border-b flex items-center justify-between">
+              <h3 className="font-semibold">{previewImage.name}</h3>
+              <button
+                onClick={() => setPreviewImage(null)}
+                className="text-2xl font-bold text-gray-400 hover:text-gray-600"
+              >
+                ×
+              </button>
+            </div>
+            <div className="p-4 overflow-auto max-h-[calc(90vh-80px)]">
+              <img
+                src={previewImage.url}
+                alt={previewImage.name}
+                className="max-w-full h-auto"
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1002,14 +1702,40 @@ function ProjectProposalTab({ projectId, clientId, siteId, proposals, statusLabe
     return allowEdit === true || allowEdit === 'true' || allowEdit === 1;
   }, [statusLabel, settings]);
   
+  const location = useLocation();
+  const nav = useNavigate();
+  const handleBackToOverview = () => {
+    nav(location.pathname, { replace: true });
+  };
+
   return (
-    <div className="rounded-xl border bg-white p-4">
-      {!canEdit && statusLabel && (
-        <div className="mb-4 p-4 bg-yellow-50 border border-yellow-200 rounded text-sm text-yellow-800">
-          <strong>Editing Restricted:</strong> This project has status "{statusLabel}" which does not allow editing proposals or estimates. 
-          Please change the project status to allow editing.
+    <div className="space-y-4">
+      {/* Minimalist header */}
+      <div className="mb-4">
+        <div className="flex items-center gap-3">
+          <button
+            onClick={handleBackToOverview}
+            className="p-2 rounded-lg border hover:bg-gray-50 transition-colors flex items-center justify-center"
+            title="Back to Overview"
+          >
+            <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+            </svg>
+          </button>
+          <div>
+            <h3 className="text-lg font-semibold text-gray-900">Proposal</h3>
+            <p className="text-xs text-gray-500">Project proposals</p>
+          </div>
         </div>
-      )}
+      </div>
+      
+      <div className="rounded-xl border bg-white p-4">
+        {!canEdit && statusLabel && (
+          <div className="mb-4 p-4 bg-yellow-50 border border-yellow-200 rounded text-sm text-yellow-800">
+            <strong>Editing Restricted:</strong> This project has status "{statusLabel}" which does not allow editing proposals or estimates. 
+            Please change the project status to allow editing.
+          </div>
+        )}
       {isLoadingProposal && proposal ? (
         <div className="h-24 bg-gray-100 animate-pulse rounded"/>
       ) : (
@@ -1027,6 +1753,7 @@ function ProjectProposalTab({ projectId, clientId, siteId, proposals, statusLabe
           }}
         />
       )}
+      </div>
     </div>
   );
 }
@@ -1118,6 +1845,8 @@ function EmployeeSelect({ label, value, onChange, employees }:{ label:string, va
 function TimesheetTab({ projectId }:{ projectId:string }){
   const queryClient = useQueryClient();
   const confirm = useConfirm();
+  const location = useLocation();
+  const nav = useNavigate();
   const [month, setMonth] = useState<string>(new Date().toISOString().slice(0,7));
   const [userFilter, setUserFilter] = useState<string>('');
   
@@ -1125,6 +1854,10 @@ function TimesheetTab({ projectId }:{ projectId:string }){
   const [editingEntry, setEditingEntry] = useState<any>(null);
   const [editStartTime, setEditStartTime] = useState<string>('');
   const [editEndTime, setEditEndTime] = useState<string>('');
+  
+  const handleBackToOverview = () => {
+    nav(location.pathname, { replace: true });
+  };
   
   const qs = useMemo(()=>{
     const p = new URLSearchParams();
@@ -1600,8 +2333,28 @@ function TimesheetTab({ projectId }:{ projectId:string }){
   };
   
   return (
-    <div className="grid md:grid-cols-3 gap-4">
-      <div className="rounded-xl border bg-white p-4">
+    <div className="space-y-4">
+      {/* Minimalist header */}
+      <div className="mb-4">
+        <div className="flex items-center gap-3">
+          <button
+            onClick={handleBackToOverview}
+            className="p-2 rounded-lg border hover:bg-gray-50 transition-colors flex items-center justify-center"
+            title="Back to Overview"
+          >
+            <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+            </svg>
+          </button>
+          <div>
+            <h3 className="text-lg font-semibold text-gray-900">Timesheet</h3>
+            <p className="text-xs text-gray-500">Time tracking and hours</p>
+          </div>
+        </div>
+      </div>
+      
+      <div className="grid md:grid-cols-3 gap-4">
+        <div className="rounded-xl border bg-white p-4">
         <h4 className="font-semibold mb-2">Add Time Entry</h4>
         <div className="grid gap-2 text-sm">
           <div><label className="text-xs text-gray-600">Date</label><input type="date" className="w-full border rounded px-3 py-2" value={workDate} onChange={e=>setWorkDate(e.target.value)} /></div>
@@ -1695,6 +2448,7 @@ function TimesheetTab({ projectId }:{ projectId:string }){
           )}
         </div>
       </div>
+      
       <div className="md:col-span-2 rounded-xl border bg-white">
         <div className="p-3 flex items-center justify-between gap-3">
           <div className="flex items-center gap-2"><label className="text-xs text-gray-600">Month</label><input type="month" className="border rounded px-2 py-1" value={month} onChange={e=>{ setMonth(e.target.value); }} /></div>
@@ -1794,6 +2548,7 @@ function TimesheetTab({ projectId }:{ projectId:string }){
           );
           }) : <div className="p-3 text-sm text-gray-600">No time entries</div>}
         </div>
+      </div>
       </div>
       {/* Edit Time Entry Modal */}
       {editingEntry && (
@@ -2589,7 +3344,10 @@ function LastReportsCard({ reports }: { reports: Report[] }){
         <div className="space-y-2">
           {recentReports.map((report) => (
             <div key={report.id} className="p-2 rounded border hover:bg-gray-50 transition-colors">
-              <div className="text-sm font-medium text-gray-900">{report.description || 'No description'}</div>
+              <div className="text-sm font-medium text-gray-900">{report.title || 'Untitled Report'}</div>
+              {report.description && (
+                <div className="text-xs text-gray-600 mt-1 line-clamp-2">{report.description}</div>
+              )}
               {report.created_at && (
                 <div className="text-xs text-gray-500 mt-1">
                   {new Date(report.created_at).toLocaleDateString()}
@@ -2652,7 +3410,7 @@ function ProjectTeamCard({ projectId, employees }: { projectId: string, employee
 }
 
 function ProjectTabCards({ availableTabs, onTabClick, proj }: { 
-  availableTabs: readonly ('overview'|'reports'|'dispatch'|'timesheet'|'files'|'photos'|'proposal'|'estimate'|'orders')[], 
+  availableTabs: readonly ('overview'|'reports'|'dispatch'|'timesheet'|'files'|'proposal'|'estimate'|'orders')[], 
   onTabClick: (tab: typeof availableTabs[number]) => void,
   proj: any 
 }){
@@ -2660,8 +3418,7 @@ function ProjectTabCards({ availableTabs, onTabClick, proj }: {
     reports: { label: 'Reports', icon: '📝', description: 'Project reports and updates', color: 'bg-green-100 text-green-600' },
     dispatch: { label: 'Schedule', icon: '📅', description: 'Project schedule and calendar', color: 'bg-purple-100 text-purple-600' },
     timesheet: { label: 'Timesheet', icon: '⏰', description: 'Time tracking and hours', color: 'bg-orange-100 text-orange-600' },
-    files: { label: 'Files', icon: '📁', description: 'Documents and files', color: 'bg-gray-100 text-gray-600' },
-    photos: { label: 'Photos', icon: '📷', description: 'Project photos and images', color: 'bg-pink-100 text-pink-600' },
+    files: { label: 'Files', icon: '📁', description: 'Documents, photos and files', color: 'bg-gray-100 text-gray-600' },
     proposal: { label: 'Proposal', icon: '📄', description: 'Project proposals', color: 'bg-indigo-100 text-indigo-600' },
     estimate: { label: 'Estimate', icon: '💰', description: 'Cost estimates and budgets', color: 'bg-yellow-100 text-yellow-600' },
     orders: { label: 'Orders', icon: '🛒', description: 'Purchase orders and supplies', color: 'bg-red-100 text-red-600' },

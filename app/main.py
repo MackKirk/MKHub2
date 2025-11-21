@@ -365,6 +365,12 @@ def create_app() -> FastAPI:
                         except Exception:
                             # Column already exists, which is fine
                             pass
+                        # Add title column to project_reports for SQLite
+                        try:
+                            conn.execute(text("ALTER TABLE project_reports ADD COLUMN title TEXT"))
+                        except Exception:
+                            # Column already exists, which is fine
+                            pass
                         # Dispatch & Time Tracking tables for SQLite
                         # Add fields to projects table
                         try:
@@ -996,6 +1002,12 @@ def create_app() -> FastAPI:
                         conn.execute(text("ALTER TABLE project_reports ALTER COLUMN description TYPE TEXT"))
                     except Exception:
                         # Column might already be TEXT or migration might have failed
+                        pass
+                    # Add title column to project_reports
+                    try:
+                        conn.execute(text("ALTER TABLE project_reports ADD COLUMN IF NOT EXISTS title VARCHAR(255)"))
+                    except Exception:
+                        # Column might already exist
                         pass
                     # Timesheets
                     conn.execute(text("CREATE TABLE IF NOT EXISTS project_time_entries (\n"
