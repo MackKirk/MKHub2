@@ -2,11 +2,14 @@ import Calendar from '@/components/Calendar';
 import EmployeeCommunity from '@/components/EmployeeCommunity';
 import { useState, useEffect, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { api } from '@/lib/api';
+import toast from 'react-hot-toast';
 
 export default function Home(){
+  const location = useLocation();
   const [isCalendarExpanded, setIsCalendarExpanded] = useState(false);
+  const [showReportModal, setShowReportModal] = useState(false);
   const { data: meProfile } = useQuery({ 
     queryKey: ['me-profile'], 
     queryFn: () => api<any>('GET', '/auth/me/profile') 
@@ -148,6 +151,23 @@ export default function Home(){
                     </div>
                   </div>
                 </Link>
+
+                <button
+                  onClick={() => setShowReportModal(true)}
+                  className="rounded-lg border border-gray-200 bg-white p-4 hover:shadow-md transition-shadow cursor-pointer text-left"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-12 h-12 rounded-lg bg-red-100 flex items-center justify-center">
+                      <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                      </svg>
+                    </div>
+                    <div>
+                      <div className="font-semibold text-gray-900">Project Report</div>
+                      <div className="text-sm text-gray-500">Create a new project report</div>
+                    </div>
+                  </div>
+                </button>
               </div>
               
               {/* Calendar Card or Expanded Calendar */}
@@ -185,6 +205,175 @@ export default function Home(){
               </div>
             </div>
           </div>
+        </div>
+      </div>
+
+      {showReportModal && (
+        <QuickReportModal
+          onClose={() => setShowReportModal(false)}
+          onSuccess={() => {
+            setShowReportModal(false);
+            toast.success('Report created successfully');
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function QuickReportModal({ onClose, onSuccess }: { onClose: () => void, onSuccess: () => void }){
+  const [selectedProjectId, setSelectedProjectId] = useState<string>('');
+  const [category, setCategory] = useState('');
+  const [desc, setDesc] = useState('');
+  const [file, setFile] = useState<File|null>(null);
+  const { data: projects } = useQuery({
+    queryKey: ['projects-for-report'],
+    queryFn: () => api<any[]>('GET', '/projects?is_bidding=false'),
+  });
+  const { data: settings } = useQuery({
+    queryKey: ['settings'],
+    queryFn: () => api<any>('GET', '/settings'),
+  });
+
+  const reportCategories = (settings?.report_categories || []) as any[];
+
+  const handleCreate = async () => {
+    if (!selectedProjectId) {
+      toast.error('Please select a project');
+      return;
+    }
+    if (!desc.trim()) {
+      toast.error('Please enter a description');
+      return;
+    }
+    try {
+      let imgMeta: any = undefined;
+      if (file) {
+        const selectedProject = projects?.find(p => String(p.id) === selectedProjectId);
+        const up: any = await api('POST', '/files/upload', {
+          project_id: selectedProjectId,
+          client_id: selectedProject?.client_id || null,
+          employee_id: null,
+          category_id: 'project-report',
+          original_name: file.name,
+          content_type: file.type || 'application/octet-stream'
+        });
+        await fetch(up.upload_url, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': file.type || 'application/octet-stream',
+            'x-ms-blob-type': 'BlockBlob'
+          },
+          body: file
+        });
+        const conf: any = await api('POST', '/files/confirm', {
+          key: up.key,
+          size_bytes: file.size,
+          checksum_sha256: 'na',
+          content_type: file.type || 'application/octet-stream'
+        });
+        imgMeta = {
+          file_object_id: conf.id,
+          original_name: file.name,
+          content_type: file.type || 'application/octet-stream'
+        };
+      }
+      await api('POST', `/projects/${selectedProjectId}/reports`, {
+        category_id: category || null,
+        description: desc,
+        images: imgMeta ? { attachments: [imgMeta] } : undefined
+      });
+      setSelectedProjectId('');
+      setCategory('');
+      setDesc('');
+      setFile(null);
+      onSuccess();
+    } catch (_e) {
+      toast.error('Failed to create report');
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
+      <div className="bg-white rounded-xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+        <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] p-6 flex items-center justify-between flex-shrink-0">
+          <h2 className="text-xl font-semibold text-white">Create Project Report</h2>
+          <button
+            onClick={onClose}
+            className="text-2xl font-bold text-white hover:text-gray-200 w-8 h-8 flex items-center justify-center rounded hover:bg-white/20"
+          >
+            ×
+          </button>
+        </div>
+        <div className="p-6 overflow-y-auto flex-1">
+          <div className="space-y-4">
+            <div>
+              <label className="text-xs text-gray-600 block mb-1">Project *</label>
+              <select
+                className="w-full border rounded px-3 py-2 text-sm"
+                value={selectedProjectId}
+                onChange={e => setSelectedProjectId(e.target.value)}
+              >
+                <option value="">Select project...</option>
+                {projects?.map(p => (
+                  <option key={p.id} value={p.id}>{p.name || p.code || p.id}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs text-gray-600 block mb-1">Category</label>
+              <select
+                className="w-full border rounded px-3 py-2 text-sm"
+                value={category}
+                onChange={e => setCategory(e.target.value)}
+              >
+                <option value="">Select category...</option>
+                {reportCategories.map(cat => (
+                  <option key={cat.value || cat.id} value={cat.value || cat.label}>{cat.label}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs text-gray-600 block mb-1">Description *</label>
+              <textarea
+                className="w-full border rounded px-3 py-2 text-sm"
+                rows={6}
+                placeholder="Describe what happened, how the day went, or any events on site..."
+                value={desc}
+                onChange={e => setDesc(e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="text-xs text-gray-600 block mb-1">Attachment (optional)</label>
+              <input
+                type="file"
+                onChange={e => setFile(e.target.files?.[0] || null)}
+                className="w-full border rounded px-3 py-2 text-sm"
+                accept="image/*,.pdf,.doc,.docx"
+              />
+              {file && (
+                <div className="mt-2 text-sm text-gray-600 flex items-center gap-2">
+                  <span>📎</span>
+                  <span>{file.name}</span>
+                  <button onClick={() => setFile(null)} className="text-red-600 hover:text-red-700">×</button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+        <div className="p-4 border-t bg-gray-50 flex justify-end gap-2 flex-shrink-0">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 rounded border bg-white hover:bg-gray-50 text-gray-700 text-sm font-medium"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleCreate}
+            className="px-4 py-2 rounded bg-brand-red hover:bg-red-700 text-white text-sm font-medium"
+          >
+            Create Report
+          </button>
         </div>
       </div>
     </div>

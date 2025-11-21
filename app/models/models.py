@@ -213,9 +213,9 @@ class ProjectReport(Base):
 
     id: Mapped[uuid.UUID] = uuid_pk()
     project_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"))
-    category_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
+    category_id: Mapped[Optional[str]] = mapped_column(String(100))  # Changed from UUID to String to store category values from settings
     division_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
-    description: Mapped[Optional[str]] = mapped_column(String(2000))
+    description: Mapped[Optional[str]] = mapped_column(Text())  # Changed from String(2000) to Text for unlimited length
     images: Mapped[Optional[dict]] = mapped_column(JSON)
     status: Mapped[Optional[str]] = mapped_column(String(100))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)

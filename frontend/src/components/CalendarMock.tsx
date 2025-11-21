@@ -376,44 +376,33 @@ export default function CalendarMock({ title, projectId }: CalendarMockProps){
         ))}
       </div>
 
-      <div className="mt-1 grid grid-cols-7 gap-2">
+      <div className="mt-1 grid grid-cols-7 gap-1.5">
         {days.map(({ date, key })=> {
-          if(!date) return <div key={key} className="h-24 rounded border bg-gray-50" />;
+          if(!date) return <div key={key} className="h-12 rounded border bg-gray-50" />;
           const ds = date.toISOString().slice(0,10);
           const dayEvents = getEventsForDate(date);
+          const hasEvents = dayEvents.length > 0;
           const isToday = (()=>{
             const t = new Date();
             return t.toISOString().slice(0,10) === ds;
           })();
           return (
-            <div key={key} className={`h-24 rounded border bg-white p-2 flex flex-col ${isToday? 'ring-2 ring-brand-red': ''}`}>
-              <div className="text-xs font-semibold text-gray-700 flex-shrink-0">{date.getDate()}</div>
-              <div className="mt-1 flex-1 overflow-y-auto min-h-0 calendar-day-scroll">
-                {dayEvents.length? (() => {
-                  const colorMap = assignUniqueColors(dayEvents);
-                  return (
-                    <ul className="space-y-1">
-                      {dayEvents.map((event)=> {
-                        const color = colorMap.get(event.id) || getEventColor(event.id);
-                        return (
-                          <li 
-                            key={event.id} 
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setShowViewModal(event);
-                            }}
-                            className={`text-[11px] font-medium leading-tight truncate cursor-pointer hover:opacity-90 transition-opacity px-1.5 py-0.5 rounded border ${color.bg} ${color.text} ${color.border} shadow-sm flex-shrink-0`}
-                            title={`${event.name} - Click to view details`}
-                          >
-                            {event.name}
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  );
-                })() : (
-                  <div className="text-[10px] text-gray-400">No events</div>
-                )}
+            <div 
+              key={key} 
+              onClick={() => {
+                if (hasEvents && dayEvents.length > 0) {
+                  setShowViewModal(dayEvents[0]);
+                }
+              }}
+              className={`h-12 rounded border flex items-center justify-center relative cursor-pointer transition-all ${
+                hasEvents 
+                  ? 'bg-blue-500 hover:bg-blue-600 border-blue-600' 
+                  : 'bg-white hover:bg-gray-50'
+              } ${isToday? 'ring-2 ring-brand-red': ''}`}
+              title={hasEvents ? `${dayEvents.length} event(s) - Click to view` : `No events`}
+            >
+              <div className={`text-xs font-semibold ${hasEvents ? 'text-white' : 'text-gray-700'}`}>
+                {date.getDate()}
               </div>
             </div>
           );
