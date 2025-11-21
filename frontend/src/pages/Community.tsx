@@ -549,7 +549,7 @@ function PostHistoryItem({ post }: { post: any }) {
           <div className="text-xs text-gray-500">
             Created {formatTimeAgo(post.created_at)} · {post.requires_read_confirmation 
               ? `${post.confirmations_count || 0}${post.total_recipients ? `/${post.total_recipients}` : ''} confirmations`
-              : `${post.confirmations_count || 0} total views`
+              : `${post.views_count || 0} total views`
             }
           </div>
         </div>

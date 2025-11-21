@@ -442,6 +442,11 @@ def list_my_posts(
             CommunityPostReadConfirmation.post_id == post.id
         ).count()
         
+        # Get views count
+        views_count = db.query(CommunityPostView).filter(
+            CommunityPostView.post_id == post.id
+        ).count()
+        
         # Calculate total recipients count
         total_recipients = 0
         if post.target_type == 'all':
@@ -492,6 +497,7 @@ def list_my_posts(
             "is_urgent": post.is_urgent or False,
             "requires_read_confirmation": post.requires_read_confirmation or False,
             "confirmations_count": confirmations_count,
+            "views_count": views_count,
             "total_recipients": total_recipients,
         })
     
