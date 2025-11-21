@@ -547,10 +547,10 @@ function PostHistoryItem({ post }: { post: any }) {
           </div>
           <p className="text-sm text-gray-600 mb-2 line-clamp-2">{post.content}</p>
           <div className="text-xs text-gray-500">
-            Created {formatTimeAgo(post.created_at)} · {post.requires_read_confirmation 
-              ? `${post.confirmations_count || 0}${post.total_recipients ? `/${post.total_recipients}` : ''} confirmations`
-              : `${post.views_count || 0} total views`
-            }
+            Created {formatTimeAgo(post.created_at)} · {post.views_count || 0} total views
+            {post.requires_read_confirmation && (
+              <> · {post.confirmations_count || 0}{post.total_recipients ? `/${post.total_recipients}` : ''} confirmations</>
+            )}
           </div>
         </div>
       </div>
