@@ -32,9 +32,11 @@ type Shift = {
 type Attendance = {
   id: string;
   shift_id: string;
-  type: 'in' | 'out';
+  type?: 'in' | 'out'; // For backward compatibility
+  clock_in_time?: string | null;
+  clock_out_time?: string | null;
+  time_selected_utc?: string | null; // For backward compatibility
   status: string;
-  time_selected_utc: string;
   source: string;
 };
 
@@ -262,12 +264,25 @@ export default function ScheduleModal({ onClose }: ScheduleModalProps) {
     return projectAddresses[id] || 'No address available';
   };
 
-  // Get attendances for a shift
+  // Get attendances for a shift - NEW MODEL: Each record is a complete event
   const getAttendanceForShift = (shiftId: string, type: 'in' | 'out'): Attendance | undefined => {
+    let att: Attendance | undefined;
     if (selectedShift?.id === shiftId) {
-      return selectedShiftAttendances.find((a) => a.type === type);
+      att = selectedShiftAttendances.find((a) => a.shift_id === shiftId);
+    } else {
+      att = attendances.find((a) => a.shift_id === shiftId);
     }
-    return attendances.find((a) => a.shift_id === shiftId && a.type === type);
+    
+    if (!att) return undefined;
+    
+    // Return the attendance if it has the requested time field
+    if (type === 'in' && att.clock_in_time) return att;
+    if (type === 'out' && att.clock_out_time) return att;
+    
+    // For backward compatibility, check type field
+    if (att.type === type) return att;
+    
+    return undefined;
   };
 
   // Get status badge
@@ -730,12 +745,13 @@ export default function ScheduleModal({ onClose }: ScheduleModalProps) {
     return employees?.find((e: any) => e.id === selectedShift.worker_id);
   }, [selectedShift, employees]);
 
-  // Get clock-in/out status
-  const clockIn = selectedShift ? getAttendanceForShift(selectedShift.id, 'in') : null;
-  const clockOut = selectedShift ? getAttendanceForShift(selectedShift.id, 'out') : null;
-  const canClockIn = selectedShift ? (!clockIn || clockIn.status === 'rejected') : false;
+  // Get clock-in/out status - NEW MODEL: Get the attendance record (which may have both clock_in and clock_out)
+  const attendance = selectedShift ? (selectedShiftAttendances.find((a) => a.shift_id === selectedShift.id) || attendances.find((a) => a.shift_id === selectedShift.id)) : null;
+  const clockIn = attendance?.clock_in_time ? attendance : null;
+  const clockOut = attendance?.clock_out_time ? attendance : null;
+  const canClockIn = selectedShift ? (!attendance?.clock_in_time || attendance.status === 'rejected') : false;
   const canClockOut = selectedShift
-    ? clockIn && (clockIn.status === 'approved' || clockIn.status === 'pending') && (!clockOut || clockOut.status === 'rejected')
+    ? attendance?.clock_in_time && (attendance.status === 'approved' || attendance.status === 'pending') && !attendance.clock_out_time
     : false;
   const isOwnShift = currentUser && selectedShift && String(currentUser.id) === String(selectedShift.worker_id);
 
@@ -868,11 +884,15 @@ export default function ScheduleModal({ onClose }: ScheduleModalProps) {
                                         shiftClockIn.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
                                         'bg-red-100 text-red-800'
                                       }`}>
-                                        In: {new Date(shiftClockIn.time_selected_utc).toLocaleTimeString('en-US', {
+                                        In: {shiftClockIn.clock_in_time ? new Date(shiftClockIn.clock_in_time).toLocaleTimeString('en-US', {
                                           hour: 'numeric',
                                           minute: '2-digit',
                                           hour12: true,
-                                        })}
+                                        }) : (shiftClockIn.time_selected_utc ? new Date(shiftClockIn.time_selected_utc).toLocaleTimeString('en-US', {
+                                          hour: 'numeric',
+                                          minute: '2-digit',
+                                          hour12: true,
+                                        }) : '--')}
                                       </span>
                                     </div>
                                   )}
@@ -883,11 +903,15 @@ export default function ScheduleModal({ onClose }: ScheduleModalProps) {
                                         shiftClockOut.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
                                         'bg-red-100 text-red-800'
                                       }`}>
-                                        Out: {new Date(shiftClockOut.time_selected_utc).toLocaleTimeString('en-US', {
+                                        Out: {shiftClockOut.clock_out_time ? new Date(shiftClockOut.clock_out_time).toLocaleTimeString('en-US', {
                                           hour: 'numeric',
                                           minute: '2-digit',
                                           hour12: true,
-                                        })}
+                                        }) : (shiftClockOut.time_selected_utc ? new Date(shiftClockOut.time_selected_utc).toLocaleTimeString('en-US', {
+                                          hour: 'numeric',
+                                          minute: '2-digit',
+                                          hour12: true,
+                                        }) : '--')}
                                       </span>
                                     </div>
                                   )}
@@ -1011,11 +1035,15 @@ export default function ScheduleModal({ onClose }: ScheduleModalProps) {
                           <div className="flex items-center gap-2">
                             {getStatusBadge(clockIn.status)}
                             <span className="text-sm text-gray-900">
-                              {new Date(clockIn.time_selected_utc).toLocaleTimeString('en-US', {
+                              {clockIn.clock_in_time ? new Date(clockIn.clock_in_time).toLocaleTimeString('en-US', {
                                 hour: 'numeric',
                                 minute: '2-digit',
                                 hour12: true,
-                              })}
+                              }) : (clockIn.time_selected_utc ? new Date(clockIn.time_selected_utc).toLocaleTimeString('en-US', {
+                                hour: 'numeric',
+                                minute: '2-digit',
+                                hour12: true,
+                              }) : '--')}
                             </span>
                             {clockIn.source === 'supervisor' && (
                               <span className="text-xs text-gray-500">(Supervisor)</span>
@@ -1031,11 +1059,15 @@ export default function ScheduleModal({ onClose }: ScheduleModalProps) {
                           <div className="flex items-center gap-2">
                             {getStatusBadge(clockOut.status)}
                             <span className="text-sm text-gray-900">
-                              {new Date(clockOut.time_selected_utc).toLocaleTimeString('en-US', {
+                              {clockOut.clock_out_time ? new Date(clockOut.clock_out_time).toLocaleTimeString('en-US', {
                                 hour: 'numeric',
                                 minute: '2-digit',
                                 hour12: true,
-                              })}
+                              }) : (clockOut.time_selected_utc ? new Date(clockOut.time_selected_utc).toLocaleTimeString('en-US', {
+                                hour: 'numeric',
+                                minute: '2-digit',
+                                hour12: true,
+                              }) : '--')}
                             </span>
                             {clockOut.source === 'supervisor' && (
                               <span className="text-xs text-gray-500">(Supervisor)</span>
@@ -1120,10 +1152,17 @@ export default function ScheduleModal({ onClose }: ScheduleModalProps) {
                     const todayAttendancesFromView = attendances.filter((a: Attendance) => {
                       return todayShiftsInView.some((s: Shift) => s.id === a.shift_id);
                     });
-                    const todayClockIn = todayAttendancesFromView.find((a: Attendance) => a.type === 'in');
-                    const todayClockOut = todayAttendancesFromView.find((a: Attendance) => a.type === 'out');
-                    const canClockIn = !todayClockIn || todayClockIn.status === 'rejected';
-                    const canClockOut = todayClockIn && (todayClockIn.status === 'approved' || todayClockIn.status === 'pending') && (!todayClockOut || todayClockOut.status === 'rejected');
+                    // NEW MODEL: Find attendance with clock_in_time (may or may not have clock_out_time)
+                    const todayAttendance = todayAttendancesFromView.find((a: Attendance) => a.clock_in_time);
+                    const todayClockIn = todayAttendance?.clock_in_time ? todayAttendance : undefined;
+                    const todayClockOut = todayAttendance?.clock_out_time ? todayAttendance : undefined;
+                    // For backward compatibility, check type field if no clock_in_time found
+                    const todayClockInOld = !todayClockIn ? todayAttendancesFromView.find((a: Attendance) => a.type === 'in') : undefined;
+                    const todayClockOutOld = !todayClockOut ? todayAttendancesFromView.find((a: Attendance) => a.type === 'out') : undefined;
+                    const finalClockIn = todayClockIn || todayClockInOld;
+                    const finalClockOut = todayClockOut || todayClockOutOld;
+                    const canClockIn = !finalClockIn || finalClockIn.status === 'rejected';
+                    const canClockOut = finalClockIn && (finalClockIn.status === 'approved' || finalClockIn.status === 'pending') && !finalClockOut;
                     
                     return (
                       <div className="space-y-4">
@@ -1154,33 +1193,41 @@ export default function ScheduleModal({ onClose }: ScheduleModalProps) {
                             Clock Out
                           </button>
                         </div>
-                        {todayClockIn && (
+                        {finalClockIn && (
                           <div className="pt-4 border-t">
                             <div className="text-sm space-y-2">
                               <div className="flex items-center justify-between">
                                 <span className="text-gray-600">Clock In:</span>
                                 <div className="flex items-center gap-2">
-                                  {getStatusBadge(todayClockIn.status)}
+                                  {getStatusBadge(finalClockIn.status)}
                                   <span className="text-gray-900">
-                                    {new Date(todayClockIn.time_selected_utc).toLocaleTimeString('en-US', {
+                                    {finalClockIn.clock_in_time ? new Date(finalClockIn.clock_in_time).toLocaleTimeString('en-US', {
                                       hour: 'numeric',
                                       minute: '2-digit',
                                       hour12: true,
-                                    })}
+                                    }) : (finalClockIn.time_selected_utc ? new Date(finalClockIn.time_selected_utc).toLocaleTimeString('en-US', {
+                                      hour: 'numeric',
+                                      minute: '2-digit',
+                                      hour12: true,
+                                    }) : '--')}
                                   </span>
                                 </div>
                               </div>
-                              {todayClockOut && (
+                              {finalClockOut && (
                                 <div className="flex items-center justify-between">
                                   <span className="text-gray-600">Clock Out:</span>
                                   <div className="flex items-center gap-2">
-                                    {getStatusBadge(todayClockOut.status)}
+                                    {getStatusBadge(finalClockOut.status)}
                                     <span className="text-gray-900">
-                                      {new Date(todayClockOut.time_selected_utc).toLocaleTimeString('en-US', {
+                                      {finalClockOut.clock_out_time ? new Date(finalClockOut.clock_out_time).toLocaleTimeString('en-US', {
                                         hour: 'numeric',
                                         minute: '2-digit',
                                         hour12: true,
-                                      })}
+                                      }) : (finalClockOut.time_selected_utc ? new Date(finalClockOut.time_selected_utc).toLocaleTimeString('en-US', {
+                                        hour: 'numeric',
+                                        minute: '2-digit',
+                                        hour12: true,
+                                      }) : '--')}
                                     </span>
                                   </div>
                                 </div>

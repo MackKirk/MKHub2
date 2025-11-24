@@ -35,15 +35,17 @@ interface Shift {
 interface Attendance {
   id: string;
   shift_id: string;
-  type: 'in' | 'out';
-  time_selected_utc: string;
+  type?: 'in' | 'out'; // For backward compatibility
+  clock_in_time?: string | null;
+  clock_out_time?: string | null;
+  time_selected_utc?: string | null; // For backward compatibility
   status: 'approved' | 'pending' | 'rejected';
   source: 'app' | 'supervisor' | 'kiosk' | 'system';
   reason_text?: string;
   gps_lat?: number;
   gps_lng?: number;
   gps_accuracy_m?: number;
-  created_at: string;
+  created_at?: string;
 }
 
 interface TimeSheetProps {
@@ -291,9 +293,19 @@ export default function TimeSheet({ projectId, userId }: TimeSheetProps) {
     }
   };
 
-  // Get attendance for a shift
+  // Get attendance for a shift - NEW MODEL: Each record is a complete event
   const getAttendanceForShift = (shiftId: string, type: 'in' | 'out'): Attendance | undefined => {
-    return (attendances || []).find((a: Attendance) => a.shift_id === shiftId && a.type === type);
+    const att = (attendances || []).find((a: Attendance) => a.shift_id === shiftId);
+    if (!att) return undefined;
+    
+    // Return the attendance if it has the requested time field
+    if (type === 'in' && att.clock_in_time) return att;
+    if (type === 'out' && att.clock_out_time) return att;
+    
+    // For backward compatibility, check type field
+    if (att.type === type) return att;
+    
+    return undefined;
   };
 
   // Get status badge
@@ -331,10 +343,14 @@ export default function TimeSheet({ projectId, userId }: TimeSheetProps) {
           </div>
         ) : (
           shifts.map((shift: Shift) => {
-            const clockIn = getAttendanceForShift(shift.id, 'in');
-            const clockOut = getAttendanceForShift(shift.id, 'out');
-            const canClockIn = !clockIn || clockIn.status === 'rejected';
-            const canClockOut = clockIn && clockIn.status === 'approved' && (!clockOut || clockOut.status === 'rejected');
+            // NEW MODEL: Get the attendance record (which may have both clock_in and clock_out)
+            const attendance = (attendances || []).find((a: Attendance) => a.shift_id === shift.id);
+            const clockIn = attendance?.clock_in_time ? attendance : undefined;
+            const clockOut = attendance?.clock_out_time ? attendance : undefined;
+            // Can clock in if there's no clock_in_time or if it's rejected
+            const canClockIn = !attendance?.clock_in_time || attendance.status === 'rejected';
+            // Can clock out if there's a clock_in_time (approved or pending) but no clock_out_time
+            const canClockOut = attendance?.clock_in_time && (attendance.status === 'approved' || attendance.status === 'pending') && !attendance.clock_out_time;
 
             return (
               <div key={shift.id} className="border rounded-lg p-4 bg-white">
@@ -358,11 +374,15 @@ export default function TimeSheet({ projectId, userId }: TimeSheetProps) {
                         <div className="flex items-center gap-2">
                           {getStatusBadge(clockIn.status)}
                           <span className="text-sm text-gray-700">
-                            {new Date(clockIn.time_selected_utc).toLocaleTimeString('en-US', {
+                            {clockIn.clock_in_time ? new Date(clockIn.clock_in_time).toLocaleTimeString('en-US', {
                               hour: 'numeric',
                               minute: '2-digit',
                               hour12: true,
-                            })}
+                            }) : (clockIn.time_selected_utc ? new Date(clockIn.time_selected_utc).toLocaleTimeString('en-US', {
+                              hour: 'numeric',
+                              minute: '2-digit',
+                              hour12: true,
+                            }) : '--')}
                           </span>
                           {clockIn.source === 'supervisor' && (
                             <span className="text-xs text-gray-500">(Registered by Supervisor)</span>
@@ -385,11 +405,15 @@ export default function TimeSheet({ projectId, userId }: TimeSheetProps) {
                         <div className="flex items-center gap-2">
                           {getStatusBadge(clockOut.status)}
                           <span className="text-sm text-gray-700">
-                            {new Date(clockOut.time_selected_utc).toLocaleTimeString('en-US', {
+                            {clockOut.clock_out_time ? new Date(clockOut.clock_out_time).toLocaleTimeString('en-US', {
                               hour: 'numeric',
                               minute: '2-digit',
                               hour12: true,
-                            })}
+                            }) : (clockOut.time_selected_utc ? new Date(clockOut.time_selected_utc).toLocaleTimeString('en-US', {
+                              hour: 'numeric',
+                              minute: '2-digit',
+                              hour12: true,
+                            }) : '--')}
                           </span>
                           {clockOut.source === 'supervisor' && (
                             <span className="text-xs text-gray-500">(Registered by Supervisor)</span>

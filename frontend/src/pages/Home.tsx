@@ -98,12 +98,9 @@ export default function Home(){
                   </div>
                 </Link>
                 
-                <button
-                  onClick={() => {
-                    // TODO: Implement Clock-in/out functionality
-                    console.log('Clock-in/out clicked');
-                  }}
-                  className="rounded-lg border border-gray-200 bg-white p-4 hover:shadow-md transition-shadow cursor-pointer text-left"
+                <Link
+                  to="/clock-in-out"
+                  className="rounded-lg border border-gray-200 bg-white p-4 hover:shadow-md transition-shadow cursor-pointer"
                 >
                   <div className="flex items-center gap-3">
                     <div className="w-12 h-12 rounded-lg bg-orange-100 flex items-center justify-center">
@@ -116,7 +113,7 @@ export default function Home(){
                       <div className="text-sm text-gray-500">Record your attendance</div>
                     </div>
                   </div>
-                </button>
+                </Link>
                 
                 <Link
                   to="/tasks"

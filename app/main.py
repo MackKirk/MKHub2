@@ -345,6 +345,207 @@ def create_app() -> FastAPI:
                             conn.execute(text("ALTER TABLE project_events ADD COLUMN overrides TEXT"))
                         except Exception:
                             pass
+                        # Migrate attendance.shift_id to allow NULL (for direct attendance without shift)
+                        try:
+                            if not settings.database_url.startswith("sqlite"):
+                                # PostgreSQL/other databases - drop NOT NULL constraint
+                                try:
+                                    conn.execute(text("ALTER TABLE attendance ALTER COLUMN shift_id DROP NOT NULL"))
+                                    print("✅ Migrated attendance.shift_id to allow NULL")
+                                except Exception as e:
+                                    # Column might already be nullable
+                                    if "does not exist" not in str(e).lower() and "already" not in str(e).lower() and "not null" not in str(e).lower():
+                                        print(f"⚠️  Could not migrate attendance.shift_id: {e}")
+                            else:
+                                # SQLite - SQLite doesn't enforce NOT NULL strictly if model says nullable=True
+                                # But if the table was created with NOT NULL, we need to recreate it
+                                # For now, SQLite should work with nullable=True in the model
+                                pass
+                        except Exception as e:
+                            print(f"⚠️  Could not migrate attendance.shift_id: {e}")
+                        
+                        # Migrate attendance table from 2-record model (in/out) to 1-record model (event) - PostgreSQL
+                        try:
+                            # Check if migration has already been done
+                            result = conn.execute(text("""
+                                SELECT column_name 
+                                FROM information_schema.columns 
+                                WHERE table_schema = current_schema()
+                                AND table_name = 'attendance' AND column_name = 'clock_in_time'
+                            """))
+                            migration_done = result.fetchone() is not None
+                            
+                            if not migration_done:
+                                print("🔄 Starting attendance table migration (2-record -> 1-record model)...")
+                                
+                                # Add new columns
+                                new_columns = [
+                                    ("clock_in_time", "TIMESTAMPTZ"),
+                                    ("clock_in_entered_utc", "TIMESTAMPTZ"),
+                                    ("clock_in_gps_lat", "NUMERIC(10, 7)"),
+                                    ("clock_in_gps_lng", "NUMERIC(10, 7)"),
+                                    ("clock_in_gps_accuracy_m", "NUMERIC(10, 2)"),
+                                    ("clock_in_mocked_flag", "BOOLEAN DEFAULT FALSE"),
+                                    ("clock_out_time", "TIMESTAMPTZ"),
+                                    ("clock_out_entered_utc", "TIMESTAMPTZ"),
+                                    ("clock_out_gps_lat", "NUMERIC(10, 7)"),
+                                    ("clock_out_gps_lng", "NUMERIC(10, 7)"),
+                                    ("clock_out_gps_accuracy_m", "NUMERIC(10, 2)"),
+                                    ("clock_out_mocked_flag", "BOOLEAN DEFAULT FALSE"),
+                                ]
+                                
+                                for col_name, col_type in new_columns:
+                                    try:
+                                        conn.execute(text(f"ALTER TABLE attendance ADD COLUMN {col_name} {col_type}"))
+                                    except Exception as e:
+                                        if "already exists" not in str(e).lower() and "duplicate" not in str(e).lower():
+                                            print(f"⚠️  Could not add column {col_name}: {e}")
+                                
+                                # Make old columns nullable for migration period
+                                try:
+                                    conn.execute(text("ALTER TABLE attendance ALTER COLUMN type DROP NOT NULL"))
+                                except Exception:
+                                    pass
+                                try:
+                                    conn.execute(text("ALTER TABLE attendance ALTER COLUMN time_entered_utc DROP NOT NULL"))
+                                except Exception:
+                                    pass
+                                try:
+                                    conn.execute(text("ALTER TABLE attendance ALTER COLUMN time_selected_utc DROP NOT NULL"))
+                                except Exception:
+                                    pass
+                                
+                                # Migrate data: group clock-in and clock-out pairs into single records
+                                print("📊 Migrating attendance data...")
+                                
+                                # Get all clock-in records
+                                clock_ins = conn.execute(text("""
+                                    SELECT id, shift_id, worker_id, time_entered_utc, time_selected_utc, 
+                                           status, source, created_by, reason_text, gps_lat, gps_lng, 
+                                           gps_accuracy_m, mocked_flag, attachments, created_at,
+                                           approved_at, approved_by, rejected_at, rejected_by, rejection_reason
+                                    FROM attendance 
+                                    WHERE type = 'in'
+                                    ORDER BY worker_id, time_selected_utc
+                                """)).fetchall()
+                                
+                                migrated_count = 0
+                                for ci in clock_ins:
+                                    ci_id = ci[0]
+                                    shift_id = ci[1]
+                                    worker_id = ci[2]
+                                    
+                                    # Find matching clock-out
+                                    if shift_id:
+                                        # Scheduled attendance - match by shift_id
+                                        co = conn.execute(text("""
+                                            SELECT id, time_entered_utc, time_selected_utc, status, source,
+                                                   created_by, reason_text, gps_lat, gps_lng, gps_accuracy_m,
+                                                   mocked_flag, attachments, approved_at, approved_by,
+                                                   rejected_at, rejected_by, rejection_reason
+                                            FROM attendance
+                                            WHERE type = 'out' AND shift_id = :shift_id AND worker_id = :worker_id
+                                            AND time_selected_utc > :ci_time
+                                            ORDER BY time_selected_utc ASC
+                                            LIMIT 1
+                                        """), {"shift_id": shift_id, "worker_id": worker_id, "ci_time": ci[4]}).fetchone()
+                                    else:
+                                        # Direct attendance - match by worker_id, reason_text (job_type), and time
+                                        co = conn.execute(text("""
+                                            SELECT id, time_entered_utc, time_selected_utc, status, source,
+                                                   created_by, reason_text, gps_lat, gps_lng, gps_accuracy_m,
+                                                   mocked_flag, attachments, approved_at, approved_by,
+                                                   rejected_at, rejected_by, rejection_reason
+                                            FROM attendance
+                                            WHERE type = 'out' AND shift_id IS NULL AND worker_id = :worker_id
+                                            AND time_selected_utc > :ci_time
+                                            AND (reason_text = :reason_text OR (reason_text IS NULL AND :reason_text IS NULL))
+                                            ORDER BY time_selected_utc ASC
+                                            LIMIT 1
+                                        """), {"worker_id": worker_id, "ci_time": ci[4], "reason_text": ci[8]}).fetchone()
+                                    
+                                    # Update clock-in record with new fields
+                                    conn.execute(text("""
+                                        UPDATE attendance SET
+                                            clock_in_time = :ci_time,
+                                            clock_in_entered_utc = :ci_entered,
+                                            clock_in_gps_lat = :ci_lat,
+                                            clock_in_gps_lng = :ci_lng,
+                                            clock_in_gps_accuracy_m = :ci_acc,
+                                            clock_in_mocked_flag = :ci_mocked,
+                                            clock_out_time = :co_time,
+                                            clock_out_entered_utc = :co_entered,
+                                            clock_out_gps_lat = :co_lat,
+                                            clock_out_gps_lng = :co_lng,
+                                            clock_out_gps_accuracy_m = :co_acc,
+                                            clock_out_mocked_flag = :co_mocked
+                                        WHERE id = :id
+                                    """), {
+                                        "id": ci_id,
+                                        "ci_time": ci[4],  # time_selected_utc
+                                        "ci_entered": ci[3],  # time_entered_utc
+                                        "ci_lat": ci[9],  # gps_lat
+                                        "ci_lng": ci[10],  # gps_lng
+                                        "ci_acc": ci[11],  # gps_accuracy_m
+                                        "ci_mocked": ci[12] if ci[12] is not None else False,  # mocked_flag
+                                        "co_time": co[2] if co else None,  # time_selected_utc
+                                        "co_entered": co[1] if co else None,  # time_entered_utc
+                                        "co_lat": co[7] if co else None,  # gps_lat
+                                        "co_lng": co[8] if co else None,  # gps_lng
+                                        "co_acc": co[9] if co else None,  # gps_accuracy_m
+                                        "co_mocked": co[10] if co and co[10] is not None else False,  # mocked_flag
+                                    })
+                                    
+                                    # Delete clock-out record if found
+                                    if co:
+                                        conn.execute(text("DELETE FROM attendance WHERE id = :id"), {"id": co[0]})
+                                    
+                                    migrated_count += 1
+                                
+                                # Handle orphaned clock-out records (no matching clock-in)
+                                orphaned_outs = conn.execute(text("""
+                                    SELECT id FROM attendance WHERE type = 'out'
+                                """)).fetchall()
+                                
+                                for oo in orphaned_outs:
+                                    # Create a new record with only clock-out data
+                                    oo_data = conn.execute(text("""
+                                        SELECT shift_id, worker_id, time_entered_utc, time_selected_utc,
+                                               status, source, created_by, reason_text, gps_lat, gps_lng,
+                                               gps_accuracy_m, mocked_flag, attachments, created_at,
+                                               approved_at, approved_by, rejected_at, rejected_by, rejection_reason
+                                        FROM attendance WHERE id = :id
+                                    """), {"id": oo[0]}).fetchone()
+                                    
+                                    if oo_data:
+                                        # Update the clock-out record to have only clock-out fields
+                                        conn.execute(text("""
+                                            UPDATE attendance SET
+                                                clock_out_time = :co_time,
+                                                clock_out_entered_utc = :co_entered,
+                                                clock_out_gps_lat = :co_lat,
+                                                clock_out_gps_lng = :co_lng,
+                                                clock_out_gps_accuracy_m = :co_acc,
+                                                clock_out_mocked_flag = :co_mocked
+                                            WHERE id = :id
+                                        """), {
+                                            "id": oo[0],
+                                            "co_time": oo_data[3],  # time_selected_utc
+                                            "co_entered": oo_data[2],  # time_entered_utc
+                                            "co_lat": oo_data[8],  # gps_lat
+                                            "co_lng": oo_data[9],  # gps_lng
+                                            "co_acc": oo_data[10],  # gps_accuracy_m
+                                            "co_mocked": oo_data[11] if oo_data[11] is not None else False,  # mocked_flag
+                                        })
+                                
+                                print(f"✅ Migrated {migrated_count} attendance records")
+                            # else:
+                            #     print("✅ Attendance table migration already completed")
+                        except Exception as e:
+                            print(f"⚠️  Could not migrate attendance table: {e}")
+                            import traceback
+                            traceback.print_exc()
+                        
                         # Migrate project_reports category_id from UUID to TEXT for SQLite
                         try:
                             # SQLite doesn't have strict types, but we need to ensure the column exists as TEXT
@@ -483,6 +684,173 @@ def create_app() -> FastAPI:
                                                ")"))
                         except Exception:
                             pass
+                        
+                        # Migrate attendance table from 2-record model (in/out) to 1-record model (event) - SQLite
+                        try:
+                            # Check if migration has already been done by checking for clock_in_time column
+                            try:
+                                result = conn.execute(text("PRAGMA table_info(attendance)"))
+                                columns = [row[1] for row in result.fetchall()]
+                                migration_done = 'clock_in_time' in columns
+                            except Exception:
+                                migration_done = False
+                            
+                            if not migration_done:
+                                print("🔄 Starting attendance table migration (2-record -> 1-record model) for SQLite...")
+                                
+                                # Add new columns
+                                new_columns = [
+                                    ("clock_in_time", "TEXT"),
+                                    ("clock_in_entered_utc", "TEXT"),
+                                    ("clock_in_gps_lat", "REAL"),
+                                    ("clock_in_gps_lng", "REAL"),
+                                    ("clock_in_gps_accuracy_m", "REAL"),
+                                    ("clock_in_mocked_flag", "INTEGER DEFAULT 0"),
+                                    ("clock_out_time", "TEXT"),
+                                    ("clock_out_entered_utc", "TEXT"),
+                                    ("clock_out_gps_lat", "REAL"),
+                                    ("clock_out_gps_lng", "REAL"),
+                                    ("clock_out_gps_accuracy_m", "REAL"),
+                                    ("clock_out_mocked_flag", "INTEGER DEFAULT 0"),
+                                ]
+                                
+                                for col_name, col_type in new_columns:
+                                    try:
+                                        conn.execute(text(f"ALTER TABLE attendance ADD COLUMN {col_name} {col_type}"))
+                                    except Exception as e:
+                                        if "duplicate" not in str(e).lower() and "already exists" not in str(e).lower():
+                                            print(f"⚠️  Could not add column {col_name}: {e}")
+                                
+                                # Migrate data: group clock-in and clock-out pairs into single records
+                                print("📊 Migrating attendance data for SQLite...")
+                                
+                                # Get all clock-in records
+                                clock_ins = conn.execute(text("""
+                                    SELECT id, shift_id, worker_id, time_entered_utc, time_selected_utc, 
+                                           status, source, created_by, reason_text, gps_lat, gps_lng, 
+                                           gps_accuracy_m, mocked_flag, attachments, created_at,
+                                           approved_at, approved_by, rejected_at, rejected_by, rejection_reason
+                                    FROM attendance 
+                                    WHERE type = 'in'
+                                    ORDER BY worker_id, time_selected_utc
+                                """)).fetchall()
+                                
+                                migrated_count = 0
+                                for ci in clock_ins:
+                                    ci_id = ci[0]
+                                    shift_id = ci[1]
+                                    worker_id = ci[2]
+                                    
+                                    # Find matching clock-out
+                                    if shift_id:
+                                        # Scheduled attendance - match by shift_id
+                                        co = conn.execute(text("""
+                                            SELECT id, time_entered_utc, time_selected_utc, status, source,
+                                                   created_by, reason_text, gps_lat, gps_lng, gps_accuracy_m,
+                                                   mocked_flag, attachments, approved_at, approved_by,
+                                                   rejected_at, rejected_by, rejection_reason
+                                            FROM attendance
+                                            WHERE type = 'out' AND shift_id = ? AND worker_id = ?
+                                            AND time_selected_utc > ?
+                                            ORDER BY time_selected_utc ASC
+                                            LIMIT 1
+                                        """), (shift_id, worker_id, ci[4])).fetchone()
+                                    else:
+                                        # Direct attendance - match by worker_id, reason_text (job_type), and time
+                                        co = conn.execute(text("""
+                                            SELECT id, time_entered_utc, time_selected_utc, status, source,
+                                                   created_by, reason_text, gps_lat, gps_lng, gps_accuracy_m,
+                                                   mocked_flag, attachments, approved_at, approved_by,
+                                                   rejected_at, rejected_by, rejection_reason
+                                            FROM attendance
+                                            WHERE type = 'out' AND (shift_id IS NULL OR shift_id = '') AND worker_id = ?
+                                            AND time_selected_utc > ?
+                                            AND (reason_text = ? OR (reason_text IS NULL AND ? IS NULL))
+                                            ORDER BY time_selected_utc ASC
+                                            LIMIT 1
+                                        """), (worker_id, ci[4], ci[8], ci[8])).fetchone()
+                                    
+                                    # Update clock-in record with new fields
+                                    conn.execute(text("""
+                                        UPDATE attendance SET
+                                            clock_in_time = ?,
+                                            clock_in_entered_utc = ?,
+                                            clock_in_gps_lat = ?,
+                                            clock_in_gps_lng = ?,
+                                            clock_in_gps_accuracy_m = ?,
+                                            clock_in_mocked_flag = ?,
+                                            clock_out_time = ?,
+                                            clock_out_entered_utc = ?,
+                                            clock_out_gps_lat = ?,
+                                            clock_out_gps_lng = ?,
+                                            clock_out_gps_accuracy_m = ?,
+                                            clock_out_mocked_flag = ?
+                                        WHERE id = ?
+                                    """), (
+                                        ci[4],  # time_selected_utc
+                                        ci[3],  # time_entered_utc
+                                        ci[9],  # gps_lat
+                                        ci[10],  # gps_lng
+                                        ci[11],  # gps_accuracy_m
+                                        1 if ci[12] else 0,  # mocked_flag
+                                        co[2] if co else None,  # time_selected_utc
+                                        co[1] if co else None,  # time_entered_utc
+                                        co[7] if co else None,  # gps_lat
+                                        co[8] if co else None,  # gps_lng
+                                        co[9] if co else None,  # gps_accuracy_m
+                                        1 if (co and co[10]) else 0,  # mocked_flag
+                                        ci_id,
+                                    ))
+                                    
+                                    # Delete clock-out record if found
+                                    if co:
+                                        conn.execute(text("DELETE FROM attendance WHERE id = ?"), (co[0],))
+                                    
+                                    migrated_count += 1
+                                
+                                # Handle orphaned clock-out records (no matching clock-in)
+                                orphaned_outs = conn.execute(text("""
+                                    SELECT id FROM attendance WHERE type = 'out'
+                                """)).fetchall()
+                                
+                                for oo in orphaned_outs:
+                                    # Get clock-out data
+                                    oo_data = conn.execute(text("""
+                                        SELECT shift_id, worker_id, time_entered_utc, time_selected_utc,
+                                               status, source, created_by, reason_text, gps_lat, gps_lng,
+                                               gps_accuracy_m, mocked_flag, attachments, created_at,
+                                               approved_at, approved_by, rejected_at, rejected_by, rejection_reason
+                                        FROM attendance WHERE id = ?
+                                    """), (oo[0],)).fetchone()
+                                    
+                                    if oo_data:
+                                        # Update the clock-out record to have only clock-out fields
+                                        conn.execute(text("""
+                                            UPDATE attendance SET
+                                                clock_out_time = ?,
+                                                clock_out_entered_utc = ?,
+                                                clock_out_gps_lat = ?,
+                                                clock_out_gps_lng = ?,
+                                                clock_out_gps_accuracy_m = ?,
+                                                clock_out_mocked_flag = ?
+                                            WHERE id = ?
+                                        """), (
+                                            oo_data[3],  # time_selected_utc
+                                            oo_data[2],  # time_entered_utc
+                                            oo_data[8],  # gps_lat
+                                            oo_data[9],  # gps_lng
+                                            oo_data[10],  # gps_accuracy_m
+                                            1 if oo_data[11] else 0,  # mocked_flag
+                                            oo[0],
+                                        ))
+                                
+                                print(f"✅ Migrated {migrated_count} attendance records for SQLite")
+                            # else:
+                            #     print("✅ Attendance table migration already completed for SQLite")
+                        except Exception as e:
+                            print(f"⚠️  Could not migrate attendance table for SQLite: {e}")
+                            import traceback
+                            traceback.print_exc()
                         # Audit logs table
                         try:
                             conn.execute(text("CREATE TABLE IF NOT EXISTS audit_logs (\n"
@@ -869,6 +1237,189 @@ def create_app() -> FastAPI:
                     pass
             if settings.database_url.startswith("postgres"):
                 with engine.begin() as conn:
+                    # Migrate attendance table from 2-record model (in/out) to 1-record model (event) - PostgreSQL
+                    try:
+                        # Check if migration has already been done
+                        result = conn.execute(text("""
+                            SELECT column_name 
+                            FROM information_schema.columns 
+                            WHERE table_schema = current_schema()
+                            AND table_name = 'attendance' AND column_name = 'clock_in_time'
+                        """))
+                        migration_done = result.fetchone() is not None
+                        
+                        if not migration_done:
+                            print("🔄 Starting attendance table migration (2-record -> 1-record model) for PostgreSQL...")
+                            
+                            # Add new columns
+                            new_columns = [
+                                ("clock_in_time", "TIMESTAMPTZ"),
+                                ("clock_in_entered_utc", "TIMESTAMPTZ"),
+                                ("clock_in_gps_lat", "NUMERIC(10, 7)"),
+                                ("clock_in_gps_lng", "NUMERIC(10, 7)"),
+                                ("clock_in_gps_accuracy_m", "NUMERIC(10, 2)"),
+                                ("clock_in_mocked_flag", "BOOLEAN DEFAULT FALSE"),
+                                ("clock_out_time", "TIMESTAMPTZ"),
+                                ("clock_out_entered_utc", "TIMESTAMPTZ"),
+                                ("clock_out_gps_lat", "NUMERIC(10, 7)"),
+                                ("clock_out_gps_lng", "NUMERIC(10, 7)"),
+                                ("clock_out_gps_accuracy_m", "NUMERIC(10, 2)"),
+                                ("clock_out_mocked_flag", "BOOLEAN DEFAULT FALSE"),
+                            ]
+                            
+                            for col_name, col_type in new_columns:
+                                try:
+                                    conn.execute(text(f"ALTER TABLE attendance ADD COLUMN {col_name} {col_type}"))
+                                    print(f"✅ Added column {col_name} to attendance table")
+                                except Exception as e:
+                                    if "already exists" not in str(e).lower() and "duplicate" not in str(e).lower():
+                                        print(f"⚠️  Could not add column {col_name}: {e}")
+                            
+                            # Make old columns nullable for migration period
+                            try:
+                                conn.execute(text("ALTER TABLE attendance ALTER COLUMN type DROP NOT NULL"))
+                            except Exception:
+                                pass
+                            try:
+                                conn.execute(text("ALTER TABLE attendance ALTER COLUMN time_entered_utc DROP NOT NULL"))
+                            except Exception:
+                                pass
+                            try:
+                                conn.execute(text("ALTER TABLE attendance ALTER COLUMN time_selected_utc DROP NOT NULL"))
+                            except Exception:
+                                pass
+                            
+                            # Migrate data: group clock-in and clock-out pairs into single records
+                            print("📊 Migrating attendance data...")
+                            
+                            # Get all clock-in records
+                            clock_ins = conn.execute(text("""
+                                SELECT id, shift_id, worker_id, time_entered_utc, time_selected_utc, 
+                                       status, source, created_by, reason_text, gps_lat, gps_lng, 
+                                       gps_accuracy_m, mocked_flag, attachments, created_at,
+                                       approved_at, approved_by, rejected_at, rejected_by, rejection_reason
+                                FROM attendance 
+                                WHERE type = 'in'
+                                ORDER BY worker_id, time_selected_utc
+                            """)).fetchall()
+                            
+                            migrated_count = 0
+                            for ci in clock_ins:
+                                ci_id = ci[0]
+                                shift_id = ci[1]
+                                worker_id = ci[2]
+                                
+                                # Find matching clock-out
+                                if shift_id:
+                                    # Scheduled attendance - match by shift_id
+                                    co = conn.execute(text("""
+                                        SELECT id, time_entered_utc, time_selected_utc, status, source,
+                                               created_by, reason_text, gps_lat, gps_lng, gps_accuracy_m,
+                                               mocked_flag, attachments, approved_at, approved_by,
+                                               rejected_at, rejected_by, rejection_reason
+                                        FROM attendance
+                                        WHERE type = 'out' AND shift_id = :shift_id AND worker_id = :worker_id
+                                        AND time_selected_utc > :ci_time
+                                        ORDER BY time_selected_utc ASC
+                                        LIMIT 1
+                                    """), {"shift_id": shift_id, "worker_id": worker_id, "ci_time": ci[4]}).fetchone()
+                                else:
+                                    # Direct attendance - match by worker_id, reason_text (job_type), and time
+                                    co = conn.execute(text("""
+                                        SELECT id, time_entered_utc, time_selected_utc, status, source,
+                                               created_by, reason_text, gps_lat, gps_lng, gps_accuracy_m,
+                                               mocked_flag, attachments, approved_at, approved_by,
+                                               rejected_at, rejected_by, rejection_reason
+                                        FROM attendance
+                                        WHERE type = 'out' AND shift_id IS NULL AND worker_id = :worker_id
+                                        AND time_selected_utc > :ci_time
+                                        AND (reason_text = :reason_text OR (reason_text IS NULL AND :reason_text IS NULL))
+                                        ORDER BY time_selected_utc ASC
+                                        LIMIT 1
+                                    """), {"worker_id": worker_id, "ci_time": ci[4], "reason_text": ci[8]}).fetchone()
+                                
+                                # Update clock-in record with new fields
+                                conn.execute(text("""
+                                    UPDATE attendance SET
+                                        clock_in_time = :ci_time,
+                                        clock_in_entered_utc = :ci_entered,
+                                        clock_in_gps_lat = :ci_lat,
+                                        clock_in_gps_lng = :ci_lng,
+                                        clock_in_gps_accuracy_m = :ci_acc,
+                                        clock_in_mocked_flag = :ci_mocked,
+                                        clock_out_time = :co_time,
+                                        clock_out_entered_utc = :co_entered,
+                                        clock_out_gps_lat = :co_lat,
+                                        clock_out_gps_lng = :co_lng,
+                                        clock_out_gps_accuracy_m = :co_acc,
+                                        clock_out_mocked_flag = :co_mocked
+                                    WHERE id = :id
+                                """), {
+                                    "id": ci_id,
+                                    "ci_time": ci[4],  # time_selected_utc
+                                    "ci_entered": ci[3],  # time_entered_utc
+                                    "ci_lat": ci[9],  # gps_lat
+                                    "ci_lng": ci[10],  # gps_lng
+                                    "ci_acc": ci[11],  # gps_accuracy_m
+                                    "ci_mocked": ci[12] if ci[12] is not None else False,  # mocked_flag
+                                    "co_time": co[2] if co else None,  # time_selected_utc
+                                    "co_entered": co[1] if co else None,  # time_entered_utc
+                                    "co_lat": co[7] if co else None,  # gps_lat
+                                    "co_lng": co[8] if co else None,  # gps_lng
+                                    "co_acc": co[9] if co else None,  # gps_accuracy_m
+                                    "co_mocked": co[10] if co and co[10] is not None else False,  # mocked_flag
+                                })
+                                
+                                # Delete clock-out record if found
+                                if co:
+                                    conn.execute(text("DELETE FROM attendance WHERE id = :id"), {"id": co[0]})
+                                
+                                migrated_count += 1
+                            
+                            # Handle orphaned clock-out records (no matching clock-in)
+                            orphaned_outs = conn.execute(text("""
+                                SELECT id FROM attendance WHERE type = 'out'
+                            """)).fetchall()
+                            
+                            for oo in orphaned_outs:
+                                # Create a new record with only clock-out data
+                                oo_data = conn.execute(text("""
+                                    SELECT shift_id, worker_id, time_entered_utc, time_selected_utc,
+                                           status, source, created_by, reason_text, gps_lat, gps_lng,
+                                           gps_accuracy_m, mocked_flag, attachments, created_at,
+                                           approved_at, approved_by, rejected_at, rejected_by, rejection_reason
+                                    FROM attendance WHERE id = :id
+                                """), {"id": oo[0]}).fetchone()
+                                
+                                if oo_data:
+                                    # Update the clock-out record to have only clock-out fields
+                                    conn.execute(text("""
+                                        UPDATE attendance SET
+                                            clock_out_time = :co_time,
+                                            clock_out_entered_utc = :co_entered,
+                                            clock_out_gps_lat = :co_lat,
+                                            clock_out_gps_lng = :co_lng,
+                                            clock_out_gps_accuracy_m = :co_acc,
+                                            clock_out_mocked_flag = :co_mocked
+                                        WHERE id = :id
+                                    """), {
+                                        "id": oo[0],
+                                        "co_time": oo_data[3],  # time_selected_utc
+                                        "co_entered": oo_data[2],  # time_entered_utc
+                                        "co_lat": oo_data[8],  # gps_lat
+                                        "co_lng": oo_data[9],  # gps_lng
+                                        "co_acc": oo_data[10],  # gps_accuracy_m
+                                        "co_mocked": oo_data[11] if oo_data[11] is not None else False,  # mocked_flag
+                                    })
+                            
+                            print(f"✅ Migrated {migrated_count} attendance records for PostgreSQL")
+                        # else:
+                        #     print("✅ Attendance table migration already completed for PostgreSQL")
+                    except Exception as e:
+                        print(f"⚠️  Could not migrate attendance table for PostgreSQL: {e}")
+                        import traceback
+                        traceback.print_exc()
+                    
                     conn.execute(text("ALTER TABLE employee_profiles ADD COLUMN IF NOT EXISTS profile_photo_file_id UUID"))
                     # Ensure clients table has expected columns (idempotent, Postgres only)
                     conn.execute(text("ALTER TABLE clients ADD COLUMN IF NOT EXISTS code VARCHAR(50)"))

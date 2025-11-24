@@ -1558,9 +1558,19 @@ function TimesheetTab({ projectId }:{ projectId:string }){
     }
   };
 
-  // Get attendance for a shift
+  // Get attendance for a shift - NEW MODEL: Each record is a complete event
   const getAttendanceForShift = (shiftId: string, type: 'in' | 'out'): any => {
-    return (attendances || []).find((a: any) => a.shift_id === shiftId && a.type === type);
+    const att = (attendances || []).find((a: any) => a.shift_id === shiftId);
+    if (!att) return undefined;
+    
+    // Return the attendance if it has the requested time field
+    if (type === 'in' && att.clock_in_time) return att;
+    if (type === 'out' && att.clock_out_time) return att;
+    
+    // For backward compatibility, check type field
+    if (att.type === type) return att;
+    
+    return undefined;
   };
 
   // Get status badge
@@ -1632,7 +1642,8 @@ function TimesheetTab({ projectId }:{ projectId:string }){
                             <div className="flex items-center gap-1.5 flex-1">
                               {getStatusBadge(clockIn.status)}
                               <span className="text-gray-700">
-                                {new Date(clockIn.time_selected_utc).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}
+                                {clockIn.clock_in_time ? new Date(clockIn.clock_in_time).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }) : 
+                                 (clockIn.time_selected_utc ? new Date(clockIn.time_selected_utc).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }) : '--')}
                               </span>
                               {clockIn.source === 'supervisor' && (
                                 <span className="text-gray-500 text-[10px]">(Supervisor)</span>
@@ -1648,7 +1659,8 @@ function TimesheetTab({ projectId }:{ projectId:string }){
                             <div className="flex items-center gap-1.5 flex-1">
                               {getStatusBadge(clockOut.status)}
                               <span className="text-gray-700">
-                                {new Date(clockOut.time_selected_utc).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}
+                                {clockOut.clock_out_time ? new Date(clockOut.clock_out_time).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }) : 
+                                 (clockOut.time_selected_utc ? new Date(clockOut.time_selected_utc).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }) : '--')}
                               </span>
                               {clockOut.source === 'supervisor' && (
                                 <span className="text-gray-500 text-[10px]">(Supervisor)</span>
