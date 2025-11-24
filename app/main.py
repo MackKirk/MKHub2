@@ -228,168 +228,168 @@ def create_app() -> FastAPI:
             # SQLite lightweight migrations for local dev
                 if db_url.startswith("sqlite:///./"):
                     print("[migrations] Detected SQLite database, running migrations...")
-                try:
+                    try:
                         # SQLite doesn't support IF NOT EXISTS for ALTER TABLE ADD COLUMN
                         # So we'll just try to add them and ignore errors (columns already exist)
                         # This is faster than checking each column individually
-                    with engine.begin() as conn:
-                        try:
-                            conn.execute(text("ALTER TABLE proposals ADD COLUMN project_id TEXT"))
-                        except Exception:
-                            pass
-                        # SQLite: Add suppliers columns if missing
-                        try:
-                            conn.execute(text("ALTER TABLE suppliers ADD COLUMN legal_name TEXT"))
-                        except Exception:
-                            pass
-                        try:
-                            conn.execute(text("ALTER TABLE suppliers ADD COLUMN website TEXT"))
-                        except Exception:
-                            pass
-                        try:
-                            conn.execute(text("ALTER TABLE suppliers ADD COLUMN address_line1 TEXT"))
-                        except Exception:
-                            pass
-                        try:
-                            conn.execute(text("ALTER TABLE suppliers ADD COLUMN address_line2 TEXT"))
-                        except Exception:
-                            pass
-                        # city column already exists or will be added
-                        try:
-                            conn.execute(text("ALTER TABLE suppliers ADD COLUMN city TEXT"))
-                        except Exception:
-                            pass
-                        try:
-                            conn.execute(text("ALTER TABLE suppliers ADD COLUMN province TEXT"))
-                        except Exception:
-                            pass
-                        try:
-                            conn.execute(text("ALTER TABLE suppliers ADD COLUMN postal_code TEXT"))
-                        except Exception:
-                            pass
-                        try:
-                            conn.execute(text("ALTER TABLE suppliers ADD COLUMN country TEXT"))
-                        except Exception:
-                            pass
-                        try:
-                            conn.execute(text("ALTER TABLE suppliers ADD COLUMN tax_number TEXT"))
-                        except Exception:
-                            pass
-                        try:
-                            conn.execute(text("ALTER TABLE suppliers ADD COLUMN payment_terms TEXT"))
-                        except Exception:
-                            pass
-                        try:
-                            conn.execute(text("ALTER TABLE suppliers ADD COLUMN currency TEXT"))
-                        except Exception:
-                            pass
-                        try:
-                            conn.execute(text("ALTER TABLE suppliers ADD COLUMN lead_time_days INTEGER"))
-                        except Exception:
-                            pass
-                        try:
-                            conn.execute(text("ALTER TABLE suppliers ADD COLUMN category TEXT"))
-                        except Exception:
-                            pass
-                        try:
-                            conn.execute(text("ALTER TABLE suppliers ADD COLUMN status TEXT"))
-                        except Exception:
-                            pass
-                        try:
-                            conn.execute(text("ALTER TABLE suppliers ADD COLUMN notes TEXT"))
-                        except Exception:
-                            pass
-                        try:
-                            conn.execute(text("ALTER TABLE suppliers ADD COLUMN is_active INTEGER DEFAULT 1"))
-                        except Exception:
-                            pass
-                        try:
-                            conn.execute(text("ALTER TABLE suppliers ADD COLUMN created_at TEXT DEFAULT CURRENT_TIMESTAMP"))
-                        except Exception:
-                            pass
-                        try:
-                            conn.execute(text("ALTER TABLE suppliers ADD COLUMN updated_at TEXT"))
-                        except Exception:
-                            pass
-                        # client_folders columns for SQLite
-                        try:
-                            conn.execute(text("ALTER TABLE client_folders ADD COLUMN project_id TEXT"))
-                        except Exception:
-                            pass
-                        try:
-                            conn.execute(text("ALTER TABLE client_folders ADD COLUMN access_permissions TEXT"))
-                        except Exception:
-                            pass
-                        # clients is_system column for SQLite
-                        try:
-                            conn.execute(text("ALTER TABLE clients ADD COLUMN is_system INTEGER DEFAULT 0"))
-                        except Exception:
-                            pass
-                        # Project events table for SQLite
-                        try:
-                            conn.execute(text("CREATE TABLE IF NOT EXISTS project_events (\n"
-                                               "id TEXT PRIMARY KEY,\n"
-                                               "project_id TEXT NOT NULL,\n"
-                                               "name TEXT NOT NULL,\n"
-                                               "location TEXT,\n"
-                                               "start_datetime TEXT NOT NULL,\n"
-                                               "end_datetime TEXT NOT NULL,\n"
-                                               "notes TEXT,\n"
-                                               "is_all_day INTEGER DEFAULT 0,\n"
-                                               "timezone TEXT,\n"
-                                               "repeat_type TEXT,\n"
-                                               "repeat_config TEXT,\n"
-                                               "repeat_until TEXT,\n"
-                                               "repeat_count INTEGER,\n"
-                                               "exceptions TEXT,\n"
-                                               "extra_dates TEXT,\n"
-                                               "overrides TEXT,\n"
-                                               "created_at TEXT DEFAULT CURRENT_TIMESTAMP,\n"
-                                               "created_by TEXT,\n"
-                                               "FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,\n"
-                                               "FOREIGN KEY(created_by) REFERENCES users(id)\n"
-                                               ")"))
-                        except Exception:
-                            pass
-                        # Add new columns to existing SQLite table
-                        try:
-                            conn.execute(text("ALTER TABLE project_events ADD COLUMN is_all_day INTEGER DEFAULT 0"))
-                        except Exception:
-                            pass
-                        try:
-                            conn.execute(text("ALTER TABLE project_events ADD COLUMN timezone TEXT"))
-                        except Exception:
-                            pass
-                        try:
-                            conn.execute(text("ALTER TABLE project_events ADD COLUMN repeat_type TEXT"))
-                        except Exception:
-                            pass
-                        try:
-                            conn.execute(text("ALTER TABLE project_events ADD COLUMN repeat_config TEXT"))
-                        except Exception:
-                            pass
-                        try:
-                            conn.execute(text("ALTER TABLE project_events ADD COLUMN repeat_until TEXT"))
-                        except Exception:
-                            pass
-                        try:
-                            conn.execute(text("ALTER TABLE project_events ADD COLUMN repeat_count INTEGER"))
-                        except Exception:
-                            pass
-                        try:
-                            conn.execute(text("ALTER TABLE project_events ADD COLUMN exceptions TEXT"))
-                        except Exception:
-                            pass
-                        try:
-                            conn.execute(text("ALTER TABLE project_events ADD COLUMN extra_dates TEXT"))
-                        except Exception:
-                            pass
-                        try:
-                            conn.execute(text("ALTER TABLE project_events ADD COLUMN overrides TEXT"))
-                        except Exception:
-                            pass
-                        # Migrate attendance.shift_id to allow NULL (for direct attendance without shift)
-                        try:
+                        with engine.begin() as conn:
+                            try:
+                                conn.execute(text("ALTER TABLE proposals ADD COLUMN project_id TEXT"))
+                            except Exception:
+                                pass
+                            # SQLite: Add suppliers columns if missing
+                            try:
+                                conn.execute(text("ALTER TABLE suppliers ADD COLUMN legal_name TEXT"))
+                            except Exception:
+                                pass
+                            try:
+                                conn.execute(text("ALTER TABLE suppliers ADD COLUMN website TEXT"))
+                            except Exception:
+                                pass
+                            try:
+                                conn.execute(text("ALTER TABLE suppliers ADD COLUMN address_line1 TEXT"))
+                            except Exception:
+                                pass
+                            try:
+                                conn.execute(text("ALTER TABLE suppliers ADD COLUMN address_line2 TEXT"))
+                            except Exception:
+                                pass
+                            # city column already exists or will be added
+                            try:
+                                conn.execute(text("ALTER TABLE suppliers ADD COLUMN city TEXT"))
+                            except Exception:
+                                pass
+                            try:
+                                conn.execute(text("ALTER TABLE suppliers ADD COLUMN province TEXT"))
+                            except Exception:
+                                pass
+                            try:
+                                conn.execute(text("ALTER TABLE suppliers ADD COLUMN postal_code TEXT"))
+                            except Exception:
+                                pass
+                            try:
+                                conn.execute(text("ALTER TABLE suppliers ADD COLUMN country TEXT"))
+                            except Exception:
+                                pass
+                            try:
+                                conn.execute(text("ALTER TABLE suppliers ADD COLUMN tax_number TEXT"))
+                            except Exception:
+                                pass
+                            try:
+                                conn.execute(text("ALTER TABLE suppliers ADD COLUMN payment_terms TEXT"))
+                            except Exception:
+                                pass
+                            try:
+                                conn.execute(text("ALTER TABLE suppliers ADD COLUMN currency TEXT"))
+                            except Exception:
+                                pass
+                            try:
+                                conn.execute(text("ALTER TABLE suppliers ADD COLUMN lead_time_days INTEGER"))
+                            except Exception:
+                                pass
+                            try:
+                                conn.execute(text("ALTER TABLE suppliers ADD COLUMN category TEXT"))
+                            except Exception:
+                                pass
+                            try:
+                                conn.execute(text("ALTER TABLE suppliers ADD COLUMN status TEXT"))
+                            except Exception:
+                                pass
+                            try:
+                                conn.execute(text("ALTER TABLE suppliers ADD COLUMN notes TEXT"))
+                            except Exception:
+                                pass
+                            try:
+                                conn.execute(text("ALTER TABLE suppliers ADD COLUMN is_active INTEGER DEFAULT 1"))
+                            except Exception:
+                                pass
+                            try:
+                                conn.execute(text("ALTER TABLE suppliers ADD COLUMN created_at TEXT DEFAULT CURRENT_TIMESTAMP"))
+                            except Exception:
+                                pass
+                            try:
+                                conn.execute(text("ALTER TABLE suppliers ADD COLUMN updated_at TEXT"))
+                            except Exception:
+                                pass
+                            # client_folders columns for SQLite
+                            try:
+                                conn.execute(text("ALTER TABLE client_folders ADD COLUMN project_id TEXT"))
+                            except Exception:
+                                pass
+                            try:
+                                conn.execute(text("ALTER TABLE client_folders ADD COLUMN access_permissions TEXT"))
+                            except Exception:
+                                pass
+                            # clients is_system column for SQLite
+                            try:
+                                conn.execute(text("ALTER TABLE clients ADD COLUMN is_system INTEGER DEFAULT 0"))
+                            except Exception:
+                                pass
+                            # Project events table for SQLite
+                            try:
+                                conn.execute(text("CREATE TABLE IF NOT EXISTS project_events (\n"
+                                                   "id TEXT PRIMARY KEY,\n"
+                                                   "project_id TEXT NOT NULL,\n"
+                                                   "name TEXT NOT NULL,\n"
+                                                   "location TEXT,\n"
+                                                   "start_datetime TEXT NOT NULL,\n"
+                                                   "end_datetime TEXT NOT NULL,\n"
+                                                   "notes TEXT,\n"
+                                                   "is_all_day INTEGER DEFAULT 0,\n"
+                                                   "timezone TEXT,\n"
+                                                   "repeat_type TEXT,\n"
+                                                   "repeat_config TEXT,\n"
+                                                   "repeat_until TEXT,\n"
+                                                   "repeat_count INTEGER,\n"
+                                                   "exceptions TEXT,\n"
+                                                   "extra_dates TEXT,\n"
+                                                   "overrides TEXT,\n"
+                                                   "created_at TEXT DEFAULT CURRENT_TIMESTAMP,\n"
+                                                   "created_by TEXT,\n"
+                                                   "FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,\n"
+                                                   "FOREIGN KEY(created_by) REFERENCES users(id)\n"
+                                                   ")"))
+                            except Exception:
+                                pass
+                            # Add new columns to existing SQLite table
+                            try:
+                                conn.execute(text("ALTER TABLE project_events ADD COLUMN is_all_day INTEGER DEFAULT 0"))
+                            except Exception:
+                                pass
+                            try:
+                                conn.execute(text("ALTER TABLE project_events ADD COLUMN timezone TEXT"))
+                            except Exception:
+                                pass
+                            try:
+                                conn.execute(text("ALTER TABLE project_events ADD COLUMN repeat_type TEXT"))
+                            except Exception:
+                                pass
+                            try:
+                                conn.execute(text("ALTER TABLE project_events ADD COLUMN repeat_config TEXT"))
+                            except Exception:
+                                pass
+                            try:
+                                conn.execute(text("ALTER TABLE project_events ADD COLUMN repeat_until TEXT"))
+                            except Exception:
+                                pass
+                            try:
+                                conn.execute(text("ALTER TABLE project_events ADD COLUMN repeat_count INTEGER"))
+                            except Exception:
+                                pass
+                            try:
+                                conn.execute(text("ALTER TABLE project_events ADD COLUMN exceptions TEXT"))
+                            except Exception:
+                                pass
+                            try:
+                                conn.execute(text("ALTER TABLE project_events ADD COLUMN extra_dates TEXT"))
+                            except Exception:
+                                pass
+                            try:
+                                conn.execute(text("ALTER TABLE project_events ADD COLUMN overrides TEXT"))
+                            except Exception:
+                                pass
+                            # Migrate attendance.shift_id to allow NULL (for direct attendance without shift)
+                            try:
                             if not settings.database_url.startswith("sqlite"):
                                 # PostgreSQL/other databases - drop NOT NULL constraint
                                 try:
@@ -1001,23 +1001,23 @@ def create_app() -> FastAPI:
                                                "FOREIGN KEY(estimate_item_id) REFERENCES estimate_items(id) ON DELETE SET NULL,\n"
                                                "FOREIGN KEY(material_id) REFERENCES materials(id) ON DELETE SET NULL\n"
                                                ")"))
-                        except Exception:
-                            pass
-                        # Consent logs table
-                        try:
-                            conn.execute(text("CREATE TABLE IF NOT EXISTS consent_logs (\n"
-                                               "id TEXT PRIMARY KEY,\n"
-                                               "user_id TEXT NOT NULL,\n"
-                                               "policy_version TEXT NOT NULL,\n"
-                                               "timestamp_utc TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,\n"
-                                               "ip_address TEXT,\n"
-                                               "user_agent TEXT,\n"
-                                               "FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE\n"
-                                               ")"))
-                        except Exception:
-                            pass
-                        # Fleet & Equipment Management tables for SQLite
-                        try:
+                            except Exception:
+                                pass
+                            # Consent logs table
+                            try:
+                                conn.execute(text("CREATE TABLE IF NOT EXISTS consent_logs (\n"
+                                                   "id TEXT PRIMARY KEY,\n"
+                                                   "user_id TEXT NOT NULL,\n"
+                                                   "policy_version TEXT NOT NULL,\n"
+                                                   "timestamp_utc TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,\n"
+                                                   "ip_address TEXT,\n"
+                                                   "user_agent TEXT,\n"
+                                                   "FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE\n"
+                                                   ")"))
+                            except Exception:
+                                pass
+                            # Fleet & Equipment Management tables for SQLite
+                            try:
                             conn.execute(text("CREATE TABLE IF NOT EXISTS fleet_assets (\n"
                                                "id TEXT PRIMARY KEY,\n"
                                                "asset_type TEXT NOT NULL,\n"
@@ -1288,10 +1288,10 @@ def create_app() -> FastAPI:
                     print(f"[migrations] Error during SQLite migrations: {e}")
                     import traceback
                     traceback.print_exc()
-            if db_url.startswith("postgres"):
-                with engine.begin() as conn:
-                    # Migrate attendance table from 2-record model (in/out) to 1-record model (event) - PostgreSQL
-                    try:
+                if db_url.startswith("postgres"):
+                    with engine.begin() as conn:
+                        # Migrate attendance table from 2-record model (in/out) to 1-record model (event) - PostgreSQL
+                        try:
                         # Check if migration has already been done
                         result = conn.execute(text("""
                             SELECT column_name 
@@ -1473,35 +1473,35 @@ def create_app() -> FastAPI:
                         import traceback
                         traceback.print_exc()
                     
-                    conn.execute(text("ALTER TABLE employee_profiles ADD COLUMN IF NOT EXISTS profile_photo_file_id UUID"))
-                    # Ensure clients table has expected columns (idempotent, Postgres only)
-                    conn.execute(text("ALTER TABLE clients ADD COLUMN IF NOT EXISTS code VARCHAR(50)"))
-                    conn.execute(text("ALTER TABLE clients ADD COLUMN IF NOT EXISTS legal_name VARCHAR(255)"))
-                    conn.execute(text("ALTER TABLE clients ADD COLUMN IF NOT EXISTS display_name VARCHAR(255)"))
-                    conn.execute(text("ALTER TABLE clients ADD COLUMN IF NOT EXISTS client_type VARCHAR(50)"))
-                    conn.execute(text("ALTER TABLE clients ADD COLUMN IF NOT EXISTS client_status VARCHAR(50)"))
-                    conn.execute(text("ALTER TABLE clients ADD COLUMN IF NOT EXISTS lead_source VARCHAR(100)"))
-                    conn.execute(text("ALTER TABLE clients ADD COLUMN IF NOT EXISTS estimator_id UUID"))
-                    conn.execute(text("ALTER TABLE clients ADD COLUMN IF NOT EXISTS description VARCHAR(4000)"))
-                    conn.execute(text("ALTER TABLE clients ADD COLUMN IF NOT EXISTS address_line1 VARCHAR(255)"))
-                    conn.execute(text("ALTER TABLE clients ADD COLUMN IF NOT EXISTS address_line2 VARCHAR(255)"))
-                    conn.execute(text("ALTER TABLE clients ADD COLUMN IF NOT EXISTS city VARCHAR(100)"))
-                    conn.execute(text("ALTER TABLE clients ADD COLUMN IF NOT EXISTS province VARCHAR(100)"))
-                    conn.execute(text("ALTER TABLE clients ADD COLUMN IF NOT EXISTS postal_code VARCHAR(50)"))
-                    conn.execute(text("ALTER TABLE clients ADD COLUMN IF NOT EXISTS country VARCHAR(100)"))
-                    conn.execute(text("ALTER TABLE clients ADD COLUMN IF NOT EXISTS billing_address_line1 VARCHAR(255)"))
-                    conn.execute(text("ALTER TABLE clients ADD COLUMN IF NOT EXISTS billing_address_line2 VARCHAR(255)"))
-                    conn.execute(text("ALTER TABLE clients ADD COLUMN IF NOT EXISTS billing_city VARCHAR(100)"))
-                    conn.execute(text("ALTER TABLE clients ADD COLUMN IF NOT EXISTS billing_province VARCHAR(100)"))
-                    conn.execute(text("ALTER TABLE clients ADD COLUMN IF NOT EXISTS billing_postal_code VARCHAR(50)"))
-                    conn.execute(text("ALTER TABLE clients ADD COLUMN IF NOT EXISTS billing_country VARCHAR(100)"))
-                    conn.execute(text("ALTER TABLE clients ADD COLUMN IF NOT EXISTS type_id UUID"))
-                    conn.execute(text("ALTER TABLE clients ADD COLUMN IF NOT EXISTS status_id UUID"))
-                    conn.execute(text("ALTER TABLE clients ADD COLUMN IF NOT EXISTS payment_terms_id UUID"))
-                    conn.execute(text("ALTER TABLE clients ADD COLUMN IF NOT EXISTS billing_email VARCHAR(255)"))
-                    conn.execute(text("ALTER TABLE clients ADD COLUMN IF NOT EXISTS po_required BOOLEAN DEFAULT FALSE"))
-                    conn.execute(text("ALTER TABLE clients ADD COLUMN IF NOT EXISTS tax_number VARCHAR(100)"))
-                    conn.execute(text("ALTER TABLE clients ADD COLUMN IF NOT EXISTS dataforma_id VARCHAR(100)"))
+                        conn.execute(text("ALTER TABLE employee_profiles ADD COLUMN IF NOT EXISTS profile_photo_file_id UUID"))
+                        # Ensure clients table has expected columns (idempotent, Postgres only)
+                        conn.execute(text("ALTER TABLE clients ADD COLUMN IF NOT EXISTS code VARCHAR(50)"))
+                        conn.execute(text("ALTER TABLE clients ADD COLUMN IF NOT EXISTS legal_name VARCHAR(255)"))
+                        conn.execute(text("ALTER TABLE clients ADD COLUMN IF NOT EXISTS display_name VARCHAR(255)"))
+                        conn.execute(text("ALTER TABLE clients ADD COLUMN IF NOT EXISTS client_type VARCHAR(50)"))
+                        conn.execute(text("ALTER TABLE clients ADD COLUMN IF NOT EXISTS client_status VARCHAR(50)"))
+                        conn.execute(text("ALTER TABLE clients ADD COLUMN IF NOT EXISTS lead_source VARCHAR(100)"))
+                        conn.execute(text("ALTER TABLE clients ADD COLUMN IF NOT EXISTS estimator_id UUID"))
+                        conn.execute(text("ALTER TABLE clients ADD COLUMN IF NOT EXISTS description VARCHAR(4000)"))
+                        conn.execute(text("ALTER TABLE clients ADD COLUMN IF NOT EXISTS address_line1 VARCHAR(255)"))
+                        conn.execute(text("ALTER TABLE clients ADD COLUMN IF NOT EXISTS address_line2 VARCHAR(255)"))
+                        conn.execute(text("ALTER TABLE clients ADD COLUMN IF NOT EXISTS city VARCHAR(100)"))
+                        conn.execute(text("ALTER TABLE clients ADD COLUMN IF NOT EXISTS province VARCHAR(100)"))
+                        conn.execute(text("ALTER TABLE clients ADD COLUMN IF NOT EXISTS postal_code VARCHAR(50)"))
+                        conn.execute(text("ALTER TABLE clients ADD COLUMN IF NOT EXISTS country VARCHAR(100)"))
+                        conn.execute(text("ALTER TABLE clients ADD COLUMN IF NOT EXISTS billing_address_line1 VARCHAR(255)"))
+                        conn.execute(text("ALTER TABLE clients ADD COLUMN IF NOT EXISTS billing_address_line2 VARCHAR(255)"))
+                        conn.execute(text("ALTER TABLE clients ADD COLUMN IF NOT EXISTS billing_city VARCHAR(100)"))
+                        conn.execute(text("ALTER TABLE clients ADD COLUMN IF NOT EXISTS billing_province VARCHAR(100)"))
+                        conn.execute(text("ALTER TABLE clients ADD COLUMN IF NOT EXISTS billing_postal_code VARCHAR(50)"))
+                        conn.execute(text("ALTER TABLE clients ADD COLUMN IF NOT EXISTS billing_country VARCHAR(100)"))
+                        conn.execute(text("ALTER TABLE clients ADD COLUMN IF NOT EXISTS type_id UUID"))
+                        conn.execute(text("ALTER TABLE clients ADD COLUMN IF NOT EXISTS status_id UUID"))
+                        conn.execute(text("ALTER TABLE clients ADD COLUMN IF NOT EXISTS payment_terms_id UUID"))
+                        conn.execute(text("ALTER TABLE clients ADD COLUMN IF NOT EXISTS billing_email VARCHAR(255)"))
+                        conn.execute(text("ALTER TABLE clients ADD COLUMN IF NOT EXISTS po_required BOOLEAN DEFAULT FALSE"))
+                        conn.execute(text("ALTER TABLE clients ADD COLUMN IF NOT EXISTS tax_number VARCHAR(100)"))
+                        conn.execute(text("ALTER TABLE clients ADD COLUMN IF NOT EXISTS dataforma_id VARCHAR(100)"))
                     conn.execute(text("ALTER TABLE clients ADD COLUMN IF NOT EXISTS preferred_language VARCHAR(50)"))
                     conn.execute(text("ALTER TABLE clients ADD COLUMN IF NOT EXISTS preferred_channels JSONB"))
                     conn.execute(text("ALTER TABLE clients ADD COLUMN IF NOT EXISTS marketing_opt_in BOOLEAN DEFAULT FALSE"))
