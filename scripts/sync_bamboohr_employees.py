@@ -61,13 +61,12 @@ def create_or_update_user(
     """
     # Extract key fields from BambooHR data
     bamboohr_id = str(employee_data.get("id", ""))
-    # Priority: homeEmail (personal email used for signups) > workEmail > other emails
+    # Priority: homeEmail (personal email used for signups) > personalEmail > workEmail
     # This matches the logic used in BambooHR for employee signups and signatures
     email = (
         employee_data.get("homeEmail") or  # Personal email - used for signups/signatures
         employee_data.get("personalEmail") or
-        employee_data.get("workEmail") or 
-        employee_data.get("email")
+        employee_data.get("workEmail")
     )
     # Strip whitespace and check if empty
     if email:
@@ -75,21 +74,13 @@ def create_or_update_user(
     if not email or email == "":
         email = None
     
-    # Only generate @mackkirk.local email if absolutely no email exists
-    # This is a fallback for employees without email in BambooHR
+    # Skip employees without personal email - we don't want @mackkirk.local emails
     if not email:
-        first_name = employee_data.get("firstName", "").lower().replace(" ", "")
-        last_name = employee_data.get("lastName", "").lower().replace(" ", "")
-        if first_name and last_name:
-            email = f"{first_name}.{last_name}@mackkirk.local"
-        elif first_name:
-            email = f"{first_name}{bamboohr_id}@mackkirk.local"
-        else:
-            email = f"employee{bamboohr_id}@mackkirk.local"
-        print(f"  [WARN] No email found for employee {bamboohr_id}, using generated: {email}")
-    else:
-        email_source = "homeEmail" if employee_data.get("homeEmail") else ("personalEmail" if employee_data.get("personalEmail") else "workEmail")
-        print(f"  [OK] Using {email_source}: {email}")
+        print(f"  [SKIP] No personal email found for employee {bamboohr_id} ({employee_data.get('firstName', '')} {employee_data.get('lastName', '')}) - skipping")
+        return None, False
+    
+    email_source = "homeEmail" if employee_data.get("homeEmail") else ("personalEmail" if employee_data.get("personalEmail") else "workEmail")
+    print(f"  [OK] Using {email_source}: {email}")
     
     # Check if user already exists
     existing_user = find_user_by_email(db, email)
@@ -99,9 +90,22 @@ def create_or_update_user(
         return existing_user, False
     
     # Prepare user data
-    first_name = employee_data.get("firstName", "")
-    last_name = employee_data.get("lastName", "")
-    username = employee_data.get("username") or email.split("@")[0]
+    first_name = employee_data.get("firstName", "").strip()
+    last_name = employee_data.get("lastName", "").strip()
+    
+    # Generate username: primeira letra do primeiro nome + último nome (lowercase, sem espaços)
+    # Exemplo: Raphael Coelho -> rcoelho, Fernando Rabelo -> frabelo
+    if first_name and last_name:
+        # Get first letter of first name and full last name
+        first_letter = first_name[0].lower() if first_name else ""
+        last_name_clean = last_name.lower().replace(" ", "").replace("-", "").replace("'", "")
+        username = f"{first_letter}{last_name_clean}"
+    elif last_name:
+        # Fallback: just last name if no first name
+        username = last_name.lower().replace(" ", "").replace("-", "").replace("'", "")
+    else:
+        # Last resort: use email prefix
+        username = email.split("@")[0].lower()
     
     # Ensure username is unique
     base_username = username

@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator
 from typing import Optional, List
 
 
@@ -84,7 +84,7 @@ class EmployeeProfileInput(BaseModel):
     termination_date: Optional[str] = None
     job_title: Optional[str] = None
     division: Optional[str] = None
-    work_email: Optional[EmailStr] = None
+    work_email: Optional[str] = None  # Changed from EmailStr to str to allow empty strings (validation happens in endpoint)
     work_phone: Optional[str] = None
     manager_user_id: Optional[str] = None
     # financial/contract

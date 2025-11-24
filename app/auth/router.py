@@ -721,7 +721,9 @@ def update_my_profile(payload: EmployeeProfileInput, user: User = Depends(get_cu
     }
     incoming = payload.dict(exclude_unset=True)
     data = { k: v for k, v in incoming.items() if k in allowed_keys }
-    if "date_of_birth" in data:
+    # Convert empty strings to None
+    data = { k: (None if v == "" else v) for k, v in data.items() }
+    if "date_of_birth" in data and data["date_of_birth"]:
         data["date_of_birth"] = _parse_dt(data.get("date_of_birth"))
 
     for field, value in data.items():
