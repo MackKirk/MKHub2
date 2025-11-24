@@ -390,22 +390,22 @@ def create_app() -> FastAPI:
                                 pass
                             # Migrate attendance.shift_id to allow NULL (for direct attendance without shift)
                             try:
-                            if not settings.database_url.startswith("sqlite"):
-                                # PostgreSQL/other databases - drop NOT NULL constraint
-                                try:
-                                    conn.execute(text("ALTER TABLE attendance ALTER COLUMN shift_id DROP NOT NULL"))
-                                    print("✅ Migrated attendance.shift_id to allow NULL")
-                                except Exception as e:
-                                    # Column might already be nullable
-                                    if "does not exist" not in str(e).lower() and "already" not in str(e).lower() and "not null" not in str(e).lower():
-                                        print(f"⚠️  Could not migrate attendance.shift_id: {e}")
-                            else:
-                                # SQLite - SQLite doesn't enforce NOT NULL strictly if model says nullable=True
-                                # But if the table was created with NOT NULL, we need to recreate it
-                                # For now, SQLite should work with nullable=True in the model
-                                pass
-                        except Exception as e:
-                            print(f"⚠️  Could not migrate attendance.shift_id: {e}")
+                                if not settings.database_url.startswith("sqlite"):
+                                    # PostgreSQL/other databases - drop NOT NULL constraint
+                                    try:
+                                        conn.execute(text("ALTER TABLE attendance ALTER COLUMN shift_id DROP NOT NULL"))
+                                        print("✅ Migrated attendance.shift_id to allow NULL")
+                                    except Exception as e:
+                                        # Column might already be nullable
+                                        if "does not exist" not in str(e).lower() and "already" not in str(e).lower() and "not null" not in str(e).lower():
+                                            print(f"⚠️  Could not migrate attendance.shift_id: {e}")
+                                else:
+                                    # SQLite - SQLite doesn't enforce NOT NULL strictly if model says nullable=True
+                                    # But if the table was created with NOT NULL, we need to recreate it
+                                    # For now, SQLite should work with nullable=True in the model
+                                    pass
+                            except Exception as e:
+                                print(f"⚠️  Could not migrate attendance.shift_id: {e}")
                         
                         # Migrate attendance table from 2-record model (in/out) to 1-record model (event) - PostgreSQL
                         try:
