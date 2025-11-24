@@ -932,75 +932,75 @@ def create_app() -> FastAPI:
                                                "created_at TEXT DEFAULT CURRENT_TIMESTAMP,\n"
                                                "FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE\n"
                                                ")"))
-                        except Exception:
-                            pass
-                        # User notification preferences table
-                        try:
-                            conn.execute(text("CREATE TABLE IF NOT EXISTS user_notification_preferences (\n"
-                                               "id TEXT PRIMARY KEY,\n"
-                                               "user_id TEXT NOT NULL UNIQUE,\n"
-                                               "push INTEGER DEFAULT 1,\n"
-                                               "email INTEGER DEFAULT 1,\n"
-                                               "quiet_hours TEXT,\n"
-                                               "updated_at TEXT DEFAULT CURRENT_TIMESTAMP,\n"
-                                               "FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE\n"
-                                               ")"))
-                        except Exception:
-                            pass
-                        # Project Orders tables
-                        try:
-                            conn.execute(text("CREATE TABLE IF NOT EXISTS project_orders (\n"
-                                               "id TEXT PRIMARY KEY,\n"
-                                               "project_id TEXT NOT NULL,\n"
-                                               "estimate_id INTEGER,\n"
-                                               "order_type TEXT NOT NULL,\n"
-                                               "supplier_id TEXT,\n"
-                                               "supplier_email TEXT,\n"
-                                               "recipient_email TEXT,\n"
-                                               "recipient_user_id TEXT,\n"
-                                               "status TEXT NOT NULL DEFAULT 'draft',\n"
-                                               "order_code TEXT,\n"
-                                               "email_subject TEXT,\n"
-                                               "email_body TEXT,\n"
-                                               "email_cc TEXT,\n"
-                                               "email_sent INTEGER DEFAULT 0,\n"
-                                               "email_sent_at TEXT,\n"
-                                               "delivered_at TEXT,\n"
-                                               "delivered_by TEXT,\n"
-                                               "notes TEXT,\n"
-                                               "created_at TEXT DEFAULT CURRENT_TIMESTAMP,\n"
-                                               "created_by TEXT,\n"
-                                               "updated_at TEXT,\n"
-                                               "FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,\n"
-                                               "FOREIGN KEY(estimate_id) REFERENCES estimates(id) ON DELETE SET NULL,\n"
-                                               "FOREIGN KEY(supplier_id) REFERENCES suppliers(id) ON DELETE SET NULL,\n"
-                                               "FOREIGN KEY(recipient_user_id) REFERENCES users(id) ON DELETE SET NULL,\n"
-                                               "FOREIGN KEY(created_by) REFERENCES users(id) ON DELETE SET NULL,\n"
-                                               "FOREIGN KEY(delivered_by) REFERENCES users(id) ON DELETE SET NULL\n"
-                                               ")"))
-                        except Exception:
-                            pass
-                        try:
-                            conn.execute(text("CREATE TABLE IF NOT EXISTS project_order_items (\n"
-                                               "id TEXT PRIMARY KEY,\n"
-                                               "order_id TEXT NOT NULL,\n"
-                                               "estimate_item_id INTEGER,\n"
-                                               "material_id INTEGER,\n"
-                                               "item_type TEXT NOT NULL,\n"
-                                               "name TEXT NOT NULL,\n"
-                                               "description TEXT,\n"
-                                               "quantity REAL NOT NULL,\n"
-                                               "unit TEXT,\n"
-                                               "unit_price REAL NOT NULL,\n"
-                                               "total_price REAL NOT NULL,\n"
-                                               "section TEXT,\n"
-                                               "supplier_name TEXT,\n"
-                                               "is_ordered INTEGER DEFAULT 0,\n"
-                                               "created_at TEXT DEFAULT CURRENT_TIMESTAMP,\n"
-                                               "FOREIGN KEY(order_id) REFERENCES project_orders(id) ON DELETE CASCADE,\n"
-                                               "FOREIGN KEY(estimate_item_id) REFERENCES estimate_items(id) ON DELETE SET NULL,\n"
-                                               "FOREIGN KEY(material_id) REFERENCES materials(id) ON DELETE SET NULL\n"
-                                               ")"))
+                            except Exception:
+                                pass
+                            # User notification preferences table
+                            try:
+                                conn.execute(text("CREATE TABLE IF NOT EXISTS user_notification_preferences (\n"
+                                                   "id TEXT PRIMARY KEY,\n"
+                                                   "user_id TEXT NOT NULL UNIQUE,\n"
+                                                   "push INTEGER DEFAULT 1,\n"
+                                                   "email INTEGER DEFAULT 1,\n"
+                                                   "quiet_hours TEXT,\n"
+                                                   "updated_at TEXT DEFAULT CURRENT_TIMESTAMP,\n"
+                                                   "FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE\n"
+                                                   ")"))
+                            except Exception:
+                                pass
+                            # Project Orders tables
+                            try:
+                                conn.execute(text("CREATE TABLE IF NOT EXISTS project_orders (\n"
+                                                   "id TEXT PRIMARY KEY,\n"
+                                                   "project_id TEXT NOT NULL,\n"
+                                                   "estimate_id INTEGER,\n"
+                                                   "order_type TEXT NOT NULL,\n"
+                                                   "supplier_id TEXT,\n"
+                                                   "supplier_email TEXT,\n"
+                                                   "recipient_email TEXT,\n"
+                                                   "recipient_user_id TEXT,\n"
+                                                   "status TEXT NOT NULL DEFAULT 'draft',\n"
+                                                   "order_code TEXT,\n"
+                                                   "email_subject TEXT,\n"
+                                                   "email_body TEXT,\n"
+                                                   "email_cc TEXT,\n"
+                                                   "email_sent INTEGER DEFAULT 0,\n"
+                                                   "email_sent_at TEXT,\n"
+                                                   "delivered_at TEXT,\n"
+                                                   "delivered_by TEXT,\n"
+                                                   "notes TEXT,\n"
+                                                   "created_at TEXT DEFAULT CURRENT_TIMESTAMP,\n"
+                                                   "created_by TEXT,\n"
+                                                   "updated_at TEXT,\n"
+                                                   "FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,\n"
+                                                   "FOREIGN KEY(estimate_id) REFERENCES estimates(id) ON DELETE SET NULL,\n"
+                                                   "FOREIGN KEY(supplier_id) REFERENCES suppliers(id) ON DELETE SET NULL,\n"
+                                                   "FOREIGN KEY(recipient_user_id) REFERENCES users(id) ON DELETE SET NULL,\n"
+                                                   "FOREIGN KEY(created_by) REFERENCES users(id) ON DELETE SET NULL,\n"
+                                                   "FOREIGN KEY(delivered_by) REFERENCES users(id) ON DELETE SET NULL\n"
+                                                   ")"))
+                            except Exception:
+                                pass
+                            try:
+                                conn.execute(text("CREATE TABLE IF NOT EXISTS project_order_items (\n"
+                                                   "id TEXT PRIMARY KEY,\n"
+                                                   "order_id TEXT NOT NULL,\n"
+                                                   "estimate_item_id INTEGER,\n"
+                                                   "material_id INTEGER,\n"
+                                                   "item_type TEXT NOT NULL,\n"
+                                                   "name TEXT NOT NULL,\n"
+                                                   "description TEXT,\n"
+                                                   "quantity REAL NOT NULL,\n"
+                                                   "unit TEXT,\n"
+                                                   "unit_price REAL NOT NULL,\n"
+                                                   "total_price REAL NOT NULL,\n"
+                                                   "section TEXT,\n"
+                                                   "supplier_name TEXT,\n"
+                                                   "is_ordered INTEGER DEFAULT 0,\n"
+                                                   "created_at TEXT DEFAULT CURRENT_TIMESTAMP,\n"
+                                                   "FOREIGN KEY(order_id) REFERENCES project_orders(id) ON DELETE CASCADE,\n"
+                                                   "FOREIGN KEY(estimate_item_id) REFERENCES estimate_items(id) ON DELETE SET NULL,\n"
+                                                   "FOREIGN KEY(material_id) REFERENCES materials(id) ON DELETE SET NULL\n"
+                                                   ")"))
                             except Exception:
                                 pass
                             # Consent logs table
