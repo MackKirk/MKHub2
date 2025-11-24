@@ -55,6 +55,7 @@ import TrainingCourse from './pages/TrainingCourse';
 import TrainingCertificates from './pages/TrainingCertificates';
 import TrainingAdmin from './pages/TrainingAdmin';
 import TrainingCourseEdit from './pages/TrainingCourseEdit';
+import Notifications from './pages/Notifications';
 
 import { getToken } from './lib/api';
 function Home(){ return <Navigate to={getToken()? '/home':'/login'} replace />; }
@@ -123,6 +124,7 @@ export default function App(){
           <Route path="/training/admin" element={<AppShell><TrainingAdmin/></AppShell>} />
           <Route path="/training/admin/new" element={<AppShell><TrainingCourseEdit/></AppShell>} />
           <Route path="/training/admin/:courseId" element={<AppShell><TrainingCourseEdit/></AppShell>} />
+          <Route path="/notifications" element={<AppShell><Notifications/></AppShell>} />
         </Route>
         <Route path="*" element={<Navigate to={getToken()? '/home':'/login'} replace />} />
       </Routes>

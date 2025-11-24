@@ -164,8 +164,8 @@ export default function DispatchTab({ projectId }: { projectId: string }) {
             </svg>
           </button>
           <div>
-            <h3 className="text-lg font-semibold text-gray-900">Schedule</h3>
-            <p className="text-xs text-gray-500">Project schedule and calendar</p>
+            <h3 className="text-lg font-semibold text-gray-900">Workload</h3>
+            <p className="text-xs text-gray-500">Employee shifts and workload management</p>
           </div>
         </div>
       </div>

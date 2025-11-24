@@ -334,7 +334,7 @@ export default function ProjectDetail(){
             <>
               <div className="mb-4 grid md:grid-cols-2 gap-4">
                 <div className="rounded-xl border bg-white p-4">
-                  <h4 className="font-semibold mb-3">Schedule</h4>
+                  <h4 className="font-semibold mb-3">Workload</h4>
                   <CalendarMock title="Project Calendar" projectId={String(id)} />
                 </div>
                 <div className="rounded-xl border bg-white p-4">
@@ -381,7 +381,12 @@ export default function ProjectDetail(){
               console.error('Failed to convert opportunity:', e);
               toast.error(e?.response?.data?.detail || e?.message || 'Failed to convert opportunity');
             }
-          }} className="px-4 py-2 rounded bg-green-600 hover:bg-green-700 text-white text-sm font-medium">Convert to Project</button>
+          }} className="w-full px-6 py-4 rounded-xl bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white font-semibold text-base shadow-md hover:shadow-lg transition-all duration-200 flex items-center justify-center gap-3">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
+            <span>Convert to Project</span>
+          </button>
         </div>
       )}
 
@@ -436,7 +441,7 @@ export default function ProjectDetail(){
                   <ProjectCostsSummary projectId={String(id)} estimates={projectEstimates||[]} />
                   {!proj?.is_bidding && (
                     <div className="md:col-span-3 rounded-xl border bg-white p-4">
-                      <h4 className="font-semibold mb-2">Schedule</h4>
+                      <h4 className="font-semibold mb-2">Workload</h4>
                       <CalendarMock title="Project Calendar" projectId={String(id)} />
                     </div>
                   )}
@@ -581,7 +586,7 @@ export default function ProjectDetail(){
                 )}
                 {auditLogSection === 'schedule' && (
                   <div className="text-center text-gray-500 py-8">
-                    Schedule audit log coming soon...
+                    Workload audit log coming soon...
                   </div>
                 )}
                 {auditLogSection === 'files' && (
@@ -3416,7 +3421,7 @@ function ProjectTabCards({ availableTabs, onTabClick, proj }: {
 }){
   const tabConfig: Record<string, { label: string, icon: string, description: string, color: string }> = {
     reports: { label: 'Reports', icon: '📝', description: 'Project reports and updates', color: 'bg-green-100 text-green-600' },
-    dispatch: { label: 'Schedule', icon: '📅', description: 'Project schedule and calendar', color: 'bg-purple-100 text-purple-600' },
+    dispatch: { label: 'Workload', icon: '👷', description: 'Employee shifts and workload management', color: 'bg-purple-100 text-purple-600' },
     timesheet: { label: 'Timesheet', icon: '⏰', description: 'Time tracking and hours', color: 'bg-orange-100 text-orange-600' },
     files: { label: 'Files', icon: '📁', description: 'Documents, photos and files', color: 'bg-gray-100 text-gray-600' },
     proposal: { label: 'Proposal', icon: '📄', description: 'Project proposals', color: 'bg-indigo-100 text-indigo-600' },

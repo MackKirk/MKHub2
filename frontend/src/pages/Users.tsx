@@ -1,25 +1,59 @@
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { Link } from 'react-router-dom';
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import InviteUserModal from '@/components/InviteUserModal';
 
 type User = { id:string, username:string, email?:string, name?:string, roles?:string[], is_active?:boolean, profile_photo_file_id?:string };
+type UsersResponse = { items: User[], total: number, page: number, limit: number, total_pages: number };
 
 export default function Users(){
-  const { data, isLoading } = useQuery({ queryKey:['users'], queryFn: ()=>api<User[]>('GET','/users') });
+  const [page, setPage] = useState(1);
+  const [searchQuery, setSearchQuery] = useState('');
+  const limit = 48; // 4 columns * 12 rows = 48 items per page
+  
+  // Build query params
+  const queryParams = useMemo(() => {
+    const params = new URLSearchParams();
+    params.set('page', String(page));
+    params.set('limit', String(limit));
+    if (searchQuery.trim()) {
+      params.set('q', searchQuery.trim());
+    }
+    return params.toString();
+  }, [page, limit, searchQuery]);
+  
+  const { data, isLoading } = useQuery<UsersResponse>({ 
+    queryKey:['users', page, searchQuery], 
+    queryFn: ()=>api<UsersResponse>('GET',`/users?${queryParams}`)
+  });
+  
   const [showInviteModal, setShowInviteModal] = useState(false);
   const month = new Date().toISOString().slice(0,7);
-  const { data:summary } = useQuery({ queryKey:['timesheetSummary', month], queryFn: ()=> api<any[]>('GET', `/projects/timesheet/summary?month=${encodeURIComponent(month)}`) });
+  const { data:summary } = useQuery({ 
+    queryKey:['timesheetSummary', month], 
+    queryFn: ()=> api<any[]>('GET', `/projects/timesheet/summary?month=${encodeURIComponent(month)}`) 
+  });
+  
   const minsByUser: Record<string, number> = {};
   (summary||[]).forEach((r:any)=>{ minsByUser[String(r.user_id)]=Number(r.minutes||0); });
-  const arr = data||[];
+  
+  const users = data?.items || [];
+  const totalPages = data?.total_pages || 0;
+  const total = data?.total || 0;
+  
+  // Reset to page 1 when search changes
+  const handleSearchChange = (value: string) => {
+    setSearchQuery(value);
+    setPage(1);
+  };
+  
   return (
     <div>
       <div className="mb-3 rounded-xl border bg-gradient-to-br from-[#7f1010] to-[#a31414] text-white p-4 flex items-center justify-between">
         <div>
           <div className="text-2xl font-extrabold">Users</div>
-          <div className="text-sm opacity-90">Manage employees, roles, and access.</div>
+          <div className="text-sm opacity-90">Manage employees, roles, and access. {total > 0 && `(${total} total)`}</div>
         </div>
         <button
           onClick={() => setShowInviteModal(true)}
@@ -28,19 +62,74 @@ export default function Users(){
           + Invite User
         </button>
       </div>
-      <div className="grid md:grid-cols-4 gap-4">
-        {isLoading? <div className="h-24 bg-gray-100 animate-pulse rounded"/> : arr.map(u=> (
-          <Link key={u.id} to={`/users/${encodeURIComponent(u.id)}`} className="rounded-xl border bg-white p-4 flex items-center gap-3">
-            {u.profile_photo_file_id? <img src={`/files/${u.profile_photo_file_id}/thumbnail?w=96`} className="w-12 h-12 rounded-full object-cover"/> : <span className="w-12 h-12 rounded-full bg-gray-200 inline-block"/>}
-            <div className="min-w-0">
-              <div className="font-semibold truncate">{u.name||u.username}</div>
-              <div className="text-sm text-gray-600 truncate">{u.email||''}</div>
-              <div className="text-[11px] text-gray-500 truncate">{(u.roles||[]).join(', ')}</div>
-              <div className="text-[11px] text-gray-700">This month: {((minsByUser[u.id]||0)/60).toFixed(1)}h</div>
-            </div>
-          </Link>
-        ))}
+      
+      {/* Search Bar */}
+      <div className="mb-4">
+        <input
+          type="text"
+          placeholder="Search by name, username, or email..."
+          value={searchQuery}
+          onChange={(e) => handleSearchChange(e.target.value)}
+          className="w-full max-w-md px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#7f1010]"
+        />
       </div>
+      
+      {/* Users Grid */}
+      {isLoading ? (
+        <div className="grid md:grid-cols-4 gap-4">
+          {Array.from({ length: 12 }).map((_, i) => (
+            <div key={i} className="h-24 bg-gray-100 animate-pulse rounded-xl" />
+          ))}
+        </div>
+      ) : users.length === 0 ? (
+        <div className="text-center py-12 text-gray-500">
+          {searchQuery ? 'No users found matching your search.' : 'No users found.'}
+        </div>
+      ) : (
+        <>
+          <div className="grid md:grid-cols-4 gap-4">
+            {users.map(u=> (
+              <Link key={u.id} to={`/users/${encodeURIComponent(u.id)}`} className="rounded-xl border bg-white p-4 flex items-center gap-3 hover:shadow-md transition-shadow">
+                {u.profile_photo_file_id? (
+                  <img src={`/files/${u.profile_photo_file_id}/thumbnail?w=96`} className="w-12 h-12 rounded-full object-cover flex-shrink-0"/>
+                ) : (
+                  <span className="w-12 h-12 rounded-full bg-gray-200 inline-block flex-shrink-0"/>
+                )}
+                <div className="min-w-0 flex-1">
+                  <div className="font-semibold truncate">{u.name||u.username}</div>
+                  <div className="text-sm text-gray-600 truncate">{u.email||''}</div>
+                  <div className="text-[11px] text-gray-500 truncate">{(u.roles||[]).join(', ') || 'No roles'}</div>
+                  <div className="text-[11px] text-gray-700">This month: {((minsByUser[u.id]||0)/60).toFixed(1)}h</div>
+                </div>
+              </Link>
+            ))}
+          </div>
+          
+          {/* Pagination */}
+          {totalPages > 1 && (
+            <div className="mt-6 flex items-center justify-center gap-2">
+              <button
+                onClick={() => setPage(p => Math.max(1, p - 1))}
+                disabled={page === 1}
+                className="px-4 py-2 border rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+              >
+                Previous
+              </button>
+              <span className="px-4 py-2 text-sm text-gray-600">
+                Page {page} of {totalPages}
+              </span>
+              <button
+                onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                disabled={page >= totalPages}
+                className="px-4 py-2 border rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+              >
+                Next
+              </button>
+            </div>
+          )}
+        </>
+      )}
+      
       <InviteUserModal isOpen={showInviteModal} onClose={() => setShowInviteModal(false)} />
     </div>
   );

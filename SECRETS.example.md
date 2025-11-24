@@ -43,6 +43,18 @@ JWT_SECRET=seu-secret-aleatorio-aqui
 
 **Como gerar:** Use qualquer string aleatória longa (32+ caracteres). O script `setup-env.ps1` gera automaticamente.
 
+#### BambooHR Integration
+```
+BAMBOOHR_SUBDOMAIN=mackkirkroofing
+BAMBOOHR_API_KEY=sua-chave-api-aqui
+```
+
+**Como obter:**
+- `BAMBOOHR_SUBDOMAIN`: É a parte antes de `.bamboohr.com` na URL do seu BambooHR (ex: se você acessa `https://mackkirkroofing.bamboohr.com`, use `mackkirkroofing`)
+- `BAMBOOHR_API_KEY`: No BambooHR, clique no seu nome no canto inferior esquerdo > API Keys > Gere uma nova chave ou use uma existente
+
+**Nota:** A chave da API deve ter permissões para ler dados de funcionários, treinamentos e documentos.
+
 ## Compartilhamento com outros desenvolvedores
 
 **NUNCA compartilhe credenciais via git ou email não criptografado!**
