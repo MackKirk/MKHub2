@@ -269,8 +269,9 @@ export default function UserInfo(){
                 <div className="text-3xl font-extrabold">{p.first_name||u?.username} {p.last_name||''}</div>
                 <div className="text-sm opacity-90 mt-1">{p.job_title||u?.email||''}{p.division? ` — ${p.division}`:''}</div>
                 <div className="grid md:grid-cols-3 gap-2 text-xs mt-3">
+                  <div><span className="opacity-80">Username:</span> <span className="font-semibold">{u?.username||'—'}</span></div>
                   <div><span className="opacity-80">Phone:</span> <span className="font-semibold">{p.phone||'—'}</span></div>
-                  <div><span className="opacity-80">Work email:</span> <span className="font-semibold">{p.work_email||'—'}</span></div>
+                  <div><span className="opacity-80">Work email:</span> <span className="font-semibold">{p.work_email||u?.email_personal||'—'}</span></div>
                   <div><span className="opacity-80">Status:</span> <span className="font-semibold">{u?.is_active? 'Active':'Terminated'}</span></div>
                   <div><span className="opacity-80">Hire date:</span> <span className="font-semibold">{p.hire_date? String(p.hire_date).slice(0,10):'—'}{p.hire_date? ` (${tenure(p.hire_date)})`:''}</span></div>
                   <div><span className="opacity-80">Supervisor:</span> <span className="font-semibold">{supervisorName||'—'}</span></div>

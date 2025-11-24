@@ -105,6 +105,28 @@ def list_clients(city: Optional[str] = None, status: Optional[str] = None, type:
         raise
 
 
+# ===== File Categories (must be before /{client_id} route) =====
+@router.get("/file-categories")
+def list_file_categories():
+    """
+    Returns standard file categories that can be used for organizing files.
+    These categories can be used for both client and project files.
+    """
+    return [
+        {"id": "general", "name": "General", "icon": "📁"},
+        {"id": "designs", "name": "Designs", "icon": "🎨"},
+        {"id": "prints", "name": "Prints", "icon": "🖨️"},
+        {"id": "photos", "name": "Photos", "icon": "📷"},
+        {"id": "documents", "name": "Documents", "icon": "📄"},
+        {"id": "contracts", "name": "Contracts", "icon": "📋"},
+        {"id": "invoices", "name": "Invoices", "icon": "🧾"},
+        {"id": "estimates", "name": "Estimates", "icon": "💰"},
+        {"id": "reports", "name": "Reports", "icon": "📊"},
+        {"id": "plans", "name": "Plans", "icon": "📐"},
+        {"id": "other", "name": "Other", "icon": "📦"},
+    ]
+
+
 @router.get("/{client_id}", response_model=ClientResponse)
 def get_client(client_id: str, db: Session = Depends(get_db), _=Depends(require_permissions("clients:read"))):
     try:
@@ -534,26 +556,6 @@ def attach_file(client_id: str, file_object_id: str, category: Optional[str] = N
     return {"id": str(row.id)}
 
 
-# ===== File Categories =====
-@router.get("/file-categories")
-def list_file_categories():
-    """
-    Returns standard file categories that can be used for organizing files.
-    These categories can be used for both client and project files.
-    """
-    return [
-        {"id": "general", "name": "Geral", "icon": "📁"},
-        {"id": "designs", "name": "Designs", "icon": "🎨"},
-        {"id": "prints", "name": "Impressões", "icon": "🖨️"},
-        {"id": "photos", "name": "Fotos", "icon": "📷"},
-        {"id": "documents", "name": "Documentos", "icon": "📄"},
-        {"id": "contracts", "name": "Contratos", "icon": "📋"},
-        {"id": "invoices", "name": "Faturas", "icon": "🧾"},
-        {"id": "estimates", "name": "Orçamentos", "icon": "💰"},
-        {"id": "reports", "name": "Relatórios", "icon": "📊"},
-        {"id": "plans", "name": "Plantas", "icon": "📐"},
-        {"id": "other", "name": "Outros", "icon": "📦"},
-    ]
 
 
 def get_default_folder_structure():

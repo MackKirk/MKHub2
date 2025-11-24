@@ -220,6 +220,7 @@ export default function Home(){
 
 function QuickReportModal({ onClose, onSuccess }: { onClose: () => void, onSuccess: () => void }){
   const [selectedProjectId, setSelectedProjectId] = useState<string>('');
+  const [title, setTitle] = useState('');
   const [category, setCategory] = useState('');
   const [desc, setDesc] = useState('');
   const [file, setFile] = useState<File|null>(null);
@@ -237,6 +238,10 @@ function QuickReportModal({ onClose, onSuccess }: { onClose: () => void, onSucce
   const handleCreate = async () => {
     if (!selectedProjectId) {
       toast.error('Please select a project');
+      return;
+    }
+    if (!title.trim()) {
+      toast.error('Please enter a title');
       return;
     }
     if (!desc.trim()) {
@@ -276,11 +281,13 @@ function QuickReportModal({ onClose, onSuccess }: { onClose: () => void, onSucce
         };
       }
       await api('POST', `/projects/${selectedProjectId}/reports`, {
+        title: title.trim(),
         category_id: category || null,
         description: desc,
         images: imgMeta ? { attachments: [imgMeta] } : undefined
       });
       setSelectedProjectId('');
+      setTitle('');
       setCategory('');
       setDesc('');
       setFile(null);
@@ -316,6 +323,16 @@ function QuickReportModal({ onClose, onSuccess }: { onClose: () => void, onSucce
                   <option key={p.id} value={p.id}>{p.name || p.code || p.id}</option>
                 ))}
               </select>
+            </div>
+            <div>
+              <label className="text-xs text-gray-600 block mb-1">Title *</label>
+              <input
+                type="text"
+                className="w-full border rounded px-3 py-2 text-sm"
+                placeholder="Enter report title..."
+                value={title}
+                onChange={e => setTitle(e.target.value)}
+              />
             </div>
             <div>
               <label className="text-xs text-gray-600 block mb-1">Category</label>

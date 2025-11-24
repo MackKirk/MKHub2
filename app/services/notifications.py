@@ -153,10 +153,75 @@ def send_shift_notification(
         shift_data: Shift data for notification
         timezone_str: User's timezone
     """
+    from ..models.models import Project
+    
     template_key = f"shift_{notification_type}"
+    
+    # Build title and message based on notification type
+    project_id = shift_data.get("project_id", "")
+    date_str = shift_data.get("date", "")
+    start_time = shift_data.get("start_time", "")
+    end_time = shift_data.get("end_time", "")
+    
+    # Get project name
+    project = None
+    if project_id:
+        project = db.query(Project).filter(Project.id == project_id).first()
+    project_name = project.name if project else "a project"
+    
+    if notification_type == "created":
+        title = "New Shift Assigned"
+        message = f"You have been assigned to work on {project_name}"
+        if date_str:
+            try:
+                from datetime import datetime as dt
+                date_obj = dt.fromisoformat(date_str.split('T')[0])
+                date_formatted = date_obj.strftime("%B %d, %Y")
+                message += f" on {date_formatted}"
+            except:
+                pass
+        if start_time and end_time:
+            # Format time to 12h format
+            try:
+                start_parts = start_time.split(':')
+                end_parts = end_time.split(':')
+                if len(start_parts) >= 2 and len(end_parts) >= 2:
+                    start_h = int(start_parts[0])
+                    end_h = int(end_parts[0])
+                    start_m = start_parts[1]
+                    end_m = end_parts[1]
+                    start_period = "AM" if start_h < 12 else "PM"
+                    end_period = "AM" if end_h < 12 else "PM"
+                    start_h12 = 12 if start_h == 0 else (start_h - 12 if start_h > 12 else start_h)
+                    end_h12 = 12 if end_h == 0 else (end_h - 12 if end_h > 12 else end_h)
+                    message += f" from {start_h12}:{start_m} {start_period} to {end_h12}:{end_m} {end_period}"
+            except:
+                if start_time and end_time:
+                    message += f" from {start_time} to {end_time}"
+        link = f"/projects/{project_id}?tab=dispatch" if project_id else None
+    elif notification_type == "updated":
+        title = "Shift Updated"
+        message = f"Your shift for {project_name} has been updated"
+        link = f"/projects/{project_id}?tab=dispatch" if project_id else None
+    elif notification_type == "cancelled":
+        title = "Shift Cancelled"
+        message = f"Your shift for {project_name} has been cancelled"
+        link = f"/projects/{project_id}?tab=dispatch" if project_id else None
+    else:
+        title = "Shift Notification"
+        message = f"You have a shift notification for {project_name}"
+        link = f"/projects/{project_id}?tab=dispatch" if project_id else None
+    
     payload = {
-        "type": notification_type,
-        "shift": shift_data,
+        "title": title,
+        "message": message,
+        "type": "shift",
+        "read": False,
+        "link": link,
+        "metadata": {
+            "notification_type": notification_type,
+            "shift": shift_data,
+        }
     }
     
     # Send push notification

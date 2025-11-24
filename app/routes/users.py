@@ -33,13 +33,50 @@ def _user_to_dict(u: User, ep: Optional[EmployeeProfile]) -> dict:
 
 
 @router.get("")
-def list_users(q: Optional[str] = None, db: Session = Depends(get_db), _=Depends(require_permissions("users:read"))):
+def list_users(
+    q: Optional[str] = None,
+    page: int = 1,
+    limit: int = 50,
+    db: Session = Depends(get_db),
+    _=Depends(require_permissions("users:read"))
+):
+    """
+    List users with pagination
+    
+    Args:
+        q: Search query (username, email, or name)
+        page: Page number (1-indexed)
+        limit: Number of items per page (default 50, max 200)
+    """
+    # Ensure reasonable limits
+    limit = min(max(1, limit), 200)
+    page = max(1, page)
+    offset = (page - 1) * limit
+    
     query = db.query(User, EmployeeProfile).outerjoin(EmployeeProfile, EmployeeProfile.user_id == User.id)
     if q:
         like = f"%{q}%"
-        query = query.filter((User.username.ilike(like)) | (User.email_personal.ilike(like)) | (EmployeeProfile.first_name.ilike(like)) | (EmployeeProfile.last_name.ilike(like)) | (EmployeeProfile.preferred_name.ilike(like)))
-    rows = query.order_by(User.created_at.desc()).limit(200).all()
-    return [_user_to_dict(u, ep) for u, ep in rows]
+        query = query.filter(
+            (User.username.ilike(like)) | 
+            (User.email_personal.ilike(like)) | 
+            (EmployeeProfile.first_name.ilike(like)) | 
+            (EmployeeProfile.last_name.ilike(like)) | 
+            (EmployeeProfile.preferred_name.ilike(like))
+        )
+    
+    # Get total count for pagination
+    total_count = query.count()
+    
+    # Get paginated results
+    rows = query.order_by(User.created_at.desc()).offset(offset).limit(limit).all()
+    
+    return {
+        "items": [_user_to_dict(u, ep) for u, ep in rows],
+        "total": total_count,
+        "page": page,
+        "limit": limit,
+        "total_pages": (total_count + limit - 1) // limit if limit > 0 else 0
+    }
 
 
 @router.get("/{user_id}")
