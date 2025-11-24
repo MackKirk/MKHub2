@@ -142,6 +142,7 @@ export default function AppShell({ children }: PropsWithChildren){
         { id: 'home', label: 'Home', path: '/home', icon: <IconHome /> },
         { id: 'profile', label: 'My Information', path: '/profile', icon: <IconUser /> },
         { id: 'schedule', label: 'Schedule', path: '/schedule', icon: <IconCalendar /> },
+        { id: 'clock-in-out', label: 'Clock in/out', path: '/clock-in-out', icon: <IconCalendar /> },
         { id: 'task-requests', label: 'Task Request', path: '/task-requests', icon: <IconClipboard /> },
         { id: 'tasks', label: 'Tasks', path: '/tasks', icon: <IconClipboard /> },
       ]
@@ -203,6 +204,7 @@ export default function AppShell({ children }: PropsWithChildren){
       icon: <IconSettings />,
       items: [
         { id: 'users', label: 'Users', path: '/users', icon: <IconUsersGroup /> },
+        { id: 'attendance', label: 'Attendance', path: '/settings/attendance', icon: <IconCalendar /> },
         { id: 'community', label: 'Community', path: '/community', icon: <IconUsersGroup /> },
         ...(((me?.roles||[]).includes('admin') || (me?.permissions||[]).includes('reviews:admin')) ? [
           { id: 'reviews-admin', label: 'Reviews Admin', path: '/reviews/admin', icon: <IconStar /> },

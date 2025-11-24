@@ -1253,23 +1253,34 @@ class Shift(Base):
 
 
 class Attendance(Base):
-    """Worker clock-in/out attendance records"""
+    """Worker clock-in/out attendance records - single record per event"""
     __tablename__ = "attendance"
 
     id: Mapped[uuid.UUID] = uuid_pk()
-    shift_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("shifts.id", ondelete="CASCADE"), nullable=False, index=True)
+    shift_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("shifts.id", ondelete="CASCADE"), nullable=True, index=True)  # Optional for direct attendance (non-scheduled)
     worker_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
-    type: Mapped[str] = mapped_column(String(10), nullable=False)  # in|out
-    time_entered_utc: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)  # When record was created
-    time_selected_utc: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)  # Selected time (after rounding)
+    
+    # Clock-in fields
+    clock_in_time: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)  # Selected clock-in time (after rounding)
+    clock_in_entered_utc: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)  # When clock-in record was created
+    clock_in_gps_lat: Mapped[Optional[float]] = mapped_column(Numeric(10, 7), nullable=True)  # GPS latitude for clock-in
+    clock_in_gps_lng: Mapped[Optional[float]] = mapped_column(Numeric(10, 7), nullable=True)  # GPS longitude for clock-in
+    clock_in_gps_accuracy_m: Mapped[Optional[float]] = mapped_column(Numeric(10, 2), nullable=True)  # GPS accuracy for clock-in
+    clock_in_mocked_flag: Mapped[bool] = mapped_column(Boolean, default=False)  # Flag if GPS was mocked for clock-in
+    
+    # Clock-out fields
+    clock_out_time: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)  # Selected clock-out time (after rounding)
+    clock_out_entered_utc: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)  # When clock-out record was created
+    clock_out_gps_lat: Mapped[Optional[float]] = mapped_column(Numeric(10, 7), nullable=True)  # GPS latitude for clock-out
+    clock_out_gps_lng: Mapped[Optional[float]] = mapped_column(Numeric(10, 7), nullable=True)  # GPS longitude for clock-out
+    clock_out_gps_accuracy_m: Mapped[Optional[float]] = mapped_column(Numeric(10, 2), nullable=True)  # GPS accuracy for clock-out
+    clock_out_mocked_flag: Mapped[bool] = mapped_column(Boolean, default=False)  # Flag if GPS was mocked for clock-out
+    
+    # Common fields
     status: Mapped[str] = mapped_column(String(20), default="pending")  # approved|pending|rejected
     source: Mapped[str] = mapped_column(String(20), default="app")  # app|supervisor|kiosk|system
     created_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
     reason_text: Mapped[Optional[str]] = mapped_column(Text)  # Free-text justification when outside rules
-    gps_lat: Mapped[Optional[float]] = mapped_column(Numeric(10, 7))  # GPS latitude
-    gps_lng: Mapped[Optional[float]] = mapped_column(Numeric(10, 7))  # GPS longitude
-    gps_accuracy_m: Mapped[Optional[float]] = mapped_column(Numeric(10, 2))  # GPS accuracy in meters
-    mocked_flag: Mapped[bool] = mapped_column(Boolean, default=False)  # Flag if GPS was mocked
     attachments: Mapped[Optional[list]] = mapped_column(JSON)  # List of file attachments
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
     approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
@@ -1278,10 +1289,20 @@ class Attendance(Base):
     rejected_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
     rejection_reason: Mapped[Optional[str]] = mapped_column(Text)
 
+    # Legacy fields (for migration compatibility - will be removed after migration)
+    type: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)  # in|out - DEPRECATED, kept for migration
+    time_entered_utc: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)  # DEPRECATED, kept for migration
+    time_selected_utc: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)  # DEPRECATED, kept for migration
+    gps_lat: Mapped[Optional[float]] = mapped_column(Numeric(10, 7), nullable=True)  # DEPRECATED, kept for migration
+    gps_lng: Mapped[Optional[float]] = mapped_column(Numeric(10, 7), nullable=True)  # DEPRECATED, kept for migration
+    gps_accuracy_m: Mapped[Optional[float]] = mapped_column(Numeric(10, 2), nullable=True)  # DEPRECATED, kept for migration
+    mocked_flag: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)  # DEPRECATED, kept for migration
+
     # Indexes for queries
     __table_args__ = (
-        Index('idx_attendance_worker_time', 'worker_id', 'time_selected_utc'),
-        Index('idx_attendance_shift_type', 'shift_id', 'type'),
+        Index('idx_attendance_worker_clock_in', 'worker_id', 'clock_in_time'),
+        Index('idx_attendance_worker_clock_out', 'worker_id', 'clock_out_time'),
+        Index('idx_attendance_shift', 'shift_id'),
         Index('idx_attendance_status', 'status'),
     )
 

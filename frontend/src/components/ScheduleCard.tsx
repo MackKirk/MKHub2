@@ -32,9 +32,11 @@ type Shift = {
 type Attendance = {
   id: string;
   shift_id: string;
-  type: 'in' | 'out';
+  type?: 'in' | 'out'; // For backward compatibility
+  clock_in_time?: string | null;
+  clock_out_time?: string | null;
+  time_selected_utc?: string | null; // For backward compatibility
   status: string;
-  time_selected_utc: string;
   source: string;
 };
 
@@ -208,9 +210,19 @@ export default function ScheduleCard() {
     return addressParts.length > 0 ? addressParts.join(', ') : 'No address available';
   };
 
-  // Get attendance for a shift
+  // Get attendance for a shift - NEW MODEL: Each record is a complete event
   const getAttendanceForShift = (shiftId: string, type: 'in' | 'out'): Attendance | null => {
-    return attendances.find((a: Attendance) => a.shift_id === shiftId && a.type === type) || null;
+    const att = attendances.find((a: Attendance) => a.shift_id === shiftId);
+    if (!att) return null;
+    
+    // Return the attendance if it has the requested time field
+    if (type === 'in' && att.clock_in_time) return att;
+    if (type === 'out' && att.clock_out_time) return att;
+    
+    // For backward compatibility, check type field
+    if (att.type === type) return att;
+    
+    return null;
   };
 
   // Generate week days (Sunday to Saturday)
@@ -539,11 +551,13 @@ export default function ScheduleCard() {
   }, [selectedShift, employees]);
 
   // Get clock-in/out status
-  const clockIn = selectedShift ? getAttendanceForShift(selectedShift.id, 'in') : null;
-  const clockOut = selectedShift ? getAttendanceForShift(selectedShift.id, 'out') : null;
-  const canClockIn = selectedShift ? (!clockIn || clockIn.status === 'rejected') : false;
+  // NEW MODEL: Get the attendance record (which may have both clock_in and clock_out)
+  const attendance = selectedShift ? attendances.find((a: Attendance) => a.shift_id === selectedShift.id) : null;
+  const clockIn = attendance?.clock_in_time ? attendance : null;
+  const clockOut = attendance?.clock_out_time ? attendance : null;
+  const canClockIn = selectedShift ? (!attendance?.clock_in_time || attendance.status === 'rejected') : false;
   const canClockOut = selectedShift
-    ? clockIn && (clockIn.status === 'approved' || clockIn.status === 'pending') && (!clockOut || clockOut.status === 'rejected')
+    ? attendance?.clock_in_time && (attendance.status === 'approved' || attendance.status === 'pending') && !attendance.clock_out_time
     : false;
   const isOwnShift = currentUser && selectedShift && String(currentUser.id) === String(selectedShift.worker_id);
 
@@ -658,11 +672,15 @@ export default function ScheduleCard() {
                                     shiftClockIn.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
                                     'bg-red-100 text-red-800'
                                   }`}>
-                                    In: {new Date(shiftClockIn.time_selected_utc).toLocaleTimeString('en-US', {
+                                    In: {shiftClockIn.clock_in_time ? new Date(shiftClockIn.clock_in_time).toLocaleTimeString('en-US', {
                                       hour: 'numeric',
                                       minute: '2-digit',
                                       hour12: true,
-                                    })}
+                                    }) : (shiftClockIn.time_selected_utc ? new Date(shiftClockIn.time_selected_utc).toLocaleTimeString('en-US', {
+                                      hour: 'numeric',
+                                      minute: '2-digit',
+                                      hour12: true,
+                                    }) : '--')}
                                   </span>
                                 </div>
                               )}
@@ -673,11 +691,15 @@ export default function ScheduleCard() {
                                     shiftClockOut.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
                                     'bg-red-100 text-red-800'
                                   }`}>
-                                    Out: {new Date(shiftClockOut.time_selected_utc).toLocaleTimeString('en-US', {
+                                    Out: {shiftClockOut.clock_out_time ? new Date(shiftClockOut.clock_out_time).toLocaleTimeString('en-US', {
                                       hour: 'numeric',
                                       minute: '2-digit',
                                       hour12: true,
-                                    })}
+                                    }) : (shiftClockOut.time_selected_utc ? new Date(shiftClockOut.time_selected_utc).toLocaleTimeString('en-US', {
+                                      hour: 'numeric',
+                                      minute: '2-digit',
+                                      hour12: true,
+                                    }) : '--')}
                                   </span>
                                 </div>
                               )}
@@ -807,11 +829,15 @@ export default function ScheduleCard() {
                           {clockIn.status === 'approved' ? 'Approved' : clockIn.status === 'pending' ? 'Pending' : 'Rejected'}
                         </span>
                         <span className="text-sm text-gray-900">
-                          {new Date(clockIn.time_selected_utc).toLocaleTimeString('en-US', {
+                          {clockIn.clock_in_time ? new Date(clockIn.clock_in_time).toLocaleTimeString('en-US', {
                             hour: 'numeric',
                             minute: '2-digit',
                             hour12: true,
-                          })}
+                          }) : (clockIn.time_selected_utc ? new Date(clockIn.time_selected_utc).toLocaleTimeString('en-US', {
+                            hour: 'numeric',
+                            minute: '2-digit',
+                            hour12: true,
+                          }) : '--')}
                         </span>
                       </div>
                     ) : (
@@ -830,11 +856,15 @@ export default function ScheduleCard() {
                           {clockOut.status === 'approved' ? 'Approved' : clockOut.status === 'pending' ? 'Pending' : 'Rejected'}
                         </span>
                         <span className="text-sm text-gray-900">
-                          {new Date(clockOut.time_selected_utc).toLocaleTimeString('en-US', {
+                          {clockOut.clock_out_time ? new Date(clockOut.clock_out_time).toLocaleTimeString('en-US', {
                             hour: 'numeric',
                             minute: '2-digit',
                             hour12: true,
-                          })}
+                          }) : (clockOut.time_selected_utc ? new Date(clockOut.time_selected_utc).toLocaleTimeString('en-US', {
+                            hour: 'numeric',
+                            minute: '2-digit',
+                            hour12: true,
+                          }) : '--')}
                         </span>
                       </div>
                     ) : (

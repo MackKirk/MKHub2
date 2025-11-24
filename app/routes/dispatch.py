@@ -4,9 +4,9 @@ Handles shifts, attendance, and approvals.
 """
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from sqlalchemy import and_, or_
+from sqlalchemy import and_, or_, func
 from typing import List, Optional, Dict
-from datetime import date, time, datetime, timedelta
+from datetime import date, time, datetime, timedelta, timezone
 import uuid
 import pytz
 
@@ -240,6 +240,140 @@ def create_shift(
     }
 
 
+@router.post("/shifts/without-project")
+def create_shift_without_project(
+    payload: dict,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user)
+):
+    """
+    Create a shift without a project (for predefined jobs like "No Project Assigned", "Repairs", etc.).
+    This allows workers to clock in/out when not assigned to a specific project.
+    """
+    # Validate required fields
+    worker_id = payload.get("worker_id")
+    if not worker_id:
+        raise HTTPException(status_code=400, detail="worker_id is required")
+    
+    # Check permissions: only workers can create shifts for themselves without a project
+    is_creating_for_self = str(worker_id) == str(user.id)
+    if not (is_admin(user, db) or is_supervisor(user, db) or (is_worker(user, db) and is_creating_for_self)):
+        raise HTTPException(
+            status_code=403, 
+            detail="Only admins, supervisors, or workers creating shifts for themselves can create shifts without a project"
+        )
+    
+    # Validate worker exists
+    worker = db.query(User).filter(User.id == worker_id).first()
+    if not worker:
+        raise HTTPException(status_code=404, detail="Worker not found")
+    
+    # Parse date and times
+    date_str = payload.get("date")
+    if not date_str:
+        raise HTTPException(status_code=400, detail="date is required")
+    
+    try:
+        shift_date = datetime.fromisoformat(date_str.split('T')[0]).date()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid date format")
+    
+    start_time_str = payload.get("start_time")
+    end_time_str = payload.get("end_time")
+    if not start_time_str or not end_time_str:
+        raise HTTPException(status_code=400, detail="start_time and end_time are required")
+    
+    try:
+        start_time = time.fromisoformat(start_time_str)
+        end_time = time.fromisoformat(end_time_str)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid time format")
+    
+    # Get job information (required for shifts without project)
+    job_type = payload.get("job_type") or payload.get("job_name")
+    if not job_type:
+        raise HTTPException(status_code=400, detail="job_type is required for shifts without a project")
+    
+    # Find existing "General" project (do NOT create new one)
+    # This is a workaround since project_id is required in the model
+    general_project = db.query(Project).filter(
+        or_(
+            Project.code == "GENERAL",
+            Project.name.ilike("%general%"),
+            Project.name.ilike("%no project%")
+        )
+    ).first()
+    
+    if not general_project:
+        raise HTTPException(
+            status_code=400,
+            detail="No 'General / No Project' project found. Please contact administrator to create this project before using non-scheduled clock-in/out."
+        )
+    
+    project_id = str(general_project.id)
+    
+    # Check for conflicts
+    if has_overlap(db, worker_id, shift_date, start_time, end_time):
+        conflicts = get_conflicting_shifts(db, worker_id, shift_date, start_time, end_time)
+        raise HTTPException(
+            status_code=400,
+            detail=f"Worker already has overlapping shift(s)"
+        )
+    
+    # Create shift with "General" project but store job_type to indicate it's not project-specific
+    shift = Shift(
+        project_id=project_id,  # Use General project as placeholder
+        worker_id=worker_id,
+        date=shift_date,
+        start_time=start_time,
+        end_time=end_time,
+        status="scheduled",
+        default_break_min=payload.get("default_break_min", settings.default_break_min),
+        geofences=[],  # No geofences for shifts without specific projects
+        job_id=None,
+        job_name=job_type,  # Store the job type name (e.g., "0", "37", "47", etc.)
+        created_by=user.id,
+    )
+    
+    db.add(shift)
+    db.commit()
+    db.refresh(shift)
+    
+    # Create audit log
+    create_audit_log(
+        db=db,
+        entity_type="shift",
+        entity_id=str(shift.id),
+        action="CREATE",
+        actor_id=str(user.id),
+        actor_role=get_user_role(user, db),
+        source="api",
+        changes_json={"after": {
+            "worker_id": worker_id,
+            "date": date_str,
+            "start_time": start_time_str,
+            "end_time": end_time_str,
+            "job_name": job_type,
+        }},
+        context={
+            "worker_id": worker_id,
+            "job_type": job_type,
+        }
+    )
+    
+    return {
+        "id": str(shift.id),
+        "project_id": None,  # Return None to indicate no specific project
+        "worker_id": str(shift.worker_id),
+        "date": shift.date.isoformat(),
+        "start_time": shift.start_time.isoformat(),
+        "end_time": shift.end_time.isoformat(),
+        "status": shift.status,
+        "job_name": shift.job_name,
+        "created_at": shift.created_at.isoformat() if shift.created_at else None,
+    }
+
+
 @router.get("/projects/{project_id}/shifts")
 def list_shifts(
     project_id: str,
@@ -290,6 +424,7 @@ def list_shifts(
         result.append({
             "id": str(s.id),
             "project_id": str(s.project_id),
+            "project_name": project.name if project else None,
             "worker_id": str(s.worker_id),
             "date": s.date.isoformat(),
             "start_time": s.start_time.isoformat(),
@@ -320,7 +455,16 @@ def list_all_shifts(
     Supports date range and worker filtering.
     """
     # Build query - only show scheduled shifts (exclude cancelled)
-    query = db.query(Shift).filter(Shift.status == "scheduled")
+    # EXCLUDE technical "System Internal" shifts - these are invisible to users
+    query = db.query(Shift).filter(
+        Shift.status == "scheduled"
+    ).join(Project).filter(
+        ~or_(
+            Project.code == "SYSTEM_INTERNAL",
+            Project.name.ilike("%system internal%"),
+            Project.name.ilike("%internal system%")
+        )
+    )
     
     # If user is admin or supervisor, they can see all shifts (or filter by worker_id if provided)
     # If user is only a worker (not admin/supervisor), only show their own shifts
@@ -981,26 +1125,84 @@ def create_attendance(
             except (ValueError, TypeError) as e:
                 logger.warning(f"Invalid gps_accuracy_m value: {gps_accuracy_m}, error: {str(e)}")
         
-        attendance = Attendance(
-            shift_id=shift_id,
-            worker_id=worker_id,
-            type=attendance_type,
-            time_entered_utc=time_entered_utc,
-            time_selected_utc=time_selected_utc,
-            status=status,
-            source=source,
-            created_by=user.id,
-            reason_text=reason_text if reason_text else None,
-            gps_lat=gps_lat_float,
-            gps_lng=gps_lng_float,
-            gps_accuracy_m=gps_accuracy_float,
-            mocked_flag=mocked_flag,
-            attachments=payload.get("attachments"),
-        )
-        
-        db.add(attendance)
-        db.commit()
-        db.refresh(attendance)
+        # NEW MODEL: Single record per event (clock_in_time and clock_out_time in same record)
+        if attendance_type == "in":
+            # Create new attendance record with clock-in
+            attendance = Attendance(
+                shift_id=shift_id,
+                worker_id=worker_id,
+                clock_in_time=time_selected_utc,
+                clock_in_entered_utc=time_entered_utc,
+                clock_in_gps_lat=gps_lat_float,
+                clock_in_gps_lng=gps_lng_float,
+                clock_in_gps_accuracy_m=gps_accuracy_float,
+                clock_in_mocked_flag=mocked_flag,
+                clock_out_time=None,
+                clock_out_entered_utc=None,
+                status=status,
+                source=source,
+                created_by=user.id,
+                reason_text=reason_text if reason_text else None,
+                attachments=payload.get("attachments"),
+                # Legacy fields (required for database NOT NULL constraint)
+                mocked_flag=mocked_flag,
+            )
+            db.add(attendance)
+            db.commit()
+            db.refresh(attendance)
+        else:  # attendance_type == "out"
+            # Find the most recent clock-in for this shift without a clock-out
+            existing_attendance = db.query(Attendance).filter(
+                Attendance.shift_id == shift_id,
+                Attendance.worker_id == worker_id,
+                Attendance.clock_in_time.isnot(None),
+                Attendance.clock_out_time.is_(None)
+            ).order_by(Attendance.clock_in_time.desc()).first()
+            
+            if existing_attendance:
+                # Update existing attendance record with clock-out
+                existing_attendance.clock_out_time = time_selected_utc
+                existing_attendance.clock_out_entered_utc = time_entered_utc
+                existing_attendance.clock_out_gps_lat = gps_lat_float
+                existing_attendance.clock_out_gps_lng = gps_lng_float
+                existing_attendance.clock_out_gps_accuracy_m = gps_accuracy_float
+                existing_attendance.clock_out_mocked_flag = mocked_flag
+                # Update status if needed (use the more restrictive status)
+                if status == "pending" or existing_attendance.status == "pending":
+                    existing_attendance.status = "pending"
+                else:
+                    existing_attendance.status = status
+                # Update reason_text if provided
+                if reason_text:
+                    existing_attendance.reason_text = reason_text
+                attendance = existing_attendance
+                db.commit()
+                db.refresh(attendance)
+            else:
+                # No matching clock-in found - create new record with only clock-out
+                # This shouldn't normally happen, but handle gracefully
+                attendance = Attendance(
+                    shift_id=shift_id,
+                    worker_id=worker_id,
+                    clock_in_time=None,
+                    clock_in_entered_utc=None,
+                    clock_out_time=time_selected_utc,
+                    clock_out_entered_utc=time_entered_utc,
+                    clock_out_gps_lat=gps_lat_float,
+                    clock_out_gps_lng=gps_lng_float,
+                    clock_out_gps_accuracy_m=gps_accuracy_float,
+                    clock_out_mocked_flag=mocked_flag,
+                    status=status,
+                    source=source,
+                    created_by=user.id,
+                    reason_text=reason_text if reason_text else None,
+                    attachments=payload.get("attachments"),
+                    # Legacy fields (required for database NOT NULL constraint)
+                    mocked_flag=mocked_flag,
+                )
+                db.add(attendance)
+                db.commit()
+                db.refresh(attendance)
         
         logger.info(f"Attendance created: {attendance.id}, Status: {attendance.status}")
         
@@ -1106,8 +1308,10 @@ def create_attendance(
             "id": str(attendance.id),
             "shift_id": str(attendance.shift_id),
             "worker_id": str(attendance.worker_id),
-            "type": attendance.type,
-            "time_selected_utc": attendance.time_selected_utc.isoformat(),
+            "type": attendance_type,  # Return the type that was requested
+            "clock_in_time": attendance.clock_in_time.isoformat() if attendance.clock_in_time else None,
+            "clock_out_time": attendance.clock_out_time.isoformat() if attendance.clock_out_time else None,
+            "time_selected_utc": (attendance.clock_in_time if attendance_type == "in" else attendance.clock_out_time).isoformat() if (attendance.clock_in_time if attendance_type == "in" else attendance.clock_out_time) else None,
             "status": attendance.status,
             "reason_text": attendance.reason_text,
             "inside_geofence": inside_geo,
@@ -1381,6 +1585,613 @@ def create_attendance_supervisor(
         "status": attendance.status,
         "source": attendance.source,
         "reason_text": attendance.reason_text,
+    }
+
+
+@router.post("/attendance/direct")
+def create_direct_attendance(
+    payload: dict,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user)
+):
+    """
+    Create attendance directly WITHOUT any shift or project.
+    This is completely independent from scheduled shifts.
+    Just records the hours worked.
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    logger.info(f"Received direct attendance request from user {user.id}: {payload}")
+    
+    try:
+        attendance_type = payload.get("type")  # "in" or "out"
+        if attendance_type not in ["in", "out"]:
+            logger.error(f"Invalid attendance type: {attendance_type}")
+            raise HTTPException(status_code=400, detail="type must be 'in' or 'out'")
+        
+        # Parse time (local time selected by user)
+        time_selected_local_str = payload.get("time_selected_local")
+        if not time_selected_local_str:
+            logger.error(f"Missing time_selected_local in payload: {payload}")
+            raise HTTPException(status_code=400, detail="time_selected_local is required")
+        
+        try:
+            time_selected_local = datetime.fromisoformat(time_selected_local_str.replace('Z', '+00:00'))
+        except Exception as e:
+            logger.error(f"Invalid time_selected_local format: {time_selected_local_str}. Error: {str(e)}")
+            raise HTTPException(status_code=400, detail=f"Invalid time_selected_local format: {time_selected_local_str}")
+        
+        # Round to 15 minutes
+        time_selected_local = round_to_15_minutes(time_selected_local)
+        
+        # Convert to UTC (use default timezone)
+        from ..services.time_rules import local_to_utc
+        time_selected_utc = local_to_utc(time_selected_local.replace(tzinfo=None), settings.tz_default)
+        if time_selected_utc.tzinfo is None:
+            from pytz import UTC
+            time_selected_utc = time_selected_utc.replace(tzinfo=UTC)
+        
+        # Get worker_id (default to current user)
+        worker_id = payload.get("worker_id", str(user.id))
+        if str(worker_id) != str(user.id) and not is_admin(user, db):
+            raise HTTPException(status_code=403, detail="You can only create direct attendance for yourself")
+        
+        # Validate worker exists
+        worker = db.query(User).filter(User.id == worker_id).first()
+        if not worker:
+            raise HTTPException(status_code=404, detail="Worker not found")
+        
+        # Get job_type (required for direct attendance)
+        job_type = payload.get("job_type")
+        if not job_type:
+            raise HTTPException(status_code=400, detail="job_type is required for direct attendance")
+        
+        # Get date from time_selected_local
+        attendance_date = time_selected_local.date()
+        
+        # For clock-out: check if there's an open clock-in (same date, same job_type, NO shift, without a clock-out)
+        # NEW MODEL: Look for attendance records with clock_in_time but no clock_out_time
+        clock_in_attendance = None
+        if attendance_type == "out":
+            # Find attendance records with clock-in but no clock-out, matching job_type
+            date_start = datetime.combine(attendance_date, time.min).replace(tzinfo=timezone.utc)
+            date_end = datetime.combine(attendance_date + timedelta(days=1), time.min).replace(tzinfo=timezone.utc)
+            
+            open_attendances = db.query(Attendance).filter(
+                Attendance.shift_id.is_(None),  # No shift - direct attendance
+                Attendance.worker_id == worker_id,
+                Attendance.clock_in_time.isnot(None),
+                Attendance.clock_out_time.is_(None),
+                Attendance.clock_in_time >= date_start,
+                Attendance.clock_in_time < date_end
+            ).order_by(Attendance.clock_in_time.desc()).all()  # Get most recent first
+            
+            # Filter by job_type stored in reason_text
+            # Format: "JOB_TYPE:{job_type}|{reason}" or just "JOB_TYPE:{job_type}"
+            for att in open_attendances:
+                reason = att.reason_text or ""
+                if reason.startswith("JOB_TYPE:"):
+                    parts = reason.split("|")
+                    job_marker = parts[0]
+                    att_job_type = job_marker.replace("JOB_TYPE:", "")
+                    if att_job_type == job_type:
+                        clock_in_attendance = att
+                        break
+            
+            if not clock_in_attendance:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"You must clock in first before clocking out. No open clock-in found for this date with job type '{job_type}'."
+                )
+        
+        # For clock-in: allow multiple clock-ins per day (no check for existing)
+        # For clock-out: we already verified there's an open clock-in above
+        
+        # Determine status: auto-approve if today, pending if past date
+        from datetime import date as date_type
+        today = date_type.today()
+        is_today = attendance_date == today
+        
+        status = "approved" if is_today else "pending"
+        
+        # Get GPS location if provided
+        gps = payload.get("gps", {})
+        gps_lat = gps.get("lat") if gps else None
+        gps_lng = gps.get("lng") if gps else None
+        gps_accuracy_m = gps.get("accuracy_m") if gps else None
+        
+        # Store job_type in reason_text as a marker (since we don't have a separate field)
+        # Format: "JOB_TYPE:{job_type}" if reason_text is empty, otherwise append
+        reason_text = payload.get("reason_text", "").strip() if payload.get("reason_text") else ""
+        job_marker = f"JOB_TYPE:{job_type}"
+        if reason_text:
+            final_reason = f"{job_marker}|{reason_text}"
+        else:
+            final_reason = job_marker
+        
+        # NEW MODEL: Single record per event
+        time_entered_utc = datetime.now(timezone.utc)
+        
+        if attendance_type == "in":
+            # Create new attendance record with clock-in
+            attendance = Attendance(
+                shift_id=None,  # NO SHIFT - completely independent
+                worker_id=worker_id,
+                clock_in_time=time_selected_utc,
+                clock_in_entered_utc=time_entered_utc,
+                clock_in_gps_lat=gps_lat,
+                clock_in_gps_lng=gps_lng,
+                clock_in_gps_accuracy_m=gps_accuracy_m,
+                clock_in_mocked_flag=gps.get("mocked", False) if gps else False,
+                clock_out_time=None,
+                clock_out_entered_utc=None,
+                status=status,
+                source="app",
+                created_by=user.id,
+                reason_text=final_reason,  # Store job_type here as marker
+                # Legacy fields (required for database NOT NULL constraint)
+                mocked_flag=gps.get("mocked", False) if gps else False,
+            )
+            # Auto-approve if today
+            if status == "approved":
+                attendance.approved_at = time_entered_utc
+                attendance.approved_by = user.id
+            db.add(attendance)
+            db.commit()
+            db.refresh(attendance)
+        else:  # attendance_type == "out"
+            # Update existing attendance record with clock-out
+            clock_in_attendance.clock_out_time = time_selected_utc
+            clock_in_attendance.clock_out_entered_utc = time_entered_utc
+            clock_in_attendance.clock_out_gps_lat = gps_lat
+            clock_in_attendance.clock_out_gps_lng = gps_lng
+            clock_in_attendance.clock_out_gps_accuracy_m = gps_accuracy_m
+            clock_in_attendance.clock_out_mocked_flag = False
+            # Update status if needed (use the more restrictive status)
+            if status == "pending" or clock_in_attendance.status == "pending":
+                clock_in_attendance.status = "pending"
+            else:
+                clock_in_attendance.status = status
+            # Update reason_text if provided (preserve job_type marker)
+            if reason_text:
+                # Preserve job_type marker, update reason part
+                existing_reason = clock_in_attendance.reason_text or ""
+                if existing_reason.startswith("JOB_TYPE:"):
+                    parts = existing_reason.split("|", 1)
+                    if len(parts) > 1:
+                        clock_in_attendance.reason_text = f"{parts[0]}|{reason_text}"
+                    else:
+                        clock_in_attendance.reason_text = f"{parts[0]}|{reason_text}"
+                else:
+                    clock_in_attendance.reason_text = final_reason
+            # Auto-approve if today and not already approved
+            if status == "approved" and clock_in_attendance.status == "approved":
+                if not clock_in_attendance.approved_at:
+                    clock_in_attendance.approved_at = time_entered_utc
+                    clock_in_attendance.approved_by = user.id
+            attendance = clock_in_attendance
+            db.commit()
+            db.refresh(attendance)
+        
+        logger.info(f"Direct attendance created (NO SHIFT): {attendance.id}, Status: {attendance.status}, Job: {job_type}")
+        
+        # If pending and past date, create task for supervisor
+        if status == "pending":
+            worker_profile = db.query(EmployeeProfile).filter(EmployeeProfile.user_id == worker_id).first()
+            supervisor_id = worker_profile.manager_user_id if worker_profile else None
+            
+            if supervisor_id:
+                try:
+                    worker_name = worker_profile.preferred_name or f"{worker_profile.first_name or ''} {worker_profile.last_name or ''}".strip() or "Worker"
+                    date_str = attendance_date.strftime("%Y-%m-%d")
+                    create_task_item(
+                        db=db,
+                        user_id=str(supervisor_id),
+                        title=f"Approve attendance for {worker_name} – {date_str}",
+                        description=f"Review and approve {attendance_type} attendance record for {worker_name} on {date_str} (Non-scheduled)",
+                        priority="medium",
+                        origin_type="system_attendance",
+                        origin_id=str(attendance.id),
+                        origin_reference=f"Attendance {str(attendance.id)[:8]}",
+                    )
+                    logger.info(f"Created task for supervisor {supervisor_id} for attendance {attendance.id}")
+                except Exception as exc:
+                    logger.error(f"Failed to create task for supervisor: {exc}")
+        
+        # Create audit log
+        create_audit_log(
+            db=db,
+            entity_type="attendance",
+            entity_id=str(attendance.id),
+            action="CLOCK_IN" if attendance_type == "in" else "CLOCK_OUT",
+            actor_id=str(user.id),
+            actor_role=get_user_role(user, db),
+            source="app",
+            changes_json={"after": {
+                "worker_id": str(worker_id),
+                "shift_id": None,  # No shift
+                "type": attendance_type,
+                "time_selected_utc": time_selected_utc.isoformat(),
+                "status": status,
+                "job_type": job_type,
+            }},
+            context={
+                "worker_id": str(worker_id),
+                "shift_id": None,
+                "job_type": job_type,
+                "direct_attendance": True,
+            }
+        )
+        
+        return {
+            "id": str(attendance.id),
+            "attendance_id": str(attendance.id),
+            "shift_id": None,  # No shift
+            "worker_id": str(worker_id),
+            "type": attendance_type,  # Return the type that was requested
+            "clock_in_time": attendance.clock_in_time.isoformat() if attendance.clock_in_time else None,
+            "clock_out_time": attendance.clock_out_time.isoformat() if attendance.clock_out_time else None,
+            "time_selected_utc": (attendance.clock_in_time if attendance_type == "in" else attendance.clock_out_time).isoformat() if (attendance.clock_in_time if attendance_type == "in" else attendance.clock_out_time) else None,
+            "status": attendance.status,
+            "source": attendance.source,
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Unexpected error in create_direct_attendance: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+
+# Predefined jobs dict for mapping
+PREDEFINED_JOBS_DICT = {
+    "0": "No Project Assigned",
+    "37": "Repairs",
+    "47": "Shop",
+    "53": "YPK Developments",
+    "136": "Stat Holiday",
+}
+
+@router.get("/attendance/direct/{date}")
+def get_direct_attendances_for_date(
+    date: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user)
+):
+    """
+    Get direct attendances (no shift) for a specific date.
+    Returns clock-in and clock-out records that are not associated with any shift.
+    """
+    try:
+        attendance_date = datetime.fromisoformat(date).date()
+    except:
+        raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
+    
+    # Get all direct attendances (no shift) for this date
+    # NEW MODEL: Query by clock_in_time or clock_out_time
+    date_start = datetime.combine(attendance_date, time.min).replace(tzinfo=timezone.utc)
+    date_end = datetime.combine(attendance_date + timedelta(days=1), time.min).replace(tzinfo=timezone.utc)
+    
+    attendances = db.query(Attendance).filter(
+        Attendance.shift_id.is_(None),  # No shift - direct attendance
+        Attendance.worker_id == user.id,
+        or_(
+            and_(
+                Attendance.clock_in_time.isnot(None),
+                Attendance.clock_in_time >= date_start,
+                Attendance.clock_in_time < date_end
+            ),
+            and_(
+                Attendance.clock_in_time.is_(None),
+                Attendance.clock_out_time.isnot(None),
+                Attendance.clock_out_time >= date_start,
+                Attendance.clock_out_time < date_end
+            )
+        )
+    ).order_by(
+        func.coalesce(Attendance.clock_in_time, Attendance.clock_out_time).asc()
+    ).all()
+    
+    result = []
+    for att in attendances:
+        # Extract job_type from reason_text
+        job_type = None
+        reason = att.reason_text or ""
+        if reason.startswith("JOB_TYPE:"):
+            parts = reason.split("|")
+            job_marker = parts[0]
+            job_type = job_marker.replace("JOB_TYPE:", "")
+        
+        # Determine type based on which fields are filled
+        # For backward compatibility, return "in" if clock_in exists, "out" if only clock_out exists
+        att_type = None
+        if att.clock_in_time and att.clock_out_time:
+            # Complete event - return "in" for the clock-in part (frontend can handle both)
+            att_type = "in"
+        elif att.clock_in_time:
+            att_type = "in"
+        elif att.clock_out_time:
+            att_type = "out"
+        
+        # Use clock_in_time or clock_out_time for time_selected_utc (backward compatibility)
+        time_selected = att.clock_in_time if att.clock_in_time else att.clock_out_time
+        
+        result.append({
+            "id": str(att.id),
+            "shift_id": None,
+            "worker_id": str(att.worker_id),
+            "type": att_type,  # For backward compatibility
+            "clock_in_time": att.clock_in_time.isoformat() if att.clock_in_time else None,
+            "clock_out_time": att.clock_out_time.isoformat() if att.clock_out_time else None,
+            "time_selected_utc": time_selected.isoformat() if time_selected else None,  # Backward compatibility
+            "status": att.status,
+            "source": att.source,
+            "job_type": job_type,
+            "reason_text": att.reason_text,  # Include reason_text so frontend can extract job_type
+        })
+    
+    return result
+
+
+@router.get("/attendance/weekly-summary")
+def get_weekly_attendance_summary(
+    week_start: Optional[str] = None,  # YYYY-MM-DD format, defaults to current week (Sunday)
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user)
+):
+    """
+    Get weekly attendance summary for the current user.
+    Returns list of daily entries with clock-in/out times, hours worked, job type, etc.
+    """
+    from datetime import date as date_type, timedelta
+    
+    # Calculate week start (Sunday)
+    if week_start:
+        try:
+            week_start_date = datetime.fromisoformat(week_start).date()
+        except:
+            today = date_type.today()
+            days_since_sunday = today.weekday() + 1
+            if days_since_sunday == 7:
+                days_since_sunday = 0
+            week_start_date = today - timedelta(days=days_since_sunday)
+    else:
+        today = date_type.today()
+        days_since_sunday = today.weekday() + 1
+        if days_since_sunday == 7:
+            days_since_sunday = 0
+        week_start_date = today - timedelta(days=days_since_sunday)
+    
+    week_end_date = week_start_date + timedelta(days=6)  # Saturday
+    
+    # Get all attendances for this week - NEW MODEL: each record is already a complete event
+    # Use clock_in_time for date filtering (or clock_out_time if clock_in_time is null)
+    week_start_dt = datetime.combine(week_start_date, time.min).replace(tzinfo=timezone.utc)
+    week_end_dt = datetime.combine(week_end_date + timedelta(days=1), time.min).replace(tzinfo=timezone.utc)
+    
+    # Query attendances where clock_in_time or clock_out_time falls within the week
+    attendances = db.query(Attendance).filter(
+        Attendance.worker_id == user.id,
+        or_(
+            and_(
+                Attendance.clock_in_time.isnot(None),
+                Attendance.clock_in_time >= week_start_dt,
+                Attendance.clock_in_time < week_end_dt
+            ),
+            and_(
+                Attendance.clock_in_time.is_(None),
+                Attendance.clock_out_time.isnot(None),
+                Attendance.clock_out_time >= week_start_dt,
+                Attendance.clock_out_time < week_end_dt
+            )
+        )
+    ).order_by(
+        func.coalesce(Attendance.clock_in_time, Attendance.clock_out_time).asc()
+    ).all()
+    
+    # Group attendances by date - each attendance is already a complete event
+    daily_entries = {}
+    
+    for attendance in attendances:
+        # Determine the date for this event (use clock_in_time if available, otherwise clock_out_time)
+        event_date = None
+        if attendance.clock_in_time:
+            event_date = attendance.clock_in_time.date()
+        elif attendance.clock_out_time:
+            event_date = attendance.clock_out_time.date()
+        else:
+            continue  # Skip if neither clock_in nor clock_out exists
+        
+        if event_date < week_start_date or event_date > week_end_date:
+            continue
+        
+        date_str = event_date.isoformat()
+        
+        # Initialize daily entry if not exists
+        if date_str not in daily_entries:
+            daily_entries[date_str] = {
+                "date": date_str,
+                "events": [],  # List of events (each attendance is already a complete event)
+            }
+        
+        # Extract job_type and project_name for this attendance
+        job_type = None
+        project_name = None
+        
+        if attendance.shift_id:
+            # Scheduled attendance - get from shift
+            shift = db.query(Shift).filter(Shift.id == attendance.shift_id).first()
+            if shift:
+                job_type = shift.job_name
+                # Get project name if it's not a predefined job
+                if shift.project_id:
+                    project = db.query(Project).filter(Project.id == shift.project_id).first()
+                    if project:
+                        project_name = project.name
+        else:
+            # Direct attendance (no shift) - extract job_type from reason_text
+            # Format: "JOB_TYPE:{job_type}|{reason}" or just "JOB_TYPE:{job_type}"
+            reason = attendance.reason_text or ""
+            if reason.startswith("JOB_TYPE:"):
+                parts = reason.split("|")
+                job_marker = parts[0]
+                job_type = job_marker.replace("JOB_TYPE:", "")
+        
+        # Extract HOURS_WORKED from reason_text if present
+        hours_worked = None
+        reason = attendance.reason_text or ""
+        if "HOURS_WORKED:" in reason:
+            parts = reason.split("|")
+            for part in parts:
+                if part.startswith("HOURS_WORKED:"):
+                    try:
+                        hours_worked = float(part.replace("HOURS_WORKED:", ""))
+                    except:
+                        pass
+                    break
+        
+        # Add event - each attendance is already a complete event
+        daily_entries[date_str]["events"].append({
+            "clock_in": {
+                "id": str(attendance.id),
+                "time": attendance.clock_in_time.isoformat() if attendance.clock_in_time else None,
+                "status": attendance.status,
+                "reason_text": attendance.reason_text,
+            } if attendance.clock_in_time else None,
+            "clock_out": {
+                "id": str(attendance.id),
+                "time": attendance.clock_out_time.isoformat() if attendance.clock_out_time else None,
+                "status": attendance.status,
+                "reason_text": attendance.reason_text,
+            } if attendance.clock_out_time else None,
+            "job_type": job_type,
+            "project_name": project_name,
+            "hours_worked": hours_worked,
+        })
+    
+    # Calculate hours worked for each day - handle multiple events per day
+    result = []
+    total_minutes = 0
+    
+    for i in range(7):  # Sunday to Saturday
+        current_date = week_start_date + timedelta(days=i)
+        date_str = current_date.isoformat()
+        
+        entry = daily_entries.get(date_str, {
+            "date": date_str,
+            "events": [],
+        })
+        
+        # Calculate total hours for the day (sum of all completed events)
+        day_total_minutes = 0
+        events_list = []
+        
+        for event in entry["events"]:
+            # Check if this is a "hours worked" entry
+            hours_value = event.get("hours_worked")
+            is_hours_worked = hours_value is not None
+            
+            # If not found, try to extract from clock-in or clock-out reason_text as fallback
+            if not is_hours_worked:
+                clock_in_reason = event.get("clock_in", {}).get("reason_text") if isinstance(event.get("clock_in"), dict) else None
+                clock_out_reason = event.get("clock_out", {}).get("reason_text") if isinstance(event.get("clock_out"), dict) else None
+                
+                # Try clock-in first, then clock-out
+                for reason in [clock_in_reason, clock_out_reason]:
+                    if reason and "HOURS_WORKED:" in reason:
+                        parts = reason.split("|")
+                        for part in parts:
+                            if part.startswith("HOURS_WORKED:"):
+                                try:
+                                    hours_value = float(part.replace("HOURS_WORKED:", ""))
+                                    is_hours_worked = True
+                                    break
+                                except:
+                                    pass
+                        if is_hours_worked:
+                            break
+            
+            clock_in_time_str = event.get("clock_in", {}).get("time") if isinstance(event.get("clock_in"), dict) else None
+            clock_out_time_str = event.get("clock_out", {}).get("time") if isinstance(event.get("clock_out"), dict) else None
+            clock_in_status = event.get("clock_in", {}).get("status") if isinstance(event.get("clock_in"), dict) else None
+            clock_out_status = event.get("clock_out", {}).get("status") if isinstance(event.get("clock_out"), dict) else None
+            
+            if clock_in_time_str and clock_out_time_str:
+                # Completed event - calculate hours
+                if is_hours_worked and hours_value is not None:
+                    # Use the hours_worked value directly
+                    event_minutes = int(float(hours_value) * 60)
+                else:
+                    # Calculate from clock-in/out times
+                    clock_in_time = datetime.fromisoformat(clock_in_time_str)
+                    clock_out_time = datetime.fromisoformat(clock_out_time_str)
+                    diff = clock_out_time - clock_in_time
+                    event_minutes = int(diff.total_seconds() / 60)
+                
+                day_total_minutes += event_minutes
+                
+                # Determine job name
+                job_name = "Unknown"
+                if event["job_type"]:
+                    job_name = PREDEFINED_JOBS_DICT.get(event["job_type"], event["project_name"] or "Unknown")
+                elif event["project_name"]:
+                    job_name = event["project_name"]
+                
+                events_list.append({
+                    "clock_in": None if is_hours_worked else clock_in_time_str,
+                    "clock_out": None if is_hours_worked else clock_out_time_str,
+                    "clock_in_status": clock_in_status,
+                    "clock_out_status": clock_out_status,
+                    "job_type": event["job_type"],
+                    "job_name": job_name,
+                    "hours_worked_minutes": event_minutes,
+                    "hours_worked_formatted": f"{event_minutes // 60}h {event_minutes % 60:02d}m",
+                })
+            elif clock_in_time_str:
+                # Open event (clock-in without clock-out)
+                job_name = "Unknown"
+                if event["job_type"]:
+                    job_name = PREDEFINED_JOBS_DICT.get(event["job_type"], event["project_name"] or "Unknown")
+                elif event["project_name"]:
+                    job_name = event["project_name"]
+                
+                events_list.append({
+                    "clock_in": clock_in_time_str,
+                    "clock_out": None,
+                    "clock_in_status": clock_in_status,
+                    "clock_out_status": None,
+                    "job_type": event["job_type"],
+                    "job_name": job_name,
+                    "hours_worked_minutes": 0,
+                    "hours_worked_formatted": "0h 00m",
+                })
+        
+        total_minutes += day_total_minutes
+        
+        # If there are events, add them to result
+        if events_list:
+            # Add each event as a separate entry for the day
+            for event_data in events_list:
+                result.append({
+                    "date": date_str,
+                    "day_name": current_date.strftime("%a").lower(),  # mon, tue, etc.
+                    "clock_in": event_data["clock_in"],
+                    "clock_out": event_data["clock_out"],
+                    "clock_in_status": event_data["clock_in_status"],
+                    "clock_out_status": event_data["clock_out_status"],
+                    "job_type": event_data["job_type"],
+                    "job_name": event_data["job_name"],
+                    "hours_worked_minutes": event_data["hours_worked_minutes"],
+                    "hours_worked_formatted": event_data["hours_worked_formatted"],
+                })
+    
+    return {
+        "week_start": week_start_date.isoformat(),
+        "week_end": week_end_date.isoformat(),
+        "days": result,
+        "total_minutes": total_minutes,
+        "total_hours_formatted": f"{total_minutes // 60}h {total_minutes % 60:02d}m",
     }
 
 
@@ -1741,29 +2552,50 @@ def get_shift_attendance(
         if not (is_admin(user, db) or is_supervisor(user, db, str(shift.project_id))):
             raise HTTPException(status_code=403, detail="Access denied")
     
-    attendances = db.query(Attendance).filter(Attendance.shift_id == shift_id).order_by(Attendance.time_selected_utc.asc()).all()
+    # NEW MODEL: Query by shift_id, order by clock_in_time or clock_out_time
+    attendances = db.query(Attendance).filter(
+        Attendance.shift_id == shift_id
+    ).order_by(
+        func.coalesce(Attendance.clock_in_time, Attendance.clock_out_time).asc()
+    ).all()
     
-    return [
-        {
+    result = []
+    for a in attendances:
+        # Determine type for backward compatibility
+        att_type = None
+        if a.clock_in_time and a.clock_out_time:
+            att_type = "in"  # Complete event - return "in" for backward compatibility
+        elif a.clock_in_time:
+            att_type = "in"
+        elif a.clock_out_time:
+            att_type = "out"
+        
+        # Use clock_in_time or clock_out_time for time_selected_utc (backward compatibility)
+        time_selected = a.clock_in_time if a.clock_in_time else a.clock_out_time
+        
+        result.append({
             "id": str(a.id),
             "shift_id": str(a.shift_id),
             "worker_id": str(a.worker_id),
-            "type": a.type,
-            "time_selected_utc": a.time_selected_utc.isoformat(),
+            "type": att_type,  # For backward compatibility
+            "clock_in_time": a.clock_in_time.isoformat() if a.clock_in_time else None,
+            "clock_out_time": a.clock_out_time.isoformat() if a.clock_out_time else None,
+            "time_selected_utc": time_selected.isoformat() if time_selected else None,  # Backward compatibility
             "status": a.status,
             "source": a.source,
             "reason_text": a.reason_text,
-            "gps_lat": float(a.gps_lat) if a.gps_lat else None,
-            "gps_lng": float(a.gps_lng) if a.gps_lng else None,
-            "gps_accuracy_m": float(a.gps_accuracy_m) if a.gps_accuracy_m else None,
-            "mocked_flag": a.mocked_flag,
+            # GPS data from clock-in (or clock-out if clock-in doesn't exist)
+            "gps_lat": float(a.clock_in_gps_lat) if a.clock_in_gps_lat else (float(a.clock_out_gps_lat) if a.clock_out_gps_lat else None),
+            "gps_lng": float(a.clock_in_gps_lng) if a.clock_in_gps_lng else (float(a.clock_out_gps_lng) if a.clock_out_gps_lng else None),
+            "gps_accuracy_m": float(a.clock_in_gps_accuracy_m) if a.clock_in_gps_accuracy_m else (float(a.clock_out_gps_accuracy_m) if a.clock_out_gps_accuracy_m else None),
+            "mocked_flag": a.clock_in_mocked_flag if a.clock_in_time else (a.clock_out_mocked_flag if a.clock_out_time else False),
             "created_at": a.created_at.isoformat() if a.created_at else None,
             "approved_at": a.approved_at.isoformat() if a.approved_at else None,
             "rejected_at": a.rejected_at.isoformat() if a.rejected_at else None,
             "rejection_reason": a.rejection_reason,
-        }
-        for a in attendances
-    ]
+        })
+    
+    return result
 
 
 @router.get("/attendance/pending")

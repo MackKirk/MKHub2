@@ -742,10 +742,14 @@ function PendingAttendanceRow({
       <div className="flex items-start justify-between">
         <div className="flex-1">
           <div className="font-medium">
-            {worker?.name || attendance.worker_id} - {attendance.type === 'in' ? 'Clock In' : 'Clock Out'}
+            {worker?.name || attendance.worker_id} - {attendance.clock_in_time && !attendance.clock_out_time ? 'Clock In' : 
+                                                      attendance.clock_out_time ? 'Clock Out' : 
+                                                      attendance.type === 'in' ? 'Clock In' : 'Clock Out'}
           </div>
           <div className="text-sm text-gray-600">
-            {new Date(attendance.time_selected_utc).toLocaleString()}
+            {attendance.clock_in_time ? new Date(attendance.clock_in_time).toLocaleString() : 
+             attendance.clock_out_time ? new Date(attendance.clock_out_time).toLocaleString() :
+             attendance.time_selected_utc ? new Date(attendance.time_selected_utc).toLocaleString() : '--'}
           </div>
           {attendance.reason_text && (
             <div className="text-sm text-gray-700 mt-1">{attendance.reason_text}</div>

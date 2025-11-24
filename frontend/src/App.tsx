@@ -36,6 +36,7 @@ import CompanyFiles from './pages/CompanyFiles';
 import TaskRequests from './pages/TaskRequests';
 import Tasks from './pages/Tasks';
 import Schedule from './pages/Schedule';
+import ClockInOut from './pages/ClockInOut';
 import Community from './pages/Community';
 import FleetDashboard from './pages/FleetDashboard';
 import FleetAssets from './pages/FleetAssets';
@@ -55,6 +56,7 @@ import TrainingCourse from './pages/TrainingCourse';
 import TrainingCertificates from './pages/TrainingCertificates';
 import TrainingAdmin from './pages/TrainingAdmin';
 import TrainingCourseEdit from './pages/TrainingCourseEdit';
+import Attendance from './pages/Attendance';
 import Notifications from './pages/Notifications';
 
 import { getToken } from './lib/api';
@@ -74,6 +76,7 @@ export default function App(){
           <Route path="/home" element={<AppShell><HomePage/></AppShell>} />
           <Route path="/profile" element={<AppShell><Profile/></AppShell>} />
           <Route path="/schedule" element={<AppShell><Schedule/></AppShell>} />
+          <Route path="/clock-in-out" element={<AppShell><ClockInOut/></AppShell>} />
           <Route path="/task-requests" element={<AppShell><TaskRequests/></AppShell>} />
           <Route path="/tasks" element={<AppShell><Tasks/></AppShell>} />
           <Route path="/customers" element={<AppShell><Customers/></AppShell>} />
@@ -97,6 +100,7 @@ export default function App(){
           <Route path="/log-hours" element={<AppShell><LogHours/></AppShell>} />
           <Route path="/users" element={<AppShell><Users/></AppShell>} />
           <Route path="/users/:userId" element={<AppShell><UserInfo/></AppShell>} />
+          <Route path="/settings/attendance" element={<AppShell><Attendance/></AppShell>} />
           <Route path="/community" element={<AppShell><Community/></AppShell>} />
           <Route path="/reviews/admin" element={<AppShell><ReviewsAdmin/></AppShell>} />
           <Route path="/reviews/compare" element={<AppShell><ReviewsCompare/></AppShell>} />
