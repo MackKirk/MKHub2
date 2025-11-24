@@ -1282,10 +1282,13 @@ def create_app() -> FastAPI:
                             conn.execute(text("CREATE INDEX IF NOT EXISTS idx_equipment_assignment_user_active ON equipment_assignments(assigned_to_user_id, is_active)"))
                         except Exception:
                             pass
-<<<<<<< HEAD
-                except Exception:
-                    pass
-            if settings.database_url.startswith("postgres"):
+                    # End of SQLite migrations block
+                    print("[migrations] SQLite migrations completed")
+                except Exception as e:
+                    print(f"[migrations] Error during SQLite migrations: {e}")
+                    import traceback
+                    traceback.print_exc()
+            if db_url.startswith("postgres"):
                 with engine.begin() as conn:
                     # Migrate attendance table from 2-record model (in/out) to 1-record model (event) - PostgreSQL
                     try:
@@ -2381,39 +2384,11 @@ def create_app() -> FastAPI:
                             conn.execute(text("ALTER TABLE work_orders ADD COLUMN documents JSONB"))
                     except Exception:
                         pass
-        except Exception:
-            pass
-=======
-                    # End of SQLite migrations block
-                        print("[migrations] SQLite migrations completed")
+                    print("[migrations] PostgreSQL migrations completed")
                 except Exception as e:
-                    print(f"[migrations] Error during SQLite migrations: {e}")
+                    print(f"[migrations] Error during PostgreSQL migrations: {e}")
                     import traceback
                     traceback.print_exc()
-                # PostgreSQL migrations disabled here - they now run in background thread
-                # See run_migrations_in_background() function above
-                # The old PostgreSQL migration block has been removed to prevent blocking startup
-                # All PostgreSQL migrations now run in the background thread
-                if db_url.startswith("postgres"):
-                    print("[migrations] Detected PostgreSQL database, running migrations...")
-                    print("[migrations] Running PostgreSQL migrations in background (this may take a while)...")
-                    try:
-                        # Execute PostgreSQL migrations - the actual code is in the block below (line 916+)
-                        # We'll import and call it here
-                        # For now, we create a connection and execute the migrations
-                        with engine.begin() as conn:
-                            # Execute PostgreSQL migrations
-                            # The migrations use IF NOT EXISTS so they're safe to run multiple times
-                            print("[migrations] Executing PostgreSQL migrations (this may take several minutes)...")
-                            # For now, we skip the actual migrations to avoid blocking
-                            # The migration code is in the disabled block below (line 920+)
-                            # TODO: Copy the actual migration SQL statements here
-                            print("[migrations] Note: PostgreSQL migrations will be executed in a future update")
-                        print("[migrations] PostgreSQL migrations completed")
-                    except Exception as e:
-                        print(f"[migrations] Error during PostgreSQL migrations: {e}")
-                        import traceback
-                        traceback.print_exc()
                 print("[migrations] All migrations completed")
             except Exception as e:
                 print(f"[migrations] Error during background migrations: {e}")
@@ -2426,7 +2401,7 @@ def create_app() -> FastAPI:
         migration_thread.start()
         print("[startup] Migrations scheduled in background, server starting...")
         print("[startup] Application startup complete - server ready!")
->>>>>>> 9c7d88eb958392977e73e90497491dcb9e103c16
+        
         # Removed bootstrap admin creation: admins should be granted via roles after onboarding
 
     @app.get("/")
