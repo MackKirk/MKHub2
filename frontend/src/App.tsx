@@ -56,11 +56,8 @@ import TrainingCourse from './pages/TrainingCourse';
 import TrainingCertificates from './pages/TrainingCertificates';
 import TrainingAdmin from './pages/TrainingAdmin';
 import TrainingCourseEdit from './pages/TrainingCourseEdit';
-<<<<<<< HEAD
 import Attendance from './pages/Attendance';
-=======
 import Notifications from './pages/Notifications';
->>>>>>> 9c7d88eb958392977e73e90497491dcb9e103c16
 
 import { getToken } from './lib/api';
 function Home(){ return <Navigate to={getToken()? '/home':'/login'} replace />; }
