@@ -10,6 +10,7 @@ import { useConfirm } from '@/components/ConfirmProvider';
 import CalendarMock from '@/components/CalendarMock';
 import DispatchTab from '@/components/DispatchTab';
 import OrdersTab from '@/components/OrdersTab';
+import { formatDateLocal, getCurrentMonthLocal } from '@/lib/dateUtils';
 
 // Helper function to convert 24h time (HH:MM:SS or HH:MM) to 12h format (h:mm AM/PM)
 function formatTime12h(timeStr: string | null | undefined): string {
@@ -23,6 +24,7 @@ function formatTime12h(timeStr: string | null | undefined): string {
   const hours12 = hours === 0 ? 12 : hours > 12 ? hours - 12 : hours;
   return `${hours12}:${minutes} ${period}`;
 }
+
 
 // Helper function to format hours and minutes in a readable format (e.g., "8h30min")
 function formatHoursMinutes(totalMinutes: number): string {
@@ -1852,7 +1854,7 @@ function TimesheetTab({ projectId }:{ projectId:string }){
   const confirm = useConfirm();
   const location = useLocation();
   const nav = useNavigate();
-  const [month, setMonth] = useState<string>(new Date().toISOString().slice(0,7));
+  const [month, setMonth] = useState<string>(getCurrentMonthLocal());
   const [userFilter, setUserFilter] = useState<string>('');
   
   // Edit time entry modal state
@@ -1873,7 +1875,7 @@ function TimesheetTab({ projectId }:{ projectId:string }){
   }, [month, userFilter]);
   const { data, refetch } = useQuery({ queryKey:['timesheet', projectId, qs], queryFn: ()=> api<any[]>(`GET`, `/projects/${projectId}/timesheet${qs}`), refetchInterval: 10000 });
   const entries = data||[];
-  const [workDate, setWorkDate] = useState<string>(new Date().toISOString().slice(0,10));
+  const [workDate, setWorkDate] = useState<string>(formatDateLocal(new Date()));
   
   // Get timesheet settings for default break
   const { data: settings } = useQuery({ queryKey:['settings-bundle'], queryFn: ()=>api<Record<string, any[]>>('GET','/settings') });
@@ -1891,7 +1893,7 @@ function TimesheetTab({ projectId }:{ projectId:string }){
       const [year, monthNum] = month.split('-').map(Number);
       const firstDay = new Date(year, monthNum - 1, 1);
       const lastDay = new Date(year, monthNum, 0);
-      return `${firstDay.toISOString().slice(0, 10)},${lastDay.toISOString().slice(0, 10)}`;
+      return `${formatDateLocal(firstDay)},${formatDateLocal(lastDay)}`;
     } catch {
       return null;
     }
@@ -2210,6 +2212,18 @@ function TimesheetTab({ projectId }:{ projectId:string }){
     const shiftDate = selectedShift.date; // Format: YYYY-MM-DD
     const timeStr = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
     const timeSelectedLocal = `${shiftDate}T${timeStr}:00`;
+
+    // Validate: Block future times (except in Attendance tab which has no restrictions)
+    // Create date using local timezone explicitly to avoid timezone issues
+    // Add 1 minute buffer to account for any timezone/clock differences
+    const [year, month, day] = shiftDate.split('-').map(Number);
+    const selectedDateTime = new Date(year, month - 1, day, hours, minutes, 0);
+    const now = new Date();
+    const bufferMs = 60 * 1000; // 1 minute buffer
+    if (selectedDateTime.getTime() > (now.getTime() + bufferMs)) {
+      toast.error('Clock-in/out cannot be in the future. Please select a valid time.');
+      return;
+    }
 
     setSubmitting(true);
 
@@ -2758,10 +2772,10 @@ function TimesheetTab({ projectId }:{ projectId:string }){
                           </div>
                         ) : (
                           <div>
-                            <div className="font-medium">⚠ You are not at the correct site</div>
+                            <div className="font-medium">ℹ You are not at the correct site</div>
                             {geofenceStatus.distance !== undefined && (
                               <div className="text-xs mt-1 opacity-75">
-                                Distance from site: {geofenceStatus.distance}m (required: within {geofenceStatus.radius}m)
+                                Distance from site: {geofenceStatus.distance}m (within {geofenceStatus.radius}m radius). Location is captured but not mandatory.
                               </div>
                             )}
                           </div>
@@ -2770,9 +2784,9 @@ function TimesheetTab({ projectId }:{ projectId:string }){
                     )
                   ) : (
                     <div className="p-3 bg-blue-50 border border-blue-200 rounded text-sm text-blue-800 mt-2">
-                      <div className="font-medium">ℹ Location validation not required</div>
+                      <div className="font-medium">ℹ Location captured (not mandatory)</div>
                       <div className="text-xs mt-1 opacity-75">
-                        No geofence is defined for this shift. Your location has been captured but will not be validated.
+                        No geofence is defined for this shift. Your location has been captured but is not mandatory for clock-in/out.
                       </div>
                     </div>
                   )}
@@ -2804,28 +2818,10 @@ function TimesheetTab({ projectId }:{ projectId:string }){
                     const isWorkerOwner = currentUser && selectedShift?.worker_id && String(currentUser.id) === String(selectedShift.worker_id);
                     const isSupervisorDoingForOther = isSupervisorOrAdmin && selectedShift && !isWorkerOwner;
                     
-                    // Check if time is outside tolerance (30 minutes)
-                    let isOutsideTimeTolerance = false;
-                    if (selectedShift && selectedTime && selectedHour12 && selectedMinute) {
-                      try {
-                        const now = new Date();
-                        const shiftDate = selectedShift.date; // YYYY-MM-DD
-                        const hour24 = selectedAmPm === 'PM' && parseInt(selectedHour12) !== 12 
-                          ? parseInt(selectedHour12) + 12 
-                          : selectedAmPm === 'AM' && parseInt(selectedHour12) === 12 
-                          ? 0 
-                          : parseInt(selectedHour12);
-                        const selectedDateTime = new Date(`${shiftDate}T${String(hour24).padStart(2, '0')}:${selectedMinute}:00`);
-                        const diffMinutes = Math.abs((selectedDateTime.getTime() - now.getTime()) / (1000 * 60));
-                        isOutsideTimeTolerance = diffMinutes > 30;
-                      } catch (e) {
-                        // Ignore errors in calculation
-                      }
-                    }
-                    
-                    // Require reason if: supervisor doing for other worker OR not inside geofence OR outside time tolerance
-                    const isOutsideGeofence = geofenceStatus && !geofenceStatus.inside;
-                    const requiresReason = isSupervisorDoingForOther || isOutsideGeofence || isOutsideTimeTolerance;
+                    // Require reason ONLY if: supervisor doing for other worker
+                    // Location is captured but not mandatory
+                    // Different day will make it pending but doesn't require reason
+                    const requiresReason = isSupervisorDoingForOther;
                     return requiresReason && <span className="text-red-500">*</span>;
                   })()
                 }
@@ -2851,51 +2847,67 @@ function TimesheetTab({ projectId }:{ projectId:string }){
                     );
                   }
                   
-                  // Check if time is outside tolerance (30 minutes)
-                  let isOutsideTimeTolerance = false;
+                  // Check if clock-in/out is on a different day than TODAY or in the future
+                  let isDifferentDayFromToday = false;
+                  let isFutureTime = false;
                   if (selectedShift && selectedTime && selectedHour12 && selectedMinute) {
                     try {
-                      const now = new Date();
                       const shiftDate = selectedShift.date; // YYYY-MM-DD
                       const hour24 = selectedAmPm === 'PM' && parseInt(selectedHour12) !== 12 
                         ? parseInt(selectedHour12) + 12 
                         : selectedAmPm === 'AM' && parseInt(selectedHour12) === 12 
                         ? 0 
                         : parseInt(selectedHour12);
-                      const selectedDateTime = new Date(`${shiftDate}T${String(hour24).padStart(2, '0')}:${selectedMinute}:00`);
-                      const diffMinutes = Math.abs((selectedDateTime.getTime() - now.getTime()) / (1000 * 60));
-                      isOutsideTimeTolerance = diffMinutes > 30;
+                      
+                      // Create date using local timezone explicitly to avoid timezone issues
+                      const [year, month, day] = shiftDate.split('-').map(Number);
+                      const selectedDateTime = new Date(year, month - 1, day, hour24, parseInt(selectedMinute), 0);
+                      
+                      const now = new Date();
+                      const todayStr = formatDateLocal(now);
+                      const selectedDateStr = formatDateLocal(selectedDateTime);
+                      
+                      // Check if selected date is different from TODAY
+                      isDifferentDayFromToday = selectedDateStr !== todayStr;
+                      
+                      // Check if time is in the future (with 1 minute buffer for timezone differences)
+                      const bufferMs = 60 * 1000; // 1 minute buffer
+                      isFutureTime = selectedDateTime.getTime() > (now.getTime() + bufferMs);
                     } catch (e) {
                       // Ignore errors in calculation
                     }
                   }
                   
-                  // Check if outside geofence OR outside time tolerance
-                  const isOutsideGeofence = geofenceStatus && !geofenceStatus.inside;
-                  const requiresReason = isOutsideGeofence || isOutsideTimeTolerance;
-                  
-                  if (requiresReason) {
+                  // Reason is required ONLY when supervisor clocks in/out for another worker
+                  // Location is captured but not mandatory
+                  // Show warning if different day from today OR future time
+                  if (isFutureTime) {
                     return (
                       <span className="text-red-600 font-medium">
-                        ⚠ REQUIRED (minimum 15 characters): You are attempting to clock in/out outside the allowed location or outside the permitted time range (±30 minutes). You must provide a written reason explaining why. Your entry will be sent for supervisor review.
+                        ⚠ Clock-in/out cannot be in the future. Please select a valid time.
                       </span>
                     );
                   }
                   
-                  if (!gpsLocation || gpsError) {
+                  if (isDifferentDayFromToday) {
                     return (
                       <span className="text-orange-600 font-medium">
-                        Recommended (minimum 15 characters): Location cannot be validated. Reason is optional but recommended.
+                        ℹ Clock-in/out on a different day than today will require supervisor approval. Reason is optional.
                       </span>
                     );
                   }
                   
-                  // If inside geofence and within time tolerance, reason is optional
-                  if (geofenceStatus && geofenceStatus.inside) {
-                    return 'Optional: You are at the correct site and within the time tolerance. Reason is not required.';
+                  // Location is captured but not mandatory
+                  if (!gpsLocation || gpsError) {
+                    return (
+                      <span className="text-gray-600">
+                        Optional: Location is captured but not mandatory. Reason is optional.
+                      </span>
+                    );
                   }
                   
-                  return 'Optional, but recommended. Required if you are not at the correct site or time is outside tolerance window (±30 minutes).';
+                  // Reason is optional for workers doing their own clock-in/out
+                  return 'Optional: Reason is not required for your own clock-in/out on the same day as the shift.';
                 })()}
               </p>
             </div>
@@ -2938,7 +2950,7 @@ function TimesheetTab({ projectId }:{ projectId:string }){
 }
 
 function TimesheetAuditSection({ projectId }:{ projectId:string }){
-  const [month, setMonth] = useState<string>(new Date().toISOString().slice(0,7));
+  const [month, setMonth] = useState<string>(getCurrentMonthLocal());
   const [offset, setOffset] = useState<number>(0);
   const limit = 50;
   const qs = (()=>{ const p = new URLSearchParams(); if(month) p.set('month', month); p.set('limit', String(limit)); p.set('offset', String(offset)); const s=p.toString(); return s? ('?'+s): ''; })();

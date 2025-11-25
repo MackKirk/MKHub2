@@ -1,8 +1,9 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useRef, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import { api } from '@/lib/api';
 import { useConfirm } from '@/components/ConfirmProvider';
+import { formatDateLocal, getTodayLocal } from '@/lib/dateUtils';
 
 type Attendance = {
   id: string;
@@ -144,6 +145,10 @@ const isHoursWorkedEntry = (reason?: string | null): boolean => {
 const buildEvents = (attendances: Attendance[]): AttendanceEvent[] => {
   // NEW MODEL: Each attendance record is already a complete event
   // No need to group clock-in and clock-out records together
+  // Ensure attendances is always an array
+  if (!Array.isArray(attendances)) {
+    return [];
+  }
   const events: AttendanceEvent[] = attendances.map((att) => {
     // Use clock_in_time or clock_out_time for time_selected_utc (backward compatibility)
     const timeSelected = att.clock_in_time || att.clock_out_time || att.time_selected_utc;
@@ -175,14 +180,14 @@ const buildEvents = (attendances: Attendance[]): AttendanceEvent[] => {
       clock_in_id: att.clock_in_time ? att.id : null,
       // For "hours worked", store the date (not time) so we can use it for editing
       clock_in_time: isHoursWorked && att.clock_in_time
-        ? new Date(att.clock_in_time).toISOString().slice(0, 10) + 'T00:00:00Z'
+        ? formatDateLocal(new Date(att.clock_in_time)) + 'T00:00:00Z'
         : att.clock_in_time || null,
       clock_in_status: att.clock_in_time ? att.status : null,
       clock_in_reason: att.clock_in_time ? att.reason_text : null,
       clock_out_id: att.clock_out_time ? att.id : null,
       // For "hours worked", store the date (not time) so we can use it for editing
       clock_out_time: isHoursWorked && att.clock_out_time
-        ? new Date(att.clock_out_time).toISOString().slice(0, 10) + 'T00:00:00Z'
+        ? formatDateLocal(new Date(att.clock_out_time)) + 'T00:00:00Z'
         : att.clock_out_time || null,
       clock_out_status: att.clock_out_time ? att.status : null,
       clock_out_reason: att.clock_out_time ? att.reason_text : null,
@@ -210,6 +215,10 @@ export default function Attendance() {
   });
   const [showModal, setShowModal] = useState(false);
   const [editingEvent, setEditingEvent] = useState<AttendanceEvent | null>(null);
+  const [selectedWorkers, setSelectedWorkers] = useState<string[]>([]);
+  const [workerDropdownOpen, setWorkerDropdownOpen] = useState(false);
+  const [workerSearch, setWorkerSearch] = useState('');
+  const workerDropdownRef = useRef<HTMLDivElement>(null);
   const [formData, setFormData] = useState({
     worker_id: '',
     job_type: '0',
@@ -236,33 +245,78 @@ export default function Attendance() {
     queryKey: ['settings-attendance', queryString, refreshKey],
     queryFn: async () => {
       const result = await api<Attendance[]>('GET', url);
-      return result;
+      // Ensure result is always an array
+      return Array.isArray(result) ? result : [];
     },
   });
 
   const attendanceEvents = useMemo(
-    () => buildEvents(attendances || []),
+    () => buildEvents(Array.isArray(attendances) ? attendances : []),
     [attendances]
   );
 
   const { data: users } = useQuery({
-    queryKey: ['users'],
-    queryFn: () => api<User[]>('GET', '/users'),
+    queryKey: ['employees'],
+    queryFn: async () => {
+      const result = await api<any[]>('GET', '/employees');
+      return Array.isArray(result) ? result : [];
+    },
   });
 
   const { data: projects = [] } = useQuery({
     queryKey: ['attendance-projects'],
-    queryFn: () => api<Project[]>('GET', '/projects'),
+    queryFn: async () => {
+      const result = await api<Project[]>('GET', '/projects');
+      return Array.isArray(result) ? result : [];
+    },
   });
 
   const jobOptions = useMemo(() => {
-    const projectJobs = (projects || []).map((p) => ({
+    const projectsArray = Array.isArray(projects) ? projects : [];
+    const projectJobs = projectsArray.map((p) => ({
       id: p.id,
       code: p.code || p.id,
       name: p.name,
     }));
     return [...PREDEFINED_JOBS, ...projectJobs];
   }, [projects]);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (workerDropdownRef.current && !workerDropdownRef.current.contains(event.target as Node)) {
+        setWorkerDropdownOpen(false);
+      }
+    };
+
+    if (workerDropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [workerDropdownOpen]);
+
+  // Filter employees by search
+  const filteredEmployees = useMemo(() => {
+    if (!users || !Array.isArray(users)) return [];
+    if (!workerSearch) return users;
+    const searchLower = workerSearch.toLowerCase();
+    return users.filter((u: any) => {
+      const name = (u.name || u.username || '').toLowerCase();
+      return name.includes(searchLower);
+    });
+  }, [users, workerSearch]);
+
+  const toggleWorker = (workerId: string) => {
+    setSelectedWorkers((prev) => {
+      const prevArray = Array.isArray(prev) ? prev : [];
+      return prevArray.includes(workerId) 
+        ? prevArray.filter((id) => id !== workerId) 
+        : [...prevArray, workerId];
+    });
+  };
 
   const resetForm = () => {
     setFormData({
@@ -274,12 +328,15 @@ export default function Attendance() {
       entry_mode: 'time',
       hours_worked: '',
     });
+    setSelectedWorkers([]);
+    setWorkerSearch('');
     setEditingEvent(null);
   };
 
   const handleOpenModal = (event?: AttendanceEvent) => {
     if (event) {
       setEditingEvent(event);
+      setSelectedWorkers([]); // Clear selection when editing
       
       // Detect if this event was created as "hours worked"
       const isHoursWorked = event.is_hours_worked || 
@@ -306,11 +363,11 @@ export default function Attendance() {
         // For "hours worked", clock_in_time contains the date at midnight (YYYY-MM-DDT00:00:00Z)
         // Extract date part and format for date input
         if (event.clock_in_time) {
-          const datePart = new Date(event.clock_in_time).toISOString().slice(0, 10);
+          const datePart = formatDateLocal(new Date(event.clock_in_time));
           clockInTimeValue = `${datePart}T00:00`; // Set to midnight for date input
         } else if (event.clock_out_time) {
           // Fallback to clock_out_time if clock_in_time is not available
-          const datePart = new Date(event.clock_out_time).toISOString().slice(0, 10);
+          const datePart = formatDateLocal(new Date(event.clock_out_time));
           clockInTimeValue = `${datePart}T00:00`;
         }
       } else {
@@ -396,8 +453,13 @@ export default function Attendance() {
   };
 
   const handleSubmit = async () => {
-    if (!formData.worker_id) {
-      toast.error('Please select a worker');
+    // For editing, use formData.worker_id; for creating, use selectedWorkers
+    const workersToProcess = editingEvent 
+      ? [formData.worker_id] 
+      : (Array.isArray(selectedWorkers) && selectedWorkers.length > 0 ? selectedWorkers : []);
+    
+    if (workersToProcess.length === 0) {
+      toast.error(editingEvent ? 'Please select a worker' : 'Please select at least one worker');
       return;
     }
 
@@ -472,25 +534,48 @@ export default function Attendance() {
         
         toast.success('Attendance event updated');
       } else {
-        // NEW MODEL: Create single attendance record with both clock_in_time and clock_out_time
+        // NEW MODEL: Create attendance records for each selected worker
         // For "hours worked", we MUST have both clock-in and clock-out
         if (formData.entry_mode === 'hours' && !clockOutUtc) {
           toast.error('Failed to calculate clock-out time for hours worked entry');
           return;
         }
 
-        // Create single record with clock-in (and clock-out if provided)
-        await api('POST', '/settings/attendance/manual', {
-          worker_id: formData.worker_id,
-          type: clockInUtc && clockOutUtc ? 'in' : (clockInUtc ? 'in' : 'out'), // Type for backward compatibility
-          time_selected_utc: clockInUtc || clockOutUtc, // For backward compatibility
-          clock_in_time: clockInUtc,
-          clock_out_time: clockOutUtc,
-          status: formData.status,
-          reason_text: reasonText,
-        });
-        
-        toast.success('Attendance event created');
+        // Create attendance for each selected worker
+        let successCount = 0;
+        let errorCount = 0;
+        const errors: string[] = [];
+
+        for (const workerId of workersToProcess) {
+          try {
+            await api('POST', '/settings/attendance/manual', {
+              worker_id: workerId,
+              type: clockInUtc && clockOutUtc ? 'in' : (clockInUtc ? 'in' : 'out'), // Type for backward compatibility
+              time_selected_utc: clockInUtc || clockOutUtc, // For backward compatibility
+              clock_in_time: clockInUtc,
+              clock_out_time: clockOutUtc,
+              status: formData.status,
+              reason_text: reasonText,
+            });
+            successCount++;
+          } catch (e: any) {
+            errorCount++;
+            const usersArray = Array.isArray(users) ? users : [];
+            const workerName = usersArray.find((u: any) => u.id === workerId)?.name || usersArray.find((u: any) => u.id === workerId)?.username || workerId;
+            const errorMsg = e.response?.data?.detail || e.message || 'Failed';
+            errors.push(`${workerName}: ${errorMsg}`);
+          }
+        }
+
+        if (errorCount > 0) {
+          const errorMsg = `${successCount} attendance${successCount > 1 ? 's' : ''} created, ${errorCount} failed.`;
+          toast.error(errorMsg);
+          if (errors.length > 0) {
+            console.error('Failed attendances:', errors);
+          }
+        } else {
+          toast.success(`${successCount} attendance${successCount > 1 ? 's' : ''} created successfully`);
+        }
       }
 
       // Invalidate and refetch
@@ -515,12 +600,14 @@ export default function Attendance() {
     }
   };
 
-  const isSubmitDisabled = !formData.worker_id
+  const isSubmitDisabled = editingEvent
+    ? (!formData.worker_id || !formData.clock_in_time)
+    : (Array.isArray(selectedWorkers) ? selectedWorkers.length : 0) === 0
     ? true
     : !formData.clock_in_time
     ? true
     : formData.entry_mode === 'time'
-    ? (!editingEvent && !formData.clock_out_time) // Clock-out required only for new entries in time mode
+    ? !formData.clock_out_time // Clock-out required for new entries in time mode
     : !formData.hours_worked || parseFloat(formData.hours_worked || '0') <= 0;
 
   const formatDate = (dateStr: string) => {
@@ -559,7 +646,7 @@ export default function Attendance() {
             className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
           >
             <option value="">All Workers</option>
-            {(users || []).map((u) => (
+            {(Array.isArray(users) ? users : []).map((u) => (
               <option key={u.id} value={u.id}>
                 {u.name || u.username}
               </option>
@@ -710,22 +797,139 @@ export default function Attendance() {
               {editingEvent ? 'Edit Attendance Event' : 'New Attendance Event'}
             </h2>
             <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Worker *</label>
-                <select
-                  value={formData.worker_id}
-                  onChange={(e) => setFormData({ ...formData, worker_id: e.target.value })}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2"
-                  required
-                >
-                  <option value="">Select a worker...</option>
-                  {(users || []).map((u) => (
-                    <option key={u.id} value={u.id}>
-                      {u.name || u.username}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              {editingEvent ? (
+                // When editing, show simple select (single worker)
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Worker *</label>
+                  <select
+                    value={formData.worker_id}
+                    onChange={(e) => setFormData({ ...formData, worker_id: e.target.value })}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2"
+                    required
+                  >
+                    <option value="">Select a worker...</option>
+                    {(Array.isArray(users) ? users : []).map((u) => (
+                      <option key={u.id} value={u.id}>
+                        {u.name || u.username}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ) : (
+                // When creating, show multi-select with search
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Workers * {(Array.isArray(selectedWorkers) ? selectedWorkers.length : 0) > 0 && `(${Array.isArray(selectedWorkers) ? selectedWorkers.length : 0} selected)`}
+                  </label>
+                  <div className="relative" ref={workerDropdownRef}>
+                    <button
+                      type="button"
+                      onClick={() => setWorkerDropdownOpen(!workerDropdownOpen)}
+                      className="w-full border rounded px-3 py-2 text-left bg-white flex items-center justify-between"
+                    >
+                      <span className="text-sm text-gray-600">
+                        {(Array.isArray(selectedWorkers) ? selectedWorkers.length : 0) === 0
+                          ? 'Select workers...'
+                          : `${Array.isArray(selectedWorkers) ? selectedWorkers.length : 0} worker${(Array.isArray(selectedWorkers) ? selectedWorkers.length : 0) > 1 ? 's' : ''} selected`}
+                      </span>
+                      <span className="text-gray-400">{workerDropdownOpen ? '▲' : '▼'}</span>
+                    </button>
+                    {workerDropdownOpen && (
+                      <div 
+                        className="absolute z-50 mt-1 w-full rounded-lg border bg-white shadow-lg max-h-60 overflow-auto"
+                        onMouseDown={(e) => e.stopPropagation()}
+                      >
+                        <div className="p-2 border-b space-y-2">
+                          <input
+                            type="text"
+                            placeholder="Search workers..."
+                            value={workerSearch}
+                            onChange={(e) => setWorkerSearch(e.target.value)}
+                            className="w-full border rounded px-2 py-1 text-sm"
+                            onMouseDown={(e) => e.stopPropagation()}
+                          />
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onMouseDown={(e) => e.stopPropagation()}
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                if (!Array.isArray(filteredEmployees)) return;
+                                const allFilteredIds = filteredEmployees.map((u: any) => u.id);
+                                setSelectedWorkers((prev) => {
+                                  const prevArray = Array.isArray(prev) ? prev : [];
+                                  const newSet = new Set([...prevArray, ...allFilteredIds]);
+                                  return Array.from(newSet);
+                                });
+                              }}
+                              className="text-xs px-2 py-1 rounded border hover:bg-gray-50"
+                            >
+                              Select All
+                            </button>
+                            <button
+                              type="button"
+                              onMouseDown={(e) => e.stopPropagation()}
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                setSelectedWorkers([]);
+                              }}
+                              className="text-xs px-2 py-1 rounded border hover:bg-gray-50"
+                            >
+                              Clear All
+                            </button>
+                          </div>
+                        </div>
+                        <div className="p-2">
+                          {(Array.isArray(filteredEmployees) && filteredEmployees.length > 0) ? (
+                            filteredEmployees.map((u: any) => (
+                              <label
+                                key={u.id}
+                                className="flex items-center gap-2 p-2 hover:bg-gray-50 cursor-pointer rounded"
+                                onMouseDown={(e) => e.stopPropagation()}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={Array.isArray(selectedWorkers) && selectedWorkers.includes(u.id)}
+                                  onChange={() => toggleWorker(u.id)}
+                                  className="rounded"
+                                  onMouseDown={(e) => e.stopPropagation()}
+                                />
+                                <span className="text-sm">{u.name || u.username}</span>
+                              </label>
+                            ))
+                          ) : (
+                            <div className="p-2 text-sm text-gray-600">No workers found</div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  {Array.isArray(selectedWorkers) && selectedWorkers.length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {selectedWorkers.map((workerId) => {
+                        const worker = (Array.isArray(users) ? users : []).find((u: any) => u.id === workerId);
+                        return (
+                          <span
+                            key={workerId}
+                            className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-800 rounded text-sm"
+                          >
+                            {worker?.name || worker?.username || workerId}
+                            <button
+                              type="button"
+                              onClick={() => toggleWorker(workerId)}
+                              className="text-blue-600 hover:text-blue-800"
+                            >
+                              ×
+                            </button>
+                          </span>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
               {!editingEvent?.shift_id && (
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Job *</label>
@@ -774,7 +978,7 @@ export default function Attendance() {
                       setFormData((prev) => {
                         // When switching to 'hours', reset clock_in_time to date at midnight
                         // and calculate hours_worked from clock_in and clock_out if both exist
-                        const datePart = prev.clock_in_time ? prev.clock_in_time.slice(0, 10) : new Date().toISOString().slice(0, 10);
+                        const datePart = prev.clock_in_time ? prev.clock_in_time.slice(0, 10) : getTodayLocal();
                         let hoursWorked = '';
                         
                         // If we have both clock_in and clock_out, calculate hours

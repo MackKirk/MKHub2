@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
+import { formatDateLocal } from '@/lib/dateUtils';
 
 type Shift = {
   id: string;
@@ -33,7 +34,7 @@ export default function Calendar() {
   }, [currentMonth]);
 
   const dateRange = useMemo(() => {
-    return `${monthStart.toISOString().slice(0, 10)},${monthEnd.toISOString().slice(0, 10)}`;
+    return `${formatDateLocal(monthStart)},${formatDateLocal(monthEnd)}`;
   }, [monthStart, monthEnd]);
 
   // Fetch shifts for the month
@@ -121,7 +122,7 @@ export default function Calendar() {
 
   const hasShift = (date: Date | null) => {
     if (!date) return false;
-    const dateStr = date.toISOString().slice(0, 10);
+    const dateStr = formatDateLocal(date);
     return datesWithShifts.has(dateStr);
   };
 

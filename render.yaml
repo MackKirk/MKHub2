@@ -30,6 +30,8 @@ services:
         value: "admin@example.com"
       - key: ADMIN_PASSWORD
         generateValue: true
+      - key: TZ_DEFAULT
+        value: "America/Vancouver"
     disk:
       name: data
       mountPath: /opt/render/project/src/var

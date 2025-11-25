@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo, useState, useEffect, useRef } from 'react';
 import toast from 'react-hot-toast';
 import { useConfirm } from '@/components/ConfirmProvider';
 
@@ -23,15 +23,71 @@ export default function SystemSettings(){
   // Timesheet configuration values
   const timesheetItems = (data?.timesheet||[]) as Item[];
   const breakMinItem = timesheetItems.find(i=> i.label === 'default_break_minutes');
+  const breakEmployeesItem = timesheetItems.find(i=> i.label === 'break_eligible_employees');
   const geofenceRadiusItem = timesheetItems.find(i=> i.label === 'default_geofence_radius_meters');
   const [breakMin, setBreakMin] = useState<string>(breakMinItem?.value || '30');
   const [geofenceRadius, setGeofenceRadius] = useState<string>(geofenceRadiusItem?.value || '150');
+  const [selectedBreakEmployees, setSelectedBreakEmployees] = useState<string[]>([]);
+  const [breakEmployeeSearch, setBreakEmployeeSearch] = useState('');
+  const [breakEmployeeDropdownOpen, setBreakEmployeeDropdownOpen] = useState(false);
+  const breakEmployeeDropdownRef = useRef<HTMLDivElement>(null);
+  
+  // Fetch employees for break selection
+  const { data: employees } = useQuery({
+    queryKey: ['employees'],
+    queryFn: () => api<any[]>('GET', '/employees'),
+  });
   
   // Update local state when items change
   useEffect(()=>{
     if(breakMinItem?.value) setBreakMin(breakMinItem.value);
     if(geofenceRadiusItem?.value) setGeofenceRadius(geofenceRadiusItem.value);
-  }, [breakMinItem?.value, geofenceRadiusItem?.value]);
+    if(breakEmployeesItem?.value) {
+      try {
+        const employeeIds = JSON.parse(breakEmployeesItem.value);
+        setSelectedBreakEmployees(Array.isArray(employeeIds) ? employeeIds : []);
+      } catch {
+        setSelectedBreakEmployees([]);
+      }
+    }
+  }, [breakMinItem?.value, geofenceRadiusItem?.value, breakEmployeesItem?.value]);
+  
+  // Filter employees by search
+  const filteredBreakEmployees = useMemo(() => {
+    if (!employees || !Array.isArray(employees)) return [];
+    if (!breakEmployeeSearch) return employees;
+    const searchLower = breakEmployeeSearch.toLowerCase();
+    return employees.filter((u: any) => {
+      const name = (u.name || u.username || '').toLowerCase();
+      return name.includes(searchLower);
+    });
+  }, [employees, breakEmployeeSearch]);
+  
+  const toggleBreakEmployee = (employeeId: string) => {
+    setSelectedBreakEmployees((prev) => {
+      const prevArray = Array.isArray(prev) ? prev : [];
+      return prevArray.includes(employeeId) 
+        ? prevArray.filter((id) => id !== employeeId) 
+        : [...prevArray, employeeId];
+    });
+  };
+  
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (breakEmployeeDropdownRef.current && !breakEmployeeDropdownRef.current.contains(event.target as Node)) {
+        setBreakEmployeeDropdownOpen(false);
+      }
+    };
+
+    if (breakEmployeeDropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [breakEmployeeDropdownOpen]);
   const brandingList = (data?.branding||[]) as Item[];
   const heroItem = brandingList.find(i=> ['user_hero_background_url','hero_background_url','user hero background','hero background'].includes(String(i.label||'').toLowerCase()));
   const overlayItem = brandingList.find(i=> ['customer_hero_overlay_url','hero_overlay_url','customer hero overlay','hero overlay'].includes(String(i.label||'').toLowerCase()));
@@ -249,7 +305,7 @@ export default function SystemSettings(){
               
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Default Break (minutes)</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Default Break for Shifts of 5 Hours or More (minutes)</label>
                   <input
                     type="number"
                     value={breakMin}
@@ -258,7 +314,121 @@ export default function SystemSettings(){
                     className="w-full border rounded px-3 py-2"
                     placeholder="30"
                   />
-                  <div className="text-xs text-gray-500 mt-1">Default break duration in minutes for new shifts.</div>
+                  <div className="text-xs text-gray-500 mt-1">Break duration in minutes that will be deducted from attendance records of 5 hours or more for selected employees.</div>
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Employees Eligible for Break {selectedBreakEmployees.length > 0 && `(${selectedBreakEmployees.length} selected)`}
+                  </label>
+                  <div className="relative" ref={breakEmployeeDropdownRef}>
+                    <button
+                      type="button"
+                      onClick={() => setBreakEmployeeDropdownOpen(!breakEmployeeDropdownOpen)}
+                      className="w-full border rounded px-3 py-2 text-left bg-white flex items-center justify-between"
+                    >
+                      <span className="text-sm text-gray-600">
+                        {selectedBreakEmployees.length === 0
+                          ? 'Select employees...'
+                          : `${selectedBreakEmployees.length} employee${selectedBreakEmployees.length > 1 ? 's' : ''} selected`}
+                      </span>
+                      <span className="text-gray-400">{breakEmployeeDropdownOpen ? '▲' : '▼'}</span>
+                    </button>
+                    {breakEmployeeDropdownOpen && (
+                      <div 
+                        className="absolute z-50 mt-1 w-full rounded-lg border bg-white shadow-lg max-h-60 overflow-auto"
+                        onMouseDown={(e) => e.stopPropagation()}
+                      >
+                        <div className="p-2 border-b space-y-2">
+                          <input
+                            type="text"
+                            placeholder="Search employees..."
+                            value={breakEmployeeSearch}
+                            onChange={(e) => setBreakEmployeeSearch(e.target.value)}
+                            className="w-full border rounded px-2 py-1 text-sm"
+                            onMouseDown={(e) => e.stopPropagation()}
+                          />
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onMouseDown={(e) => e.stopPropagation()}
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                if (!Array.isArray(filteredBreakEmployees)) return;
+                                const allFilteredIds = filteredBreakEmployees.map((u: any) => u.id);
+                                setSelectedBreakEmployees((prev) => {
+                                  const prevArray = Array.isArray(prev) ? prev : [];
+                                  const newSet = new Set([...prevArray, ...allFilteredIds]);
+                                  return Array.from(newSet);
+                                });
+                              }}
+                              className="text-xs px-2 py-1 rounded border hover:bg-gray-50"
+                            >
+                              Select All
+                            </button>
+                            <button
+                              type="button"
+                              onMouseDown={(e) => e.stopPropagation()}
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                setSelectedBreakEmployees([]);
+                              }}
+                              className="text-xs px-2 py-1 rounded border hover:bg-gray-50"
+                            >
+                              Clear All
+                            </button>
+                          </div>
+                        </div>
+                        <div className="p-2">
+                          {(Array.isArray(filteredBreakEmployees) && filteredBreakEmployees.length > 0) ? (
+                            filteredBreakEmployees.map((u: any) => (
+                              <label
+                                key={u.id}
+                                className="flex items-center gap-2 p-2 hover:bg-gray-50 cursor-pointer rounded"
+                                onMouseDown={(e) => e.stopPropagation()}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={selectedBreakEmployees.includes(u.id)}
+                                  onChange={() => toggleBreakEmployee(u.id)}
+                                  className="rounded"
+                                  onMouseDown={(e) => e.stopPropagation()}
+                                />
+                                <span className="text-sm">{u.name || u.username}</span>
+                              </label>
+                            ))
+                          ) : (
+                            <div className="p-2 text-sm text-gray-600">No employees found</div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  {selectedBreakEmployees.length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {selectedBreakEmployees.map((employeeId) => {
+                        const employee = (Array.isArray(employees) ? employees : []).find((u: any) => u.id === employeeId);
+                        return (
+                          <span
+                            key={employeeId}
+                            className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-800 rounded text-sm"
+                          >
+                            {employee?.name || employee?.username || employeeId}
+                            <button
+                              type="button"
+                              onClick={() => toggleBreakEmployee(employeeId)}
+                              className="text-blue-600 hover:text-blue-800"
+                            >
+                              ×
+                            </button>
+                          </span>
+                        );
+                      })}
+                    </div>
+                  )}
+                  <div className="text-xs text-gray-500 mt-1">Select employees who are eligible for break deduction when their attendance is 5 hours or more.</div>
                 </div>
                 
                 <div>
@@ -283,6 +453,14 @@ export default function SystemSettings(){
                           await api('PUT', `/settings/timesheet/${encodeURIComponent(breakMinItem.id)}?label=default_break_minutes&value=${encodeURIComponent(breakMin)}`);
                         } else {
                           await api('POST', `/settings/timesheet?label=default_break_minutes&value=${encodeURIComponent(breakMin)}`);
+                        }
+                        
+                        // Save or update break_eligible_employees (as JSON array)
+                        const employeesJson = JSON.stringify(selectedBreakEmployees);
+                        if (breakEmployeesItem) {
+                          await api('PUT', `/settings/timesheet/${encodeURIComponent(breakEmployeesItem.id)}?label=break_eligible_employees&value=${encodeURIComponent(employeesJson)}`);
+                        } else {
+                          await api('POST', `/settings/timesheet?label=break_eligible_employees&value=${encodeURIComponent(employeesJson)}`);
                         }
                         
                         // Save or update default_geofence_radius_meters

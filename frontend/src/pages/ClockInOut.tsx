@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect } from 'react';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
+import { formatDateLocal, getTodayLocal } from '@/lib/dateUtils';
 
 // Helper function to convert 24h time (HH:MM:SS or HH:MM) to 12h format (h:mm AM/PM)
 function formatTime12h(timeStr: string | null | undefined): string {
@@ -14,6 +15,14 @@ function formatTime12h(timeStr: string | null | undefined): string {
   const period = hours >= 12 ? 'PM' : 'AM';
   const hours12 = hours === 0 ? 12 : hours > 12 ? hours - 12 : hours;
   return `${hours12}:${minutes} ${period}`;
+}
+
+// Helper function to format date as YYYY-MM-DD in local timezone (not UTC)
+function formatDateLocal(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 }
 
 // Helper to format date to Portuguese day name
@@ -97,7 +106,7 @@ export default function ClockInOut() {
   const queryClient = useQueryClient();
   const [selectedDate, setSelectedDate] = useState<string>(() => {
     const today = new Date();
-    return today.toISOString().slice(0, 10);
+    return formatDateLocal(today);
   });
   const [selectedJob, setSelectedJob] = useState<string>('');
   const [selectedHour12, setSelectedHour12] = useState<string>('');
@@ -120,12 +129,12 @@ export default function ClockInOut() {
     return sunday;
   });
 
-  const weekStartStr = useMemo(() => weekStart.toISOString().slice(0, 10), [weekStart]);
+  const weekStartStr = useMemo(() => formatDateLocal(weekStart), [weekStart]);
 
   // Get today's date string
   const todayStr = useMemo(() => {
     const today = new Date();
-    return today.toISOString().slice(0, 10);
+    return formatDateLocal(today);
   }, []);
 
   // Fetch current user
@@ -621,45 +630,35 @@ export default function ClockInOut() {
                 </div>
               </div>
 
-              {/* Current Status - show all events for scheduled shifts */}
-              {/* Don't show "hours worked" entries in status - they're complete and don't need clock-in/out display */}
-              {selectedDateShift && (clockIns.length > 0 || clockOuts.length > 0) && (
+              {/* Current Status - show only when there's an open clock-in (without clock-out) */}
+              {/* After clock-out, the event is closed and this section disappears */}
+              {selectedDateShift && hasOpenClockIn && openClockIn && (
                 <div className="pt-4 border-t">
-                  <h4 className="text-sm font-medium text-gray-700 mb-2">
-                    Status {clockIns.length > 1 || clockOuts.length > 1 ? `(${clockIns.length + clockOuts.length} events)` : ''}
-                  </h4>
-                  <div className="space-y-2 max-h-48 overflow-y-auto">
-                    {/* Show all clock-ins and clock-outs sorted by time, but exclude "hours worked" entries */}
-                    {[...clockIns, ...clockOuts]
-                      .filter(att => att.shift_id === selectedDateShift.id && !isHoursWorked(att))  // Only show events for this shift and exclude "hours worked"
-                      .sort((a, b) => new Date(a.time_selected_utc).getTime() - new Date(b.time_selected_utc).getTime())
-                      .map((att) => (
-                        <div key={att.id} className="flex items-center justify-between text-sm">
-                          <span className="text-gray-600">{att.type === 'in' ? 'Clock In:' : 'Clock Out:'}</span>
-                          <div className="flex items-center gap-2">
-                            <span className={`px-2 py-0.5 rounded text-xs ${
-                              att.status === 'approved' ? 'bg-green-100 text-green-800' :
-                              att.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
-                              'bg-red-100 text-red-800'
-                            }`}>
-                              {att.status}
-                            </span>
-                            <span className="font-medium">
-                              {new Date(att.time_selected_utc).toLocaleTimeString('en-US', {
-                                hour: 'numeric',
-                                minute: '2-digit',
-                                hour12: true,
-                              })}
-                            </span>
-                          </div>
-                        </div>
-                      ))}
-                  </div>
-                  {hasOpenClockIn && (
-                    <div className="mt-2 text-xs text-blue-600">
-                      * You have an open clock-in. Clock out to close this period.
+                  <h4 className="text-sm font-medium text-gray-700 mb-2">Status</h4>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-gray-600">Clock In:</span>
+                      <div className="flex items-center gap-2">
+                        <span className={`px-2 py-0.5 rounded text-xs ${
+                          openClockIn.status === 'approved' ? 'bg-green-100 text-green-800' :
+                          openClockIn.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+                          'bg-red-100 text-red-800'
+                        }`}>
+                          {openClockIn.status}
+                        </span>
+                        <span className="font-medium">
+                          {new Date(openClockIn.clock_in_time).toLocaleTimeString('en-US', {
+                            hour: 'numeric',
+                            minute: '2-digit',
+                            hour12: true,
+                          })}
+                        </span>
+                      </div>
                     </div>
-                  )}
+                  </div>
+                  <div className="mt-2 text-xs text-blue-600">
+                    * You have an open clock-in. Clock out to close this period.
+                  </div>
                 </div>
               )}
 
@@ -725,56 +724,31 @@ export default function ClockInOut() {
                 </select>
               </div>
 
-              {/* Current Status for non-scheduled */}
-              {/* Don't show status for "hours worked" entries - they're complete and don't need clock-in/out display */}
-              {(clockIn || clockOut) && !isHoursWorked(clockIn) && (
+              {/* Current Status for non-scheduled - show only when there's an open clock-in (without clock-out) */}
+              {/* After clock-out, the event is closed and this section disappears */}
+              {hasOpenClockIn && openClockIn && !isHoursWorked(openClockIn) && (
                 <div className="pt-4 border-t">
                   <h4 className="text-sm font-medium text-gray-700 mb-2">Status</h4>
                   <div className="space-y-2">
-                    {/* NEW MODEL: clockIn and clockOut may be the same record */}
-                    {openClockIn && openClockIn.clock_in_time && !isHoursWorked(openClockIn) && (
-                      <div className="flex items-center justify-between text-sm">
-                        <span className="text-gray-600">Clock In:</span>
-                        <div className="flex items-center gap-2">
-                          <span className={`px-2 py-0.5 rounded text-xs ${
-                            openClockIn.status === 'approved' ? 'bg-green-100 text-green-800' :
-                            openClockIn.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
-                            'bg-red-100 text-red-800'
-                          }`}>
-                            {openClockIn.status}
-                          </span>
-                          <span className="font-medium">
-                            {new Date(openClockIn.clock_in_time).toLocaleTimeString('en-US', {
-                              hour: 'numeric',
-                              minute: '2-digit',
-                              hour12: true,
-                            })}
-                          </span>
-                        </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-gray-600">Clock In:</span>
+                      <div className="flex items-center gap-2">
+                        <span className={`px-2 py-0.5 rounded text-xs ${
+                          openClockIn.status === 'approved' ? 'bg-green-100 text-green-800' :
+                          openClockIn.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+                          'bg-red-100 text-red-800'
+                        }`}>
+                          {openClockIn.status}
+                        </span>
+                        <span className="font-medium">
+                          {new Date(openClockIn.clock_in_time).toLocaleTimeString('en-US', {
+                            hour: 'numeric',
+                            minute: '2-digit',
+                            hour12: true,
+                          })}
+                        </span>
                       </div>
-                    )}
-                    {/* Clock-out is shown only if there's a complete event (both clock_in and clock_out) */}
-                    {clockOut && clockOut.clock_out_time && !isHoursWorked(clockOut) && (
-                      <div className="flex items-center justify-between text-sm">
-                        <span className="text-gray-600">Clock Out:</span>
-                        <div className="flex items-center gap-2">
-                          <span className={`px-2 py-0.5 rounded text-xs ${
-                            clockOut.status === 'approved' ? 'bg-green-100 text-green-800' :
-                            clockOut.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
-                            'bg-red-100 text-red-800'
-                          }`}>
-                            {clockOut.status}
-                          </span>
-                          <span className="font-medium">
-                            {new Date(clockOut.clock_out_time).toLocaleTimeString('en-US', {
-                              hour: 'numeric',
-                              minute: '2-digit',
-                              hour12: true,
-                            })}
-                          </span>
-                        </div>
-                      </div>
-                    )}
+                    </div>
                   </div>
                 </div>
               )}
@@ -783,12 +757,13 @@ export default function ClockInOut() {
               <div className="space-y-2">
                 <button
                   onClick={() => setClockType('in')}
-                  disabled={!selectedJob || submitting}
+                  disabled={!selectedJob || submitting || !canClockIn}
                   className={`w-full px-4 py-2 rounded font-medium transition-colors ${
-                    selectedJob
+                    selectedJob && canClockIn
                       ? 'bg-green-600 hover:bg-green-700 text-white'
                       : 'bg-gray-200 text-gray-400 cursor-not-allowed'
                   }`}
+                  title={hasOpenClockIn ? 'You must clock out first to close the current event before starting a new one' : !selectedJob ? 'Please select a job' : ''}
                 >
                   Clock In {clockIns.length > 0 ? `(${clockIns.length})` : ''}
                 </button>

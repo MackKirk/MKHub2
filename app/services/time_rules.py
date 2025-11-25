@@ -58,6 +58,39 @@ def is_within_tolerance(
     return diff <= tolerance_minutes
 
 
+def is_same_day(
+    time1: datetime,
+    time2: datetime,
+    timezone_str: str
+) -> bool:
+    """
+    Check if two times are on the same day in the given timezone.
+    
+    Args:
+        time1: First time (UTC, timezone-aware or naive)
+        time2: Second time (UTC, timezone-aware or naive)
+        timezone_str: Timezone string to use for day comparison
+    
+    Returns:
+        True if both times are on the same day
+    """
+    # Ensure both are timezone-aware
+    if time1.tzinfo is None:
+        time1 = time1.replace(tzinfo=pytz.UTC)
+    if time2.tzinfo is None:
+        time2 = time2.replace(tzinfo=pytz.UTC)
+    
+    # Convert to local timezone for day comparison
+    tz = pytz.timezone(timezone_str)
+    local1 = time1.astimezone(tz)
+    local2 = time2.astimezone(tz)
+    
+    # Compare dates (year, month, day)
+    return (local1.year == local2.year and 
+            local1.month == local2.month and 
+            local1.day == local2.day)
+
+
 def local_to_utc(local_datetime: datetime, timezone_str: str) -> datetime:
     """
     Convert local datetime to UTC.

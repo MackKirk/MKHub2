@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
 import { JOB_TYPES } from '@/constants/jobTypes';
+import { formatDateLocal } from '@/lib/dateUtils';
 
 export default function EditShiftModal({
   projectId,
@@ -19,7 +20,7 @@ export default function EditShiftModal({
   onSave: () => Promise<void>;
 }) {
   const [workerId, setWorkerId] = useState(shift?.worker_id || '');
-  const [date, setDate] = useState(shift?.date || new Date().toISOString().slice(0, 10));
+  const [date, setDate] = useState(shift?.date || formatDateLocal(new Date()));
   const [startTime, setStartTime] = useState(shift?.start_time?.slice(0, 5) || '09:00');
   const [endTime, setEndTime] = useState(shift?.end_time?.slice(0, 5) || '17:00');
   const [jobType, setJobType] = useState(shift?.job_name || shift?.job_id || '');
@@ -30,7 +31,7 @@ export default function EditShiftModal({
   useEffect(() => {
     if (shift && shift.id) {
       setWorkerId(shift.worker_id || '');
-      setDate(shift.date || new Date().toISOString().slice(0, 10));
+      setDate(shift.date || formatDateLocal(new Date()));
       setStartTime(shift.start_time?.slice(0, 5) || '09:00');
       setEndTime(shift.end_time?.slice(0, 5) || '17:00');
       // Use job_name if available, otherwise job_id, otherwise empty

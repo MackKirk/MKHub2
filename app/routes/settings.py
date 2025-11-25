@@ -11,8 +11,79 @@ from ..models.models import SettingList, SettingItem, Client, Attendance, User, 
 from ..auth.security import require_permissions, get_current_user
 from ..auth.security import User as UserType
 from ..config import settings
+import json
 
 router = APIRouter(prefix="/settings", tags=["settings"])
+
+
+def calculate_break_minutes(
+    db: Session,
+    worker_id: uuid.UUID,
+    clock_in_time: Optional[datetime],
+    clock_out_time: Optional[datetime]
+) -> Optional[int]:
+    """
+    Calculate break minutes for an attendance record.
+    Returns break minutes if:
+    - Both clock_in_time and clock_out_time exist
+    - Total hours >= 5 hours
+    - Worker is in the eligible employees list
+    Otherwise returns None.
+    """
+    if not clock_in_time or not clock_out_time:
+        return None
+    
+    # Calculate total minutes
+    diff = clock_out_time - clock_in_time
+    total_minutes = int(diff.total_seconds() / 60)
+    
+    # Check if >= 5 hours (300 minutes)
+    if total_minutes < 300:
+        return None
+    
+    # Get timesheet settings
+    timesheet_list = db.query(SettingList).filter(SettingList.name == "timesheet").first()
+    if not timesheet_list:
+        return None
+    
+    # Get break minutes setting
+    break_min_item = db.query(SettingItem).filter(
+        SettingItem.list_id == timesheet_list.id,
+        SettingItem.label == "default_break_minutes"
+    ).first()
+    
+    if not break_min_item or not break_min_item.value:
+        return None
+    
+    try:
+        break_minutes = int(break_min_item.value)
+    except (ValueError, TypeError):
+        return None
+    
+    # Get eligible employees list
+    eligible_employees_item = db.query(SettingItem).filter(
+        SettingItem.list_id == timesheet_list.id,
+        SettingItem.label == "break_eligible_employees"
+    ).first()
+    
+    if not eligible_employees_item or not eligible_employees_item.value:
+        return None
+    
+    try:
+        eligible_employee_ids = json.loads(eligible_employees_item.value)
+        if not isinstance(eligible_employee_ids, list):
+            return None
+        # Convert to strings for comparison
+        eligible_employee_ids_str = [str(eid) for eid in eligible_employee_ids]
+    except (json.JSONDecodeError, TypeError):
+        return None
+    
+    # Check if worker is eligible
+    worker_id_str = str(worker_id)
+    if worker_id_str not in eligible_employee_ids_str:
+        return None
+    
+    return break_minutes
 
 
 @router.get("")
@@ -145,6 +216,14 @@ def update_attendance(
             attendance.clock_out_time = clock_out_time
         except:
             raise HTTPException(status_code=400, detail="Invalid clock_out_time format")
+    
+    # Calculate break minutes if both times are present
+    if attendance.clock_in_time and attendance.clock_out_time:
+        attendance.break_minutes = calculate_break_minutes(
+            db, attendance.worker_id, attendance.clock_in_time, attendance.clock_out_time
+        )
+    else:
+        attendance.break_minutes = None
     
     # Backward compatibility: if time_selected_utc is provided, update clock_in_time or clock_out_time based on type
     if "time_selected_utc" in payload and "clock_in_time" not in payload and "clock_out_time" not in payload:
@@ -472,14 +551,16 @@ def list_attendances(
             for i, att in enumerate(attendances[:3]):
                 att_type = "in" if att.clock_in_time else ("out" if att.clock_out_time else "unknown")
                 logger.warning(f"  Attendance {i+1}: id={att.id}, worker_id={att.worker_id}, type={att_type}, shift_id={att.shift_id}")
-        return result
+        # Ensure we always return a list
+        return result if isinstance(result, list) else []
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Error listing attendances: {str(e)}", exc_info=True)
         import traceback
         logger.error(f"Traceback: {traceback.format_exc()}")
-        raise HTTPException(status_code=500, detail=f"Error listing attendances: {str(e)}")
+        # Return empty list instead of raising error to prevent frontend crash
+        return []
 
 
 @router.get("/attendance/{attendance_id}")
@@ -571,35 +652,92 @@ def create_attendance_manual(
     if not worker_id:
         raise HTTPException(status_code=400, detail="worker_id is required")
     
-    attendance_type = payload.get("type")
-    if attendance_type not in ["in", "out"]:
-        raise HTTPException(status_code=400, detail="type must be 'in' or 'out'")
+    # NEW MODEL: Support both clock_in_time and clock_out_time directly
+    clock_in_time_str = payload.get("clock_in_time")
+    clock_out_time_str = payload.get("clock_out_time")
     
-    time_selected_str = payload.get("time_selected_utc")
-    if not time_selected_str:
-        raise HTTPException(status_code=400, detail="time_selected_utc is required")
+    # Parse clock_in_time if provided
+    clock_in_time_utc = None
+    if clock_in_time_str:
+        try:
+            clock_in_time_utc = datetime.fromisoformat(clock_in_time_str.replace('Z', '+00:00'))
+            if clock_in_time_utc.tzinfo is None:
+                clock_in_time_utc = clock_in_time_utc.replace(tzinfo=timezone.utc)
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Invalid clock_in_time format: {str(e)}")
     
-    try:
-        time_selected_utc = datetime.fromisoformat(time_selected_str.replace('Z', '+00:00'))
-    except:
-        raise HTTPException(status_code=400, detail="Invalid time_selected_utc format")
+    # Parse clock_out_time if provided
+    clock_out_time_utc = None
+    if clock_out_time_str:
+        try:
+            clock_out_time_utc = datetime.fromisoformat(clock_out_time_str.replace('Z', '+00:00'))
+            if clock_out_time_utc.tzinfo is None:
+                clock_out_time_utc = clock_out_time_utc.replace(tzinfo=timezone.utc)
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Invalid clock_out_time format: {str(e)}")
     
-    # Ensure timezone-aware
-    if time_selected_utc.tzinfo is None:
-        time_selected_utc = time_selected_utc.replace(tzinfo=timezone.utc)
+    # If new model fields not provided, fall back to legacy time_selected_utc
+    if not clock_in_time_utc and not clock_out_time_utc:
+        time_selected_str = payload.get("time_selected_utc")
+        if not time_selected_str:
+            raise HTTPException(status_code=400, detail="Either clock_in_time/clock_out_time or time_selected_utc is required")
+        
+        try:
+            time_selected_utc = datetime.fromisoformat(time_selected_str.replace('Z', '+00:00'))
+            if time_selected_utc.tzinfo is None:
+                time_selected_utc = time_selected_utc.replace(tzinfo=timezone.utc)
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Invalid time_selected_utc format: {str(e)}")
+        
+        # Use legacy type to determine which time to set
+        attendance_type = payload.get("type", "in")
+        if attendance_type == "in":
+            clock_in_time_utc = time_selected_utc
+        else:
+            clock_out_time_utc = time_selected_utc
+    
+    # Validate that at least one time is provided
+    if not clock_in_time_utc and not clock_out_time_utc:
+        raise HTTPException(status_code=400, detail="Either clock_in_time or clock_out_time must be provided")
     
     shift_id = payload.get("shift_id")  # Optional
     reason_text = payload.get("reason_text", "")
     status = payload.get("status", "approved")  # Default to approved for manual entries
     
-    # NEW MODEL: Create attendance with clock_in_time or clock_out_time
+    # NEW MODEL: Create attendance with clock_in_time and/or clock_out_time
     time_entered_utc = datetime.now(timezone.utc)
     
-    if attendance_type == "in":
+    # If both times are provided, create a complete attendance record
+    if clock_in_time_utc and clock_out_time_utc:
         attendance = Attendance(
             shift_id=uuid.UUID(shift_id) if shift_id else None,
             worker_id=uuid.UUID(worker_id),
-            clock_in_time=time_selected_utc,
+            clock_in_time=clock_in_time_utc,
+            clock_in_entered_utc=time_entered_utc,
+            clock_in_gps_lat=payload.get("gps_lat"),
+            clock_in_gps_lng=payload.get("gps_lng"),
+            clock_in_gps_accuracy_m=payload.get("gps_accuracy_m"),
+            clock_in_mocked_flag=payload.get("gps_mocked", False),
+            clock_out_time=clock_out_time_utc,
+            clock_out_entered_utc=time_entered_utc,
+            clock_out_gps_lat=payload.get("gps_lat"),
+            clock_out_gps_lng=payload.get("gps_lng"),
+            clock_out_gps_accuracy_m=payload.get("gps_accuracy_m"),
+            clock_out_mocked_flag=payload.get("gps_mocked", False),
+            status=status,
+            source="admin",
+            created_by=user.id,
+            reason_text=reason_text if reason_text else None,
+            # Legacy fields (required for database NOT NULL constraint)
+            mocked_flag=payload.get("gps_mocked", False),
+        )
+        db.add(attendance)
+    elif clock_in_time_utc:
+        # Only clock-in time provided
+        attendance = Attendance(
+            shift_id=uuid.UUID(shift_id) if shift_id else None,
+            worker_id=uuid.UUID(worker_id),
+            clock_in_time=clock_in_time_utc,
             clock_in_entered_utc=time_entered_utc,
             clock_in_gps_lat=payload.get("gps_lat"),
             clock_in_gps_lng=payload.get("gps_lng"),
@@ -614,7 +752,8 @@ def create_attendance_manual(
             # Legacy fields (required for database NOT NULL constraint)
             mocked_flag=payload.get("gps_mocked", False),
         )
-    else:  # attendance_type == "out"
+        db.add(attendance)
+    else:  # clock_out_time_utc only
         # For clock-out, check if there's an open clock-in to update
         if shift_id:
             existing_attendance = db.query(Attendance).filter(
@@ -643,11 +782,17 @@ def create_attendance_manual(
         
         if existing_attendance:
             # Update existing attendance with clock-out
-            existing_attendance.clock_out_time = time_selected_utc
+            existing_attendance.clock_out_time = clock_out_time_utc
             existing_attendance.clock_out_entered_utc = time_entered_utc
             existing_attendance.clock_out_gps_lat = payload.get("gps_lat")
             existing_attendance.clock_out_gps_lng = payload.get("gps_lng")
             existing_attendance.clock_out_gps_accuracy_m = payload.get("gps_accuracy_m")
+            existing_attendance.clock_out_mocked_flag = payload.get("gps_mocked", False)
+            # Calculate break minutes now that we have both times
+            if existing_attendance.clock_in_time and clock_out_time_utc:
+                existing_attendance.break_minutes = calculate_break_minutes(
+                    db, existing_attendance.worker_id, existing_attendance.clock_in_time, clock_out_time_utc
+                )
             if status == "pending" or existing_attendance.status == "pending":
                 existing_attendance.status = "pending"
             else:
@@ -660,7 +805,7 @@ def create_attendance_manual(
                 worker_id=uuid.UUID(worker_id),
                 clock_in_time=None,
                 clock_in_entered_utc=None,
-                clock_out_time=time_selected_utc,
+                clock_out_time=clock_out_time_utc,
                 clock_out_entered_utc=time_entered_utc,
                 clock_out_gps_lat=payload.get("gps_lat"),
                 clock_out_gps_lng=payload.get("gps_lng"),

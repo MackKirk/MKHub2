@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
+import { formatDateLocal, getTodayLocal } from '@/lib/dateUtils';
 import toast from 'react-hot-toast';
 import ImagePicker from '@/components/ImagePicker';
 import { useConfirm } from '@/components/ConfirmProvider';
@@ -25,7 +26,7 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
   // form state
   const [coverTitle, setCoverTitle] = useState<string>('Proposal');
   const [orderNumber, setOrderNumber] = useState<string>('');
-  const [date, setDate] = useState<string>(new Date().toISOString().slice(0,10));
+  const [date, setDate] = useState<string>(getTodayLocal());
   const [createdFor, setCreatedFor] = useState<string>('');
   const [primary, setPrimary] = useState<{ name?:string, phone?:string, email?:string }>({});
   const [typeOfProject, setTypeOfProject] = useState<string>('');
@@ -103,7 +104,7 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
     const d = initial?.data || {};
     setCoverTitle(String(d.cover_title || initial.title || 'Proposal'));
     setOrderNumber(String(initial.order_number || d.order_number || ''));
-    setDate(String(d.date||'').slice(0,10) || new Date().toISOString().slice(0,10));
+    setDate(String(d.date||'').slice(0,10) || getTodayLocal());
     setCreatedFor(String(d.proposal_created_for||''));
     setPrimary({ name: d.primary_contact_name, phone: d.primary_contact_phone, email: d.primary_contact_email });
     setTypeOfProject(String(d.type_of_project||''));

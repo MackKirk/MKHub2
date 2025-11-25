@@ -5,8 +5,10 @@ import toast from 'react-hot-toast';
 
 type Project = { id:string, code?:string, name?:string };
 
+import { getTodayLocal } from '@/lib/dateUtils';
+
 export default function LogHours(){
-  const today = new Date().toISOString().slice(0,10);
+  const today = getTodayLocal();
   const now = new Date();
   const rounded = new Date(Math.round(now.getTime() / (15*60*1000)) * (15*60*1000));
   const defStart = `${String(rounded.getHours()).padStart(2,'0')}:${String(rounded.getMinutes()).padStart(2,'0')}`;

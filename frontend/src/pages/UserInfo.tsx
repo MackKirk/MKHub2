@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
+import { formatDateLocal, getCurrentMonthLocal } from '@/lib/dateUtils';
 import toast from 'react-hot-toast';
 import GeoSelect from '@/components/GeoSelect';
 import { useConfirm } from '@/components/ConfirmProvider';
@@ -681,10 +682,10 @@ function JobSection({ type, p, editable, userId, collectChanges, usersOptions, s
 
 function TimesheetBlock({ userId }:{ userId:string }){
   const { data:meSelf } = useQuery({ queryKey:['me'], queryFn: ()=> api<any>('GET','/auth/me') });
-  const [month, setMonth] = useState<string>(new Date().toISOString().slice(0,7));
+  const [month, setMonth] = useState<string>(getCurrentMonthLocal());
   const [projectId, setProjectId] = useState<string>('_all_');
   const [showModal, setShowModal] = useState<boolean>(false);
-  const [workDate, setWorkDate] = useState<string>(new Date().toISOString().slice(0,10));
+  const [workDate, setWorkDate] = useState<string>(formatDateLocal(new Date()));
   const [start, setStart] = useState<string>('');
   const [end, setEnd] = useState<string>('');
   const [notes, setNotes] = useState<string>('');

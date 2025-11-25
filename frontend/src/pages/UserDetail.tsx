@@ -3,6 +3,7 @@ import { useMemo, useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
+import { formatDateLocal, getCurrentMonthLocal } from '@/lib/dateUtils';
 
 // Helper function to convert 24h time (HH:MM:SS or HH:MM) to 12h format (h:mm AM/PM)
 function formatTime12h(timeStr: string | null | undefined): string {
@@ -190,9 +191,9 @@ function UserPermissions({ userId }:{ userId:string }){
 }
 
 function UserTimesheet({ userId }:{ userId:string }){
-  const [month, setMonth] = useState<string>(new Date().toISOString().slice(0,7));
+  const [month, setMonth] = useState<string>(getCurrentMonthLocal());
   const [projectId, setProjectId] = useState<string>('');
-  const [workDate, setWorkDate] = useState<string>(new Date().toISOString().slice(0,10));
+  const [workDate, setWorkDate] = useState<string>(formatDateLocal(new Date()));
   const [start, setStart] = useState<string>('');
   const [end, setEnd] = useState<string>('');
   const [notes, setNotes] = useState<string>('');

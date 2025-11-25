@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect } from 'react';
 import toast from 'react-hot-toast';
+import { formatDateLocal, getTodayLocal } from '@/lib/dateUtils';
 
 type Event = {
   id?: string;
@@ -43,18 +44,16 @@ export default function EventModal({ projectId, mode, event, onClose, onSave }: 
   // When section
   const [startDate, setStartDate] = useState(() => {
     if (event?.start_datetime) {
-      return new Date(event.start_datetime).toISOString().slice(0, 10);
+      return formatDateLocal(new Date(event.start_datetime));
     }
-    const now = new Date();
-    return now.toISOString().slice(0, 10);
+    return getTodayLocal();
   });
   const [endDate, setEndDate] = useState(() => {
     if (event?.end_datetime) {
       const end = new Date(event.end_datetime);
-      return end.toISOString().slice(0, 10);
+      return formatDateLocal(end);
     }
-    const now = new Date();
-    return now.toISOString().slice(0, 10);
+    return getTodayLocal();
   });
   // Default to all-day for new events, use event value for edits
   const [isAllDay, setIsAllDay] = useState(event?.is_all_day !== undefined ? event.is_all_day : true);
@@ -100,7 +99,7 @@ export default function EventModal({ projectId, mode, event, onClose, onSave }: 
     return 1;
   });
   const [repeatDaysOfWeek, setRepeatDaysOfWeek] = useState<boolean[]>(() => {
-    if (event?.repeat_config?.daysOfWeek) {
+    if (event?.repeat_config?.daysOfWeek && Array.isArray(event.repeat_config.daysOfWeek)) {
       return event.repeat_config.daysOfWeek;
     }
     return [false, true, true, true, true, true, false]; // Sun-Sat, default Mon-Fri
@@ -112,7 +111,7 @@ export default function EventModal({ projectId, mode, event, onClose, onSave }: 
   });
   const [repeatUntilDate, setRepeatUntilDate] = useState(() => {
     if (event?.repeat_until) {
-      return new Date(event.repeat_until).toISOString().slice(0, 10);
+      return formatDateLocal(new Date(event.repeat_until));
     }
     return '';
   });
@@ -124,8 +123,14 @@ export default function EventModal({ projectId, mode, event, onClose, onSave }: 
   });
 
   // Exceptions
-  const [exceptions, setExceptions] = useState<string[]>(event?.exceptions || []);
-  const [extraDates, setExtraDates] = useState<string[]>(event?.extra_dates || []);
+  const [exceptions, setExceptions] = useState<string[]>(() => {
+    const ex = event?.exceptions;
+    return Array.isArray(ex) ? ex : [];
+  });
+  const [extraDates, setExtraDates] = useState<string[]>(() => {
+    const ed = event?.extra_dates;
+    return Array.isArray(ed) ? ed : [];
+  });
 
   const [saving, setSaving] = useState(false);
 
@@ -179,7 +184,7 @@ export default function EventModal({ projectId, mode, event, onClose, onSave }: 
       endDay.setHours(0, 0, 0, 0);
       
       while (current <= endDay) {
-        const dateStr = current.toISOString().slice(0, 10);
+        const dateStr = formatDateLocal(current);
         const isStartDay = current.toDateString() === start.toDateString();
         const isEndDay = current.toDateString() === endDay.toDateString();
         
@@ -218,7 +223,7 @@ export default function EventModal({ projectId, mode, event, onClose, onSave }: 
     const maxOccurrences = repeatEnds === 'after' ? repeatCount : 365;
 
     while (occurrenceCount < maxOccurrences && current <= repeatEndDate!) {
-      const dateStr = current.toISOString().slice(0, 10);
+      const dateStr = formatDateLocal(current);
       const daysDiff = Math.floor((current.getTime() - baseStartDate.getTime()) / (1000 * 60 * 60 * 24));
       
       // Skip exceptions
@@ -376,7 +381,7 @@ export default function EventModal({ projectId, mode, event, onClose, onSave }: 
         // For overnight, we'll extend to next day
         const nextDay = new Date(endDate);
         nextDay.setDate(nextDay.getDate() + 1);
-        setEndDate(nextDay.toISOString().slice(0, 10));
+        setEndDate(formatDateLocal(nextDay));
       }
     }
 
@@ -390,7 +395,7 @@ export default function EventModal({ projectId, mode, event, onClose, onSave }: 
       // Overnight event
       const nextDay = new Date(endDate);
       nextDay.setDate(nextDay.getDate() + 1);
-      finalEndDate = nextDay.toISOString().slice(0, 10);
+      finalEndDate = formatDateLocal(nextDay);
     }
     
     const endDatetime = isAllDay || is247
@@ -444,7 +449,7 @@ export default function EventModal({ projectId, mode, event, onClose, onSave }: 
   // Preset handlers
   const applyPreset = (preset: 'today' | 'all_week_247' | 'weekdays_9_5' | 'weekends_allday') => {
     const now = new Date();
-    const today = now.toISOString().slice(0, 10);
+    const today = getTodayLocal();
     
     switch (preset) {
       case 'today':
@@ -461,8 +466,8 @@ export default function EventModal({ projectId, mode, event, onClose, onSave }: 
         monday.setDate(now.getDate() - now.getDay() + 1); // Get Monday
         const sunday = new Date(monday);
         sunday.setDate(monday.getDate() + 6);
-        setStartDate(monday.toISOString().slice(0, 10));
-        setEndDate(sunday.toISOString().slice(0, 10));
+        setStartDate(formatDateLocal(monday));
+        setEndDate(formatDateLocal(sunday));
         setIsAllDay(false);
         setIs247(true);
         setRepeatType('none'); // Continuous block
