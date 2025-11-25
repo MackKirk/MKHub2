@@ -164,7 +164,7 @@ export default function ClockInOut() {
 
   // Check if user has unrestricted clock in/out permission
   const hasUnrestrictedClock = useMemo(() => {
-    return currentUser?.permissions?.includes('timesheet:unrestricted_clock') || false;
+    return currentUser?.permissions?.includes('hr:timesheet:unrestricted_clock') || currentUser?.permissions?.includes('timesheet:unrestricted_clock') || false;
   }, [currentUser?.permissions]);
 
   // Fetch shift by ID if shift_id is provided in URL (must be before selectedDateShift)

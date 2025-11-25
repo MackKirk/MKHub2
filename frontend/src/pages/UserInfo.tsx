@@ -9,11 +9,26 @@ import { useConfirm } from '@/components/ConfirmProvider';
 
 // List of implemented permissions (permissions that are actually checked in the codebase)
 const IMPLEMENTED_PERMISSIONS = new Set([
+  // Legacy permissions
   "users:read", "users:write",
-  "timesheet:read", "timesheet:write", "timesheet:approve", "timesheet:unrestricted_clock",
+  "timesheet:read", "timesheet:write", "timesheet:approve", "timesheet:unrestricted_clock", // Legacy, mantido para compatibilidade
   "clients:read", "clients:write",
   "inventory:read", "inventory:write",
   "reviews:read", "reviews:admin",
+  // Human Resources permissions
+  "hr:access",
+  "hr:users:read", "hr:users:write",
+  "hr:attendance:read", "hr:attendance:write",
+  "hr:community:read", "hr:community:write",
+  "hr:reviews:admin",
+  "hr:timesheet:read", "hr:timesheet:write", "hr:timesheet:approve", "hr:timesheet:unrestricted_clock",
+  // Settings permissions
+  "settings:access",
+  // Documents permissions
+  "documents:access",
+  "documents:read", "documents:write", "documents:delete", "documents:move",
+  // Fleet & Equipment permissions
+  "fleet:access",
 ]);
 
 function SyncBambooHRButton({ userId, onSuccess }: { userId: string; onSuccess?: () => void }) {
@@ -71,6 +86,7 @@ function SyncBambooHRButton({ userId, onSuccess }: { userId: string; onSuccess?:
 }
 
 function UserPermissions({ userId }:{ userId:string }){
+  const { data:user, refetch: refetchUser } = useQuery({ queryKey:['user', userId], queryFn: ()=> api<any>('GET', `/users/${userId}`) });
   const { data:permissionsData, refetch } = useQuery({ 
     queryKey:['user-permissions', userId], 
     queryFn: ()=> api<any>('GET', `/permissions/users/${userId}`) 
@@ -101,6 +117,24 @@ function UserPermissions({ userId }:{ userId:string }){
   const handleSave = async () => {
     setSaving(true);
     try {
+      // Save admin role if changed
+      if (user) {
+        const isAdmin = (user.roles||[]).some((r: string) => String(r || '').toLowerCase() === 'admin');
+        const shouldBeAdmin = (document.getElementById('admin-checkbox') as HTMLInputElement)?.checked || false;
+        if (isAdmin !== shouldBeAdmin) {
+          let newRoles = [...(user.roles||[])];
+          if (shouldBeAdmin) {
+            if (!newRoles.some((r: string) => String(r || '').toLowerCase() === 'admin')) {
+              newRoles.push('admin');
+            }
+          } else {
+            newRoles = newRoles.filter((r: string) => String(r || '').toLowerCase() !== 'admin');
+          }
+          await api('PATCH', `/users/${userId}`, { roles: newRoles, is_active: user.is_active });
+          await refetchUser();
+        }
+      }
+      // Save permissions
       await api('PUT', `/permissions/users/${userId}`, permissions);
       toast.success('Permissions saved');
       await refetch();
@@ -115,6 +149,8 @@ function UserPermissions({ userId }:{ userId:string }){
     return <div className="h-24 bg-gray-100 animate-pulse rounded" />;
   }
 
+  const isAdmin = user ? (user.roles||[]).some((r: string) => String(r || '').toLowerCase() === 'admin') : false;
+
   return (
     <div className="space-y-6 pb-24">
       <div className="rounded-xl border bg-white p-4">
@@ -123,45 +159,112 @@ function UserPermissions({ userId }:{ userId:string }){
           <p className="text-sm text-gray-600">Manage granular permissions for this user. Permissions from roles are combined with these overrides. Permissions marked with [WIP] are not yet implemented in the system.</p>
         </div>
 
-        <div className="space-y-6">
-          {permissionsData.permissions_by_category?.map((cat: any) => (
-            <div key={cat.category.id} className="border rounded-lg p-4">
-              <div className="mb-3">
-                <h4 className="font-semibold text-base">{cat.category.label}</h4>
-                {cat.category.description && (
-                  <p className="text-xs text-gray-500 mt-1">{cat.category.description}</p>
-                )}
+        {/* Admin Access Section */}
+        <div className="mb-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+          <label className="inline-flex items-start gap-3 cursor-pointer">
+            <input 
+              id="admin-checkbox"
+              type="checkbox" 
+              checked={isAdmin}
+              disabled={!user}
+              onChange={e=>{ 
+                const shouldBeAdmin = e.target.checked;
+                if (user) {
+                  if (shouldBeAdmin) {
+                    if (!(user.roles||[]).some((r: string) => String(r || '').toLowerCase() === 'admin')) {
+                      user.roles = [...(user.roles||[]), 'admin'];
+                    }
+                  } else {
+                    user.roles = (user.roles||[]).filter((r: string) => String(r || '').toLowerCase() !== 'admin');
+                  }
+                }
+              }} 
+              className="mt-1 w-4 h-4 rounded border-gray-300 text-brand-red focus:ring-brand-red disabled:opacity-50 disabled:cursor-not-allowed"
+            />
+            <div className="flex-1">
+              <div className="font-semibold text-yellow-900 flex items-center gap-2">
+                Administrator Access
+                <span className="text-xs px-1.5 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300">
+                  System Role
+                </span>
               </div>
-              <div className="space-y-2">
-                {cat.permissions.map((perm: any) => (
-                  <label
-                    key={perm.id}
-                    className="flex items-start gap-3 p-2 rounded hover:bg-gray-50 cursor-pointer"
-                  >
+              <div className="text-xs text-yellow-800 mt-1">
+                ⚠️ <strong>Warning:</strong> This user will have access to all areas of the system and will be able to delete sensitive information. Only grant this to trusted users.
+              </div>
+              {isAdmin && (
+                <div className="text-xs text-yellow-700 mt-2 font-medium">
+                  ⚠️ When admin is enabled, all permission checks are bypassed. Individual permissions below are ignored.
+                </div>
+              )}
+            </div>
+          </label>
+        </div>
+
+        <div className="space-y-6">
+          {permissionsData.permissions_by_category?.map((cat: any) => {
+            // Find area access permission (first permission, ends with :access)
+            const areaAccessPerm = cat.permissions.find((p: any) => p.key.endsWith(':access'));
+            const subPermissions = cat.permissions.filter((p: any) => !p.key.endsWith(':access'));
+            const hasAreaAccess = areaAccessPerm && permissions[areaAccessPerm.key];
+            
+            return (
+              <div key={cat.category.id} className="border rounded-lg p-4">
+                {/* Category Header with Access Checkbox */}
+                <div className="mb-3">
+                  <label className="flex items-center gap-3 cursor-pointer">
                     <input
                       type="checkbox"
-                      checked={permissions[perm.key] || false}
-                      onChange={() => handleToggle(perm.key)}
-                      className="mt-1 w-4 h-4 rounded border-gray-300 text-brand-red focus:ring-brand-red"
+                      checked={hasAreaAccess || false}
+                      onChange={() => {
+                        if (areaAccessPerm) {
+                          handleToggle(areaAccessPerm.key);
+                        }
+                      }}
+                      className="w-4 h-4 rounded border-gray-300 text-brand-red focus:ring-brand-red"
                     />
                     <div className="flex-1">
-                      <div className="font-medium text-sm flex items-center gap-2">
-                        {perm.label}
-                        {!IMPLEMENTED_PERMISSIONS.has(perm.key) && (
-                          <span className="text-xs px-1.5 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300">
-                            [WIP]
-                          </span>
-                        )}
-                      </div>
-                      {perm.description && (
-                        <div className="text-xs text-gray-500 mt-0.5">{perm.description}</div>
+                      <h4 className="font-semibold text-base">{cat.category.label}</h4>
+                      {cat.category.description && (
+                        <p className="text-xs text-gray-500 mt-1">{cat.category.description}</p>
                       )}
                     </div>
                   </label>
-                ))}
+                </div>
+                
+                {/* Sub-permissions (only shown if area access is granted) */}
+                {hasAreaAccess && subPermissions.length > 0 && (
+                  <div className="ml-7 mt-3 space-y-2 border-l-2 border-gray-200 pl-4">
+                    {subPermissions.map((perm: any) => (
+                      <label
+                        key={perm.id}
+                        className="flex items-start gap-3 p-2 rounded hover:bg-gray-50 cursor-pointer"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={permissions[perm.key] || false}
+                          onChange={() => handleToggle(perm.key)}
+                          className="mt-1 w-4 h-4 rounded border-gray-300 text-brand-red focus:ring-brand-red"
+                        />
+                        <div className="flex-1">
+                          <div className="font-medium text-sm flex items-center gap-2">
+                            {perm.label}
+                            {!IMPLEMENTED_PERMISSIONS.has(perm.key) && (
+                              <span className="text-xs px-1.5 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300">
+                                [WIP]
+                              </span>
+                            )}
+                          </div>
+                          {perm.description && (
+                            <div className="text-xs text-gray-500 mt-0.5">{perm.description}</div>
+                          )}
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+                )}
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
 
         <div className="mt-6 flex justify-end">

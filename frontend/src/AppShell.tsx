@@ -10,6 +10,7 @@ type MenuItem = {
   path: string;
   icon: React.ReactNode;
   category?: string;
+  requiredPermission?: string;  // Permission required to see this item
 };
 
 type MenuCategory = {
@@ -178,10 +179,10 @@ export default function AppShell({ children }: PropsWithChildren){
       label: 'Fleet & Equipment',
       icon: <IconTruck />,
       items: [
-        { id: 'fleet-dashboard', label: 'Dashboard', path: '/fleet', icon: <IconTruck /> },
-        { id: 'fleet-assets', label: 'Fleet Assets', path: '/fleet/assets', icon: <IconTruck /> },
-        { id: 'equipment', label: 'Equipment', path: '/fleet/equipment', icon: <IconWrench /> },
-        { id: 'work-orders', label: 'Work Orders', path: '/fleet/work-orders', icon: <IconClipboard /> },
+        { id: 'fleet-dashboard', label: 'Dashboard', path: '/fleet', icon: <IconTruck />, requiredPermission: 'fleet:access' },
+        { id: 'fleet-assets', label: 'Fleet Assets', path: '/fleet/assets', icon: <IconTruck />, requiredPermission: 'fleet:access' },
+        { id: 'equipment', label: 'Equipment', path: '/fleet/equipment', icon: <IconWrench />, requiredPermission: 'fleet:access' },
+        { id: 'work-orders', label: 'Work Orders', path: '/fleet/work-orders', icon: <IconClipboard />, requiredPermission: 'fleet:access' },
       ]
     },
     {
@@ -189,7 +190,7 @@ export default function AppShell({ children }: PropsWithChildren){
       label: 'Documents',
       icon: <IconDocument />,
       items: [
-        { id: 'company-files', label: 'Company Files', path: '/company-files', icon: <IconFolder /> },
+        { id: 'company-files', label: 'Company Files', path: '/company-files', icon: <IconFolder />, requiredPermission: 'documents:access' },
       ]
     },
     {
@@ -209,13 +210,16 @@ export default function AppShell({ children }: PropsWithChildren){
       label: 'Human Resources',
       icon: <IconHumanResources />,
       items: [
-        { id: 'users', label: 'Users', path: '/users', icon: <IconUsersGroup /> },
-        { id: 'attendance', label: 'Attendance', path: '/settings/attendance', icon: <IconCalendar /> },
-        { id: 'community', label: 'Community', path: '/community', icon: <IconUsersGroup /> },
-        ...(((me?.roles||[]).includes('admin') || (me?.permissions||[]).includes('reviews:admin')) ? [
-          { id: 'reviews-admin', label: 'Reviews Admin', path: '/reviews/admin', icon: <IconStar /> },
-          { id: 'reviews-compare', label: 'Reviews Compare', path: '/reviews/compare', icon: <IconStar /> }
-        ] : []),
+        // Check hr:access permission first - if not granted, hide entire category
+        ...((me?.roles||[]).includes('admin') || (me?.permissions||[]).includes('hr:access') || (me?.permissions||[]).includes('users:read')) ? [
+          { id: 'users', label: 'Users', path: '/users', icon: <IconUsersGroup />, requiredPermission: 'hr:users:read' },
+          { id: 'attendance', label: 'Attendance', path: '/settings/attendance', icon: <IconCalendar />, requiredPermission: 'hr:attendance:read' },
+          { id: 'community', label: 'Community', path: '/community', icon: <IconUsersGroup />, requiredPermission: 'hr:community:read' },
+          ...(((me?.roles||[]).includes('admin') || (me?.permissions||[]).includes('hr:reviews:admin') || (me?.permissions||[]).includes('reviews:admin')) ? [
+            { id: 'reviews-admin', label: 'Reviews Admin', path: '/reviews/admin', icon: <IconStar />, requiredPermission: 'hr:reviews:admin' },
+            { id: 'reviews-compare', label: 'Reviews Compare', path: '/reviews/compare', icon: <IconStar />, requiredPermission: 'hr:reviews:admin' }
+          ] : []),
+        ] : [],
       ]
     },
     {
@@ -223,7 +227,7 @@ export default function AppShell({ children }: PropsWithChildren){
       label: 'Settings',
       icon: <IconSettings />,
       items: [
-        { id: 'system-settings', label: 'System Settings', path: '/settings', icon: <IconSettings /> },
+        { id: 'system-settings', label: 'System Settings', path: '/settings', icon: <IconSettings />, requiredPermission: 'settings:access' },
       ]
     },
   ], [me]);
@@ -321,7 +325,24 @@ export default function AppShell({ children }: PropsWithChildren){
           )}
         </div>
         <nav className="flex-1 overflow-y-auto p-2">
-          {menuCategories.map(category => {
+          {menuCategories
+            .filter(category => {
+              // Filter categories that have no visible items
+              const visibleItems = category.items.filter(item => {
+                if (!item.requiredPermission) return true;
+                if ((me?.roles||[]).includes('admin')) return true;
+                const hasPermission = (me?.permissions||[]).includes(item.requiredPermission);
+                // For HR permissions, also check legacy permissions for backward compatibility
+                if (item.requiredPermission.startsWith('hr:')) {
+                  const legacyPerm = item.requiredPermission.replace('hr:', '');
+                  const hasLegacy = (me?.permissions||[]).includes(legacyPerm);
+                  return hasPermission || hasLegacy;
+                }
+                return hasPermission;
+              });
+              return visibleItems.length > 0;
+            })
+            .map(category => {
             const isActive = isCategoryActive(category);
             const showSubItems = !sidebarCollapsed && isActive;
             
@@ -359,32 +380,48 @@ export default function AppShell({ children }: PropsWithChildren){
                 </NavLink>
                 {showSubItems && (
                   <div className="mt-1 ml-4 space-y-1">
-                    {category.items.map(item => {
-                      // Special handling: if we're viewing an opportunity, 
-                      // don't highlight any individual items, only the category
-                      let isItemActive = false;
-                      if (isViewingOpportunity) {
-                        // When viewing an opportunity, don't highlight individual items
-                        isItemActive = false;
-                      } else {
-                        // Normal logic when not viewing an opportunity
-                        isItemActive = location.pathname === item.path || location.pathname.startsWith(item.path + '/');
-                      }
-                      return (
-                        <NavLink
-                          key={item.id}
-                          to={item.path}
-                          className={({isActive: navActive}) =>
-                            `flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${
-                              (isItemActive || navActive) ? 'bg-brand-red/80 text-white' : 'text-gray-400 hover:bg-gray-600 hover:text-white'
-                            }`
-                          }
-                        >
-                          <span className="flex-shrink-0">{item.icon}</span>
-                          <span className="text-sm">{item.label}</span>
-                        </NavLink>
-                      );
-                    })}
+                    {category.items
+                      .filter(item => {
+                        // Filter items based on permissions
+                        if (!item.requiredPermission) return true;  // No permission required
+                        if ((me?.roles||[]).includes('admin')) return true;  // Admin sees all
+                        // Check if user has the required permission
+                        const hasPermission = (me?.permissions||[]).includes(item.requiredPermission);
+                        // For HR permissions, also check legacy permissions for backward compatibility
+                        if (item.requiredPermission.startsWith('hr:')) {
+                          // Map HR permissions to legacy: hr:users:read -> users:read
+                          const legacyPerm = item.requiredPermission.replace('hr:', '');
+                          const hasLegacy = (me?.permissions||[]).includes(legacyPerm);
+                          return hasPermission || hasLegacy;
+                        }
+                        return hasPermission;
+                      })
+                      .map(item => {
+                        // Special handling: if we're viewing an opportunity, 
+                        // don't highlight any individual items, only the category
+                        let isItemActive = false;
+                        if (isViewingOpportunity) {
+                          // When viewing an opportunity, don't highlight individual items
+                          isItemActive = false;
+                        } else {
+                          // Normal logic when not viewing an opportunity
+                          isItemActive = location.pathname === item.path || location.pathname.startsWith(item.path + '/');
+                        }
+                        return (
+                          <NavLink
+                            key={item.id}
+                            to={item.path}
+                            className={({isActive: navActive}) =>
+                              `flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${
+                                (isItemActive || navActive) ? 'bg-brand-red/80 text-white' : 'text-gray-400 hover:bg-gray-600 hover:text-white'
+                              }`
+                            }
+                          >
+                            <span className="flex-shrink-0">{item.icon}</span>
+                            <span className="text-sm">{item.label}</span>
+                          </NavLink>
+                        );
+                      })}
                   </div>
                 )}
               </div>
