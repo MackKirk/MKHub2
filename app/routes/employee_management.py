@@ -1,15 +1,18 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, Body
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 from typing import Optional, List
-from datetime import datetime, timezone
+from datetime import datetime, timezone, date, timedelta
 from decimal import Decimal
 import uuid as uuid_lib
+import os
 
 from ..db import get_db
 from ..models.models import (
     User, EmployeeProfile, SettingList, SettingItem,
     EmployeeSalaryHistory, EmployeeLoan, LoanPayment,
-    EmployeeNotice, EmployeeFineTicket, EmployeeEquipment
+    EmployeeNotice, EmployeeFineTicket, EmployeeEquipment,
+    TimeOffBalance, TimeOffRequest, TimeOffHistory
 )
 from ..auth.security import require_permissions, get_current_user
 from ..services.bamboohr_client import BambooHRClient
@@ -834,12 +837,22 @@ def sync_user_from_bamboohr(
         
         # Import the sync function
         import importlib.util
-        spec = importlib.util.spec_from_file_location("sync_bamboohr_employees", script_dir / "sync_bamboohr_employees.py")
-        sync_module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(sync_module)
-        create_or_update_user = sync_module.create_or_update_user
-        sync_employee_photo = sync_module.sync_employee_photo
-        get_storage = sync_module.get_storage
+        import traceback
+        try:
+            spec = importlib.util.spec_from_file_location("sync_bamboohr_employees", script_dir / "sync_bamboohr_employees.py")
+            if spec is None or spec.loader is None:
+                raise HTTPException(status_code=500, detail="Could not load sync module")
+            sync_module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(sync_module)
+            create_or_update_user = sync_module.create_or_update_user
+            sync_employee_photo = sync_module.sync_employee_photo
+            sync_employee_visas = sync_module.sync_employee_visas
+            sync_employee_emergency_contacts = sync_module.sync_employee_emergency_contacts
+            get_storage = sync_module.get_storage
+        except Exception as e:
+            print(f"[ERROR] Error importing sync module: {e}")
+            print(f"[ERROR] Traceback: {traceback.format_exc()}")
+            raise HTTPException(status_code=500, detail=f"Error importing sync module: {str(e)}")
         
         # Sync the user
         # If force_update=True (default for button clicks), overwrite all fields including manually edited ones
@@ -873,7 +886,46 @@ def sync_user_from_bamboohr(
             # Photo sync is optional, don't fail the whole sync if it fails
             print(f"[WARN] Error syncing photo: {e}")
         
-        db.commit()
+        # Sync visa information
+        try:
+            sync_employee_visas(
+                db=db,
+                client=client,
+                user=updated_user,
+                bamboohr_id=bamboohr_id,
+                employee_data=bamboohr_employee,
+                dry_run=False
+            )
+        except Exception as e:
+            # Visa sync is optional, don't fail the whole sync if it fails
+            import traceback
+            print(f"[WARN] Error syncing visas: {e}")
+            print(f"[WARN] Traceback: {traceback.format_exc()}")
+        
+        # Sync emergency contacts
+        try:
+            sync_employee_emergency_contacts(
+                db=db,
+                client=client,
+                user=updated_user,
+                bamboohr_id=bamboohr_id,
+                employee_data=bamboohr_employee,
+                dry_run=False
+            )
+        except Exception as e:
+            # Emergency contact sync is optional, don't fail the whole sync if it fails
+            import traceback
+            print(f"[WARN] Error syncing emergency contacts: {e}")
+            print(f"[WARN] Traceback: {traceback.format_exc()}")
+        
+        try:
+            db.commit()
+        except Exception as e:
+            db.rollback()
+            import traceback
+            print(f"[ERROR] Error committing database changes: {e}")
+            print(f"[ERROR] Traceback: {traceback.format_exc()}")
+            raise
         
         return {
             "status": "ok",
@@ -887,4 +939,654 @@ def sync_user_from_bamboohr(
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Error syncing from BambooHR: {str(e)}")
+
+
+# =====================
+# Time Off Management
+# =====================
+
+@router.get("/{user_id}/time-off/balance")
+def get_time_off_balance(
+    user_id: str,
+    year: Optional[int] = Query(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    _=Depends(require_permissions("users:read"))
+):
+    """Get time off balance for a user"""
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # Check if user can view their own balance or has permission
+    if str(current_user.id) != user_id and not _:
+        raise HTTPException(status_code=403, detail="Not authorized")
+    
+    query = db.query(TimeOffBalance).filter(TimeOffBalance.user_id == user.id)
+    if year:
+        query = query.filter(TimeOffBalance.year == year)
+    else:
+        # Default to current year
+        current_year = datetime.now().year
+        query = query.filter(TimeOffBalance.year == current_year)
+    
+    balances = query.all()
+    return [{
+        "id": str(b.id),
+        "policy_name": b.policy_name,
+        "balance_hours": float(b.balance_hours),
+        "accrued_hours": float(b.accrued_hours),
+        "used_hours": float(b.used_hours),
+        "year": b.year,
+        "last_synced_at": b.last_synced_at.isoformat() if b.last_synced_at else None
+    } for b in balances]
+
+
+@router.post("/{user_id}/time-off/balance/sync")
+def sync_time_off_balance(
+    user_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    _=Depends(require_permissions("users:write"))
+):
+    """Sync time off balance from BambooHR"""
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # Get user's email to find BambooHR employee
+    email = user.email_personal or user.email_corporate
+    if not email:
+        raise HTTPException(status_code=400, detail="User has no email address to match with BambooHR")
+    
+    try:
+        client = BambooHRClient()
+        directory = client.get_employees_directory()
+        employees = directory if isinstance(directory, list) else (directory.get("employees", []) if isinstance(directory, dict) else [])
+        
+        bamboohr_id = None
+        for emp in employees:
+            emp_id = str(emp.get("id", ""))
+            try:
+                emp_data = client.get_employee(emp_id)
+                emp_email = (
+                    emp_data.get("homeEmail") or
+                    emp_data.get("personalEmail") or
+                    emp_data.get("workEmail") or
+                    emp_data.get("email")
+                )
+                if emp_email and emp_email.strip().lower() == email.strip().lower():
+                    bamboohr_id = emp_id
+                    break
+            except Exception:
+                continue
+        
+        if not bamboohr_id:
+            raise HTTPException(status_code=404, detail=f"Employee not found in BambooHR for email: {email}")
+        
+        # Get time off balance from BambooHR
+        balance_data = client.get_time_off_balance(bamboohr_id)
+        if not balance_data:
+            return {"message": "No time off balance data found in BambooHR", "synced": 0}
+        
+        # Parse balance data (format may vary)
+        current_year = datetime.now().year
+        synced_count = 0
+        
+        # Handle different response formats
+        policies = []
+        if isinstance(balance_data, dict):
+            if "policies" in balance_data:
+                policies = balance_data["policies"] if isinstance(balance_data["policies"], list) else [balance_data["policies"]]
+            elif "data" in balance_data:
+                policies = balance_data["data"] if isinstance(balance_data["data"], list) else [balance_data["data"]]
+            else:
+                # Assume the dict itself is a policy
+                policies = [balance_data]
+        elif isinstance(balance_data, list):
+            policies = balance_data
+        
+        for policy_data in policies:
+            if not isinstance(policy_data, dict):
+                continue
+            
+            policy_name = policy_data.get("name") or policy_data.get("policyName") or policy_data.get("type") or "Time Off"
+            
+            # Extract balance information
+            balance_hours = 0.0
+            accrued_hours = 0.0
+            used_hours = 0.0
+            
+            # Try different field names
+            if "balance" in policy_data:
+                balance_hours = float(policy_data["balance"]) if policy_data["balance"] else 0.0
+            elif "balanceHours" in policy_data:
+                balance_hours = float(policy_data["balanceHours"]) if policy_data["balanceHours"] else 0.0
+            elif "available" in policy_data:
+                balance_hours = float(policy_data["available"]) if policy_data["available"] else 0.0
+            
+            if "accrued" in policy_data:
+                accrued_hours = float(policy_data["accrued"]) if policy_data["accrued"] else 0.0
+            elif "accruedHours" in policy_data:
+                accrued_hours = float(policy_data["accruedHours"]) if policy_data["accruedHours"] else 0.0
+            
+            if "used" in policy_data:
+                used_hours = float(policy_data["used"]) if policy_data["used"] else 0.0
+            elif "usedHours" in policy_data:
+                used_hours = float(policy_data["usedHours"]) if policy_data["usedHours"] else 0.0
+            
+            # Find or create balance record
+            balance = db.query(TimeOffBalance).filter(
+                TimeOffBalance.user_id == user.id,
+                TimeOffBalance.policy_name == policy_name,
+                TimeOffBalance.year == current_year
+            ).first()
+            
+            if balance:
+                balance.balance_hours = balance_hours
+                balance.accrued_hours = accrued_hours
+                balance.used_hours = used_hours
+                balance.last_synced_at = datetime.now(timezone.utc)
+                balance.updated_at = datetime.now(timezone.utc)
+            else:
+                balance = TimeOffBalance(
+                    id=uuid_lib.uuid4(),
+                    user_id=user.id,
+                    policy_name=policy_name,
+                    balance_hours=balance_hours,
+                    accrued_hours=accrued_hours,
+                    used_hours=used_hours,
+                    year=current_year,
+                    last_synced_at=datetime.now(timezone.utc),
+                    created_at=datetime.now(timezone.utc),
+                    updated_at=datetime.now(timezone.utc)
+                )
+                db.add(balance)
+            
+            synced_count += 1
+        
+        db.commit()
+        return {"message": f"Synced {synced_count} time off balance(s)", "synced": synced_count}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Error syncing time off balance: {str(e)}")
+
+
+@router.get("/{user_id}/time-off/requests")
+def get_time_off_requests(
+    user_id: str,
+    status: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    _=Depends(require_permissions("users:read"))
+):
+    """Get time off requests for a user"""
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # Check if user can view their own requests or has permission
+    if str(current_user.id) != user_id and not _:
+        raise HTTPException(status_code=403, detail="Not authorized")
+    
+    query = db.query(TimeOffRequest).filter(TimeOffRequest.user_id == user.id)
+    if status:
+        query = query.filter(TimeOffRequest.status == status)
+    
+    requests = query.order_by(TimeOffRequest.requested_at.desc()).all()
+    
+    return [{
+        "id": str(r.id),
+        "policy_name": r.policy_name,
+        "start_date": r.start_date.isoformat(),
+        "end_date": r.end_date.isoformat(),
+        "hours": float(r.hours),
+        "notes": r.notes,
+        "status": r.status,
+        "requested_at": r.requested_at.isoformat(),
+        "reviewed_at": r.reviewed_at.isoformat() if r.reviewed_at else None,
+        "reviewed_by": str(r.reviewed_by) if r.reviewed_by else None,
+        "review_notes": r.review_notes
+    } for r in requests]
+
+
+@router.post("/{user_id}/time-off/requests")
+def create_time_off_request(
+    user_id: str,
+    payload: dict = Body(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Create a new time off request"""
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # Users can only create requests for themselves
+    if str(current_user.id) != user_id:
+        raise HTTPException(status_code=403, detail="You can only create time off requests for yourself")
+    
+    # Validate required fields
+    policy_name = payload.get("policy_name")
+    start_date_str = payload.get("start_date")
+    end_date_str = payload.get("end_date")
+    hours = payload.get("hours")
+    notes = payload.get("notes")
+    
+    if not policy_name or not start_date_str or not end_date_str:
+        raise HTTPException(status_code=400, detail="policy_name, start_date, and end_date are required")
+    
+    try:
+        start_date = datetime.fromisoformat(start_date_str.split('T')[0]).date()
+        end_date = datetime.fromisoformat(end_date_str.split('T')[0]).date()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
+    
+    if end_date < start_date:
+        raise HTTPException(status_code=400, detail="end_date must be after start_date")
+    
+    # Calculate hours if not provided
+    if not hours:
+        days = (end_date - start_date).days + 1
+        # Assume 8 hours per day (can be made configurable)
+        hours = days * 8.0
+    else:
+        hours = float(hours)
+    
+    # Check if user has enough balance
+    current_year = datetime.now().year
+    balance = db.query(TimeOffBalance).filter(
+        TimeOffBalance.user_id == user.id,
+        TimeOffBalance.policy_name == policy_name,
+        TimeOffBalance.year == current_year
+    ).first()
+    
+    if balance and float(balance.balance_hours) < hours:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Insufficient balance. Available: {balance.balance_hours} hours, Requested: {hours} hours"
+        )
+    
+    # Create request
+    request = TimeOffRequest(
+        id=uuid_lib.uuid4(),
+        user_id=user.id,
+        policy_name=policy_name,
+        start_date=start_date,
+        end_date=end_date,
+        hours=hours,
+        notes=notes,
+        status="pending",
+        requested_at=datetime.now(timezone.utc),
+        created_at=datetime.now(timezone.utc)
+    )
+    db.add(request)
+    db.commit()
+    
+    return {
+        "id": str(request.id),
+        "message": "Time off request created successfully",
+        "status": request.status
+    }
+
+
+@router.patch("/{user_id}/time-off/requests/{request_id}")
+def update_time_off_request(
+    user_id: str,
+    request_id: str,
+    payload: dict = Body(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    _=Depends(require_permissions("users:write"))
+):
+    """Update time off request (approve/reject/cancel)"""
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    request = db.query(TimeOffRequest).filter(
+        TimeOffRequest.id == request_id,
+        TimeOffRequest.user_id == user.id
+    ).first()
+    
+    if not request:
+        raise HTTPException(status_code=404, detail="Time off request not found")
+    
+    # Users can cancel their own requests, admins can approve/reject
+    new_status = payload.get("status")
+    review_notes = payload.get("review_notes")
+    
+    if new_status == "cancelled" and str(current_user.id) == user_id:
+        # User can cancel their own request
+        request.status = "cancelled"
+        request.updated_at = datetime.now(timezone.utc)
+    elif new_status in ["approved", "rejected"] and _:
+        # Admin can approve/reject
+        request.status = new_status
+        request.reviewed_at = datetime.now(timezone.utc)
+        request.reviewed_by = current_user.id
+        request.review_notes = review_notes
+        request.updated_at = datetime.now(timezone.utc)
+        
+        # If approved, update balance
+        if new_status == "approved":
+            current_year = datetime.now().year
+            balance = db.query(TimeOffBalance).filter(
+                TimeOffBalance.user_id == user.id,
+                TimeOffBalance.policy_name == request.policy_name,
+                TimeOffBalance.year == current_year
+            ).first()
+            
+            if balance:
+                balance.used_hours = float(balance.used_hours) + float(request.hours)
+                balance.balance_hours = float(balance.balance_hours) - float(request.hours)
+                balance.updated_at = datetime.now(timezone.utc)
+    else:
+        raise HTTPException(status_code=403, detail="Not authorized to update this request")
+    
+    db.commit()
+    return {"status": "ok", "message": f"Request {new_status}"}
+
+
+@router.get("/{user_id}/time-off/history")
+def get_time_off_history(
+    user_id: str,
+    policy_name: Optional[str] = Query(None),
+    year: Optional[int] = Query(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    _=Depends(require_permissions("users:read"))
+):
+    """Get time off history/transactions for a user"""
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # Check if user can view their own history or has permission
+    if str(current_user.id) != user_id and not _:
+        raise HTTPException(status_code=403, detail="Not authorized")
+    
+    query = db.query(TimeOffHistory).filter(TimeOffHistory.user_id == user.id)
+    if policy_name:
+        query = query.filter(TimeOffHistory.policy_name == policy_name)
+    if year:
+        query = query.filter(func.extract('year', TimeOffHistory.transaction_date) == year)
+    
+    history = query.order_by(TimeOffHistory.transaction_date.desc()).all()
+    
+    return [{
+        "id": str(h.id),
+        "policy_name": h.policy_name,
+        "transaction_date": h.transaction_date.isoformat(),
+        "description": h.description,
+        "used_days": float(h.used_days) if h.used_days else None,
+        "earned_days": float(h.earned_days) if h.earned_days else None,
+        "balance_after": float(h.balance_after),
+        "bamboohr_transaction_id": h.bamboohr_transaction_id
+    } for h in history]
+
+
+@router.post("/{user_id}/time-off/history/sync")
+def sync_time_off_history(
+    user_id: str,
+    policy_name: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    _=Depends(require_permissions("users:write"))
+):
+    """Sync time off history from BambooHR"""
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # Get user's email to find BambooHR employee
+    email = user.email_personal or user.email_corporate
+    if not email:
+        raise HTTPException(status_code=400, detail="User has no email address to match with BambooHR")
+    
+    try:
+        client = BambooHRClient()
+        directory = client.get_employees_directory()
+        employees = directory if isinstance(directory, list) else (directory.get("employees", []) if isinstance(directory, dict) else [])
+        
+        bamboohr_id = None
+        for emp in employees:
+            emp_id = str(emp.get("id", ""))
+            try:
+                emp_data = client.get_employee(emp_id)
+                emp_email = (
+                    emp_data.get("homeEmail") or
+                    emp_data.get("personalEmail") or
+                    emp_data.get("workEmail") or
+                    emp_data.get("email")
+                )
+                if emp_email and emp_email.strip().lower() == email.strip().lower():
+                    bamboohr_id = emp_id
+                    break
+            except Exception:
+                continue
+        
+        if not bamboohr_id:
+            raise HTTPException(status_code=404, detail=f"Employee not found in BambooHR for email: {email}")
+        
+        # Try to get time off balance history from BambooHR
+        history_data = client.get_time_off_balance_history(bamboohr_id)
+        if not history_data:
+            # If no history endpoint, try to get from balance data which might include history
+            balance_data = client.get_time_off_balance(bamboohr_id)
+            if balance_data and isinstance(balance_data, dict):
+                history_data = balance_data.get("history") or balance_data.get("transactions")
+        
+        # If still no history, generate from approved time off requests
+        if not history_data:
+            try:
+                # Get approved time off requests from BambooHR
+                requests_data = client.get_time_off_requests(bamboohr_id)
+                if requests_data:
+                    # Convert approved requests to history entries
+                    history_entries = []
+                    if isinstance(requests_data, list):
+                        for req in requests_data:
+                            if isinstance(req, dict):
+                                # Only process approved requests
+                                status = req.get("status", "").lower()
+                                if status in ["approved", "used"]:
+                                    # Extract request details
+                                    start_date = req.get("start")
+                                    end_date = req.get("end")
+                                    policy_name = req.get("policyType") or req.get("policyName") or req.get("type") or "Time Off"
+                                    hours = req.get("amount") or req.get("hours") or 0.0
+                                    days = float(hours) / 8.0 if hours else 0.0
+                                    
+                                    if start_date and end_date:
+                                        # Create entry for each day or a single entry for the period
+                                        try:
+                                            start = datetime.strptime(start_date.split('T')[0], "%Y-%m-%d").date()
+                                            end = datetime.strptime(end_date.split('T')[0], "%Y-%m-%d").date()
+                                            
+                                            # Create one entry per day or one entry for the period
+                                            # Using start date as transaction date
+                                            history_entries.append({
+                                                "date": start_date,
+                                                "policyName": policy_name,
+                                                "description": f"Time off: {start_date} to {end_date}",
+                                                "used": days,
+                                                "earned": None,
+                                                "balance": None
+                                            })
+                                        except Exception:
+                                            pass
+                    
+                    if history_entries:
+                        history_data = history_entries
+            except Exception as e:
+                # Log but don't fail if we can't get requests
+                print(f"[DEBUG] Could not get time off requests for history: {e}")
+        
+        # If still no history from BambooHR, try to generate from local approved requests
+        if not history_data:
+            # Get approved time off requests from local database
+            from ..models.models import TimeOffRequest
+            approved_requests = db.query(TimeOffRequest).filter(
+                TimeOffRequest.user_id == user.id,
+                TimeOffRequest.status == "approved"
+            ).all()
+            
+            if approved_requests:
+                history_entries = []
+                for req in approved_requests:
+                    # Convert hours to days
+                    days = float(req.hours) / 8.0 if req.hours else 0.0
+                    history_entries.append({
+                        "date": req.start_date.isoformat(),
+                        "policyName": req.policy_name,
+                        "description": f"Time off: {req.start_date} to {req.end_date}" + (f" - {req.notes}" if req.notes else ""),
+                        "used": days,
+                        "earned": None,
+                        "balance": None
+                    })
+                
+                if history_entries:
+                    history_data = history_entries
+        
+        if not history_data:
+            return {"message": "No time off history data found. History may not be available via BambooHR API.", "synced": 0}
+        
+        # Parse history data (format may vary)
+        synced_count = 0
+        
+        # Handle different response formats
+        transactions = []
+        if isinstance(history_data, list):
+            transactions = history_data
+        elif isinstance(history_data, dict):
+            if "transactions" in history_data:
+                transactions = history_data["transactions"] if isinstance(history_data["transactions"], list) else [history_data["transactions"]]
+            elif "history" in history_data:
+                transactions = history_data["history"] if isinstance(history_data["history"], list) else [history_data["history"]]
+            elif "data" in history_data:
+                transactions = history_data["data"] if isinstance(history_data["data"], list) else [history_data["data"]]
+            else:
+                # Assume the dict itself is a transaction
+                transactions = [history_data]
+        
+        # Get existing balances to map policy names
+        balances = db.query(TimeOffBalance).filter(TimeOffBalance.user_id == user.id).all()
+        policy_map = {b.policy_name: b for b in balances}
+        
+        for trans_data in transactions:
+            if not isinstance(trans_data, dict):
+                continue
+            
+            # Extract transaction information
+            trans_policy_name = trans_data.get("policyName") or trans_data.get("policy_name") or trans_data.get("name") or policy_name or "Time Off"
+            
+            # Skip if policy filter is set and doesn't match
+            if policy_name and trans_policy_name != policy_name:
+                continue
+            
+            # Parse transaction date
+            trans_date_str = trans_data.get("date") or trans_data.get("transactionDate") or trans_data.get("transaction_date")
+            if not trans_date_str:
+                continue
+            
+            try:
+                if isinstance(trans_date_str, str):
+                    trans_date = datetime.strptime(trans_date_str.split('T')[0], "%Y-%m-%d").date()
+                else:
+                    trans_date = trans_date_str
+            except Exception:
+                continue
+            
+            # Extract description
+            description = (
+                trans_data.get("description") or
+                trans_data.get("note") or
+                trans_data.get("notes") or
+                trans_data.get("comment") or
+                "Time off transaction"
+            )
+            
+            # Extract used/earned days
+            used_days = None
+            earned_days = None
+            
+            # Try different field names for used days
+            if "used" in trans_data:
+                used_days = float(trans_data["used"]) if trans_data["used"] else None
+            elif "usedDays" in trans_data:
+                used_days = float(trans_data["usedDays"]) if trans_data["usedDays"] else None
+            elif "used_days" in trans_data:
+                used_days = float(trans_data["used_days"]) if trans_data["used_days"] else None
+            elif "daysUsed" in trans_data:
+                used_days = float(trans_data["daysUsed"]) if trans_data["daysUsed"] else None
+            
+            # Try different field names for earned days
+            if "earned" in trans_data:
+                earned_days = float(trans_data["earned"]) if trans_data["earned"] else None
+            elif "earnedDays" in trans_data:
+                earned_days = float(trans_data["earnedDays"]) if trans_data["earnedDays"] else None
+            elif "earned_days" in trans_data:
+                earned_days = float(trans_data["earned_days"]) if trans_data["earned_days"] else None
+            elif "daysEarned" in trans_data:
+                earned_days = float(trans_data["daysEarned"]) if trans_data["daysEarned"] else None
+            
+            # Extract balance after transaction
+            balance_after = trans_data.get("balance") or trans_data.get("balanceAfter") or trans_data.get("balance_after") or 0.0
+            if balance_after:
+                balance_after = float(balance_after)
+            else:
+                # Calculate from current balance if available
+                if trans_policy_name in policy_map:
+                    balance = policy_map[trans_policy_name]
+                    balance_after = float(balance.balance_hours) / 8.0  # Convert hours to days
+            
+            # Get transaction ID from BambooHR
+            bamboohr_trans_id = trans_data.get("id") or trans_data.get("transactionId") or trans_data.get("transaction_id")
+            
+            # Check if transaction already exists (by date, policy, and description)
+            existing = db.query(TimeOffHistory).filter(
+                TimeOffHistory.user_id == user.id,
+                TimeOffHistory.policy_name == trans_policy_name,
+                TimeOffHistory.transaction_date == trans_date,
+                TimeOffHistory.description == description
+            ).first()
+            
+            if existing:
+                # Update existing transaction
+                existing.used_days = used_days
+                existing.earned_days = earned_days
+                existing.balance_after = balance_after
+                existing.bamboohr_transaction_id = bamboohr_trans_id
+                existing.last_synced_at = datetime.now(timezone.utc)
+            else:
+                # Create new transaction
+                history = TimeOffHistory(
+                    id=uuid_lib.uuid4(),
+                    user_id=user.id,
+                    policy_name=trans_policy_name,
+                    transaction_date=trans_date,
+                    description=description,
+                    used_days=used_days,
+                    earned_days=earned_days,
+                    balance_after=balance_after,
+                    bamboohr_transaction_id=bamboohr_trans_id,
+                    created_at=datetime.now(timezone.utc),
+                    last_synced_at=datetime.now(timezone.utc)
+                )
+                db.add(history)
+            
+            synced_count += 1
+        
+        db.commit()
+        return {"message": f"Synced {synced_count} time off history transaction(s)", "synced": synced_count}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Error syncing time off history: {str(e)}")
 
