@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Body
 from sqlalchemy.orm import Session
 from typing import Optional, List
 from datetime import datetime, timezone
@@ -12,6 +12,7 @@ from ..models.models import (
     EmployeeNotice, EmployeeFineTicket, EmployeeEquipment
 )
 from ..auth.security import require_permissions, get_current_user
+from ..services.bamboohr_client import BambooHRClient
 
 
 router = APIRouter(prefix="/employees", tags=["employee-management"])
@@ -747,4 +748,143 @@ def update_equipment(
     db.commit()
     
     return {"status": "ok"}
+
+
+# =====================
+# BambooHR Sync
+# =====================
+
+@router.post("/{user_id}/sync-bamboohr")
+def sync_user_from_bamboohr(
+    user_id: str,
+    payload: dict = Body(default={}),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    _=Depends(require_permissions("users:write"))
+):
+    """
+    Sync a specific user from BambooHR
+    
+    This endpoint will:
+    1. Find the user by ID
+    2. Get their email to find the corresponding BambooHR employee
+    3. Fetch latest data from BambooHR
+    4. Update the user and profile
+    
+    Parameters:
+    - force_update: If True, will overwrite manually edited fields (like pay_rate).
+                    If False (default), will preserve manually edited fields.
+    """
+    # Check if force_update is requested (default: True for explicit sync button clicks)
+    force_update = payload.get("force_update", True)
+    # Get user
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # Get user's email (prefer personal, fallback to corporate)
+    email = user.email_personal or user.email_corporate
+    if not email:
+        raise HTTPException(status_code=400, detail="User has no email address to match with BambooHR")
+    
+    try:
+        # Initialize BambooHR client
+        client = BambooHRClient()
+        
+        # Get employee directory to find employee by email
+        directory = client.get_employees_directory()
+        employees = directory if isinstance(directory, list) else (directory.get("employees", []) if isinstance(directory, dict) else [])
+        
+        # Find employee by email
+        bamboohr_employee = None
+        bamboohr_id = None
+        
+        for emp in employees:
+            emp_id = str(emp.get("id", ""))
+            try:
+                emp_data = client.get_employee(emp_id)
+                # Check all email fields
+                emp_email = (
+                    emp_data.get("homeEmail") or
+                    emp_data.get("personalEmail") or
+                    emp_data.get("workEmail") or
+                    emp_data.get("email")
+                )
+                if emp_email and emp_email.strip().lower() == email.strip().lower():
+                    bamboohr_employee = emp_data
+                    bamboohr_employee["id"] = emp_id
+                    bamboohr_id = emp_id
+                    break
+            except Exception:
+                continue
+        
+        if not bamboohr_employee:
+            raise HTTPException(status_code=404, detail=f"Employee not found in BambooHR for email: {email}")
+        
+        # Import sync function
+        import sys
+        import os
+        from pathlib import Path
+        
+        # Get the scripts directory
+        current_file = Path(__file__)
+        project_root = current_file.parent.parent.parent
+        script_dir = project_root / "scripts"
+        sys.path.insert(0, str(script_dir))
+        
+        # Import the sync function
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("sync_bamboohr_employees", script_dir / "sync_bamboohr_employees.py")
+        sync_module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(sync_module)
+        create_or_update_user = sync_module.create_or_update_user
+        sync_employee_photo = sync_module.sync_employee_photo
+        get_storage = sync_module.get_storage
+        
+        # Sync the user
+        # If force_update=True (default for button clicks), overwrite all fields including manually edited ones
+        # If force_update=False, preserve manually edited fields like pay_rate
+        updated_user, created = create_or_update_user(
+            db=db,
+            employee_data=bamboohr_employee,
+            client=client,
+            dry_run=False,
+            update_existing=True,
+            preserve_manual_fields=not force_update
+        )
+        
+        if not updated_user:
+            raise HTTPException(status_code=500, detail="Failed to sync user from BambooHR")
+        
+        # Sync profile photo
+        force_update_photos = payload.get("force_update_photos", force_update)
+        try:
+            storage = get_storage()
+            sync_employee_photo(
+                db=db,
+                client=client,
+                storage=storage,
+                user=updated_user,
+                bamboohr_id=bamboohr_id,
+                dry_run=False,
+                force_update=force_update_photos
+            )
+        except Exception as e:
+            # Photo sync is optional, don't fail the whole sync if it fails
+            print(f"[WARN] Error syncing photo: {e}")
+        
+        db.commit()
+        
+        return {
+            "status": "ok",
+            "message": "User synced successfully from BambooHR",
+            "created": created,
+            "user_id": str(updated_user.id)
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Error syncing from BambooHR: {str(e)}")
 

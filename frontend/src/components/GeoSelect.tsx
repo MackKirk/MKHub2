@@ -24,6 +24,7 @@ export default function GeoSelect({ country, state, city, onChange, labels, requ
   const [cities, setCities] = useState<string[]>([]);
   const [loadingStates, setLoadingStates] = useState(false);
   const [loadingCities, setLoadingCities] = useState(false);
+  const [countriesLoaded, setCountriesLoaded] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -31,9 +32,15 @@ export default function GeoSelect({ country, state, city, onChange, labels, requ
       try {
         const res = await fetchJSON(`${API_BASE}/countries`);
         const arr: string[] = res?.data?.map((c: any) => c?.country).filter(Boolean) ?? [];
-        if (alive) setCountries(arr);
+        if (alive) {
+          setCountries(arr);
+          setCountriesLoaded(true);
+        }
       } catch (_e) {
-        if (alive) setCountries([]);
+        if (alive) {
+          setCountries([]);
+          setCountriesLoaded(true);
+        }
       }
     })();
     return () => {
@@ -48,6 +55,9 @@ export default function GeoSelect({ country, state, city, onChange, labels, requ
       setCities([]);
       return;
     }
+    // Wait for countries to load first
+    if (!countriesLoaded) return;
+    
     setLoadingStates(true);
     (async () => {
       try {
@@ -64,7 +74,7 @@ export default function GeoSelect({ country, state, city, onChange, labels, requ
         if (alive) setLoadingStates(false);
       }
     })();
-  }, [country]);
+  }, [country, countriesLoaded]);
 
   useEffect(() => {
     let alive = true;
@@ -72,6 +82,9 @@ export default function GeoSelect({ country, state, city, onChange, labels, requ
       setCities([]);
       return;
     }
+    // Wait for states to load first if we have a state
+    if (state && loadingStates) return;
+    
     setLoadingCities(true);
     (async () => {
       try {
@@ -96,7 +109,7 @@ export default function GeoSelect({ country, state, city, onChange, labels, requ
         if (alive) setLoadingCities(false);
       }
     })();
-  }, [country, state]);
+  }, [country, state, loadingStates]);
 
   const countryLabel = labels?.country ?? 'Country';
   const stateLabel = labels?.state ?? 'Province/State';

@@ -66,6 +66,7 @@ Examples:
     parser.add_argument("--skip-documents", action="store_true", help="Skip document synchronization")
     parser.add_argument("--limit", type=int, help="Limit number of employees to process")
     parser.add_argument("--no-photos", dest="include_photos", action="store_false", help="Skip profile photos in document sync")
+    parser.add_argument("--force-update-photos", action="store_true", help="Update profile photos even if they already exist")
     
     args = parser.parse_args()
     
@@ -127,7 +128,8 @@ Examples:
                 dry_run=args.dry_run,
                 employee_id=None,
                 include_photos=args.include_photos,
-                limit=args.limit
+                limit=args.limit,
+                force_update_photos=args.force_update_photos
             )
         except Exception as e:
             print(f"\n[ERROR] Error syncing documents: {e}")

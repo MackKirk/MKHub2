@@ -281,6 +281,90 @@ class BambooHRClient:
         """Get data from a custom table for an employee"""
         return self._request("GET", f"/employees/{employee_id}/tables/{table_name}")
     
+    def get_compensation(self, employee_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Get compensation data for an employee from the compensation table
+        
+        Returns the most recent active compensation record (endDate is null or most recent)
+        """
+        try:
+            # Try different possible endpoints
+            endpoints = [
+                f"/employees/{employee_id}/tables/compensation",
+                f"/employees/{employee_id}/table/compensation",
+            ]
+            
+            result = None
+            for endpoint in endpoints:
+                try:
+                    result = self._request("GET", endpoint)
+                    if result and (isinstance(result, (dict, list)) or (isinstance(result, str) and result.strip())):
+                        break
+                except Exception:
+                    continue
+            
+            if not result or (isinstance(result, str) and not result.strip()):
+                return None
+            
+            # Handle different response formats
+            rows = []
+            
+            if isinstance(result, list):
+                rows = result
+            elif isinstance(result, dict):
+                # Check if it's the format from the documentation: { "table": "compensation", "employees": { "id": { "rows": [...] } } }
+                if "employees" in result:
+                    employees_data = result["employees"]
+                    if isinstance(employees_data, dict) and employee_id in employees_data:
+                        emp_data = employees_data[employee_id]
+                        if isinstance(emp_data, dict) and "rows" in emp_data:
+                            rows = emp_data["rows"] if isinstance(emp_data["rows"], list) else [emp_data["rows"]]
+                # Check if it's a direct rows format
+                elif "rows" in result:
+                    rows = result["rows"] if isinstance(result["rows"], list) else [result["rows"]]
+                # Check if it's wrapped in employee
+                elif "employee" in result:
+                    emp_data = result["employee"]
+                    if isinstance(emp_data, dict):
+                        if "rows" in emp_data:
+                            rows = emp_data["rows"] if isinstance(emp_data["rows"], list) else [emp_data["rows"]]
+                        elif "compensation" in emp_data:
+                            comp_data = emp_data["compensation"]
+                            rows = comp_data if isinstance(comp_data, list) else [comp_data]
+            
+            if not rows:
+                return None
+            
+            # Find the most recent active compensation (endDate is null or most recent)
+            active_compensation = None
+            most_recent_date = None
+            
+            for row in rows:
+                if isinstance(row, dict):
+                    end_date = row.get("endDate")
+                    start_date = row.get("startDate")
+                    
+                    # Prefer records with no end date (active)
+                    if end_date is None or end_date == "":
+                        if active_compensation is None or (start_date and start_date > (most_recent_date or "")):
+                            active_compensation = row
+                            most_recent_date = start_date
+                    # Otherwise, use the most recent one
+                    elif start_date and (most_recent_date is None or start_date > most_recent_date):
+                        if active_compensation is None or active_compensation.get("endDate"):
+                            active_compensation = row
+                            most_recent_date = start_date
+            
+            # If no active record found, use the most recent one
+            if active_compensation is None and rows:
+                active_compensation = rows[0]
+            
+            return active_compensation
+            
+        except Exception as e:
+            # Compensation table might not exist or employee might not have compensation data
+            return None
+    
     def get_reports(self, report_id: str, format: str = "JSON") -> Any:
         """
         Get a report
