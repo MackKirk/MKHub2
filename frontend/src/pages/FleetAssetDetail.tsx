@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
 import InspectionChecklist from '@/components/InspectionChecklist';
+import { formatDateLocal } from '@/lib/dateUtils';
 
 type FleetAsset = {
   id: string;
@@ -861,7 +862,7 @@ function InspectionFormInline({ assetId, onSuccess, onCancel, employees }: {
   employees: any[];
 }) {
   const [form, setForm] = useState({
-    inspection_date: new Date().toISOString().split('T')[0],
+    inspection_date: formatDateLocal(new Date()),
     inspector_user_id: '',
     result: 'pass',
     notes: '',

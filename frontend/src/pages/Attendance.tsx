@@ -1,8 +1,9 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useRef, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import { api } from '@/lib/api';
 import { useConfirm } from '@/components/ConfirmProvider';
+import { formatDateLocal, getTodayLocal } from '@/lib/dateUtils';
 
 type Attendance = {
   id: string;
@@ -19,6 +20,7 @@ type Attendance = {
   job_name?: string | null;
   project_name?: string | null;
   hours_worked?: number | null;
+  break_minutes?: number | null;
   reason_text?: string | null;
   gps_lat?: number | null;
   gps_lng?: number | null;
@@ -44,6 +46,7 @@ type AttendanceEvent = {
   clock_out_status?: string | null;
   clock_out_reason?: string | null;
   hours_worked?: number | null;
+  break_minutes?: number | null;
   is_hours_worked?: boolean; // True if this is a "hours worked" entry (no specific clock-in/out times)
 };
 
@@ -83,16 +86,18 @@ const toLocalInputValue = (iso?: string | null) => {
 const toUtcISOString = (localValue?: string) => {
   if (!localValue) return null;
   // datetime-local input provides value in local time (YYYY-MM-DDTHH:mm)
-  // When you create new Date(localValue), JavaScript interprets it as local time
-  // and toISOString() automatically converts to UTC
-  // But we need to be explicit: treat the input as local time
+  // We need to treat this as local time and convert to UTC
+  // The safest way is to create a date in local time and let JavaScript handle the conversion
   const [datePart, timePart] = localValue.split('T');
+  if (!datePart || !timePart) return null;
+  
   const [year, month, day] = datePart.split('-').map(Number);
   const [hours, minutes] = timePart.split(':').map(Number);
   
-  // Create date in local timezone
-  const localDate = new Date(year, month - 1, day, hours, minutes);
-  // Convert to UTC ISO string
+  // Create date in local timezone (JavaScript Date constructor interprets as local time)
+  const localDate = new Date(year, month - 1, day, hours, minutes || 0, 0, 0);
+  
+  // Convert to UTC ISO string (this automatically handles timezone conversion)
   return localDate.toISOString();
 };
 
@@ -114,6 +119,16 @@ const formatHours = (hours?: number | null) => {
   const h = Math.floor(totalMinutes / 60);
   const m = totalMinutes % 60;
   return `${h}h ${m.toString().padStart(2, '0')}m`;
+};
+
+const formatBreak = (breakMinutes?: number | null) => {
+  if (breakMinutes === undefined || breakMinutes === null || breakMinutes === 0) return '--';
+  const h = Math.floor(breakMinutes / 60);
+  const m = breakMinutes % 60;
+  if (h > 0) {
+    return `${h}h ${m.toString().padStart(2, '0')}m`;
+  }
+  return `${m}m`;
 };
 
 const extractJobType = (reason?: string | null) => {
@@ -144,6 +159,10 @@ const isHoursWorkedEntry = (reason?: string | null): boolean => {
 const buildEvents = (attendances: Attendance[]): AttendanceEvent[] => {
   // NEW MODEL: Each attendance record is already a complete event
   // No need to group clock-in and clock-out records together
+  // Ensure attendances is always an array
+  if (!Array.isArray(attendances)) {
+    return [];
+  }
   const events: AttendanceEvent[] = attendances.map((att) => {
     // Use clock_in_time or clock_out_time for time_selected_utc (backward compatibility)
     const timeSelected = att.clock_in_time || att.clock_out_time || att.time_selected_utc;
@@ -164,6 +183,11 @@ const buildEvents = (attendances: Attendance[]): AttendanceEvent[] => {
       hoursWorked = diff / 3600000; // Convert to hours
     }
     
+    // Subtract break minutes from hours_worked if break exists
+    if (hoursWorked !== null && att.break_minutes !== null && att.break_minutes !== undefined && att.break_minutes > 0) {
+      hoursWorked = Math.max(0, hoursWorked - (att.break_minutes / 60));
+    }
+    
     return {
       event_id: att.id,
       worker_id: att.worker_id,
@@ -175,18 +199,19 @@ const buildEvents = (attendances: Attendance[]): AttendanceEvent[] => {
       clock_in_id: att.clock_in_time ? att.id : null,
       // For "hours worked", store the date (not time) so we can use it for editing
       clock_in_time: isHoursWorked && att.clock_in_time
-        ? new Date(att.clock_in_time).toISOString().slice(0, 10) + 'T00:00:00Z'
+        ? formatDateLocal(new Date(att.clock_in_time)) + 'T00:00:00Z'
         : att.clock_in_time || null,
       clock_in_status: att.clock_in_time ? att.status : null,
       clock_in_reason: att.clock_in_time ? att.reason_text : null,
       clock_out_id: att.clock_out_time ? att.id : null,
       // For "hours worked", store the date (not time) so we can use it for editing
       clock_out_time: isHoursWorked && att.clock_out_time
-        ? new Date(att.clock_out_time).toISOString().slice(0, 10) + 'T00:00:00Z'
+        ? formatDateLocal(new Date(att.clock_out_time)) + 'T00:00:00Z'
         : att.clock_out_time || null,
       clock_out_status: att.clock_out_time ? att.status : null,
       clock_out_reason: att.clock_out_time ? att.reason_text : null,
       hours_worked: hoursWorked,
+      break_minutes: att.break_minutes || null,
       is_hours_worked: isHoursWorked,
     };
   });
@@ -210,6 +235,10 @@ export default function Attendance() {
   });
   const [showModal, setShowModal] = useState(false);
   const [editingEvent, setEditingEvent] = useState<AttendanceEvent | null>(null);
+  const [selectedWorkers, setSelectedWorkers] = useState<string[]>([]);
+  const [workerDropdownOpen, setWorkerDropdownOpen] = useState(false);
+  const [workerSearch, setWorkerSearch] = useState('');
+  const workerDropdownRef = useRef<HTMLDivElement>(null);
   const [formData, setFormData] = useState({
     worker_id: '',
     job_type: '0',
@@ -220,6 +249,8 @@ export default function Attendance() {
     hours_worked: '',
   });
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [selectedEvents, setSelectedEvents] = useState<Set<string>>(new Set());
+  const [deletingSelected, setDeletingSelected] = useState(false);
 
   // Build query string for filters
   const queryParams = new URLSearchParams();
@@ -236,33 +267,78 @@ export default function Attendance() {
     queryKey: ['settings-attendance', queryString, refreshKey],
     queryFn: async () => {
       const result = await api<Attendance[]>('GET', url);
-      return result;
+      // Ensure result is always an array
+      return Array.isArray(result) ? result : [];
     },
   });
 
   const attendanceEvents = useMemo(
-    () => buildEvents(attendances || []),
+    () => buildEvents(Array.isArray(attendances) ? attendances : []),
     [attendances]
   );
 
   const { data: users } = useQuery({
-    queryKey: ['users'],
-    queryFn: () => api<User[]>('GET', '/users'),
+    queryKey: ['employees'],
+    queryFn: async () => {
+      const result = await api<any[]>('GET', '/employees');
+      return Array.isArray(result) ? result : [];
+    },
   });
 
   const { data: projects = [] } = useQuery({
     queryKey: ['attendance-projects'],
-    queryFn: () => api<Project[]>('GET', '/projects'),
+    queryFn: async () => {
+      const result = await api<Project[]>('GET', '/projects');
+      return Array.isArray(result) ? result : [];
+    },
   });
 
   const jobOptions = useMemo(() => {
-    const projectJobs = (projects || []).map((p) => ({
+    const projectsArray = Array.isArray(projects) ? projects : [];
+    const projectJobs = projectsArray.map((p) => ({
       id: p.id,
       code: p.code || p.id,
       name: p.name,
     }));
     return [...PREDEFINED_JOBS, ...projectJobs];
   }, [projects]);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (workerDropdownRef.current && !workerDropdownRef.current.contains(event.target as Node)) {
+        setWorkerDropdownOpen(false);
+      }
+    };
+
+    if (workerDropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [workerDropdownOpen]);
+
+  // Filter employees by search
+  const filteredEmployees = useMemo(() => {
+    if (!users || !Array.isArray(users)) return [];
+    if (!workerSearch) return users;
+    const searchLower = workerSearch.toLowerCase();
+    return users.filter((u: any) => {
+      const name = (u.name || u.username || '').toLowerCase();
+      return name.includes(searchLower);
+    });
+  }, [users, workerSearch]);
+
+  const toggleWorker = (workerId: string) => {
+    setSelectedWorkers((prev) => {
+      const prevArray = Array.isArray(prev) ? prev : [];
+      return prevArray.includes(workerId) 
+        ? prevArray.filter((id) => id !== workerId) 
+        : [...prevArray, workerId];
+    });
+  };
 
   const resetForm = () => {
     setFormData({
@@ -274,12 +350,15 @@ export default function Attendance() {
       entry_mode: 'time',
       hours_worked: '',
     });
+    setSelectedWorkers([]);
+    setWorkerSearch('');
     setEditingEvent(null);
   };
 
   const handleOpenModal = (event?: AttendanceEvent) => {
     if (event) {
       setEditingEvent(event);
+      setSelectedWorkers([]); // Clear selection when editing
       
       // Detect if this event was created as "hours worked"
       const isHoursWorked = event.is_hours_worked || 
@@ -306,11 +385,11 @@ export default function Attendance() {
         // For "hours worked", clock_in_time contains the date at midnight (YYYY-MM-DDT00:00:00Z)
         // Extract date part and format for date input
         if (event.clock_in_time) {
-          const datePart = new Date(event.clock_in_time).toISOString().slice(0, 10);
+          const datePart = formatDateLocal(new Date(event.clock_in_time));
           clockInTimeValue = `${datePart}T00:00`; // Set to midnight for date input
         } else if (event.clock_out_time) {
           // Fallback to clock_out_time if clock_in_time is not available
-          const datePart = new Date(event.clock_out_time).toISOString().slice(0, 10);
+          const datePart = formatDateLocal(new Date(event.clock_out_time));
           clockInTimeValue = `${datePart}T00:00`;
         }
       } else {
@@ -376,12 +455,28 @@ export default function Attendance() {
         exact: false,
       });
       
-      // Force refetch and wait for it
+      // Force refetch attendance first
       const refetchResult = await queryClient.refetchQueries({
         queryKey: ['settings-attendance'],
         exact: false,
       });
       console.log('Refetch after delete:', refetchResult);
+      
+      // Small delay to ensure backend has processed the deletion
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      // Also invalidate and refetch timesheet queries so the entry disappears from project timesheets
+      // Invalidate all timesheet queries for all projects
+      queryClient.invalidateQueries({
+        queryKey: ['timesheet'],
+        exact: false,
+      });
+      
+      // Force refetch all timesheet queries immediately
+      await queryClient.refetchQueries({
+        queryKey: ['timesheet'],
+        exact: false,
+      });
       
       // Force component re-render
       setRefreshKey(prev => prev + 1);
@@ -395,9 +490,114 @@ export default function Attendance() {
     }
   };
 
+  const handleToggleSelect = (eventId: string) => {
+    setSelectedEvents((prev) => {
+      const newSet = new Set(prev);
+      if (newSet.has(eventId)) {
+        newSet.delete(eventId);
+      } else {
+        newSet.add(eventId);
+      }
+      return newSet;
+    });
+  };
+
+  const handleSelectAll = () => {
+    if (selectedEvents.size === attendanceEvents.length) {
+      // Deselect all
+      setSelectedEvents(new Set());
+    } else {
+      // Select all
+      setSelectedEvents(new Set(attendanceEvents.map((e) => e.event_id)));
+    }
+  };
+
+  const handleDeleteSelected = async () => {
+    if (selectedEvents.size === 0) {
+      toast.error('No events selected');
+      return;
+    }
+
+    const result = await confirm({
+      title: 'Delete Selected Attendance Events',
+      message: `Are you sure you want to delete ${selectedEvents.size} attendance event(s)? This action cannot be undone.`,
+      confirmText: 'Delete All',
+      cancelText: 'Cancel',
+    });
+    if (result !== 'confirm') {
+      return;
+    }
+
+    setDeletingSelected(true);
+    const selectedArray = Array.from(selectedEvents);
+    let successCount = 0;
+    let errorCount = 0;
+
+    try {
+      for (const eventId of selectedArray) {
+        try {
+          const event = attendanceEvents.find((e) => e.event_id === eventId);
+          if (!event) continue;
+
+          const attendanceId = event.clock_in_id || event.clock_out_id || event.event_id;
+          if (!attendanceId) {
+            errorCount++;
+            continue;
+          }
+
+          await api('DELETE', `/settings/attendance/${attendanceId}`);
+          successCount++;
+        } catch (err: any) {
+          errorCount++;
+          console.error(`Failed to delete event ${eventId}:`, err);
+        }
+      }
+
+      // Invalidate and refetch
+      await queryClient.invalidateQueries({
+        queryKey: ['settings-attendance'],
+        exact: false,
+      });
+
+      await queryClient.refetchQueries({
+        queryKey: ['settings-attendance'],
+        exact: false,
+      });
+
+      // Also invalidate timesheet queries
+      queryClient.invalidateQueries({
+        queryKey: ['timesheet'],
+        exact: false,
+      });
+
+      await queryClient.refetchQueries({
+        queryKey: ['timesheet'],
+        exact: false,
+      });
+
+      setRefreshKey((prev) => prev + 1);
+      setSelectedEvents(new Set());
+
+      if (errorCount > 0) {
+        toast.error(`${successCount} deleted, ${errorCount} failed`);
+      } else {
+        toast.success(`${successCount} attendance event(s) deleted`);
+      }
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to delete selected events');
+    } finally {
+      setDeletingSelected(false);
+    }
+  };
+
   const handleSubmit = async () => {
-    if (!formData.worker_id) {
-      toast.error('Please select a worker');
+    // For editing, use formData.worker_id; for creating, use selectedWorkers
+    const workersToProcess = editingEvent 
+      ? [formData.worker_id] 
+      : (Array.isArray(selectedWorkers) && selectedWorkers.length > 0 ? selectedWorkers : []);
+    
+    if (workersToProcess.length === 0) {
+      toast.error(editingEvent ? 'Please select a worker' : 'Please select at least one worker');
       return;
     }
 
@@ -463,34 +663,116 @@ export default function Attendance() {
           return;
         }
 
-        await api('PUT', `/settings/attendance/${attendanceId}`, {
-          clock_in_time: clockInUtc,
-          clock_out_time: clockOutUtc,
-          status: formData.status,
-          ...(editingEvent.shift_id ? {} : { reason_text: reasonText }),
-        });
-        
-        toast.success('Attendance event updated');
+        try {
+          await api('PUT', `/settings/attendance/${attendanceId}`, {
+            clock_in_time: clockInUtc,
+            clock_out_time: clockOutUtc,
+            status: formData.status,
+            ...(editingEvent.shift_id ? {} : { reason_text: reasonText }),
+          });
+          
+          toast.success('Attendance event updated');
+          
+          // Invalidate and refetch
+          await queryClient.invalidateQueries({
+            queryKey: ['settings-attendance'],
+            exact: false,
+          });
+          
+          await queryClient.refetchQueries({
+            queryKey: ['settings-attendance'],
+            exact: false,
+          });
+          
+          setRefreshKey(prev => prev + 1);
+          
+          setShowModal(false);
+          resetForm();
+        } catch (e: any) {
+          // Show specific error message and keep modal open
+          // The api function already extracts the detail from the backend response
+          const errorMsg = e.message || 'Failed to update attendance';
+          toast.error(errorMsg, { duration: 5000 });
+          // Don't close modal - let user fix and retry
+          return;
+        }
       } else {
-        // NEW MODEL: Create single attendance record with both clock_in_time and clock_out_time
+        // NEW MODEL: Create attendance records for each selected worker
         // For "hours worked", we MUST have both clock-in and clock-out
         if (formData.entry_mode === 'hours' && !clockOutUtc) {
           toast.error('Failed to calculate clock-out time for hours worked entry');
           return;
         }
 
-        // Create single record with clock-in (and clock-out if provided)
-        await api('POST', '/settings/attendance/manual', {
-          worker_id: formData.worker_id,
-          type: clockInUtc && clockOutUtc ? 'in' : (clockInUtc ? 'in' : 'out'), // Type for backward compatibility
-          time_selected_utc: clockInUtc || clockOutUtc, // For backward compatibility
-          clock_in_time: clockInUtc,
-          clock_out_time: clockOutUtc,
-          status: formData.status,
-          reason_text: reasonText,
-        });
-        
-        toast.success('Attendance event created');
+        // Create attendance for each selected worker
+        let successCount = 0;
+        let errorCount = 0;
+        const errors: string[] = [];
+
+        for (const workerId of workersToProcess) {
+          try {
+            await api('POST', '/settings/attendance/manual', {
+              worker_id: workerId,
+              type: clockInUtc && clockOutUtc ? 'in' : (clockInUtc ? 'in' : 'out'), // Type for backward compatibility
+              time_selected_utc: clockInUtc || clockOutUtc, // For backward compatibility
+              clock_in_time: clockInUtc,
+              clock_out_time: clockOutUtc,
+              status: formData.status,
+              reason_text: reasonText,
+            });
+            successCount++;
+          } catch (e: any) {
+            errorCount++;
+            const usersArray = Array.isArray(users) ? users : [];
+            const workerName = usersArray.find((u: any) => u.id === workerId)?.name || usersArray.find((u: any) => u.id === workerId)?.username || workerId;
+            // The api function already extracts the detail from the backend response
+            // e.message contains the backend error message (e.g., "Cannot create attendance: ...")
+            let errorMsg = e.message || 'Failed to create attendance';
+            
+            // If the error message is a conflict message from backend, it's already user-friendly
+            // Just add worker name for context if not already in the message
+            if (errorMsg.includes('Cannot create attendance') || errorMsg.includes('Cannot update attendance')) {
+              // Backend message is already clear and user-friendly, add worker name for context
+              errors.push(`${workerName}: ${errorMsg}`);
+            } else {
+              // For other errors, still add worker name
+              errors.push(`${workerName}: ${errorMsg}`);
+            }
+          }
+        }
+
+        if (errorCount > 0) {
+          // Show specific error messages
+          if (errors.length > 0) {
+            // Show the first error (most relevant) as a toast
+            toast.error(errors[0], { duration: 5000 });
+            // If there are multiple errors, show them all in console and as additional toasts
+            if (errors.length > 1) {
+              errors.slice(1).forEach((err) => {
+                toast.error(err, { duration: 5000 });
+              });
+            }
+          } else {
+            toast.error(`${successCount} attendance${successCount > 1 ? 's' : ''} created, ${errorCount} failed.`);
+          }
+          // Don't close modal or reset form when there are errors - let user fix and retry
+          // Only invalidate queries if some succeeded
+          if (successCount > 0) {
+            await queryClient.invalidateQueries({
+              queryKey: ['settings-attendance'],
+              exact: false,
+            });
+            await queryClient.refetchQueries({
+              queryKey: ['settings-attendance'],
+              exact: false,
+            });
+            setRefreshKey(prev => prev + 1);
+          }
+          // Return early - don't close modal or reset form
+          return;
+        } else {
+          toast.success(`${successCount} attendance${successCount > 1 ? 's' : ''} created successfully`);
+        }
       }
 
       // Invalidate and refetch
@@ -515,12 +797,14 @@ export default function Attendance() {
     }
   };
 
-  const isSubmitDisabled = !formData.worker_id
+  const isSubmitDisabled = editingEvent
+    ? (!formData.worker_id || !formData.clock_in_time)
+    : (Array.isArray(selectedWorkers) ? selectedWorkers.length : 0) === 0
     ? true
     : !formData.clock_in_time
     ? true
     : formData.entry_mode === 'time'
-    ? (!editingEvent && !formData.clock_out_time) // Clock-out required only for new entries in time mode
+    ? !formData.clock_out_time // Clock-out required for new entries in time mode
     : !formData.hours_worked || parseFloat(formData.hours_worked || '0') <= 0;
 
   const formatDate = (dateStr: string) => {
@@ -559,7 +843,7 @@ export default function Attendance() {
             className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
           >
             <option value="">All Workers</option>
-            {(users || []).map((u) => (
+            {(Array.isArray(users) ? users : []).map((u) => (
               <option key={u.id} value={u.id}>
                 {u.name || u.username}
               </option>
@@ -606,16 +890,41 @@ export default function Attendance() {
         </div>
       )}
 
+      {/* Bulk Actions */}
+      {selectedEvents.size > 0 && (
+        <div className="mb-4 rounded-xl border bg-blue-50 p-4 flex items-center justify-between">
+          <div className="text-sm font-medium text-blue-900">
+            {selectedEvents.size} event(s) selected
+          </div>
+          <button
+            onClick={handleDeleteSelected}
+            disabled={deletingSelected}
+            className="px-4 py-2 bg-red-600 text-white rounded-lg font-semibold hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {deletingSelected ? 'Deleting...' : 'Delete All Selected'}
+          </button>
+        </div>
+      )}
+
       {/* Table */}
       <div className="rounded-xl border bg-white overflow-hidden">
         <table className="w-full text-sm">
           <thead className="bg-gray-50">
             <tr>
+              <th className="p-3 text-left w-12">
+                <input
+                  type="checkbox"
+                  checked={attendanceEvents.length > 0 && selectedEvents.size === attendanceEvents.length}
+                  onChange={handleSelectAll}
+                  className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                />
+              </th>
               <th className="p-3 text-left">Worker</th>
               <th className="p-3 text-left">Clock In</th>
               <th className="p-3 text-left">Clock Out</th>
               <th className="p-3 text-left">Job/Project</th>
               <th className="p-3 text-left">Hours</th>
+              <th className="p-3 text-left">Break</th>
               <th className="p-3 text-left">Status</th>
               <th className="p-3 text-left">Actions</th>
             </tr>
@@ -623,25 +932,33 @@ export default function Attendance() {
           <tbody>
             {isLoading ? (
               <tr>
-                <td colSpan={7} className="p-4">
+                <td colSpan={9} className="p-4">
                   <div className="h-6 bg-gray-100 animate-pulse rounded" />
                 </td>
               </tr>
             ) : error ? (
               <tr>
-                <td colSpan={7} className="p-4 text-center text-red-600">
+                <td colSpan={9} className="p-4 text-center text-red-600">
                   Error loading data. Please check console for details.
                 </td>
               </tr>
             ) : attendanceEvents.length === 0 ? (
               <tr>
-                <td colSpan={7} className="p-4 text-center text-gray-500">
+                <td colSpan={9} className="p-4 text-center text-gray-500">
                   No attendance records found
                 </td>
               </tr>
             ) : (
               attendanceEvents.map((event) => (
                 <tr key={event.event_id} className="border-t hover:bg-gray-50">
+                  <td className="p-3">
+                    <input
+                      type="checkbox"
+                      checked={selectedEvents.has(event.event_id)}
+                      onChange={() => handleToggleSelect(event.event_id)}
+                      className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                    />
+                  </td>
                   <td className="p-3">{event.worker_name}</td>
                   <td className="p-3">
                     {event.is_hours_worked ? '-' : (event.clock_in_time ? formatDateTime(event.clock_in_time) : '--')}
@@ -657,6 +974,7 @@ export default function Attendance() {
                         : 'No Project')}
                   </td>
                   <td className="p-3">{formatHours(event.hours_worked)}</td>
+                  <td className="p-3">{formatBreak(event.break_minutes)}</td>
                   <td className="p-3">
                     <span
                       className={`px-2 py-1 rounded text-xs font-medium ${
@@ -710,22 +1028,139 @@ export default function Attendance() {
               {editingEvent ? 'Edit Attendance Event' : 'New Attendance Event'}
             </h2>
             <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Worker *</label>
-                <select
-                  value={formData.worker_id}
-                  onChange={(e) => setFormData({ ...formData, worker_id: e.target.value })}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2"
-                  required
-                >
-                  <option value="">Select a worker...</option>
-                  {(users || []).map((u) => (
-                    <option key={u.id} value={u.id}>
-                      {u.name || u.username}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              {editingEvent ? (
+                // When editing, show simple select (single worker)
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Worker *</label>
+                  <select
+                    value={formData.worker_id}
+                    onChange={(e) => setFormData({ ...formData, worker_id: e.target.value })}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2"
+                    required
+                  >
+                    <option value="">Select a worker...</option>
+                    {(Array.isArray(users) ? users : []).map((u) => (
+                      <option key={u.id} value={u.id}>
+                        {u.name || u.username}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ) : (
+                // When creating, show multi-select with search
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Workers * {(Array.isArray(selectedWorkers) ? selectedWorkers.length : 0) > 0 && `(${Array.isArray(selectedWorkers) ? selectedWorkers.length : 0} selected)`}
+                  </label>
+                  <div className="relative" ref={workerDropdownRef}>
+                    <button
+                      type="button"
+                      onClick={() => setWorkerDropdownOpen(!workerDropdownOpen)}
+                      className="w-full border rounded px-3 py-2 text-left bg-white flex items-center justify-between"
+                    >
+                      <span className="text-sm text-gray-600">
+                        {(Array.isArray(selectedWorkers) ? selectedWorkers.length : 0) === 0
+                          ? 'Select workers...'
+                          : `${Array.isArray(selectedWorkers) ? selectedWorkers.length : 0} worker${(Array.isArray(selectedWorkers) ? selectedWorkers.length : 0) > 1 ? 's' : ''} selected`}
+                      </span>
+                      <span className="text-gray-400">{workerDropdownOpen ? '▲' : '▼'}</span>
+                    </button>
+                    {workerDropdownOpen && (
+                      <div 
+                        className="absolute z-50 mt-1 w-full rounded-lg border bg-white shadow-lg max-h-60 overflow-auto"
+                        onMouseDown={(e) => e.stopPropagation()}
+                      >
+                        <div className="p-2 border-b space-y-2">
+                          <input
+                            type="text"
+                            placeholder="Search workers..."
+                            value={workerSearch}
+                            onChange={(e) => setWorkerSearch(e.target.value)}
+                            className="w-full border rounded px-2 py-1 text-sm"
+                            onMouseDown={(e) => e.stopPropagation()}
+                          />
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onMouseDown={(e) => e.stopPropagation()}
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                if (!Array.isArray(filteredEmployees)) return;
+                                const allFilteredIds = filteredEmployees.map((u: any) => u.id);
+                                setSelectedWorkers((prev) => {
+                                  const prevArray = Array.isArray(prev) ? prev : [];
+                                  const newSet = new Set([...prevArray, ...allFilteredIds]);
+                                  return Array.from(newSet);
+                                });
+                              }}
+                              className="text-xs px-2 py-1 rounded border hover:bg-gray-50"
+                            >
+                              Select All
+                            </button>
+                            <button
+                              type="button"
+                              onMouseDown={(e) => e.stopPropagation()}
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                setSelectedWorkers([]);
+                              }}
+                              className="text-xs px-2 py-1 rounded border hover:bg-gray-50"
+                            >
+                              Clear All
+                            </button>
+                          </div>
+                        </div>
+                        <div className="p-2">
+                          {(Array.isArray(filteredEmployees) && filteredEmployees.length > 0) ? (
+                            filteredEmployees.map((u: any) => (
+                              <label
+                                key={u.id}
+                                className="flex items-center gap-2 p-2 hover:bg-gray-50 cursor-pointer rounded"
+                                onMouseDown={(e) => e.stopPropagation()}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={Array.isArray(selectedWorkers) && selectedWorkers.includes(u.id)}
+                                  onChange={() => toggleWorker(u.id)}
+                                  className="rounded"
+                                  onMouseDown={(e) => e.stopPropagation()}
+                                />
+                                <span className="text-sm">{u.name || u.username}</span>
+                              </label>
+                            ))
+                          ) : (
+                            <div className="p-2 text-sm text-gray-600">No workers found</div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  {Array.isArray(selectedWorkers) && selectedWorkers.length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {selectedWorkers.map((workerId) => {
+                        const worker = (Array.isArray(users) ? users : []).find((u: any) => u.id === workerId);
+                        return (
+                          <span
+                            key={workerId}
+                            className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-800 rounded text-sm"
+                          >
+                            {worker?.name || worker?.username || workerId}
+                            <button
+                              type="button"
+                              onClick={() => toggleWorker(workerId)}
+                              className="text-blue-600 hover:text-blue-800"
+                            >
+                              ×
+                            </button>
+                          </span>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
               {!editingEvent?.shift_id && (
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Job *</label>
@@ -774,7 +1209,7 @@ export default function Attendance() {
                       setFormData((prev) => {
                         // When switching to 'hours', reset clock_in_time to date at midnight
                         // and calculate hours_worked from clock_in and clock_out if both exist
-                        const datePart = prev.clock_in_time ? prev.clock_in_time.slice(0, 10) : new Date().toISOString().slice(0, 10);
+                        const datePart = prev.clock_in_time ? prev.clock_in_time.slice(0, 10) : getTodayLocal();
                         let hoursWorked = '';
                         
                         // If we have both clock_in and clock_out, calculate hours

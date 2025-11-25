@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { Link } from 'react-router-dom';
 import { useState, useMemo } from 'react';
+import { getCurrentMonthLocal } from '@/lib/dateUtils';
 import InviteUserModal from '@/components/InviteUserModal';
 
 type User = { id:string, username:string, email?:string, name?:string, roles?:string[], is_active?:boolean, profile_photo_file_id?:string };
@@ -29,7 +30,7 @@ export default function Users(){
   });
   
   const [showInviteModal, setShowInviteModal] = useState(false);
-  const month = new Date().toISOString().slice(0,7);
+  const month = getCurrentMonthLocal();
   const { data:summary } = useQuery({ 
     queryKey:['timesheetSummary', month], 
     queryFn: ()=> api<any[]>('GET', `/projects/timesheet/summary?month=${encodeURIComponent(month)}`) 

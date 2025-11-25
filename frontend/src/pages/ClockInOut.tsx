@@ -1,7 +1,9 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
+import { formatDateLocal, getTodayLocal } from '@/lib/dateUtils';
 
 // Helper function to convert 24h time (HH:MM:SS or HH:MM) to 12h format (h:mm AM/PM)
 function formatTime12h(timeStr: string | null | undefined): string {
@@ -14,6 +16,14 @@ function formatTime12h(timeStr: string | null | undefined): string {
   const period = hours >= 12 ? 'PM' : 'AM';
   const hours12 = hours === 0 ? 12 : hours > 12 ? hours - 12 : hours;
   return `${hours12}:${minutes} ${period}`;
+}
+
+// Helper function to format date as YYYY-MM-DD in local timezone (not UTC)
+function formatDateLocal(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 }
 
 // Helper to format date to Portuguese day name
@@ -74,6 +84,8 @@ type WeeklySummaryDay = {
   job_name: string;
   hours_worked_minutes: number;
   hours_worked_formatted: string;
+  break_minutes?: number;
+  break_formatted?: string | null;
 };
 
 type WeeklySummary = {
@@ -82,6 +94,10 @@ type WeeklySummary = {
   days: WeeklySummaryDay[];
   total_minutes: number;
   total_hours_formatted: string;
+  reg_minutes?: number;
+  reg_hours_formatted?: string;
+  total_break_minutes?: number;
+  total_break_formatted?: string;
 };
 
 // Predefined job options
@@ -95,9 +111,21 @@ const PREDEFINED_JOBS = [
 
 export default function ClockInOut() {
   const queryClient = useQueryClient();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
+  
+  // Get query params for auto-opening modal from Schedule page
+  const shiftIdFromUrl = searchParams.get('shift_id');
+  const typeFromUrl = searchParams.get('type') as 'in' | 'out' | null;
+  const dateFromUrl = searchParams.get('date');
+  
   const [selectedDate, setSelectedDate] = useState<string>(() => {
+    // Use date from URL if provided, otherwise use today
+    if (dateFromUrl) {
+      return dateFromUrl;
+    }
     const today = new Date();
-    return today.toISOString().slice(0, 10);
+    return formatDateLocal(today);
   });
   const [selectedJob, setSelectedJob] = useState<string>('');
   const [selectedHour12, setSelectedHour12] = useState<string>('');
@@ -120,18 +148,33 @@ export default function ClockInOut() {
     return sunday;
   });
 
-  const weekStartStr = useMemo(() => weekStart.toISOString().slice(0, 10), [weekStart]);
+  const weekStartStr = useMemo(() => formatDateLocal(weekStart), [weekStart]);
 
   // Get today's date string
   const todayStr = useMemo(() => {
     const today = new Date();
-    return today.toISOString().slice(0, 10);
+    return formatDateLocal(today);
   }, []);
 
   // Fetch current user
   const { data: currentUser } = useQuery({
     queryKey: ['me'],
     queryFn: () => api<any>('GET', '/auth/me'),
+  });
+
+  // Check if user has unrestricted clock in/out permission
+  const hasUnrestrictedClock = useMemo(() => {
+    return currentUser?.permissions?.includes('timesheet:unrestricted_clock') || false;
+  }, [currentUser?.permissions]);
+
+  // Fetch shift by ID if shift_id is provided in URL (must be before selectedDateShift)
+  const { data: shiftById } = useQuery({
+    queryKey: ['shift-by-id', shiftIdFromUrl],
+    queryFn: () => {
+      if (!shiftIdFromUrl) return Promise.resolve(null);
+      return api<Shift>('GET', `/dispatch/shifts/${shiftIdFromUrl}`);
+    },
+    enabled: !!shiftIdFromUrl,
   });
 
   // Fetch scheduled shifts for selected date
@@ -149,10 +192,15 @@ export default function ClockInOut() {
     return shiftsForSelectedDate.filter(s => s.status === 'scheduled');
   }, [shiftsForSelectedDate]);
 
-  // Get the first scheduled shift for selected date (if any)
+  // Get the shift for selected date - prefer shift from URL if available
   const selectedDateShift = useMemo(() => {
+    // If we have a shift from URL, use it
+    if (shiftById && shiftById.date === selectedDate) {
+      return shiftById;
+    }
+    // Otherwise, use the first scheduled shift for selected date
     return scheduledShifts.length > 0 ? scheduledShifts[0] : null;
-  }, [scheduledShifts]);
+  }, [scheduledShifts, shiftById, selectedDate]);
 
   // Fetch attendances for selected date's shift (if scheduled)
   const { data: attendances = [], refetch: refetchAttendances } = useQuery({
@@ -196,6 +244,26 @@ export default function ClockInOut() {
       return allAttendances;
     },
     enabled: !!currentUser?.id,
+  });
+
+  // Fetch project details when a shift is selected
+  const { data: project } = useQuery({
+    queryKey: ['project', selectedDateShift?.project_id],
+    queryFn: () => api<any>('GET', `/projects/${selectedDateShift?.project_id}`),
+    enabled: !!selectedDateShift?.project_id,
+  });
+
+  // Fetch employees list for worker and supervisor names
+  const { data: employees } = useQuery({
+    queryKey: ['employees'],
+    queryFn: () => api<any[]>('GET', '/employees'),
+  });
+
+  // Fetch worker's employee profile to get supervisor
+  const { data: workerProfile } = useQuery({
+    queryKey: ['worker-profile', selectedDateShift?.worker_id],
+    queryFn: () => api<any>('GET', `/users/${selectedDateShift?.worker_id}`),
+    enabled: !!selectedDateShift?.worker_id,
   });
 
   // NEW MODEL: Each attendance record is already a complete event
@@ -360,7 +428,7 @@ export default function ClockInOut() {
       const now = new Date();
       const hour24 = now.getHours();
       const minute = now.getMinutes();
-      const roundedMin = Math.round(minute / 15) * 15;
+      const roundedMin = Math.round(minute / 5) * 5;
       const finalMinute = roundedMin === 60 ? 0 : roundedMin;
       const finalHour = roundedMin === 60 ? (hour24 === 23 ? 0 : hour24 + 1) : hour24;
 
@@ -404,6 +472,45 @@ export default function ClockInOut() {
     );
   };
 
+  // Auto-open modal when coming from Schedule page
+  useEffect(() => {
+    if (shiftIdFromUrl && typeFromUrl && shiftById) {
+      // Set the date from URL if provided
+      if (dateFromUrl) {
+        setSelectedDate(dateFromUrl);
+      }
+      
+      // Set clock type to open modal
+      setClockType(typeFromUrl);
+      
+      // Set default time to now (rounded to 5 min) in 12h format
+      const now = new Date();
+      const hour24 = now.getHours();
+      const minute = now.getMinutes();
+      const roundedMin = Math.round(minute / 5) * 5;
+      const finalMinute = roundedMin === 60 ? 0 : roundedMin;
+      const finalHour = roundedMin === 60 ? (hour24 === 23 ? 0 : hour24 + 1) : hour24;
+
+      const hour12 = finalHour === 0 ? 12 : finalHour > 12 ? finalHour - 12 : finalHour;
+      const amPm = finalHour >= 12 ? 'PM' : 'AM';
+
+      setSelectedHour12(String(hour12));
+      setSelectedMinute(String(finalMinute).padStart(2, '0'));
+      setSelectedAmPm(amPm);
+
+      // Calculate 24h format for selectedTime
+      const hour24Final = amPm === 'PM' && hour12 !== 12 ? hour12 + 12 : amPm === 'AM' && hour12 === 12 ? 0 : hour12;
+      setSelectedTime(`${String(hour24Final).padStart(2, '0')}:${String(finalMinute).padStart(2, '0')}`);
+      
+      // Clear URL params after opening modal
+      const newSearchParams = new URLSearchParams(searchParams);
+      newSearchParams.delete('shift_id');
+      newSearchParams.delete('type');
+      newSearchParams.delete('date');
+      setSearchParams(newSearchParams, { replace: true });
+    }
+  }, [shiftIdFromUrl, typeFromUrl, dateFromUrl, shiftById, searchParams, setSearchParams]);
+
   // Auto-get location when opening clock modal
   useEffect(() => {
     if (clockType) {
@@ -438,10 +545,10 @@ export default function ClockInOut() {
       return;
     }
 
-    // Validate time format and 15-minute increments
+    // Validate time format and 5-minute increments
     const [hours, minutes] = selectedTime.split(':').map(Number);
-    if (isNaN(hours) || isNaN(minutes) || hours < 0 || hours > 23 || ![0, 15, 30, 45].includes(minutes)) {
-      toast.error('Please select a valid time in 15-minute increments');
+    if (isNaN(hours) || isNaN(minutes) || hours < 0 || hours > 23 || minutes % 5 !== 0 || minutes < 0 || minutes > 59) {
+      toast.error('Please select a valid time in 5-minute increments');
       return;
     }
 
@@ -468,7 +575,7 @@ export default function ClockInOut() {
 
       let result;
 
-      // If there's a scheduled shift, use normal attendance route
+      // If there's a scheduled shift (from URL or selected date), use normal attendance route
       if (selectedDateShift) {
         payload.shift_id = selectedDateShift.id;
         result = await api('POST', '/dispatch/attendance', payload);
@@ -606,60 +713,132 @@ export default function ClockInOut() {
           {selectedDateShift && (
             <div className="border rounded-lg p-4 space-y-4">
               <div>
-                <h3 className="font-semibold text-gray-900 mb-2">Shift Details</h3>
-                <div className="text-sm space-y-1">
+                <h3 className="font-semibold text-gray-900 mb-4">Shift Details</h3>
+                <div className="space-y-3">
+                  {/* Project Name */}
+                  {selectedDateShift.project_name && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Project</label>
+                      <div className="text-gray-900">{selectedDateShift.project_name}</div>
+                    </div>
+                  )}
+
+                  {/* Date and Time */}
                   <div>
-                    <span className="text-gray-600">Project:</span>{' '}
-                    <span className="font-medium">{selectedDateShift.project_name || 'Unknown'}</span>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Date & Time</label>
+                    <div className="text-gray-900">
+                      {new Date(selectedDateShift.date).toLocaleDateString()} • {formatTime12h(selectedDateShift.start_time)} - {formatTime12h(selectedDateShift.end_time)}
+                    </div>
                   </div>
-                  <div>
-                    <span className="text-gray-600">Time:</span>{' '}
-                    <span className="font-medium">
-                      {formatTime12h(selectedDateShift.start_time)} - {formatTime12h(selectedDateShift.end_time)}
-                    </span>
-                  </div>
+
+                  {/* Worker */}
+                  {(() => {
+                    const worker = employees?.find((e: any) => e.id === selectedDateShift.worker_id);
+                    return worker ? (
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Worker</label>
+                        <div className="text-gray-900">{worker.name || worker.username}</div>
+                      </div>
+                    ) : null;
+                  })()}
+
+                  {/* Supervisor of Worker */}
+                  {workerProfile?.manager_user_id && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Supervisor</label>
+                      <div className="text-gray-900">
+                        {(() => {
+                          const supervisor = employees?.find((e: any) => e.id === workerProfile.manager_user_id);
+                          return supervisor?.name || supervisor?.username || 'N/A';
+                        })()}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Job Type */}
+                  {selectedDateShift.job_name && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Job Type</label>
+                      <div className="text-gray-900">{selectedDateShift.job_name}</div>
+                    </div>
+                  )}
+
+                  {/* Address */}
+                  {project && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Address</label>
+                      <div className="text-gray-900">
+                        {(() => {
+                          // First try to use project address fields
+                          let addressParts = [
+                            project.address,
+                            project.address_city,
+                            project.address_province,
+                            project.address_country,
+                          ].filter(Boolean);
+                          
+                          // If no project address, fallback to site address fields
+                          if (addressParts.length === 0) {
+                            addressParts = [
+                              project.site_address_line1,
+                              project.site_city,
+                              project.site_province,
+                              project.site_country,
+                            ].filter(Boolean);
+                          }
+                          
+                          return addressParts.length > 0
+                            ? addressParts.join(', ')
+                            : 'No address available';
+                        })()}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* On-site Lead */}
+                  {project?.onsite_lead_id && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">On-site Lead</label>
+                      <div className="text-gray-900">
+                        {(() => {
+                          const onsiteLead = employees?.find((e: any) => e.id === project.onsite_lead_id);
+                          return onsiteLead?.name || onsiteLead?.username || 'N/A';
+                        })()}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
 
-              {/* Current Status - show all events for scheduled shifts */}
-              {/* Don't show "hours worked" entries in status - they're complete and don't need clock-in/out display */}
-              {selectedDateShift && (clockIns.length > 0 || clockOuts.length > 0) && (
+              {/* Current Status - show only when there's an open clock-in (without clock-out) */}
+              {/* After clock-out, the event is closed and this section disappears */}
+              {selectedDateShift && hasOpenClockIn && openClockIn && (
                 <div className="pt-4 border-t">
-                  <h4 className="text-sm font-medium text-gray-700 mb-2">
-                    Status {clockIns.length > 1 || clockOuts.length > 1 ? `(${clockIns.length + clockOuts.length} events)` : ''}
-                  </h4>
-                  <div className="space-y-2 max-h-48 overflow-y-auto">
-                    {/* Show all clock-ins and clock-outs sorted by time, but exclude "hours worked" entries */}
-                    {[...clockIns, ...clockOuts]
-                      .filter(att => att.shift_id === selectedDateShift.id && !isHoursWorked(att))  // Only show events for this shift and exclude "hours worked"
-                      .sort((a, b) => new Date(a.time_selected_utc).getTime() - new Date(b.time_selected_utc).getTime())
-                      .map((att) => (
-                        <div key={att.id} className="flex items-center justify-between text-sm">
-                          <span className="text-gray-600">{att.type === 'in' ? 'Clock In:' : 'Clock Out:'}</span>
-                          <div className="flex items-center gap-2">
-                            <span className={`px-2 py-0.5 rounded text-xs ${
-                              att.status === 'approved' ? 'bg-green-100 text-green-800' :
-                              att.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
-                              'bg-red-100 text-red-800'
-                            }`}>
-                              {att.status}
-                            </span>
-                            <span className="font-medium">
-                              {new Date(att.time_selected_utc).toLocaleTimeString('en-US', {
-                                hour: 'numeric',
-                                minute: '2-digit',
-                                hour12: true,
-                              })}
-                            </span>
-                          </div>
-                        </div>
-                      ))}
-                  </div>
-                  {hasOpenClockIn && (
-                    <div className="mt-2 text-xs text-blue-600">
-                      * You have an open clock-in. Clock out to close this period.
+                  <h4 className="text-sm font-medium text-gray-700 mb-2">Status</h4>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-gray-600">Clock In:</span>
+                      <div className="flex items-center gap-2">
+                        <span className={`px-2 py-0.5 rounded text-xs ${
+                          openClockIn.status === 'approved' ? 'bg-green-100 text-green-800' :
+                          openClockIn.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+                          'bg-red-100 text-red-800'
+                        }`}>
+                          {openClockIn.status}
+                        </span>
+                        <span className="font-medium">
+                          {new Date(openClockIn.clock_in_time).toLocaleTimeString('en-US', {
+                            hour: 'numeric',
+                            minute: '2-digit',
+                            hour12: true,
+                          })}
+                        </span>
+                      </div>
                     </div>
-                  )}
+                  </div>
+                  <div className="mt-2 text-xs text-blue-600">
+                    * You have an open clock-in. Clock out to close this period.
+                  </div>
                 </div>
               )}
 
@@ -675,7 +854,7 @@ export default function ClockInOut() {
                   }`}
                   title={hasOpenClockIn ? 'You must clock out first to close the current event before starting a new one' : ''}
                 >
-                  Clock In {clockIns.length > 0 ? `(${clockIns.length})` : ''}
+                  Clock In
                 </button>
                 <button
                   onClick={() => {
@@ -690,7 +869,7 @@ export default function ClockInOut() {
                   }`}
                   title={!hasOpenClockIn ? 'You must clock in first before clocking out' : !canClockOut ? 'Clock-in must be approved or pending' : ''}
                 >
-                  Clock Out {clockOuts.length > 0 ? `(${clockOuts.length})` : ''}
+                  Clock Out
                 </button>
               </div>
             </div>
@@ -725,56 +904,31 @@ export default function ClockInOut() {
                 </select>
               </div>
 
-              {/* Current Status for non-scheduled */}
-              {/* Don't show status for "hours worked" entries - they're complete and don't need clock-in/out display */}
-              {(clockIn || clockOut) && !isHoursWorked(clockIn) && (
+              {/* Current Status for non-scheduled - show only when there's an open clock-in (without clock-out) */}
+              {/* After clock-out, the event is closed and this section disappears */}
+              {hasOpenClockIn && openClockIn && !isHoursWorked(openClockIn) && (
                 <div className="pt-4 border-t">
                   <h4 className="text-sm font-medium text-gray-700 mb-2">Status</h4>
                   <div className="space-y-2">
-                    {/* NEW MODEL: clockIn and clockOut may be the same record */}
-                    {openClockIn && openClockIn.clock_in_time && !isHoursWorked(openClockIn) && (
-                      <div className="flex items-center justify-between text-sm">
-                        <span className="text-gray-600">Clock In:</span>
-                        <div className="flex items-center gap-2">
-                          <span className={`px-2 py-0.5 rounded text-xs ${
-                            openClockIn.status === 'approved' ? 'bg-green-100 text-green-800' :
-                            openClockIn.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
-                            'bg-red-100 text-red-800'
-                          }`}>
-                            {openClockIn.status}
-                          </span>
-                          <span className="font-medium">
-                            {new Date(openClockIn.clock_in_time).toLocaleTimeString('en-US', {
-                              hour: 'numeric',
-                              minute: '2-digit',
-                              hour12: true,
-                            })}
-                          </span>
-                        </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-gray-600">Clock In:</span>
+                      <div className="flex items-center gap-2">
+                        <span className={`px-2 py-0.5 rounded text-xs ${
+                          openClockIn.status === 'approved' ? 'bg-green-100 text-green-800' :
+                          openClockIn.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+                          'bg-red-100 text-red-800'
+                        }`}>
+                          {openClockIn.status}
+                        </span>
+                        <span className="font-medium">
+                          {new Date(openClockIn.clock_in_time).toLocaleTimeString('en-US', {
+                            hour: 'numeric',
+                            minute: '2-digit',
+                            hour12: true,
+                          })}
+                        </span>
                       </div>
-                    )}
-                    {/* Clock-out is shown only if there's a complete event (both clock_in and clock_out) */}
-                    {clockOut && clockOut.clock_out_time && !isHoursWorked(clockOut) && (
-                      <div className="flex items-center justify-between text-sm">
-                        <span className="text-gray-600">Clock Out:</span>
-                        <div className="flex items-center gap-2">
-                          <span className={`px-2 py-0.5 rounded text-xs ${
-                            clockOut.status === 'approved' ? 'bg-green-100 text-green-800' :
-                            clockOut.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
-                            'bg-red-100 text-red-800'
-                          }`}>
-                            {clockOut.status}
-                          </span>
-                          <span className="font-medium">
-                            {new Date(clockOut.clock_out_time).toLocaleTimeString('en-US', {
-                              hour: 'numeric',
-                              minute: '2-digit',
-                              hour12: true,
-                            })}
-                          </span>
-                        </div>
-                      </div>
-                    )}
+                    </div>
                   </div>
                 </div>
               )}
@@ -783,14 +937,15 @@ export default function ClockInOut() {
               <div className="space-y-2">
                 <button
                   onClick={() => setClockType('in')}
-                  disabled={!selectedJob || submitting}
+                  disabled={!selectedJob || submitting || !canClockIn}
                   className={`w-full px-4 py-2 rounded font-medium transition-colors ${
-                    selectedJob
+                    selectedJob && canClockIn
                       ? 'bg-green-600 hover:bg-green-700 text-white'
                       : 'bg-gray-200 text-gray-400 cursor-not-allowed'
                   }`}
+                  title={hasOpenClockIn ? 'You must clock out first to close the current event before starting a new one' : !selectedJob ? 'Please select a job' : ''}
                 >
-                  Clock In {clockIns.length > 0 ? `(${clockIns.length})` : ''}
+                  Clock In
                 </button>
                 <button
                   onClick={() => {
@@ -808,7 +963,7 @@ export default function ClockInOut() {
                   }`}
                   title={!hasOpenClockIn ? 'You must clock in first before clocking out' : !canClockOut ? 'Clock-in must be approved or pending' : !selectedJob && !clockInJobType ? 'Job not selected' : ''}
                 >
-                  Clock Out {clockOuts.length > 0 ? `(${clockOuts.length})` : ''}
+                  Clock Out
                 </button>
               </div>
             </div>
@@ -833,7 +988,10 @@ export default function ClockInOut() {
                         setSelectedHour12(hour12);
                         updateTimeFrom12h(hour12, selectedMinute, selectedAmPm);
                       }}
-                      className="flex-1 border rounded px-3 py-2"
+                      disabled={!hasUnrestrictedClock}
+                      className={`flex-1 border rounded px-3 py-2 ${
+                        !hasUnrestrictedClock ? 'bg-gray-100 cursor-not-allowed opacity-60' : ''
+                      }`}
                       required
                     >
                       <option value="">Hour</option>
@@ -851,15 +1009,21 @@ export default function ClockInOut() {
                         setSelectedMinute(minute);
                         updateTimeFrom12h(selectedHour12, minute, selectedAmPm);
                       }}
-                      className="flex-1 border rounded px-3 py-2"
+                      disabled={!hasUnrestrictedClock}
+                      className={`flex-1 border rounded px-3 py-2 ${
+                        !hasUnrestrictedClock ? 'bg-gray-100 cursor-not-allowed opacity-60' : ''
+                      }`}
                       required
                     >
                       <option value="">Min</option>
-                      {[0, 15, 30, 45].map((m) => (
-                        <option key={m} value={String(m).padStart(2, '0')}>
-                          {String(m).padStart(2, '0')}
-                        </option>
-                      ))}
+                      {Array.from({ length: 12 }, (_, i) => {
+                        const m = i * 5;
+                        return (
+                          <option key={m} value={String(m).padStart(2, '0')}>
+                            {String(m).padStart(2, '0')}
+                          </option>
+                        );
+                      })}
                     </select>
                     <select
                       value={selectedAmPm}
@@ -868,13 +1032,21 @@ export default function ClockInOut() {
                         setSelectedAmPm(amPm);
                         updateTimeFrom12h(selectedHour12, selectedMinute, amPm);
                       }}
-                      className="flex-1 border rounded px-3 py-2"
+                      disabled={!hasUnrestrictedClock}
+                      className={`flex-1 border rounded px-3 py-2 ${
+                        !hasUnrestrictedClock ? 'bg-gray-100 cursor-not-allowed opacity-60' : ''
+                      }`}
                       required
                     >
                       <option value="AM">AM</option>
                       <option value="PM">PM</option>
                     </select>
                   </div>
+                  {!hasUnrestrictedClock && (
+                    <p className="text-xs text-gray-500 mt-1">
+                      Time is locked. Contact an administrator to enable time editing.
+                    </p>
+                  )}
                 </div>
 
                 {/* GPS Status */}
@@ -974,7 +1146,7 @@ export default function ClockInOut() {
               <div className="grid grid-cols-5 gap-2 text-sm border-b pb-3">
                 <div className="text-center">
                   <div className="text-gray-600">Reg</div>
-                  <div className="font-medium">{weeklySummary.total_hours_formatted || '0h 00m'}</div>
+                  <div className="font-medium">{weeklySummary.reg_hours_formatted || '0h 00m'}</div>
                 </div>
                 <div className="text-center">
                   <div className="text-gray-600">OT1</div>
@@ -986,7 +1158,7 @@ export default function ClockInOut() {
                 </div>
                 <div className="text-center">
                   <div className="text-gray-600">Break</div>
-                  <div className="font-medium">0h 00m</div>
+                  <div className="font-medium">{weeklySummary.total_break_formatted || '0h 00m'}</div>
                 </div>
                 <div className="text-center">
                   <div className="text-gray-600">Total</div>
@@ -1019,10 +1191,21 @@ export default function ClockInOut() {
 
                   return (
                     <div key={uniqueKey} className="border-b pb-3 last:border-b-0">
-                      <div className="flex items-start justify-between mb-2">
-                        <div>
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
                           <div className="font-medium text-sm">
                             {day.day_name}, {formatDate(day.date)}
+                          </div>
+                          <div className="text-xs text-gray-600 space-y-1 mt-1">
+                            {day.job_name && (
+                              <div>Job: {day.job_type || ''} - {day.job_name}</div>
+                            )}
+                            <div>Service Item: 1 - Regular</div>
+                          </div>
+                        </div>
+                        <div className="text-right ml-4">
+                          <div className="text-sm font-medium">
+                            {day.hours_worked_formatted || '0h 00m'}
                           </div>
                           {timeRange && (
                             <div className="text-xs text-gray-600 mt-1">
@@ -1030,15 +1213,6 @@ export default function ClockInOut() {
                             </div>
                           )}
                         </div>
-                        <div className="text-sm font-medium">
-                          {day.hours_worked_formatted || '0h 00m'}
-                        </div>
-                      </div>
-                      <div className="text-xs text-gray-600 space-y-1">
-                        {day.job_name && (
-                          <div>Job: {day.job_type || ''} - {day.job_name}</div>
-                        )}
-                        <div>Service Item: 1 - Regular</div>
                       </div>
                     </div>
                   );

@@ -273,7 +273,7 @@ class ProjectTimeEntryLog(Base):
     __tablename__ = "project_time_entry_logs"
 
     id: Mapped[uuid.UUID] = uuid_pk()
-    entry_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("project_time_entries.id", ondelete="CASCADE"))
+    entry_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("project_time_entries.id", ondelete="CASCADE"), nullable=True)
     project_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"))
     user_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
     action: Mapped[str] = mapped_column(String(50))  # create|update|delete
@@ -1361,6 +1361,7 @@ class Attendance(Base):
     created_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
     reason_text: Mapped[Optional[str]] = mapped_column(Text)  # Free-text justification when outside rules
     attachments: Mapped[Optional[list]] = mapped_column(JSON)  # List of file attachments
+    break_minutes: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, server_default=None)  # Break minutes deducted for shifts >= 5 hours
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
     approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     approved_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
+import { formatDateLocal, getTodayLocal } from '@/lib/dateUtils';
 import toast from 'react-hot-toast';
 import ImagePicker from '@/components/ImagePicker';
 import { useConfirm } from '@/components/ConfirmProvider';
@@ -25,16 +26,15 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
   // form state
   const [coverTitle, setCoverTitle] = useState<string>('Proposal');
   const [orderNumber, setOrderNumber] = useState<string>('');
-  const [date, setDate] = useState<string>(new Date().toISOString().slice(0,10));
+  const [date, setDate] = useState<string>(getTodayLocal());
   const [createdFor, setCreatedFor] = useState<string>('');
   const [primary, setPrimary] = useState<{ name?:string, phone?:string, email?:string }>({});
   const [typeOfProject, setTypeOfProject] = useState<string>('');
   const [otherNotes, setOtherNotes] = useState<string>('');
   const [projectDescription, setProjectDescription] = useState<string>('');
   const [additionalNotes, setAdditionalNotes] = useState<string>('');
-  const [bidPrice, setBidPrice] = useState<string>('');
-  const [costs, setCosts] = useState<{ label:string, amount:string }[]>([]);
-  const total = useMemo(()=>{ const base = Number(bidPrice||'0'); const extra = costs.reduce((a,c)=> a + Number(c.amount||'0'), 0); return (base+extra).toFixed(2); }, [bidPrice, costs]);
+  const [pricingItems, setPricingItems] = useState<{ name:string, price:string }[]>([]);
+  const [optionalServices, setOptionalServices] = useState<{ service:string, price:string }[]>([]);
   const [terms, setTerms] = useState<string>('');
   const [sections, setSections] = useState<any[]>([]);
   const [coverBlob, setCoverBlob] = useState<Blob|null>(null);
@@ -71,6 +71,34 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
     return { type:'text', title: String(sec?.title||''), text: String(sec?.text||'') };
   });
 
+  // Format number to accounting format (1,234.56)
+  const formatAccounting = (value: string | number): string => {
+    if (!value && value !== 0) return '';
+    const num = typeof value === 'string' ? parseFloat(value.replace(/,/g, '')) || 0 : value;
+    if (isNaN(num)) return '';
+    return num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  };
+
+  // Parse accounting format back to number string
+  const parseAccounting = (value: string): string => {
+    if (!value) return '';
+    // Remove commas and keep only digits and decimal point
+    const cleaned = value.replace(/,/g, '');
+    // Allow only numbers and one decimal point
+    const match = cleaned.match(/^-?\d*\.?\d*$/);
+    if (!match) {
+      // If invalid, try to extract valid number part
+      const numMatch = cleaned.match(/^-?\d+\.?\d*/);
+      return numMatch ? numMatch[0] : '';
+    }
+    return cleaned;
+  };
+
+  const total = useMemo(()=>{ 
+    const sum = pricingItems.reduce((a,c)=> a + Number(parseAccounting(c.price)||'0'), 0); 
+    return formatAccounting(sum); 
+  }, [pricingItems]);
+
   const computeFingerprint = ()=>{
     try{
       const payload = {
@@ -83,8 +111,8 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
         otherNotes,
         projectDescription,
         additionalNotes,
-        bidPrice,
-        costs,
+        pricingItems,
+        optionalServices,
         terms,
         sections: sanitizeSections(sections),
         coverFoId,
@@ -103,16 +131,30 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
     const d = initial?.data || {};
     setCoverTitle(String(d.cover_title || initial.title || 'Proposal'));
     setOrderNumber(String(initial.order_number || d.order_number || ''));
-    setDate(String(d.date||'').slice(0,10) || new Date().toISOString().slice(0,10));
+    setDate(String(d.date||'').slice(0,10) || getTodayLocal());
     setCreatedFor(String(d.proposal_created_for||''));
     setPrimary({ name: d.primary_contact_name, phone: d.primary_contact_phone, email: d.primary_contact_email });
     setTypeOfProject(String(d.type_of_project||''));
     setOtherNotes(String(d.other_notes||''));
     setProjectDescription(String(d.project_description||''));
     setAdditionalNotes(String(d.additional_project_notes||''));
-    setBidPrice(String(d.bid_price ?? ''));
+    // Load pricing items from bid_price and additional_costs (legacy support)
+    const legacyBidPrice = d.bid_price ?? 0;
     const dc = Array.isArray(d.additional_costs)? d.additional_costs : [];
-    setCosts(dc.map((c:any)=> ({ label: String(c.label||''), amount: String(c.value ?? c.amount ?? '') })));
+    const loadedItems: { name:string, price:string }[] = [];
+    if (legacyBidPrice && Number(legacyBidPrice) > 0) {
+      loadedItems.push({ name: 'Bid Price', price: formatAccounting(legacyBidPrice) });
+    }
+    dc.forEach((c:any)=> {
+      const label = String(c.label||'');
+      const value = c.value ?? c.amount ?? '';
+      if (label && Number(value) > 0) {
+        loadedItems.push({ name: label, price: formatAccounting(value) });
+      }
+    });
+    setPricingItems(loadedItems);
+    const os = Array.isArray(d.optional_services)? d.optional_services : [];
+    setOptionalServices(os.map((s:any)=> ({ service: String(s.service||''), price: formatAccounting(s.price ?? '') })));
     setTerms(String(d.terms_text||''));
     const loaded = Array.isArray(d.sections)? JSON.parse(JSON.stringify(d.sections)) : [];
     const normalized = loaded.map((sec:any)=>{
@@ -166,7 +208,7 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
     };
     window.addEventListener('beforeunload', handler);
     return ()=> window.removeEventListener('beforeunload', handler);
-  }, [isReady, lastSavedHash, coverTitle, orderNumber, date, createdFor, primary, typeOfProject, otherNotes, projectDescription, additionalNotes, bidPrice, costs, terms, sections, coverFoId, page2FoId, clientId, siteId, projectId]);
+      }, [isReady, lastSavedHash, coverTitle, orderNumber, date, createdFor, primary, typeOfProject, otherNotes, projectDescription, additionalNotes, pricingItems, terms, sections, coverFoId, page2FoId, clientId, siteId, projectId]);
 
   // derive company fields
   const companyName = (client?.display_name || client?.name || '').slice(0,50);
@@ -199,7 +241,7 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
       // Update lastAutoSaveRef when proposal is loaded to prevent immediate auto-save
       lastAutoSaveRef.current = Date.now();
     }
-  }, [isReady, lastSavedHash, coverTitle, orderNumber, date, createdFor, primary, typeOfProject, otherNotes, projectDescription, additionalNotes, bidPrice, costs, terms, sections, coverFoId, page2FoId, clientId, siteId, projectId, computeFingerprint]);
+      }, [isReady, lastSavedHash, coverTitle, orderNumber, date, createdFor, primary, typeOfProject, otherNotes, projectDescription, additionalNotes, pricingItems, optionalServices, terms, sections, coverFoId, page2FoId, clientId, siteId, projectId, computeFingerprint]);
 
   const handleSave = async()=>{
     if (disabled) {
@@ -223,10 +265,11 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
         other_notes: otherNotes||null,
         project_description: projectDescription||null,
         additional_project_notes: additionalNotes||null,
-        bid_price: Number(bidPrice||'0'),
-        total: Number(total||'0'),
+        bid_price: 0, // Legacy field
+        total: Number(parseAccounting(total)||'0'),
         terms_text: terms||'',
-        additional_costs: costs.map(c=> ({ label: c.label, value: Number(c.amount||'0') })),
+        additional_costs: pricingItems.map(c=> ({ label: c.name, value: Number(parseAccounting(c.price)||'0') })),
+        optional_services: optionalServices.map(s=> ({ service: s.service, price: Number(parseAccounting(s.price)||'0') })),
         sections: sanitizeSections(sections),
         cover_file_object_id: coverFoId||null,
         page2_file_object_id: page2FoId||null,
@@ -289,10 +332,11 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
         other_notes: otherNotes||null,
         project_description: projectDescription||null,
         additional_project_notes: additionalNotes||null,
-        bid_price: Number(bidPrice||'0'),
-        total: Number(total||'0'),
+        bid_price: 0, // Legacy field
+        total: Number(parseAccounting(total)||'0'),
         terms_text: terms||'',
-        additional_costs: costs.map(c=> ({ label: c.label, value: Number(c.amount||'0') })),
+        additional_costs: pricingItems.map(c=> ({ label: c.name, value: Number(parseAccounting(c.price)||'0') })),
+        optional_services: optionalServices.map(s=> ({ service: s.service, price: Number(parseAccounting(s.price)||'0') })),
         sections: sanitizeSections(sections),
         cover_file_object_id: coverFoId||null,
         page2_file_object_id: page2FoId||null,
@@ -318,7 +362,7 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
     } finally {
       isAutoSavingRef.current = false;
     }
-  }, [clientId, projectId, siteId, coverTitle, orderNumber, date, createdFor, primary, typeOfProject, otherNotes, projectDescription, additionalNotes, bidPrice, costs, total, terms, sections, coverFoId, page2FoId, mode, initial, queryClient, sanitizeSections, computeFingerprint]);
+    }, [clientId, projectId, siteId, coverTitle, orderNumber, date, createdFor, primary, typeOfProject, otherNotes, projectDescription, additionalNotes, pricingItems, optionalServices, total, terms, sections, coverFoId, page2FoId, mode, initial, queryClient, sanitizeSections, computeFingerprint]);
 
   // Auto-save on changes (debounced)
   useEffect(() => {
@@ -340,7 +384,7 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
         clearTimeout(autoSaveTimeoutRef.current);
       }
     };
-  }, [isReady, clientId, coverTitle, orderNumber, date, createdFor, primary, typeOfProject, otherNotes, projectDescription, additionalNotes, bidPrice, costs, terms, sections, coverFoId, page2FoId, autoSave]);
+    }, [isReady, clientId, coverTitle, orderNumber, date, createdFor, primary, typeOfProject, otherNotes, projectDescription, additionalNotes, pricingItems, optionalServices, terms, sections, coverFoId, page2FoId, autoSave]);
 
   // Periodic auto-save (every 30 seconds)
   useEffect(() => {
@@ -372,10 +416,11 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
       form.append('type_of_project', typeOfProject||'');
       form.append('other_notes', otherNotes||'');
       form.append('additional_project_notes', additionalNotes||'');
-      form.append('bid_price', String(Number(bidPrice||'0')));
-      form.append('total', String(Number(total||'0')));
+      form.append('bid_price', String(0)); // Legacy field
+      form.append('total', String(Number(parseAccounting(total)||'0')));
       form.append('terms_text', terms||'');
-      form.append('additional_costs', JSON.stringify(costs.map(c=> ({ label: c.label, value: Number(c.amount||'0') }))));
+      form.append('additional_costs', JSON.stringify(pricingItems.map(c=> ({ label: c.name, value: Number(parseAccounting(c.price)||'0') }))));
+      form.append('optional_services', JSON.stringify(optionalServices.map(s=> ({ service: s.service, price: Number(parseAccounting(s.price)||'0') }))));
       form.append('sections', JSON.stringify(sanitizeSections(sections)));
       if (coverFoId) form.append('cover_file_object_id', coverFoId);
       if (page2FoId) form.append('page2_file_object_id', page2FoId);
@@ -630,22 +675,32 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
         </div>
         <div className="md:col-span-2">
           <h3 className="font-semibold mb-2">Pricing</h3>
-          <div className="text-[12px] text-gray-600 mb-2">If the total is 0, the pricing section will be hidden in the PDF.</div>
-          <div className="grid md:grid-cols-3 gap-2 text-sm">
-            <div><label className="text-xs text-gray-600">Bid Price</label><input className="w-full border rounded px-3 py-2" value={bidPrice} onChange={e=>setBidPrice(e.target.value)} /></div>
-            <div className="md:col-span-2"><label className="text-xs text-gray-600">Total</label><div className="w-full border rounded px-3 py-2 bg-gray-50">${total}</div></div>
+          <div className="text-[12px] text-gray-600 mb-2">If no pricing items are added, the "Pricing Table" section will be hidden in the PDF.</div>
+          <div className="space-y-2">
+            {pricingItems.map((c, i)=> (
+              <div key={i} className="grid grid-cols-5 gap-2">
+                <input className="col-span-3 border rounded px-3 py-2" placeholder="Name" value={c.name} onChange={e=>{ const v=e.target.value; setPricingItems(arr=> arr.map((x,j)=> j===i? { ...x, name:v }: x)); }} />
+                <input type="text" className="col-span-1 border rounded px-3 py-2" placeholder="Price" value={c.price} onChange={e=>{ const v = parseAccounting(e.target.value); setPricingItems(arr=> arr.map((x,j)=> j===i? { ...x, price:v }: x)); }} onBlur={()=> setPricingItems(arr=> arr.map((x,j)=> j===i? { ...x, price: formatAccounting(x.price) }: x))} />
+                <button className="col-span-1 px-2 py-2 rounded bg-gray-100" onClick={()=> setPricingItems(arr=> arr.filter((_,j)=> j!==i))}>Remove</button>
+              </div>
+            ))}
+            <button className="px-3 py-1.5 rounded bg-gray-100" onClick={()=> setPricingItems(arr=> [...arr, { name:'', price:'' }])}>+ Add Cost</button>
           </div>
           <div className="mt-3">
-            <div className="text-sm font-semibold mb-1">Additional Costs</div>
+            <div className="text-sm font-semibold">Total: <span className="text-gray-600">${total}</span></div>
+          </div>
+          <div className="mt-3">
+            <div className="text-sm font-semibold mb-1">Optional Services</div>
+            <div className="text-[12px] text-gray-600 mb-2">If no services are added, the "Optional Services" section will be hidden in the PDF.</div>
             <div className="space-y-2">
-              {costs.map((c, i)=> (
+              {optionalServices.map((s, i)=> (
                 <div key={i} className="grid grid-cols-5 gap-2">
-                  <input className="col-span-3 border rounded px-3 py-2" placeholder="Label" value={c.label} onChange={e=>{ const v=e.target.value; setCosts(arr=> arr.map((x,j)=> j===i? { ...x, label:v }: x)); }} />
-                  <input className="col-span-1 border rounded px-3 py-2" placeholder="Amount" value={c.amount} onChange={e=>{ const v=e.target.value; setCosts(arr=> arr.map((x,j)=> j===i? { ...x, amount:v }: x)); }} />
-                  <button className="col-span-1 px-2 py-2 rounded bg-gray-100" onClick={()=> setCosts(arr=> arr.filter((_,j)=> j!==i))}>Remove</button>
+                  <input className="col-span-3 border rounded px-3 py-2" placeholder="Service" value={s.service} onChange={e=>{ const v=e.target.value; setOptionalServices(arr=> arr.map((x,j)=> j===i? { ...x, service:v }: x)); }} />
+                  <input type="text" className="col-span-1 border rounded px-3 py-2" placeholder="Price" value={s.price} onChange={e=>{ const v = parseAccounting(e.target.value); setOptionalServices(arr=> arr.map((x,j)=> j===i? { ...x, price:v }: x)); }} onBlur={()=> setOptionalServices(arr=> arr.map((x,j)=> j===i? { ...x, price: formatAccounting(x.price) }: x))} />
+                  <button className="col-span-1 px-2 py-2 rounded bg-gray-100" onClick={()=> setOptionalServices(arr=> arr.filter((_,j)=> j!==i))}>Remove</button>
                 </div>
               ))}
-              <button className="px-3 py-1.5 rounded bg-gray-100" onClick={()=> setCosts(arr=> [...arr, { label:'', amount:'' }])}>+ Add Cost</button>
+              <button className="px-3 py-1.5 rounded bg-gray-100" onClick={()=> setOptionalServices(arr=> [...arr, { service:'', price:'' }])}>+ Add Service</button>
             </div>
           </div>
         </div>
@@ -709,14 +764,21 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
       </div>
 
       {pickerFor && (
-        <ImagePicker isOpen={true} onClose={()=>setPickerFor(null)} clientId={clientId||undefined} targetWidth={pickerFor==='cover'? 566: 540} targetHeight={pickerFor==='cover'? 537: 340} allowEdit={true} exportScale={2} onConfirm={async(blob)=>{
+        <ImagePicker isOpen={true} onClose={()=>setPickerFor(null)} clientId={clientId||undefined} targetWidth={pickerFor==='cover'? 566: 540} targetHeight={pickerFor==='cover'? 537: 340} allowEdit={true} exportScale={2} onConfirm={async(blob)=>{ 
           try{
             if (!blob){ toast.error('No image'); setPickerFor(null); return; }
             const cat = pickerFor==='cover'? 'proposal-cover-derived' : 'proposal-page2-derived';
             const uniqueName = `${cat}_${Date.now()}_${Math.random().toString(36).slice(2)}.jpg`;
-            const up:any = await api('POST','/files/upload',{ project_id: null, client_id: clientId||null, employee_id: null, category_id: cat, original_name: uniqueName, content_type: 'image/jpeg' });
-            await fetch(up.upload_url, { method:'PUT', headers:{ 'Content-Type':'image/jpeg', 'x-ms-blob-type':'BlockBlob' }, body: blob });
-            const conf:any = await api('POST','/files/confirm',{ key: up.key, size_bytes: blob.size, checksum_sha256:'na', content_type:'image/jpeg' });
+            // Use upload-proxy to avoid CORS issues
+            const formData = new FormData();
+            formData.append('file', blob, uniqueName);
+            formData.append('original_name', uniqueName);
+            formData.append('content_type', 'image/jpeg');
+            formData.append('project_id', '');
+            formData.append('client_id', clientId||'');
+            formData.append('employee_id', '');
+            formData.append('category_id', cat);
+            const conf:any = await api('POST','/files/upload-proxy', formData);
             if (pickerFor==='cover'){ setCoverBlob(blob); setCoverFoId(conf.id); }
             else { setPage2Blob(blob); setPage2FoId(conf.id); }
           }catch(e){ toast.error('Upload failed'); }
@@ -724,15 +786,22 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
         }} />
       )}
       {sectionPicker && (
-        <ImagePicker isOpen={true} onClose={()=>setSectionPicker(null)} clientId={clientId||undefined} targetWidth={260} targetHeight={150} allowEdit={true} exportScale={2} onConfirm={async(blob)=>{
+        <ImagePicker isOpen={true} onClose={()=>setSectionPicker(null)} clientId={clientId||undefined} targetWidth={260} targetHeight={150} allowEdit={true} exportScale={2} onConfirm={async(blob)=>{ 
           try{
             if (!blob){ toast.error('No image'); return; }
             const uniqueName = `section_${Date.now()}_${Math.random().toString(36).slice(2)}.jpg`;
-            const up:any = await api('POST','/files/upload',{ project_id: null, client_id: clientId||null, employee_id: null, category_id:'proposal-section-derived', original_name: uniqueName, content_type: 'image/jpeg' });
-            await fetch(up.upload_url, { method:'PUT', headers:{ 'Content-Type':'image/jpeg', 'x-ms-blob-type':'BlockBlob' }, body: blob });
-            const conf:any = await api('POST','/files/confirm',{ key: up.key, size_bytes: blob.size, checksum_sha256:'na', content_type:'image/jpeg' });
+            // Use upload-proxy to avoid CORS issues
+            const formData = new FormData();
+            formData.append('file', blob, uniqueName);
+            formData.append('original_name', uniqueName);
+            formData.append('content_type', 'image/jpeg');
+            formData.append('project_id', '');
+            formData.append('client_id', clientId||'');
+            formData.append('employee_id', '');
+            formData.append('category_id', 'proposal-section-derived');
+            const conf:any = await api('POST','/files/upload-proxy', formData);
             const fileObjectId = conf.id;
-            setSections(arr=> arr.map((x:any, i:number)=>{
+            setSections(arr=> arr.map((x:any, i:number)=>{ 
               const isTarget = (String(x.id||'')===String(sectionPicker.secId||'')) || (String(sectionPicker.secId||'')===String(i));
               if (!isTarget) return x;
               const imgs = Array.isArray(x.images)? [...x.images] : [];

@@ -6,6 +6,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
+import { formatDateLocal, getTodayLocal } from '@/lib/dateUtils';
 
 // Helper function to convert 24h time (HH:MM:SS or HH:MM) to 12h format (h:mm AM/PM)
 function formatTime12h(timeStr: string | null | undefined): string {
@@ -54,7 +55,7 @@ interface TimeSheetProps {
 }
 
 export default function TimeSheet({ projectId, userId }: TimeSheetProps) {
-  const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().slice(0, 10));
+  const [selectedDate, setSelectedDate] = useState<string>(getTodayLocal());
   const [selectedShift, setSelectedShift] = useState<Shift | null>(null);
   const [clockType, setClockType] = useState<'in' | 'out' | null>(null);
   const [selectedTime, setSelectedTime] = useState<string>('');

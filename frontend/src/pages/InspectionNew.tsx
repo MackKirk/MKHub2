@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
+import { formatDateLocal } from '@/lib/dateUtils';
 
 type ChecklistTemplate = {
   sections: Array<{
@@ -47,7 +48,7 @@ export default function InspectionNew() {
 
   const [form, setForm] = useState({
     fleet_asset_id: assetId,
-    inspection_date: new Date().toISOString().split('T')[0],
+    inspection_date: formatDateLocal(new Date()),
     inspector_user_id: '',
     result: 'pass',
     notes: '',

@@ -6,6 +6,7 @@ import toast from 'react-hot-toast';
 import { useConfirm } from '@/components/ConfirmProvider';
 import EditShiftModal from '@/components/EditShiftModal';
 import { JOB_TYPES } from '@/constants/jobTypes';
+import { formatDateLocal, getTodayLocal } from '@/lib/dateUtils';
 
 // Helper function to convert 24h time (HH:MM:SS or HH:MM) to 12h format (h:mm AM/PM)
 function formatTime12h(timeStr: string | null | undefined): string {
@@ -19,6 +20,7 @@ function formatTime12h(timeStr: string | null | undefined): string {
   const hours12 = hours === 0 ? 12 : hours > 12 ? hours - 12 : hours;
   return `${hours12}:${minutes} ${period}`;
 }
+
 
 export default function DispatchTab({ projectId }: { projectId: string }) {
   const confirm = useConfirm();
@@ -54,7 +56,7 @@ export default function DispatchTab({ projectId }: { projectId: string }) {
   
   // Selected date for highlighting
   const [selectedDate, setSelectedDate] = useState<string>(() => {
-    return new Date().toISOString().slice(0, 10);
+    return formatDateLocal(new Date());
   });
 
   // Calculate week range for API query (Sunday to Saturday)
@@ -71,7 +73,7 @@ export default function DispatchTab({ projectId }: { projectId: string }) {
   }, [anchorDate]);
 
   const dateRange = useMemo(() => {
-    return `${weekStart.toISOString().slice(0, 10)},${weekEnd.toISOString().slice(0, 10)}`;
+    return `${formatDateLocal(weekStart)},${formatDateLocal(weekEnd)}`;
   }, [weekStart, weekEnd]);
 
   // Generate week days (Sunday to Saturday)
@@ -82,7 +84,7 @@ export default function DispatchTab({ projectId }: { projectId: string }) {
       d.setDate(d.getDate() + i);
       cells.push({ 
         date: d, 
-        key: d.toISOString().slice(0, 10),
+        key: formatDateLocal(d),
         dayNumber: d.getDate()
       });
     }
@@ -241,7 +243,7 @@ export default function DispatchTab({ projectId }: { projectId: string }) {
                   n.setDate(n.getDate() - day); // Go back to Sunday
                   n.setHours(0, 0, 0, 0);
                   setAnchorDate(n);
-                  setSelectedDate(n.toISOString().slice(0, 10));
+                  setSelectedDate(formatDateLocal(n));
                 }}
                 className="px-3 py-1 rounded border"
               >
@@ -429,10 +431,10 @@ export default function DispatchTab({ projectId }: { projectId: string }) {
             {/* Calendar grid */}
             <div className="grid grid-cols-7 gap-2">
               {days.map(({ date, key, dayNumber }) => {
-                const dateStr = date.toISOString().slice(0, 10);
+                const dateStr = formatDateLocal(date);
                 const isToday = (() => {
                   const t = new Date();
-                  return t.toISOString().slice(0, 10) === dateStr;
+                  return formatDateLocal(t) === dateStr;
                 })();
                 const isSelected = selectedDate === dateStr;
                 
@@ -836,12 +838,12 @@ function CreateShiftModal({
 }) {
   const [selectedWorkers, setSelectedWorkers] = useState<string[]>([]);
   const [dateMode, setDateMode] = useState<'single' | 'range'>('range');
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
-  const [dateFrom, setDateFrom] = useState(new Date().toISOString().slice(0, 10));
+  const [date, setDate] = useState(formatDateLocal(new Date()));
+  const [dateFrom, setDateFrom] = useState(formatDateLocal(new Date()));
   const [dateTo, setDateTo] = useState(() => {
     const nextWeek = new Date();
     nextWeek.setDate(nextWeek.getDate() + 6);
-    return nextWeek.toISOString().slice(0, 10);
+    return formatDateLocal(nextWeek);
   });
   const [excludeWeekends, setExcludeWeekends] = useState(false);
   const [startTime, setStartTime] = useState('09:00');

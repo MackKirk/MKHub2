@@ -4,6 +4,7 @@ import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
 import EventModal from './EventModal';
 import { useConfirm } from '@/components/ConfirmProvider';
+import { formatDateLocal } from '@/lib/dateUtils';
 
 type CalendarMockProps = {
   title?: string;
@@ -134,9 +135,10 @@ export default function CalendarMock({ title, projectId }: CalendarMockProps){
       end.setHours(0, 0, 0, 0);
       
       while (current <= end) {
-        const dateKey = current.toISOString().slice(0, 10);
+        const dateKey = formatDateLocal(current);
         // Check exceptions
-        if (!event.exceptions?.includes(dateKey)) {
+        const exceptions = Array.isArray(event.exceptions) ? event.exceptions : [];
+        if (!exceptions.includes(dateKey)) {
           occurrences.push({ date: dateKey, event });
         }
         current.setDate(current.getDate() + 1);
@@ -145,7 +147,7 @@ export default function CalendarMock({ title, projectId }: CalendarMockProps){
       // Recurring event - generate occurrences
       const repeatConfig = event.repeat_config || {};
       const repeatInterval = repeatConfig.interval || 1;
-      const repeatDaysOfWeek = repeatConfig.daysOfWeek;
+      const repeatDaysOfWeek = Array.isArray(repeatConfig.daysOfWeek) ? repeatConfig.daysOfWeek : undefined;
       const repeatUntil = event.repeat_until ? new Date(event.repeat_until) : null;
       const repeatCount = event.repeat_count;
       
@@ -155,7 +157,7 @@ export default function CalendarMock({ title, projectId }: CalendarMockProps){
       const viewEnd = repeatUntil ? new Date(Math.min(repeatUntil.getTime(), endDate.getTime())) : endDate;
       
       while (current <= viewEnd && count < maxCount) {
-        const dateKey = current.toISOString().slice(0, 10);
+        const dateKey = formatDateLocal(current);
         
         // Skip if before view start
         if (current < startDate) {
@@ -164,7 +166,8 @@ export default function CalendarMock({ title, projectId }: CalendarMockProps){
         }
         
         // Check exceptions
-        if (event.exceptions?.includes(dateKey)) {
+        const exceptions = Array.isArray(event.exceptions) ? event.exceptions : [];
+        if (exceptions.includes(dateKey)) {
           current.setDate(current.getDate() + 1);
           continue;
         }
@@ -216,14 +219,16 @@ export default function CalendarMock({ title, projectId }: CalendarMockProps){
       }
       
       // Add extra dates
-      event.extra_dates?.forEach(dateStr => {
-        const extraDate = new Date(dateStr);
-        if (extraDate >= startDate && extraDate <= endDate) {
-          if (!occurrences.find(o => o.date === dateStr)) {
-            occurrences.push({ date: dateStr, event });
+      if (Array.isArray(event.extra_dates)) {
+        event.extra_dates.forEach(dateStr => {
+          const extraDate = new Date(dateStr);
+          if (extraDate >= startDate && extraDate <= endDate) {
+            if (!occurrences.find(o => o.date === dateStr)) {
+              occurrences.push({ date: dateStr, event });
+            }
           }
-        }
-      });
+        });
+      }
     }
     
     return occurrences;
@@ -265,7 +270,7 @@ export default function CalendarMock({ title, projectId }: CalendarMockProps){
   // Get events for a specific date with unique colors
   const getEventsForDate = (date: Date | null): Event[] => {
     if (!date) return [];
-    const dateKey = date.toISOString().slice(0, 10);
+    const dateKey = formatDateLocal(date);
     return eventsByDate[dateKey] || [];
   };
 
@@ -379,12 +384,12 @@ export default function CalendarMock({ title, projectId }: CalendarMockProps){
       <div className="mt-1 grid grid-cols-7 gap-1.5">
         {days.map(({ date, key })=> {
           if(!date) return <div key={key} className="h-12 rounded border bg-gray-50" />;
-          const ds = date.toISOString().slice(0,10);
+          const ds = formatDateLocal(date);
           const dayEvents = getEventsForDate(date);
           const hasEvents = dayEvents.length > 0;
           const isToday = (()=>{
             const t = new Date();
-            return t.toISOString().slice(0,10) === ds;
+            return formatDateLocal(t) === ds;
           })();
           return (
             <div 
@@ -546,7 +551,7 @@ function EventViewModal({
       parts.push(`Every ${interval === 1 ? 'day' : `${interval} days`}`);
     } else if (repeatType === 'weekly') {
       const interval = repeatConfig.interval || 1;
-      const daysOfWeek = repeatConfig.daysOfWeek || [];
+      const daysOfWeek = Array.isArray(repeatConfig.daysOfWeek) ? repeatConfig.daysOfWeek : [];
       const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
       const selectedDays = daysOfWeek
         .map((selected: boolean, idx: number) => selected ? dayNames[idx] : null)
@@ -625,7 +630,7 @@ function EventViewModal({
             <div className="text-gray-900">{getRepeatDescription()}</div>
           </div>
 
-          {event.exceptions && event.exceptions.length > 0 && (
+          {Array.isArray(event.exceptions) && event.exceptions.length > 0 && (
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Exception Dates</label>
               <div className="flex flex-wrap gap-2">
@@ -638,7 +643,7 @@ function EventViewModal({
             </div>
           )}
 
-          {event.extra_dates && event.extra_dates.length > 0 && (
+          {Array.isArray(event.extra_dates) && event.extra_dates.length > 0 && (
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Extra Dates</label>
               <div className="flex flex-wrap gap-2">
