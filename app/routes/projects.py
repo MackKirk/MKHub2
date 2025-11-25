@@ -3,10 +3,11 @@ from sqlalchemy.orm import Session, defer
 from sqlalchemy.exc import ProgrammingError
 from sqlalchemy import func, extract
 from typing import List, Optional
+import uuid
 
 from ..db import get_db
 from ..models.models import Project, ClientFile, FileObject, ProjectUpdate, ProjectReport, ProjectEvent, ProjectTimeEntry, ProjectTimeEntryLog, User, EmployeeProfile, Client, ClientSite, ClientFolder, ClientContact, SettingList, SettingItem, Shift
-from datetime import datetime, timezone
+from datetime import datetime, timezone, time, timedelta
 from ..auth.security import get_current_user, require_permissions, can_approve_timesheet
 
 
@@ -791,6 +792,172 @@ def delete_project_event(project_id: str, event_id: str, db: Session = Depends(g
 # ---- Timesheets ----
 @router.get("/{project_id}/timesheet")
 def list_timesheet(project_id: str, month: Optional[str] = None, user_id: Optional[str] = None, db: Session = Depends(get_db), _=Depends(require_permissions("timesheet:read"))):
+    from ..routes.settings import calculate_break_minutes
+    
+    # Calculate date range for month filter
+    date_start = None
+    date_end = None
+    if month:
+        try:
+            from datetime import datetime
+            dt = datetime.strptime(month+"-01", "%Y-%m-%d").date()
+            y = dt.year; m = dt.month
+            from datetime import date as date_type
+            from calendar import monthrange
+            date_start = date_type(y, m, 1)
+            date_end = date_type(y, m, monthrange(y, m)[1])
+        except Exception:
+            pass
+    
+    # First, get all attendances for this project through shifts
+    # This ensures we use the same data source as the attendance table
+    from ..models.models import Shift, Attendance
+    from sqlalchemy import and_, or_, func
+    
+    # Get all shifts for this project
+    shifts_query = db.query(Shift).filter(Shift.project_id == project_id)
+    if date_start and date_end:
+        shifts_query = shifts_query.filter(Shift.date >= date_start, Shift.date <= date_end)
+    shifts = shifts_query.all()
+    shift_ids = [s.id for s in shifts]
+    
+    # Get all attendances for these shifts
+    attendances = []
+    if shift_ids:
+        # Build date range for attendance query
+        if date_start and date_end:
+            date_start_dt = datetime.combine(date_start, time.min).replace(tzinfo=timezone.utc)
+            date_end_dt = datetime.combine(date_end + timedelta(days=1), time.min).replace(tzinfo=timezone.utc)
+            attendances_query = db.query(Attendance).filter(
+                Attendance.shift_id.in_(shift_ids),
+                or_(
+                    and_(
+                        Attendance.clock_in_time.isnot(None),
+                        Attendance.clock_in_time >= date_start_dt,
+                        Attendance.clock_in_time < date_end_dt
+                    ),
+                    and_(
+                        Attendance.clock_in_time.is_(None),
+                        Attendance.clock_out_time.isnot(None),
+                        Attendance.clock_out_time >= date_start_dt,
+                        Attendance.clock_out_time < date_end_dt
+                    )
+                )
+            )
+        else:
+            attendances_query = db.query(Attendance).filter(Attendance.shift_id.in_(shift_ids))
+        
+        if user_id:
+            attendances_query = attendances_query.filter(Attendance.worker_id == user_id)
+        
+        attendances = attendances_query.order_by(
+            func.coalesce(Attendance.clock_in_time, Attendance.clock_out_time).asc()
+        ).all()
+    
+    # Get user and profile info for attendances
+    worker_ids = list(set([str(a.worker_id) for a in attendances]))
+    users_dict = {}
+    profiles_dict = {}
+    if worker_ids:
+        try:
+            worker_ids_uuid = [uuid.UUID(wid) for wid in worker_ids]
+            users = db.query(User).filter(User.id.in_(worker_ids_uuid)).all()
+            users_dict = {str(u.id): u for u in users}
+            profiles = db.query(EmployeeProfile).filter(EmployeeProfile.user_id.in_(worker_ids_uuid)).all()
+            profiles_dict = {str(p.user_id): p for p in profiles}
+        except Exception:
+            pass
+    
+    # Build shifts dict for quick lookup
+    shifts_dict = {str(s.id): s for s in shifts}
+    
+    # Convert attendances to timesheet format (same as attendance table)
+    out = []
+    for att in attendances:
+        worker = users_dict.get(str(att.worker_id))
+        profile = profiles_dict.get(str(att.worker_id))
+        
+        # Get worker name
+        worker_name = worker.username if worker else "Unknown"
+        if profile:
+            name = (profile.preferred_name or '').strip()
+            if not name:
+                first = (profile.first_name or '').strip()
+                last = (profile.last_name or '').strip()
+                name = ' '.join([x for x in [first, last] if x])
+            if name:
+                worker_name = name
+        
+        # Get work_date from clock_in_time or clock_out_time
+        work_date = None
+        if att.clock_in_time:
+            work_date = att.clock_in_time.date()
+        elif att.clock_out_time:
+            work_date = att.clock_out_time.date()
+        
+        if not work_date:
+            continue
+        
+        # Calculate hours_worked (same as attendance table)
+        hours_worked = None
+        if att.clock_in_time and att.clock_out_time:
+            diff = att.clock_out_time - att.clock_in_time
+            hours_worked = diff.total_seconds() / 3600  # Convert to hours
+        
+        # Calculate break_minutes (same function as attendance table)
+        break_minutes = None
+        if att.clock_in_time and att.clock_out_time:
+            break_minutes = calculate_break_minutes(
+                db, att.worker_id, att.clock_in_time, att.clock_out_time
+            )
+        
+        # Calculate net hours (hours - break)
+        net_hours = hours_worked
+        if hours_worked is not None and break_minutes is not None and break_minutes > 0:
+            net_hours = max(0, hours_worked - (break_minutes / 60))
+        
+        # Get shift for notes
+        shift = shifts_dict.get(str(att.shift_id)) if att.shift_id else None
+        notes = f"Clock-in via attendance system"
+        if shift and shift.job_name:
+            notes = f"Clock-in via attendance system - {shift.job_name}"
+        
+        # Format times - convert from UTC to local timezone before extracting time
+        from ..config import settings
+        import pytz
+        start_time_str = None
+        end_time_str = None
+        local_tz = pytz.timezone(settings.tz_default)
+        if att.clock_in_time:
+            # Convert UTC to local timezone
+            local_time = att.clock_in_time.astimezone(local_tz)
+            start_time_str = local_time.time().isoformat()
+        if att.clock_out_time:
+            # Convert UTC to local timezone
+            local_time = att.clock_out_time.astimezone(local_tz)
+            end_time_str = local_time.time().isoformat()
+        
+        out.append({
+            "id": f"attendance_{att.id}",  # Prefix to distinguish from ProjectTimeEntry
+            "project_id": str(project_id),
+            "user_id": str(att.worker_id),
+            "user_name": worker_name,
+            "user_avatar_file_id": str(profile.profile_photo_file_id) if (profile and profile.profile_photo_file_id) else None,
+            "work_date": work_date.isoformat(),
+            "start_time": start_time_str,
+            "end_time": end_time_str,
+            "minutes": int(net_hours * 60) if net_hours is not None else 0,  # Net minutes (after break)
+            "break_minutes": break_minutes if break_minutes is not None else 0,
+            "notes": notes,
+            "created_at": att.created_at.isoformat() if att.created_at else None,
+            "is_approved": att.status == "approved",
+            "approved_at": att.approved_at.isoformat() if att.approved_at else None,
+            "approved_by": str(att.approved_by) if att.approved_by else None,
+            "is_from_attendance": True,  # Flag to indicate this comes from attendance
+            "attendance_id": str(att.id),  # Store attendance ID for reference
+        })
+    
+    # Also include regular ProjectTimeEntry records (manual entries without attendance)
     # join with users and employee_profiles for display
     q = db.query(ProjectTimeEntry, User, EmployeeProfile).join(User, User.id == ProjectTimeEntry.user_id).outerjoin(EmployeeProfile, EmployeeProfile.user_id == User.id).filter(ProjectTimeEntry.project_id == project_id)
     if month:
@@ -805,24 +972,42 @@ def list_timesheet(project_id: str, month: Optional[str] = None, user_id: Option
     if user_id:
         q = q.filter(ProjectTimeEntry.user_id == user_id)
     rows = q.order_by(ProjectTimeEntry.work_date.asc(), ProjectTimeEntry.start_time.asc()).all()
-    out = []
     for r,u,ep in rows:
-        out.append({
-            "id": str(r.id),
-            "project_id": str(r.project_id),
-            "user_id": str(r.user_id),
-            "user_name": (getattr(ep,'preferred_name',None) or ((' '.join([getattr(ep,'first_name',None) or '', getattr(ep,'last_name',None) or '']).strip()) if ep else '') or u.username),
-            "user_avatar_file_id": str(getattr(ep,'profile_photo_file_id')) if (ep and getattr(ep,'profile_photo_file_id', None)) else None,
-            "work_date": r.work_date.isoformat(),
-            "start_time": getattr(r,'start_time', None).isoformat() if getattr(r,'start_time', None) else None,
-            "end_time": getattr(r,'end_time', None).isoformat() if getattr(r,'end_time', None) else None,
-            "minutes": r.minutes,
-            "notes": r.notes,
-            "created_at": r.created_at.isoformat() if getattr(r,'created_at', None) else None,
-            "is_approved": bool(getattr(r,'is_approved', False)),
-            "approved_at": getattr(r,'approved_at', None).isoformat() if getattr(r,'approved_at', None) else None,
-            "approved_by": str(getattr(r,'approved_by', None)) if getattr(r,'approved_by', None) else None,
-        })
+        # Check if this entry already has an attendance record (to avoid duplicates)
+        # We'll skip manual entries that have corresponding attendance
+        entry_date = r.work_date
+        entry_user_id = str(r.user_id)
+        has_attendance = any(
+            str(a.worker_id) == entry_user_id and 
+            ((a.clock_in_time and a.clock_in_time.date() == entry_date) or 
+             (a.clock_out_time and a.clock_out_time.date() == entry_date))
+            for a in attendances
+        )
+        
+        # Only include manual entries that don't have attendance
+        if not has_attendance:
+            out.append({
+                "id": str(r.id),
+                "project_id": str(r.project_id),
+                "user_id": str(r.user_id),
+                "user_name": (getattr(ep,'preferred_name',None) or ((' '.join([getattr(ep,'first_name',None) or '', getattr(ep,'last_name',None) or '']).strip()) if ep else '') or u.username),
+                "user_avatar_file_id": str(getattr(ep,'profile_photo_file_id')) if (ep and getattr(ep,'profile_photo_file_id', None)) else None,
+                "work_date": r.work_date.isoformat(),
+                "start_time": getattr(r,'start_time', None).isoformat() if getattr(r,'start_time', None) else None,
+                "end_time": getattr(r,'end_time', None).isoformat() if getattr(r,'end_time', None) else None,
+                "minutes": r.minutes,
+                "break_minutes": 0,  # Manual entries don't have break
+                "notes": r.notes,
+                "created_at": r.created_at.isoformat() if getattr(r,'created_at', None) else None,
+                "is_approved": bool(getattr(r,'is_approved', False)),
+                "approved_at": getattr(r,'approved_at', None).isoformat() if getattr(r,'approved_at', None) else None,
+                "approved_by": str(getattr(r,'approved_by', None)) if getattr(r,'approved_by', None) else None,
+                "is_from_attendance": False,
+            })
+    
+    # Sort by work_date and start_time
+    out.sort(key=lambda x: (x.get("work_date", ""), x.get("start_time", "")))
+    
     return out
 
 
@@ -916,20 +1101,94 @@ def update_time_entry(project_id: str, entry_id: str, payload: dict, db: Session
 
 @router.delete("/{project_id}/timesheet/{entry_id}")
 def delete_time_entry(project_id: str, entry_id: str, db: Session = Depends(get_db), user=Depends(get_current_user), _=Depends(require_permissions("timesheet:write"))):
-    row = db.query(ProjectTimeEntry).filter(ProjectTimeEntry.id == entry_id, ProjectTimeEntry.project_id == project_id).first()
-    if not row:
-        return {"status":"ok"}
-    
-    # Store entry data before deletion for attendance lookup
-    entry_user_id = row.user_id
-    entry_work_date = row.work_date
-    entry_start_time = row.start_time
-    entry_end_time = row.end_time
-    
-    # Log deletion
-    db.add(ProjectTimeEntryLog(entry_id=row.id, project_id=row.project_id, user_id=user.id, action="delete", changes=None))
-    db.delete(row)
-    db.commit()
+    # Check if this is an attendance entry (prefixed with "attendance_")
+    if entry_id.startswith("attendance_"):
+        # Extract attendance ID
+        attendance_id_str = entry_id.replace("attendance_", "")
+        try:
+            attendance_uuid = uuid.UUID(attendance_id_str)
+        except ValueError:
+            from fastapi import HTTPException
+            raise HTTPException(status_code=400, detail="Invalid attendance ID format")
+        
+        # Get attendance record
+        from ..models.models import Attendance
+        attendance = db.query(Attendance).filter(Attendance.id == attendance_uuid).first()
+        if not attendance:
+            from fastapi import HTTPException
+            raise HTTPException(status_code=404, detail="Attendance not found")
+        
+        # Verify attendance belongs to this project through shift
+        if attendance.shift_id:
+            from ..models.models import Shift
+            shift = db.query(Shift).filter(Shift.id == attendance.shift_id).first()
+            if shift and str(shift.project_id) != project_id:
+                from fastapi import HTTPException
+                raise HTTPException(status_code=403, detail="Attendance does not belong to this project")
+        
+        # Get work_date for log
+        work_date = None
+        if attendance.clock_in_time:
+            work_date = attendance.clock_in_time.date()
+        elif attendance.clock_out_time:
+            work_date = attendance.clock_out_time.date()
+        
+        # Calculate hours and break for log
+        hours_worked = None
+        break_minutes = None
+        if attendance.clock_in_time and attendance.clock_out_time:
+            diff = attendance.clock_out_time - attendance.clock_in_time
+            hours_worked = diff.total_seconds() / 3600
+            from ..routes.settings import calculate_break_minutes
+            break_minutes = calculate_break_minutes(
+                db, attendance.worker_id, attendance.clock_in_time, attendance.clock_out_time
+            )
+        
+        # Format times for log
+        start_time_str = None
+        end_time_str = None
+        if attendance.clock_in_time:
+            start_time_str = attendance.clock_in_time.time().isoformat()
+        if attendance.clock_out_time:
+            end_time_str = attendance.clock_out_time.time().isoformat()
+        
+        # Create log before deleting
+        log = ProjectTimeEntryLog(
+            entry_id=None,  # No ProjectTimeEntry for attendance records
+            project_id=project_id,
+            user_id=user.id,
+            action="delete",
+            changes={
+                "message": "record deleted via project > timesheet",
+                "attendance_id": str(attendance_uuid),  # Store attendance ID in changes
+                "work_date": work_date.isoformat() if work_date else None,
+                "start_time": start_time_str,
+                "end_time": end_time_str,
+                "hours_worked": hours_worked,
+                "break_minutes": break_minutes,
+            }
+        )
+        db.add(log)
+        
+        # Delete the attendance record
+        db.delete(attendance)
+        db.commit()
+    else:
+        # Regular ProjectTimeEntry
+        row = db.query(ProjectTimeEntry).filter(ProjectTimeEntry.id == entry_id, ProjectTimeEntry.project_id == project_id).first()
+        if not row:
+            return {"status":"ok"}
+        
+        # Store entry data before deletion for attendance lookup
+        entry_user_id = row.user_id
+        entry_work_date = row.work_date
+        entry_start_time = row.start_time
+        entry_end_time = row.end_time
+        
+        # Log deletion
+        db.add(ProjectTimeEntryLog(entry_id=row.id, project_id=row.project_id, user_id=user.id, action="delete", changes={"message": "record deleted via project > timesheet"}))
+        db.delete(row)
+        db.commit()
     
     # Reset related attendance records if this entry was created from attendance
     # Find shifts for this project, user, and date

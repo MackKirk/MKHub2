@@ -10,7 +10,7 @@ import { useConfirm } from '@/components/ConfirmProvider';
 // List of implemented permissions (permissions that are actually checked in the codebase)
 const IMPLEMENTED_PERMISSIONS = new Set([
   "users:read", "users:write",
-  "timesheet:read", "timesheet:write", "timesheet:approve",
+  "timesheet:read", "timesheet:write", "timesheet:approve", "timesheet:unrestricted_clock",
   "clients:read", "clients:write",
   "inventory:read", "inventory:write",
   "reviews:read", "reviews:admin",
@@ -739,6 +739,7 @@ function JobSection({ type, p, editable, userId, collectChanges, usersOptions, s
 }
 
 function TimesheetBlock({ userId }:{ userId:string }){
+  const queryClient = useQueryClient();
   const { data:meSelf } = useQuery({ queryKey:['me'], queryFn: ()=> api<any>('GET','/auth/me') });
   const [month, setMonth] = useState<string>(getCurrentMonthLocal());
   const [projectId, setProjectId] = useState<string>('_all_');
@@ -759,6 +760,61 @@ function TimesheetBlock({ userId }:{ userId:string }){
   });
   const canApprove = !!(meSelf?.roles?.includes('admin') || (meSelf?.permissions||[]).includes('timesheet:approve'));
 
+  // Fetch timesheet settings to check if user is eligible for break
+  const { data: settingsData } = useQuery({ 
+    queryKey:['settings-bundle'], 
+    queryFn: ()=> api<Record<string, any[]>>('GET','/settings') 
+  });
+  const timesheetItems = (settingsData?.timesheet||[]) as any[];
+  const breakEmployeesItem = timesheetItems.find((i: any)=> i.label === 'break_eligible_employees');
+  const isEligibleForBreak = useMemo(() => {
+    if (!breakEmployeesItem?.value) return false;
+    try {
+      const employeeIds = JSON.parse(breakEmployeesItem.value);
+      return Array.isArray(employeeIds) && employeeIds.includes(userId);
+    } catch {
+      return false;
+    }
+  }, [breakEmployeesItem?.value, userId]);
+
+  // Toggle eligible for break
+  const toggleEligibleForBreak = async (checked: boolean) => {
+    try {
+      let updatedEmployeeIds: string[] = [];
+      if (breakEmployeesItem?.value) {
+        try {
+          updatedEmployeeIds = JSON.parse(breakEmployeesItem.value);
+          if (!Array.isArray(updatedEmployeeIds)) updatedEmployeeIds = [];
+        } catch {
+          updatedEmployeeIds = [];
+        }
+      }
+
+      if (checked) {
+        // Add user if not already in list
+        if (!updatedEmployeeIds.includes(userId)) {
+          updatedEmployeeIds.push(userId);
+        }
+      } else {
+        // Remove user from list
+        updatedEmployeeIds = updatedEmployeeIds.filter((id: string) => id !== userId);
+      }
+
+      const employeesJson = JSON.stringify(updatedEmployeeIds);
+      if (breakEmployeesItem) {
+        await api('PUT', `/settings/timesheet/${encodeURIComponent(breakEmployeesItem.id)}?label=break_eligible_employees&value=${encodeURIComponent(employeesJson)}`);
+      } else {
+        await api('POST', `/settings/timesheet?label=break_eligible_employees&value=${encodeURIComponent(employeesJson)}`);
+      }
+
+      // Invalidate queries to refresh both SystemSettings and this component
+      queryClient.invalidateQueries({ queryKey: ['settings-bundle'] });
+      toast.success(checked ? 'User marked as eligible for break' : 'User removed from break eligibility');
+    } catch (_e) {
+      toast.error('Failed to update break eligibility');
+    }
+  };
+
   const submit = async()=>{
     try{
       if(!projectId){ toast.error('Select a project'); return; }
@@ -773,7 +829,7 @@ function TimesheetBlock({ userId }:{ userId:string }){
 
   return (
     <div>
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 mb-3">
         <label className="text-xs text-gray-600">Month</label>
         <input type="month" className="border rounded px-2 py-1" value={month} onChange={e=>setMonth(e.target.value)} />
         <label className="text-xs text-gray-600 ml-3">Project</label>
@@ -782,6 +838,22 @@ function TimesheetBlock({ userId }:{ userId:string }){
           <option value="_all_">All projects</option>
           {(projects||[]).map((p:any)=> <option key={p.id} value={p.id}>{p.code? `${p.code} — `:''}{p.name||'Project'}</option>)}
         </select>
+        
+        {/* Eligible for Break checkbox */}
+        <div className="ml-3 flex items-center gap-2">
+          <input
+            type="checkbox"
+            id="eligible-for-break"
+            checked={isEligibleForBreak}
+            onChange={(e) => toggleEligibleForBreak(e.target.checked)}
+            className="w-4 h-4 text-brand-red border-gray-300 rounded focus:ring-brand-red"
+          />
+          <label htmlFor="eligible-for-break" className="text-sm text-gray-700 cursor-pointer">
+            Eligible for Break
+          </label>
+          <span className="text-xs text-gray-500">(Break will be deducted for shifts of 5 hours or more)</span>
+        </div>
+        
         <button onClick={()=>setShowModal(true)} className="ml-auto px-3 py-2 rounded bg-brand-red text-white">Register time</button>
       </div>
       <div className="mt-3 border rounded-lg divide-y">

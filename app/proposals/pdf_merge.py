@@ -21,6 +21,8 @@ def apply_templates(content_pdf: str, output_pdf: str, cover_template: str, page
             template_page = reader_page.pages[0]
 
         merged = copy.deepcopy(template_page)
+        # Merge content onto template (template is base, content overlays)
+        # This ensures template footer is preserved
         merged.merge_page(page)
         writer.add_page(merged)
 

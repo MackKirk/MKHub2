@@ -21,7 +21,7 @@ from ..config import settings
 from ..services.dispatch_conflict import has_overlap, get_conflicting_shifts
 from ..services.geofence import inside_geofence
 from ..services.time_rules import (
-    round_to_15_minutes, is_within_tolerance, is_same_day,
+    round_to_5_minutes, is_within_tolerance, is_same_day,
     local_to_utc, utc_to_local, combine_date_time
 )
 from ..services.audit import create_audit_log, compute_diff
@@ -545,9 +545,13 @@ def get_shift(
     # Get geofences (from shift or project)
     geofences = get_geofences_for_shift(shift, project, db)
     
+    # Get project name
+    project_name = project.name if project else None
+    
     return {
         "id": str(shift.id),
         "project_id": str(shift.project_id),
+        "project_name": project_name,
         "worker_id": str(shift.worker_id),
         "date": shift.date.isoformat(),
         "start_time": shift.start_time.isoformat(),
@@ -914,7 +918,7 @@ def create_attendance(
             raise HTTPException(status_code=400, detail=f"Invalid time_selected_local format: {time_selected_local_str}")
         
         # Round to 15 minutes
-        time_selected_local = round_to_15_minutes(time_selected_local)
+        time_selected_local = round_to_5_minutes(time_selected_local)
         
         # Convert to UTC
         project = db.query(Project).filter(Project.id == shift.project_id).first()
@@ -958,13 +962,15 @@ def create_attendance(
         from datetime import timezone
         time_entered_utc = datetime.now(timezone.utc)
         
-        # Validate: Block future times (except in Attendance tab which has no restrictions)
-        # Check if time_selected_utc is in the future
-        if time_selected_utc > time_entered_utc:
-            logger.warning(f"Future time blocked - Selected: {time_selected_utc}, Current: {time_entered_utc}")
+        # Validate: Allow future times with 4 minute margin
+        # Check if time_selected_utc is more than 4 minutes in the future
+        from datetime import timedelta
+        max_future = time_entered_utc + timedelta(minutes=4)
+        if time_selected_utc > max_future:
+            logger.warning(f"Future time blocked - Selected: {time_selected_utc}, Current: {time_entered_utc}, Max allowed: {max_future}")
             raise HTTPException(
                 status_code=400,
-                detail="Clock-in/out cannot be in the future. Please select a valid time."
+                detail="Clock-in/out cannot be more than 4 minutes in the future. Please select a valid time."
             )
         
         # Get GPS data
@@ -1117,6 +1123,18 @@ def create_attendance(
         
         # NEW MODEL: Single record per event (clock_in_time and clock_out_time in same record)
         if attendance_type == "in":
+            # Check for conflicts before creating attendance
+            from ..routes.settings import check_attendance_conflict
+            conflict_error = check_attendance_conflict(
+                db, worker_id, time_selected_utc, None, exclude_attendance_id=None, timezone_str=project_timezone
+            )
+            if conflict_error:
+                logger.warning(f"Attendance conflict detected: {conflict_error}")
+                raise HTTPException(
+                    status_code=400,
+                    detail=conflict_error  # Message already includes "Cannot create attendance:" prefix
+                )
+            
             # Create new attendance record with clock-in (break_minutes will be calculated when clock-out is added)
             attendance = Attendance(
                 shift_id=shift_id,
@@ -1151,6 +1169,18 @@ def create_attendance(
             ).order_by(Attendance.clock_in_time.desc()).first()
             
             if existing_attendance:
+                # Check for conflicts before updating with clock-out
+                from ..routes.settings import check_attendance_conflict
+                conflict_error = check_attendance_conflict(
+                    db, worker_id, existing_attendance.clock_in_time, time_selected_utc, exclude_attendance_id=existing_attendance.id, timezone_str=project_timezone
+                )
+                if conflict_error:
+                    logger.warning(f"Attendance conflict detected: {conflict_error}")
+                    raise HTTPException(
+                        status_code=400,
+                        detail=conflict_error  # Message already includes "Cannot create attendance:" prefix
+                    )
+                
                 # Update existing attendance record with clock-out
                 existing_attendance.clock_out_time = time_selected_utc
                 existing_attendance.clock_out_entered_utc = time_entered_utc
@@ -1175,6 +1205,18 @@ def create_attendance(
                 db.commit()
                 db.refresh(attendance)
             else:
+                # No matching clock-in found - check for conflicts before creating new record with only clock-out
+                from ..routes.settings import check_attendance_conflict
+                conflict_error = check_attendance_conflict(
+                    db, worker_id, None, time_selected_utc, exclude_attendance_id=None, timezone_str=project_timezone
+                )
+                if conflict_error:
+                    logger.warning(f"Attendance conflict detected: {conflict_error}")
+                    raise HTTPException(
+                        status_code=400,
+                        detail=conflict_error  # Message already includes "Cannot create attendance:" prefix
+                    )
+                
                 # No matching clock-in found - create new record with only clock-out
                 # This shouldn't normally happen, but handle gracefully
                 attendance = Attendance(
@@ -1420,8 +1462,8 @@ def create_attendance_supervisor(
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid time_selected_local format")
     
-    # Round to 15 minutes
-    time_selected_local = round_to_15_minutes(time_selected_local)
+    # Round to 5 minutes
+    time_selected_local = round_to_5_minutes(time_selected_local)
     
     # Convert to UTC
     project = db.query(Project).filter(Project.id == shift.project_id).first()
@@ -1628,7 +1670,7 @@ def create_direct_attendance(
             raise HTTPException(status_code=400, detail=f"Invalid time_selected_local format: {time_selected_local_str}")
         
         # Round to 15 minutes
-        time_selected_local = round_to_15_minutes(time_selected_local)
+        time_selected_local = round_to_5_minutes(time_selected_local)
         
         # Convert to UTC (use default timezone)
         from ..services.time_rules import local_to_utc
@@ -1719,6 +1761,18 @@ def create_direct_attendance(
         time_entered_utc = datetime.now(timezone.utc)
         
         if attendance_type == "in":
+            # Check for conflicts before creating attendance
+            from ..routes.settings import check_attendance_conflict
+            conflict_error = check_attendance_conflict(
+                db, uuid.UUID(worker_id), time_selected_utc, None, exclude_attendance_id=None, timezone_str=settings.tz_default
+            )
+            if conflict_error:
+                logger.warning(f"Attendance conflict detected: {conflict_error}")
+                raise HTTPException(
+                    status_code=400,
+                    detail=conflict_error  # Message already includes "Cannot create attendance:" prefix
+                )
+            
             # Create new attendance record with clock-in
             attendance = Attendance(
                 shift_id=None,  # NO SHIFT - completely independent
@@ -1746,6 +1800,18 @@ def create_direct_attendance(
             db.commit()
             db.refresh(attendance)
         else:  # attendance_type == "out"
+            # Check for conflicts before updating with clock-out
+            from ..routes.settings import check_attendance_conflict
+            conflict_error = check_attendance_conflict(
+                db, uuid.UUID(worker_id), clock_in_attendance.clock_in_time, time_selected_utc, exclude_attendance_id=clock_in_attendance.id, timezone_str=settings.tz_default
+            )
+            if conflict_error:
+                logger.warning(f"Attendance conflict detected: {conflict_error}")
+                raise HTTPException(
+                    status_code=400,
+                    detail=conflict_error  # Message already includes "Cannot create attendance:" prefix
+                )
+            
             # Update existing attendance record with clock-out
             clock_in_attendance.clock_out_time = time_selected_utc
             clock_in_attendance.clock_out_entered_utc = time_entered_utc
@@ -2056,6 +2122,17 @@ def get_weekly_attendance_summary(
                         pass
                     break
         
+        # Calculate break minutes using the same function as the attendance table
+        # This ensures consistency between the attendance table and weekly summary
+        from ..routes.settings import calculate_break_minutes as calc_break
+        break_minutes_calculated = None
+        if attendance.clock_in_time and attendance.clock_out_time:
+            break_minutes_calculated = calc_break(
+                db, attendance.worker_id, attendance.clock_in_time, attendance.clock_out_time
+            )
+        # Use calculated break_minutes if available, otherwise fall back to stored value
+        final_break_minutes = break_minutes_calculated if break_minutes_calculated is not None else (attendance.break_minutes if attendance.break_minutes is not None else 0)
+        
         # Add event - each attendance is already a complete event
         daily_entries[date_str]["events"].append({
             "clock_in": {
@@ -2073,12 +2150,13 @@ def get_weekly_attendance_summary(
             "job_type": job_type,
             "project_name": project_name,
             "hours_worked": hours_worked,
-            "break_minutes": attendance.break_minutes if attendance.break_minutes is not None else 0,
+            "break_minutes": final_break_minutes,
         })
     
     # Calculate hours worked for each day - handle multiple events per day
     result = []
-    total_minutes = 0
+    total_minutes = 0  # Net minutes (after break deduction) - used for "Total"
+    total_gross_minutes = 0  # Gross minutes (before break deduction) - used to calculate "Reg"
     
     for i in range(7):  # Sunday to Saturday
         current_date = week_start_date + timedelta(days=i)
@@ -2090,7 +2168,8 @@ def get_weekly_attendance_summary(
         })
         
         # Calculate total hours for the day (sum of all completed events, minus breaks)
-        day_total_minutes = 0
+        day_total_minutes = 0  # Net minutes for the day
+        day_gross_minutes = 0  # Gross minutes for the day (before break)
         day_break_minutes = 0
         events_list = []
         
@@ -2126,17 +2205,27 @@ def get_weekly_attendance_summary(
             
             if clock_in_time_str and clock_out_time_str:
                 # Completed event - calculate hours
-                if is_hours_worked and hours_value is not None:
-                    # Use the hours_worked value directly
-                    event_minutes = int(float(hours_value) * 60)
-                else:
-                    # Calculate from clock-in/out times
-                    clock_in_time = datetime.fromisoformat(clock_in_time_str)
-                    clock_out_time = datetime.fromisoformat(clock_out_time_str)
-                    diff = clock_out_time - clock_in_time
-                    event_minutes = int(diff.total_seconds() / 60)
+                # Always calculate from clock-in/out times to ensure consistency with attendance table
+                # This matches exactly how the attendance table calculates hours_worked
+                clock_in_time = datetime.fromisoformat(clock_in_time_str)
+                clock_out_time = datetime.fromisoformat(clock_out_time_str)
+                diff = clock_out_time - clock_in_time
+                event_gross_minutes = int(diff.total_seconds() / 60)  # Gross minutes (before break)
                 
-                # Break is already subtracted in net_minutes above
+                # Get break minutes from event (already calculated using same function as attendance table)
+                break_minutes = event.get("break_minutes", 0) or 0
+                
+                # For "hours worked" entries, if hours_value is provided, use it as the net value
+                # Otherwise, calculate net by subtracting break (same as attendance table)
+                if is_hours_worked and hours_value is not None:
+                    # For "hours worked" entries, the hours_value might be the net value
+                    # But to be consistent, let's calculate from times and subtract break
+                    # This ensures we always use the same calculation as the attendance table
+                    net_minutes = max(0, event_gross_minutes - break_minutes)
+                else:
+                    # Regular entry: calculate total from times, then subtract break
+                    # This matches exactly what the attendance table does
+                    net_minutes = max(0, event_gross_minutes - break_minutes)
                 
                 # Determine job name
                 job_name = "Unknown"
@@ -2145,12 +2234,9 @@ def get_weekly_attendance_summary(
                 elif event["project_name"]:
                     job_name = event["project_name"]
                 
-                # Get break minutes from event
-                break_minutes = event.get("break_minutes", 0) or 0
-                # Subtract break from total minutes
-                net_minutes = max(0, event_minutes - break_minutes)
                 day_break_minutes += break_minutes
-                day_total_minutes += net_minutes
+                day_total_minutes += net_minutes  # Net (after break)
+                day_gross_minutes += event_gross_minutes  # Gross (before break)
                 
                 events_list.append({
                     "clock_in": None if is_hours_worked else clock_in_time_str,
@@ -2185,7 +2271,8 @@ def get_weekly_attendance_summary(
                     "break_formatted": None,
                 })
         
-        total_minutes += day_total_minutes
+        total_minutes += day_total_minutes  # Net total (after break)
+        total_gross_minutes += day_gross_minutes  # Gross total (before break)
         
         # If there are events, add them to result
         if events_list:
@@ -2206,12 +2293,26 @@ def get_weekly_attendance_summary(
                     "break_formatted": event_data.get("break_formatted"),
                 })
     
+    # Calculate total break minutes for the week
+    total_break_minutes = 0
+    for day_entry in result:
+        total_break_minutes += day_entry.get("break_minutes", 0) or 0
+    
+    # Reg = Total de horas brutas (soma de todos os shifts sem descontar break)
+    reg_minutes = total_gross_minutes
+    # Total = Reg - Break (horas líquidas após descontar break)
+    total_net_minutes = max(0, reg_minutes - total_break_minutes)
+    
     return {
         "week_start": week_start_date.isoformat(),
         "week_end": week_end_date.isoformat(),
         "days": result,
-        "total_minutes": total_minutes,
-        "total_hours_formatted": f"{total_minutes // 60}h {total_minutes % 60:02d}m",
+        "total_minutes": total_net_minutes,  # Total = Reg - Break
+        "total_hours_formatted": f"{total_net_minutes // 60}h {total_net_minutes % 60:02d}m",
+        "reg_minutes": reg_minutes,  # Reg = Total de horas brutas
+        "reg_hours_formatted": f"{reg_minutes // 60}h {reg_minutes % 60:02d}m",
+        "total_break_minutes": total_break_minutes,
+        "total_break_formatted": f"{total_break_minutes // 60}h {total_break_minutes % 60:02d}m",
     }
 
 
@@ -2356,7 +2457,7 @@ def update_attendance(
     if "time_selected_local" in payload:
         try:
             time_selected_local = datetime.fromisoformat(payload["time_selected_local"].replace('Z', '+00:00'))
-            time_selected_local = round_to_15_minutes(time_selected_local)
+            time_selected_local = round_to_5_minutes(time_selected_local)
             
             if time_selected_local.tzinfo is not None:
                 time_selected_local = time_selected_local.replace(tzinfo=None)

@@ -273,7 +273,7 @@ class ProjectTimeEntryLog(Base):
     __tablename__ = "project_time_entry_logs"
 
     id: Mapped[uuid.UUID] = uuid_pk()
-    entry_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("project_time_entries.id", ondelete="CASCADE"))
+    entry_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("project_time_entries.id", ondelete="CASCADE"), nullable=True)
     project_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"))
     user_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
     action: Mapped[str] = mapped_column(String(50))  # create|update|delete

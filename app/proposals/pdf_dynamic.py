@@ -47,8 +47,9 @@ class PricingTable(Flowable):
     def __init__(self, data):
         super().__init__()
         self.data = data
-        base_height = 90
-        additional_height = len(data.get("additional_costs") or []) * 18
+        additional_costs = data.get("additional_costs") or []
+        base_height = 70  # Reduced since we removed "Bid Price" separate line
+        additional_height = len(additional_costs) * 18
         self.height = base_height + additional_height
         self.top_padding = 10
 
@@ -64,27 +65,18 @@ class PricingTable(Flowable):
         c.drawString(x_left, y, "Pricing Table")
 
         y -= 30
-        c.setFont("Montserrat-Bold", 11.5)
-        c.setFillColor(colors.black)
-        c.drawString(x_left, y, "Bid Price")
-
-        c.setFont("Montserrat-Bold", 11.5)
-        c.setFillColor(colors.grey)
-        c.drawRightString(x_right, y, f"${float(self.data.get('bid_price', 0)):,.2f}")
-        y -= 20
 
         additional_costs = self.data.get("additional_costs") or []
         if additional_costs:
-            c.setFont("Montserrat-Bold", 11.5)
-            c.setFillColor(colors.black)
-            c.drawString(x_left, y, "Additional Cost(s)")
-
             for cost in additional_costs:
                 c.setFont("Montserrat-Bold", 11.5)
-                c.setFillColor(colors.grey)
+                c.setFillColor(colors.black)
                 label = cost.get("label", "")
                 value = f"${float(cost.get('value', 0)):,.2f}"
-                c.drawRightString(x_right, y, f"{label} - {value}")
+                c.drawString(x_left, y, label)
+                c.setFont("Montserrat-Bold", 11.5)
+                c.setFillColor(colors.grey)
+                c.drawRightString(x_right, y, value)
                 y -= 16
 
         y -= 20
@@ -92,12 +84,66 @@ class PricingTable(Flowable):
         c.setLineWidth(2)
         c.line(x_right - 40, y + 20, x_right, y + 20)
 
+        # Calculate total: sum of all additional costs
+        total_calc = 0.0
+        for cost in additional_costs:
+            try:
+                total_calc += float(cost.get('value', 0) or 0)
+            except Exception:
+                pass
+        
+        # Use calculated total if provided total is invalid
+        total_val = self.data.get('total')
+        try:
+            total_val = float(total_val)
+            if not (total_val == total_val):  # Check for NaN
+                total_val = total_calc
+        except Exception:
+            total_val = total_calc
+
         c.setFont("Montserrat-Bold", 11.5)
         c.setFillColor(colors.black)
         c.drawString(x_left, y, "TOTAL:")
 
         c.setFillColor(colors.grey)
-        c.drawRightString(x_right, y, f"${float(self.data.get('total', 0)):,.2f}")
+        c.drawRightString(x_right, y, f"${total_val:,.2f}")
+
+
+class OptionalServicesTable(Flowable):
+    def __init__(self, data):
+        super().__init__()
+        self.data = data
+        optional_services = data.get("optional_services") or []
+        base_height = 50
+        additional_height = len(optional_services) * 18
+        self.height = base_height + additional_height
+        self.top_padding = 10
+
+    def draw(self):
+        c = self.canv
+        width = A4[0] - 80
+        x_left = 0
+        x_right = width
+        y = self.height - self.top_padding
+
+        c.setFont("Montserrat-Bold", 11.5)
+        c.setFillColor(colors.HexColor("#d62028"))
+        c.drawString(x_left, y, "Optional Services")
+
+        y -= 30
+
+        optional_services = self.data.get("optional_services") or []
+        if optional_services:
+            for service in optional_services:
+                c.setFont("Montserrat-Bold", 11.5)
+                c.setFillColor(colors.black)
+                service_name = service.get("service", "")
+                service_price = f"${float(service.get('price', 0)):,.2f}"
+                c.drawString(x_left, y, service_name)
+                c.setFont("Montserrat-Bold", 11.5)
+                c.setFillColor(colors.grey)
+                c.drawRightString(x_right, y, service_price)
+                y -= 16
 
 
 class YellowLine(Flowable):
@@ -118,7 +164,7 @@ class YellowLine(Flowable):
 def build_dynamic_pages(data, output_path):
     doc = BaseDocTemplate(output_path, pagesize=A4,
                           rightMargin=40, leftMargin=40,
-                          topMargin=100, bottomMargin=150)
+                          topMargin=100, bottomMargin=180)
 
     styles = getSampleStyleSheet()
     title_style = ParagraphStyle("TitleRed", parent=styles["Normal"],
@@ -222,36 +268,49 @@ def build_dynamic_pages(data, output_path):
                         story.append(table)
             story.append(Spacer(1, 20))
 
-    # --- Pricing (conditional)
+    # --- Pricing (conditional) - independent from Optional Services
     try:
         add_costs = data.get("additional_costs") or []
+        # Filter out empty costs
+        valid_costs = [c for c in add_costs if c.get("label") and c.get("label").strip()]
+        # Show pricing if there are valid costs
+        show_pricing = len(valid_costs) > 0
+        
+        # Calculate total
         sum_costs = 0.0
-        for c in add_costs:
+        for c in valid_costs:
             try:
                 sum_costs += float(c.get("value") or 0)
             except Exception:
                 pass
-        bid = float(data.get("bid_price") or 0)
         total_val = data.get("total")
         try:
             total_val = float(total_val)
         except Exception:
-            total_val = bid + sum_costs
-        show_pricing = (total_val or 0) > 0
+            total_val = sum_costs
     except Exception:
-        show_pricing = True
+        show_pricing = False
 
     if show_pricing:
         story.append(YellowLine())
         story.append(Spacer(1, 20))
-        story.append(PricingTable({ **data, "total": total_val, "additional_costs": add_costs, "bid_price": bid }))
+        story.append(PricingTable({ **data, "total": total_val, "additional_costs": valid_costs }))
+
+    # Optional Services Table (only if there are optional services)
+    optional_services = data.get("optional_services") or []
+    if optional_services and len(optional_services) > 0:
+        # Filter out empty services
+        valid_services = [s for s in optional_services if s.get("service") and s.get("service").strip()]
+        if valid_services:
+            story.append(Spacer(1, 20))
+            story.append(OptionalServicesTable({ **data, "optional_services": valid_services }))
 
     story.append(PageBreak())
     story.append(Paragraph("General Project Terms & Conditions", title_style))
     story.append(Paragraph((data.get("terms_text", "") or "").replace("\n", "<br/>"), user_style))
 
     top_margin = 125
-    bottom_margin = 75
+    bottom_margin = 120  # Increased further to ensure footer (at ~60-80pt from bottom) is not overlapped
 
     frame = Frame(
         35,

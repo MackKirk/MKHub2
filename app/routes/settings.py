@@ -16,6 +16,191 @@ import json
 router = APIRouter(prefix="/settings", tags=["settings"])
 
 
+def _format_datetime_user_friendly(dt: datetime, timezone_str: str = None) -> str:
+    """
+    Format datetime as 'Nov 25, 2025 at 1:00 AM' in local timezone.
+    If dt is timezone-aware (UTC), converts to local timezone before formatting.
+    """
+    import pytz
+    from ..config import settings
+    
+    # Ensure dt is timezone-aware (assume UTC if naive)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=pytz.UTC)
+    
+    # Convert to local timezone for display
+    tz_to_use = timezone_str or settings.tz_default
+    local_tz = pytz.timezone(tz_to_use)
+    local_dt = dt.astimezone(local_tz)
+    
+    # Format: "Nov 25, 2025 at 1:00 AM"
+    formatted = local_dt.strftime('%b %d, %Y at %I:%M %p')
+    # Remove leading zero from day if present (e.g., "Nov 05" -> "Nov 5")
+    parts = formatted.split(', ')
+    if len(parts) >= 2:
+        month_day = parts[0]
+        rest = ', '.join(parts[1:])
+        # Remove leading zero from day
+        month_day_parts = month_day.split(' ')
+        if len(month_day_parts) == 2:
+            day = month_day_parts[1].lstrip('0') or '0'
+            month_day = f"{month_day_parts[0]} {day}"
+        formatted = f"{month_day}, {rest}"
+    # Remove leading zero from hour (e.g., "01:00" -> "1:00")
+    formatted = formatted.replace(' 0', ' ').replace(' at 0', ' at ')
+    return formatted
+
+
+def check_attendance_conflict(
+    db: Session,
+    worker_id: uuid.UUID,
+    clock_in_time: Optional[datetime],
+    clock_out_time: Optional[datetime],
+    exclude_attendance_id: Optional[uuid.UUID] = None,
+    timezone_str: str = None
+) -> Optional[str]:
+    """
+    Check if an attendance conflicts with existing attendances for the same worker.
+    Returns error message if conflict found, None otherwise.
+    
+    A conflict occurs when:
+    - New clock_in_time is between existing clock_in_time and clock_out_time
+    - New clock_out_time is between existing clock_in_time and clock_out_time
+    - New attendance completely encompasses an existing attendance
+    - An existing attendance completely encompasses the new attendance
+    - New attendance overlaps with existing attendance (any overlap)
+    
+    All times are normalized to UTC for comparison, but displayed in local timezone in error messages.
+    """
+    import pytz
+    from ..config import settings
+    
+    if not clock_in_time and not clock_out_time:
+        return None  # No times to check
+    
+    # Normalize input times to UTC (timezone-aware)
+    def normalize_to_utc(dt: Optional[datetime]) -> Optional[datetime]:
+        if dt is None:
+            return None
+        if dt.tzinfo is None:
+            # Assume naive datetime is already in UTC
+            return dt.replace(tzinfo=pytz.UTC)
+        # Convert to UTC if timezone-aware
+        return dt.astimezone(pytz.UTC)
+    
+    clock_in_utc = normalize_to_utc(clock_in_time)
+    clock_out_utc = normalize_to_utc(clock_out_time)
+    
+    # Build query for existing attendances for this worker
+    query = db.query(Attendance).filter(Attendance.worker_id == worker_id)
+    
+    # Exclude the current attendance if updating
+    if exclude_attendance_id:
+        query = query.filter(Attendance.id != exclude_attendance_id)
+    
+    # Get all attendances for this worker that have at least one time
+    existing_attendances = query.filter(
+        or_(
+            Attendance.clock_in_time.isnot(None),
+            Attendance.clock_out_time.isnot(None)
+        )
+    ).all()
+    
+    for existing in existing_attendances:
+        existing_in = existing.clock_in_time
+        existing_out = existing.clock_out_time
+        
+        # Skip if existing attendance has no times
+        if not existing_in and not existing_out:
+            continue
+        
+        # Normalize existing times to UTC for comparison
+        existing_in_utc = normalize_to_utc(existing_in)
+        existing_out_utc = normalize_to_utc(existing_out)
+        
+        # Case 1: Both existing and new have complete times (clock_in and clock_out)
+        if existing_in_utc and existing_out_utc and clock_in_utc and clock_out_utc:
+            # Check for any overlap: new_start < existing_end AND new_end > existing_start
+            # Allow new attendance to start exactly when existing ends (clock_in_utc == existing_out_utc is OK)
+            # Allow new attendance to end exactly when existing starts (clock_out_utc == existing_in_utc is OK)
+            if clock_in_utc < existing_out_utc and clock_out_utc > existing_in_utc:
+                existing_start = _format_datetime_user_friendly(existing_in, timezone_str)
+                existing_end = _format_datetime_user_friendly(existing_out, timezone_str)
+                return f"Cannot create attendance: There is already an attendance record for this worker from {existing_start} to {existing_end}. Please choose a different time period."
+            # Check if new clock_in is within 1 hour before existing start (minimum 1 hour gap required)
+            one_hour_before = existing_in_utc - timedelta(hours=1)
+            if one_hour_before < clock_in_utc < existing_in_utc:
+                existing_start = _format_datetime_user_friendly(existing_in, timezone_str)
+                return f"Cannot create attendance: The clock-in time must be at least 1 hour before the existing attendance that starts at {existing_start}. Please choose a different time."
+        
+        # Case 2: Existing has both times, new has only clock_in
+        elif existing_in_utc and existing_out_utc and clock_in_utc and not clock_out_utc:
+            # Check if new clock_in is within existing range (excluding the end time)
+            # Allow clock_in to be exactly at existing_out (start when previous ends)
+            if existing_in_utc <= clock_in_utc < existing_out_utc:
+                existing_start = _format_datetime_user_friendly(existing_in, timezone_str)
+                existing_end = _format_datetime_user_friendly(existing_out, timezone_str)
+                return f"Cannot create attendance: The clock-in time conflicts with an existing attendance record from {existing_start} to {existing_end}. Please choose a different time."
+            # Check if new clock_in is within 1 hour before existing start (minimum 1 hour gap required)
+            one_hour_before = existing_in_utc - timedelta(hours=1)
+            if one_hour_before < clock_in_utc < existing_in_utc:
+                existing_start = _format_datetime_user_friendly(existing_in, timezone_str)
+                return f"Cannot create attendance: The clock-in time must be at least 1 hour before the existing attendance that starts at {existing_start}. Please choose a different time."
+        
+        # Case 3: Existing has both times, new has only clock_out
+        elif existing_in_utc and existing_out_utc and not clock_in_utc and clock_out_utc:
+            # Check if new clock_out is within existing range (excluding the start time)
+            # Allow clock_out to be exactly at existing_in (end when previous starts)
+            if existing_in_utc < clock_out_utc <= existing_out_utc:
+                existing_start = _format_datetime_user_friendly(existing_in, timezone_str)
+                existing_end = _format_datetime_user_friendly(existing_out, timezone_str)
+                return f"Cannot create attendance: The clock-out time conflicts with an existing attendance record from {existing_start} to {existing_end}. Please choose a different time."
+        
+        # Case 4: Existing has only clock_in, new has both times
+        elif existing_in_utc and not existing_out_utc and clock_in_utc and clock_out_utc:
+            # Check if existing clock_in is within new range (excluding boundaries)
+            # Allow existing clock_in to be exactly at new start or end
+            if clock_in_utc < existing_in_utc < clock_out_utc:
+                existing_clock_in = _format_datetime_user_friendly(existing_in, timezone_str)
+                return f"Cannot create attendance: This time period overlaps with an existing clock-in at {existing_clock_in}. Please choose a different time period."
+            # Check if new clock_in is within 1 hour before existing start (minimum 1 hour gap required)
+            one_hour_before = existing_in_utc - timedelta(hours=1)
+            if one_hour_before < clock_in_utc < existing_in_utc:
+                existing_clock_in = _format_datetime_user_friendly(existing_in, timezone_str)
+                return f"Cannot create attendance: The clock-in time must be at least 1 hour before the existing clock-in at {existing_clock_in}. Please choose a different time."
+        
+        # Case 5: Existing has only clock_out, new has both times
+        elif not existing_in_utc and existing_out_utc and clock_in_utc and clock_out_utc:
+            # Check if existing clock_out is within new range (excluding boundaries)
+            # Allow existing clock_out to be exactly at new start or end
+            if clock_in_utc < existing_out_utc < clock_out_utc:
+                existing_clock_out = _format_datetime_user_friendly(existing_out, timezone_str)
+                return f"Cannot create attendance: This time period overlaps with an existing clock-out at {existing_clock_out}. Please choose a different time period."
+        
+        # Case 6: Both have only clock_in
+        elif existing_in_utc and not existing_out_utc and clock_in_utc and not clock_out_utc:
+            # Same time is a conflict (with small tolerance for floating point)
+            time_diff = abs((clock_in_utc - existing_in_utc).total_seconds())
+            if time_diff < 60:  # Within 1 minute
+                existing_clock_in = _format_datetime_user_friendly(existing_in, timezone_str)
+                return f"Cannot create attendance: There is already a clock-in at {existing_clock_in} for this worker. Please choose a different time."
+            # Check if new clock_in is within 1 hour before existing start (minimum 1 hour gap required)
+            one_hour_before = existing_in_utc - timedelta(hours=1)
+            if one_hour_before < clock_in_utc < existing_in_utc:
+                existing_clock_in = _format_datetime_user_friendly(existing_in, timezone_str)
+                return f"Cannot create attendance: The clock-in time must be at least 1 hour before the existing clock-in at {existing_clock_in}. Please choose a different time."
+        
+        # Case 7: Both have only clock_out
+        elif not existing_in_utc and existing_out_utc and not clock_in_utc and clock_out_utc:
+            # Same time is a conflict (with small tolerance for floating point)
+            time_diff = abs((clock_out_utc - existing_out_utc).total_seconds())
+            if time_diff < 60:  # Within 1 minute
+                existing_clock_out = _format_datetime_user_friendly(existing_out, timezone_str)
+                return f"Cannot create attendance: There is already a clock-out at {existing_clock_out} for this worker. Please choose a different time."
+    
+    return None
+
+
 def calculate_break_minutes(
     db: Session,
     worker_id: uuid.UUID,
@@ -159,9 +344,78 @@ def delete_attendance(
     if not attendance:
         raise HTTPException(status_code=404, detail="Attendance not found")
     
-    # Delete the record
+    # Get project_id from shift if attendance has a shift
+    project_id = None
+    shift = None
+    if attendance.shift_id:
+        from ..models.models import Shift
+        shift = db.query(Shift).filter(Shift.id == attendance.shift_id).first()
+        if shift:
+            project_id = shift.project_id
+    
+    # Get work_date for log and for deleting ProjectTimeEntry
+    work_date = None
+    if attendance.clock_in_time:
+        work_date = attendance.clock_in_time.date()
+    elif attendance.clock_out_time:
+        work_date = attendance.clock_out_time.date()
+    
+    # Calculate hours and break for log
+    hours_worked = None
+    break_minutes = None
+    if attendance.clock_in_time and attendance.clock_out_time:
+        diff = attendance.clock_out_time - attendance.clock_in_time
+        hours_worked = diff.total_seconds() / 3600
+        break_minutes = calculate_break_minutes(
+            db, attendance.worker_id, attendance.clock_in_time, attendance.clock_out_time
+        )
+    
+    # Format times for log
+    start_time_str = None
+    end_time_str = None
+    if attendance.clock_in_time:
+        start_time_str = attendance.clock_in_time.time().isoformat()
+    if attendance.clock_out_time:
+        end_time_str = attendance.clock_out_time.time().isoformat()
+    
+    # Delete corresponding ProjectTimeEntry if it exists
+    # This happens when attendance was approved and synced to timesheet
+    if project_id and work_date:
+        from ..models.models import ProjectTimeEntry
+        time_entry = db.query(ProjectTimeEntry).filter(
+            ProjectTimeEntry.project_id == project_id,
+            ProjectTimeEntry.user_id == attendance.worker_id,
+            ProjectTimeEntry.work_date == work_date
+        ).first()
+        
+        if time_entry:
+            # Delete the ProjectTimeEntry
+            db.delete(time_entry)
+    
+    # Delete the attendance record
     db.delete(attendance)
     db.commit()
+    
+    # Create log in ProjectTimeEntryLog if attendance has a project
+    if project_id:
+        from ..models.models import ProjectTimeEntryLog
+        log = ProjectTimeEntryLog(
+            entry_id=None,  # No ProjectTimeEntry for attendance records
+            project_id=project_id,
+            user_id=user.id,
+            action="delete",
+            changes={
+                "message": "attendance deleted via Attendance tab",
+                "attendance_id": str(attendance_uuid),  # Store attendance ID in changes
+                "work_date": work_date.isoformat() if work_date else None,
+                "start_time": start_time_str,
+                "end_time": end_time_str,
+                "hours_worked": hours_worked,
+                "break_minutes": break_minutes,
+            }
+        )
+        db.add(log)
+        db.commit()
     
     return {"status": "ok", "deleted_id": attendance_id}
 
@@ -198,13 +452,17 @@ def update_attendance(
     if not attendance:
         raise HTTPException(status_code=404, detail="Attendance not found")
     
+    # Get new times before updating to check for conflicts
+    new_clock_in_time = attendance.clock_in_time
+    new_clock_out_time = attendance.clock_out_time
+    
     # Update fields - NEW MODEL: Support both clock_in_time and clock_out_time
     if "clock_in_time" in payload:
         try:
             clock_in_time = datetime.fromisoformat(payload["clock_in_time"].replace('Z', '+00:00'))
             if clock_in_time.tzinfo is None:
                 clock_in_time = clock_in_time.replace(tzinfo=timezone.utc)
-            attendance.clock_in_time = clock_in_time
+            new_clock_in_time = clock_in_time
         except:
             raise HTTPException(status_code=400, detail="Invalid clock_in_time format")
     
@@ -213,9 +471,27 @@ def update_attendance(
             clock_out_time = datetime.fromisoformat(payload["clock_out_time"].replace('Z', '+00:00'))
             if clock_out_time.tzinfo is None:
                 clock_out_time = clock_out_time.replace(tzinfo=timezone.utc)
-            attendance.clock_out_time = clock_out_time
+            new_clock_out_time = clock_out_time
         except:
             raise HTTPException(status_code=400, detail="Invalid clock_out_time format")
+    
+    # Check for conflicts before updating
+    conflict_error = check_attendance_conflict(
+        db, attendance.worker_id, new_clock_in_time, new_clock_out_time, exclude_attendance_id=attendance.id, timezone_str=settings.tz_default
+    )
+    if conflict_error:
+        # Replace "create" with "update" in the message for better context
+        error_message = conflict_error.replace("Cannot create attendance:", "Cannot update attendance:")
+        raise HTTPException(
+            status_code=400,
+            detail=error_message  # Message already includes proper prefix
+        )
+    
+    # Now update the attendance with the new times
+    if "clock_in_time" in payload:
+        attendance.clock_in_time = new_clock_in_time
+    if "clock_out_time" in payload:
+        attendance.clock_out_time = new_clock_out_time
     
     # Calculate break minutes if both times are present
     if attendance.clock_in_time and attendance.clock_out_time:
@@ -517,6 +793,13 @@ def list_attendances(
                 time_selected = att.clock_in_time if att.clock_in_time else att.clock_out_time
                 time_entered = att.clock_in_entered_utc if att.clock_in_time else att.clock_out_entered_utc
                 
+                # Calculate break minutes if both times exist
+                break_minutes = None
+                if att.clock_in_time and att.clock_out_time:
+                    break_minutes = calculate_break_minutes(
+                        db, att.worker_id, att.clock_in_time, att.clock_out_time
+                    )
+                
                 result.append({
                     "id": str(att.id),
                     "worker_id": str(att.worker_id),
@@ -532,6 +815,7 @@ def list_attendances(
                     "job_name": job_name,
                     "project_name": project_name,
                     "hours_worked": round(hours_worked, 2) if hours_worked else None,
+                    "break_minutes": break_minutes,
                     "reason_text": att.reason_text,
                     "gps_lat": float(att.clock_in_gps_lat) if att.clock_in_gps_lat else (float(att.clock_out_gps_lat) if att.clock_out_gps_lat else None),
                     "gps_lng": float(att.clock_in_gps_lng) if att.clock_in_gps_lng else (float(att.clock_out_gps_lng) if att.clock_out_gps_lng else None),
@@ -699,6 +983,16 @@ def create_attendance_manual(
     # Validate that at least one time is provided
     if not clock_in_time_utc and not clock_out_time_utc:
         raise HTTPException(status_code=400, detail="Either clock_in_time or clock_out_time must be provided")
+    
+    # Check for conflicts before creating attendance
+    conflict_error = check_attendance_conflict(
+        db, uuid.UUID(worker_id), clock_in_time_utc, clock_out_time_utc, exclude_attendance_id=None, timezone_str=settings.tz_default
+    )
+    if conflict_error:
+        raise HTTPException(
+            status_code=400,
+            detail=conflict_error  # Message already includes "Cannot create attendance:" prefix
+        )
     
     shift_id = payload.get("shift_id")  # Optional
     reason_text = payload.get("reason_text", "")

@@ -1,6 +1,6 @@
 """
 Time rules and validation service.
-Handles 15-minute rounding, ±30min tolerance, and timezone conversions.
+Handles 5-minute rounding, ±30min tolerance, and timezone conversions.
 """
 from datetime import datetime, time, timedelta
 from typing import Optional
@@ -8,9 +8,9 @@ import pytz
 from ..config import settings
 
 
-def round_to_15_minutes(dt: datetime) -> datetime:
+def round_to_5_minutes(dt: datetime) -> datetime:
     """
-    Round datetime to nearest 15-minute increment.
+    Round datetime to nearest 5-minute increment.
     
     Args:
         dt: Datetime to round
@@ -19,9 +19,9 @@ def round_to_15_minutes(dt: datetime) -> datetime:
         Rounded datetime
     """
     minutes = dt.minute
-    rounded_minutes = (minutes // 15) * 15
-    if minutes % 15 >= 8:  # Round up if >= 8 minutes
-        rounded_minutes += 15
+    rounded_minutes = (minutes // 5) * 5
+    if minutes % 5 >= 3:  # Round up if >= 3 minutes
+        rounded_minutes += 5
         if rounded_minutes >= 60:
             rounded_minutes = 0
             dt = dt + timedelta(hours=1)

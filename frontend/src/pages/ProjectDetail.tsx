@@ -1921,26 +1921,23 @@ function TimesheetTab({ projectId }:{ projectId:string }){
   }, [allShifts]);
   
   // Calculate total minutes with break deduction
+  // Use break_minutes from backend (already calculated using same function as attendance table)
   const { minutesTotal, breakTotal } = useMemo(() => {
     let total = 0;
     let breakTotal = 0;
     entries.forEach((e: any) => {
+      // e.minutes is already net minutes (after break deduction) for attendance entries
       const entryMinutes = Number(e.minutes || 0);
       total += entryMinutes;
       
-      // Find shift for this entry to get break minutes
-      const key = `${e.user_id}_${e.work_date}`;
-      const shiftsForEntry = shiftsByUserAndDate[key] || [];
-      // Use the first shift's break_min, or default from settings
-      const breakMin = shiftsForEntry.length > 0 && shiftsForEntry[0].default_break_min 
-        ? shiftsForEntry[0].default_break_min 
-        : defaultBreakMin;
+      // Use break_minutes from backend (already calculated)
+      const breakMin = e.break_minutes !== undefined && e.break_minutes !== null ? e.break_minutes : 0;
       breakTotal += breakMin;
     });
     return { minutesTotal: total, breakTotal };
-  }, [entries, shiftsByUserAndDate, defaultBreakMin]);
+  }, [entries]);
   
-  const hoursTotalMinutes = minutesTotal - breakTotal;
+  const hoursTotalMinutes = minutesTotal; // Already net (after break)
   const { data:employees } = useQuery({ queryKey:['employees'], queryFn: ()=>api<any[]>('GET','/employees') });
   
   // Get current user info to check if supervisor/admin
@@ -1997,7 +1994,7 @@ function TimesheetTab({ projectId }:{ projectId:string }){
   const [clockType, setClockType] = useState<'in' | 'out' | null>(null);
   const [selectedTime, setSelectedTime] = useState<string>(''); // Stores time in 24h format (HH:MM) for backend
   const [selectedHour12, setSelectedHour12] = useState<string>(''); // Stores hour in 12h format (1-12)
-  const [selectedMinute, setSelectedMinute] = useState<string>(''); // Stores minute (00, 15, 30, 45)
+  const [selectedMinute, setSelectedMinute] = useState<string>(''); // Stores minute in 5-minute increments (00, 05, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55)
   const [selectedAmPm, setSelectedAmPm] = useState<'AM' | 'PM'>('AM'); // Stores AM/PM
   const [reasonText, setReasonText] = useState<string>('');
   const [gpsLocation, setGpsLocation] = useState<{ lat: number; lng: number; accuracy: number } | null>(null);
@@ -2159,10 +2156,10 @@ function TimesheetTab({ projectId }:{ projectId:string }){
     setGpsLocation(null); // Clear previous location
     setGeofenceStatus(null);
 
-    // Set default time to now (rounded to 15 min) in 12h format
+    // Set default time to now (rounded to 5 min) in 12h format
     const now = new Date();
     const hour24 = now.getHours();
-    const minutes = Math.round(now.getMinutes() / 15) * 15;
+    const minutes = Math.round(now.getMinutes() / 5) * 5;
     const { hour12, amPm } = convert24hTo12h(hour24);
     
     setSelectedHour12(String(hour12));
@@ -2201,10 +2198,10 @@ function TimesheetTab({ projectId }:{ projectId:string }){
       return;
     }
 
-    // Ensure time is in valid format (HH:MM) with 15-minute increments
+    // Ensure time is in valid format (HH:MM) with 5-minute increments
     const [hours, minutes] = selectedTime.split(':').map(Number);
-    if (isNaN(hours) || isNaN(minutes) || hours < 0 || hours > 23 || ![0, 15, 30, 45].includes(minutes)) {
-      toast.error('Please select a valid time in 15-minute increments');
+    if (isNaN(hours) || isNaN(minutes) || hours < 0 || hours > 23 || minutes % 5 !== 0 || minutes < 0 || minutes > 59) {
+      toast.error('Please select a valid time in 5-minute increments');
       return;
     }
 
@@ -2213,15 +2210,14 @@ function TimesheetTab({ projectId }:{ projectId:string }){
     const timeStr = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
     const timeSelectedLocal = `${shiftDate}T${timeStr}:00`;
 
-    // Validate: Block future times (except in Attendance tab which has no restrictions)
+    // Validate: Allow future times with 4 minute margin
     // Create date using local timezone explicitly to avoid timezone issues
-    // Add 1 minute buffer to account for any timezone/clock differences
     const [year, month, day] = shiftDate.split('-').map(Number);
     const selectedDateTime = new Date(year, month - 1, day, hours, minutes, 0);
     const now = new Date();
-    const bufferMs = 60 * 1000; // 1 minute buffer
-    if (selectedDateTime.getTime() > (now.getTime() + bufferMs)) {
-      toast.error('Clock-in/out cannot be in the future. Please select a valid time.');
+    const maxFutureMs = 4 * 60 * 1000; // 4 minutes buffer for future times
+    if (selectedDateTime.getTime() > (now.getTime() + maxFutureMs)) {
+      toast.error('Clock-in/out cannot be more than 4 minutes in the future. Please select a valid time.');
       return;
     }
 
@@ -2515,14 +2511,21 @@ function TimesheetTab({ projectId }:{ projectId:string }){
               if(diffH>0){ if(diffH<=12) offIcon='🟢'; else if(diffH<=24) offIcon='🟡'; else offIcon='🔴'; }
             }
             const futIcon = future? '⏳' : '';
-            // Find shift for this entry to get break minutes
-            const key = `${e.user_id}_${e.work_date}`;
-            const shiftsForEntry = shiftsByUserAndDate[key] || [];
-            const breakMin = shiftsForEntry.length > 0 && shiftsForEntry[0].default_break_min 
-              ? shiftsForEntry[0].default_break_min 
-              : defaultBreakMin;
-            // Calculate hours after deducting break
-            const hoursAfterBreak = Math.max(0, e.minutes - breakMin);
+            // Use break_minutes from backend (already calculated using same function as attendance table)
+            // If not provided (for manual entries), use 0
+            const breakMin = e.break_minutes !== undefined && e.break_minutes !== null ? e.break_minutes : 0;
+            // Hours already has break deducted in the backend (e.minutes is net minutes)
+            const hoursAfterBreak = e.minutes;
+            
+            // Format time - use clock_in_time/clock_out_time if from attendance, otherwise use start_time/end_time
+            let timeDisplay = '--:-- - --:--';
+            if (e.is_from_attendance && e.start_time && e.end_time) {
+              // For attendance entries, times are already in HH:MM:SS format
+              timeDisplay = `${formatTime12h(e.start_time)} - ${formatTime12h(e.end_time)}`;
+            } else if (e.start_time && e.end_time) {
+              // For manual entries, use existing format
+              timeDisplay = `${formatTime12h(e.start_time)} - ${formatTime12h(e.end_time)}`;
+            }
             
             return (
             <div key={e.id} className="px-3 py-2 text-sm flex items-center justify-between">
@@ -2530,9 +2533,9 @@ function TimesheetTab({ projectId }:{ projectId:string }){
                 {e.user_avatar_file_id? <img src={`/files/${e.user_avatar_file_id}/thumbnail?w=64`} className="w-6 h-6 rounded-full"/> : <span className="w-6 h-6 rounded-full bg-gray-200 inline-block"/>}
                 <div className="w-24 text-gray-700 truncate">{e.user_name||''}</div>
                 <div className="w-12 text-gray-600">{String(e.work_date).slice(5,10)}</div>
-                <div className="w-20 text-gray-600">{formatTime12h(e.start_time)} - {formatTime12h(e.end_time)}</div>
+                <div className="w-20 text-gray-600">{timeDisplay}</div>
                 <div className="w-20 font-medium">{formatHoursMinutes(hoursAfterBreak)}</div>
-                <div className="w-16 font-medium">{breakMin}m</div>
+                <div className="w-16 font-medium">{breakMin > 0 ? `${breakMin}m` : '--'}</div>
                 <div className="flex-1 text-gray-600 truncate">{e.notes||''}</div>
                 {(futIcon||offIcon) && <span title={future? 'Future time': 'Logged after day end'}>{futIcon}{offIcon}</span>}
               </div>
@@ -2707,11 +2710,14 @@ function TimesheetTab({ projectId }:{ projectId:string }){
                   required
                 >
                   <option value="">Min</option>
-                  {[0, 15, 30, 45].map((m) => (
-                    <option key={m} value={String(m).padStart(2, '0')}>
-                      {String(m).padStart(2, '0')}
-                    </option>
-                  ))}
+                  {Array.from({ length: 12 }, (_, i) => {
+                    const m = i * 5;
+                    return (
+                      <option key={m} value={String(m).padStart(2, '0')}>
+                        {String(m).padStart(2, '0')}
+                      </option>
+                    );
+                  })}
                 </select>
                 <select
                   value={selectedAmPm}
@@ -2727,9 +2733,6 @@ function TimesheetTab({ projectId }:{ projectId:string }){
                   <option value="PM">PM</option>
                 </select>
               </div>
-              <p className="text-xs text-gray-500 mt-1">
-                Time must be in 15-minute increments (00, 15, 30, 45)
-              </p>
             </div>
 
             {/* GPS Status */}
@@ -3139,8 +3142,14 @@ function TimesheetAuditSection({ projectId }:{ projectId:string }){
                               // Try to format the changes in a more readable way
                               if (typeof l.changes === 'object' && l.changes !== null) {
                                 const formatted: string[] = [];
+                                // Show message if available (for deletion logs)
+                                if (l.changes.message) {
+                                  formatted.push(l.changes.message);
+                                }
                                 if (l.changes.work_date) formatted.push(`Date: ${String(l.changes.work_date).slice(0,10)}`);
                                 if (l.changes.minutes !== undefined) formatted.push(`Hours: ${(Number(l.changes.minutes)/60).toFixed(2)}h`);
+                                if (l.changes.hours_worked !== undefined) formatted.push(`Hours: ${Number(l.changes.hours_worked).toFixed(2)}h`);
+                                if (l.changes.break_minutes !== undefined && l.changes.break_minutes > 0) formatted.push(`Break: ${l.changes.break_minutes}m`);
                                 if (l.changes.start_time) formatted.push(`Start: ${formatTime12h(l.changes.start_time)}`);
                                 if (l.changes.end_time) formatted.push(`End: ${formatTime12h(l.changes.end_time)}`);
                                 if (l.changes.notes) formatted.push(`Notes: ${l.changes.notes}`);

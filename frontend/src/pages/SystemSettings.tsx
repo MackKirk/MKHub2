@@ -8,6 +8,7 @@ type Item = { id:string, label:string, value?:string, sort_index?:number, meta?:
 
 export default function SystemSettings(){
   const confirm = useConfirm();
+  const queryClient = useQueryClient();
   const { data, refetch, isLoading } = useQuery({ queryKey:['settings-bundle'], queryFn: ()=>api<Record<string, Item[]>>('GET','/settings') });
   const lists = Object.entries(data||{}).sort(([a],[b])=> a.localeCompare(b));
   const [sel, setSel] = useState<string>('client_statuses');
@@ -471,6 +472,8 @@ export default function SystemSettings(){
                         }
                         
                         await refetch();
+                        // Invalidate settings-bundle query to sync with UserInfo TimesheetBlock
+                        queryClient.invalidateQueries({ queryKey: ['settings-bundle'] });
                         toast.success('Timesheet settings saved');
                       } catch (_e) {
                         toast.error('Failed to save');

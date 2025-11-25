@@ -63,24 +63,25 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 @router.post("/generate")
 async def generate_proposal(
     request: Request,
-    cover_title: str = Form(...),
-    order_number: str = Form(...),
-    company_name: str = Form(...),
-    company_address: str = Form(...),
-    date: str = Form(...),
+    cover_title: str = Form("Proposal"),
+    order_number: str = Form(""),
+    company_name: str = Form(""),
+    company_address: str = Form(""),
+    date: str = Form(""),
     project_name_description: str = Form(""),
-    proposal_created_for: str = Form(...),
-    primary_contact_name: str = Form(...),
-    primary_contact_phone: str = Form(...),
-    primary_contact_email: str = Form(...),
-    type_of_project: str = Form(...),
+    proposal_created_for: str = Form(""),
+    primary_contact_name: str = Form(""),
+    primary_contact_phone: str = Form(""),
+    primary_contact_email: str = Form(""),
+    type_of_project: str = Form(""),
     other_notes: str = Form(""),
     project_description: str = Form(""),
     additional_project_notes: str = Form(""),
-    bid_price: float = Form(...),
-    total: float = Form(...),
+    bid_price: float = Form(0.0),
+    total: float = Form(0.0),
     terms_text: str = Form(""),
     additional_costs: str = Form("[]"),
+    optional_services: str = Form("[]"),
     cover_image: UploadFile = None,
     page2_image: UploadFile = None,
     sections: str = Form("[]"),
@@ -181,6 +182,11 @@ async def generate_proposal(
         parsed_costs = []
 
     try:
+        parsed_optional_services = json.loads(optional_services)
+    except Exception:
+        parsed_optional_services = []
+
+    try:
         parsed_sections = json.loads(sections)
     except Exception:
         parsed_sections = []
@@ -243,6 +249,7 @@ async def generate_proposal(
         "cover_image": cover_path,
         "page2_image": page2_path,
         "additional_costs": parsed_costs,
+        "optional_services": parsed_optional_services,
         "sections": parsed_sections,
     }
 

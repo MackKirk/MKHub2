@@ -20,6 +20,7 @@ type Attendance = {
   job_name?: string | null;
   project_name?: string | null;
   hours_worked?: number | null;
+  break_minutes?: number | null;
   reason_text?: string | null;
   gps_lat?: number | null;
   gps_lng?: number | null;
@@ -45,6 +46,7 @@ type AttendanceEvent = {
   clock_out_status?: string | null;
   clock_out_reason?: string | null;
   hours_worked?: number | null;
+  break_minutes?: number | null;
   is_hours_worked?: boolean; // True if this is a "hours worked" entry (no specific clock-in/out times)
 };
 
@@ -84,16 +86,18 @@ const toLocalInputValue = (iso?: string | null) => {
 const toUtcISOString = (localValue?: string) => {
   if (!localValue) return null;
   // datetime-local input provides value in local time (YYYY-MM-DDTHH:mm)
-  // When you create new Date(localValue), JavaScript interprets it as local time
-  // and toISOString() automatically converts to UTC
-  // But we need to be explicit: treat the input as local time
+  // We need to treat this as local time and convert to UTC
+  // The safest way is to create a date in local time and let JavaScript handle the conversion
   const [datePart, timePart] = localValue.split('T');
+  if (!datePart || !timePart) return null;
+  
   const [year, month, day] = datePart.split('-').map(Number);
   const [hours, minutes] = timePart.split(':').map(Number);
   
-  // Create date in local timezone
-  const localDate = new Date(year, month - 1, day, hours, minutes);
-  // Convert to UTC ISO string
+  // Create date in local timezone (JavaScript Date constructor interprets as local time)
+  const localDate = new Date(year, month - 1, day, hours, minutes || 0, 0, 0);
+  
+  // Convert to UTC ISO string (this automatically handles timezone conversion)
   return localDate.toISOString();
 };
 
@@ -115,6 +119,16 @@ const formatHours = (hours?: number | null) => {
   const h = Math.floor(totalMinutes / 60);
   const m = totalMinutes % 60;
   return `${h}h ${m.toString().padStart(2, '0')}m`;
+};
+
+const formatBreak = (breakMinutes?: number | null) => {
+  if (breakMinutes === undefined || breakMinutes === null || breakMinutes === 0) return '--';
+  const h = Math.floor(breakMinutes / 60);
+  const m = breakMinutes % 60;
+  if (h > 0) {
+    return `${h}h ${m.toString().padStart(2, '0')}m`;
+  }
+  return `${m}m`;
 };
 
 const extractJobType = (reason?: string | null) => {
@@ -169,6 +183,11 @@ const buildEvents = (attendances: Attendance[]): AttendanceEvent[] => {
       hoursWorked = diff / 3600000; // Convert to hours
     }
     
+    // Subtract break minutes from hours_worked if break exists
+    if (hoursWorked !== null && att.break_minutes !== null && att.break_minutes !== undefined && att.break_minutes > 0) {
+      hoursWorked = Math.max(0, hoursWorked - (att.break_minutes / 60));
+    }
+    
     return {
       event_id: att.id,
       worker_id: att.worker_id,
@@ -192,6 +211,7 @@ const buildEvents = (attendances: Attendance[]): AttendanceEvent[] => {
       clock_out_status: att.clock_out_time ? att.status : null,
       clock_out_reason: att.clock_out_time ? att.reason_text : null,
       hours_worked: hoursWorked,
+      break_minutes: att.break_minutes || null,
       is_hours_worked: isHoursWorked,
     };
   });
@@ -229,6 +249,8 @@ export default function Attendance() {
     hours_worked: '',
   });
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [selectedEvents, setSelectedEvents] = useState<Set<string>>(new Set());
+  const [deletingSelected, setDeletingSelected] = useState(false);
 
   // Build query string for filters
   const queryParams = new URLSearchParams();
@@ -433,12 +455,28 @@ export default function Attendance() {
         exact: false,
       });
       
-      // Force refetch and wait for it
+      // Force refetch attendance first
       const refetchResult = await queryClient.refetchQueries({
         queryKey: ['settings-attendance'],
         exact: false,
       });
       console.log('Refetch after delete:', refetchResult);
+      
+      // Small delay to ensure backend has processed the deletion
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      // Also invalidate and refetch timesheet queries so the entry disappears from project timesheets
+      // Invalidate all timesheet queries for all projects
+      queryClient.invalidateQueries({
+        queryKey: ['timesheet'],
+        exact: false,
+      });
+      
+      // Force refetch all timesheet queries immediately
+      await queryClient.refetchQueries({
+        queryKey: ['timesheet'],
+        exact: false,
+      });
       
       // Force component re-render
       setRefreshKey(prev => prev + 1);
@@ -449,6 +487,106 @@ export default function Attendance() {
       toast.error(err?.message || 'Failed to delete event');
     } finally {
       setDeletingId(null);
+    }
+  };
+
+  const handleToggleSelect = (eventId: string) => {
+    setSelectedEvents((prev) => {
+      const newSet = new Set(prev);
+      if (newSet.has(eventId)) {
+        newSet.delete(eventId);
+      } else {
+        newSet.add(eventId);
+      }
+      return newSet;
+    });
+  };
+
+  const handleSelectAll = () => {
+    if (selectedEvents.size === attendanceEvents.length) {
+      // Deselect all
+      setSelectedEvents(new Set());
+    } else {
+      // Select all
+      setSelectedEvents(new Set(attendanceEvents.map((e) => e.event_id)));
+    }
+  };
+
+  const handleDeleteSelected = async () => {
+    if (selectedEvents.size === 0) {
+      toast.error('No events selected');
+      return;
+    }
+
+    const result = await confirm({
+      title: 'Delete Selected Attendance Events',
+      message: `Are you sure you want to delete ${selectedEvents.size} attendance event(s)? This action cannot be undone.`,
+      confirmText: 'Delete All',
+      cancelText: 'Cancel',
+    });
+    if (result !== 'confirm') {
+      return;
+    }
+
+    setDeletingSelected(true);
+    const selectedArray = Array.from(selectedEvents);
+    let successCount = 0;
+    let errorCount = 0;
+
+    try {
+      for (const eventId of selectedArray) {
+        try {
+          const event = attendanceEvents.find((e) => e.event_id === eventId);
+          if (!event) continue;
+
+          const attendanceId = event.clock_in_id || event.clock_out_id || event.event_id;
+          if (!attendanceId) {
+            errorCount++;
+            continue;
+          }
+
+          await api('DELETE', `/settings/attendance/${attendanceId}`);
+          successCount++;
+        } catch (err: any) {
+          errorCount++;
+          console.error(`Failed to delete event ${eventId}:`, err);
+        }
+      }
+
+      // Invalidate and refetch
+      await queryClient.invalidateQueries({
+        queryKey: ['settings-attendance'],
+        exact: false,
+      });
+
+      await queryClient.refetchQueries({
+        queryKey: ['settings-attendance'],
+        exact: false,
+      });
+
+      // Also invalidate timesheet queries
+      queryClient.invalidateQueries({
+        queryKey: ['timesheet'],
+        exact: false,
+      });
+
+      await queryClient.refetchQueries({
+        queryKey: ['timesheet'],
+        exact: false,
+      });
+
+      setRefreshKey((prev) => prev + 1);
+      setSelectedEvents(new Set());
+
+      if (errorCount > 0) {
+        toast.error(`${successCount} deleted, ${errorCount} failed`);
+      } else {
+        toast.success(`${successCount} attendance event(s) deleted`);
+      }
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to delete selected events');
+    } finally {
+      setDeletingSelected(false);
     }
   };
 
@@ -525,14 +663,39 @@ export default function Attendance() {
           return;
         }
 
-        await api('PUT', `/settings/attendance/${attendanceId}`, {
-          clock_in_time: clockInUtc,
-          clock_out_time: clockOutUtc,
-          status: formData.status,
-          ...(editingEvent.shift_id ? {} : { reason_text: reasonText }),
-        });
-        
-        toast.success('Attendance event updated');
+        try {
+          await api('PUT', `/settings/attendance/${attendanceId}`, {
+            clock_in_time: clockInUtc,
+            clock_out_time: clockOutUtc,
+            status: formData.status,
+            ...(editingEvent.shift_id ? {} : { reason_text: reasonText }),
+          });
+          
+          toast.success('Attendance event updated');
+          
+          // Invalidate and refetch
+          await queryClient.invalidateQueries({
+            queryKey: ['settings-attendance'],
+            exact: false,
+          });
+          
+          await queryClient.refetchQueries({
+            queryKey: ['settings-attendance'],
+            exact: false,
+          });
+          
+          setRefreshKey(prev => prev + 1);
+          
+          setShowModal(false);
+          resetForm();
+        } catch (e: any) {
+          // Show specific error message and keep modal open
+          // The api function already extracts the detail from the backend response
+          const errorMsg = e.message || 'Failed to update attendance';
+          toast.error(errorMsg, { duration: 5000 });
+          // Don't close modal - let user fix and retry
+          return;
+        }
       } else {
         // NEW MODEL: Create attendance records for each selected worker
         // For "hours worked", we MUST have both clock-in and clock-out
@@ -562,17 +725,51 @@ export default function Attendance() {
             errorCount++;
             const usersArray = Array.isArray(users) ? users : [];
             const workerName = usersArray.find((u: any) => u.id === workerId)?.name || usersArray.find((u: any) => u.id === workerId)?.username || workerId;
-            const errorMsg = e.response?.data?.detail || e.message || 'Failed';
-            errors.push(`${workerName}: ${errorMsg}`);
+            // The api function already extracts the detail from the backend response
+            // e.message contains the backend error message (e.g., "Cannot create attendance: ...")
+            let errorMsg = e.message || 'Failed to create attendance';
+            
+            // If the error message is a conflict message from backend, it's already user-friendly
+            // Just add worker name for context if not already in the message
+            if (errorMsg.includes('Cannot create attendance') || errorMsg.includes('Cannot update attendance')) {
+              // Backend message is already clear and user-friendly, add worker name for context
+              errors.push(`${workerName}: ${errorMsg}`);
+            } else {
+              // For other errors, still add worker name
+              errors.push(`${workerName}: ${errorMsg}`);
+            }
           }
         }
 
         if (errorCount > 0) {
-          const errorMsg = `${successCount} attendance${successCount > 1 ? 's' : ''} created, ${errorCount} failed.`;
-          toast.error(errorMsg);
+          // Show specific error messages
           if (errors.length > 0) {
-            console.error('Failed attendances:', errors);
+            // Show the first error (most relevant) as a toast
+            toast.error(errors[0], { duration: 5000 });
+            // If there are multiple errors, show them all in console and as additional toasts
+            if (errors.length > 1) {
+              errors.slice(1).forEach((err) => {
+                toast.error(err, { duration: 5000 });
+              });
+            }
+          } else {
+            toast.error(`${successCount} attendance${successCount > 1 ? 's' : ''} created, ${errorCount} failed.`);
           }
+          // Don't close modal or reset form when there are errors - let user fix and retry
+          // Only invalidate queries if some succeeded
+          if (successCount > 0) {
+            await queryClient.invalidateQueries({
+              queryKey: ['settings-attendance'],
+              exact: false,
+            });
+            await queryClient.refetchQueries({
+              queryKey: ['settings-attendance'],
+              exact: false,
+            });
+            setRefreshKey(prev => prev + 1);
+          }
+          // Return early - don't close modal or reset form
+          return;
         } else {
           toast.success(`${successCount} attendance${successCount > 1 ? 's' : ''} created successfully`);
         }
@@ -693,16 +890,41 @@ export default function Attendance() {
         </div>
       )}
 
+      {/* Bulk Actions */}
+      {selectedEvents.size > 0 && (
+        <div className="mb-4 rounded-xl border bg-blue-50 p-4 flex items-center justify-between">
+          <div className="text-sm font-medium text-blue-900">
+            {selectedEvents.size} event(s) selected
+          </div>
+          <button
+            onClick={handleDeleteSelected}
+            disabled={deletingSelected}
+            className="px-4 py-2 bg-red-600 text-white rounded-lg font-semibold hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {deletingSelected ? 'Deleting...' : 'Delete All Selected'}
+          </button>
+        </div>
+      )}
+
       {/* Table */}
       <div className="rounded-xl border bg-white overflow-hidden">
         <table className="w-full text-sm">
           <thead className="bg-gray-50">
             <tr>
+              <th className="p-3 text-left w-12">
+                <input
+                  type="checkbox"
+                  checked={attendanceEvents.length > 0 && selectedEvents.size === attendanceEvents.length}
+                  onChange={handleSelectAll}
+                  className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                />
+              </th>
               <th className="p-3 text-left">Worker</th>
               <th className="p-3 text-left">Clock In</th>
               <th className="p-3 text-left">Clock Out</th>
               <th className="p-3 text-left">Job/Project</th>
               <th className="p-3 text-left">Hours</th>
+              <th className="p-3 text-left">Break</th>
               <th className="p-3 text-left">Status</th>
               <th className="p-3 text-left">Actions</th>
             </tr>
@@ -710,25 +932,33 @@ export default function Attendance() {
           <tbody>
             {isLoading ? (
               <tr>
-                <td colSpan={7} className="p-4">
+                <td colSpan={9} className="p-4">
                   <div className="h-6 bg-gray-100 animate-pulse rounded" />
                 </td>
               </tr>
             ) : error ? (
               <tr>
-                <td colSpan={7} className="p-4 text-center text-red-600">
+                <td colSpan={9} className="p-4 text-center text-red-600">
                   Error loading data. Please check console for details.
                 </td>
               </tr>
             ) : attendanceEvents.length === 0 ? (
               <tr>
-                <td colSpan={7} className="p-4 text-center text-gray-500">
+                <td colSpan={9} className="p-4 text-center text-gray-500">
                   No attendance records found
                 </td>
               </tr>
             ) : (
               attendanceEvents.map((event) => (
                 <tr key={event.event_id} className="border-t hover:bg-gray-50">
+                  <td className="p-3">
+                    <input
+                      type="checkbox"
+                      checked={selectedEvents.has(event.event_id)}
+                      onChange={() => handleToggleSelect(event.event_id)}
+                      className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                    />
+                  </td>
                   <td className="p-3">{event.worker_name}</td>
                   <td className="p-3">
                     {event.is_hours_worked ? '-' : (event.clock_in_time ? formatDateTime(event.clock_in_time) : '--')}
@@ -744,6 +974,7 @@ export default function Attendance() {
                         : 'No Project')}
                   </td>
                   <td className="p-3">{formatHours(event.hours_worked)}</td>
+                  <td className="p-3">{formatBreak(event.break_minutes)}</td>
                   <td className="p-3">
                     <span
                       className={`px-2 py-1 rounded text-xs font-medium ${

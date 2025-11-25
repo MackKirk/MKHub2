@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
 import { formatDateLocal } from '@/lib/dateUtils';
@@ -43,6 +44,7 @@ type Attendance = {
 
 export default function ScheduleCard() {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   // anchorDate now represents the Sunday of the current week
   const [anchorDate, setAnchorDate] = useState<Date>(() => {
     const d = new Date();
@@ -892,7 +894,10 @@ export default function ScheduleCard() {
                 <div className="pt-4 border-t">
                   <div className="flex gap-2">
                     <button
-                      onClick={() => handleClockInOut(selectedShift, 'in')}
+                      onClick={() => {
+                        // Navigate to clock in/out page with shift_id and type as query params
+                        navigate(`/clock-in-out?shift_id=${selectedShift.id}&type=in&date=${selectedShift.date}`);
+                      }}
                       disabled={!canClockIn || submitting}
                       className={`flex-1 px-2 py-1 rounded text-xs font-medium transition-colors ${
                         canClockIn
@@ -903,7 +908,10 @@ export default function ScheduleCard() {
                       Clock In
                     </button>
                     <button
-                      onClick={() => handleClockInOut(selectedShift, 'out')}
+                      onClick={() => {
+                        // Navigate to clock in/out page with shift_id and type as query params
+                        navigate(`/clock-in-out?shift_id=${selectedShift.id}&type=out&date=${selectedShift.date}`);
+                      }}
                       disabled={!canClockOut || submitting}
                       className={`flex-1 px-2 py-1 rounded text-xs font-medium transition-colors ${
                         canClockOut
