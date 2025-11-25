@@ -240,18 +240,20 @@ def sync_employee_photo(
     client: BambooHRClient,
     storage: StorageProvider,
     employee_id: str,
-    dry_run: bool = False
+    dry_run: bool = False,
+    force_update: bool = False
 ) -> bool:
     """Sync employee profile photo"""
     
     user = find_user_by_bamboohr_id(db, client, employee_id)
     if not user:
+        print(f"  [WARN]  User not found for employee ID: {employee_id}")
         return False
     
     # Check if profile already has a photo
     profile = db.query(EmployeeProfile).filter(EmployeeProfile.user_id == user.id).first()
-    if profile and profile.profile_photo_file_id:
-        print(f"  [SKIP]  Profile photo already exists")
+    if profile and profile.profile_photo_file_id and not force_update:
+        print(f"  [SKIP]  Profile photo already exists (use --force-update to replace)")
         return False
     
     try:
@@ -291,7 +293,8 @@ def sync_all_documents(
     dry_run: bool = False,
     employee_id: Optional[str] = None,
     include_photos: bool = True,
-    limit: Optional[int] = None
+    limit: Optional[int] = None,
+    force_update_photos: bool = False
 ):
     """Sync documents from BambooHR"""
     print("[SYNC] Starting BambooHR document synchronization...")
@@ -324,8 +327,8 @@ def sync_all_documents(
             print(f"\n[FETCH] Fetching documents for employee: {employee_id}")
             
             if include_photos:
-                sync_employee_photo(db, client, storage, employee_id, dry_run)
-                photos_set += 1
+                if sync_employee_photo(db, client, storage, employee_id, dry_run, force_update_photos):
+                    photos_set += 1
             
             created, skipped = sync_documents_for_employee(db, client, storage, employee_id, dry_run)
             total_created += created
@@ -353,7 +356,7 @@ def sync_all_documents(
                 print(f"\n[{idx}/{len(employees)}] Processing: {name} (ID: {emp_id})")
                 
                 if include_photos:
-                    if sync_employee_photo(db, client, storage, emp_id, dry_run):
+                    if sync_employee_photo(db, client, storage, emp_id, dry_run, force_update_photos):
                         photos_set += 1
                 
                 created, skipped = sync_documents_for_employee(db, client, storage, emp_id, dry_run)
@@ -385,6 +388,7 @@ def main():
     parser.add_argument("--dry-run", action="store_true", help="Don't make any changes")
     parser.add_argument("--employee-id", type=str, help="Sync documents for specific employee ID only")
     parser.add_argument("--no-photos", dest="include_photos", action="store_false", help="Skip profile photos")
+    parser.add_argument("--force-update-photos", action="store_true", help="Update profile photos even if they already exist")
     parser.add_argument("--limit", type=int, help="Limit number of employees to process")
     
     args = parser.parse_args()
@@ -393,7 +397,8 @@ def main():
         dry_run=args.dry_run,
         employee_id=args.employee_id,
         include_photos=args.include_photos,
-        limit=args.limit
+        limit=args.limit,
+        force_update_photos=args.force_update_photos
     )
 
 
