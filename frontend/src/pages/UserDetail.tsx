@@ -431,7 +431,7 @@ function UserPermissions({ userId, user: userProp, canEdit = true }:{ userId:str
                         });
                         const editPerms = areaPerms.filter((p: any) => {
                           const key = p.key;
-                          return key.includes(':edit:') || (key.includes(':write') && !key.includes(':view:')) || key.includes(':admin');
+                          return key.includes(':edit:') || (key.includes(':write') && !key.includes(':view:')) || key.includes(':admin') || key.includes(':unrestricted') || key.includes(':approve');
                         });
                         
                         return (
