@@ -695,16 +695,29 @@ def list_attendances(
                 logger.warning(f"Invalid end_date format: {end_date}, error: {e}")
                 pass
         
-        # Filter by project_id (through shift)
+        # Filter by project_id (through shift) or job_type (through reason_text)
         if project_id:
-            try:
-                project_uuid = uuid.UUID(project_id)
-                # Join with Shift to filter by project_id
-                from ..models.models import Shift
-                query = query.join(Shift, Attendance.shift_id == Shift.id).filter(Shift.project_id == project_uuid).distinct()
-            except Exception as e:
-                logger.warning(f"Invalid project_id format: {project_id}, error: {e}")
-                pass
+            # Check if it's a job filter (prefixed with "job_")
+            if project_id.startswith("job_"):
+                # Extract job_type from "job_{job_type}"
+                job_type = project_id.replace("job_", "")
+                # Filter by attendances with shift_id NULL and reason_text starting with JOB_TYPE:{job_type}
+                query = query.filter(
+                    and_(
+                        Attendance.shift_id.is_(None),
+                        Attendance.reason_text.like(f"JOB_TYPE:{job_type}%")
+                    )
+                )
+            else:
+                # It's a project UUID - filter through shift
+                try:
+                    project_uuid = uuid.UUID(project_id)
+                    # Join with Shift to filter by project_id
+                    from ..models.models import Shift
+                    query = query.join(Shift, Attendance.shift_id == Shift.id).filter(Shift.project_id == project_uuid).distinct()
+                except Exception as e:
+                    logger.warning(f"Invalid project_id format: {project_id}, error: {e}")
+                    pass
         
         # Order by clock_in_time or clock_out_time
         from sqlalchemy import func
