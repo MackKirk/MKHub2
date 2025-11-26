@@ -251,6 +251,11 @@ export default function Attendance() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [selectedEvents, setSelectedEvents] = useState<Set<string>>(new Set());
   const [deletingSelected, setDeletingSelected] = useState(false);
+  
+  // Manual break time
+  const [insertBreakTime, setInsertBreakTime] = useState<boolean>(false);
+  const [breakHours, setBreakHours] = useState<string>('0');
+  const [breakMinutes, setBreakMinutes] = useState<string>('0');
 
   // Build query string for filters
   const queryParams = new URLSearchParams();
@@ -351,6 +356,9 @@ export default function Attendance() {
       hours_worked: '',
     });
     setSelectedWorkers([]);
+    setInsertBreakTime(false);
+    setBreakHours('0');
+    setBreakMinutes('0');
     setWorkerSearch('');
     setEditingEvent(null);
   };
@@ -421,6 +429,9 @@ export default function Attendance() {
         entry_mode: 'time',
         hours_worked: '',
       });
+      setInsertBreakTime(false);
+      setBreakHours('0');
+      setBreakMinutes('0');
     }
     setShowModal(true);
   };
@@ -663,13 +674,21 @@ export default function Attendance() {
           return;
         }
 
+        const updatePayload: any = {
+          clock_in_time: clockInUtc,
+          clock_out_time: clockOutUtc,
+          status: formData.status,
+          ...(editingEvent.shift_id ? {} : { reason_text: reasonText }),
+        };
+        
+        // Add manual break time if checkbox is checked and clock_out_time exists
+        if (clockOutUtc && insertBreakTime) {
+          const breakTotalMinutes = parseInt(breakHours) * 60 + parseInt(breakMinutes);
+          updatePayload.manual_break_minutes = breakTotalMinutes;
+        }
+        
         try {
-          await api('PUT', `/settings/attendance/${attendanceId}`, {
-            clock_in_time: clockInUtc,
-            clock_out_time: clockOutUtc,
-            status: formData.status,
-            ...(editingEvent.shift_id ? {} : { reason_text: reasonText }),
-          });
+          await api('PUT', `/settings/attendance/${attendanceId}`, updatePayload);
           
           toast.success('Attendance event updated');
           
@@ -710,16 +729,24 @@ export default function Attendance() {
         const errors: string[] = [];
 
         for (const workerId of workersToProcess) {
+          const createPayload: any = {
+            worker_id: workerId,
+            type: clockInUtc && clockOutUtc ? 'in' : (clockInUtc ? 'in' : 'out'), // Type for backward compatibility
+            time_selected_utc: clockInUtc || clockOutUtc, // For backward compatibility
+            clock_in_time: clockInUtc,
+            clock_out_time: clockOutUtc,
+            status: formData.status,
+            reason_text: reasonText,
+          };
+          
+          // Add manual break time if checkbox is checked and clock_out_time exists
+          if (clockOutUtc && insertBreakTime) {
+            const breakTotalMinutes = parseInt(breakHours) * 60 + parseInt(breakMinutes);
+            createPayload.manual_break_minutes = breakTotalMinutes;
+          }
+          
           try {
-            await api('POST', '/settings/attendance/manual', {
-              worker_id: workerId,
-              type: clockInUtc && clockOutUtc ? 'in' : (clockInUtc ? 'in' : 'out'), // Type for backward compatibility
-              time_selected_utc: clockInUtc || clockOutUtc, // For backward compatibility
-              clock_in_time: clockInUtc,
-              clock_out_time: clockOutUtc,
-              status: formData.status,
-              reason_text: reasonText,
-            });
+            await api('POST', '/settings/attendance/manual', createPayload);
             successCount++;
           } catch (e: any) {
             errorCount++;
@@ -1280,41 +1307,135 @@ export default function Attendance() {
                 )}
               </div>
               {formData.entry_mode === 'time' && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    {editingEvent
-                      ? 'Clock Out Time (Local) - Optional'
-                      : 'Clock Out Time * (Local)'}
-                  </label>
-                  <input
-                    type="datetime-local"
-                    value={formData.clock_out_time}
-                    onChange={(e) =>
-                      setFormData({ ...formData, clock_out_time: e.target.value })
-                    }
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2"
-                    required={!editingEvent}
-                  />
-                </div>
+                <>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      {editingEvent
+                        ? 'Clock Out Time (Local) - Optional'
+                        : 'Clock Out Time * (Local)'}
+                    </label>
+                    <input
+                      type="datetime-local"
+                      value={formData.clock_out_time}
+                      onChange={(e) =>
+                        setFormData({ ...formData, clock_out_time: e.target.value })
+                      }
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2"
+                      required={!editingEvent}
+                    />
+                  </div>
+                  {/* Manual Break Time (always available in clock in/out mode) */}
+                  <div>
+                    <label className="flex items-center gap-2 mb-2">
+                      <input
+                        type="checkbox"
+                        checked={insertBreakTime}
+                        onChange={(e) => setInsertBreakTime(e.target.checked)}
+                        className="w-4 h-4 rounded border-gray-300 text-brand-red focus:ring-brand-red"
+                      />
+                      <span className="text-sm font-medium text-gray-700">Insert Break Time</span>
+                    </label>
+                    {insertBreakTime && (
+                      <div className="ml-6 space-y-2">
+                        <div className="flex gap-2 items-center">
+                          <label className="text-xs text-gray-600 w-12">Hours:</label>
+                          <select
+                            value={breakHours}
+                            onChange={(e) => setBreakHours(e.target.value)}
+                            className="flex-1 border rounded px-3 py-2"
+                          >
+                            {Array.from({ length: 3 }, (_, i) => (
+                              <option key={i} value={String(i)}>
+                                {i}
+                              </option>
+                            ))}
+                          </select>
+                          <label className="text-xs text-gray-600 w-12 ml-2">Minutes:</label>
+                          <select
+                            value={breakMinutes}
+                            onChange={(e) => setBreakMinutes(e.target.value)}
+                            className="flex-1 border rounded px-3 py-2"
+                          >
+                            {Array.from({ length: 12 }, (_, i) => {
+                              const m = i * 5;
+                              return (
+                                <option key={m} value={String(m).padStart(2, '0')}>
+                                  {String(m).padStart(2, '0')}
+                                </option>
+                              );
+                            })}
+                          </select>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </>
               )}
               {formData.entry_mode === 'hours' && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Hours Worked *
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.25"
-                    value={formData.hours_worked}
-                    onChange={(e) =>
-                      setFormData({ ...formData, hours_worked: e.target.value })
-                    }
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2"
-                    placeholder="e.g. 8"
-                    required
-                  />
-                </div>
+                <>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Hours Worked *
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.25"
+                      value={formData.hours_worked}
+                      onChange={(e) =>
+                        setFormData({ ...formData, hours_worked: e.target.value })
+                      }
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2"
+                      placeholder="e.g. 8"
+                      required
+                    />
+                  </div>
+                  {/* Manual Break Time (for hours worked mode) */}
+                  <div>
+                    <label className="flex items-center gap-2 mb-2">
+                      <input
+                        type="checkbox"
+                        checked={insertBreakTime}
+                        onChange={(e) => setInsertBreakTime(e.target.checked)}
+                        className="w-4 h-4 rounded border-gray-300 text-brand-red focus:ring-brand-red"
+                      />
+                      <span className="text-sm font-medium text-gray-700">Insert Break Time</span>
+                    </label>
+                    {insertBreakTime && (
+                      <div className="ml-6 space-y-2">
+                        <div className="flex gap-2 items-center">
+                          <label className="text-xs text-gray-600 w-12">Hours:</label>
+                          <select
+                            value={breakHours}
+                            onChange={(e) => setBreakHours(e.target.value)}
+                            className="flex-1 border rounded px-3 py-2"
+                          >
+                            {Array.from({ length: 3 }, (_, i) => (
+                              <option key={i} value={String(i)}>
+                                {i}
+                              </option>
+                            ))}
+                          </select>
+                          <label className="text-xs text-gray-600 w-12 ml-2">Minutes:</label>
+                          <select
+                            value={breakMinutes}
+                            onChange={(e) => setBreakMinutes(e.target.value)}
+                            className="flex-1 border rounded px-3 py-2"
+                          >
+                            {Array.from({ length: 12 }, (_, i) => {
+                              const m = i * 5;
+                              return (
+                                <option key={m} value={String(m).padStart(2, '0')}>
+                                  {String(m).padStart(2, '0')}
+                                </option>
+                              );
+                            })}
+                          </select>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </>
               )}
               {editingEvent && (
                 <div>

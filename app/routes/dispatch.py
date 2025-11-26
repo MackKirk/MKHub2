@@ -1190,8 +1190,11 @@ def create_attendance(
                 existing_attendance.clock_out_mocked_flag = mocked_flag
                 # Calculate break minutes now that we have both times
                 if existing_attendance.clock_in_time and time_selected_utc:
-                    existing_attendance.break_minutes = _calculate_break_minutes(
-                        db, existing_attendance.worker_id, existing_attendance.clock_in_time, time_selected_utc
+                    from ..routes.settings import calculate_break_minutes
+                    manual_break = payload.get("manual_break_minutes")
+                    existing_attendance.break_minutes = calculate_break_minutes(
+                        db, existing_attendance.worker_id, existing_attendance.clock_in_time, time_selected_utc,
+                        manual_break_minutes=manual_break if manual_break is not None else None
                     )
                 # Update status if needed (use the more restrictive status)
                 if status == "pending" or existing_attendance.status == "pending":
@@ -1819,6 +1822,14 @@ def create_direct_attendance(
             clock_in_attendance.clock_out_gps_lng = gps_lng
             clock_in_attendance.clock_out_gps_accuracy_m = gps_accuracy_m
             clock_in_attendance.clock_out_mocked_flag = False
+            # Calculate break minutes now that we have both times
+            if clock_in_attendance.clock_in_time and time_selected_utc:
+                from ..routes.settings import calculate_break_minutes
+                manual_break = payload.get("manual_break_minutes")
+                clock_in_attendance.break_minutes = calculate_break_minutes(
+                    db, uuid.UUID(worker_id), clock_in_attendance.clock_in_time, time_selected_utc,
+                    manual_break_minutes=manual_break if manual_break is not None else None
+                )
             # Update status if needed (use the more restrictive status)
             if status == "pending" or clock_in_attendance.status == "pending":
                 clock_in_attendance.status = "pending"
@@ -2880,6 +2891,9 @@ def get_audit_logs(
     ]
 
 
+# NOTE: _calculate_break_minutes has been replaced by calculate_break_minutes from settings.py
+# This function is kept for backward compatibility but should not be used
+# Use calculate_break_minutes from ..routes.settings instead
 def _calculate_break_minutes(
     db: Session,
     worker_id: uuid.UUID,
@@ -2887,69 +2901,11 @@ def _calculate_break_minutes(
     clock_out_time: datetime
 ) -> Optional[int]:
     """
-    Calculate break minutes for an attendance record.
-    Returns break minutes if:
-    - Both clock_in_time and clock_out_time exist
-    - Total hours >= 5 hours
-    - Worker is in the eligible employees list
-    Otherwise returns None.
+    DEPRECATED: Use calculate_break_minutes from ..routes.settings instead.
+    This function is kept for backward compatibility only.
     """
-    if not clock_in_time or not clock_out_time:
-        return None
-    
-    # Calculate total minutes
-    diff = clock_out_time - clock_in_time
-    total_minutes = int(diff.total_seconds() / 60)
-    
-    # Check if >= 5 hours (300 minutes)
-    if total_minutes < 300:
-        return None
-    
-    # Get timesheet settings
-    from ..models.models import SettingList, SettingItem
-    timesheet_list = db.query(SettingList).filter(SettingList.name == "timesheet").first()
-    if not timesheet_list:
-        return None
-    
-    # Get break minutes setting
-    break_min_item = db.query(SettingItem).filter(
-        SettingItem.list_id == timesheet_list.id,
-        SettingItem.label == "default_break_minutes"
-    ).first()
-    
-    if not break_min_item or not break_min_item.value:
-        return None
-    
-    try:
-        break_minutes = int(break_min_item.value)
-    except (ValueError, TypeError):
-        return None
-    
-    # Get eligible employees list
-    eligible_employees_item = db.query(SettingItem).filter(
-        SettingItem.list_id == timesheet_list.id,
-        SettingItem.label == "break_eligible_employees"
-    ).first()
-    
-    if not eligible_employees_item or not eligible_employees_item.value:
-        return None
-    
-    try:
-        import json
-        eligible_employee_ids = json.loads(eligible_employees_item.value)
-        if not isinstance(eligible_employee_ids, list):
-            return None
-        # Convert to strings for comparison
-        eligible_employee_ids_str = [str(eid) for eid in eligible_employee_ids]
-    except (json.JSONDecodeError, TypeError):
-        return None
-    
-    # Check if worker is eligible
-    worker_id_str = str(worker_id)
-    if worker_id_str not in eligible_employee_ids_str:
-        return None
-    
-    return break_minutes
+    from ..routes.settings import calculate_break_minutes
+    return calculate_break_minutes(db, worker_id, clock_in_time, clock_out_time)
 
 
 def _create_or_update_timesheet_from_attendance(

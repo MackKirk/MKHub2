@@ -962,27 +962,223 @@ function JobSection({ type, p, editable, userId, collectChanges, usersOptions, s
   );
 }
 
+// Helper functions for attendance display (same as Attendance.tsx)
+const formatDateTime = (iso?: string | null) => {
+  if (!iso) return '--';
+  return new Date(iso).toLocaleString('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  });
+};
+
+const formatHours = (hours?: number | null) => {
+  if (hours === undefined || hours === null) return '--';
+  const totalMinutes = Math.round(hours * 60);
+  const h = Math.floor(totalMinutes / 60);
+  const m = totalMinutes % 60;
+  return `${h}h ${m.toString().padStart(2, '0')}m`;
+};
+
+const formatBreak = (breakMinutes?: number | null) => {
+  if (breakMinutes === undefined || breakMinutes === null || breakMinutes === 0) return '--';
+  const h = Math.floor(breakMinutes / 60);
+  const m = breakMinutes % 60;
+  if (h > 0) {
+    return `${h}h ${m.toString().padStart(2, '0')}m`;
+  }
+  return `${m}m`;
+};
+
+const PREDEFINED_JOBS = [
+  { id: '0', code: '0', name: 'No Project Assigned' },
+  { id: '37', code: '37', name: 'Repairs' },
+  { id: '47', code: '47', name: 'Shop' },
+  { id: '53', code: '53', name: 'YPK Developments' },
+  { id: '136', code: '136', name: 'Stat Holiday' },
+];
+
+type Attendance = {
+  id: string;
+  worker_id: string;
+  worker_name: string;
+  type?: 'in' | 'out';
+  clock_in_time?: string | null;
+  clock_out_time?: string | null;
+  time_selected_utc?: string | null;
+  time_entered_utc?: string | null;
+  status: string;
+  source: string;
+  shift_id?: string | null;
+  job_name?: string | null;
+  project_name?: string | null;
+  job_type?: string | null;
+  hours_worked?: number | null;
+  break_minutes?: number | null;
+  reason_text?: string | null;
+  gps_lat?: number | null;
+  gps_lng?: number | null;
+  created_at?: string | null;
+  approved_at?: string | null;
+  approved_by?: string | null;
+};
+
+type AttendanceEvent = {
+  event_id: string;
+  worker_id: string;
+  worker_name: string;
+  job_name?: string | null;
+  project_name?: string | null;
+  job_type?: string | null;
+  shift_id?: string | null;
+  clock_in_id?: string | null;
+  clock_in_time?: string | null;
+  clock_in_status?: string | null;
+  clock_in_reason?: string | null;
+  clock_out_id?: string | null;
+  clock_out_time?: string | null;
+  clock_out_status?: string | null;
+  clock_out_reason?: string | null;
+  hours_worked?: number | null;
+  break_minutes?: number | null;
+  is_hours_worked?: boolean;
+};
+
+type Project = {
+  id: string;
+  code?: string;
+  name: string;
+};
+
+const buildEvents = (attendances: Attendance[]): AttendanceEvent[] => {
+  const events: AttendanceEvent[] = attendances.map((att) => {
+    // Check if this is a "hours worked" entry
+    const isHoursWorked = att.reason_text?.includes('HOURS_WORKED:') || false;
+    
+    // For "hours worked", extract hours from reason_text
+    let hoursWorked: number | null = null;
+    if (isHoursWorked && att.clock_in_time && att.clock_out_time) {
+      // Extract hours from reason_text
+      const parts = (att.reason_text || '').split('|');
+      for (const part of parts) {
+        if (part.startsWith('HOURS_WORKED:')) {
+          try {
+            hoursWorked = parseFloat(part.replace('HOURS_WORKED:', ''));
+          } catch {
+            // If parsing fails, calculate from times
+            const diff = new Date(att.clock_out_time).getTime() - new Date(att.clock_in_time).getTime();
+            hoursWorked = diff / (1000 * 60 * 60);
+          }
+          break;
+        }
+      }
+    } else if (att.clock_in_time && att.clock_out_time) {
+      const diff = new Date(att.clock_out_time).getTime() - new Date(att.clock_in_time).getTime();
+      hoursWorked = diff / (1000 * 60 * 60);
+    }
+    
+    return {
+      event_id: att.id,
+      worker_id: att.worker_id,
+      worker_name: att.worker_name,
+      job_name: att.job_name,
+      project_name: att.project_name,
+      job_type: att.job_type,
+      shift_id: att.shift_id,
+      clock_in_id: att.clock_in_time ? att.id : null,
+      clock_in_time: att.clock_in_time || null,
+      clock_in_status: att.clock_in_time ? att.status : null,
+      clock_in_reason: att.clock_in_time ? att.reason_text : null,
+      clock_out_id: att.clock_out_time ? att.id : null,
+      clock_out_time: att.clock_out_time || null,
+      clock_out_status: att.clock_out_time ? att.status : null,
+      clock_out_reason: att.clock_out_time ? att.reason_text : null,
+      hours_worked: hoursWorked,
+      break_minutes: att.break_minutes || null,
+      is_hours_worked: isHoursWorked,
+    };
+  });
+  
+  return events.sort(
+    (a, b) =>
+      new Date(b.clock_in_time || b.clock_out_time || '').getTime() -
+      new Date(a.clock_in_time || a.clock_out_time || '').getTime()
+  );
+};
+
 function TimesheetBlock({ userId }:{ userId:string }){
   const queryClient = useQueryClient();
-  const { data:meSelf } = useQuery({ queryKey:['me'], queryFn: ()=> api<any>('GET','/auth/me') });
-  const [month, setMonth] = useState<string>(getCurrentMonthLocal());
-  const [projectId, setProjectId] = useState<string>('_all_');
-  const [showModal, setShowModal] = useState<boolean>(false);
-  const [workDate, setWorkDate] = useState<string>(formatDateLocal(new Date()));
-  const [start, setStart] = useState<string>('');
-  const [end, setEnd] = useState<string>('');
-  const [notes, setNotes] = useState<string>('');
-  const { data:projects } = useQuery({ queryKey:['projects-all'], queryFn: ()=> api<any[]>('GET','/projects') });
-  const qs = useMemo(()=>{ const p = new URLSearchParams(); if(month) p.set('month', month); if(userId) p.set('user_id', userId); const s=p.toString(); return s? ('?'+s): ''; }, [month, userId]);
-  const { data:entries, refetch } = useQuery({
-    queryKey:['user-timesheet-view', projectId, qs],
-    queryFn: ()=> {
-      if(projectId==='_all_') return api<any[]>('GET', `/projects/timesheet/user${qs}`);
-      if(projectId) return api<any[]>('GET', `/projects/${projectId}/timesheet${qs}`);
-      return Promise.resolve([]);
-    }
+  const confirm = useConfirm();
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [filters, setFilters] = useState({
+    start_date: '',
+    end_date: '',
+    status: '',
+    project_id: '',
   });
-  const canApprove = !!(meSelf?.roles?.includes('admin') || (meSelf?.permissions||[]).includes('timesheet:approve'));
+  const [showModal, setShowModal] = useState(false);
+  const [editingEvent, setEditingEvent] = useState<AttendanceEvent | null>(null);
+  const [formData, setFormData] = useState({
+    worker_id: userId, // Always set to the current user
+    job_type: '0',
+    clock_in_time: '',
+    clock_out_time: '',
+    status: 'approved',
+    entry_mode: 'time' as 'time' | 'hours',
+    hours_worked: '',
+  });
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [selectedEvents, setSelectedEvents] = useState<Set<string>>(new Set());
+  const [deletingSelected, setDeletingSelected] = useState(false);
+  
+  // Manual break time
+  const [insertBreakTime, setInsertBreakTime] = useState<boolean>(false);
+  const [breakHours, setBreakHours] = useState<string>('0');
+  const [breakMinutes, setBreakMinutes] = useState<string>('0');
+
+  // Build query string for filters (always include worker_id)
+  const queryParams = new URLSearchParams();
+  queryParams.set('worker_id', userId); // Always filter by this user
+  if (filters.start_date) queryParams.set('start_date', filters.start_date);
+  if (filters.end_date) queryParams.set('end_date', filters.end_date);
+  if (filters.status) queryParams.set('status', filters.status);
+  if (filters.project_id) queryParams.set('project_id', filters.project_id);
+  const queryString = queryParams.toString();
+  const url = `/settings/attendance/list?${queryString}`;
+
+  const { data: attendances, isLoading, error, refetch } = useQuery({
+    queryKey: ['user-attendance', queryString, refreshKey],
+    queryFn: async () => {
+      const result = await api<Attendance[]>('GET', url);
+      return Array.isArray(result) ? result : [];
+    },
+  });
+
+  const attendanceEvents = useMemo(
+    () => buildEvents(Array.isArray(attendances) ? attendances : []),
+    [attendances]
+  );
+
+  const { data: projects = [] } = useQuery({
+    queryKey: ['attendance-projects'],
+    queryFn: async () => {
+      const result = await api<Project[]>('GET', '/projects');
+      return Array.isArray(result) ? result : [];
+    },
+  });
+
+  const jobOptions = useMemo(() => {
+    const projectsArray = Array.isArray(projects) ? projects : [];
+    const projectJobs = projectsArray.map((p) => ({
+      id: p.id,
+      code: p.code || p.id,
+      name: p.name,
+    }));
+    return [...PREDEFINED_JOBS, ...projectJobs];
+  }, [projects]);
 
   // Fetch timesheet settings to check if user is eligible for break
   const { data: settingsData } = useQuery({ 
@@ -1015,12 +1211,10 @@ function TimesheetBlock({ userId }:{ userId:string }){
       }
 
       if (checked) {
-        // Add user if not already in list
         if (!updatedEmployeeIds.includes(userId)) {
           updatedEmployeeIds.push(userId);
         }
       } else {
-        // Remove user from list
         updatedEmployeeIds = updatedEmployeeIds.filter((id: string) => id !== userId);
       }
 
@@ -1031,7 +1225,6 @@ function TimesheetBlock({ userId }:{ userId:string }){
         await api('POST', `/settings/timesheet?label=break_eligible_employees&value=${encodeURIComponent(employeesJson)}`);
       }
 
-      // Invalidate queries to refresh both SystemSettings and this component
       queryClient.invalidateQueries({ queryKey: ['settings-bundle'] });
       toast.success(checked ? 'User marked as eligible for break' : 'User removed from break eligibility');
     } catch (_e) {
@@ -1039,104 +1232,805 @@ function TimesheetBlock({ userId }:{ userId:string }){
     }
   };
 
-  const submit = async()=>{
-    try{
-      if(!projectId){ toast.error('Select a project'); return; }
-      if(!workDate || !start || !end){ toast.error('Date, start and end required'); return; }
-      if(!notes.trim()){ toast.error('Notes required'); return; }
-      const [sh,sm] = start.split(':').map(Number); const [eh,em] = end.split(':').map(Number);
-      const minutes = Math.max(0,(eh*60+em)-(sh*60+sm));
-      await api('POST', `/projects/${encodeURIComponent(projectId)}/timesheet`, { work_date: workDate, start_time: start, end_time: end, minutes, notes, user_id: userId });
-      toast.success('Added'); setShowModal(false); setNotes(''); setEnd(''); await refetch();
-    }catch(_e){ toast.error('Failed'); }
+  const resetForm = () => {
+    setFormData({
+      worker_id: userId,
+      job_type: '0',
+      clock_in_time: '',
+      clock_out_time: '',
+      status: 'approved',
+      entry_mode: 'time',
+      hours_worked: '',
+    });
+    setInsertBreakTime(false);
+    setBreakHours('0');
+    setBreakMinutes('0');
   };
+
+  const handleOpenModal = (event?: AttendanceEvent) => {
+    if (event) {
+      setEditingEvent(event);
+      const att = attendances?.find(a => a.id === event.event_id);
+      if (att) {
+        const isHoursWorked = att.reason_text?.includes('HOURS_WORKED:') || false;
+        let hoursWorked = '';
+        if (isHoursWorked && att.reason_text) {
+          const parts = att.reason_text.split('|');
+          for (const part of parts) {
+            if (part.startsWith('HOURS_WORKED:')) {
+              hoursWorked = part.replace('HOURS_WORKED:', '');
+              break;
+            }
+          }
+        }
+        
+        const local = att.clock_in_time
+          ? new Date(att.clock_in_time).toISOString().slice(0, 16)
+          : formatDateLocal(new Date()) + 'T00:00';
+        setFormData({
+          worker_id: userId,
+          job_type: event.job_type || '0',
+          clock_in_time: local,
+          clock_out_time: att.clock_out_time ? new Date(att.clock_out_time).toISOString().slice(0, 16) : '',
+          status: att.status,
+          entry_mode: isHoursWorked ? 'hours' : 'time',
+          hours_worked: hoursWorked,
+        });
+      }
+    } else {
+      const local = formatDateLocal(new Date()) + 'T00:00';
+      setEditingEvent(null);
+      setFormData({
+        worker_id: userId,
+        job_type: '0',
+        clock_in_time: local,
+        clock_out_time: '',
+        status: 'approved',
+        entry_mode: 'time',
+        hours_worked: '',
+      });
+      setInsertBreakTime(false);
+      setBreakHours('0');
+      setBreakMinutes('0');
+    }
+    setShowModal(true);
+  };
+
+  const handleDeleteEvent = async (event: AttendanceEvent) => {
+    const result = await confirm({
+      title: 'Delete Attendance Event',
+      message: 'Are you sure you want to delete this attendance event? This action cannot be undone.',
+      confirmText: 'Delete',
+      cancelText: 'Cancel',
+    });
+    if (result !== 'confirm') {
+      return;
+    }
+    setDeletingId(event.event_id);
+    try {
+      const attendanceId = event.clock_in_id || event.clock_out_id || event.event_id;
+      await api('DELETE', `/settings/attendance/${attendanceId}`);
+      
+      await queryClient.invalidateQueries({
+        queryKey: ['user-attendance'],
+        exact: false,
+      });
+      await queryClient.refetchQueries({
+        queryKey: ['user-attendance'],
+        exact: false,
+      });
+      setRefreshKey(prev => prev + 1);
+      
+      toast.success('Attendance event deleted');
+    } catch (e: any) {
+      toast.error(e?.message || 'Failed to delete attendance event');
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  const handleToggleSelect = (eventId: string) => {
+    setSelectedEvents(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(eventId)) {
+        newSet.delete(eventId);
+      } else {
+        newSet.add(eventId);
+      }
+      return newSet;
+    });
+  };
+
+  const handleSelectAll = () => {
+    if (selectedEvents.size === attendanceEvents.length) {
+      setSelectedEvents(new Set());
+    } else {
+      setSelectedEvents(new Set(attendanceEvents.map((e) => e.event_id)));
+    }
+  };
+
+  const handleDeleteSelected = async () => {
+    if (selectedEvents.size === 0) return;
+    
+    const result = await confirm({
+      title: 'Delete Selected Attendance Events',
+      message: `Are you sure you want to delete ${selectedEvents.size} attendance event(s)? This action cannot be undone.`,
+      confirmText: 'Delete',
+      cancelText: 'Cancel',
+    });
+    
+    if (result !== 'confirm') return;
+    
+    setDeletingSelected(true);
+    try {
+      const deletePromises = Array.from(selectedEvents).map(eventId => {
+        return api('DELETE', `/settings/attendance/${eventId}`).catch((e: any) => {
+          console.error(`Failed to delete ${eventId}:`, e);
+          return null;
+        });
+      });
+      
+      await Promise.all(deletePromises);
+      
+      await queryClient.invalidateQueries({
+        queryKey: ['user-attendance'],
+        exact: false,
+      });
+      await queryClient.refetchQueries({
+        queryKey: ['user-attendance'],
+        exact: false,
+      });
+      setRefreshKey(prev => prev + 1);
+      
+      setSelectedEvents(new Set());
+      toast.success(`Deleted ${selectedEvents.size} attendance event(s)`);
+    } catch (e: any) {
+      toast.error('Failed to delete some attendance events');
+    } finally {
+      setDeletingSelected(false);
+    }
+  };
+
+  const handleSubmit = async () => {
+    if (!formData.clock_in_time) {
+      toast.error('Clock-in time is required');
+      return;
+    }
+
+    if (editingEvent) {
+      if (!formData.clock_in_time) {
+        toast.error('Clock-in time is required');
+        return;
+      }
+    } else {
+      if (formData.entry_mode === 'time') {
+        if (!formData.clock_in_time || !formData.clock_out_time) {
+          toast.error('Clock-in and clock-out times are required');
+          return;
+        }
+      } else {
+        if (!formData.clock_in_time) {
+          toast.error('Clock-in time is required when using hours worked');
+          return;
+        }
+        const hours = parseFloat(formData.hours_worked || '0');
+        if (!formData.hours_worked || isNaN(hours) || hours <= 0) {
+          toast.error('Please enter a valid number of hours worked');
+          return;
+        }
+      }
+    }
+
+    const toUtcISOString = (localValue?: string) => {
+      if (!localValue) return null;
+      const [datePart, timePart] = localValue.split('T');
+      if (!datePart || !timePart) return null;
+      const [year, month, day] = datePart.split('-').map(Number);
+      const [hours, minutes] = timePart.split(':').map(Number);
+      const localDate = new Date(year, month - 1, day, hours, minutes || 0, 0, 0);
+      return localDate.toISOString();
+    };
+
+    let clockInUtc = toUtcISOString(formData.clock_in_time);
+    let clockOutUtc = toUtcISOString(formData.clock_out_time);
+
+    let reasonText = `JOB_TYPE:${formData.job_type}`;
+    if (formData.entry_mode === 'hours' && formData.clock_in_time) {
+      const hours = parseFloat(formData.hours_worked || '0');
+      if (hours > 0) {
+        const datePart = formData.clock_in_time.slice(0, 10);
+        const midnightLocal = `${datePart}T00:00`;
+        clockInUtc = toUtcISOString(midnightLocal);
+        if (clockInUtc) {
+          const inDate = new Date(clockInUtc);
+          const outDate = new Date(inDate.getTime() + hours * 3600000);
+          clockOutUtc = outDate.toISOString();
+        }
+        reasonText = `JOB_TYPE:${formData.job_type}|HOURS_WORKED:${hours}`;
+      }
+    }
+
+    try {
+      if (editingEvent) {
+        const attendanceId = editingEvent.clock_in_id || editingEvent.clock_out_id;
+        if (!attendanceId) {
+          toast.error('Cannot find attendance record to update');
+          return;
+        }
+
+        const updatePayload: any = {
+          clock_in_time: clockInUtc,
+          clock_out_time: clockOutUtc,
+          status: formData.status,
+          ...(editingEvent.shift_id ? {} : { reason_text: reasonText }),
+        };
+        
+        if (clockOutUtc && insertBreakTime) {
+          const breakTotalMinutes = parseInt(breakHours) * 60 + parseInt(breakMinutes);
+          updatePayload.manual_break_minutes = breakTotalMinutes;
+        }
+        
+        await api('PUT', `/settings/attendance/${attendanceId}`, updatePayload);
+        
+        toast.success('Attendance event updated');
+        
+        await queryClient.invalidateQueries({
+          queryKey: ['user-attendance'],
+          exact: false,
+        });
+        await queryClient.refetchQueries({
+          queryKey: ['user-attendance'],
+          exact: false,
+        });
+        setRefreshKey(prev => prev + 1);
+        
+        setShowModal(false);
+        resetForm();
+      } else {
+        const createPayload: any = {
+          worker_id: userId,
+          type: clockInUtc && clockOutUtc ? 'in' : (clockInUtc ? 'in' : 'out'),
+          time_selected_utc: clockInUtc || clockOutUtc,
+          clock_in_time: clockInUtc,
+          clock_out_time: clockOutUtc,
+          status: formData.status,
+          reason_text: reasonText,
+        };
+        
+        if (clockOutUtc && insertBreakTime) {
+          const breakTotalMinutes = parseInt(breakHours) * 60 + parseInt(breakMinutes);
+          createPayload.manual_break_minutes = breakTotalMinutes;
+        }
+        
+        await api('POST', '/settings/attendance/manual', createPayload);
+        
+        toast.success('Attendance event created');
+        
+        await queryClient.invalidateQueries({
+          queryKey: ['user-attendance'],
+          exact: false,
+        });
+        await queryClient.refetchQueries({
+          queryKey: ['user-attendance'],
+          exact: false,
+        });
+        setRefreshKey(prev => prev + 1);
+        
+        setShowModal(false);
+        resetForm();
+      }
+    } catch (e: any) {
+      const errorMsg = e.message || 'Failed to save attendance event';
+      toast.error(errorMsg);
+      if (errorMsg.includes('Cannot create attendance') || errorMsg.includes('Cannot update attendance')) {
+        return; // Don't close modal on conflict
+      }
+    }
+  };
+
+  const isSubmitDisabled = editingEvent
+    ? (!formData.worker_id || !formData.clock_in_time)
+    : !formData.clock_in_time
+    ? true
+    : formData.entry_mode === 'time'
+    ? !formData.clock_out_time
+    : !formData.hours_worked || parseFloat(formData.hours_worked || '0') <= 0;
 
   return (
     <div>
-      <div className="flex items-center gap-2 mb-3">
-        <label className="text-xs text-gray-600">Month</label>
-        <input type="month" className="border rounded px-2 py-1" value={month} onChange={e=>setMonth(e.target.value)} />
-        <label className="text-xs text-gray-600 ml-3">Project</label>
-        <select className="border rounded px-2 py-1" value={projectId} onChange={e=>setProjectId(e.target.value)}>
-          <option value="">Select...</option>
-          <option value="_all_">All projects</option>
-          {(projects||[]).map((p:any)=> <option key={p.id} value={p.id}>{p.code? `${p.code} — `:''}{p.name||'Project'}</option>)}
-        </select>
-        
-        {/* Eligible for Break checkbox */}
-        <div className="ml-3 flex items-center gap-2">
-          <input
-            type="checkbox"
-            id="eligible-for-break"
-            checked={isEligibleForBreak}
-            onChange={(e) => toggleEligibleForBreak(e.target.checked)}
-            className="w-4 h-4 text-brand-red border-gray-300 rounded focus:ring-brand-red"
-          />
-          <label htmlFor="eligible-for-break" className="text-sm text-gray-700 cursor-pointer">
-            Eligible for Break
-          </label>
-          <span className="text-xs text-gray-500">(Break will be deducted for shifts of 5 hours or more)</span>
+      <div className="mb-3 rounded-xl border bg-gradient-to-br from-[#7f1010] to-[#a31414] text-white p-4 flex items-center justify-between">
+        <div>
+          <div className="text-2xl font-extrabold">Attendance</div>
+          <div className="text-sm opacity-90">Manage clock-in/out records for this user</div>
         </div>
-        
-        <button onClick={()=>setShowModal(true)} className="ml-auto px-3 py-2 rounded bg-brand-red text-white">Register time</button>
-      </div>
-      <div className="mt-3 border rounded-lg divide-y">
-        {(entries||[]).length? (entries||[]).map((e:any)=> (
-          <div key={e.id} className="px-3 py-2 text-sm flex items-center gap-3">
-            <div className="w-24 text-gray-600">{String(e.work_date).slice(0,10)}</div>
-            <div className="w-28 text-gray-700">{formatTime12h(e.start_time)} - {formatTime12h(e.end_time)}</div>
-            <div className="w-20 font-medium">{(e.minutes/60).toFixed(2)}h</div>
-            <div className="flex-1 text-gray-600 truncate">{e.project_code? `${e.project_code} — `:''}{e.project_name||''} {e.notes? '· '+e.notes:''}</div>
-            <div className="flex items-center gap-2">
-              <div title={e.is_approved? 'Approved':'Pending'} className="text-lg">{e.is_approved? '✅':'⚪'}</div>
-              {canApprove && (
-                <button onClick={async()=>{
-                  try{
-                    const pid = e.project_id || projectId;
-                    await api('PATCH', `/projects/${encodeURIComponent(pid)}/timesheet/${encodeURIComponent(e.id)}/approve?approved=${String(!e.is_approved)}`);
-                    await refetch();
-                  }catch(_err){ toast.error('Failed to toggle approval'); }
-                }} className="px-2 py-1 rounded border text-xs">{e.is_approved? 'Unapprove':'Approve'}</button>
-              )}
-            </div>
-          </div>
-        )) : <div className="px-3 py-3 text-sm text-gray-600">No entries</div>}
+        <button
+          onClick={() => handleOpenModal()}
+          className="px-4 py-2 bg-white text-[#d11616] rounded-lg font-semibold hover:bg-gray-100 transition-colors"
+        >
+          + New Attendance
+        </button>
       </div>
 
+      {/* Filters */}
+      <div className="mb-4 rounded-xl border bg-white p-4 grid grid-cols-4 gap-4">
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Start Date</label>
+          <input
+            type="date"
+            value={filters.start_date}
+            onChange={(e) => setFilters({ ...filters, start_date: e.target.value })}
+            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">End Date</label>
+          <input
+            type="date"
+            value={filters.end_date}
+            onChange={(e) => setFilters({ ...filters, end_date: e.target.value })}
+            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Project</label>
+          <select
+            value={filters.project_id}
+            onChange={(e) => setFilters({ ...filters, project_id: e.target.value })}
+            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+          >
+            <option value="">All Projects</option>
+            {(Array.isArray(projects) ? projects : []).map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.code ? `${p.code} - ` : ''}{p.name}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
+          <select
+            value={filters.status}
+            onChange={(e) => setFilters({ ...filters, status: e.target.value })}
+            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+          >
+            <option value="">All Statuses</option>
+            <option value="approved">Approved</option>
+            <option value="pending">Pending</option>
+            <option value="rejected">Rejected</option>
+          </select>
+        </div>
+      </div>
+
+      {/* Eligible for Break checkbox */}
+      <div className="mb-4 rounded-xl border bg-white p-4 flex items-center gap-2">
+        <input
+          type="checkbox"
+          id="eligible-for-break"
+          checked={isEligibleForBreak}
+          onChange={(e) => toggleEligibleForBreak(e.target.checked)}
+          className="w-4 h-4 text-brand-red border-gray-300 rounded focus:ring-brand-red"
+        />
+        <label htmlFor="eligible-for-break" className="text-sm text-gray-700 cursor-pointer">
+          Eligible for Break
+        </label>
+        <span className="text-xs text-gray-500">(Break will be deducted for shifts of 5 hours or more)</span>
+      </div>
+
+      {/* Error message */}
+      {error && (
+        <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-4 text-red-800">
+          Error loading attendance records: {String(error)}
+        </div>
+      )}
+
+      {/* Bulk Actions */}
+      {selectedEvents.size > 0 && (
+        <div className="mb-4 rounded-xl border bg-blue-50 p-4 flex items-center justify-between">
+          <div className="text-sm font-medium text-blue-900">
+            {selectedEvents.size} event(s) selected
+          </div>
+          <button
+            onClick={handleDeleteSelected}
+            disabled={deletingSelected}
+            className="px-4 py-2 bg-red-600 text-white rounded-lg font-semibold hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {deletingSelected ? 'Deleting...' : 'Delete All Selected'}
+          </button>
+        </div>
+      )}
+
+      {/* Table */}
+      <div className="rounded-xl border bg-white overflow-hidden">
+        <table className="w-full text-sm">
+          <thead className="bg-gray-50">
+            <tr>
+              <th className="p-3 text-left w-12">
+                <input
+                  type="checkbox"
+                  checked={attendanceEvents.length > 0 && selectedEvents.size === attendanceEvents.length}
+                  onChange={handleSelectAll}
+                  className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                />
+              </th>
+              <th className="p-3 text-left">Clock In</th>
+              <th className="p-3 text-left">Clock Out</th>
+              <th className="p-3 text-left">Job/Project</th>
+              <th className="p-3 text-left">Hours</th>
+              <th className="p-3 text-left">Break</th>
+              <th className="p-3 text-left">Status</th>
+              <th className="p-3 text-left">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {isLoading ? (
+              <tr>
+                <td colSpan={8} className="p-4">
+                  <div className="h-6 bg-gray-100 animate-pulse rounded" />
+                </td>
+              </tr>
+            ) : error ? (
+              <tr>
+                <td colSpan={8} className="p-4 text-center text-red-600">
+                  Error loading data. Please check console for details.
+                </td>
+              </tr>
+            ) : attendanceEvents.length === 0 ? (
+              <tr>
+                <td colSpan={8} className="p-4 text-center text-gray-500">
+                  No attendance records found
+                </td>
+              </tr>
+            ) : (
+              attendanceEvents.map((event) => (
+                <tr key={event.event_id} className="border-t hover:bg-gray-50">
+                  <td className="p-3">
+                    <input
+                      type="checkbox"
+                      checked={selectedEvents.has(event.event_id)}
+                      onChange={() => handleToggleSelect(event.event_id)}
+                      className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                    />
+                  </td>
+                  <td className="p-3">
+                    {event.is_hours_worked ? '-' : (event.clock_in_time ? formatDateTime(event.clock_in_time) : '--')}
+                  </td>
+                  <td className="p-3">
+                    {event.is_hours_worked ? '-' : (event.clock_out_time ? formatDateTime(event.clock_out_time) : '--')}
+                  </td>
+                  <td className="p-3">
+                    {event.job_name ||
+                      event.project_name ||
+                      (event.job_type
+                        ? jobOptions.find((j) => j.id === event.job_type)?.name || 'Unknown'
+                        : 'No Project')}
+                  </td>
+                  <td className="p-3">{formatHours(event.hours_worked)}</td>
+                  <td className="p-3">{formatBreak(event.break_minutes)}</td>
+                  <td className="p-3">
+                    <span
+                      className={`px-2 py-1 rounded text-xs font-medium ${
+                        event.clock_in_status === 'approved' &&
+                        (!event.clock_out_status || event.clock_out_status === 'approved')
+                          ? 'bg-green-100 text-green-800'
+                          : event.clock_in_status === 'pending' ||
+                            event.clock_out_status === 'pending'
+                          ? 'bg-yellow-100 text-yellow-800'
+                          : 'bg-red-100 text-red-800'
+                      }`}
+                    >
+                      {event.clock_in_status === 'approved' &&
+                      (!event.clock_out_status || event.clock_out_status === 'approved')
+                        ? 'Approved'
+                        : event.clock_in_status === 'pending' ||
+                          event.clock_out_status === 'pending'
+                        ? 'Pending'
+                        : 'Rejected'}
+                    </span>
+                  </td>
+                  <td className="p-3">
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => handleOpenModal(event)}
+                        className="text-blue-600 hover:text-blue-800 text-sm"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        onClick={() => handleDeleteEvent(event)}
+                        disabled={deletingId === event.event_id}
+                        className="text-red-600 hover:text-red-800 text-sm disabled:opacity-50"
+                      >
+                        {deletingId === event.event_id ? 'Deleting...' : 'Delete'}
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Modal - same as Attendance.tsx */}
       {showModal && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl w-full max-w-md p-4">
-            <div className="text-lg font-semibold mb-2">Register time</div>
-            <div className="space-y-3">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-lg w-full mx-4 max-h-[90vh] overflow-y-auto">
+            <h2 className="text-xl font-bold mb-4">
+              {editingEvent ? 'Edit Attendance Event' : 'New Attendance Event'}
+            </h2>
+            <div className="space-y-4">
               <div>
-                <div className="text-xs text-gray-600">Project</div>
-                <select className="border rounded px-2 py-2 w-full" value={projectId} onChange={e=>setProjectId(e.target.value)}>
-                  <option value="">Select...</option>
-                  {(projects||[]).map((p:any)=> <option key={p.id} value={p.id}>{p.code? `${p.code} — `:''}{p.name||'Project'}</option>)}
+                <label className="block text-sm font-medium text-gray-700 mb-1">Job *</label>
+                <select
+                  value={formData.job_type}
+                  onChange={(e) => setFormData({ ...formData, job_type: e.target.value })}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2"
+                  required
+                >
+                  {jobOptions.map((job) => (
+                    <option key={job.id} value={job.id}>
+                      {job.code} - {job.name}
+                    </option>
+                  ))}
                 </select>
               </div>
               <div>
-                <div className="text-xs text-gray-600">Date</div>
-                <input type="date" className="border rounded px-3 py-2 w-full" value={workDate} onChange={e=>setWorkDate(e.target.value)} />
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <div className="text-xs text-gray-600">Start</div>
-                  <input type="time" className="border rounded px-3 py-2 w-full" value={start} onChange={e=>setStart(e.target.value)} />
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Entry Type
+                </label>
+                <div className="inline-flex rounded-lg border border-gray-300 bg-gray-50 overflow-hidden text-sm">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFormData((prev) => ({
+                        ...prev,
+                        entry_mode: 'time',
+                        hours_worked: '',
+                      }));
+                    }}
+                    className={`px-3 py-1.5 ${
+                      formData.entry_mode === 'time'
+                        ? 'bg-white text-gray-900'
+                        : 'text-gray-600 hover:bg-gray-100'
+                    }`}
+                  >
+                    Clock In / Out
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFormData((prev) => {
+                        const datePart = prev.clock_in_time ? prev.clock_in_time.slice(0, 10) : formatDateLocal(new Date());
+                        let hoursWorked = '';
+                        if (prev.clock_in_time && prev.clock_out_time) {
+                          const inTime = new Date(prev.clock_in_time);
+                          const outTime = new Date(prev.clock_out_time);
+                          const diffMs = outTime.getTime() - inTime.getTime();
+                          const diffHours = diffMs / (1000 * 60 * 60);
+                          if (diffHours > 0) {
+                            hoursWorked = diffHours.toString();
+                          }
+                        }
+                        return {
+                          ...prev,
+                          entry_mode: 'hours',
+                          clock_in_time: `${datePart}T00:00`,
+                          clock_out_time: '',
+                          hours_worked: hoursWorked,
+                        };
+                      });
+                    }}
+                    className={`px-3 py-1.5 border-l border-gray-300 ${
+                      formData.entry_mode === 'hours'
+                        ? 'bg-white text-gray-900'
+                        : 'text-gray-600 hover:bg-gray-100'
+                    }`}
+                  >
+                    Hours Worked
+                  </button>
                 </div>
-                <div>
-                  <div className="text-xs text-gray-600">End</div>
-                  <input type="time" className="border rounded px-3 py-2 w-full" value={end} onChange={e=>setEnd(e.target.value)} />
-                </div>
+                <p className="mt-1 text-xs text-gray-500">
+                  {formData.entry_mode === 'time'
+                    ? 'Enter exact clock-in and clock-out times.'
+                    : 'Enter start time and total hours; clock-out will be calculated automatically.'}
+                </p>
               </div>
               <div>
-                <div className="text-xs text-gray-600">Notes</div>
-                <input className="border rounded px-3 py-2 w-full" value={notes} onChange={e=>setNotes(e.target.value)} placeholder="Justification" />
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  {formData.entry_mode === 'time'
+                    ? 'Clock In Time * (Local)'
+                    : 'Work Date *'}
+                </label>
+                {formData.entry_mode === 'time' ? (
+                  <input
+                    type="datetime-local"
+                    value={formData.clock_in_time}
+                    onChange={(e) =>
+                      setFormData({ ...formData, clock_in_time: e.target.value })
+                    }
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2"
+                    required
+                  />
+                ) : (
+                  <input
+                    type="date"
+                    value={formData.clock_in_time ? formData.clock_in_time.slice(0, 10) : ''}
+                    onChange={(e) => {
+                      const date = e.target.value;
+                      setFormData((prev) => ({
+                        ...prev,
+                        clock_in_time: date ? `${date}T00:00` : '',
+                      }));
+                    }}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2"
+                    required
+                  />
+                )}
               </div>
+              {formData.entry_mode === 'time' && (
+                <>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      {editingEvent
+                        ? 'Clock Out Time (Local) - Optional'
+                        : 'Clock Out Time * (Local)'}
+                    </label>
+                    <input
+                      type="datetime-local"
+                      value={formData.clock_out_time}
+                      onChange={(e) =>
+                        setFormData({ ...formData, clock_out_time: e.target.value })
+                      }
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2"
+                      required={!editingEvent}
+                    />
+                  </div>
+                  {/* Manual Break Time (always available in clock in/out mode) */}
+                  <div>
+                    <label className="flex items-center gap-2 mb-2">
+                      <input
+                        type="checkbox"
+                        checked={insertBreakTime}
+                        onChange={(e) => setInsertBreakTime(e.target.checked)}
+                        className="w-4 h-4 rounded border-gray-300 text-brand-red focus:ring-brand-red"
+                      />
+                      <span className="text-sm font-medium text-gray-700">Insert Break Time</span>
+                    </label>
+                    {insertBreakTime && (
+                      <div className="ml-6 space-y-2">
+                        <div className="flex gap-2 items-center">
+                          <label className="text-xs text-gray-600 w-12">Hours:</label>
+                          <select
+                            value={breakHours}
+                            onChange={(e) => setBreakHours(e.target.value)}
+                            className="flex-1 border rounded px-3 py-2"
+                          >
+                            {Array.from({ length: 3 }, (_, i) => (
+                              <option key={i} value={String(i)}>
+                                {i}
+                              </option>
+                            ))}
+                          </select>
+                          <label className="text-xs text-gray-600 w-12 ml-2">Minutes:</label>
+                          <select
+                            value={breakMinutes}
+                            onChange={(e) => setBreakMinutes(e.target.value)}
+                            className="flex-1 border rounded px-3 py-2"
+                          >
+                            {Array.from({ length: 12 }, (_, i) => {
+                              const m = i * 5;
+                              return (
+                                <option key={m} value={String(m).padStart(2, '0')}>
+                                  {String(m).padStart(2, '0')}
+                                </option>
+                              );
+                            })}
+                          </select>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+              {formData.entry_mode === 'hours' && (
+                <>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Hours Worked *
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.25"
+                      value={formData.hours_worked}
+                      onChange={(e) =>
+                        setFormData({ ...formData, hours_worked: e.target.value })
+                      }
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2"
+                      placeholder="e.g. 8"
+                      required
+                    />
+                  </div>
+                  {/* Manual Break Time (for hours worked mode) */}
+                  <div>
+                    <label className="flex items-center gap-2 mb-2">
+                      <input
+                        type="checkbox"
+                        checked={insertBreakTime}
+                        onChange={(e) => setInsertBreakTime(e.target.checked)}
+                        className="w-4 h-4 rounded border-gray-300 text-brand-red focus:ring-brand-red"
+                      />
+                      <span className="text-sm font-medium text-gray-700">Insert Break Time</span>
+                    </label>
+                    {insertBreakTime && (
+                      <div className="ml-6 space-y-2">
+                        <div className="flex gap-2 items-center">
+                          <label className="text-xs text-gray-600 w-12">Hours:</label>
+                          <select
+                            value={breakHours}
+                            onChange={(e) => setBreakHours(e.target.value)}
+                            className="flex-1 border rounded px-3 py-2"
+                          >
+                            {Array.from({ length: 3 }, (_, i) => (
+                              <option key={i} value={String(i)}>
+                                {i}
+                              </option>
+                            ))}
+                          </select>
+                          <label className="text-xs text-gray-600 w-12 ml-2">Minutes:</label>
+                          <select
+                            value={breakMinutes}
+                            onChange={(e) => setBreakMinutes(e.target.value)}
+                            className="flex-1 border rounded px-3 py-2"
+                          >
+                            {Array.from({ length: 12 }, (_, i) => {
+                              const m = i * 5;
+                              return (
+                                <option key={m} value={String(m).padStart(2, '0')}>
+                                  {String(m).padStart(2, '0')}
+                                </option>
+                              );
+                            })}
+                          </select>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+              {editingEvent && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Status *</label>
+                  <select
+                    value={formData.status}
+                    onChange={(e) => setFormData({ ...formData, status: e.target.value })}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2"
+                    required
+                  >
+                    <option value="approved">Approved</option>
+                    <option value="pending">Pending</option>
+                    <option value="rejected">Rejected</option>
+                  </select>
+                </div>
+              )}
             </div>
-            <div className="mt-4 flex justify-end gap-2">
-              <button onClick={()=>setShowModal(false)} className="px-3 py-2 rounded border">Cancel</button>
-              <button onClick={submit} className="px-3 py-2 rounded bg-brand-red text-white">Save</button>
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                onClick={() => {
+                  setShowModal(false);
+                  resetForm();
+                }}
+                className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSubmit}
+                disabled={isSubmitDisabled}
+                className="px-4 py-2 bg-[#d11616] text-white rounded-lg hover:bg-[#b01414] disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {editingEvent ? 'Update' : 'Create'}
+              </button>
             </div>
           </div>
         </div>

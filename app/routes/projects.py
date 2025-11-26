@@ -904,9 +904,11 @@ def list_timesheet(project_id: str, month: Optional[str] = None, user_id: Option
             diff = att.clock_out_time - att.clock_in_time
             hours_worked = diff.total_seconds() / 3600  # Convert to hours
         
-        # Calculate break_minutes (same function as attendance table)
-        break_minutes = None
-        if att.clock_in_time and att.clock_out_time:
+        # Use break_minutes from database (already calculated and saved, including manual breaks)
+        # Only calculate if not already set in database
+        break_minutes = att.break_minutes
+        if break_minutes is None and att.clock_in_time and att.clock_out_time:
+            # Fallback: calculate if not set (for old records or edge cases)
             break_minutes = calculate_break_minutes(
                 db, att.worker_id, att.clock_in_time, att.clock_out_time
             )
