@@ -137,6 +137,11 @@ export default function ClockInOut() {
   const [gpsLocation, setGpsLocation] = useState<{ lat: number; lng: number; accuracy: number } | null>(null);
   const [gpsLoading, setGpsLoading] = useState(false);
   const [gpsError, setGpsError] = useState<string>('');
+  
+  // Manual break time (only for clock out)
+  const [insertBreakTime, setInsertBreakTime] = useState<boolean>(false);
+  const [breakHours, setBreakHours] = useState<string>('0');
+  const [breakMinutes, setBreakMinutes] = useState<string>('0');
 
   // Calculate current week (Sunday to Saturday)
   const [weekStart, setWeekStart] = useState<Date>(() => {
@@ -396,7 +401,7 @@ export default function ClockInOut() {
       // Only clear if there's no open clock-in and it's not locked
       // Don't clear immediately to avoid flickering
     }
-  }, [isJobLocked, clockInJobType, hasOpenClockIn]);
+  }, [isJobLocked, clockInJobType, hasOpenClockIn, openClockIn]);
   
 
   // Fetch weekly summary
@@ -552,6 +557,18 @@ export default function ClockInOut() {
       return;
     }
 
+    // Validate: Allow future times with 4 minute margin
+    // Create date using local timezone explicitly to avoid timezone issues
+    const [year, month, day] = selectedDate.split('-').map(Number);
+    const selectedDateTime = new Date(year, month - 1, day, hours, minutes, 0);
+    const now = new Date();
+    const maxFutureMs = 4 * 60 * 1000; // 4 minutes buffer for future times
+    if (selectedDateTime.getTime() > (now.getTime() + maxFutureMs)) {
+      toast.error('Clock-in/out cannot be more than 4 minutes in the future. Please select a valid time.');
+      setSubmitting(false);
+      return;
+    }
+
     setSubmitting(true);
 
     try {
@@ -562,6 +579,12 @@ export default function ClockInOut() {
         type: clockType,
         time_selected_local: timeSelectedLocal,
       };
+
+      // Add manual break time if checkbox is checked (only for clock out)
+      if (clockType === 'out' && insertBreakTime) {
+        const breakTotalMinutes = parseInt(breakHours) * 60 + parseInt(breakMinutes);
+        payload.manual_break_minutes = breakTotalMinutes;
+      }
 
       // Add GPS location if available (for history only, not validation)
       if (gpsLocation) {
@@ -606,13 +629,18 @@ export default function ClockInOut() {
       setSelectedTime('');
       setSelectedHour12('');
       setSelectedMinute('');
+      setInsertBreakTime(false);
+      setBreakHours('0');
+      setBreakMinutes('0');
       
       // Only keep job selected if there's an open clock-in (locked)
       // After clock-out, job is unlocked to allow creating a new event
-      if (clockType === 'out' || !hasOpenClockIn) {
-        // After clock-out or if no open clock-in, reset job to allow new event
+      // For clock-in, keep the job selected if it will be locked (hasOpenClockIn will be true after refetch)
+      if (clockType === 'out') {
+        // After clock-out, reset job to allow new event
         setSelectedJob('');
       }
+      // For clock-in, don't reset - the useEffect will handle locking it if there's an open clock-in
       
       setGpsLocation(null);
       setGpsError('');
@@ -930,6 +958,9 @@ export default function ClockInOut() {
                       </div>
                     </div>
                   </div>
+                  <div className="mt-2 text-xs text-blue-600">
+                    * You have an open clock-in. Clock out to close this period.
+                  </div>
                 </div>
               )}
 
@@ -1049,6 +1080,54 @@ export default function ClockInOut() {
                   )}
                 </div>
 
+                {/* Manual Break Time (only for Clock Out) */}
+                {clockType === 'out' && (
+                  <div>
+                    <label className="flex items-center gap-2 mb-2">
+                      <input
+                        type="checkbox"
+                        checked={insertBreakTime}
+                        onChange={(e) => setInsertBreakTime(e.target.checked)}
+                        className="w-4 h-4 rounded border-gray-300 text-brand-red focus:ring-brand-red"
+                      />
+                      <span className="text-sm font-medium text-gray-700">Insert Break Time</span>
+                    </label>
+                    {insertBreakTime && (
+                      <div className="ml-6 space-y-2">
+                        <div className="flex gap-2 items-center">
+                          <label className="text-xs text-gray-600 w-12">Hours:</label>
+                          <select
+                            value={breakHours}
+                            onChange={(e) => setBreakHours(e.target.value)}
+                            className="flex-1 border rounded px-3 py-2"
+                          >
+                            {Array.from({ length: 3 }, (_, i) => (
+                              <option key={i} value={String(i)}>
+                                {i}
+                              </option>
+                            ))}
+                          </select>
+                          <label className="text-xs text-gray-600 w-12 ml-2">Minutes:</label>
+                          <select
+                            value={breakMinutes}
+                            onChange={(e) => setBreakMinutes(e.target.value)}
+                            className="flex-1 border rounded px-3 py-2"
+                          >
+                            {Array.from({ length: 12 }, (_, i) => {
+                              const m = i * 5;
+                              return (
+                                <option key={m} value={String(m).padStart(2, '0')}>
+                                  {String(m).padStart(2, '0')}
+                                </option>
+                              );
+                            })}
+                          </select>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {/* GPS Status */}
                 <div>
                   {gpsLocation ? (
@@ -1090,6 +1169,9 @@ export default function ClockInOut() {
                       setSelectedTime('');
                       setSelectedHour12('');
                       setSelectedMinute('');
+                      setInsertBreakTime(false);
+                      setBreakHours('0');
+                      setBreakMinutes('0');
                       setGpsLocation(null);
                       setGpsError('');
                     }}

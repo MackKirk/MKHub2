@@ -205,16 +205,23 @@ def calculate_break_minutes(
     db: Session,
     worker_id: uuid.UUID,
     clock_in_time: Optional[datetime],
-    clock_out_time: Optional[datetime]
+    clock_out_time: Optional[datetime],
+    manual_break_minutes: Optional[int] = None
 ) -> Optional[int]:
     """
     Calculate break minutes for an attendance record.
-    Returns break minutes if:
+    
+    If manual_break_minutes is provided, it takes priority and is returned directly.
+    Otherwise, returns break minutes if:
     - Both clock_in_time and clock_out_time exist
     - Total hours >= 5 hours
     - Worker is in the eligible employees list
     Otherwise returns None.
     """
+    # If manual break is provided, use it directly (priority over system settings)
+    if manual_break_minutes is not None:
+        return manual_break_minutes
+    
     if not clock_in_time or not clock_out_time:
         return None
     
@@ -495,8 +502,10 @@ def update_attendance(
     
     # Calculate break minutes if both times are present
     if attendance.clock_in_time and attendance.clock_out_time:
+        manual_break = payload.get("manual_break_minutes")
         attendance.break_minutes = calculate_break_minutes(
-            db, attendance.worker_id, attendance.clock_in_time, attendance.clock_out_time
+            db, attendance.worker_id, attendance.clock_in_time, attendance.clock_out_time,
+            manual_break_minutes=manual_break if manual_break is not None else None
         )
     else:
         attendance.break_minutes = None
@@ -627,6 +636,7 @@ def list_attendances(
     end_date: Optional[str] = None,
     status: Optional[str] = None,
     type_filter: Optional[str] = None,  # "in" or "out"
+    project_id: Optional[str] = None,  # Filter by project (through shift)
     db: Session = Depends(get_db),
     user: UserType = Depends(get_current_user),
     _=Depends(require_permissions("users:read"))
@@ -683,6 +693,17 @@ def list_attendances(
                 )
             except Exception as e:
                 logger.warning(f"Invalid end_date format: {end_date}, error: {e}")
+                pass
+        
+        # Filter by project_id (through shift)
+        if project_id:
+            try:
+                project_uuid = uuid.UUID(project_id)
+                # Join with Shift to filter by project_id
+                from ..models.models import Shift
+                query = query.join(Shift, Attendance.shift_id == Shift.id).filter(Shift.project_id == project_uuid).distinct()
+            except Exception as e:
+                logger.warning(f"Invalid project_id format: {project_id}, error: {e}")
                 pass
         
         # Order by clock_in_time or clock_out_time
@@ -793,9 +814,11 @@ def list_attendances(
                 time_selected = att.clock_in_time if att.clock_in_time else att.clock_out_time
                 time_entered = att.clock_in_entered_utc if att.clock_in_time else att.clock_out_entered_utc
                 
-                # Calculate break minutes if both times exist
-                break_minutes = None
-                if att.clock_in_time and att.clock_out_time:
+                # Use break_minutes from database (already calculated and saved, including manual breaks)
+                # Only calculate if not already set in database
+                break_minutes = att.break_minutes
+                if break_minutes is None and att.clock_in_time and att.clock_out_time:
+                    # Fallback: calculate if not set (for old records or edge cases)
                     break_minutes = calculate_break_minutes(
                         db, att.worker_id, att.clock_in_time, att.clock_out_time
                     )
@@ -1003,6 +1026,13 @@ def create_attendance_manual(
     
     # If both times are provided, create a complete attendance record
     if clock_in_time_utc and clock_out_time_utc:
+        # Calculate break minutes (manual break takes priority)
+        manual_break = payload.get("manual_break_minutes")
+        break_minutes = calculate_break_minutes(
+            db, uuid.UUID(worker_id), clock_in_time_utc, clock_out_time_utc,
+            manual_break_minutes=manual_break if manual_break is not None else None
+        )
+        
         attendance = Attendance(
             shift_id=uuid.UUID(shift_id) if shift_id else None,
             worker_id=uuid.UUID(worker_id),
@@ -1018,6 +1048,7 @@ def create_attendance_manual(
             clock_out_gps_lng=payload.get("gps_lng"),
             clock_out_gps_accuracy_m=payload.get("gps_accuracy_m"),
             clock_out_mocked_flag=payload.get("gps_mocked", False),
+            break_minutes=break_minutes,
             status=status,
             source="admin",
             created_by=user.id,
@@ -1084,8 +1115,10 @@ def create_attendance_manual(
             existing_attendance.clock_out_mocked_flag = payload.get("gps_mocked", False)
             # Calculate break minutes now that we have both times
             if existing_attendance.clock_in_time and clock_out_time_utc:
+                manual_break = payload.get("manual_break_minutes")
                 existing_attendance.break_minutes = calculate_break_minutes(
-                    db, existing_attendance.worker_id, existing_attendance.clock_in_time, clock_out_time_utc
+                    db, existing_attendance.worker_id, existing_attendance.clock_in_time, clock_out_time_utc,
+                    manual_break_minutes=manual_break if manual_break is not None else None
                 )
             if status == "pending" or existing_attendance.status == "pending":
                 existing_attendance.status = "pending"

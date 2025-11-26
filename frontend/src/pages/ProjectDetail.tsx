@@ -2003,6 +2003,11 @@ function TimesheetTab({ projectId }:{ projectId:string }){
   const [submitting, setSubmitting] = useState(false);
   const [showClockModal, setShowClockModal] = useState(false);
   const [geofenceStatus, setGeofenceStatus] = useState<{ inside: boolean; distance?: number; radius?: number } | null>(null);
+  
+  // Manual break time (only for clock out)
+  const [insertBreakTime, setInsertBreakTime] = useState<boolean>(false);
+  const [breakHours, setBreakHours] = useState<string>('0');
+  const [breakMinutes, setBreakMinutes] = useState<string>('0');
 
   // Haversine distance calculation (same as backend)
   const haversineDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
@@ -2155,6 +2160,9 @@ function TimesheetTab({ projectId }:{ projectId:string }){
     setGpsError('');
     setGpsLocation(null); // Clear previous location
     setGeofenceStatus(null);
+    setInsertBreakTime(false);
+    setBreakHours('0');
+    setBreakMinutes('0');
 
     // Set default time to now (rounded to 5 min) in 12h format
     const now = new Date();
@@ -2230,6 +2238,12 @@ function TimesheetTab({ projectId }:{ projectId:string }){
         time_selected_local: timeSelectedLocal,
       };
 
+      // Add manual break time if checkbox is checked (only for clock out)
+      if (clockType === 'out' && insertBreakTime) {
+        const breakTotalMinutes = parseInt(breakHours) * 60 + parseInt(breakMinutes);
+        payload.manual_break_minutes = breakTotalMinutes;
+      }
+
       // Add GPS location if available
       if (gpsLocation) {
         payload.gps = {
@@ -2271,6 +2285,9 @@ function TimesheetTab({ projectId }:{ projectId:string }){
       setSelectedHour12('');
       setSelectedMinute('');
       setReasonText('');
+      setInsertBreakTime(false);
+      setBreakHours('0');
+      setBreakMinutes('0');
       setGpsLocation(null);
       setGpsError('');
       setShowClockModal(false);
@@ -2734,6 +2751,54 @@ function TimesheetTab({ projectId }:{ projectId:string }){
                 </select>
               </div>
             </div>
+
+            {/* Manual Break Time (only for Clock Out) */}
+            {clockType === 'out' && (
+              <div>
+                <label className="flex items-center gap-2 mb-2">
+                  <input
+                    type="checkbox"
+                    checked={insertBreakTime}
+                    onChange={(e) => setInsertBreakTime(e.target.checked)}
+                    className="w-4 h-4 rounded border-gray-300 text-brand-red focus:ring-brand-red"
+                  />
+                  <span className="text-sm font-medium text-gray-700">Insert Break Time</span>
+                </label>
+                {insertBreakTime && (
+                  <div className="ml-6 space-y-2">
+                    <div className="flex gap-2 items-center">
+                      <label className="text-xs text-gray-600 w-12">Hours:</label>
+                      <select
+                        value={breakHours}
+                        onChange={(e) => setBreakHours(e.target.value)}
+                        className="flex-1 border rounded px-3 py-2"
+                      >
+                        {Array.from({ length: 3 }, (_, i) => (
+                          <option key={i} value={String(i)}>
+                            {i}
+                          </option>
+                        ))}
+                      </select>
+                      <label className="text-xs text-gray-600 w-12 ml-2">Minutes:</label>
+                      <select
+                        value={breakMinutes}
+                        onChange={(e) => setBreakMinutes(e.target.value)}
+                        className="flex-1 border rounded px-3 py-2"
+                      >
+                        {Array.from({ length: 12 }, (_, i) => {
+                          const m = i * 5;
+                          return (
+                            <option key={m} value={String(m).padStart(2, '0')}>
+                              {String(m).padStart(2, '0')}
+                            </option>
+                          );
+                        })}
+                      </select>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* GPS Status */}
             <div>
