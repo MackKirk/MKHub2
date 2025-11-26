@@ -115,31 +115,47 @@ export default function GeoSelect({ country, state, city, onChange, labels, requ
   const stateLabel = labels?.state ?? 'Province/State';
   const cityLabel = labels?.city ?? 'City';
 
+  // Ensure existing values are in the lists (for pre-selection)
+  const allCountries = useMemo(() => {
+    const existing = country && !countries.includes(country) ? [country] : [];
+    return [...countries, ...existing];
+  }, [countries, country]);
+  
+  const allStates = useMemo(() => {
+    const existing = state && !states.includes(state) ? [state] : [];
+    return [...states, ...existing];
+  }, [states, state]);
+  
+  const allCities = useMemo(() => {
+    const existing = city && !cities.includes(city) ? [city] : [];
+    return [...cities, ...existing];
+  }, [cities, city]);
+
   return (
     <div className="grid md:grid-cols-3 gap-3">
       <div>
         <label className="text-xs text-gray-600">{countryLabel}{required ? ' *' : ''}</label>
-        <select className="w-full border rounded px-3 py-2" value={country} onChange={(e) => onChange({ country: e.target.value })} disabled={disabled}>
-          <option value="">Select...</option>
-          {countries.map((c) => (
+        <select className="w-full border rounded px-3 py-2" value={country || ''} onChange={(e) => onChange({ country: e.target.value })} disabled={disabled || !countriesLoaded}>
+          <option value="">{countriesLoaded ? 'Select...' : 'Loading...'}</option>
+          {allCountries.map((c) => (
             <option key={c} value={c}>{c}</option>
           ))}
         </select>
       </div>
       <div>
         <label className="text-xs text-gray-600">{stateLabel}</label>
-        <select className="w-full border rounded px-3 py-2" value={state} onChange={(e) => onChange({ state: e.target.value })} disabled={disabled || !country || loadingStates}>
+        <select className="w-full border rounded px-3 py-2" value={state || ''} onChange={(e) => onChange({ state: e.target.value })} disabled={disabled || !country || loadingStates}>
           <option value="">{loadingStates ? 'Loading...' : 'Select...'}</option>
-          {states.map((s) => (
+          {allStates.map((s) => (
             <option key={s} value={s}>{s}</option>
           ))}
         </select>
       </div>
       <div>
         <label className="text-xs text-gray-600">{cityLabel}</label>
-        <select className="w-full border rounded px-3 py-2" value={city} onChange={(e) => onChange({ city: e.target.value })} disabled={disabled || !country || loadingCities}>
+        <select className="w-full border rounded px-3 py-2" value={city || ''} onChange={(e) => onChange({ city: e.target.value })} disabled={disabled || !country || loadingCities}>
           <option value="">{loadingCities ? 'Loading...' : 'Select...'}</option>
-          {cities.map((ct) => (
+          {allCities.map((ct) => (
             <option key={ct} value={ct}>{ct}</option>
           ))}
         </select>

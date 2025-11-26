@@ -1308,10 +1308,152 @@ def create_emergency_contact(user_id: str, payload: dict = Body(...), db: Sessio
     return {"id": str(e.id)}
 
 
+@router.patch("/users/{user_id}/emergency-contacts/{eid}")
+def update_emergency_contact(user_id: str, eid: str, payload: dict = Body(...), db: Session = Depends(get_db), _=Depends(require_permissions("users:write"))):
+    from ..models.models import EmployeeEmergencyContact
+    e = db.query(EmployeeEmergencyContact).filter(and_(EmployeeEmergencyContact.user_id == user_id, EmployeeEmergencyContact.id == eid)).first()
+    if not e:
+        raise HTTPException(status_code=404, detail="Emergency contact not found")
+    
+    if "name" in payload:
+        e.name = payload["name"]
+    if "relationship" in payload:
+        e.relationship = payload["relationship"]
+    if "is_primary" in payload:
+        e.is_primary = bool(payload["is_primary"])
+    if "work_phone" in payload:
+        e.work_phone = payload["work_phone"]
+    if "home_phone" in payload:
+        e.home_phone = payload["home_phone"]
+    if "mobile_phone" in payload:
+        e.mobile_phone = payload["mobile_phone"]
+    if "email" in payload:
+        e.email = payload["email"]
+    if "address" in payload:
+        e.address = payload["address"]
+    
+    db.commit()
+    return {"status": "ok"}
+
+
 @router.delete("/users/{user_id}/emergency-contacts/{eid}")
 def delete_emergency_contact(user_id: str, eid: str, db: Session = Depends(get_db), _=Depends(require_permissions("users:write"))):
     from ..models.models import EmployeeEmergencyContact
     db.query(EmployeeEmergencyContact).filter(and_(EmployeeEmergencyContact.user_id == user_id, EmployeeEmergencyContact.id == eid)).delete()
+    db.commit()
+    return {"status": "ok"}
+
+
+# =====================
+# Employee Visas
+# =====================
+
+@router.get("/users/{user_id}/visas")
+def list_visas(user_id: str, db: Session = Depends(get_db), _=Depends(require_permissions("users:read"))):
+    from ..models.models import EmployeeVisa
+    rows = db.query(EmployeeVisa).filter(EmployeeVisa.user_id == user_id).order_by(EmployeeVisa.issued_date.desc()).all()
+    def _row(v):
+        return {
+            "id": str(v.id),
+            "visa_type": v.visa_type,
+            "visa_number": v.visa_number,
+            "issuing_country": v.issuing_country,
+            "issued_date": v.issued_date.isoformat() if v.issued_date else None,
+            "expiry_date": v.expiry_date.isoformat() if v.expiry_date else None,
+            "status": v.status,
+            "notes": v.notes,
+            "file_id": str(v.file_id) if v.file_id else None,
+            "created_at": v.created_at.isoformat() if v.created_at else None,
+        }
+    return [_row(v) for v in rows]
+
+
+@router.post("/users/{user_id}/visas")
+def create_visa(user_id: str, payload: dict = Body(...), db: Session = Depends(get_db), _=Depends(require_permissions("users:write"))):
+    from ..models.models import EmployeeVisa
+    from datetime import datetime
+    
+    def _parse_date(value):
+        if not value:
+            return None
+        try:
+            if isinstance(value, str):
+                # Try ISO format first
+                if 'T' in value:
+                    return datetime.fromisoformat(value.replace('Z', '+00:00'))
+                # Try date only
+                return datetime.strptime(value, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+            return value
+        except:
+            return None
+    
+    v = EmployeeVisa(
+        id=uuid.uuid4(),
+        user_id=user_id,
+        visa_type=payload.get("visa_type"),
+        visa_number=payload.get("visa_number"),
+        issuing_country=payload.get("issuing_country"),
+        issued_date=_parse_date(payload.get("issued_date")),
+        expiry_date=_parse_date(payload.get("expiry_date")),
+        status=payload.get("status"),
+        notes=payload.get("notes"),
+        file_id=payload.get("file_id"),
+        created_at=datetime.now(timezone.utc),
+        created_by=user_id,
+    )
+    db.add(v)
+    db.commit()
+    return {"id": str(v.id)}
+
+
+@router.patch("/users/{user_id}/visas/{vid}")
+def update_visa(user_id: str, vid: str, payload: dict = Body(...), db: Session = Depends(get_db), _=Depends(require_permissions("users:write"))):
+    from ..models.models import EmployeeVisa
+    from datetime import datetime
+    
+    v = db.query(EmployeeVisa).filter(and_(EmployeeVisa.user_id == user_id, EmployeeVisa.id == vid)).first()
+    if not v:
+        raise HTTPException(status_code=404, detail="Visa not found")
+    
+    def _parse_date(value):
+        if not value:
+            return None
+        try:
+            if isinstance(value, str):
+                if 'T' in value:
+                    return datetime.fromisoformat(value.replace('Z', '+00:00'))
+                return datetime.strptime(value, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+            return value
+        except:
+            return None
+    
+    if "visa_type" in payload:
+        v.visa_type = payload["visa_type"]
+    if "visa_number" in payload:
+        v.visa_number = payload["visa_number"]
+    if "issuing_country" in payload:
+        v.issuing_country = payload["issuing_country"]
+    if "issued_date" in payload:
+        v.issued_date = _parse_date(payload["issued_date"])
+    if "expiry_date" in payload:
+        v.expiry_date = _parse_date(payload["expiry_date"])
+    if "status" in payload:
+        v.status = payload["status"]
+    if "notes" in payload:
+        v.notes = payload["notes"]
+    if "file_id" in payload:
+        v.file_id = payload["file_id"]
+    
+    v.updated_at = datetime.now(timezone.utc)
+    v.updated_by = user_id
+    db.commit()
+    return {"status": "ok"}
+
+
+@router.delete("/users/{user_id}/visas/{vid}")
+def delete_visa(user_id: str, vid: str, db: Session = Depends(get_db), _=Depends(require_permissions("users:write"))):
+    from ..models.models import EmployeeVisa
+    db.query(EmployeeVisa).filter(and_(EmployeeVisa.user_id == user_id, EmployeeVisa.id == vid)).delete()
     db.commit()
     return {"status": "ok"}
 

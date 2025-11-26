@@ -9,11 +9,26 @@ import { useConfirm } from '@/components/ConfirmProvider';
 
 // List of implemented permissions (permissions that are actually checked in the codebase)
 const IMPLEMENTED_PERMISSIONS = new Set([
+  // Legacy permissions
   "users:read", "users:write",
-  "timesheet:read", "timesheet:write", "timesheet:approve", "timesheet:unrestricted_clock",
+  "timesheet:read", "timesheet:write", "timesheet:approve", "timesheet:unrestricted_clock", // Legacy, mantido para compatibilidade
   "clients:read", "clients:write",
   "inventory:read", "inventory:write",
   "reviews:read", "reviews:admin",
+  // Human Resources permissions
+  "hr:access",
+  "hr:users:read", "hr:users:write",
+  "hr:attendance:read", "hr:attendance:write",
+  "hr:community:read", "hr:community:write",
+  "hr:reviews:admin",
+  "hr:timesheet:read", "hr:timesheet:write", "hr:timesheet:approve", "hr:timesheet:unrestricted_clock",
+  // Settings permissions
+  "settings:access",
+  // Documents permissions
+  "documents:access",
+  "documents:read", "documents:write", "documents:delete", "documents:move",
+  // Fleet & Equipment permissions
+  "fleet:access",
 ]);
 
 function SyncBambooHRButton({ userId, onSuccess }: { userId: string; onSuccess?: () => void }) {
@@ -71,6 +86,7 @@ function SyncBambooHRButton({ userId, onSuccess }: { userId: string; onSuccess?:
 }
 
 function UserPermissions({ userId }:{ userId:string }){
+  const { data:user, refetch: refetchUser } = useQuery({ queryKey:['user', userId], queryFn: ()=> api<any>('GET', `/users/${userId}`) });
   const { data:permissionsData, refetch } = useQuery({ 
     queryKey:['user-permissions', userId], 
     queryFn: ()=> api<any>('GET', `/permissions/users/${userId}`) 
@@ -101,6 +117,24 @@ function UserPermissions({ userId }:{ userId:string }){
   const handleSave = async () => {
     setSaving(true);
     try {
+      // Save admin role if changed
+      if (user) {
+        const isAdmin = (user.roles||[]).some((r: string) => String(r || '').toLowerCase() === 'admin');
+        const shouldBeAdmin = (document.getElementById('admin-checkbox') as HTMLInputElement)?.checked || false;
+        if (isAdmin !== shouldBeAdmin) {
+          let newRoles = [...(user.roles||[])];
+          if (shouldBeAdmin) {
+            if (!newRoles.some((r: string) => String(r || '').toLowerCase() === 'admin')) {
+              newRoles.push('admin');
+            }
+          } else {
+            newRoles = newRoles.filter((r: string) => String(r || '').toLowerCase() !== 'admin');
+          }
+          await api('PATCH', `/users/${userId}`, { roles: newRoles, is_active: user.is_active });
+          await refetchUser();
+        }
+      }
+      // Save permissions
       await api('PUT', `/permissions/users/${userId}`, permissions);
       toast.success('Permissions saved');
       await refetch();
@@ -115,6 +149,8 @@ function UserPermissions({ userId }:{ userId:string }){
     return <div className="h-24 bg-gray-100 animate-pulse rounded" />;
   }
 
+  const isAdmin = user ? (user.roles||[]).some((r: string) => String(r || '').toLowerCase() === 'admin') : false;
+
   return (
     <div className="space-y-6 pb-24">
       <div className="rounded-xl border bg-white p-4">
@@ -123,45 +159,112 @@ function UserPermissions({ userId }:{ userId:string }){
           <p className="text-sm text-gray-600">Manage granular permissions for this user. Permissions from roles are combined with these overrides. Permissions marked with [WIP] are not yet implemented in the system.</p>
         </div>
 
-        <div className="space-y-6">
-          {permissionsData.permissions_by_category?.map((cat: any) => (
-            <div key={cat.category.id} className="border rounded-lg p-4">
-              <div className="mb-3">
-                <h4 className="font-semibold text-base">{cat.category.label}</h4>
-                {cat.category.description && (
-                  <p className="text-xs text-gray-500 mt-1">{cat.category.description}</p>
-                )}
+        {/* Admin Access Section */}
+        <div className="mb-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+          <label className="inline-flex items-start gap-3 cursor-pointer">
+            <input 
+              id="admin-checkbox"
+              type="checkbox" 
+              checked={isAdmin}
+              disabled={!user}
+              onChange={e=>{ 
+                const shouldBeAdmin = e.target.checked;
+                if (user) {
+                  if (shouldBeAdmin) {
+                    if (!(user.roles||[]).some((r: string) => String(r || '').toLowerCase() === 'admin')) {
+                      user.roles = [...(user.roles||[]), 'admin'];
+                    }
+                  } else {
+                    user.roles = (user.roles||[]).filter((r: string) => String(r || '').toLowerCase() !== 'admin');
+                  }
+                }
+              }} 
+              className="mt-1 w-4 h-4 rounded border-gray-300 text-brand-red focus:ring-brand-red disabled:opacity-50 disabled:cursor-not-allowed"
+            />
+            <div className="flex-1">
+              <div className="font-semibold text-yellow-900 flex items-center gap-2">
+                Administrator Access
+                <span className="text-xs px-1.5 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300">
+                  System Role
+                </span>
               </div>
-              <div className="space-y-2">
-                {cat.permissions.map((perm: any) => (
-                  <label
-                    key={perm.id}
-                    className="flex items-start gap-3 p-2 rounded hover:bg-gray-50 cursor-pointer"
-                  >
+              <div className="text-xs text-yellow-800 mt-1">
+                ⚠️ <strong>Warning:</strong> This user will have access to all areas of the system and will be able to delete sensitive information. Only grant this to trusted users.
+              </div>
+              {isAdmin && (
+                <div className="text-xs text-yellow-700 mt-2 font-medium">
+                  ⚠️ When admin is enabled, all permission checks are bypassed. Individual permissions below are ignored.
+                </div>
+              )}
+            </div>
+          </label>
+        </div>
+
+        <div className="space-y-6">
+          {permissionsData.permissions_by_category?.map((cat: any) => {
+            // Find area access permission (first permission, ends with :access)
+            const areaAccessPerm = cat.permissions.find((p: any) => p.key.endsWith(':access'));
+            const subPermissions = cat.permissions.filter((p: any) => !p.key.endsWith(':access'));
+            const hasAreaAccess = areaAccessPerm && permissions[areaAccessPerm.key];
+            
+            return (
+              <div key={cat.category.id} className="border rounded-lg p-4">
+                {/* Category Header with Access Checkbox */}
+                <div className="mb-3">
+                  <label className="flex items-center gap-3 cursor-pointer">
                     <input
                       type="checkbox"
-                      checked={permissions[perm.key] || false}
-                      onChange={() => handleToggle(perm.key)}
-                      className="mt-1 w-4 h-4 rounded border-gray-300 text-brand-red focus:ring-brand-red"
+                      checked={hasAreaAccess || false}
+                      onChange={() => {
+                        if (areaAccessPerm) {
+                          handleToggle(areaAccessPerm.key);
+                        }
+                      }}
+                      className="w-4 h-4 rounded border-gray-300 text-brand-red focus:ring-brand-red"
                     />
                     <div className="flex-1">
-                      <div className="font-medium text-sm flex items-center gap-2">
-                        {perm.label}
-                        {!IMPLEMENTED_PERMISSIONS.has(perm.key) && (
-                          <span className="text-xs px-1.5 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300">
-                            [WIP]
-                          </span>
-                        )}
-                      </div>
-                      {perm.description && (
-                        <div className="text-xs text-gray-500 mt-0.5">{perm.description}</div>
+                      <h4 className="font-semibold text-base">{cat.category.label}</h4>
+                      {cat.category.description && (
+                        <p className="text-xs text-gray-500 mt-1">{cat.category.description}</p>
                       )}
                     </div>
                   </label>
-                ))}
+                </div>
+                
+                {/* Sub-permissions (only shown if area access is granted) */}
+                {hasAreaAccess && subPermissions.length > 0 && (
+                  <div className="ml-7 mt-3 space-y-2 border-l-2 border-gray-200 pl-4">
+                    {subPermissions.map((perm: any) => (
+                      <label
+                        key={perm.id}
+                        className="flex items-start gap-3 p-2 rounded hover:bg-gray-50 cursor-pointer"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={permissions[perm.key] || false}
+                          onChange={() => handleToggle(perm.key)}
+                          className="mt-1 w-4 h-4 rounded border-gray-300 text-brand-red focus:ring-brand-red"
+                        />
+                        <div className="flex-1">
+                          <div className="font-medium text-sm flex items-center gap-2">
+                            {perm.label}
+                            {!IMPLEMENTED_PERMISSIONS.has(perm.key) && (
+                              <span className="text-xs px-1.5 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300">
+                                [WIP]
+                              </span>
+                            )}
+                          </div>
+                          {perm.description && (
+                            <div className="text-xs text-gray-500 mt-0.5">{perm.description}</div>
+                          )}
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+                )}
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
 
         <div className="mt-6 flex justify-end">
@@ -292,16 +395,6 @@ export default function UserInfo(){
     }catch(_e){ toast.error('Failed to save'); }
   };
 
-  const EmergencyGrid = ({ p, keys }:{ p:any, keys:string[] }) => (
-    <div className="grid md:grid-cols-2 gap-4">
-      {keys.map((k)=> (
-        <div key={k}>
-          <div className="text-sm text-gray-600">{k.replace(/_/g,' ').replace(/^./,s=>s.toUpperCase())}</div>
-          <div className="font-medium break-words">{String((k==='date_of_birth'||k==='hire_date'||k==='termination_date')? (p[k]||'').slice(0,10) : (p[k]||''))}</div>
-        </div>
-      ))}
-    </div>
-  );
 
   return (
     <div>
@@ -326,7 +419,8 @@ export default function UserInfo(){
                 <div className="grid md:grid-cols-3 gap-2 text-xs mt-3">
                   <div><span className="opacity-80">Username:</span> <span className="font-semibold">{u?.username||'—'}</span></div>
                   <div><span className="opacity-80">Phone:</span> <span className="font-semibold">{p.phone||'—'}</span></div>
-                  <div><span className="opacity-80">Work email:</span> <span className="font-semibold">{p.work_email||u?.email_personal||'—'}</span></div>
+                  <div><span className="opacity-80">Personal email:</span> <span className="font-semibold">{u?.email_personal||'—'}</span></div>
+                  <div><span className="opacity-80">Work email:</span> <span className="font-semibold">{p.work_email||'—'}</span></div>
                   <div><span className="opacity-80">Status:</span> <span className="font-semibold">{u?.is_active? 'Active':'Terminated'}</span></div>
                   <div><span className="opacity-80">Hire date:</span> <span className="font-semibold">{p.hire_date? String(p.hire_date).slice(0,10):'—'}{p.hire_date? ` (${tenure(p.hire_date)})`:''}</span></div>
                   <div><span className="opacity-80">Supervisor:</span> <span className="font-semibold">{supervisorName||'—'}</span></div>
@@ -370,17 +464,22 @@ export default function UserInfo(){
                   <div>
                     <div className="flex items-center gap-2"><h4 className="font-semibold">Contact</h4></div>
                     <div className="text-xs text-gray-500 mt-0.5 mb-2">How we can reach you.</div>
-                    <EditableGrid p={p} editable={canEdit} selfEdit={!!canSelfEdit} userId={String(userId)} collectChanges={collectChanges} inlineSave={false} fields={[['Phone','phone'],['Mobile phone','mobile_phone'],['Emergency contact name','emergency_contact_name'],['Emergency contact relationship','emergency_contact_relationship'],['Emergency contact phone','emergency_contact_phone']]} />
+                    <EditableGrid p={p} editable={canEdit} selfEdit={!!canSelfEdit} userId={String(userId)} collectChanges={collectChanges} inlineSave={false} fields={[['Phone','phone'],['Mobile phone','mobile_phone']]} />
                   </div>
                   <div>
                     <div className="flex items-center gap-2"><h4 className="font-semibold">Education</h4></div>
                     <div className="text-xs text-gray-500 mt-0.5 mb-2">Academic history.</div>
                     <EducationSection userId={String(userId)} canEdit={canEdit} />
                   </div>
+                  <div>
+                    <div className="flex items-center gap-2"><h4 className="font-semibold">Visa Information</h4></div>
+                    <div className="text-xs text-gray-500 mt-0.5 mb-2">Work permits and visa details.</div>
+                    <VisaInformationSection userId={String(userId)} canEdit={canEdit} />
+                  </div>
                 </div>
               )}
               {tab==='job' && (
-                <div className="space-y-6">
+                <div className="space-y-6 pb-24">
                   <div>
                     <div className="flex items-center gap-2"><h4 className="font-semibold">Employment Details</h4></div>
                     <div className="text-xs text-gray-500 mt-0.5 mb-2">Dates and employment attributes.</div>
@@ -391,9 +490,27 @@ export default function UserInfo(){
                     <div className="text-xs text-gray-500 mt-0.5 mb-2">Reporting and work contacts.</div>
                     <JobSection type="organization" p={p} editable={canEdit} userId={String(userId)} collectChanges={collectChanges} usersOptions={usersOptions||[]} settings={settings} />
                   </div>
+                  <div>
+                    <div className="flex items-center gap-2"><h4 className="font-semibold">Time Off</h4></div>
+                    <div className="text-xs text-gray-500 mt-0.5 mb-2">Request time off and view your balance.</div>
+                    <TimeOffSection userId={String(userId)} canEdit={canEdit} />
+                  </div>
                 </div>
               )}
-              {tab==='emergency' && <EmergencyGrid p={p} keys={['sin_number','work_permit_status','visa_status','emergency_contact_name','emergency_contact_relationship','emergency_contact_phone']} />}
+              {tab==='emergency' && (
+                <div className="space-y-6 pb-24">
+                  <div>
+                    <div className="flex items-center gap-2"><h4 className="font-semibold">Emergency Contacts</h4></div>
+                    <div className="text-xs text-gray-500 mt-0.5 mb-2">People to contact in case of emergency.</div>
+                    <EmergencyContactsSection userId={String(userId)} canEdit={canEdit} />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2"><h4 className="font-semibold">Legal & Documents</h4></div>
+                    <div className="text-xs text-gray-500 mt-0.5 mb-2">Legal status and identification.</div>
+                    <EditableGrid p={p} editable={canEdit} selfEdit={!!canSelfEdit} userId={String(userId)} collectChanges={collectChanges} inlineSave={false} fields={[['SIN Number','sin_number'],['Work Permit Status','work_permit_status'],['Visa Status','visa_status']]} />
+                  </div>
+                </div>
+              )}
               {tab==='docs' && <UserDocuments userId={String(userId)} canEdit={canEdit} />}
               {tab==='timesheet' && <TimesheetBlock userId={String(userId)} />}
               {tab==='permissions' && canEditPermissions && <UserPermissions userId={String(userId)} />}
@@ -475,6 +592,18 @@ function AddressSection({ p, editable, selfEdit, userId, collectChanges, inlineS
     postal_code: p.postal_code||'',
     country: p.country||'',
   }));
+  
+  // Update form when profile data changes
+  useEffect(() => {
+    setForm({
+      address_line1: p.address_line1||'',
+      address_line2: p.address_line2||'',
+      city: p.city||'',
+      province: p.province||'',
+      postal_code: p.postal_code||'',
+      country: p.country||'',
+    });
+  }, [p.address_line1, p.address_line2, p.city, p.province, p.postal_code, p.country]);
   const save = async()=>{
     try{
       if (editable) {
@@ -1815,6 +1944,1185 @@ function TimesheetBlock({ userId }:{ userId:string }){
   );
 }
 
+
+function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
+  const { data:balances, refetch:refetchBalances } = useQuery({ 
+    queryKey:['time-off-balance', userId], 
+    queryFn: ()=> api<any[]>('GET', `/employees/${userId}/time-off/balance`) 
+  });
+  const { data:requests, refetch:refetchRequests } = useQuery({ 
+    queryKey:['time-off-requests', userId], 
+    queryFn: ()=> api<any[]>('GET', `/employees/${userId}/time-off/requests`) 
+  });
+  const { data:history, refetch:refetchHistory } = useQuery({ 
+    queryKey:['time-off-history', userId], 
+    queryFn: ()=> api<any[]>('GET', `/employees/${userId}/time-off/history`) 
+  });
+  const [showRequestForm, setShowRequestForm] = useState(false);
+  const [policyName, setPolicyName] = useState('');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [hours, setHours] = useState('');
+  const [notes, setNotes] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [syncingHistory, setSyncingHistory] = useState(false);
+  
+  const calculateHours = () => {
+    if (startDate && endDate) {
+      const start = new Date(startDate);
+      const end = new Date(endDate);
+      const days = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+      setHours(String(days * 8));
+    }
+  };
+  
+  useEffect(() => {
+    calculateHours();
+  }, [startDate, endDate]);
+  
+  const handleSync = async () => {
+    setSyncing(true);
+    try {
+      await api('POST', `/employees/${userId}/time-off/balance/sync`);
+      toast.success('Time off balance synced from BambooHR');
+      refetchBalances();
+    } catch (error: any) {
+      toast.error(error?.message || 'Failed to sync balance');
+    } finally {
+      setSyncing(false);
+    }
+  };
+  
+  const handleSyncHistory = async () => {
+    setSyncingHistory(true);
+    try {
+      await api('POST', `/employees/${userId}/time-off/history/sync`);
+      toast.success('Time off history synced from BambooHR');
+      refetchHistory();
+    } catch (error: any) {
+      toast.error(error?.message || 'Failed to sync history');
+    } finally {
+      setSyncingHistory(false);
+    }
+  };
+  
+  const handleSubmit = async () => {
+    if (!policyName || !startDate || !endDate) {
+      toast.error('Please fill in all required fields');
+      return;
+    }
+    
+    setSubmitting(true);
+    try {
+      await api('POST', `/employees/${userId}/time-off/requests`, {
+        policy_name: policyName,
+        start_date: startDate,
+        end_date: endDate,
+        hours: hours ? parseFloat(hours) : undefined,
+        notes: notes
+      });
+      toast.success('Time off request submitted');
+      setShowRequestForm(false);
+      setPolicyName('');
+      setStartDate('');
+      setEndDate('');
+      setHours('');
+      setNotes('');
+      refetchRequests();
+      refetchBalances();
+    } catch (error: any) {
+      toast.error(error?.message || 'Failed to submit request');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+  
+  const handleCancel = async (requestId: string) => {
+    try {
+      await api('PATCH', `/employees/${userId}/time-off/requests/${requestId}`, {
+        status: 'cancelled'
+      });
+      toast.success('Request cancelled');
+      refetchRequests();
+      refetchBalances();
+    } catch (error: any) {
+      toast.error(error?.message || 'Failed to cancel request');
+    }
+  };
+  
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'approved': return 'bg-green-100 text-green-800';
+      case 'rejected': return 'bg-red-100 text-red-800';
+      case 'cancelled': return 'bg-gray-100 text-gray-800';
+      default: return 'bg-yellow-100 text-yellow-800';
+    }
+  };
+  
+  const availablePolicies = balances?.map((b: any) => b.policy_name) || [];
+  const totalBalance = balances?.reduce((sum: number, b: any) => sum + b.balance_hours, 0) || 0;
+  const pendingRequests = requests?.filter((r: any) => r.status === 'pending') || [];
+  const upcomingRequests = requests?.filter((r: any) => {
+    if (r.status !== 'approved') return false;
+    const endDate = new Date(r.end_date);
+    return endDate >= new Date();
+  }) || [];
+  const historyRequests = requests?.filter((r: any) => {
+    if (r.status === 'pending') return false;
+    const endDate = new Date(r.end_date);
+    return endDate < new Date() || r.status !== 'approved';
+  }) || [];
+  
+  // Convert hours to days (assuming 8 hours per day)
+  const hoursToDays = (hours: number) => {
+    return (hours / 8).toFixed(1);
+  };
+  
+  return (
+    <div className="space-y-4">
+      {/* Top Row: Balance (left) and Upcoming (right) */}
+      <div className="grid md:grid-cols-2 gap-4">
+        {/* Balance Section - Left */}
+        <div className="rounded-lg border bg-white p-4">
+          <div className="flex items-center justify-between mb-3">
+            <h5 className="font-semibold flex items-center gap-2">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              Available Balance
+            </h5>
+            <button
+              onClick={handleSync}
+              disabled={syncing}
+              className="px-3 py-1.5 rounded border text-sm disabled:opacity-50 hover:bg-gray-50"
+            >
+              {syncing ? 'Syncing...' : 'Sync'}
+            </button>
+          </div>
+          {balances && balances.length > 0 ? (
+            <div className="space-y-3">
+              {balances.map((b: any) => {
+                const balanceDays = hoursToDays(b.balance_hours);
+                const isNegative = b.balance_hours < 0;
+                return (
+                  <div key={b.id} className="p-3 bg-gray-50 rounded-lg border">
+                    <div className="flex items-center justify-between mb-1">
+                      <div className="font-medium text-sm">{b.policy_name}</div>
+                      <div className={`text-lg font-bold ${isNegative ? 'text-red-600' : 'text-brand-red'}`}>
+                        {isNegative ? '-' : ''}{balanceDays} Days
+                      </div>
+                    </div>
+                    <div className="text-xs text-gray-600">
+                      {b.policy_name} Available
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="text-sm text-gray-600 py-4 text-center">
+              No balance found. Click "Sync" to load from BambooHR.
+            </div>
+          )}
+        </div>
+        
+        {/* Upcoming Time Off - Right */}
+        <div className="rounded-lg border bg-white p-4">
+          <div className="flex items-center justify-between mb-3">
+            <h5 className="font-semibold flex items-center gap-2">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              Upcoming Time Off
+            </h5>
+            {availablePolicies.length > 0 && (
+              <button
+                onClick={() => setShowRequestForm(true)}
+                className="px-3 py-1.5 rounded bg-brand-red text-white text-sm hover:bg-red-700"
+              >
+                Request Time Off
+              </button>
+            )}
+          </div>
+          {upcomingRequests.length > 0 || pendingRequests.length > 0 ? (
+            <div className="space-y-2 max-h-64 overflow-y-auto">
+              {[...pendingRequests, ...upcomingRequests].slice(0, 5).map((r: any) => (
+                <div key={r.id} className="p-2 border rounded text-sm">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="font-medium">{r.policy_name}</div>
+                      <div className="text-xs text-gray-600">
+                        {new Date(r.start_date).toLocaleDateString()} - {new Date(r.end_date).toLocaleDateString()}
+                      </div>
+                    </div>
+                    <span className={`px-2 py-0.5 rounded text-xs ${getStatusColor(r.status)}`}>
+                      {r.status}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-sm text-gray-600 py-8 text-center">
+              <div className="text-4xl mb-2">🏖️</div>
+              <div>No upcoming time off.</div>
+              <div className="text-xs text-gray-500 mt-1">Do you need to get away?</div>
+            </div>
+          )}
+        </div>
+      </div>
+      
+      {/* History Section - Bottom */}
+      <div className="rounded-lg border bg-white p-4">
+        <div className="flex items-center justify-between mb-3">
+          <h5 className="font-semibold flex items-center gap-2">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+            History
+          </h5>
+          <button
+            onClick={handleSyncHistory}
+            disabled={syncingHistory}
+            className="px-3 py-1.5 rounded border text-sm disabled:opacity-50 hover:bg-gray-50"
+          >
+            {syncingHistory ? 'Syncing...' : 'Sync History'}
+          </button>
+        </div>
+        {history && history.length > 0 ? (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b">
+                  <th className="text-left py-2 px-2 font-semibold">Date</th>
+                  <th className="text-left py-2 px-2 font-semibold">Description</th>
+                  <th className="text-right py-2 px-2 font-semibold">Used Days (-)</th>
+                  <th className="text-right py-2 px-2 font-semibold">Earned Days (+)</th>
+                  <th className="text-right py-2 px-2 font-semibold">Balance</th>
+                </tr>
+              </thead>
+              <tbody>
+                {history.map((h: any) => (
+                  <tr key={h.id} className="border-b">
+                    <td className="py-2 px-2">{new Date(h.transaction_date).toLocaleDateString()}</td>
+                    <td className="py-2 px-2">{h.description || 'Time off transaction'}</td>
+                    <td className="py-2 px-2 text-right">
+                      {h.used_days ? `-${parseFloat(h.used_days).toFixed(2)}` : '—'}
+                    </td>
+                    <td className="py-2 px-2 text-right">
+                      {h.earned_days ? `+${parseFloat(h.earned_days).toFixed(2)}` : '—'}
+                    </td>
+                    <td className="py-2 px-2 text-right">
+                      {parseFloat(h.balance_after).toFixed(2)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : historyRequests.length > 0 ? (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b">
+                  <th className="text-left py-2 px-2 font-semibold">Date</th>
+                  <th className="text-left py-2 px-2 font-semibold">Description</th>
+                  <th className="text-right py-2 px-2 font-semibold">Used Days (-)</th>
+                  <th className="text-right py-2 px-2 font-semibold">Earned Days (+)</th>
+                  <th className="text-right py-2 px-2 font-semibold">Balance</th>
+                </tr>
+              </thead>
+              <tbody>
+                {historyRequests.map((r: any) => {
+                  const days = hoursToDays(r.hours);
+                  return (
+                    <tr key={r.id} className="border-b">
+                      <td className="py-2 px-2">{new Date(r.requested_at).toLocaleDateString()}</td>
+                      <td className="py-2 px-2">
+                        {r.policy_name} - {r.status}
+                        {r.notes && <div className="text-xs text-gray-500">{r.notes}</div>}
+                      </td>
+                      <td className="py-2 px-2 text-right">
+                        {r.status === 'approved' ? `-${days}` : '—'}
+                      </td>
+                      <td className="py-2 px-2 text-right">—</td>
+                      <td className="py-2 px-2 text-right">—</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="text-sm text-gray-600 py-4 text-center">
+            No history available. Click "Sync History" to load from BambooHR.
+          </div>
+        )}
+      </div>
+      
+      {/* Request Form Modal */}
+      {showRequestForm && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl w-full max-w-md p-4">
+            <div className="text-lg font-semibold mb-4">Request Time Off</div>
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs text-gray-600">Policy</label>
+                <select
+                  className="w-full border rounded px-3 py-2"
+                  value={policyName}
+                  onChange={(e) => setPolicyName(e.target.value)}
+                >
+                  <option value="">Select policy...</option>
+                  {availablePolicies.map((p: string) => (
+                    <option key={p} value={p}>{p}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-xs text-gray-600">Start Date</label>
+                  <input
+                    type="date"
+                    className="w-full border rounded px-3 py-2"
+                    value={startDate}
+                    onChange={(e) => setStartDate(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-gray-600">End Date</label>
+                  <input
+                    type="date"
+                    className="w-full border rounded px-3 py-2"
+                    value={endDate}
+                    onChange={(e) => setEndDate(e.target.value)}
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="text-xs text-gray-600">Hours (auto-calculated)</label>
+                <input
+                  type="number"
+                  step="0.5"
+                  className="w-full border rounded px-3 py-2"
+                  value={hours}
+                  onChange={(e) => setHours(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="text-xs text-gray-600">Notes (optional)</label>
+                <textarea
+                  className="w-full border rounded px-3 py-2"
+                  rows={3}
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  placeholder="Reason for time off..."
+                />
+              </div>
+            </div>
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                onClick={() => {
+                  setShowRequestForm(false);
+                  setPolicyName('');
+                  setStartDate('');
+                  setEndDate('');
+                  setHours('');
+                  setNotes('');
+                }}
+                className="px-3 py-2 rounded border"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSubmit}
+                disabled={submitting || !policyName || !startDate || !endDate}
+                className="px-3 py-2 rounded bg-brand-red text-white disabled:opacity-50"
+              >
+                {submitting ? 'Submitting...' : 'Submit Request'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function EmergencyContactsSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
+  const { data, refetch } = useQuery({ 
+    queryKey:['emergency-contacts', userId], 
+    queryFn: ()=> api<any[]>('GET', `/auth/users/${encodeURIComponent(userId)}/emergency-contacts`) 
+  });
+  const [editId, setEditId] = useState<string|null>(null);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [name, setName] = useState('');
+  const [relationship, setRelationship] = useState('');
+  const [mobilePhone, setMobilePhone] = useState('');
+  const [homePhone, setHomePhone] = useState('');
+  const [workPhone, setWorkPhone] = useState('');
+  const [email, setEmail] = useState('');
+  const [address, setAddress] = useState('');
+  const [isPrimary, setIsPrimary] = useState(false);
+  const [eName, setEName] = useState('');
+  const [eRelationship, setERelationship] = useState('');
+  const [eMobilePhone, setEMobilePhone] = useState('');
+  const [eHomePhone, setEHomePhone] = useState('');
+  const [eWorkPhone, setEWorkPhone] = useState('');
+  const [eEmail, setEEmail] = useState('');
+  const [eAddress, setEAddress] = useState('');
+  const [eIsPrimary, setEIsPrimary] = useState(false);
+  
+  const formatPhone = (v:string)=>{
+    const d = String(v||'').replace(/\D+/g,'').slice(0,11);
+    if (d.length<=3) return d;
+    if (d.length<=6) return `(${d.slice(0,3)}) ${d.slice(3)}`;
+    if (d.length<=10) return `(${d.slice(0,3)}) ${d.slice(3,6)}-${d.slice(6)}`;
+    return `+${d.slice(0,1)} (${d.slice(1,4)}) ${d.slice(4,7)}-${d.slice(7,11)}`;
+  };
+  
+  const beginEdit = (c:any)=>{
+    setEditId(c.id);
+    setEName(c.name||'');
+    setERelationship(c.relationship||'');
+    setEMobilePhone(c.mobile_phone||'');
+    setEHomePhone(c.home_phone||'');
+    setEWorkPhone(c.work_phone||'');
+    setEEmail(c.email||'');
+    setEAddress(c.address||'');
+    setEIsPrimary(c.is_primary||false);
+  };
+  
+  const cancelEdit = ()=>{
+    setEditId(null);
+  };
+  
+  const handleCreate = async () => {
+    if (!name.trim()) {
+      toast.error('Name is required');
+      return;
+    }
+    try {
+      await api('POST', `/auth/users/${encodeURIComponent(userId)}/emergency-contacts`, {
+        name,
+        relationship,
+        mobile_phone: mobilePhone,
+        home_phone: homePhone,
+        work_phone: workPhone,
+        email,
+        address,
+        is_primary: isPrimary
+      });
+      toast.success('Emergency contact created');
+      setName('');
+      setRelationship('');
+      setMobilePhone('');
+      setHomePhone('');
+      setWorkPhone('');
+      setEmail('');
+      setAddress('');
+      setIsPrimary(false);
+      setCreateOpen(false);
+      refetch();
+    } catch (error: any) {
+      toast.error(error?.message || 'Failed to create contact');
+    }
+  };
+  
+  const handleUpdate = async (contactId: string) => {
+    if (!eName.trim()) {
+      toast.error('Name is required');
+      return;
+    }
+    try {
+      await api('PATCH', `/auth/users/${encodeURIComponent(userId)}/emergency-contacts/${contactId}`, {
+        name: eName,
+        relationship: eRelationship,
+        mobile_phone: eMobilePhone,
+        home_phone: eHomePhone,
+        work_phone: eWorkPhone,
+        email: eEmail,
+        address: eAddress,
+        is_primary: eIsPrimary
+      });
+      toast.success('Emergency contact updated');
+      setEditId(null);
+      refetch();
+    } catch (error: any) {
+      toast.error(error?.message || 'Failed to update contact');
+    }
+  };
+  
+  const handleDelete = async (contactId: string) => {
+    if (!confirm('Delete this emergency contact?')) return;
+    try {
+      await api('DELETE', `/auth/users/${encodeURIComponent(userId)}/emergency-contacts/${contactId}`);
+      toast.success('Emergency contact deleted');
+      refetch();
+    } catch (error: any) {
+      toast.error(error?.message || 'Failed to delete contact');
+    }
+  };
+  
+  const handleSetPrimary = async (contactId: string) => {
+    try {
+      await api('PATCH', `/auth/users/${encodeURIComponent(userId)}/emergency-contacts/${contactId}`, {
+        is_primary: true
+      });
+      toast.success('Primary contact updated');
+      refetch();
+    } catch (error: any) {
+      toast.error(error?.message || 'Failed to update contact');
+    }
+  };
+  
+  return (
+    <div>
+      <div className="mb-4 flex items-center justify-between">
+        <div></div>
+        {canEdit && (
+          <button 
+            onClick={() => setCreateOpen(true)} 
+            className="px-4 py-2 rounded-xl bg-gradient-to-r from-brand-red to-[#ee2b2b] text-white font-semibold"
+          >
+            New Contact
+          </button>
+        )}
+      </div>
+      <div className="grid md:grid-cols-2 gap-4">
+        {(data||[]).map((c: any) => (
+          <div key={c.id} className="rounded-xl border bg-white overflow-hidden flex">
+            <div className="w-28 bg-gray-100 flex items-center justify-center">
+              <div className="w-20 h-20 rounded bg-gray-200 grid place-items-center text-lg font-bold text-gray-600">
+                {(c.name||'?').slice(0,2).toUpperCase()}
+              </div>
+            </div>
+            <div className="flex-1 p-3 text-sm">
+              {editId === c.id ? (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="font-semibold">Edit contact</div>
+                    <div className="flex items-center gap-2">
+                      <label className="text-xs text-gray-600">Primary</label>
+                      <input 
+                        type="checkbox" 
+                        checked={eIsPrimary} 
+                        onChange={e => setEIsPrimary(e.target.checked)}
+                        className="rounded"
+                      />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="col-span-2">
+                      <label className="text-xs text-gray-600">Name *</label>
+                      <input 
+                        className="border rounded px-2 py-1 w-full" 
+                        value={eName} 
+                        onChange={e => setEName(e.target.value)} 
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-600">Relationship</label>
+                      <input 
+                        className="border rounded px-2 py-1 w-full" 
+                        value={eRelationship} 
+                        onChange={e => setERelationship(e.target.value)} 
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-600">Mobile Phone</label>
+                      <input 
+                        className="border rounded px-2 py-1 w-full" 
+                        value={eMobilePhone} 
+                        onChange={e => setEMobilePhone(formatPhone(e.target.value))} 
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-600">Home Phone</label>
+                      <input 
+                        className="border rounded px-2 py-1 w-full" 
+                        value={eHomePhone} 
+                        onChange={e => setEHomePhone(formatPhone(e.target.value))} 
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-600">Work Phone</label>
+                      <input 
+                        className="border rounded px-2 py-1 w-full" 
+                        value={eWorkPhone} 
+                        onChange={e => setEWorkPhone(formatPhone(e.target.value))} 
+                      />
+                    </div>
+                    <div className="col-span-2">
+                      <label className="text-xs text-gray-600">Email</label>
+                      <input 
+                        className="border rounded px-2 py-1 w-full" 
+                        type="email"
+                        value={eEmail} 
+                        onChange={e => setEEmail(e.target.value)} 
+                      />
+                    </div>
+                    <div className="col-span-2">
+                      <label className="text-xs text-gray-600">Address</label>
+                      <input 
+                        className="border rounded px-2 py-1 w-full" 
+                        value={eAddress} 
+                        onChange={e => setEAddress(e.target.value)} 
+                      />
+                    </div>
+                  </div>
+                  <div className="text-right space-x-2">
+                    <button onClick={cancelEdit} className="px-2 py-1 rounded bg-gray-100">Cancel</button>
+                    <button onClick={() => handleUpdate(c.id)} className="px-2 py-1 rounded bg-brand-red text-white">Save</button>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div className="flex items-center justify-between">
+                    <div className="font-semibold">{c.name}</div>
+                    {canEdit && (
+                      <div className="flex items-center gap-2">
+                        {c.is_primary && <span className="text-[11px] bg-green-50 text-green-700 border border-green-200 rounded-full px-2">Primary</span>}
+                        {!c.is_primary && (
+                          <button 
+                            onClick={() => handleSetPrimary(c.id)} 
+                            className="px-2 py-1 rounded bg-gray-100 text-xs"
+                          >
+                            Set Primary
+                          </button>
+                        )}
+                        <button onClick={() => beginEdit(c)} className="px-2 py-1 rounded bg-gray-100 text-xs">Edit</button>
+                        <button onClick={() => handleDelete(c.id)} className="px-2 py-1 rounded bg-gray-100 text-xs">Delete</button>
+                      </div>
+                    )}
+                  </div>
+                  {c.relationship && (
+                    <div className="text-gray-600 text-xs mt-1">{c.relationship}</div>
+                  )}
+                  <div className="mt-2 space-y-1">
+                    {c.mobile_phone && (
+                      <div>
+                        <div className="text-[11px] uppercase text-gray-500">Mobile</div>
+                        <div className="text-gray-700">{c.mobile_phone}</div>
+                      </div>
+                    )}
+                    {c.home_phone && (
+                      <div>
+                        <div className="text-[11px] uppercase text-gray-500">Home</div>
+                        <div className="text-gray-700">{c.home_phone}</div>
+                      </div>
+                    )}
+                    {c.work_phone && (
+                      <div>
+                        <div className="text-[11px] uppercase text-gray-500">Work</div>
+                        <div className="text-gray-700">{c.work_phone}</div>
+                      </div>
+                    )}
+                    {c.email && (
+                      <div>
+                        <div className="text-[11px] uppercase text-gray-500">Email</div>
+                        <div className="text-gray-700">{c.email}</div>
+                      </div>
+                    )}
+                    {c.address && (
+                      <div>
+                        <div className="text-[11px] uppercase text-gray-500">Address</div>
+                        <div className="text-gray-700">{c.address}</div>
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        ))}
+        {(!data || !data.length) && (
+          <div className="text-sm text-gray-600 col-span-2 py-8 text-center">
+            No emergency contacts. {canEdit && 'Click "New Contact" to add one.'}
+          </div>
+        )}
+      </div>
+      
+      {createOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+          <div className="w-[800px] max-w-[95vw] bg-white rounded-xl overflow-hidden">
+            <div className="px-4 py-3 border-b flex items-center justify-between">
+              <div className="font-semibold">New Emergency Contact</div>
+              <button 
+                onClick={() => { setCreateOpen(false); }} 
+                className="text-gray-500 hover:text-gray-700 text-2xl font-bold w-8 h-8 flex items-center justify-center rounded hover:bg-gray-100"
+              >
+                ×
+              </button>
+            </div>
+            <div className="p-4 grid md:grid-cols-2 gap-3">
+              <div className="col-span-2">
+                <label className="text-xs text-gray-600">Name *</label>
+                <input 
+                  className="border rounded px-3 py-2 w-full" 
+                  value={name} 
+                  onChange={e => setName(e.target.value)} 
+                />
+              </div>
+              <div>
+                <label className="text-xs text-gray-600">Relationship</label>
+                <input 
+                  className="border rounded px-3 py-2 w-full" 
+                  value={relationship} 
+                  onChange={e => setRelationship(e.target.value)} 
+                />
+              </div>
+              <div>
+                <label className="text-xs text-gray-600">Primary</label>
+                <div className="flex items-center gap-2 mt-2">
+                  <input 
+                    type="checkbox" 
+                    checked={isPrimary} 
+                    onChange={e => setIsPrimary(e.target.checked)}
+                    className="rounded"
+                  />
+                  <span className="text-xs text-gray-600">Set as primary contact</span>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs text-gray-600">Mobile Phone</label>
+                <input 
+                  className="border rounded px-3 py-2 w-full" 
+                  value={mobilePhone} 
+                  onChange={e => setMobilePhone(formatPhone(e.target.value))} 
+                />
+              </div>
+              <div>
+                <label className="text-xs text-gray-600">Home Phone</label>
+                <input 
+                  className="border rounded px-3 py-2 w-full" 
+                  value={homePhone} 
+                  onChange={e => setHomePhone(formatPhone(e.target.value))} 
+                />
+              </div>
+              <div>
+                <label className="text-xs text-gray-600">Work Phone</label>
+                <input 
+                  className="border rounded px-3 py-2 w-full" 
+                  value={workPhone} 
+                  onChange={e => setWorkPhone(formatPhone(e.target.value))} 
+                />
+              </div>
+              <div className="col-span-2">
+                <label className="text-xs text-gray-600">Email</label>
+                <input 
+                  className="border rounded px-3 py-2 w-full" 
+                  type="email"
+                  value={email} 
+                  onChange={e => setEmail(e.target.value)} 
+                />
+              </div>
+              <div className="col-span-2">
+                <label className="text-xs text-gray-600">Address</label>
+                <input 
+                  className="border rounded px-3 py-2 w-full" 
+                  value={address} 
+                  onChange={e => setAddress(e.target.value)} 
+                />
+              </div>
+              <div className="col-span-2 text-right">
+                <button 
+                  onClick={handleCreate}
+                  className="px-4 py-2 rounded-xl bg-gradient-to-r from-brand-red to-[#ee2b2b] text-white font-semibold"
+                >
+                  Create
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function VisaInformationSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
+  const { data, refetch } = useQuery({ 
+    queryKey:['employee-visas', userId], 
+    queryFn: ()=> api<any[]>('GET', `/auth/users/${encodeURIComponent(userId)}/visas`) 
+  });
+  const [editId, setEditId] = useState<string|null>(null);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [visaType, setVisaType] = useState('');
+  const [visaNumber, setVisaNumber] = useState('');
+  const [issuingCountry, setIssuingCountry] = useState('');
+  const [issuedDate, setIssuedDate] = useState('');
+  const [expiryDate, setExpiryDate] = useState('');
+  const [status, setStatus] = useState('Active');
+  const [notes, setNotes] = useState('');
+  const [eVisaType, setEVisaType] = useState('');
+  const [eVisaNumber, setEVisaNumber] = useState('');
+  const [eIssuingCountry, setEIssuingCountry] = useState('');
+  const [eIssuedDate, setEIssuedDate] = useState('');
+  const [eExpiryDate, setEExpiryDate] = useState('');
+  const [eStatus, setEStatus] = useState('Active');
+  const [eNotes, setENotes] = useState('');
+  
+  const getStatusColor = (status: string | null) => {
+    if (!status) return 'bg-gray-100 text-gray-800';
+    const s = status.toLowerCase();
+    if (s.includes('current') || s.includes('active')) return 'bg-green-100 text-green-800';
+    if (s.includes('expired')) return 'bg-red-100 text-red-800';
+    if (s.includes('pending')) return 'bg-yellow-100 text-yellow-800';
+    return 'bg-gray-100 text-gray-800';
+  };
+  
+  const formatDate = (dateStr: string | null) => {
+    if (!dateStr) return '—';
+    try {
+      const date = new Date(dateStr);
+      return date.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' });
+    } catch {
+      return dateStr;
+    }
+  };
+  
+  const getDateForInput = (dateStr: string | null) => {
+    if (!dateStr) return '';
+    try {
+      const date = new Date(dateStr);
+      return date.toISOString().split('T')[0];
+    } catch {
+      return '';
+    }
+  };
+  
+  const beginEdit = (v:any)=>{
+    setEditId(v.id);
+    setEVisaType(v.visa_type||'');
+    setEVisaNumber(v.visa_number||'');
+    setEIssuingCountry(v.issuing_country||'');
+    setEIssuedDate(getDateForInput(v.issued_date));
+    setEExpiryDate(getDateForInput(v.expiry_date));
+    setEStatus(v.status||'Active');
+    setENotes(v.notes||'');
+  };
+  
+  const cancelEdit = ()=>{
+    setEditId(null);
+  };
+  
+  const handleCreate = async () => {
+    if (!visaType.trim()) {
+      toast.error('Visa type is required');
+      return;
+    }
+    try {
+      await api('POST', `/auth/users/${encodeURIComponent(userId)}/visas`, {
+        visa_type: visaType,
+        visa_number: visaNumber,
+        issuing_country: issuingCountry,
+        issued_date: issuedDate || null,
+        expiry_date: expiryDate || null,
+        status: status,
+        notes: notes
+      });
+      toast.success('Visa entry created');
+      setVisaType('');
+      setVisaNumber('');
+      setIssuingCountry('');
+      setIssuedDate('');
+      setExpiryDate('');
+      setStatus('Active');
+      setNotes('');
+      setCreateOpen(false);
+      refetch();
+    } catch (error: any) {
+      toast.error(error?.message || 'Failed to create visa entry');
+    }
+  };
+  
+  const handleUpdate = async (visaId: string) => {
+    if (!eVisaType.trim()) {
+      toast.error('Visa type is required');
+      return;
+    }
+    try {
+      await api('PATCH', `/auth/users/${encodeURIComponent(userId)}/visas/${visaId}`, {
+        visa_type: eVisaType,
+        visa_number: eVisaNumber,
+        issuing_country: eIssuingCountry,
+        issued_date: eIssuedDate || null,
+        expiry_date: eExpiryDate || null,
+        status: eStatus,
+        notes: eNotes
+      });
+      toast.success('Visa entry updated');
+      setEditId(null);
+      refetch();
+    } catch (error: any) {
+      toast.error(error?.message || 'Failed to update visa entry');
+    }
+  };
+  
+  const handleDelete = async (visaId: string) => {
+    if (!confirm('Delete this visa entry?')) return;
+    try {
+      await api('DELETE', `/auth/users/${encodeURIComponent(userId)}/visas/${visaId}`);
+      toast.success('Visa entry deleted');
+      refetch();
+    } catch (error: any) {
+      toast.error(error?.message || 'Failed to delete visa entry');
+    }
+  };
+  
+  // Determine status based on expiry date
+  const getEffectiveStatus = (v: any) => {
+    if (v.status) return v.status;
+    if (v.expiry_date) {
+      const expiry = new Date(v.expiry_date);
+      const now = new Date();
+      return expiry < now ? 'EXPIRED' : 'CURRENT';
+    }
+    return 'CURRENT';
+  };
+  
+  return (
+    <div className="rounded-xl border bg-white p-4">
+      <div className="mb-4 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <div className="w-8 h-8 rounded bg-amber-100 flex items-center justify-center">
+            <svg className="w-5 h-5 text-amber-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V8a2 2 0 00-2-2h-5m-4 0V5a2 2 0 114 0v1m-4 0a2 2 0 104 0m-5 8a2 2 0 100-4 2 2 0 000 4zm0 0c1.306 0 2.417.835 2.83 2M9 14a3.001 3.001 0 00-2.83 2M15 11h3m-3 4h2" />
+            </svg>
+          </div>
+          <h5 className="font-semibold text-amber-900">Visa Information</h5>
+        </div>
+        {canEdit && (
+          <button 
+            onClick={() => setCreateOpen(true)} 
+            className="px-3 py-1.5 rounded border border-amber-300 text-amber-700 text-sm font-medium hover:bg-amber-50"
+          >
+            Add Entry
+          </button>
+        )}
+      </div>
+      
+      {data && data.length > 0 ? (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b text-left">
+                <th className="pb-2 font-medium text-gray-600">Date</th>
+                <th className="pb-2 font-medium text-gray-600">Visa</th>
+                <th className="pb-2 font-medium text-gray-600">Issuing Country</th>
+                <th className="pb-2 font-medium text-gray-600">Issued</th>
+                <th className="pb-2 font-medium text-gray-600">Expiration</th>
+                <th className="pb-2 font-medium text-gray-600">Status</th>
+                <th className="pb-2 font-medium text-gray-600">Note</th>
+                {canEdit && <th className="pb-2 font-medium text-gray-600">Actions</th>}
+              </tr>
+            </thead>
+            <tbody>
+              {data.map((v: any) => {
+                const effectiveStatus = getEffectiveStatus(v);
+                const isEditing = editId === v.id;
+                return isEditing ? (
+                  <tr key={v.id} className="border-b">
+                    <td colSpan={canEdit ? 8 : 7} className="py-3">
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="text-xs text-gray-600">Visa Type *</label>
+                          <input 
+                            className="border rounded px-2 py-1 w-full text-sm" 
+                            value={eVisaType} 
+                            onChange={e => setEVisaType(e.target.value)} 
+                          />
+                        </div>
+                        <div>
+                          <label className="text-xs text-gray-600">Visa Number</label>
+                          <input 
+                            className="border rounded px-2 py-1 w-full text-sm" 
+                            value={eVisaNumber} 
+                            onChange={e => setEVisaNumber(e.target.value)} 
+                          />
+                        </div>
+                        <div>
+                          <label className="text-xs text-gray-600">Issuing Country</label>
+                          <input 
+                            className="border rounded px-2 py-1 w-full text-sm" 
+                            value={eIssuingCountry} 
+                            onChange={e => setEIssuingCountry(e.target.value)} 
+                          />
+                        </div>
+                        <div>
+                          <label className="text-xs text-gray-600">Status</label>
+                          <select 
+                            className="border rounded px-2 py-1 w-full text-sm" 
+                            value={eStatus} 
+                            onChange={e => setEStatus(e.target.value)}
+                          >
+                            <option value="CURRENT">CURRENT</option>
+                            <option value="EXPIRED">EXPIRED</option>
+                            <option value="PENDING">PENDING</option>
+                            <option value="Active">Active</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="text-xs text-gray-600">Issued Date</label>
+                          <input 
+                            type="date"
+                            className="border rounded px-2 py-1 w-full text-sm" 
+                            value={eIssuedDate} 
+                            onChange={e => setEIssuedDate(e.target.value)} 
+                          />
+                        </div>
+                        <div>
+                          <label className="text-xs text-gray-600">Expiry Date</label>
+                          <input 
+                            type="date"
+                            className="border rounded px-2 py-1 w-full text-sm" 
+                            value={eExpiryDate} 
+                            onChange={e => setEExpiryDate(e.target.value)} 
+                          />
+                        </div>
+                        <div className="col-span-2">
+                          <label className="text-xs text-gray-600">Notes</label>
+                          <input 
+                            className="border rounded px-2 py-1 w-full text-sm" 
+                            value={eNotes} 
+                            onChange={e => setENotes(e.target.value)} 
+                          />
+                        </div>
+                        <div className="col-span-2 text-right space-x-2">
+                          <button onClick={cancelEdit} className="px-2 py-1 rounded bg-gray-100 text-xs">Cancel</button>
+                          <button onClick={() => handleUpdate(v.id)} className="px-2 py-1 rounded bg-brand-red text-white text-xs">Save</button>
+                        </div>
+                      </div>
+                    </td>
+                  </tr>
+                ) : (
+                  <tr key={v.id} className="border-b hover:bg-gray-50">
+                    <td className="py-2">{formatDate(v.issued_date)}</td>
+                    <td className="py-2 font-medium">{v.visa_type || '—'}</td>
+                    <td className="py-2">{v.issuing_country || '—'}</td>
+                    <td className="py-2">{formatDate(v.issued_date)}</td>
+                    <td className="py-2">{formatDate(v.expiry_date)}</td>
+                    <td className="py-2">
+                      <span className={`px-2 py-0.5 rounded text-xs font-medium ${getStatusColor(effectiveStatus)}`}>
+                        {effectiveStatus}
+                      </span>
+                    </td>
+                    <td className="py-2 text-gray-600">{v.notes || '—'}</td>
+                    {canEdit && (
+                      <td className="py-2">
+                        <div className="flex items-center gap-2">
+                          <button onClick={() => beginEdit(v)} className="px-2 py-1 rounded bg-gray-100 text-xs">Edit</button>
+                          <button onClick={() => handleDelete(v.id)} className="px-2 py-1 rounded bg-gray-100 text-xs text-red-600">Delete</button>
+                        </div>
+                      </td>
+                    )}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <div className="text-sm text-gray-600 py-8 text-center">
+          No visa information. {canEdit && 'Click "Add Entry" to add one.'}
+        </div>
+      )}
+      
+      {createOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+          <div className="w-[600px] max-w-[95vw] bg-white rounded-xl overflow-hidden">
+            <div className="px-4 py-3 border-b flex items-center justify-between">
+              <div className="font-semibold">Add Visa Entry</div>
+              <button 
+                onClick={() => { setCreateOpen(false); }} 
+                className="text-gray-500 hover:text-gray-700 text-2xl font-bold w-8 h-8 flex items-center justify-center rounded hover:bg-gray-100"
+              >
+                ×
+              </button>
+            </div>
+            <div className="p-4 grid grid-cols-2 gap-3">
+              <div className="col-span-2">
+                <label className="text-xs text-gray-600">Visa Type *</label>
+                <input 
+                  className="border rounded px-3 py-2 w-full" 
+                  value={visaType} 
+                  onChange={e => setVisaType(e.target.value)} 
+                  placeholder="e.g., Work Permit"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-gray-600">Visa Number</label>
+                <input 
+                  className="border rounded px-3 py-2 w-full" 
+                  value={visaNumber} 
+                  onChange={e => setVisaNumber(e.target.value)} 
+                />
+              </div>
+              <div>
+                <label className="text-xs text-gray-600">Issuing Country</label>
+                <input 
+                  className="border rounded px-3 py-2 w-full" 
+                  value={issuingCountry} 
+                  onChange={e => setIssuingCountry(e.target.value)} 
+                />
+              </div>
+              <div>
+                <label className="text-xs text-gray-600">Issued Date</label>
+                <input 
+                  type="date"
+                  className="border rounded px-3 py-2 w-full" 
+                  value={issuedDate} 
+                  onChange={e => setIssuedDate(e.target.value)} 
+                />
+              </div>
+              <div>
+                <label className="text-xs text-gray-600">Expiry Date</label>
+                <input 
+                  type="date"
+                  className="border rounded px-3 py-2 w-full" 
+                  value={expiryDate} 
+                  onChange={e => setExpiryDate(e.target.value)} 
+                />
+              </div>
+              <div>
+                <label className="text-xs text-gray-600">Status</label>
+                <select 
+                  className="border rounded px-3 py-2 w-full" 
+                  value={status} 
+                  onChange={e => setStatus(e.target.value)}
+                >
+                  <option value="CURRENT">CURRENT</option>
+                  <option value="EXPIRED">EXPIRED</option>
+                  <option value="PENDING">PENDING</option>
+                  <option value="Active">Active</option>
+                </select>
+              </div>
+              <div className="col-span-2">
+                <label className="text-xs text-gray-600">Notes</label>
+                <input 
+                  className="border rounded px-3 py-2 w-full" 
+                  value={notes} 
+                  onChange={e => setNotes(e.target.value)} 
+                  placeholder="e.g., LMIA #9164748, Roofer"
+                />
+              </div>
+              <div className="col-span-2 text-right">
+                <button 
+                  onClick={handleCreate}
+                  className="px-4 py-2 rounded-xl bg-gradient-to-r from-brand-red to-[#ee2b2b] text-white font-semibold"
+                >
+                  Create
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 function UserDocuments({ userId, canEdit }:{ userId:string, canEdit:boolean }){
   const confirm = useConfirm();

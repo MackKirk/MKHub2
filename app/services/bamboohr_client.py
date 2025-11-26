@@ -277,9 +277,48 @@ class BambooHRClient:
         """Get list of custom tables"""
         return self._request("GET", "/meta/tables")
     
-    def get_table_data(self, table_name: str, employee_id: str) -> List[Dict[str, Any]]:
+    def get_table_data(self, table_name: str, employee_id: str) -> Optional[Dict[str, Any]]:
         """Get data from a custom table for an employee"""
-        return self._request("GET", f"/employees/{employee_id}/tables/{table_name}")
+        # Try the standard endpoint first
+        try:
+            result = self._request("GET", f"/employees/{employee_id}/tables/{table_name}")
+            return result
+        except Exception as e:
+            # If that fails, try alternative endpoints or formats
+            # Some tables might use fieldId or different URL patterns
+            try:
+                # Try with /data suffix
+                result = self._request("GET", f"/employees/{employee_id}/tables/{table_name}/data")
+                return result
+            except Exception:
+                # Try using the table name as fieldId if it's numeric
+                if table_name.isdigit():
+                    try:
+                        result = self._request("GET", f"/employees/{employee_id}/tables/{table_name}")
+                        return result
+                    except Exception:
+                        pass
+                # Re-raise the original exception
+                raise e
+    
+    def get_employee_table_by_field_id(self, employee_id: str, field_id: str) -> Optional[Dict[str, Any]]:
+        """Get custom table data using fieldId directly"""
+        # Try different endpoint formats that might work with fieldId
+        endpoints_to_try = [
+            f"/employees/{employee_id}/tables/{field_id}",
+            f"/employees/{employee_id}/fields/{field_id}",
+            f"/employees/{employee_id}/custom/{field_id}",
+        ]
+        
+        for endpoint in endpoints_to_try:
+            try:
+                result = self._request("GET", endpoint)
+                if result:
+                    return result
+            except Exception:
+                continue
+        
+        return None
     
     def get_compensation(self, employee_id: str) -> Optional[Dict[str, Any]]:
         """
@@ -385,6 +424,67 @@ class BambooHRClient:
     def get_time_off_policies(self) -> List[Dict[str, Any]]:
         """Get time off policies"""
         return self._request("GET", "/time_off/policies")
+    
+    def get_time_off_balance(self, employee_id: str) -> Optional[Dict[str, Any]]:
+        """Get time off balance for an employee"""
+        try:
+            # Try different possible endpoints
+            endpoints = [
+                f"/time_off/balance?employeeId={employee_id}",
+                f"/employees/{employee_id}/time_off/balance",
+                f"/time_off/balances?employeeId={employee_id}",
+            ]
+            
+            for endpoint in endpoints:
+                try:
+                    result = self._request("GET", endpoint)
+                    if result:
+                        return result
+                except Exception:
+                    continue
+            
+            return None
+        except Exception:
+            return None
+    
+    def get_time_off_whos_out(self, start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Get who's out (time off) for a date range"""
+        endpoint = "/time_off/whos_out"
+        params = []
+        if start_date:
+            params.append(f"start={start_date}")
+        if end_date:
+            params.append(f"end={end_date}")
+        if params:
+            endpoint += "?" + "&".join(params)
+        return self._request("GET", endpoint)
+    
+    def get_time_off_balance_history(self, employee_id: str, policy_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        """Get time off balance history/transactions for an employee"""
+        try:
+            # Try different possible endpoints for balance history
+            endpoints = [
+                f"/time_off/balance/history?employeeId={employee_id}",
+                f"/employees/{employee_id}/time_off/balance/history",
+                f"/time_off/balances/history?employeeId={employee_id}",
+                f"/time_off/balance?employeeId={employee_id}&includeHistory=true",
+            ]
+            
+            if policy_id:
+                # Try with policy ID
+                endpoints.insert(0, f"/time_off/balance/history?employeeId={employee_id}&policyId={policy_id}")
+            
+            for endpoint in endpoints:
+                try:
+                    result = self._request("GET", endpoint)
+                    if result:
+                        return result
+                except Exception:
+                    continue
+            
+            return None
+        except Exception:
+            return None
     
     def get_benefits(self, employee_id: str) -> Dict[str, Any]:
         """Get employee benefits"""

@@ -713,6 +713,85 @@ class EmployeeFolder(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
     created_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
 
+class EmployeeVisa(Base):
+    __tablename__ = "employee_visas"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    visa_type: Mapped[Optional[str]] = mapped_column(String(100))  # e.g., Work Permit, Visitor Visa, PR Card
+    visa_number: Mapped[Optional[str]] = mapped_column(String(100))
+    issuing_country: Mapped[Optional[str]] = mapped_column(String(100))
+    issued_date: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    expiry_date: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    status: Mapped[Optional[str]] = mapped_column(String(100))  # e.g., Active, Expired, Pending
+    notes: Mapped[Optional[str]] = mapped_column(String(1000))
+    # Optional linkage to uploaded file object (from /files)
+    file_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("file_objects.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    created_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
+    updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    updated_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
+
+
+class TimeOffBalance(Base):
+    """Time off balance/credits for employees"""
+    __tablename__ = "time_off_balances"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    policy_name: Mapped[str] = mapped_column(String(100), nullable=False)  # e.g., "Vacation", "Sick Leave", "Personal Days"
+    balance_hours: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False, default=0.0)  # Current balance in hours
+    accrued_hours: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False, default=0.0)  # Total accrued
+    used_hours: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False, default=0.0)  # Total used
+    year: Mapped[int] = mapped_column(Integer, nullable=False)  # Year this balance applies to
+    last_synced_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))  # Last sync from BambooHR
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    
+    __table_args__ = (
+        # Unique constraint: one balance per user, policy, and year
+        UniqueConstraint('user_id', 'policy_name', 'year', name='uq_time_off_balance_user_policy_year'),
+    )
+
+
+class TimeOffRequest(Base):
+    """Time off requests from employees"""
+    __tablename__ = "time_off_requests"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    policy_name: Mapped[str] = mapped_column(String(100), nullable=False)  # e.g., "Vacation", "Sick Leave"
+    start_date: Mapped[Date] = mapped_column(Date, nullable=False)
+    end_date: Mapped[Date] = mapped_column(Date, nullable=False)
+    hours: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)  # Total hours requested
+    notes: Mapped[Optional[str]] = mapped_column(String(1000))  # Employee's notes/reason
+    status: Mapped[str] = mapped_column(String(50), default="pending")  # pending|approved|rejected|cancelled
+    requested_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    reviewed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    reviewed_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+    review_notes: Mapped[Optional[str]] = mapped_column(String(1000))  # Reviewer's notes
+    bamboohr_request_id: Mapped[Optional[str]] = mapped_column(String(100))  # ID from BambooHR if synced
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+
+
+class TimeOffHistory(Base):
+    """Time off balance history/transactions from BambooHR"""
+    __tablename__ = "time_off_history"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    policy_name: Mapped[str] = mapped_column(String(100), nullable=False)  # e.g., "Vacation", "Sick Leave"
+    transaction_date: Mapped[Date] = mapped_column(Date, nullable=False, index=True)  # Date of the transaction
+    description: Mapped[Optional[str]] = mapped_column(String(500))  # Description of the transaction
+    used_days: Mapped[Optional[float]] = mapped_column(Numeric(10, 2), default=0.0)  # Days used (negative)
+    earned_days: Mapped[Optional[float]] = mapped_column(Numeric(10, 2), default=0.0)  # Days earned (positive)
+    balance_after: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)  # Balance after this transaction
+    bamboohr_transaction_id: Mapped[Optional[str]] = mapped_column(String(100))  # ID from BambooHR if synced
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    last_synced_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))  # Last sync from BambooHR
+
+
 class EmployeeDocument(Base):
     __tablename__ = "employee_documents"
 

@@ -791,7 +791,7 @@ def delete_project_event(project_id: str, event_id: str, db: Session = Depends(g
 
 # ---- Timesheets ----
 @router.get("/{project_id}/timesheet")
-def list_timesheet(project_id: str, month: Optional[str] = None, user_id: Optional[str] = None, db: Session = Depends(get_db), _=Depends(require_permissions("timesheet:read"))):
+def list_timesheet(project_id: str, month: Optional[str] = None, user_id: Optional[str] = None, db: Session = Depends(get_db), _=Depends(require_permissions("hr:timesheet:read", "timesheet:read"))):
     from ..routes.settings import calculate_break_minutes
     
     # Calculate date range for month filter
@@ -1014,7 +1014,7 @@ def list_timesheet(project_id: str, month: Optional[str] = None, user_id: Option
 
 
 @router.post("/{project_id}/timesheet")
-def create_time_entry(project_id: str, payload: dict, db: Session = Depends(get_db), user=Depends(get_current_user), _=Depends(require_permissions("timesheet:write"))):
+def create_time_entry(project_id: str, payload: dict, db: Session = Depends(get_db), user=Depends(get_current_user), _=Depends(require_permissions("hr:timesheet:write", "timesheet:write"))):
     from datetime import datetime as _dt
     work_date = payload.get("work_date")
     minutes = int(payload.get("minutes") or 0)
@@ -1058,7 +1058,7 @@ def create_time_entry(project_id: str, payload: dict, db: Session = Depends(get_
 
 
 @router.patch("/{project_id}/timesheet/{entry_id}")
-def update_time_entry(project_id: str, entry_id: str, payload: dict, db: Session = Depends(get_db), user=Depends(get_current_user), _=Depends(require_permissions("timesheet:write"))):
+def update_time_entry(project_id: str, entry_id: str, payload: dict, db: Session = Depends(get_db), user=Depends(get_current_user), _=Depends(require_permissions("hr:timesheet:write", "timesheet:write"))):
     row = db.query(ProjectTimeEntry).filter(ProjectTimeEntry.id == entry_id, ProjectTimeEntry.project_id == project_id).first()
     if not row:
         from fastapi import HTTPException
@@ -1102,7 +1102,7 @@ def update_time_entry(project_id: str, entry_id: str, payload: dict, db: Session
 
 
 @router.delete("/{project_id}/timesheet/{entry_id}")
-def delete_time_entry(project_id: str, entry_id: str, db: Session = Depends(get_db), user=Depends(get_current_user), _=Depends(require_permissions("timesheet:write"))):
+def delete_time_entry(project_id: str, entry_id: str, db: Session = Depends(get_db), user=Depends(get_current_user), _=Depends(require_permissions("hr:timesheet:write", "timesheet:write"))):
     # Check if this is an attendance entry (prefixed with "attendance_")
     if entry_id.startswith("attendance_"):
         # Extract attendance ID
@@ -1249,7 +1249,7 @@ def delete_time_entry(project_id: str, entry_id: str, db: Session = Depends(get_
 
 
 @router.get("/{project_id}/timesheet/logs")
-def list_time_logs(project_id: str, month: Optional[str] = None, user_id: Optional[str] = None, limit: int = 50, offset: int = 0, db: Session = Depends(get_db), _=Depends(require_permissions("timesheet:read"))):
+def list_time_logs(project_id: str, month: Optional[str] = None, user_id: Optional[str] = None, limit: int = 50, offset: int = 0, db: Session = Depends(get_db), _=Depends(require_permissions("hr:timesheet:read", "timesheet:read"))):
     q = db.query(ProjectTimeEntryLog, User, EmployeeProfile).outerjoin(User, User.id == ProjectTimeEntryLog.user_id).outerjoin(EmployeeProfile, EmployeeProfile.user_id == User.id).filter(ProjectTimeEntryLog.project_id == project_id)
     if month:
         try:
@@ -1288,7 +1288,7 @@ def list_time_logs(project_id: str, month: Optional[str] = None, user_id: Option
 
 # ---- Timesheet summary (across projects) ----
 @router.get("/timesheet/summary")
-def timesheet_summary(month: Optional[str] = None, user_id: Optional[str] = None, db: Session = Depends(get_db), _=Depends(require_permissions("timesheet:read"))):
+def timesheet_summary(month: Optional[str] = None, user_id: Optional[str] = None, db: Session = Depends(get_db), _=Depends(require_permissions("hr:timesheet:read", "timesheet:read"))):
     q = db.query(ProjectTimeEntry.user_id, func.sum(ProjectTimeEntry.minutes).label("minutes"))
     if month:
         try:
@@ -1336,7 +1336,7 @@ def approve_time_entry(project_id: str, entry_id: str, approved: bool = True, db
 
 # ---- Timesheet: list across all projects for a user ----
 @router.get("/timesheet/user")
-def timesheet_by_user(month: Optional[str] = None, user_id: Optional[str] = None, db: Session = Depends(get_db), _=Depends(require_permissions("timesheet:read"))):
+def timesheet_by_user(month: Optional[str] = None, user_id: Optional[str] = None, db: Session = Depends(get_db), _=Depends(require_permissions("hr:timesheet:read", "timesheet:read"))):
     q = db.query(ProjectTimeEntry, Project).join(Project, Project.id == ProjectTimeEntry.project_id)
     if month:
         try:

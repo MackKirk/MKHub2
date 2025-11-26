@@ -13,6 +13,13 @@ type Division = { id: string; label: string };
 export default function CompanyFiles(){
   const confirm = useConfirm();
   const qc = useQueryClient();
+  const { data: me } = useQuery({ queryKey:['me'], queryFn: ()=> api<any>('GET','/auth/me') });
+  
+  // Check permissions
+  const canRead = !!(me?.roles||[]).includes('admin') || (me?.permissions||[]).includes('documents:read') || (me?.permissions||[]).includes('documents:access') || (me?.permissions||[]).includes('clients:read');
+  const canWrite = !!(me?.roles||[]).includes('admin') || (me?.permissions||[]).includes('documents:write') || (me?.permissions||[]).includes('documents:access') || (me?.permissions||[]).includes('clients:write');
+  const canDelete = !!(me?.roles||[]).includes('admin') || (me?.permissions||[]).includes('documents:delete') || (me?.permissions||[]).includes('documents:access') || (me?.permissions||[]).includes('clients:write');
+  const canMove = !!(me?.roles||[]).includes('admin') || (me?.permissions||[]).includes('documents:move') || (me?.permissions||[]).includes('documents:access') || (me?.permissions||[]).includes('clients:write');
   
   const [selectedDept, setSelectedDept] = useState<string>('');
   const [activeFolderId, setActiveFolderId] = useState<string>('all');
@@ -494,6 +501,10 @@ export default function CompanyFiles(){
               e.preventDefault();
               e.stopPropagation();
               setIsDragging(false);
+              if(!canWrite){
+                toast.error('You do not have permission to upload files');
+                return;
+              }
               if(activeFolderId === 'all'){
                 toast.error('Select a folder first');
                 return;
@@ -518,12 +529,14 @@ export default function CompanyFiles(){
                       <div className="text-sm font-semibold">
                         Folders in {(departments||[]).find(d=>d.id===selectedDept)?.label || 'Category'}
                       </div>
-                      <button
-                        onClick={()=>setNewFolderOpen(true)}
-                        className="px-3 py-1.5 rounded bg-brand-red text-white text-sm"
-                      >
-                        + New Folder
-                      </button>
+                      {canWrite && (
+                        <button
+                          onClick={()=>setNewFolderOpen(true)}
+                          className="px-3 py-1.5 rounded bg-brand-red text-white text-sm"
+                        >
+                          + New Folder
+                        </button>
+                      )}
                     </div>
                     <div className="rounded-lg border overflow-hidden bg-white">
                       {topFolders.length === 0 ? (
@@ -536,6 +549,10 @@ export default function CompanyFiles(){
                             onDragOver={(e)=>{ e.preventDefault(); }}
                             onDrop={async(e)=>{
                               e.preventDefault();
+                              if(!canWrite){
+                                toast.error('You do not have permission to upload files');
+                                return;
+                              }
                               if(e.dataTransfer.files?.length){
                                 await uploadMultiple(e.dataTransfer.files, f.id);
                               }
@@ -563,30 +580,36 @@ export default function CompanyFiles(){
                               </div>
                             </div>
                             <div className="ml-auto flex items-center gap-1">
-                              <button
-                                onClick={(e)=>{
-                                  e.stopPropagation();
-                                  setPermissionsFolder({id: f.id, name: f.name});
-                                }}
-                                title="Configure access permissions"
-                                className="p-2 rounded hover:bg-gray-100"
-                              >🔒</button>
-                              <button
-                                onClick={(e)=>{
-                                  e.stopPropagation();
-                                  setRenameFolder({id: f.id, name: f.name});
-                                }}
-                                title="Rename folder"
-                                className="p-2 rounded hover:bg-gray-100"
-                              >✏️</button>
-                              <button
-                                onClick={(e)=>{
-                                  e.stopPropagation();
-                                  removeFolder(f.id, f.name);
-                                }}
-                                title="Delete folder"
-                                className="p-2 rounded hover:bg-red-50 text-red-600"
-                              >🗑️</button>
+                              {canMove && (
+                                <button
+                                  onClick={(e)=>{
+                                    e.stopPropagation();
+                                    setPermissionsFolder({id: f.id, name: f.name});
+                                  }}
+                                  title="Configure access permissions"
+                                  className="p-2 rounded hover:bg-gray-100"
+                                >🔒</button>
+                              )}
+                              {canMove && (
+                                <button
+                                  onClick={(e)=>{
+                                    e.stopPropagation();
+                                    setRenameFolder({id: f.id, name: f.name});
+                                  }}
+                                  title="Rename folder"
+                                  className="p-2 rounded hover:bg-gray-100"
+                                >✏️</button>
+                              )}
+                              {canDelete && (
+                                <button
+                                  onClick={(e)=>{
+                                    e.stopPropagation();
+                                    removeFolder(f.id, f.name);
+                                  }}
+                                  title="Delete folder"
+                                  className="p-2 rounded hover:bg-red-50 text-red-600"
+                                >🗑️</button>
+                              )}
                             </div>
                           </div>
                         ))
@@ -689,21 +712,25 @@ export default function CompanyFiles(){
                 <div className="mb-2 flex items-center justify-between">
                   <h4 className="font-semibold">Documents</h4>
                   <div className="flex gap-2">
-                    <button
-                      onClick={()=>{
-                        setNewFolderParentId(activeFolderId);
-                        setNewFolderOpen(true);
-                      }}
-                      className="px-3 py-1.5 rounded border text-sm"
-                    >
-                      + New Subfolder
-                    </button>
-                    <button
-                      onClick={()=>setShowUpload(true)}
-                      className="px-3 py-1.5 rounded bg-brand-red text-white text-sm"
-                    >
-                      + Upload File
-                    </button>
+                    {canWrite && (
+                      <button
+                        onClick={()=>{
+                          setNewFolderParentId(activeFolderId);
+                          setNewFolderOpen(true);
+                        }}
+                        className="px-3 py-1.5 rounded border text-sm"
+                      >
+                        + New Subfolder
+                      </button>
+                    )}
+                    {canWrite && (
+                      <button
+                        onClick={()=>setShowUpload(true)}
+                        className="px-3 py-1.5 rounded bg-brand-red text-white text-sm"
+                      >
+                        + Upload File
+                      </button>
+                    )}
                   </div>
                 </div>
                 <div className="rounded-lg border overflow-hidden bg-white">
@@ -779,29 +806,37 @@ export default function CompanyFiles(){
                           </div>
                         </div>
                         <div className="ml-auto flex items-center gap-1">
-                          <button
-                            onClick={async()=>{
-                              const url = await fetchDownloadUrl(d.file_id||'');
-                              if(url) window.open(url,'_blank');
-                            }}
-                            title="Download"
-                            className="p-2 rounded hover:bg-gray-100"
-                          >⬇️</button>
-                          <button
-                            onClick={()=>setRenameDoc({id: d.id, title: d.title})}
-                            title="Rename"
-                            className="p-2 rounded hover:bg-gray-100"
-                          >✏️</button>
-                          <button
-                            onClick={()=>setMoveDoc({id: d.id})}
-                            title="Move"
-                            className="p-2 rounded hover:bg-gray-100"
-                          >📦</button>
-                          <button
-                            onClick={()=>removeDoc(d.id)}
-                            title="Delete"
-                            className="p-2 rounded hover:bg-red-50 text-red-600"
-                          >🗑️</button>
+                          {canRead && (
+                            <button
+                              onClick={async()=>{
+                                const url = await fetchDownloadUrl(d.file_id||'');
+                                if(url) window.open(url,'_blank');
+                              }}
+                              title="Download"
+                              className="p-2 rounded hover:bg-gray-100"
+                            >⬇️</button>
+                          )}
+                          {canMove && (
+                            <button
+                              onClick={()=>setRenameDoc({id: d.id, title: d.title})}
+                              title="Rename"
+                              className="p-2 rounded hover:bg-gray-100"
+                            >✏️</button>
+                          )}
+                          {canMove && (
+                            <button
+                              onClick={()=>setMoveDoc({id: d.id})}
+                              title="Move"
+                              className="p-2 rounded hover:bg-gray-100"
+                            >📦</button>
+                          )}
+                          {canDelete && (
+                            <button
+                              onClick={()=>removeDoc(d.id)}
+                              title="Delete"
+                              className="p-2 rounded hover:bg-red-50 text-red-600"
+                            >🗑️</button>
+                          )}
                         </div>
                       </div>
                     );

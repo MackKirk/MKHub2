@@ -110,35 +110,26 @@ def require_roles(*required_roles: str):
 
 
 def require_permissions(*required_permissions: str):
+    """
+    Require at least one of the specified permissions (OR logic).
+    If multiple permissions are provided, user needs at least one.
+    """
     def _dep(user: User = Depends(get_current_user)):
         # Admin role bypass
         if any((getattr(r, 'name', None) or '').lower() == 'admin' for r in user.roles):
             return user
-        # Combine role permissions and user overrides, honoring truthy values only
-        perm_map = {}
-        for r in user.roles:
-            if getattr(r, 'permissions', None):
-                try:
-                    perm_map.update(r.permissions)
-                except Exception:
-                    pass
-        if getattr(user, 'permissions_override', None):
-            try:
-                perm_map.update(user.permissions_override)
-            except Exception:
-                pass
-        granted = {k for k, v in perm_map.items() if v}
-        if not set(required_permissions).issubset(granted):
+        
+        # Check if user has at least one of the required permissions
+        has_any = any(_has_permission(user, perm) for perm in required_permissions)
+        if not has_any:
             raise HTTPException(status_code=403, detail="Forbidden")
         return user
 
     return _dep
 
 
-def _has_permission(user: User, perm: str) -> bool:
-    # Admin role bypass
-    if any((getattr(r, 'name', None) or '').lower() == 'admin' for r in user.roles):
-        return True
+def _get_user_permission_map(user: User) -> dict:
+    """Get combined permission map from roles and user overrides"""
     perm_map = {}
     for r in user.roles:
         if getattr(r, 'permissions', None):
@@ -151,6 +142,36 @@ def _has_permission(user: User, perm: str) -> bool:
             perm_map.update(user.permissions_override)
         except Exception:
             pass
+    return perm_map
+
+
+def _has_permission(user: User, perm: str) -> bool:
+    # Admin role bypass
+    if any((getattr(r, 'name', None) or '').lower() == 'admin' for r in user.roles):
+        return True
+    
+    perm_map = _get_user_permission_map(user)
+    
+    # Check hierarchical permissions: if permission belongs to an area, check area access first
+    # Format: area:sub:permission (e.g., hr:users:read)
+    # Area access permission format: area:access (e.g., hr:access)
+    if ':' in perm:
+        parts = perm.split(':')
+        if len(parts) >= 2:
+            area = parts[0]
+            area_access_key = f"{area}:access"
+            
+            # If this is not the area access permission itself, check area access first
+            if perm != area_access_key:
+                # Check if area access is explicitly denied (False in override)
+                if area_access_key in perm_map and not perm_map.get(area_access_key):
+                    return False
+                # Check if area access is granted
+                if area_access_key not in perm_map or not perm_map.get(area_access_key):
+                    # Area access not granted, deny all sub-permissions
+                    return False
+    
+    # Check the specific permission
     return bool(perm_map.get(perm))
 
 
@@ -159,7 +180,7 @@ def can_approve_timesheet(approver: User, target_user_id: str, db: Session) -> b
     Criteria: has timesheet:approve OR is in the manager chain of target (direct or indirect).
     """
     # Permission path
-    if _has_permission(approver, "timesheet:approve"):
+    if _has_permission(approver, "hr:timesheet:approve") or _has_permission(approver, "timesheet:approve"):
         return True
     # Supervisor chain path
     try:

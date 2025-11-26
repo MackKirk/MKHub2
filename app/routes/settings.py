@@ -278,7 +278,7 @@ def calculate_break_minutes(
     return break_minutes
 
 
-@router.get("")
+@router.get("", dependencies=[Depends(require_permissions("settings:access"))])
 def get_settings_bundle(db: Session = Depends(get_db)):
     rows = db.query(SettingList).all()
     out = {}
@@ -301,7 +301,7 @@ def get_settings_bundle(db: Session = Depends(get_db)):
 
 
 @router.get("/{list_name}")
-def list_settings(list_name: str, db: Session = Depends(get_db)):
+def list_settings(list_name: str, db: Session = Depends(get_db), _=Depends(require_permissions("settings:access"))):
     lst = db.query(SettingList).filter(SettingList.name == list_name).first()
     if not lst:
         return []
@@ -310,7 +310,7 @@ def list_settings(list_name: str, db: Session = Depends(get_db)):
 
 
 @router.post("/{list_name}")
-def create_setting_item(list_name: str, label: str, value: str = "", sort_index: Optional[int] = None, abbr: Optional[str] = None, color: Optional[str] = None, db: Session = Depends(get_db), _=Depends(require_permissions("users:write"))):
+def create_setting_item(list_name: str, label: str, value: str = "", sort_index: Optional[int] = None, abbr: Optional[str] = None, color: Optional[str] = None, db: Session = Depends(get_db), _=Depends(require_permissions("settings:access", "users:write"))):
     lst = db.query(SettingList).filter(SettingList.name == list_name).first()
     if not lst:
         lst = SettingList(name=list_name)
@@ -428,7 +428,7 @@ def delete_attendance(
 
 
 @router.delete("/{list_name}/{item_id}")
-def delete_setting_item(list_name: str, item_id: str, db: Session = Depends(get_db), _=Depends(require_permissions("users:write"))):
+def delete_setting_item(list_name: str, item_id: str, db: Session = Depends(get_db), _=Depends(require_permissions("settings:access", "users:write"))):
     lst = db.query(SettingList).filter(SettingList.name == list_name).first()
     if not lst:
         return {"status": "ok"}
@@ -553,7 +553,7 @@ def update_attendance(
     return {"id": str(attendance.id), "status": "ok"}
 
 
-@router.put("/{list_name}/{item_id}")
+@router.put("/{list_name}/{item_id}", dependencies=[Depends(require_permissions("settings:access"))])
 def update_setting_item(list_name: str, item_id: str, label: str = None, value: str = None, sort_index: int | None = None, abbr: Optional[str] = None, color: Optional[str] = None, allow_edit_proposal: Optional[str] = None, sets_start_date: Optional[str] = None, sets_end_date: Optional[str] = None, db: Session = Depends(get_db), _=Depends(require_permissions("users:write"))):
     lst = db.query(SettingList).filter(SettingList.name == list_name).first()
     if not lst:

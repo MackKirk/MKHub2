@@ -38,7 +38,7 @@ def list_users(
     page: int = 1,
     limit: int = 50,
     db: Session = Depends(get_db),
-    _=Depends(require_permissions("users:read"))
+    _=Depends(require_permissions("hr:users:read", "users:read"))  # New HR permission or legacy
 ):
     """
     List users with pagination
@@ -80,7 +80,7 @@ def list_users(
 
 
 @router.get("/{user_id}")
-def get_user(user_id: str, db: Session = Depends(get_db), _=Depends(require_permissions("users:read"))):
+def get_user(user_id: str, db: Session = Depends(get_db), _=Depends(require_permissions("hr:users:read", "users:read"))):  # New HR permission or legacy
     u = db.query(User).filter(User.id == user_id).first()
     if not u:
         raise HTTPException(status_code=404, detail="Not found")
@@ -89,13 +89,13 @@ def get_user(user_id: str, db: Session = Depends(get_db), _=Depends(require_perm
 
 
 @router.get("/roles/all")
-def list_roles(db: Session = Depends(get_db), _=Depends(require_permissions("users:read"))):
+def list_roles(db: Session = Depends(get_db), _=Depends(require_permissions("hr:users:read", "users:read"))):  # New HR permission or legacy
     rows = db.query(Role).order_by(Role.name.asc()).all()
     return [{"id": str(r.id), "name": r.name} for r in rows]
 
 
 @router.patch("/{user_id}")
-def update_user(user_id: str, payload: dict, db: Session = Depends(get_db), _=Depends(require_permissions("users:write"))):
+def update_user(user_id: str, payload: dict, db: Session = Depends(get_db), _=Depends(require_permissions("hr:users:write", "users:write"))):  # New HR permission or legacy
     from ..models.models import SettingList, SettingItem
     
     u = db.query(User).filter(User.id == user_id).first()

@@ -133,7 +133,8 @@ def list_company_folders(
     department_id: Optional[str] = None,
     parent_id: Optional[str] = None,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user)
+    user: User = Depends(get_current_user),
+    _=Depends(require_permissions("documents:read", "documents:access", "clients:read"))
 ):
     """List folders for company files, optionally filtered by department and parent. Filters by user permissions."""
     company_id = get_company_client_id(db)
@@ -221,7 +222,7 @@ def create_company_folder(
     parent_id: Optional[str] = Body(None),
     department_id: Optional[str] = Body(None),
     db: Session = Depends(get_db),
-    _=Depends(require_permissions("clients:write"))
+    _=Depends(require_permissions("documents:write", "documents:access", "clients:write"))
 ):
     """Create a folder for company files."""
     company_id = get_company_client_id(db)
@@ -281,7 +282,7 @@ def update_company_folder(
     name: Optional[str] = Body(None),
     parent_id: Optional[str] = Body(None),
     db: Session = Depends(get_db),
-    _=Depends(require_permissions("clients:write"))
+    _=Depends(require_permissions("documents:move", "documents:access", "clients:write"))
 ):
     """Update a company folder."""
     company_id = get_company_client_id(db)
@@ -318,7 +319,7 @@ def update_company_folder(
 def delete_company_folder(
     folder_id: str,
     db: Session = Depends(get_db),
-    _=Depends(require_permissions("clients:write"))
+    _=Depends(require_permissions("documents:delete", "documents:access", "clients:write"))
 ):
     """Delete a company folder."""
     company_id = get_company_client_id(db)
@@ -350,7 +351,8 @@ def list_company_documents(
     folder_id: Optional[str] = None,
     department_id: Optional[str] = None,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user)
+    user: User = Depends(get_current_user),
+    _=Depends(require_permissions("documents:read", "documents:access", "clients:read"))
 ):
     """List documents in company files. Only shows documents in folders the user has access to."""
     company_id = get_company_client_id(db)
@@ -413,7 +415,7 @@ def list_company_documents(
 def create_company_document(
     payload: dict = Body(...),
     db: Session = Depends(get_db),
-    _=Depends(require_permissions("clients:write"))
+    _=Depends(require_permissions("documents:write", "documents:access", "clients:write"))
 ):
     """Create a document in company files."""
     company_id = get_company_client_id(db)
@@ -436,7 +438,7 @@ def update_company_document(
     doc_id: str,
     payload: dict = Body(...),
     db: Session = Depends(get_db),
-    _=Depends(require_permissions("clients:write"))
+    _=Depends(require_permissions("documents:move", "documents:access", "clients:write"))
 ):
     """Update a company document."""
     company_id = get_company_client_id(db)
@@ -467,7 +469,7 @@ def update_company_document(
 def delete_company_document(
     doc_id: str,
     db: Session = Depends(get_db),
-    _=Depends(require_permissions("clients:write"))
+    _=Depends(require_permissions("documents:delete", "documents:access", "clients:write"))
 ):
     """Delete a company document."""
     company_id = get_company_client_id(db)
@@ -484,7 +486,7 @@ def delete_company_document(
 def get_folder_permissions(
     folder_id: str,
     db: Session = Depends(get_db),
-    _=Depends(require_permissions("clients:read"))
+    _=Depends(require_permissions("documents:read", "documents:access", "clients:read"))
 ):
     """Get access permissions for a folder."""
     company_id = get_company_client_id(db)
@@ -533,7 +535,7 @@ def update_folder_permissions(
     folder_id: str,
     payload: dict = Body(...),
     db: Session = Depends(get_db),
-    _=Depends(require_permissions("clients:write"))
+    _=Depends(require_permissions("documents:move", "documents:access", "clients:write"))
 ):
     """Update access permissions for a folder."""
     company_id = get_company_client_id(db)
@@ -592,7 +594,7 @@ def get_users_options(
     q: Optional[str] = None,
     limit: int = 100,
     db: Session = Depends(get_db),
-    _=Depends(require_permissions("clients:read"))
+    _=Depends(require_permissions("documents:read", "documents:access", "clients:read"))
 ):
     """Get list of users for permission configuration."""
     query = db.query(User).filter(User.is_active == True)
@@ -619,7 +621,7 @@ def get_users_options(
 @router.get("/divisions-options")
 def get_divisions_options(
     db: Session = Depends(get_db),
-    _=Depends(require_permissions("clients:read"))
+    _=Depends(require_permissions("documents:read", "documents:access", "clients:read"))
 ):
     """Get list of divisions for permission configuration."""
     divisions_list = db.query(SettingList).filter(SettingList.name == "divisions").first()

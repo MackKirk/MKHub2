@@ -131,7 +131,7 @@ def update_fleet_asset_last_service(
 @router.get("/dashboard", response_model=FleetDashboardResponse)
 def get_dashboard(
     db: Session = Depends(get_db),
-    _=Depends(require_permissions("fleet:read"))
+    _=Depends(require_permissions("fleet:access", "fleet:read"))
 ):
     """Get dashboard statistics"""
     total_fleet = db.query(FleetAsset).count()
@@ -210,7 +210,7 @@ def list_fleet_assets(
     status: Optional[str] = Query(None),
     search: Optional[str] = Query(None),
     db: Session = Depends(get_db),
-    _=Depends(require_permissions("fleet:read"))
+    _=Depends(require_permissions("fleet:access", "fleet:read"))
 ):
     """List fleet assets with filters"""
     query = db.query(FleetAsset)
@@ -347,7 +347,7 @@ def list_equipment(
     status: Optional[str] = Query(None),
     search: Optional[str] = Query(None),
     db: Session = Depends(get_db),
-    _=Depends(require_permissions("equipment:read"))
+    _=Depends(require_permissions("fleet:access", "fleet:read", "equipment:read"))
 ):
     """List equipment with filters"""
     query = db.query(Equipment)
@@ -1085,7 +1085,7 @@ def list_work_orders(
     category: Optional[str] = Query(None),
     urgency: Optional[str] = Query(None),
     db: Session = Depends(get_db),
-    _=Depends(require_permissions("work_orders:read"))
+    _=Depends(require_permissions("fleet:access", "fleet:read", "work_orders:read"))
 ):
     """List work orders with filters"""
     query = db.query(WorkOrder)
