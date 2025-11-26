@@ -165,12 +165,23 @@ export default function ClockInOut() {
   const { data: currentUser } = useQuery({
     queryKey: ['me'],
     queryFn: () => api<any>('GET', '/auth/me'),
+    staleTime: 0, // Always fetch fresh data to ensure permissions are up to date
   });
 
   // Check if user has unrestricted clock in/out permission
   const hasUnrestrictedClock = useMemo(() => {
-    return currentUser?.permissions?.includes('hr:timesheet:unrestricted_clock') || currentUser?.permissions?.includes('timesheet:unrestricted_clock') || false;
-  }, [currentUser?.permissions]);
+    if (!currentUser) return false; // Default to false if user not loaded yet
+    
+    // Admin users always have unrestricted access
+    const isAdmin = (currentUser?.roles || []).some((r: string) => String(r || '').toLowerCase() === 'admin');
+    if (isAdmin) return true;
+    
+    // Check for unrestricted clock permission
+    const hasPermission = currentUser?.permissions?.includes('hr:timesheet:unrestricted_clock') || 
+                          currentUser?.permissions?.includes('timesheet:unrestricted_clock') || 
+                          false;
+    return hasPermission;
+  }, [currentUser]);
 
   // Fetch shift by ID if shift_id is provided in URL (must be before selectedDateShift)
   const { data: shiftById } = useQuery({
