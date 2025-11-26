@@ -178,6 +178,7 @@ export default function ClockInOut() {
     if (isAdmin) return true;
     
     // Check for unrestricted clock permission
+    // IMPORTANT: Only check explicit permission, not admin role
     const permissions = currentUser?.permissions || [];
     const hasHrPermission = permissions.includes('hr:timesheet:unrestricted_clock');
     const hasLegacyPermission = permissions.includes('timesheet:unrestricted_clock');
@@ -554,6 +555,12 @@ export default function ClockInOut() {
   const handleClockInOut = async () => {
     if (!clockType) {
       toast.error('Please select clock in or out');
+      return;
+    }
+
+    // Check permission before allowing submission
+    if (!hasUnrestrictedClock) {
+      toast.error('You do not have permission to edit clock in/out time. Contact an administrator.');
       return;
     }
 

@@ -962,9 +962,31 @@ def create_attendance(
         from datetime import timezone
         time_entered_utc = datetime.now(timezone.utc)
         
+        # Check if user has permission to edit clock in/out time
+        # If time_selected_local is different from current time (within 4 minute margin), require unrestricted permission
+        from datetime import timedelta
+        time_diff = abs((time_selected_utc - time_entered_utc).total_seconds() / 60)  # Difference in minutes
+        
+        # If time is more than 4 minutes different from current time, check unrestricted permission
+        if time_diff > 4:
+            from ..auth.security import _has_permission
+            has_unrestricted = (
+                _has_permission(user, "hr:timesheet:unrestricted_clock") or
+                _has_permission(user, "timesheet:unrestricted_clock")
+            )
+            
+            if not has_unrestricted:
+                logger.warning(
+                    f"User {user.id} attempted to set time {time_selected_utc} (current: {time_entered_utc}) "
+                    f"without unrestricted clock permission"
+                )
+                raise HTTPException(
+                    status_code=403,
+                    detail="You do not have permission to edit clock in/out time. Contact an administrator to enable time editing."
+                )
+        
         # Validate: Allow future times with 4 minute margin
         # Check if time_selected_utc is more than 4 minutes in the future
-        from datetime import timedelta
         max_future = time_entered_utc + timedelta(minutes=4)
         if time_selected_utc > max_future:
             logger.warning(f"Future time blocked - Selected: {time_selected_utc}, Current: {time_entered_utc}, Max allowed: {max_future}")
@@ -1477,6 +1499,30 @@ def create_attendance_supervisor(
         time_selected_local = time_selected_local.replace(tzinfo=None)
     
     time_selected_utc = local_to_utc(time_selected_local, project_timezone)
+    
+    # Check if user has permission to edit clock in/out time
+    # If time_selected_local is different from current time (within 4 minute margin), require unrestricted permission
+    from datetime import timezone, timedelta
+    time_entered_utc = datetime.now(timezone.utc)
+    time_diff = abs((time_selected_utc - time_entered_utc).total_seconds() / 60)  # Difference in minutes
+    
+    # If time is more than 4 minutes different from current time, check unrestricted permission
+    if time_diff > 4:
+        from ..auth.security import _has_permission
+        has_unrestricted = (
+            _has_permission(user, "hr:timesheet:unrestricted_clock") or
+            _has_permission(user, "timesheet:unrestricted_clock")
+        )
+        
+        if not has_unrestricted:
+            logger.warning(
+                f"User {user.id} attempted to set time {time_selected_utc} (current: {time_entered_utc}) "
+                f"without unrestricted clock permission (direct attendance)"
+            )
+            raise HTTPException(
+                status_code=403,
+                detail="You do not have permission to edit clock in/out time. Contact an administrator to enable time editing."
+            )
     # Ensure timezone-aware UTC datetime
     if time_selected_utc.tzinfo is None:
         from pytz import UTC
@@ -1681,6 +1727,30 @@ def create_direct_attendance(
         if time_selected_utc.tzinfo is None:
             from pytz import UTC
             time_selected_utc = time_selected_utc.replace(tzinfo=UTC)
+        
+        # Check if user has permission to edit clock in/out time
+        # If time_selected_local is different from current time (within 4 minute margin), require unrestricted permission
+        from datetime import timezone, timedelta
+        time_entered_utc = datetime.now(timezone.utc)
+        time_diff = abs((time_selected_utc - time_entered_utc).total_seconds() / 60)  # Difference in minutes
+        
+        # If time is more than 4 minutes different from current time, check unrestricted permission
+        if time_diff > 4:
+            from ..auth.security import _has_permission
+            has_unrestricted = (
+                _has_permission(user, "hr:timesheet:unrestricted_clock") or
+                _has_permission(user, "timesheet:unrestricted_clock")
+            )
+            
+            if not has_unrestricted:
+                logger.warning(
+                    f"User {user.id} attempted to set time {time_selected_utc} (current: {time_entered_utc}) "
+                    f"without unrestricted clock permission (direct attendance)"
+                )
+                raise HTTPException(
+                    status_code=403,
+                    detail="You do not have permission to edit clock in/out time. Contact an administrator to enable time editing."
+                )
         
         # Get worker_id (default to current user)
         worker_id = payload.get("worker_id", str(user.id))

@@ -88,11 +88,13 @@ function SyncBambooHRButton({ userId, onSuccess }: { userId: string; onSuccess?:
 }
 
 function UserPermissions({ userId }:{ userId:string }){
+  const queryClient = useQueryClient();
   const { data:user, refetch: refetchUser } = useQuery({ queryKey:['user', userId], queryFn: ()=> api<any>('GET', `/users/${userId}`) });
   const { data:permissionsData, refetch } = useQuery({ 
     queryKey:['user-permissions', userId], 
     queryFn: ()=> api<any>('GET', `/permissions/users/${userId}`) 
   });
+  const { data: currentUser } = useQuery({ queryKey: ['me'], queryFn: () => api<any>('GET', '/auth/me') });
   const [permissions, setPermissions] = useState<Record<string, boolean>>({});
   const [saving, setSaving] = useState(false);
   const [isAdminLocal, setIsAdminLocal] = useState<boolean>(false);
@@ -148,6 +150,11 @@ function UserPermissions({ userId }:{ userId:string }){
       await api('PUT', `/permissions/users/${userId}`, permissions);
       toast.success('Permissions saved');
       await refetch();
+      
+      // If editing own permissions, invalidate /auth/me cache to refresh permissions
+      if (currentUser && currentUser.id === userId) {
+        await queryClient.invalidateQueries({ queryKey: ['me'] });
+      }
     } catch (e: any) {
       toast.error(e?.detail || 'Failed to save permissions');
     } finally {
