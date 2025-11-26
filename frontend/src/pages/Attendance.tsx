@@ -413,6 +413,19 @@ export default function Attendance() {
         entry_mode: isHoursWorked ? 'hours' : 'time',
         hours_worked: hoursWorkedValue,
       });
+      
+      // Load manual break time if exists
+      if (event.break_minutes && event.break_minutes > 0) {
+        const breakH = Math.floor(event.break_minutes / 60);
+        const breakM = event.break_minutes % 60;
+        setInsertBreakTime(true);
+        setBreakHours(String(breakH));
+        setBreakMinutes(String(breakM).padStart(2, '0'));
+      } else {
+        setInsertBreakTime(false);
+        setBreakHours('0');
+        setBreakMinutes('0');
+      }
     } else {
       const now = new Date();
       const tzOffset = now.getTimezoneOffset();

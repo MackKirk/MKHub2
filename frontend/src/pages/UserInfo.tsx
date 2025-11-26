@@ -294,6 +294,20 @@ function formatTime12h(timeStr: string | null | undefined): string {
   return `${hours12}:${minutes} ${period}`;
 }
 
+// Convert UTC ISO string to local datetime-local format (YYYY-MM-DDTHH:mm)
+const toLocalInputValue = (iso?: string | null) => {
+  if (!iso) return '';
+  const date = new Date(iso);
+  // datetime-local input expects YYYY-MM-DDTHH:mm format in local time
+  // Get local date components
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  const hours = String(date.getHours()).padStart(2, '0');
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+  return `${year}-${month}-${day}T${hours}:${minutes}`;
+};
+
 function UserLabel({ id, fallback }:{ id:string, fallback:string }){
   const { data } = useQuery({ queryKey:['user-prof-opt', id], queryFn: ()=> api<any>('GET', `/auth/users/${id}/profile`), enabled: !!id });
   const fn = data?.profile?.preferred_name || data?.profile?.first_name || '';
@@ -985,6 +999,11 @@ const buildEvents = (attendances: Attendance[]): AttendanceEvent[] => {
       hoursWorked = diff / (1000 * 60 * 60);
     }
     
+    // Subtract break minutes from hours_worked if break exists
+    if (hoursWorked !== null && att.break_minutes !== null && att.break_minutes !== undefined && att.break_minutes > 0) {
+      hoursWorked = Math.max(0, hoursWorked - (att.break_minutes / 60));
+    }
+    
     return {
       event_id: att.id,
       worker_id: att.worker_id,
@@ -1169,18 +1188,45 @@ function TimesheetBlock({ userId }:{ userId:string }){
           }
         }
         
-        const local = att.clock_in_time
-          ? new Date(att.clock_in_time).toISOString().slice(0, 16)
-          : formatDateLocal(new Date()) + 'T00:00';
+        // Convert UTC times to local datetime-local format
+        let clockInTimeValue = '';
+        if (isHoursWorked) {
+          // For "hours worked", clock_in_time contains the date at midnight (YYYY-MM-DDT00:00:00Z)
+          // Extract date part and format for date input
+          if (att.clock_in_time) {
+            const datePart = formatDateLocal(new Date(att.clock_in_time));
+            clockInTimeValue = `${datePart}T00:00`; // Set to midnight for date input
+          } else if (att.clock_out_time) {
+            // Fallback to clock_out_time if clock_in_time is not available
+            const datePart = formatDateLocal(new Date(att.clock_out_time));
+            clockInTimeValue = `${datePart}T00:00`;
+          }
+        } else {
+          clockInTimeValue = toLocalInputValue(att.clock_in_time);
+        }
+        
         setFormData({
           worker_id: userId,
           job_type: event.job_type || '0',
-          clock_in_time: local,
-          clock_out_time: att.clock_out_time ? new Date(att.clock_out_time).toISOString().slice(0, 16) : '',
+          clock_in_time: clockInTimeValue || (formatDateLocal(new Date()) + 'T00:00'),
+          clock_out_time: toLocalInputValue(att.clock_out_time),
           status: att.status,
           entry_mode: isHoursWorked ? 'hours' : 'time',
           hours_worked: hoursWorked,
         });
+        
+        // Load manual break time if exists
+        if (att.break_minutes && att.break_minutes > 0) {
+          const breakH = Math.floor(att.break_minutes / 60);
+          const breakM = att.break_minutes % 60;
+          setInsertBreakTime(true);
+          setBreakHours(String(breakH));
+          setBreakMinutes(String(breakM).padStart(2, '0'));
+        } else {
+          setInsertBreakTime(false);
+          setBreakHours('0');
+          setBreakMinutes('0');
+        }
       }
     } else {
       const local = formatDateLocal(new Date()) + 'T00:00';
@@ -1442,15 +1488,25 @@ function TimesheetBlock({ userId }:{ userId:string }){
     : !formData.hours_worked || parseFloat(formData.hours_worked || '0') <= 0;
 
   return (
-    <div>
-      <div className="mb-3 rounded-xl border bg-gradient-to-br from-[#7f1010] to-[#a31414] text-white p-4 flex items-center justify-between">
-        <div>
-          <div className="text-2xl font-extrabold">Attendance</div>
-          <div className="text-sm opacity-90">Manage clock-in/out records for this user</div>
+    <div className="pb-24">
+      {/* Eligible for Break checkbox */}
+      <div className="mb-4 rounded-xl border bg-white p-4 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            id="eligible-for-break"
+            checked={isEligibleForBreak}
+            onChange={(e) => toggleEligibleForBreak(e.target.checked)}
+            className="w-4 h-4 text-brand-red border-gray-300 rounded focus:ring-brand-red"
+          />
+          <label htmlFor="eligible-for-break" className="text-sm text-gray-700 cursor-pointer">
+            Eligible for Break
+          </label>
+          <span className="text-xs text-gray-500">(Break will be deducted for shifts of 5 hours or more)</span>
         </div>
         <button
           onClick={() => handleOpenModal()}
-          className="px-4 py-2 bg-white text-[#d11616] rounded-lg font-semibold hover:bg-gray-100 transition-colors"
+          className="px-4 py-2 bg-[#d11616] text-white rounded-lg font-semibold hover:bg-[#b01414] transition-colors"
         >
           + New Attendance
         </button>
@@ -1477,18 +1533,27 @@ function TimesheetBlock({ userId }:{ userId:string }){
           />
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Project</label>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Project/Job</label>
           <select
             value={filters.project_id}
             onChange={(e) => setFilters({ ...filters, project_id: e.target.value })}
             className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
           >
-            <option value="">All Projects</option>
-            {(Array.isArray(projects) ? projects : []).map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.code ? `${p.code} - ` : ''}{p.name}
-              </option>
-            ))}
+            <option value="">All Projects/Jobs</option>
+            <optgroup label="Jobs">
+              {PREDEFINED_JOBS.map((job) => (
+                <option key={`job_${job.id}`} value={`job_${job.id}`}>
+                  {job.code ? `${job.code} - ` : ''}{job.name}
+                </option>
+              ))}
+            </optgroup>
+            <optgroup label="Projects">
+              {(Array.isArray(projects) ? projects : []).map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.code ? `${p.code} - ` : ''}{p.name}
+                </option>
+              ))}
+            </optgroup>
           </select>
         </div>
         <div>
@@ -1504,21 +1569,6 @@ function TimesheetBlock({ userId }:{ userId:string }){
             <option value="rejected">Rejected</option>
           </select>
         </div>
-      </div>
-
-      {/* Eligible for Break checkbox */}
-      <div className="mb-4 rounded-xl border bg-white p-4 flex items-center gap-2">
-        <input
-          type="checkbox"
-          id="eligible-for-break"
-          checked={isEligibleForBreak}
-          onChange={(e) => toggleEligibleForBreak(e.target.checked)}
-          className="w-4 h-4 text-brand-red border-gray-300 rounded focus:ring-brand-red"
-        />
-        <label htmlFor="eligible-for-break" className="text-sm text-gray-700 cursor-pointer">
-          Eligible for Break
-        </label>
-        <span className="text-xs text-gray-500">(Break will be deducted for shifts of 5 hours or more)</span>
       </div>
 
       {/* Error message */}
