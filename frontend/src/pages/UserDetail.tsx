@@ -26,13 +26,55 @@ export default function UserDetail(){
   const [sel, setSel] = useState<string>('');
   const [tab, setTab] = useState<'general'|'timesheet'|'permissions'>('general');
   
-  // Check if user can edit permissions (admin or has users:write permission)
+  // Check permissions for each tab
+  const canViewGeneral = !!(
+    (me?.roles || []).some((r: string) => String(r || '').toLowerCase() === 'admin') || 
+    (me?.permissions || []).includes('hr:users:read') ||
+    (me?.permissions || []).includes('hr:users:view:general') ||
+    (me?.permissions || []).includes('users:read')
+  );
+  
+  const canEditGeneral = !!(
+    (me?.roles || []).some((r: string) => String(r || '').toLowerCase() === 'admin') || 
+    (me?.permissions || []).includes('hr:users:write') ||
+    (me?.permissions || []).includes('hr:users:edit:general') ||
+    (me?.permissions || []).includes('users:write')
+  );
+  
+  const canViewTimesheet = !!(
+    (me?.roles || []).some((r: string) => String(r || '').toLowerCase() === 'admin') || 
+    (me?.permissions || []).includes('hr:users:read') ||
+    (me?.permissions || []).includes('hr:users:view:timesheet') ||
+    (me?.permissions || []).includes('users:read')
+  );
+  
+  const canViewPermissions = !!(
+    (me?.roles || []).some((r: string) => String(r || '').toLowerCase() === 'admin') || 
+    (me?.permissions || []).includes('hr:users:read') ||
+    (me?.permissions || []).includes('hr:users:view:permissions') ||
+    (me?.permissions || []).includes('users:read')
+  );
+  
   const canEditPermissions = !!(
     (me?.roles || []).some((r: string) => String(r || '').toLowerCase() === 'admin') || 
+    (me?.permissions || []).includes('hr:users:write') ||
+    (me?.permissions || []).includes('hr:users:edit:permissions') ||
     (me?.permissions || []).includes('users:write')
   );
   
   if(!user) return <div className="h-24 bg-gray-100 animate-pulse rounded"/>;
+  
+  // If user doesn't have permission to view anything, show error
+  if (!canViewGeneral && !canViewTimesheet && !canViewPermissions) {
+    return (
+      <div className="max-w-5xl">
+        <div className="rounded-xl border bg-white p-8 text-center">
+          <div className="text-red-600 font-semibold mb-2">Access Denied</div>
+          <div className="text-gray-600">You don't have permission to view this user's information.</div>
+        </div>
+      </div>
+    );
+  }
   const save = async()=>{
     try{ await api('PATCH', `/users/${id}`, { roles: user.roles, is_active: user.is_active }); toast.success('Saved'); refetch(); }catch(_e){ toast.error('Failed'); }
   };
@@ -41,63 +83,92 @@ export default function UserDetail(){
       <div className="mb-3 flex items-center justify-between">
         <div className="flex items-center gap-3"><img src={user.profile_photo_file_id? `/files/${user.profile_photo_file_id}/thumbnail?w=160`:'/ui/assets/login/logo-light.svg'} className="w-16 h-16 rounded-full object-cover"/><h1 className="text-2xl font-bold">{user.name||user.username}</h1></div>
         <div className="flex gap-2">
-          {(['general','timesheet', ...(canEditPermissions ? ['permissions'] : [])] as const).map(k=> (<button key={k} onClick={()=>setTab(k)} className={`px-3 py-1.5 rounded-full text-sm ${tab===k?'bg-black text-white':'bg-white border'}`}>{k[0].toUpperCase()+k.slice(1)}</button>))}
+          {([
+            ...(canViewGeneral ? ['general'] : []),
+            ...(canViewTimesheet ? ['timesheet'] : []),
+            ...(canViewPermissions ? ['permissions'] : [])
+          ] as const).map(k=> (<button key={k} onClick={()=>setTab(k)} className={`px-3 py-1.5 rounded-full text-sm ${tab===k?'bg-black text-white':'bg-white border'}`}>{k[0].toUpperCase()+k.slice(1)}</button>))}
         </div>
       </div>
 
-      {tab==='general' && (
+      {tab==='general' && canViewGeneral && (
         <div className="rounded-xl border bg-white p-4">
           <div className="grid md:grid-cols-2 gap-3 text-sm">
             <div><div className="text-gray-600">Username</div><div className="font-medium">{user.username}</div></div>
             <div><div className="text-gray-600">Email</div><div className="font-medium">{user.email||''}</div></div>
-            <div className="md:col-span-2"><label className="inline-flex items-center gap-2"><input type="checkbox" checked={!!user.is_active} onChange={e=>{ user.is_active = e.target.checked; }} /> Active</label></div>
-            <div className="md:col-span-2">
-              <div className="mb-2 text-gray-600">Admin Access</div>
-              <div className="mb-3 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-                <label className="inline-flex items-start gap-2 cursor-pointer">
-                  <input 
-                    type="checkbox" 
-                    checked={(user.roles||[]).some((r: string) => String(r || '').toLowerCase() === 'admin')} 
-                    onChange={e=>{ 
-                      const isAdmin = e.target.checked;
-                      if (isAdmin) {
-                        if (!(user.roles||[]).some((r: string) => String(r || '').toLowerCase() === 'admin')) {
-                          user.roles = [...(user.roles||[]), 'admin'];
-                        }
-                      } else {
-                        user.roles = (user.roles||[]).filter((r: string) => String(r || '').toLowerCase() !== 'admin');
-                      }
-                    }} 
-                    className="mt-1"
-                  />
-                  <div className="flex-1">
-                    <div className="font-medium text-yellow-900">Grant Administrator Access</div>
-                    <div className="text-xs text-yellow-800 mt-1">
-                      ⚠️ <strong>Warning:</strong> This user will have access to all areas of the system and will be able to delete sensitive information. Only grant this to trusted users.
+            {canEditGeneral && (
+              <div className="md:col-span-2"><label className="inline-flex items-center gap-2"><input type="checkbox" checked={!!user.is_active} onChange={e=>{ user.is_active = e.target.checked; }} /> Active</label></div>
+            )}
+            {!canEditGeneral && (
+              <div className="md:col-span-2"><div className="text-gray-600">Status</div><div className="font-medium">{user.is_active ? 'Active' : 'Inactive'}</div></div>
+            )}
+            {canEditGeneral && (
+              <>
+                <div className="md:col-span-2">
+                  <div className="mb-2 text-gray-600">Admin Access</div>
+                  <div className="mb-3 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                    <label className="inline-flex items-start gap-2 cursor-pointer">
+                      <input 
+                        type="checkbox" 
+                        checked={(user.roles||[]).some((r: string) => String(r || '').toLowerCase() === 'admin')} 
+                        onChange={e=>{ 
+                          const isAdmin = e.target.checked;
+                          if (isAdmin) {
+                            if (!(user.roles||[]).some((r: string) => String(r || '').toLowerCase() === 'admin')) {
+                              user.roles = [...(user.roles||[]), 'admin'];
+                            }
+                          } else {
+                            user.roles = (user.roles||[]).filter((r: string) => String(r || '').toLowerCase() !== 'admin');
+                          }
+                        }} 
+                        className="mt-1"
+                      />
+                      <div className="flex-1">
+                        <div className="font-medium text-yellow-900">Grant Administrator Access</div>
+                        <div className="text-xs text-yellow-800 mt-1">
+                          ⚠️ <strong>Warning:</strong> This user will have access to all areas of the system and will be able to delete sensitive information. Only grant this to trusted users.
+                        </div>
+                      </div>
+                    </label>
+                  </div>
+                </div>
+                <div className="md:col-span-2">
+                  <div className="mb-2 text-gray-600">Roles</div>
+                  <div className="flex flex-wrap gap-2 mb-2">{(user.roles||[]).map((r:string)=> <span key={r} className="px-2 py-1 rounded-full border text-xs">{r} <button className="ml-1" onClick={()=>{ user.roles = (user.roles||[]).filter((x:string)=>x!==r); }}>✕</button></span>)}</div>
+                  <div className="flex items-center gap-2">
+                    <select className="border rounded px-2 py-1 text-sm" value={sel} onChange={e=>setSel(e.target.value)}><option value="">Add role...</option>{(roles||[]).map((r:any)=> <option key={r.id} value={r.name}>{r.name}</option>)}</select>
+                    <button onClick={()=>{ if(!sel) return; if(!(user.roles||[]).includes(sel)){ user.roles = [...(user.roles||[]), sel]; } setSel(''); }} className="px-2 py-1 rounded bg-gray-100">Add</button>
+                  </div>
+                </div>
+                <div className="mt-3 text-right"><button onClick={save} className="px-4 py-2 rounded bg-brand-red text-white">Save</button></div>
+              </>
+            )}
+            {!canEditGeneral && (
+              <>
+                <div className="md:col-span-2">
+                  <div className="mb-2 text-gray-600">Admin Access</div>
+                  <div className="mb-3 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                    <div className="font-medium text-yellow-900">
+                      {(user.roles||[]).some((r: string) => String(r || '').toLowerCase() === 'admin') ? 'Yes' : 'No'}
                     </div>
                   </div>
-                </label>
-              </div>
-            </div>
-            <div className="md:col-span-2">
-              <div className="mb-2 text-gray-600">Roles</div>
-              <div className="flex flex-wrap gap-2 mb-2">{(user.roles||[]).map((r:string)=> <span key={r} className="px-2 py-1 rounded-full border text-xs">{r} <button className="ml-1" onClick={()=>{ user.roles = (user.roles||[]).filter((x:string)=>x!==r); }}>✕</button></span>)}</div>
-              <div className="flex items-center gap-2">
-                <select className="border rounded px-2 py-1 text-sm" value={sel} onChange={e=>setSel(e.target.value)}><option value="">Add role...</option>{(roles||[]).map((r:any)=> <option key={r.id} value={r.name}>{r.name}</option>)}</select>
-                <button onClick={()=>{ if(!sel) return; if(!(user.roles||[]).includes(sel)){ user.roles = [...(user.roles||[]), sel]; } setSel(''); }} className="px-2 py-1 rounded bg-gray-100">Add</button>
-              </div>
-            </div>
+                </div>
+                <div className="md:col-span-2">
+                  <div className="mb-2 text-gray-600">Roles</div>
+                  <div className="flex flex-wrap gap-2">{(user.roles||[]).map((r:string)=> <span key={r} className="px-2 py-1 rounded-full border text-xs">{r}</span>)}</div>
+                </div>
+              </>
+            )}
           </div>
-          <div className="mt-3 text-right"><button onClick={save} className="px-4 py-2 rounded bg-brand-red text-white">Save</button></div>
         </div>
       )}
 
-      {tab==='timesheet' && (
+      {tab==='timesheet' && canViewTimesheet && (
         <UserTimesheet userId={String(id)} />
       )}
 
-      {tab==='permissions' && canEditPermissions && (
-        <UserPermissions userId={String(id)} user={user} />
+      {tab==='permissions' && canViewPermissions && (
+        <UserPermissions userId={String(id)} user={user} canEdit={canEditPermissions} />
       )}
     </div>
   );
@@ -114,6 +185,8 @@ const IMPLEMENTED_PERMISSIONS = new Set([
   // Human Resources permissions
   "hr:access",
   "hr:users:read", "hr:users:write",
+  "hr:users:view:general", "hr:users:edit:general",
+  "hr:users:view:timesheet", "hr:users:view:permissions", "hr:users:edit:permissions",
   "hr:attendance:read", "hr:attendance:write",
   "hr:community:read", "hr:community:write",
   "hr:reviews:admin",
@@ -127,7 +200,7 @@ const IMPLEMENTED_PERMISSIONS = new Set([
   "fleet:access",
 ]);
 
-function UserPermissions({ userId, user: userProp }:{ userId:string, user?: any }){
+function UserPermissions({ userId, user: userProp, canEdit = true }:{ userId:string, user?: any, canEdit?: boolean }){
   const { data:userFromQuery, refetch: refetchUser } = useQuery({ queryKey:['user', userId], queryFn: ()=> api<any>('GET', `/users/${userId}`) });
   const user = userProp || userFromQuery;
   const { data:permissionsData, refetch } = useQuery({ 
@@ -136,6 +209,7 @@ function UserPermissions({ userId, user: userProp }:{ userId:string, user?: any 
   });
   const [permissions, setPermissions] = useState<Record<string, boolean>>({});
   const [saving, setSaving] = useState(false);
+  const [isAdminLocal, setIsAdminLocal] = useState<boolean>(false);
 
   // Initialize permissions from API data
   useEffect(() => {
@@ -150,7 +224,15 @@ function UserPermissions({ userId, user: userProp }:{ userId:string, user?: any 
     }
   }, [permissionsData]);
 
-  const handleToggle = (key: string) => {
+  // Initialize admin state from user data
+  useEffect(() => {
+    if (user) {
+      const adminStatus = (user.roles||[]).some((r: string) => String(r || '').toLowerCase() === 'admin');
+      setIsAdminLocal(adminStatus);
+    }
+  }, [user]);
+
+  const handleToggle = (key: string, categoryId?: string) => {
     setPermissions((prev) => {
       const newPerms = { ...prev };
       const newValue = !prev[key];
@@ -194,10 +276,9 @@ function UserPermissions({ userId, user: userProp }:{ userId:string, user?: any 
       const currentUser = user || userFromQuery;
       if (currentUser) {
         const isAdmin = (currentUser.roles||[]).some((r: string) => String(r || '').toLowerCase() === 'admin');
-        const shouldBeAdmin = (document.getElementById('admin-checkbox') as HTMLInputElement)?.checked || false;
-        if (isAdmin !== shouldBeAdmin) {
+        if (isAdmin !== isAdminLocal) {
           let newRoles = [...(currentUser.roles||[])];
-          if (shouldBeAdmin) {
+          if (isAdminLocal) {
             if (!newRoles.some((r: string) => String(r || '').toLowerCase() === 'admin')) {
               newRoles.push('admin');
             }
@@ -223,8 +304,6 @@ function UserPermissions({ userId, user: userProp }:{ userId:string, user?: any 
     return <div className="h-24 bg-gray-100 animate-pulse rounded" />;
   }
 
-  const isAdmin = user ? (user.roles||[]).some((r: string) => String(r || '').toLowerCase() === 'admin') : false;
-
   return (
     <div className="rounded-xl border bg-white p-4">
         <div className="mb-4">
@@ -234,44 +313,56 @@ function UserPermissions({ userId, user: userProp }:{ userId:string, user?: any 
 
         {/* Admin Access Section */}
         <div className="mb-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-          <label className="inline-flex items-start gap-3 cursor-pointer">
-            <input 
-              id="admin-checkbox"
-              type="checkbox" 
-              checked={isAdmin}
-              disabled={!user}
-              onChange={e=>{ 
-                const shouldBeAdmin = e.target.checked;
-                const currentUser = user || userFromQuery;
-                if (currentUser) {
-                  if (shouldBeAdmin) {
-                    if (!(currentUser.roles||[]).some((r: string) => String(r || '').toLowerCase() === 'admin')) {
-                      currentUser.roles = [...(currentUser.roles||[]), 'admin'];
-                    }
-                  } else {
-                    currentUser.roles = (currentUser.roles||[]).filter((r: string) => String(r || '').toLowerCase() !== 'admin');
-                  }
-                }
-              }} 
-              className="mt-1 w-4 h-4 rounded border-gray-300 text-brand-red focus:ring-brand-red disabled:opacity-50 disabled:cursor-not-allowed"
-            />
-            <div className="flex-1">
-              <div className="font-semibold text-yellow-900 flex items-center gap-2">
-                Administrator Access
-                <span className="text-xs px-1.5 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300">
-                  System Role
-                </span>
-              </div>
-              <div className="text-xs text-yellow-800 mt-1">
-                ⚠️ <strong>Warning:</strong> This user will have access to all areas of the system and will be able to delete sensitive information. Only grant this to trusted users.
-              </div>
-              {isAdmin && (
-                <div className="text-xs text-yellow-700 mt-2 font-medium">
-                  ⚠️ When admin is enabled, all permission checks are bypassed. Individual permissions below are ignored.
+          {canEdit ? (
+            <label className="inline-flex items-start gap-3 cursor-pointer">
+              <input 
+                id="admin-checkbox"
+                type="checkbox" 
+                checked={isAdminLocal}
+                disabled={!user}
+                onChange={e=>{ 
+                  setIsAdminLocal(e.target.checked);
+                }} 
+                className="mt-1 w-4 h-4 rounded border-gray-300 text-brand-red focus:ring-brand-red disabled:opacity-50 disabled:cursor-not-allowed"
+              />
+              <div className="flex-1">
+                <div className="font-semibold text-yellow-900 flex items-center gap-2">
+                  Administrator Access
+                  <span className="text-xs px-1.5 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300">
+                    System Role
+                  </span>
                 </div>
-              )}
+                <div className="text-xs text-yellow-800 mt-1">
+                  ⚠️ <strong>Warning:</strong> This user will have access to all areas of the system and will be able to delete sensitive information. Only grant this to trusted users.
+                </div>
+                {isAdminLocal && (
+                  <div className="text-xs text-yellow-700 mt-2 font-medium">
+                    ⚠️ When admin is enabled, all permission checks are bypassed. Individual permissions below are ignored.
+                  </div>
+                )}
+              </div>
+            </label>
+          ) : (
+            <div className="inline-flex items-start gap-3">
+              <input 
+                type="checkbox" 
+                checked={isAdminLocal}
+                disabled
+                className="mt-1 w-4 h-4 rounded border-gray-300 text-brand-red opacity-50"
+              />
+              <div className="flex-1">
+                <div className="font-semibold text-yellow-900 flex items-center gap-2">
+                  Administrator Access
+                  <span className="text-xs px-1.5 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300">
+                    System Role
+                  </span>
+                </div>
+                <div className="text-xs text-yellow-800 mt-1">
+                  Status: {isAdminLocal ? 'Enabled' : 'Disabled'}
+                </div>
+              </div>
             </div>
-          </label>
+          )}
         </div>
 
       <div className="space-y-6">
@@ -285,17 +376,18 @@ function UserPermissions({ userId, user: userProp }:{ userId:string, user?: any 
             <div key={cat.category.id} className="border rounded-lg p-4">
               {/* Category Header with Access Checkbox */}
               <div className="mb-3">
-                <label className="flex items-center gap-3 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={hasAreaAccess || false}
-                    onChange={() => {
-                      if (areaAccessPerm) {
-                        handleToggle(areaAccessPerm.key, cat.category.id);
-                      }
-                    }}
-                    className="w-4 h-4 rounded border-gray-300 text-brand-red focus:ring-brand-red"
-                  />
+                {canEdit ? (
+                  <label className="flex items-center gap-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={hasAreaAccess || false}
+                      onChange={() => {
+                        if (areaAccessPerm) {
+                          handleToggle(areaAccessPerm.key, cat.category.id);
+                        }
+                      }}
+                      className="w-4 h-4 rounded border-gray-300 text-brand-red focus:ring-brand-red"
+                    />
                   <div className="flex-1">
                     <h4 className="font-semibold text-base">{cat.category.label}</h4>
                     {cat.category.description && (
@@ -303,37 +395,152 @@ function UserPermissions({ userId, user: userProp }:{ userId:string, user?: any 
                     )}
                   </div>
                 </label>
+                ) : (
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="checkbox"
+                      checked={hasAreaAccess || false}
+                      disabled
+                      className="w-4 h-4 rounded border-gray-300 text-brand-red opacity-50"
+                    />
+                    <div className="flex-1">
+                      <h4 className="font-semibold text-base">{cat.category.label}</h4>
+                      {cat.category.description && (
+                        <p className="text-xs text-gray-500 mt-1">{cat.category.description}</p>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
               
               {/* Sub-permissions (only shown if area access is granted) */}
               {hasAreaAccess && subPermissions.length > 0 && (
-                <div className="ml-7 mt-3 space-y-2 border-l-2 border-gray-200 pl-4">
-                  {subPermissions.map((perm: any) => (
-                    <label
-                      key={perm.id}
-                      className="flex items-start gap-3 p-2 rounded hover:bg-gray-50 cursor-pointer"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={permissions[perm.key] || false}
-                        onChange={() => handleToggle(perm.key, cat.category.id)}
-                        className="mt-1 w-4 h-4 rounded border-gray-300 text-brand-red focus:ring-brand-red"
-                      />
-                      <div className="flex-1">
-                        <div className="font-medium text-sm flex items-center gap-2">
-                          {perm.label}
-                          {!IMPLEMENTED_PERMISSIONS.has(perm.key) && (
-                            <span className="text-xs px-1.5 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300">
-                              [WIP]
-                            </span>
-                          )}
-                        </div>
-                        {perm.description && (
-                          <div className="text-xs text-gray-500 mt-0.5">{perm.description}</div>
-                        )}
-                      </div>
-                    </label>
-                  ))}
+                <div className="ml-7 mt-3 border-l-2 border-gray-200 pl-4">
+                  {/* Special handling for HR category - group by area (users, attendance, community, etc.) */}
+                  {cat.category.name === 'human_resources' ? (
+                    <div className="space-y-4">
+                      {/* Group permissions by area */}
+                      {['users', 'attendance', 'community', 'reviews', 'timesheet'].map((area: string) => {
+                        const areaPerms = subPermissions.filter((p: any) => p.key.includes(`hr:${area}`));
+                        if (areaPerms.length === 0) return null;
+                        
+                        const areaLabel = area.charAt(0).toUpperCase() + area.slice(1);
+                        const viewPerms = areaPerms.filter((p: any) => {
+                          const key = p.key;
+                          return key.includes(':view:') || (key.includes(':read') && !key.includes(':write') && !key.includes(':edit:'));
+                        });
+                        const editPerms = areaPerms.filter((p: any) => {
+                          const key = p.key;
+                          return key.includes(':edit:') || (key.includes(':write') && !key.includes(':view:')) || key.includes(':admin');
+                        });
+                        
+                        return (
+                          <div key={area} className="border rounded-lg p-3 bg-gray-50">
+                            <div className="text-sm font-semibold text-gray-700 mb-3">{areaLabel}</div>
+                            <div className="grid md:grid-cols-2 gap-3">
+                              {/* View Permissions Column */}
+                              {viewPerms.length > 0 && (
+                                <div className="space-y-2">
+                                  <div className="text-xs font-semibold text-gray-600 mb-2 uppercase tracking-wide">View</div>
+                                  {viewPerms.map((perm: any) => (
+                                    <label
+                                      key={perm.id}
+                                      className={`flex items-start gap-2 p-2 rounded bg-white ${canEdit ? 'hover:bg-gray-50 cursor-pointer' : 'cursor-default'}`}
+                                    >
+                                      <input
+                                        type="checkbox"
+                                        checked={permissions[perm.key] || false}
+                                        onChange={() => canEdit && handleToggle(perm.key, cat.category.id)}
+                                        disabled={!canEdit}
+                                        className="mt-1 w-4 h-4 rounded border-gray-300 text-brand-red focus:ring-brand-red disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0"
+                                      />
+                                      <div className="flex-1 min-w-0">
+                                        <div className="font-medium text-sm flex items-center gap-2">
+                                          <span className="truncate">{perm.label}</span>
+                                          {!IMPLEMENTED_PERMISSIONS.has(perm.key) && (
+                                            <span className="text-xs px-1.5 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300 flex-shrink-0">
+                                              [WIP]
+                                            </span>
+                                          )}
+                                        </div>
+                                        {perm.description && (
+                                          <div className="text-xs text-gray-500 mt-0.5 line-clamp-1">{perm.description}</div>
+                                        )}
+                                      </div>
+                                    </label>
+                                  ))}
+                                </div>
+                              )}
+                              {/* Edit Permissions Column */}
+                              {editPerms.length > 0 && (
+                                <div className="space-y-2">
+                                  <div className="text-xs font-semibold text-gray-600 mb-2 uppercase tracking-wide">Edit</div>
+                                  {editPerms.map((perm: any) => (
+                                    <label
+                                      key={perm.id}
+                                      className={`flex items-start gap-2 p-2 rounded bg-white ${canEdit ? 'hover:bg-gray-50 cursor-pointer' : 'cursor-default'}`}
+                                    >
+                                      <input
+                                        type="checkbox"
+                                        checked={permissions[perm.key] || false}
+                                        onChange={() => canEdit && handleToggle(perm.key, cat.category.id)}
+                                        disabled={!canEdit}
+                                        className="mt-1 w-4 h-4 rounded border-gray-300 text-brand-red focus:ring-brand-red disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0"
+                                      />
+                                      <div className="flex-1 min-w-0">
+                                        <div className="font-medium text-sm flex items-center gap-2">
+                                          <span className="truncate">{perm.label}</span>
+                                          {!IMPLEMENTED_PERMISSIONS.has(perm.key) && (
+                                            <span className="text-xs px-1.5 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300 flex-shrink-0">
+                                              [WIP]
+                                            </span>
+                                          )}
+                                        </div>
+                                        {perm.description && (
+                                          <div className="text-xs text-gray-500 mt-0.5 line-clamp-1">{perm.description}</div>
+                                        )}
+                                      </div>
+                                    </label>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    /* Default layout for other categories */
+                    <div className="space-y-2">
+                      {subPermissions.map((perm: any) => (
+                        <label
+                          key={perm.id}
+                          className={`flex items-start gap-3 p-2 rounded ${canEdit ? 'hover:bg-gray-50 cursor-pointer' : 'cursor-default'}`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={permissions[perm.key] || false}
+                            onChange={() => canEdit && handleToggle(perm.key, cat.category.id)}
+                            disabled={!canEdit}
+                            className="mt-1 w-4 h-4 rounded border-gray-300 text-brand-red focus:ring-brand-red disabled:opacity-50 disabled:cursor-not-allowed"
+                          />
+                          <div className="flex-1">
+                            <div className="font-medium text-sm flex items-center gap-2">
+                              {perm.label}
+                              {!IMPLEMENTED_PERMISSIONS.has(perm.key) && (
+                                <span className="text-xs px-1.5 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300">
+                                  [WIP]
+                                </span>
+                              )}
+                            </div>
+                            {perm.description && (
+                              <div className="text-xs text-gray-500 mt-0.5">{perm.description}</div>
+                            )}
+                          </div>
+                        </label>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
               
@@ -343,13 +550,14 @@ function UserPermissions({ userId, user: userProp }:{ userId:string, user?: any 
                   {cat.permissions.map((perm: any) => (
                     <label
                       key={perm.id}
-                      className="flex items-start gap-3 p-2 rounded hover:bg-gray-50 cursor-pointer"
+                      className={`flex items-start gap-3 p-2 rounded ${canEdit ? 'hover:bg-gray-50 cursor-pointer' : 'cursor-default'}`}
                     >
                       <input
                         type="checkbox"
                         checked={permissions[perm.key] || false}
-                        onChange={() => handleToggle(perm.key, cat.category.id)}
-                        className="mt-1 w-4 h-4 rounded border-gray-300 text-brand-red focus:ring-brand-red"
+                        onChange={() => canEdit && handleToggle(perm.key, cat.category.id)}
+                        disabled={!canEdit}
+                        className="mt-1 w-4 h-4 rounded border-gray-300 text-brand-red focus:ring-brand-red disabled:opacity-50 disabled:cursor-not-allowed"
                       />
                       <div className="flex-1">
                         <div className="font-medium text-sm flex items-center gap-2">
@@ -373,15 +581,22 @@ function UserPermissions({ userId, user: userProp }:{ userId:string, user?: any 
         })}
       </div>
 
-      <div className="mt-6 flex justify-end">
-        <button
-          onClick={handleSave}
-          disabled={saving}
-          className="px-4 py-2 rounded bg-brand-red text-white disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {saving ? 'Saving...' : 'Save Permissions'}
-        </button>
-      </div>
+        {canEdit && (
+          <div className="mt-6 flex justify-end">
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className="px-4 py-2 rounded bg-brand-red text-white disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {saving ? 'Saving...' : 'Save Permissions'}
+            </button>
+          </div>
+        )}
+        {!canEdit && (
+          <div className="mt-6 p-4 bg-gray-50 border border-gray-200 rounded-lg text-center text-sm text-gray-600">
+            You have view-only access. You need edit permissions to modify user permissions.
+          </div>
+        )}
     </div>
   );
 }

@@ -99,7 +99,7 @@ def list_permission_categories(
 def get_user_permissions(
     user_id: str,
     db: Session = Depends(get_db),
-    _=Depends(require_permissions("users:read"))
+    _=Depends(require_permissions("hr:users:read", "hr:users:view:permissions", "users:read"))
 ):
     """Get all permissions for a user, showing which are granted"""
     user = db.query(User).filter(User.id == user_id).first()
@@ -174,7 +174,7 @@ def update_user_permissions(
     user_id: str,
     permissions: Dict[str, bool] = Body(...),
     db: Session = Depends(get_db),
-    _=Depends(require_permissions("users:write"))
+    _=Depends(require_permissions("hr:users:write", "hr:users:edit:permissions", "users:write"))
 ):
     """Update user permissions (overrides)
     
