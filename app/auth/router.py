@@ -94,47 +94,10 @@ def invite_user(req: InviteRequest, db: Session = Depends(get_db), user: User = 
     last_name = name_parts[1] if len(name_parts) > 1 else email_local
     suggested = find_available_username(db, first_name, last_name)
     
-    # Parse division_id if provided
-    division_uuid = None
-    if req.division_id:
-        try:
-            division_uuid = uuid.UUID(str(req.division_id))
-        except Exception:
-            pass
-    
-    # Collect job information
-    job_info = {}
-    if req.hire_date:
-        job_info["hire_date"] = req.hire_date
-    if req.job_title:
-        job_info["job_title"] = req.job_title
-    if req.work_email:
-        job_info["work_email"] = req.work_email
-    if req.work_phone:
-        job_info["work_phone"] = req.work_phone
-    if req.manager_user_id:
-        try:
-            job_info["manager_user_id"] = str(uuid.UUID(str(req.manager_user_id)))
-        except Exception:
-            pass
-    if req.pay_rate:
-        job_info["pay_rate"] = req.pay_rate
-    if req.pay_type:
-        job_info["pay_type"] = req.pay_type
-    if req.employment_type:
-        job_info["employment_type"] = req.employment_type
-    # Add division_name to job_info as well (for consistency)
-    if req.division_name:
-        job_info["division"] = req.division_name
-    
     inv = Invite(
         email_personal=req.email_personal,
         token=token,
         suggested_username=suggested,
-        division_id=division_uuid,
-        division_name=req.division_name,
-        document_ids=req.document_ids or [],
-        job_info=job_info if job_info else None,
         created_by=user.id,
         expires_at=datetime.now(timezone.utc) + timedelta(days=7),
     )
@@ -483,34 +446,8 @@ def register(payload: RegisterPayload, db: Session = Depends(get_db)):
             db.add(ep)
             db.commit()
         else:
-            # Create minimal profile with names and job info from invite
+            # Create minimal profile with names
             ep = EmployeeProfile(user_id=user.id, first_name=payload.first_name, last_name=payload.last_name)
-            
-            # Apply job_info from invite if available
-            if inv.job_info:
-                job_info = inv.job_info
-                if job_info.get("hire_date"):
-                    ep.hire_date = _parse_dt(job_info["hire_date"])
-                if job_info.get("job_title"):
-                    ep.job_title = job_info["job_title"]
-                if job_info.get("division"):
-                    ep.division = job_info["division"]
-                if job_info.get("work_email"):
-                    ep.work_email = job_info["work_email"]
-                if job_info.get("work_phone"):
-                    ep.work_phone = job_info["work_phone"]
-                if job_info.get("manager_user_id"):
-                    try:
-                        ep.manager_user_id = uuid.UUID(str(job_info["manager_user_id"]))
-                    except Exception:
-                        pass
-                if job_info.get("pay_rate"):
-                    ep.pay_rate = job_info["pay_rate"]
-                if job_info.get("pay_type"):
-                    ep.pay_type = job_info["pay_type"]
-                if job_info.get("employment_type"):
-                    ep.employment_type = job_info["employment_type"]
-            
             db.add(ep)
             db.commit()
     except Exception as e:
