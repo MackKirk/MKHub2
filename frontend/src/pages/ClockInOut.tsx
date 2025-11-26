@@ -173,14 +173,15 @@ export default function ClockInOut() {
     if (!currentUser) return false; // Default to false if user not loaded yet
     
     // Admin users always have unrestricted access
-    const isAdmin = (currentUser?.roles || []).some((r: string) => String(r || '').toLowerCase() === 'admin');
+    const roles = currentUser?.roles || [];
+    const isAdmin = roles.some((r: string) => String(r || '').toLowerCase() === 'admin');
     if (isAdmin) return true;
     
     // Check for unrestricted clock permission
-    const hasPermission = currentUser?.permissions?.includes('hr:timesheet:unrestricted_clock') || 
-                          currentUser?.permissions?.includes('timesheet:unrestricted_clock') || 
-                          false;
-    return hasPermission;
+    const permissions = currentUser?.permissions || [];
+    const hasHrPermission = permissions.includes('hr:timesheet:unrestricted_clock');
+    const hasLegacyPermission = permissions.includes('timesheet:unrestricted_clock');
+    return hasHrPermission || hasLegacyPermission;
   }, [currentUser]);
 
   // Fetch shift by ID if shift_id is provided in URL (must be before selectedDateShift)
@@ -1022,20 +1023,31 @@ export default function ClockInOut() {
                 {/* Time selector */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Time *</label>
-                  <div className="flex gap-2 items-center">
-                    <select
-                      value={selectedHour12}
-                      onChange={(e) => {
-                        const hour12 = e.target.value;
-                        setSelectedHour12(hour12);
-                        updateTimeFrom12h(hour12, selectedMinute, selectedAmPm);
-                      }}
-                      disabled={!hasUnrestrictedClock}
-                      className={`flex-1 border rounded px-3 py-2 ${
-                        !hasUnrestrictedClock ? 'bg-gray-100 cursor-not-allowed opacity-60' : ''
-                      }`}
-                      required
-                    >
+                  {!hasUnrestrictedClock ? (
+                    <div className="flex gap-2 items-center pointer-events-none">
+                      <div className="flex-1 border rounded px-3 py-2 bg-gray-100 opacity-60 text-gray-500">
+                        {selectedHour12 || 'Hour'}
+                      </div>
+                      <span className="text-gray-500 font-medium">:</span>
+                      <div className="flex-1 border rounded px-3 py-2 bg-gray-100 opacity-60 text-gray-500">
+                        {selectedMinute || 'Min'}
+                      </div>
+                      <div className="flex-1 border rounded px-3 py-2 bg-gray-100 opacity-60 text-gray-500">
+                        {selectedAmPm || 'AM'}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex gap-2 items-center">
+                      <select
+                        value={selectedHour12}
+                        onChange={(e) => {
+                          const hour12 = e.target.value;
+                          setSelectedHour12(hour12);
+                          updateTimeFrom12h(hour12, selectedMinute, selectedAmPm);
+                        }}
+                        className="flex-1 border rounded px-3 py-2"
+                        required
+                      >
                       <option value="">Hour</option>
                       {Array.from({ length: 12 }, (_, i) => (
                         <option key={i + 1} value={String(i + 1)}>
@@ -1044,46 +1056,41 @@ export default function ClockInOut() {
                       ))}
                     </select>
                     <span className="text-gray-500 font-medium">:</span>
-                    <select
-                      value={selectedMinute}
-                      onChange={(e) => {
-                        const minute = e.target.value;
-                        setSelectedMinute(minute);
-                        updateTimeFrom12h(selectedHour12, minute, selectedAmPm);
-                      }}
-                      disabled={!hasUnrestrictedClock}
-                      className={`flex-1 border rounded px-3 py-2 ${
-                        !hasUnrestrictedClock ? 'bg-gray-100 cursor-not-allowed opacity-60' : ''
-                      }`}
-                      required
-                    >
-                      <option value="">Min</option>
-                      {Array.from({ length: 12 }, (_, i) => {
-                        const m = i * 5;
-                        return (
-                          <option key={m} value={String(m).padStart(2, '0')}>
-                            {String(m).padStart(2, '0')}
-                          </option>
-                        );
-                      })}
-                    </select>
-                    <select
-                      value={selectedAmPm}
-                      onChange={(e) => {
-                        const amPm = e.target.value as 'AM' | 'PM';
-                        setSelectedAmPm(amPm);
-                        updateTimeFrom12h(selectedHour12, selectedMinute, amPm);
-                      }}
-                      disabled={!hasUnrestrictedClock}
-                      className={`flex-1 border rounded px-3 py-2 ${
-                        !hasUnrestrictedClock ? 'bg-gray-100 cursor-not-allowed opacity-60' : ''
-                      }`}
-                      required
-                    >
-                      <option value="AM">AM</option>
-                      <option value="PM">PM</option>
-                    </select>
-                  </div>
+                      <select
+                        value={selectedMinute}
+                        onChange={(e) => {
+                          const minute = e.target.value;
+                          setSelectedMinute(minute);
+                          updateTimeFrom12h(selectedHour12, minute, selectedAmPm);
+                        }}
+                        className="flex-1 border rounded px-3 py-2"
+                        required
+                      >
+                        <option value="">Min</option>
+                        {Array.from({ length: 12 }, (_, i) => {
+                          const m = i * 5;
+                          return (
+                            <option key={m} value={String(m).padStart(2, '0')}>
+                              {String(m).padStart(2, '0')}
+                            </option>
+                          );
+                        })}
+                      </select>
+                      <select
+                        value={selectedAmPm}
+                        onChange={(e) => {
+                          const amPm = e.target.value as 'AM' | 'PM';
+                          setSelectedAmPm(amPm);
+                          updateTimeFrom12h(selectedHour12, selectedMinute, amPm);
+                        }}
+                        className="flex-1 border rounded px-3 py-2"
+                        required
+                      >
+                        <option value="AM">AM</option>
+                        <option value="PM">PM</option>
+                      </select>
+                    </div>
+                  )}
                   {!hasUnrestrictedClock && (
                     <p className="text-xs text-gray-500 mt-1">
                       Time is locked. Contact an administrator to enable time editing.
