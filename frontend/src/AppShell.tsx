@@ -248,9 +248,11 @@ export default function AppShell({ children }: PropsWithChildren){
 
   const isCategoryActive = (category: MenuCategory) => {
     // Special handling: exclude Settings category when on /settings/attendance
+    // This must be checked first to prevent Settings from being active when viewing Attendance
+    // Attendance belongs to Human Resources, not Settings
     if (category.id === 'settings') {
       if (location.pathname === '/settings/attendance' || location.pathname.startsWith('/settings/attendance/')) {
-        return false;
+        return false; // Explicitly return false and don't check items
       }
     }
     // Special handling for Business category: if we're viewing an opportunity, 
@@ -264,6 +266,7 @@ export default function AppShell({ children }: PropsWithChildren){
                (location.pathname.startsWith('/projects/') && currentProject?.is_bidding);
       }
     }
+    // Check if any item in the category is active
     return category.items.some(item => {
       // If we're viewing an opportunity, don't match projects item
       if (item.id === 'projects' && isViewingOpportunity) {
@@ -283,6 +286,13 @@ export default function AppShell({ children }: PropsWithChildren){
           return true;
         }
         return false;
+      }
+      // For all other items, check if path matches but exclude /settings/attendance from matching /settings
+      if (item.path === '/settings') {
+        // Don't match /settings/attendance paths - this belongs to Human Resources
+        if (location.pathname === '/settings/attendance' || location.pathname.startsWith('/settings/attendance/')) {
+          return false;
+        }
       }
       return location.pathname === item.path || location.pathname.startsWith(item.path + '/');
     });
@@ -352,12 +362,13 @@ export default function AppShell({ children }: PropsWithChildren){
                 <div key={category.id} className="mb-2">
                   <NavLink
                     to={category.items[0]?.path || '#'}
-                    className={({isActive: navActive}) => 
+                    className={() => 
                       `flex items-center justify-center px-3 py-2 rounded-lg transition-colors ${
-                        (isActive || navActive) ? 'bg-brand-red text-white' : 'text-gray-300 hover:bg-gray-600 hover:text-white'
+                        isActive ? 'bg-brand-red text-white' : 'text-gray-300 hover:bg-gray-600 hover:text-white'
                       }`
                     }
                     title={category.label}
+                    end={category.id === 'settings'} // Use exact match for Settings to prevent /settings/attendance from matching
                   >
                     <span className="flex-shrink-0">{category.icon}</span>
                   </NavLink>
@@ -369,11 +380,12 @@ export default function AppShell({ children }: PropsWithChildren){
               <div key={category.id} className="mb-2">
                 <NavLink
                   to={category.items[0]?.path || '#'}
-                  className={({isActive: navActive}) => 
+                  className={() => 
                     `flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${
-                      (isActive || navActive) ? 'bg-brand-red text-white' : 'text-gray-300 hover:bg-gray-600 hover:text-white'
+                      isActive ? 'bg-brand-red text-white' : 'text-gray-300 hover:bg-gray-600 hover:text-white'
                     }`
                   }
+                  end={category.id === 'settings'} // Use exact match for Settings to prevent /settings/attendance from matching
                 >
                   <span className="flex-shrink-0">{category.icon}</span>
                   <span className="font-medium flex-1">{category.label}</span>
