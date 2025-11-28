@@ -388,10 +388,24 @@ export default function ClockInOut() {
     return selectedDateShift?.job_name || null;
   }, [openClockIn, selectedDateShift]);
   
-  // Can clock in ONLY if there's NO open clock-in (must close current event first)
-  // This ensures events are created sequentially: clock-in -> clock-out -> clock-in -> clock-out
+  // Check if there's already a complete attendance (clock-in + clock-out) for today
+  // In Personal > Clock in/out, only allow ONE attendance event per day
+  const hasCompleteAttendanceToday = useMemo(() => {
+    for (const att of allAttendancesForDate) {
+      // Check if this is a complete attendance (has both clock_in_time and clock_out_time)
+      // Exclude "hours worked" entries as they are handled differently
+      if (att.clock_in_time && att.clock_out_time && !isHoursWorked(att)) {
+        return true; // Found a complete attendance for today
+      }
+    }
+    return false; // No complete attendance found
+  }, [allAttendancesForDate]);
+
+  // Can clock in ONLY if:
+  // 1. There's NO open clock-in (must close current event first)
+  // 2. There's NO complete attendance for today (only 1 attendance per day allowed in Personal > Clock in/out)
   // EXCEPTION: "hours worked" entries are always complete, so they don't block clock-in
-  const canClockIn = !hasOpenClockIn;
+  const canClockIn = !hasOpenClockIn && !hasCompleteAttendanceToday;
   
   // Can clock out if there's an open clock-in (one with clock_in_time but no clock_out_time)
   // The clock-in must be approved or pending
@@ -588,6 +602,23 @@ export default function ClockInOut() {
       return;
     }
 
+    // Validate: If clocking out, check that clock-out time is not before clock-in time
+    if (clockType === 'out') {
+      // Find the most recent open clock-in (one without clock-out)
+      const openClockIn = allAttendancesForDate.find(
+        a => a.clock_in_time && !a.clock_out_time
+      );
+      
+      if (openClockIn && openClockIn.clock_in_time) {
+        const clockInDate = new Date(openClockIn.clock_in_time);
+        if (selectedDateTime < clockInDate) {
+          toast.error('Clock-out time cannot be before clock-in time. Please select a valid time.');
+          setSubmitting(false);
+          return;
+        }
+      }
+    }
+
     setSubmitting(true);
 
     try {
@@ -722,10 +753,10 @@ export default function ClockInOut() {
   }, [weeklySummary]);
 
   return (
-    <div className="max-w-7xl">
+    <div className="w-full">
       <h1 className="text-2xl font-bold mb-3">Clock in/out</h1>
       
-      <div className="grid grid-cols-2 gap-6">
+      <div className="grid grid-cols-[2fr_3fr] gap-6">
         {/* Left column - Clock In/Out Form */}
         <div className="rounded-xl border bg-white p-6 space-y-6">
           {/* Date Selector */}
@@ -899,7 +930,7 @@ export default function ClockInOut() {
                       ? 'bg-green-600 hover:bg-green-700 text-white'
                       : 'bg-gray-200 text-gray-400 cursor-not-allowed'
                   }`}
-                  title={hasOpenClockIn ? 'You must clock out first to close the current event before starting a new one' : ''}
+                  title={hasOpenClockIn ? 'You must clock out first to close the current event before starting a new one' : hasCompleteAttendanceToday ? 'Only one attendance event per day is allowed in Personal > Clock in/out' : ''}
                 >
                   Clock In
                 </button>
@@ -993,7 +1024,7 @@ export default function ClockInOut() {
                       ? 'bg-green-600 hover:bg-green-700 text-white'
                       : 'bg-gray-200 text-gray-400 cursor-not-allowed'
                   }`}
-                  title={hasOpenClockIn ? 'You must clock out first to close the current event before starting a new one' : !selectedJob ? 'Please select a job' : ''}
+                  title={hasOpenClockIn ? 'You must clock out first to close the current event before starting a new one' : hasCompleteAttendanceToday ? 'Only one attendance event per day is allowed in Personal > Clock in/out' : !selectedJob ? 'Please select a job' : ''}
                 >
                   Clock In
                 </button>

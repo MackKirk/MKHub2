@@ -2242,6 +2242,26 @@ function TimesheetTab({ projectId }:{ projectId:string }){
       }
     }
 
+    // Validate: If clocking out, check that clock-out time is not before clock-in time
+    if (clockType === 'out' && selectedShift) {
+      // Find the most recent open clock-in for this shift (one with clock_in_time but no clock_out_time)
+      const openClockIn = attendances?.find(
+        (a: any) => a.shift_id === selectedShift.id && a.clock_in_time && !a.clock_out_time
+      );
+      
+      if (openClockIn && openClockIn.clock_in_time) {
+        const [year, month, day] = shiftDate.split('-').map(Number);
+        const selectedDateTime = new Date(year, month - 1, day, hours, minutes, 0);
+        const clockInDate = new Date(openClockIn.clock_in_time);
+        
+        // Compare dates in the same timezone (both are local)
+        if (selectedDateTime < clockInDate) {
+          toast.error('Clock-out time cannot be before clock-in time. Please select a valid time.');
+          return;
+        }
+      }
+    }
+
     setSubmitting(true);
 
     try {

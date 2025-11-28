@@ -559,6 +559,14 @@ def update_attendance(
         except:
             raise HTTPException(status_code=400, detail="Invalid clock_out_time format")
     
+    # Validate that clock_out_time is not before clock_in_time
+    if new_clock_in_time and new_clock_out_time:
+        if new_clock_out_time < new_clock_in_time:
+            raise HTTPException(
+                status_code=400,
+                detail="Clock-out time cannot be before clock-in time. Please select a valid time."
+            )
+    
     # Check for conflicts before updating
     conflict_error = check_attendance_conflict(
         db, attendance.worker_id, new_clock_in_time, new_clock_out_time, exclude_attendance_id=attendance.id, timezone_str=settings.tz_default
@@ -1095,6 +1103,14 @@ def create_attendance_manual(
     # Validate that at least one time is provided
     if not clock_in_time_utc and not clock_out_time_utc:
         raise HTTPException(status_code=400, detail="Either clock_in_time or clock_out_time must be provided")
+    
+    # Validate that clock_out_time is not before clock_in_time
+    if clock_in_time_utc and clock_out_time_utc:
+        if clock_out_time_utc < clock_in_time_utc:
+            raise HTTPException(
+                status_code=400,
+                detail="Clock-out time cannot be before clock-in time. Please select a valid time."
+            )
     
     # Check for conflicts before creating attendance
     conflict_error = check_attendance_conflict(

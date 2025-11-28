@@ -653,6 +653,16 @@ export default function Attendance() {
     let clockInUtc = toUtcISOString(formData.clock_in_time);
     let clockOutUtc = toUtcISOString(formData.clock_out_time);
 
+    // Validate that clock-out time is not before clock-in time
+    if (clockInUtc && clockOutUtc) {
+      const clockInDate = new Date(clockInUtc);
+      const clockOutDate = new Date(clockOutUtc);
+      if (clockOutDate < clockInDate) {
+        toast.error('Clock-out time cannot be before clock-in time. Please select a valid time.');
+        return;
+      }
+    }
+
     // When using "hours worked" (both create and edit), auto-calculate clock-out
     // and mark with HOURS_WORKED in reason_text
     let reasonText = `JOB_TYPE:${formData.job_type}`;

@@ -1212,6 +1212,14 @@ def create_attendance(
                         detail=conflict_error  # Message already includes "Cannot create attendance:" prefix
                     )
                 
+                # Validate that clock-out time is not before clock-in time
+                if existing_attendance.clock_in_time and time_selected_utc < existing_attendance.clock_in_time:
+                    logger.warning(f"Clock-out time {time_selected_utc} is before clock-in time {existing_attendance.clock_in_time}")
+                    raise HTTPException(
+                        status_code=400,
+                        detail="Clock-out time cannot be before clock-in time. Please select a valid time."
+                    )
+                
                 # Update existing attendance record with clock-out
                 existing_attendance.clock_out_time = time_selected_utc
                 existing_attendance.clock_out_entered_utc = time_entered_utc
