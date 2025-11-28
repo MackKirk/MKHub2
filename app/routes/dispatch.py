@@ -2118,19 +2118,60 @@ def get_direct_attendances_for_date(
 @router.get("/attendance/weekly-summary")
 def get_weekly_attendance_summary(
     week_start: Optional[str] = None,  # YYYY-MM-DD format, defaults to current week (Sunday)
+    worker_id: Optional[str] = None,  # Optional worker ID to filter by (requires admin/supervisor permissions)
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user)
 ):
     """
-    Get weekly attendance summary for the current user.
+    Get weekly attendance summary for the current user or specified worker.
     Returns list of daily entries with clock-in/out times, hours worked, job type, etc.
+    If worker_id is provided, requires admin or supervisor permissions.
     """
     from datetime import date as date_type, timedelta
     
-    # Calculate week start (Sunday)
+    # Determine which worker(s) to query
+    from ..auth.security import _has_permission
+    
+    is_user_admin = is_admin(user, db)
+    is_user_supervisor = is_supervisor(user, db)
+    has_hr_read = _has_permission(user, "hr:attendance:read")
+    has_permission = is_user_admin or is_user_supervisor or has_hr_read
+    
+    # If worker_id is provided, use that specific worker
+    # If worker_id is not provided and user has permission, get all workers
+    # Otherwise, use current user only
+    target_worker_ids = []
+    if worker_id:
+        # Check if user has permission to view other workers' attendance
+        if not has_permission:
+            raise HTTPException(
+                status_code=403,
+                detail="You do not have permission to view other workers' attendance summaries"
+            )
+        
+        try:
+            target_worker_ids = [uuid.UUID(worker_id)]
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid worker_id format")
+    elif has_permission:
+        # Get all workers (users with employee profiles or all users)
+        all_workers = db.query(User.id).all()
+        target_worker_ids = [w.id for w in all_workers]
+    else:
+        # No permission, only current user
+        target_worker_ids = [user.id]
+    
+    # Calculate week start (Sunday) - ensure it's always a Sunday
     if week_start:
         try:
             week_start_date = datetime.fromisoformat(week_start).date()
+            # Ensure the provided date is actually a Sunday
+            # weekday() returns: Monday=0, Tuesday=1, ..., Sunday=6
+            day_of_week = week_start_date.weekday()
+            if day_of_week != 6:  # Not Sunday
+                # Calculate days to subtract to get to Sunday
+                days_to_subtract = (day_of_week + 1) % 7
+                week_start_date = week_start_date - timedelta(days=days_to_subtract)
         except:
             today = date_type.today()
             days_since_sunday = today.weekday() + 1
@@ -2144,6 +2185,7 @@ def get_weekly_attendance_summary(
             days_since_sunday = 0
         week_start_date = today - timedelta(days=days_since_sunday)
     
+    # Week end is always Saturday (6 days after Sunday = 7 days total)
     week_end_date = week_start_date + timedelta(days=6)  # Saturday
     
     # Get all attendances for this week - NEW MODEL: each record is already a complete event
@@ -2151,9 +2193,9 @@ def get_weekly_attendance_summary(
     week_start_dt = datetime.combine(week_start_date, time.min).replace(tzinfo=timezone.utc)
     week_end_dt = datetime.combine(week_end_date + timedelta(days=1), time.min).replace(tzinfo=timezone.utc)
     
-    # Query attendances where clock_in_time or clock_out_time falls within the week
+    # Query attendances where clock_in_time or clock_out_time falls within the week for all target workers
     attendances = db.query(Attendance).filter(
-        Attendance.worker_id == user.id,
+        Attendance.worker_id.in_(target_worker_ids),
         or_(
             and_(
                 Attendance.clock_in_time.isnot(None),
@@ -2168,10 +2210,29 @@ def get_weekly_attendance_summary(
             )
         )
     ).order_by(
+        Attendance.worker_id.asc(),
         func.coalesce(Attendance.clock_in_time, Attendance.clock_out_time).asc()
     ).all()
     
-    # Group attendances by date - each attendance is already a complete event
+    # Get worker names mapping for all workers
+    worker_names_map = {}
+    for worker_id in target_worker_ids:
+        worker_user = db.query(User).filter(User.id == worker_id).first()
+        worker_name = worker_user.username if worker_user else "Employee"
+        if worker_user:
+            worker_profile = db.query(EmployeeProfile).filter(EmployeeProfile.user_id == worker_id).first()
+            if worker_profile:
+                name = (worker_profile.preferred_name or "").strip()
+                if not name:
+                    first = (worker_profile.first_name or "").strip()
+                    last = (worker_profile.last_name or "").strip()
+                    if first or last:
+                        name = f"{first} {last}".strip()
+                if name:
+                    worker_name = name
+        worker_names_map[worker_id] = worker_name
+    
+    # Group attendances by date and worker - each attendance is already a complete event
     daily_entries = {}
     
     for attendance in attendances:
@@ -2243,6 +2304,9 @@ def get_weekly_attendance_summary(
         # Use calculated break_minutes if available, otherwise fall back to stored value
         final_break_minutes = break_minutes_calculated if break_minutes_calculated is not None else (attendance.break_minutes if attendance.break_minutes is not None else 0)
         
+        # Get worker name for this attendance
+        worker_name = worker_names_map.get(attendance.worker_id, "Employee")
+        
         # Add event - each attendance is already a complete event
         daily_entries[date_str]["events"].append({
             "clock_in": {
@@ -2261,6 +2325,8 @@ def get_weekly_attendance_summary(
             "project_name": project_name,
             "hours_worked": hours_worked,
             "break_minutes": final_break_minutes,
+            "worker_id": str(attendance.worker_id),
+            "worker_name": worker_name,
         })
     
     # Calculate hours worked for each day - handle multiple events per day
@@ -2359,6 +2425,8 @@ def get_weekly_attendance_summary(
                     "hours_worked_formatted": f"{net_minutes // 60}h {net_minutes % 60:02d}m",
                     "break_minutes": break_minutes,
                     "break_formatted": f"{break_minutes}m" if break_minutes > 0 else None,
+                    "worker_id": event.get("worker_id"),
+                    "worker_name": event.get("worker_name", "Employee"),
                 })
             elif clock_in_time_str:
                 # Open event (clock-in without clock-out)
@@ -2379,6 +2447,8 @@ def get_weekly_attendance_summary(
                     "hours_worked_formatted": "0h 00m",
                     "break_minutes": 0,
                     "break_formatted": None,
+                    "worker_id": event.get("worker_id"),
+                    "worker_name": event.get("worker_name", "Employee"),
                 })
         
         total_minutes += day_total_minutes  # Net total (after break)
@@ -2401,6 +2471,8 @@ def get_weekly_attendance_summary(
                     "hours_worked_formatted": event_data["hours_worked_formatted"],
                     "break_minutes": event_data.get("break_minutes", 0),
                     "break_formatted": event_data.get("break_formatted"),
+                    "worker_id": event_data.get("worker_id"),
+                    "worker_name": event_data.get("worker_name", "Employee"),  # Add worker name for display
                 })
     
     # Calculate total break minutes for the week

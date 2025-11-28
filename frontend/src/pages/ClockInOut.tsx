@@ -87,6 +87,7 @@ type WeeklySummaryDay = {
   hours_worked_formatted: string;
   break_minutes?: number;
   break_formatted?: string | null;
+  worker_name?: string;  // Optional worker name for attendance summary modal
 };
 
 type WeeklySummary = {
@@ -433,10 +434,18 @@ export default function ClockInOut() {
   }, [isJobLocked, clockInJobType, hasOpenClockIn, openClockIn]);
   
 
-  // Fetch weekly summary
+  // Fetch weekly summary - always for current user only (Personal > Clock in/out)
   const { data: weeklySummary, refetch: refetchWeeklySummary } = useQuery({
     queryKey: ['weekly-attendance-summary', weekStartStr, currentUser?.id],
-    queryFn: () => api<WeeklySummary>('GET', `/dispatch/attendance/weekly-summary?week_start=${weekStartStr}`),
+    queryFn: () => {
+      const params = new URLSearchParams();
+      params.set('week_start', weekStartStr);
+      // Always pass current user's ID to ensure we only get their attendances
+      if (currentUser?.id) {
+        params.set('worker_id', currentUser.id);
+      }
+      return api<WeeklySummary>('GET', `/dispatch/attendance/weekly-summary?${params.toString()}`);
+    },
     enabled: !!currentUser?.id,
   });
 
@@ -829,16 +838,12 @@ export default function ClockInOut() {
   };
 
   // Format week range
+  // Format week range label - always use simple format: "nov 30 - dez 6"
   const weekRangeLabel = useMemo(() => {
     if (!weeklySummary) return '';
-    const start = new Date(weeklySummary.week_start);
-    const end = new Date(weeklySummary.week_end);
-    const startMonth = formatDate(weeklySummary.week_start).split(' ')[0];
-    const endMonth = formatDate(weeklySummary.week_end);
-    if (start.getMonth() === end.getMonth()) {
-      return `${start.getDate()}, ${startMonth} - ${end.getDate()}, ${endMonth}`;
-    }
-    return `${formatDate(weeklySummary.week_start)} - ${endMonth}`;
+    const startFormatted = formatDate(weeklySummary.week_start);
+    const endFormatted = formatDate(weeklySummary.week_end);
+    return `${startFormatted} - ${endFormatted}`;
   }, [weeklySummary]);
 
   return (

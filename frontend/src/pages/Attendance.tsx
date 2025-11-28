@@ -5,6 +5,7 @@ import { api } from '@/lib/api';
 import { useConfirm } from '@/components/ConfirmProvider';
 import { formatDateLocal, getTodayLocal } from '@/lib/dateUtils';
 
+
 type Attendance = {
   id: string;
   worker_id: string;
@@ -256,6 +257,7 @@ export default function Attendance() {
   const [insertBreakTime, setInsertBreakTime] = useState<boolean>(false);
   const [breakHours, setBreakHours] = useState<string>('0');
   const [breakMinutes, setBreakMinutes] = useState<string>('0');
+  
 
   // Build query string for filters
   const queryParams = new URLSearchParams();
@@ -289,6 +291,7 @@ export default function Attendance() {
       return Array.isArray(result) ? result : [];
     },
   });
+
 
   const { data: projects = [] } = useQuery({
     queryKey: ['attendance-projects'],
@@ -335,6 +338,7 @@ export default function Attendance() {
       return name.includes(searchLower);
     });
   }, [users, workerSearch]);
+
 
   const toggleWorker = (workerId: string) => {
     setSelectedWorkers((prev) => {
@@ -881,17 +885,19 @@ export default function Attendance() {
 
   return (
     <div>
-      <div className="mb-3 rounded-xl border bg-gradient-to-br from-[#7f1010] to-[#a31414] text-white p-4 flex items-center justify-between">
-        <div>
-          <div className="text-2xl font-extrabold">Attendance</div>
-          <div className="text-sm opacity-90">Manage all clock-in/out records</div>
+      <div className="mb-3 rounded-xl border bg-gradient-to-br from-[#7f1010] to-[#a31414] text-white p-4">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <div className="text-2xl font-extrabold">Attendance</div>
+            <div className="text-sm opacity-90">Manage all clock-in/out records</div>
+          </div>
+          <button
+            onClick={() => handleOpenModal()}
+            className="px-4 py-2 bg-white text-[#d11616] rounded-lg font-semibold hover:bg-gray-100 transition-colors"
+          >
+            + New Attendance
+          </button>
         </div>
-        <button
-          onClick={() => handleOpenModal()}
-          className="px-4 py-2 bg-white text-[#d11616] rounded-lg font-semibold hover:bg-gray-100 transition-colors"
-        >
-          + New Attendance
-        </button>
       </div>
 
       {/* Filters */}
