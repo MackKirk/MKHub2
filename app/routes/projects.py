@@ -9,6 +9,7 @@ from ..db import get_db
 from ..models.models import Project, ClientFile, FileObject, ProjectUpdate, ProjectReport, ProjectEvent, ProjectTimeEntry, ProjectTimeEntryLog, User, EmployeeProfile, Client, ClientSite, ClientFolder, ClientContact, SettingList, SettingItem, Shift
 from datetime import datetime, timezone, time, timedelta
 from ..auth.security import get_current_user, require_permissions, can_approve_timesheet
+from sqlalchemy import or_, and_, cast, String
 
 
 router = APIRouter(prefix="/projects", tags=["projects"])
@@ -121,7 +122,8 @@ def list_projects(client: Optional[str] = None, site: Optional[str] = None, stat
             "date_end": p.date_end.isoformat() if getattr(p, 'date_end', None) else None,
             "progress": getattr(p, 'progress', None),
             "status_label": getattr(p, 'status_label', None),
-            "division_ids": getattr(p, 'division_ids', None),
+            "division_ids": getattr(p, 'division_ids', None),  # Legacy
+            "project_division_ids": getattr(p, 'project_division_ids', None),
             "is_bidding": getattr(p, 'is_bidding', False),
         }
         for p in query.order_by(Project.created_at.desc()).limit(100).all()
@@ -162,7 +164,8 @@ def get_project(project_id: str, db: Session = Depends(get_db)):
         "status_id": getattr(p, 'status_id', None),
         "division_id": getattr(p, 'division_id', None),
         "status_label": getattr(p, 'status_label', None),
-        "division_ids": getattr(p, 'division_ids', None),
+        "division_ids": getattr(p, 'division_ids', None),  # Legacy
+        "project_division_ids": getattr(p, 'project_division_ids', None),
         "site_id": str(getattr(p,'site_id', None)) if getattr(p,'site_id', None) else None,
         "site_name": getattr(site, 'site_name', None),
         "site_address_line1": getattr(site, 'site_address_line1', None),
@@ -1379,4 +1382,425 @@ def convert_to_project(project_id: str, db: Session = Depends(get_db)):
     p.is_bidding = False
     db.commit()
     return {"status": "ok", "id": str(p.id)}
+
+
+# =====================
+# Business Dashboard
+# =====================
+
+@router.get("/business/dashboard")
+def business_dashboard(
+    division_id: Optional[str] = None,
+    subdivision_id: Optional[str] = None,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user)
+):
+    """Get business dashboard statistics"""
+    # Base queries
+    opportunities_query = db.query(Project).filter(Project.is_bidding == True)
+    projects_query = db.query(Project).filter(Project.is_bidding == False)
+    
+    # Filter by project division/subdivision if provided
+    if subdivision_id:
+        # Filter by specific subdivision
+        try:
+            subdiv_uuid = uuid.UUID(subdivision_id)
+            opportunities_query = opportunities_query.filter(
+                or_(
+                    cast(Project.project_division_ids, String).like(f'%{subdivision_id}%'),
+                    # Legacy support
+                    Project.division_id == subdiv_uuid,
+                    cast(Project.division_ids, String).like(f'%{subdivision_id}%')
+                )
+            )
+            projects_query = projects_query.filter(
+                or_(
+                    cast(Project.project_division_ids, String).like(f'%{subdivision_id}%'),
+                    # Legacy support
+                    Project.division_id == subdiv_uuid,
+                    cast(Project.division_ids, String).like(f'%{subdivision_id}%')
+                )
+            )
+        except ValueError:
+            pass
+    elif division_id:
+        # Filter by main division (includes all its subdivisions)
+        try:
+            div_uuid = uuid.UUID(division_id)
+            # Get all subdivision IDs for this division
+            from ..models.models import SettingList, SettingItem
+            divisions_list = db.query(SettingList).filter(SettingList.name == "project_divisions").first()
+            if divisions_list:
+                # Get division and all its subdivisions
+                division_items = db.query(SettingItem).filter(
+                    SettingItem.list_id == divisions_list.id,
+                    or_(
+                        SettingItem.id == div_uuid,
+                        SettingItem.parent_id == div_uuid
+                    )
+                ).all()
+                division_ids_list = [str(item.id) for item in division_items]
+                
+                # Build filter condition for any of these IDs
+                conditions = []
+                for div_id_str in division_ids_list:
+                    conditions.append(cast(Project.project_division_ids, String).like(f'%{div_id_str}%'))
+                
+                if conditions:
+                    opportunities_query = opportunities_query.filter(or_(*conditions))
+                    projects_query = projects_query.filter(or_(*conditions))
+            
+            # Legacy support
+            opportunities_query = opportunities_query.filter(
+                or_(
+                    Project.division_id == div_uuid,
+                    cast(Project.division_ids, String).like(f'%{division_id}%')
+                )
+            )
+            projects_query = projects_query.filter(
+                or_(
+                    Project.division_id == div_uuid,
+                    cast(Project.division_ids, String).like(f'%{division_id}%')
+                )
+            )
+        except ValueError:
+            pass
+    
+    # Get counts
+    total_opportunities = opportunities_query.count()
+    total_projects = projects_query.count()
+    
+    # Get opportunities by status
+    opportunities_by_status = {}
+    for opp in opportunities_query.all():
+        status = getattr(opp, 'status_label', None) or 'No Status'
+        opportunities_by_status[status] = opportunities_by_status.get(status, 0) + 1
+    
+    # Get projects by status
+    projects_by_status = {}
+    for proj in projects_query.all():
+        status = getattr(proj, 'status_label', None) or 'No Status'
+        projects_by_status[status] = projects_by_status.get(status, 0) + 1
+    
+    # Get total estimated value
+    total_estimated_value = sum(
+        (getattr(p, 'cost_estimated', 0) or 0) for p in opportunities_query.all()
+    )
+    
+    # Get total actual value
+    total_actual_value = sum(
+        (getattr(p, 'cost_actual', 0) or 0) for p in projects_query.all()
+    )
+    
+    return {
+        "total_opportunities": total_opportunities,
+        "total_projects": total_projects,
+        "opportunities_by_status": opportunities_by_status,
+        "projects_by_status": projects_by_status,
+        "total_estimated_value": total_estimated_value,
+        "total_actual_value": total_actual_value,
+        "division_id": division_id,
+    }
+
+
+@router.get("/business/opportunities")
+def business_opportunities(
+    division_id: Optional[str] = None,
+    subdivision_id: Optional[str] = None,
+    status: Optional[str] = None,
+    q: Optional[str] = None,
+    limit: int = 100,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user)
+):
+    """Get opportunities filtered by project division/subdivision"""
+    query = db.query(Project).filter(Project.is_bidding == True)
+    
+    # Filter by project division/subdivision
+    if subdivision_id:
+        try:
+            subdiv_uuid = uuid.UUID(subdivision_id)
+            query = query.filter(
+                or_(
+                    cast(Project.project_division_ids, String).like(f'%{subdivision_id}%'),
+                    # Legacy support
+                    Project.division_id == subdiv_uuid,
+                    cast(Project.division_ids, String).like(f'%{subdivision_id}%')
+                )
+            )
+        except ValueError:
+            pass
+    elif division_id:
+        try:
+            div_uuid = uuid.UUID(division_id)
+            # Get all subdivision IDs for this division
+            from ..models.models import SettingList, SettingItem
+            divisions_list = db.query(SettingList).filter(SettingList.name == "project_divisions").first()
+            if divisions_list:
+                division_items = db.query(SettingItem).filter(
+                    SettingItem.list_id == divisions_list.id,
+                    or_(
+                        SettingItem.id == div_uuid,
+                        SettingItem.parent_id == div_uuid
+                    )
+                ).all()
+                division_ids_list = [str(item.id) for item in division_items]
+                conditions = []
+                for div_id_str in division_ids_list:
+                    conditions.append(cast(Project.project_division_ids, String).like(f'%{div_id_str}%'))
+                if conditions:
+                    query = query.filter(or_(*conditions))
+            # Legacy support
+            query = query.filter(
+                or_(
+                    Project.division_id == div_uuid,
+                    cast(Project.division_ids, String).like(f'%{division_id}%')
+                )
+            )
+        except ValueError:
+            pass
+    
+    # Filter by status
+    if status:
+        query = query.filter(Project.status_id == status)
+    
+    # Search
+    if q:
+        query = query.filter(Project.name.ilike(f"%{q}%"))
+    
+    projects = query.order_by(Project.created_at.desc()).limit(limit).all()
+    
+    return [
+        {
+            "id": str(p.id),
+            "code": p.code,
+            "name": p.name,
+            "slug": p.slug,
+            "client_id": str(p.client_id) if getattr(p, 'client_id', None) else None,
+            "created_at": p.created_at.isoformat() if getattr(p, 'created_at', None) else None,
+            "date_start": p.date_start.isoformat() if getattr(p, 'date_start', None) else None,
+            "date_end": p.date_end.isoformat() if getattr(p, 'date_end', None) else None,
+            "progress": getattr(p, 'progress', None),
+            "status_label": getattr(p, 'status_label', None),
+            "division_ids": getattr(p, 'division_ids', None),  # Legacy
+            "project_division_ids": getattr(p, 'project_division_ids', None),
+            "cost_estimated": getattr(p, 'cost_estimated', None),
+            "is_bidding": True,
+        }
+        for p in projects
+    ]
+
+
+@router.get("/business/projects")
+def business_projects(
+    division_id: Optional[str] = None,
+    subdivision_id: Optional[str] = None,
+    status: Optional[str] = None,
+    q: Optional[str] = None,
+    limit: int = 100,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user)
+):
+    """Get projects filtered by project division/subdivision"""
+    query = db.query(Project).filter(Project.is_bidding == False)
+    
+    # Filter by project division/subdivision
+    if subdivision_id:
+        try:
+            subdiv_uuid = uuid.UUID(subdivision_id)
+            query = query.filter(
+                or_(
+                    cast(Project.project_division_ids, String).like(f'%{subdivision_id}%'),
+                    # Legacy support
+                    Project.division_id == subdiv_uuid,
+                    cast(Project.division_ids, String).like(f'%{subdivision_id}%')
+                )
+            )
+        except ValueError:
+            pass
+    elif division_id:
+        try:
+            div_uuid = uuid.UUID(division_id)
+            # Get all subdivision IDs for this division
+            from ..models.models import SettingList, SettingItem
+            divisions_list = db.query(SettingList).filter(SettingList.name == "project_divisions").first()
+            if divisions_list:
+                division_items = db.query(SettingItem).filter(
+                    SettingItem.list_id == divisions_list.id,
+                    or_(
+                        SettingItem.id == div_uuid,
+                        SettingItem.parent_id == div_uuid
+                    )
+                ).all()
+                division_ids_list = [str(item.id) for item in division_items]
+                conditions = []
+                for div_id_str in division_ids_list:
+                    conditions.append(cast(Project.project_division_ids, String).like(f'%{div_id_str}%'))
+                if conditions:
+                    query = query.filter(or_(*conditions))
+            # Legacy support
+            query = query.filter(
+                or_(
+                    Project.division_id == div_uuid,
+                    cast(Project.division_ids, String).like(f'%{division_id}%')
+                )
+            )
+        except ValueError:
+            pass
+    
+    # Filter by status
+    if status:
+        query = query.filter(Project.status_id == status)
+    
+    # Search
+    if q:
+        query = query.filter(Project.name.ilike(f"%{q}%"))
+    
+    projects = query.order_by(Project.created_at.desc()).limit(limit).all()
+    
+    return [
+        {
+            "id": str(p.id),
+            "code": p.code,
+            "name": p.name,
+            "slug": p.slug,
+            "client_id": str(p.client_id) if getattr(p, 'client_id', None) else None,
+            "created_at": p.created_at.isoformat() if getattr(p, 'created_at', None) else None,
+            "date_start": p.date_start.isoformat() if getattr(p, 'date_start', None) else None,
+            "date_end": p.date_end.isoformat() if getattr(p, 'date_end', None) else None,
+            "progress": getattr(p, 'progress', None),
+            "status_label": getattr(p, 'status_label', None),
+            "division_ids": getattr(p, 'division_ids', None),  # Legacy
+            "project_division_ids": getattr(p, 'project_division_ids', None),
+            "cost_actual": getattr(p, 'cost_actual', None),
+            "service_value": getattr(p, 'service_value', None),
+            "is_bidding": False,
+        }
+        for p in projects
+    ]
+
+
+@router.get("/business/divisions-stats")
+def business_divisions_stats(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Get statistics for each project division"""
+    from ..models.models import SettingList, SettingItem
+    
+    divisions_list = db.query(SettingList).filter(SettingList.name == "project_divisions").first()
+    if not divisions_list:
+        return []
+    
+    # Get all main divisions (no parent)
+    main_divisions = db.query(SettingItem).filter(
+        SettingItem.list_id == divisions_list.id,
+        SettingItem.parent_id == None
+    ).order_by(SettingItem.sort_index.asc()).all()
+    
+    stats = []
+    for div in main_divisions:
+        div_id_str = str(div.id)
+        
+        # Get all subdivision IDs for this division (including the division itself)
+        subdivision_items = db.query(SettingItem).filter(
+            SettingItem.list_id == divisions_list.id,
+            or_(
+                SettingItem.id == div.id,
+                SettingItem.parent_id == div.id
+            )
+        ).all()
+        division_ids_list = [str(item.id) for item in subdivision_items]
+        
+        # Count opportunities and projects for this division
+        conditions = []
+        for div_id in division_ids_list:
+            conditions.append(cast(Project.project_division_ids, String).like(f'%{div_id}%'))
+        
+        opportunities_count = 0
+        projects_count = 0
+        opportunities_value = 0
+        projects_value = 0
+        
+        if conditions:
+            opp_query = db.query(Project).filter(
+                Project.is_bidding == True,
+                or_(*conditions)
+            )
+            proj_query = db.query(Project).filter(
+                Project.is_bidding == False,
+                or_(*conditions)
+            )
+            
+            opportunities_count = opp_query.count()
+            projects_count = proj_query.count()
+            
+            for p in opp_query.all():
+                opportunities_value += (getattr(p, 'cost_estimated', 0) or 0)
+            for p in proj_query.all():
+                projects_value += (getattr(p, 'cost_actual', 0) or 0)
+        
+        # Get subdivisions
+        subdivisions = db.query(SettingItem).filter(
+            SettingItem.list_id == divisions_list.id,
+            SettingItem.parent_id == div.id
+        ).order_by(SettingItem.sort_index.asc()).all()
+        
+        stats.append({
+            "id": str(div.id),
+            "label": div.label,
+            "value": div.value,
+            "opportunities_count": opportunities_count,
+            "projects_count": projects_count,
+            "opportunities_value": opportunities_value,
+            "projects_value": projects_value,
+            "subdivisions": [{
+                "id": str(sub.id),
+                "label": sub.label,
+                "value": sub.value,
+            } for sub in subdivisions]
+        })
+    
+    return stats
+
+
+@router.get("/business/bid-types")
+def get_bid_types():
+    """Get the structure of bid types with subcategories (deprecated - use /settings/project-divisions instead)"""
+    return {
+        "Roofing": {
+            "SBS": [],
+            "Shingles": [],
+            "Single Ply": [],
+            "Standing Seam Metal": [],
+            "Hot Asphalt": [],
+            "Cedar": [],
+        },
+        "Concrete Restoration & Waterproofing": {
+            "SBS": [],
+            "Liquid Membranes": [],
+            "Concrete Surface Prep/Repair": [],
+            "Expansion Joints": [],
+            "Traffic Membranes": [],
+        },
+        "Cladding & Exterior Finishes": {
+            "Steel Cladding": [],
+            "ACM Panels": [],
+            "Fibre Cement": [],
+            "Phenolic": [],
+            "Custom": [],
+        },
+        "Repairs & Maintenance": {
+            "Mack Kirk Metals": [],
+            "Flashing": [],
+            "Custom Fabrication": [],
+            "S-5 Mounting Hardware": [],
+        },
+        "Additional Services": {
+            "Mechanical": [],
+            "Electrical": [],
+            "Carpentry": [],
+            "Welding & Custom Fabrication": [],
+            "Structural Upgrading": [],
+            "Solar PV": [],
+            "Green Roofing": [],
+        },
+    }
 
