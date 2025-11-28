@@ -171,11 +171,12 @@ class Project(Base):
     lng: Mapped[Optional[float]] = mapped_column(Numeric(10, 7))  # Longitude for geofence
     timezone: Mapped[Optional[str]] = mapped_column(String(100), default="America/Vancouver")  # Project timezone
     status: Mapped[Optional[str]] = mapped_column(String(50))  # Project status
-    division_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
+    division_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))  # Legacy: kept for backward compatibility
     status_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
     # UI-friendly fields
     status_label: Mapped[Optional[str]] = mapped_column(String(100))
-    division_ids: Mapped[Optional[list]] = mapped_column(JSON)
+    division_ids: Mapped[Optional[list]] = mapped_column(JSON)  # Legacy: kept for backward compatibility
+    project_division_ids: Mapped[Optional[list]] = mapped_column(JSON)  # Array of project division/subdivision UUIDs (from project_divisions SettingList)
     estimator_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
     onsite_lead_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))  # Legacy field, kept for backward compatibility
     division_onsite_leads: Mapped[Optional[dict]] = mapped_column(JSON)  # Maps division_id -> onsite_lead_id
@@ -544,6 +545,7 @@ class SettingItem(Base):
 
     id: Mapped[uuid.UUID] = uuid_pk()
     list_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("setting_lists.id", ondelete="CASCADE"))
+    parent_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("setting_items.id", ondelete="CASCADE"), nullable=True)
     label: Mapped[str] = mapped_column(String(255), nullable=False)
     value: Mapped[Optional[str]] = mapped_column(String(255))
     sort_index: Mapped[int] = mapped_column(Integer, default=0)

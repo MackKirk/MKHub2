@@ -37,7 +37,7 @@ function formatHoursMinutes(totalMinutes: number): string {
   return `${hours}h${minutes}min`;
 }
 
-type Project = { id:string, code?:string, name?:string, client_id?:string, client_display_name?:string, address_city?:string, address_province?:string, address_country?:string, address_postal_code?:string, description?:string, status_id?:string, division_id?:string, division_ids?:string[], estimator_id?:string, onsite_lead_id?:string, division_onsite_leads?:Record<string, string>, contact_id?:string, contact_name?:string, contact_email?:string, contact_phone?:string, date_start?:string, date_eta?:string, date_end?:string, cost_estimated?:number, cost_actual?:number, service_value?:number, progress?:number, site_id?:string, site_name?:string, site_address_line1?:string, site_city?:string, site_province?:string, site_country?:string, site_postal_code?:string, status_label?:string, is_bidding?:boolean };
+type Project = { id:string, code?:string, name?:string, client_id?:string, client_display_name?:string, address_city?:string, address_province?:string, address_country?:string, address_postal_code?:string, description?:string, status_id?:string, division_id?:string, division_ids?:string[], project_division_ids?:string[], estimator_id?:string, onsite_lead_id?:string, division_onsite_leads?:Record<string, string>, contact_id?:string, contact_name?:string, contact_email?:string, contact_phone?:string, date_start?:string, date_eta?:string, date_end?:string, cost_estimated?:number, cost_actual?:number, service_value?:number, progress?:number, site_id?:string, site_name?:string, site_address_line1?:string, site_city?:string, site_province?:string, site_country?:string, site_postal_code?:string, status_label?:string, is_bidding?:boolean };
 type ProjectFile = { id:string, file_object_id:string, is_image?:boolean, content_type?:string, category?:string, original_name?:string, uploaded_at?:string };
 type Update = { id:string, timestamp?:string, text?:string, images?:any };
 type Report = { id:string, title?:string, category_id?:string, division_id?:string, description?:string, images?:any, status?:string, created_at?:string, created_by?:string };
@@ -3615,6 +3615,49 @@ function ProjectQuickEdit({ projectId, proj, settings }:{ projectId:string, proj
             <AddDivisionDropdown divisions={divisions} selected={divs} onAdd={(id)=> setDivs(prev=> prev.includes(id)? prev : [...prev, id])} />
           </div>
         </div>
+        <div className="col-span-2">
+          <label className="text-xs text-gray-600 mb-2 block">Project Divisions</label>
+          <div className="space-y-2 max-h-64 overflow-y-auto border rounded p-2">
+            {(projectDivisions||[]).map((div:any)=>{
+              const divId = String(div.id);
+              const divSelected = projectDivs.includes(divId);
+              const subdivisions = div.subdivisions || [];
+              
+              return (
+                <div key={divId} className="border rounded p-2">
+                  <button
+                    type="button"
+                    onClick={()=> setProjectDivs(prev=> prev.includes(divId)? prev.filter(x=>x!==divId) : [...prev, divId])}
+                    className={`w-full text-left px-2 py-1 rounded text-sm font-medium ${divSelected? 'bg-[#7f1010] text-white': 'bg-gray-50 hover:bg-gray-100'}`}
+                  >
+                    {div.label}
+                  </button>
+                  {subdivisions.length > 0 && (
+                    <div className="mt-1 pl-4 space-y-1">
+                      {subdivisions.map((sub:any)=>{
+                        const subId = String(sub.id);
+                        const subSelected = projectDivs.includes(subId);
+                        return (
+                          <button
+                            key={subId}
+                            type="button"
+                            onClick={()=> setProjectDivs(prev=> prev.includes(subId)? prev.filter(x=>x!==subId) : [...prev, subId])}
+                            className={`w-full text-left px-2 py-1 rounded text-xs ${subSelected? 'bg-[#a31414] text-white': 'bg-gray-50 hover:bg-gray-100'}`}
+                          >
+                            • {sub.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+            {(!projectDivisions || projectDivisions.length === 0) && (
+              <div className="text-xs text-gray-500">No project divisions available.</div>
+            )}
+          </div>
+        </div>
         <EmployeeSelect label="Estimator" value={estimator} onChange={setEstimator} employees={employees||[]} />
         {!proj?.is_bidding && divs.length > 0 && (
           <div className="col-span-2">
@@ -3655,7 +3698,8 @@ function ProjectQuickEdit({ projectId, proj, settings }:{ projectId:string, proj
               });
               const payload: any = { 
                 status_label: status||null, 
-                division_ids: divs, 
+                division_ids: divs, // Legacy
+                project_division_ids: projectDivs.length > 0 ? projectDivs : null, // New
                 progress, 
                 estimator_id: estimator||null
               };
@@ -3680,6 +3724,7 @@ function ProjectGeneralInfoCard({ projectId, proj }:{ projectId:string, proj:any
   const queryClient = useQueryClient();
   const [description, setDescription] = useState<string>(proj?.description || '');
   const [saving, setSaving] = useState(false);
+  const { data:projectDivisions } = useQuery({ queryKey:['project-divisions'], queryFn: ()=>api<any[]>('GET','/settings/project-divisions'), staleTime: 300_000 });
 
   useEffect(()=>{
     setDescription(proj?.description || '');
@@ -3702,6 +3747,7 @@ function ProjectGeneralInfoCard({ projectId, proj }:{ projectId:string, proj:any
   const province = proj?.address_province || proj?.site_province || proj?.site_state || '—';
   const country = proj?.address_country || proj?.site_country || '—';
   const postal = proj?.address_postal_code || proj?.postal_code || proj?.site_postal_code || proj?.site_zip || '—';
+  const projectDivIds = Array.isArray(proj?.project_division_ids) ? proj.project_division_ids : [];
 
   const fields = useMemo(()=>[
     { label: 'Project Name', value: proj?.name || proj?.site_name || '—' },
@@ -3723,6 +3769,46 @@ function ProjectGeneralInfoCard({ projectId, proj }:{ projectId:string, proj:any
             </div>
           ))}
         </div>
+        {projectDivIds.length > 0 && projectDivisions && (
+          <div>
+            <label className="text-xs text-gray-600 mb-2 block">Project Divisions</label>
+            <div className="flex flex-wrap gap-2">
+              {projectDivIds.map((divId: string) => {
+                // Find division or subdivision
+                let divLabel = '';
+                let isSubdivision = false;
+                for (const div of (projectDivisions || [])) {
+                  if (String(div.id) === String(divId)) {
+                    divLabel = div.label;
+                    break;
+                  }
+                  for (const sub of (div.subdivisions || [])) {
+                    if (String(sub.id) === String(divId)) {
+                      divLabel = sub.label;
+                      isSubdivision = true;
+                      break;
+                    }
+                  }
+                  if (divLabel) break;
+                }
+                if (!divLabel) return null;
+                return (
+                  <span
+                    key={divId}
+                    className={`px-2 py-1 rounded text-xs font-medium ${
+                      isSubdivision
+                        ? 'bg-[#a31414]/10 text-[#a31414] border border-[#a31414]/20'
+                        : 'bg-[#7f1010]/10 text-[#7f1010] border border-[#7f1010]/20'
+                    }`}
+                    title={divLabel}
+                  >
+                    {divLabel}
+                  </span>
+                );
+              })}
+            </div>
+          </div>
+        )}
         <div>
           <label className="text-xs text-gray-600">Description</label>
           <textarea

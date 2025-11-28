@@ -300,6 +300,76 @@ def get_settings_bundle(db: Session = Depends(get_db)):
     return out
 
 
+@router.get("/project-divisions")
+def get_project_divisions(db: Session = Depends(get_db), user: UserType = Depends(get_current_user)):
+    """Get project divisions in hierarchical format (divisions with their subdivisions)"""
+    try:
+        divisions_list = db.query(SettingList).filter(SettingList.name == "project_divisions").first()
+        if not divisions_list:
+            return []
+        
+        # Get all items for this list
+        all_items = db.query(SettingItem).filter(SettingItem.list_id == divisions_list.id).order_by(SettingItem.sort_index.asc()).all()
+        
+        # Separate main divisions (no parent) from subdivisions (have parent)
+        main_divisions = [item for item in all_items if item.parent_id is None]
+        subdivisions_map = {}
+        for item in all_items:
+            if item.parent_id is not None:
+                parent_id_str = str(item.parent_id)
+                if parent_id_str not in subdivisions_map:
+                    subdivisions_map[parent_id_str] = []
+                subdivisions_map[parent_id_str].append({
+                    "id": str(item.id),
+                    "label": item.label,
+                    "value": item.value,
+                    "sort_index": item.sort_index,
+                })
+        
+        # Build hierarchical structure
+        result = []
+        for div in main_divisions:
+            div_id_str = str(div.id)
+            result.append({
+                "id": str(div.id),
+                "label": div.label,
+                "value": div.value,
+                "sort_index": div.sort_index,
+                "subdivisions": subdivisions_map.get(div_id_str, [])
+            })
+        
+        return result
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).error(f"Error getting project divisions: {e}", exc_info=True)
+        raise
+
+
+@router.get("/project-divisions/{division_id}/subdivisions")
+def get_division_subdivisions(division_id: str, db: Session = Depends(get_db), user: UserType = Depends(get_current_user)):
+    """Get subdivisions for a specific project division"""
+    try:
+        div_uuid = uuid.UUID(division_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid division ID")
+    
+    divisions_list = db.query(SettingList).filter(SettingList.name == "project_divisions").first()
+    if not divisions_list:
+        return []
+    
+    subdivisions = db.query(SettingItem).filter(
+        SettingItem.list_id == divisions_list.id,
+        SettingItem.parent_id == div_uuid
+    ).order_by(SettingItem.sort_index.asc()).all()
+    
+    return [{
+        "id": str(item.id),
+        "label": item.label,
+        "value": item.value,
+        "sort_index": item.sort_index,
+    } for item in subdivisions]
+
+
 @router.get("/{list_name}")
 def list_settings(list_name: str, db: Session = Depends(get_db), _=Depends(require_permissions("settings:access"))):
     lst = db.query(SettingList).filter(SettingList.name == list_name).first()

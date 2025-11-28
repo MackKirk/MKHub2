@@ -24,7 +24,8 @@ export default function ProjectNew(){
   const setSiteField = (k:string, v:any)=> setSiteForm((s:any)=> ({ ...s, [k]: v }));
   const [step, setStep] = useState<number>(1);
   const [statusLabel, setStatusLabel] = useState<string>('');
-  const [divisionIds, setDivisionIds] = useState<string[]>([]);
+  const [divisionIds, setDivisionIds] = useState<string[]>([]); // Legacy support
+  const [projectDivisionIds, setProjectDivisionIds] = useState<string[]>([]); // New project divisions
   const [estimatorId, setEstimatorId] = useState<string>('');
   const [leadId, setLeadId] = useState<string>('');
   const [contactId, setContactId] = useState<string>('');
@@ -57,6 +58,7 @@ export default function ProjectNew(){
   });
   const { data:sites } = useQuery({ queryKey:['clientSites', clientId], queryFn: ()=> clientId? api<Site[]>('GET', `/clients/${encodeURIComponent(clientId)}/sites`) : Promise.resolve([]), enabled: !!clientId });
   const { data:settings } = useQuery({ queryKey:['settings'], queryFn: ()=> api<any>('GET','/settings') });
+  const { data:projectDivisions } = useQuery({ queryKey:['project-divisions'], queryFn: ()=> api<any[]>('GET','/settings/project-divisions'), staleTime: 300_000 });
   const { data:employees } = useQuery({ queryKey:['employees'], queryFn: ()=> api<any[]>('GET','/employees') });
   const { data:contacts } = useQuery({ queryKey:['clientContacts-mini', clientId], queryFn: ()=> clientId? api<any[]>('GET', `/clients/${encodeURIComponent(clientId)}/contacts`) : Promise.resolve([]), enabled: !!clientId });
   
@@ -113,7 +115,19 @@ export default function ProjectNew(){
       }
       // For opportunities, automatically set status to "Prospecting" if not creating as project
       const finalStatusLabel = (isBidding && !createAsProject) ? 'Prospecting' : (statusLabel || null);
-      const payload:any = { name, description: desc||null, client_id: clientId, site_id: newSiteId||null, status_label: finalStatusLabel, division_ids: divisionIds, estimator_id: estimatorId||null, onsite_lead_id: leadId||null, contact_id: contactId||null, is_bidding: isBidding && !createAsProject };
+      const payload:any = { 
+        name, 
+        description: desc||null, 
+        client_id: clientId, 
+        site_id: newSiteId||null, 
+        status_label: finalStatusLabel, 
+        division_ids: divisionIds, // Legacy support
+        project_division_ids: projectDivisionIds.length > 0 ? projectDivisionIds : null, // New project divisions
+        estimator_id: estimatorId||null, 
+        onsite_lead_id: leadId||null, 
+        contact_id: contactId||null, 
+        is_bidding: isBidding && !createAsProject 
+      };
       const proj:any = await api('POST','/projects', payload);
       if(coverBlob){
         try{
@@ -376,18 +390,64 @@ export default function ProjectNew(){
                   </div>
                 )}
                 <div className="md:col-span-2">
-                  <label className="text-xs text-gray-600">Divisions</label>
-                  <div className="flex flex-wrap gap-2 mt-1">
-                    {(settings?.divisions||[]).map((d:any)=>{
-                      const id = String(d.id||d.label||d.value);
-                      const selected = divisionIds.includes(id);
-                      const bg = d.meta?.color || '#eef2f7';
-                      const ab = d.meta?.abbr || d.label || id;
+                  <label className="text-xs text-gray-600">Project Divisions</label>
+                  <div className="space-y-3 mt-1">
+                    {(projectDivisions||[]).map((div:any)=>{
+                      const divId = String(div.id);
+                      const divSelected = projectDivisionIds.includes(divId);
+                      const subdivisions = div.subdivisions || [];
+                      
                       return (
-                        <button key={id} onClick={()=> setDivisionIds(prev=> prev.includes(id)? prev.filter(x=>x!==id) : [...prev, id])} className={`px-2 py-1 rounded-full border text-xs ${selected? 'ring-2 ring-brand-red':''}`} style={{ backgroundColor: bg }}>{ab}</button>
+                        <div key={divId} className="border rounded-lg p-2">
+                          <button
+                            type="button"
+                            onClick={()=> setProjectDivisionIds(prev=> prev.includes(divId)? prev.filter(x=>x!==divId) : [...prev, divId])}
+                            className={`w-full text-left px-2 py-1 rounded text-sm font-medium ${divSelected? 'bg-[#7f1010] text-white': 'bg-gray-50 hover:bg-gray-100'}`}
+                          >
+                            {div.label}
+                          </button>
+                          {subdivisions.length > 0 && (
+                            <div className="mt-2 pl-4 space-y-1">
+                              {subdivisions.map((sub:any)=>{
+                                const subId = String(sub.id);
+                                const subSelected = projectDivisionIds.includes(subId);
+                                return (
+                                  <button
+                                    key={subId}
+                                    type="button"
+                                    onClick={()=> setProjectDivisionIds(prev=> prev.includes(subId)? prev.filter(x=>x!==subId) : [...prev, subId])}
+                                    className={`w-full text-left px-2 py-1 rounded text-xs ${subSelected? 'bg-[#a31414] text-white': 'bg-gray-50 hover:bg-gray-100'}`}
+                                  >
+                                    • {sub.label}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
                       );
                     })}
+                    {(!projectDivisions || projectDivisions.length === 0) && (
+                      <div className="text-xs text-gray-500">No project divisions available. Please run the seed script.</div>
+                    )}
                   </div>
+                  {/* Legacy divisions support (deprecated) */}
+                  {settings?.divisions && settings.divisions.length > 0 && (
+                    <div className="mt-3 pt-3 border-t">
+                      <label className="text-xs text-gray-500">Legacy Divisions (deprecated)</label>
+                      <div className="flex flex-wrap gap-2 mt-1">
+                        {(settings.divisions||[]).map((d:any)=>{
+                          const id = String(d.id||d.label||d.value);
+                          const selected = divisionIds.includes(id);
+                          const bg = d.meta?.color || '#eef2f7';
+                          const ab = d.meta?.abbr || d.label || id;
+                          return (
+                            <button key={id} type="button" onClick={()=> setDivisionIds(prev=> prev.includes(id)? prev.filter(x=>x!==id) : [...prev, id])} className={`px-2 py-1 rounded-full border text-xs ${selected? 'ring-2 ring-brand-red':''}`} style={{ backgroundColor: bg }}>{ab}</button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
                 </div>
                 <div>
                   <label className="text-xs text-gray-600">Estimator</label>

@@ -159,6 +159,7 @@ export default function AppShell({ children }: PropsWithChildren){
       label: 'Business',
       icon: <IconBriefcase />,
       items: [
+        { id: 'business-dashboard', label: 'Dashboard', path: '/business', icon: <IconBriefcase /> },
         { id: 'customers', label: 'Customers', path: '/customers', icon: <IconUsers /> },
         { id: 'opportunities', label: 'Opportunities', path: '/opportunities', icon: <IconFileText /> },
         { id: 'projects', label: 'Projects', path: '/projects', icon: <IconBriefcase /> },
@@ -263,6 +264,10 @@ export default function AppShell({ children }: PropsWithChildren){
         return location.pathname === opportunitiesItem.path || location.pathname.startsWith(opportunitiesItem.path + '/') || 
                (location.pathname.startsWith('/projects/') && currentProject?.is_bidding);
       }
+    }
+    // Special handling for Business category: check if we're on the business dashboard
+    if (category.id === 'business' && location.pathname === '/business') {
+      return true;
     }
     return category.items.some(item => {
       // If we're viewing an opportunity, don't match projects item

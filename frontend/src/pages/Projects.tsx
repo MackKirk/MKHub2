@@ -3,15 +3,27 @@ import { api } from '@/lib/api';
 import { useMemo, useState, useEffect } from 'react';
 import ImagePicker from '@/components/ImagePicker';
 import toast from 'react-hot-toast';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 
-type Project = { id:string, code?:string, name?:string, slug?:string, client_id?:string, created_at?:string, date_start?:string, date_end?:string };
+type Project = { id:string, code?:string, name?:string, slug?:string, client_id?:string, created_at?:string, date_start?:string, date_end?:string, project_division_ids?:string[] };
 type ClientFile = { id:string, file_object_id:string, is_image?:boolean, content_type?:string };
 
 export default function Projects(){
+  const [searchParams] = useSearchParams();
+  const divisionId = searchParams.get('division_id') || '';
   const [q, setQ] = useState('');
-  const qs = useMemo(()=> q? ('?q='+encodeURIComponent(q)) : '', [q]);
-  const { data, isLoading, refetch } = useQuery({ queryKey:['projects', qs], queryFn: ()=>api<Project[]>('GET', `/projects?is_bidding=false${qs}`) });
+  const qs = useMemo(()=> {
+    const params = new URLSearchParams();
+    if (q) params.set('q', q);
+    if (divisionId) params.set('division_id', divisionId);
+    return params.toString() ? '?' + params.toString() : '';
+  }, [q, divisionId]);
+  const { data, isLoading, refetch } = useQuery({ 
+    queryKey:['projects', qs], 
+    queryFn: ()=>divisionId
+      ? api<Project[]>('GET', `/projects/business/projects${qs}`)
+      : api<Project[]>('GET', `/projects?is_bidding=false${qs}`)
+  });
   const arr = data||[];
   const [pickerOpen, setPickerOpen] = useState<{ open:boolean, clientId?:string, projectId?:string }|null>(null);
   const [newOpen, setNewOpen] = useState(false);
@@ -141,6 +153,7 @@ function ProjectListCard({ project }:{ project: Project }){
   const { data:details } = useQuery({ queryKey:['project-detail-card', project.id], queryFn: ()=> api<any>('GET', `/projects/${encodeURIComponent(String(project.id))}`), staleTime: 60_000 });
   const { data:reports } = useQuery({ queryKey:['project-reports-count-card', project.id], queryFn: async()=> { const r = await api<any[]>('GET', `/projects/${encodeURIComponent(String(project.id))}/reports`); return r?.length||0; }, staleTime: 60_000 });
   const { data:client } = useQuery({ queryKey:['proj-client', project.client_id], queryFn: ()=> project.client_id? api<any>('GET', `/clients/${encodeURIComponent(String(project.client_id||''))}`): Promise.resolve(null), enabled: !!project.client_id, staleTime: 300_000 });
+  const { data:projectDivisions } = useQuery({ queryKey:['project-divisions'], queryFn: ()=> api<any[]>('GET','/settings/project-divisions'), staleTime: 300_000 });
   const status = (project as any).status_label || details?.status_label || '';
   const progress = Math.max(0, Math.min(100, Number((project as any).progress ?? details?.progress ?? 0)));
   const start = (project.date_start || details?.date_start || project.created_at || '').slice(0,10);
@@ -148,6 +161,7 @@ function ProjectListCard({ project }:{ project: Project }){
   const est = details?.estimator_id || '';
   const lead = details?.onsite_lead_id || '';
   const clientName = client?.display_name || client?.name || '';
+  const projectDivIds = (project as any).project_division_ids || details?.project_division_ids || [];
   return (
     <Link to={`/projects/${encodeURIComponent(String(project.id))}`} className="group rounded-lg border overflow-hidden bg-white block">
       <div className="aspect-[4/3] bg-gray-100 relative">
@@ -162,6 +176,38 @@ function ProjectListCard({ project }:{ project: Project }){
           <span className="px-2 py-0.5 rounded-full text-[11px] border bg-gray-50 text-gray-800 truncate max-w-[60%]" title={status}>{status||'—'}</span>
           <span className="text-[11px] text-gray-600">{reports||0} reports</span>
         </div>
+        {Array.isArray(projectDivIds) && projectDivIds.length > 0 && projectDivisions && (
+          <div className="mt-1 flex flex-wrap gap-1">
+            {projectDivIds.slice(0, 3).map((divId: string) => {
+              // Find division or subdivision
+              let divLabel = '';
+              for (const div of (projectDivisions || [])) {
+                if (String(div.id) === String(divId)) {
+                  divLabel = div.label;
+                  break;
+                }
+                for (const sub of (div.subdivisions || [])) {
+                  if (String(sub.id) === String(divId)) {
+                    divLabel = `${div.label} - ${sub.label}`;
+                    break;
+                  }
+                }
+                if (divLabel) break;
+              }
+              if (!divLabel) return null;
+              return (
+                <span key={divId} className="px-1.5 py-0.5 rounded text-[10px] bg-[#7f1010]/10 text-[#7f1010] border border-[#7f1010]/20" title={divLabel}>
+                  {divLabel.length > 12 ? divLabel.slice(0, 10) + '...' : divLabel}
+                </span>
+              );
+            })}
+            {projectDivIds.length > 3 && (
+              <span className="px-1.5 py-0.5 rounded text-[10px] bg-gray-100 text-gray-600 border">
+                +{projectDivIds.length - 3}
+              </span>
+            )}
+          </div>
+        )}
         <div className="mt-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
           <div className="h-full bg-brand-red" style={{ width: `${progress}%` }} />
         </div>
