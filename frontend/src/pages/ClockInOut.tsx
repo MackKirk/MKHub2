@@ -4,6 +4,7 @@ import { useSearchParams, useNavigate } from 'react-router-dom';
 import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
 import { formatDateLocal, getTodayLocal } from '@/lib/dateUtils';
+import { useConfirm } from '@/components/ConfirmProvider';
 
 // Helper function to convert 24h time (HH:MM:SS or HH:MM) to 12h format (h:mm AM/PM)
 function formatTime12h(timeStr: string | null | undefined): string {
@@ -116,6 +117,7 @@ export default function ClockInOut() {
   
   // Get query params for auto-opening modal from Schedule page
   const shiftIdFromUrl = searchParams.get('shift_id');
+  const confirm = useConfirm();
   const typeFromUrl = searchParams.get('type') as 'in' | 'out' | null;
   const dateFromUrl = searchParams.get('date');
   
@@ -602,7 +604,7 @@ export default function ClockInOut() {
       return;
     }
 
-    // Validate: If clocking out, check that clock-out time is not before clock-in time
+    // Validate: If clocking out, check that clock-out time is not before or equal to clock-in time
     if (clockType === 'out') {
       // Find the most recent open clock-in (one without clock-out)
       const openClockIn = allAttendancesForDate.find(
@@ -611,18 +613,105 @@ export default function ClockInOut() {
       
       if (openClockIn && openClockIn.clock_in_time) {
         const clockInDate = new Date(openClockIn.clock_in_time);
-        if (selectedDateTime < clockInDate) {
-          toast.error('Clock-out time cannot be before clock-in time. Please select a valid time.');
+        if (selectedDateTime <= clockInDate) {
+          toast.error('Clock-out time must be after clock-in time. Please select a valid time.');
           setSubmitting(false);
           return;
         }
+        
+        // Validate break time: break cannot be greater than or equal to total time
+        if (insertBreakTime) {
+          const breakTotalMinutes = parseInt(breakHours) * 60 + parseInt(breakMinutes);
+          const totalMinutes = Math.floor((selectedDateTime.getTime() - clockInDate.getTime()) / (1000 * 60));
+          
+          if (breakTotalMinutes >= totalMinutes) {
+            toast.error('Break time cannot be greater than or equal to the total attendance time. Please adjust the break or clock-out time.');
+            setSubmitting(false);
+            return;
+          }
+        }
       }
+    }
+
+    // Prepare confirmation message
+    const timeStr = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+    const time12h = formatTime12h(timeStr);
+    const dateFormatted = formatDate(selectedDate);
+    
+    // Get project/job name
+    let projectJobName = '';
+    if (selectedDateShift && project) {
+      projectJobName = project.name || project.code || 'Unknown Project';
+    } else if (selectedJob) {
+      const jobOption = jobOptions.find(j => j.id === selectedJob);
+      projectJobName = jobOption?.name || selectedJob;
+    }
+    
+    // Build confirmation message
+    let confirmationMessage = '';
+    if (clockType === 'out' && openClockIn) {
+      // Detailed confirmation for clock-out
+      const clockInTime = new Date(openClockIn.clock_in_time);
+      // Format clock-in time in local timezone
+      const clockInHour = clockInTime.getHours();
+      const clockInMin = clockInTime.getMinutes();
+      const clockInTime12h = formatTime12h(
+        `${String(clockInHour).padStart(2, '0')}:${String(clockInMin).padStart(2, '0')}`
+      );
+      
+      // Calculate break information first
+      let breakTotalMinutes = 0;
+      let breakInfo = '';
+      if (insertBreakTime) {
+        breakTotalMinutes = parseInt(breakHours) * 60 + parseInt(breakMinutes);
+        if (breakTotalMinutes > 0) {
+          const breakH = Math.floor(breakTotalMinutes / 60);
+          const breakM = breakTotalMinutes % 60;
+          breakInfo = breakM > 0 ? `Break: ${breakH}h ${breakM}min` : `Break: ${breakH}h`;
+        }
+      }
+      
+      // Calculate hours worked (reuse year, month, day from validation above)
+      const [yearOut, monthOut, dayOut] = selectedDate.split('-').map(Number);
+      const clockOutDateTime = new Date(yearOut, monthOut - 1, dayOut, hours, minutes, 0);
+      const clockInDateTime = new Date(clockInTime);
+      const diffMs = clockOutDateTime.getTime() - clockInDateTime.getTime();
+      const totalMinutes = Math.floor(diffMs / (1000 * 60));
+      
+      // Subtract break from total minutes to get net hours worked
+      const netMinutes = Math.max(0, totalMinutes - breakTotalMinutes);
+      const workedHours = Math.floor(netMinutes / 60);
+      const workedMinutes = netMinutes % 60;
+      const hoursWorkedStr = workedMinutes > 0 ? `${workedHours}h ${workedMinutes}min` : `${workedHours}h`;
+      
+      // Build confirmation message with break right after clock out
+      confirmationMessage = `You are about to clock out with the following details:\n\n` +
+        `Date: ${dateFormatted}\n` +
+        `Clock In: ${clockInTime12h}\n` +
+        `Clock Out: ${time12h}${breakInfo ? `\n${breakInfo}` : ''}\n` +
+        `Hours Worked: ${hoursWorkedStr}${projectJobName ? `\nProject/Job: ${projectJobName}` : ''}\n\n` +
+        `Do you want to confirm?`;
+    } else {
+      // Simple confirmation for clock-in
+      confirmationMessage = `You are about to clock ${clockType === 'in' ? 'in' : 'out'} on ${dateFormatted} at ${time12h}${projectJobName ? ` for ${projectJobName}` : ''}.\n\nDo you want to confirm?`;
+    }
+    
+    // Show confirmation dialog
+    const confirmationResult = await confirm({
+      title: `Confirm Clock-${clockType === 'in' ? 'In' : 'Out'}`,
+      message: confirmationMessage,
+      confirmText: 'Confirm',
+      cancelText: 'Cancel'
+    });
+    
+    if (confirmationResult !== 'confirm') {
+      setSubmitting(false);
+      return;
     }
 
     setSubmitting(true);
 
     try {
-      const timeStr = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
       const timeSelectedLocal = `${selectedDate}T${timeStr}:00`;
 
       const payload: any = {

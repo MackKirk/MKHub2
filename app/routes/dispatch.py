@@ -1212,13 +1212,25 @@ def create_attendance(
                         detail=conflict_error  # Message already includes "Cannot create attendance:" prefix
                     )
                 
-                # Validate that clock-out time is not before clock-in time
-                if existing_attendance.clock_in_time and time_selected_utc < existing_attendance.clock_in_time:
-                    logger.warning(f"Clock-out time {time_selected_utc} is before clock-in time {existing_attendance.clock_in_time}")
+                # Validate that clock-out time is not before or equal to clock-in time
+                if existing_attendance.clock_in_time and time_selected_utc <= existing_attendance.clock_in_time:
+                    logger.warning(f"Clock-out time {time_selected_utc} is before or equal to clock-in time {existing_attendance.clock_in_time}")
                     raise HTTPException(
                         status_code=400,
-                        detail="Clock-out time cannot be before clock-in time. Please select a valid time."
+                        detail="Clock-out time must be after clock-in time. Please select a valid time."
                     )
+                
+                # Validate break time: break cannot be greater than or equal to total time
+                if existing_attendance.clock_in_time and time_selected_utc:
+                    manual_break = payload.get("manual_break_minutes")
+                    if manual_break is not None and manual_break > 0:
+                        total_seconds = (time_selected_utc - existing_attendance.clock_in_time).total_seconds()
+                        total_minutes = int(total_seconds / 60)
+                        if manual_break >= total_minutes:
+                            raise HTTPException(
+                                status_code=400,
+                                detail="Break time cannot be greater than or equal to the total attendance time. Please adjust the break or clock-out time."
+                            )
                 
                 # Update existing attendance record with clock-out
                 existing_attendance.clock_out_time = time_selected_utc

@@ -653,13 +653,24 @@ export default function Attendance() {
     let clockInUtc = toUtcISOString(formData.clock_in_time);
     let clockOutUtc = toUtcISOString(formData.clock_out_time);
 
-    // Validate that clock-out time is not before clock-in time
+    // Validate that clock-out time is not before or equal to clock-in time
     if (clockInUtc && clockOutUtc) {
       const clockInDate = new Date(clockInUtc);
       const clockOutDate = new Date(clockOutUtc);
-      if (clockOutDate < clockInDate) {
-        toast.error('Clock-out time cannot be before clock-in time. Please select a valid time.');
+      if (clockOutDate <= clockInDate) {
+        toast.error('Clock-out time must be after clock-in time. Please select a valid time.');
         return;
+      }
+      
+      // Validate break time: break cannot be greater than or equal to total time
+      if (insertBreakTime) {
+        const breakTotalMinutes = parseInt(breakHours) * 60 + parseInt(breakMinutes);
+        const totalMinutes = Math.floor((clockOutDate.getTime() - clockInDate.getTime()) / (1000 * 60));
+        
+        if (breakTotalMinutes >= totalMinutes) {
+          toast.error('Break time cannot be greater than or equal to the total attendance time. Please adjust the break or clock-out time.');
+          return;
+        }
       }
     }
 

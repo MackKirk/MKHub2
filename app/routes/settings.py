@@ -559,13 +559,27 @@ def update_attendance(
         except:
             raise HTTPException(status_code=400, detail="Invalid clock_out_time format")
     
-    # Validate that clock_out_time is not before clock_in_time
+    # Validate that clock_out_time is not before or equal to clock_in_time
     if new_clock_in_time and new_clock_out_time:
-        if new_clock_out_time < new_clock_in_time:
+        if new_clock_out_time <= new_clock_in_time:
             raise HTTPException(
                 status_code=400,
-                detail="Clock-out time cannot be before clock-in time. Please select a valid time."
+                detail="Clock-out time must be after clock-in time. Please select a valid time."
             )
+        
+        # Validate break time: break cannot be greater than or equal to total time
+        # Check manual_break from payload first, then existing break_minutes
+        manual_break = payload.get("manual_break_minutes")
+        break_to_validate = manual_break if manual_break is not None else attendance.break_minutes
+        
+        if break_to_validate is not None and break_to_validate > 0:
+            total_seconds = (new_clock_out_time - new_clock_in_time).total_seconds()
+            total_minutes = int(total_seconds / 60)
+            if break_to_validate >= total_minutes:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Break time cannot be greater than or equal to the total attendance time. Please adjust the break or clock-out time."
+                )
     
     # Check for conflicts before updating
     conflict_error = check_attendance_conflict(
@@ -1104,13 +1118,24 @@ def create_attendance_manual(
     if not clock_in_time_utc and not clock_out_time_utc:
         raise HTTPException(status_code=400, detail="Either clock_in_time or clock_out_time must be provided")
     
-    # Validate that clock_out_time is not before clock_in_time
+    # Validate that clock_out_time is not before or equal to clock_in_time
     if clock_in_time_utc and clock_out_time_utc:
-        if clock_out_time_utc < clock_in_time_utc:
+        if clock_out_time_utc <= clock_in_time_utc:
             raise HTTPException(
                 status_code=400,
-                detail="Clock-out time cannot be before clock-in time. Please select a valid time."
+                detail="Clock-out time must be after clock-in time. Please select a valid time."
             )
+        
+        # Validate break time: break cannot be greater than or equal to total time
+        manual_break = payload.get("manual_break_minutes")
+        if manual_break is not None and manual_break > 0:
+            total_seconds = (clock_out_time_utc - clock_in_time_utc).total_seconds()
+            total_minutes = int(total_seconds / 60)
+            if manual_break >= total_minutes:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Break time cannot be greater than or equal to the total attendance time. Please adjust the break or clock-out time."
+                )
     
     # Check for conflicts before creating attendance
     conflict_error = check_attendance_conflict(
