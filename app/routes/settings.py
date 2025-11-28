@@ -303,16 +303,24 @@ def get_settings_bundle(db: Session = Depends(get_db)):
 @router.get("/project-divisions")
 def get_project_divisions(db: Session = Depends(get_db), user: UserType = Depends(get_current_user)):
     """Get project divisions in hierarchical format (divisions with their subdivisions)"""
+    import logging
+    logger = logging.getLogger(__name__)
+    
     try:
         divisions_list = db.query(SettingList).filter(SettingList.name == "project_divisions").first()
+        logger.info(f"Project divisions list found: {divisions_list is not None}")
         if not divisions_list:
+            logger.warning("Project divisions SettingList not found in database")
             return []
         
         # Get all items for this list
         all_items = db.query(SettingItem).filter(SettingItem.list_id == divisions_list.id).order_by(SettingItem.sort_index.asc()).all()
+        logger.info(f"Found {len(all_items)} total items in project_divisions list")
         
         # Separate main divisions (no parent) from subdivisions (have parent)
         main_divisions = [item for item in all_items if item.parent_id is None]
+        logger.info(f"Found {len(main_divisions)} main divisions (no parent)")
+        
         subdivisions_map = {}
         for item in all_items:
             if item.parent_id is not None:
@@ -338,10 +346,10 @@ def get_project_divisions(db: Session = Depends(get_db), user: UserType = Depend
                 "subdivisions": subdivisions_map.get(div_id_str, [])
             })
         
+        logger.info(f"Returning {len(result)} divisions with subdivisions")
         return result
     except Exception as e:
-        import logging
-        logging.getLogger(__name__).error(f"Error getting project divisions: {e}", exc_info=True)
+        logger.error(f"Error getting project divisions: {e}", exc_info=True)
         raise
 
 
