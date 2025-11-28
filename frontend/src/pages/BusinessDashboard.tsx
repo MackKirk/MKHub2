@@ -1,6 +1,6 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 
@@ -53,24 +53,29 @@ const getDivisionIcon = (label: string): string => {
 
 export default function BusinessDashboard() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [selectedDivisionId, setSelectedDivisionId] = useState<string>('');
   
   // Get project divisions (hierarchical)
-  const { data: divisionsData, isLoading: divisionsLoading, error: divisionsError } = useQuery<ProjectDivision[]>({
+  const { data: divisionsData, isLoading: divisionsLoading, error: divisionsError, refetch: refetchDivisions } = useQuery<ProjectDivision[]>({
     queryKey: ['project-divisions'],
     queryFn: async () => {
-      try {
-        const result = await api('GET', '/settings/project-divisions');
-        console.log('Project divisions loaded:', result);
-        return result;
-      } catch (e) {
-        console.error('Failed to load project divisions:', e);
+      const result = await api<ProjectDivision[]>('GET', '/settings/project-divisions');
+      console.log('Project divisions loaded:', result, 'Type:', Array.isArray(result), 'Length:', result?.length);
+      if (!Array.isArray(result)) {
+        console.warn('Project divisions response is not an array:', result);
         return [];
       }
+      return result;
     },
     staleTime: 300_000,
-    initialData: [],
+    retry: 2,
   });
+
+  // Force refetch on mount to ensure fresh data
+  useEffect(() => {
+    refetchDivisions();
+  }, [refetchDivisions]);
 
   // Get division statistics
   const { data: divisionsStats, isLoading: statsLoading } = useQuery<DivisionStats[]>({
@@ -120,8 +125,22 @@ export default function BusinessDashboard() {
     <div className="space-y-6">
       {/* Header */}
       <div className="mb-3 rounded-xl border bg-gradient-to-br from-[#7f1010] to-[#a31414] text-white p-4">
-        <div className="text-2xl font-extrabold">Business Dashboard</div>
-        <div className="text-sm opacity-90">Overview of opportunities and projects by division</div>
+        <div className="flex items-center justify-between">
+          <div>
+            <div className="text-2xl font-extrabold">Business Dashboard</div>
+            <div className="text-sm opacity-90">Overview of opportunities and projects by division</div>
+          </div>
+          <button
+            onClick={() => {
+              queryClient.invalidateQueries({ queryKey: ['project-divisions'] });
+              refetchDivisions();
+            }}
+            className="px-3 py-1.5 bg-white/20 hover:bg-white/30 rounded-lg text-sm font-medium transition-colors"
+            title="Refresh divisions"
+          >
+            🔄 Refresh
+          </button>
+        </div>
       </div>
 
       {/* Quick Filter Buttons */}
@@ -248,8 +267,20 @@ export default function BusinessDashboard() {
           })}
         </div>
       ) : (
-        <div className="rounded-xl border bg-white p-6 text-center text-gray-500">
-          No project divisions found. Please run the seed script to create divisions.
+        <div className="rounded-xl border bg-white p-6 text-center">
+          <div className="text-gray-500 mb-3">No project divisions found.</div>
+          <div className="text-sm text-gray-400 mb-4">
+            {divisionsLoading ? 'Loading...' : 'Please run the seed script to create divisions.'}
+          </div>
+          <button
+            onClick={() => {
+              queryClient.invalidateQueries({ queryKey: ['project-divisions'] });
+              refetchDivisions();
+            }}
+            className="px-4 py-2 bg-[#7f1010] text-white rounded-lg hover:bg-[#a31414] transition-colors text-sm"
+          >
+            Retry
+          </button>
         </div>
       )}
 
