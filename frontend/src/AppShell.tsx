@@ -267,14 +267,11 @@ export default function AppShell({ children }: PropsWithChildren){
                (location.pathname.startsWith('/projects/') && currentProject?.is_bidding);
       }
     }
-<<<<<<< HEAD
-    // Check if any item in the category is active
-=======
     // Special handling for Business category: check if we're on the business dashboard
     if (category.id === 'business' && location.pathname === '/business') {
       return true;
     }
->>>>>>> 0d08428713a0a439c6dd5578682866058714fbdc
+    // Check if any item in the category is active
     return category.items.some(item => {
       // If we're viewing an opportunity, don't match projects item
       if (item.id === 'projects' && isViewingOpportunity) {
