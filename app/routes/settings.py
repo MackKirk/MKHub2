@@ -425,7 +425,6 @@ def delete_attendance(
     project_id = None
     shift = None
     if attendance.shift_id:
-        from ..models.models import Shift
         shift = db.query(Shift).filter(Shift.id == attendance.shift_id).first()
         if shift:
             project_id = shift.project_id
@@ -783,7 +782,6 @@ def list_attendances(
                 try:
                     project_uuid = uuid.UUID(project_id)
                     # Join with Shift to filter by project_id
-                    from ..models.models import Shift
                     query = query.join(Shift, Attendance.shift_id == Shift.id).filter(Shift.project_id == project_uuid).distinct()
                 except Exception as e:
                     logger.warning(f"Invalid project_id format: {project_id}, error: {e}")

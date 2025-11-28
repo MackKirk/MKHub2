@@ -875,7 +875,8 @@ def create_attendance(
                 f"Permission check for user {user.id} clock-in/out for worker {shift.worker_id} in project {shift.project_id}: "
                 f"is_worker_supervisor={is_worker_supervisor} (worker_profile exists: {worker_profile is not None}, "
                 f"manager_user_id: {worker_profile.manager_user_id if worker_profile else None}), "
-                f"is_onsite_lead={is_onsite_lead} (project onsite_lead_id: {project.onsite_lead_id if project else None})"
+                f"is_onsite_lead={is_onsite_lead} (project onsite_lead_id: {project.onsite_lead_id if project else None}), "
+                f"is_authorized_supervisor={is_authorized_supervisor}"
             )
         
         logger.info(f"User {user.id} clock-in/out for shift {shift_id}. Worker owner: {is_worker_owner}, Authorized supervisor: {is_authorized_supervisor}, Is admin: {is_admin_user}")
@@ -964,11 +965,13 @@ def create_attendance(
         
         # Check if user has permission to edit clock in/out time
         # If time_selected_local is different from current time (within 4 minute margin), require unrestricted permission
+        # EXCEPTION: Supervisors and on-site leads can edit time when clocking in/out for another worker in Projects > Timesheet
         from datetime import timedelta
         time_diff = abs((time_selected_utc - time_entered_utc).total_seconds() / 60)  # Difference in minutes
         
         # If time is more than 4 minutes different from current time, check unrestricted permission
-        if time_diff > 4:
+        # Skip this check if user is supervisor or on-site lead clocking in/out for another worker (Projects > Timesheet context)
+        if time_diff > 4 and not is_authorized_supervisor:
             from ..auth.security import _has_permission
             has_unrestricted = (
                 _has_permission(user, "hr:timesheet:unrestricted_clock") or
@@ -986,14 +989,20 @@ def create_attendance(
                 )
         
         # Validate: Allow future times with 4 minute margin
-        # Check if time_selected_utc is more than 4 minutes in the future
-        max_future = time_entered_utc + timedelta(minutes=4)
-        if time_selected_utc > max_future:
-            logger.warning(f"Future time blocked - Selected: {time_selected_utc}, Current: {time_entered_utc}, Max allowed: {max_future}")
-            raise HTTPException(
-                status_code=400,
-                detail="Clock-in/out cannot be more than 4 minutes in the future. Please select a valid time."
-            )
+        # This restriction only applies to personal clock-in/out (not when supervisor/on-site lead is clocking in for another worker)
+        # When supervisor or on-site lead is clocking in for another worker in Projects > Timesheet, allow any future time
+        logger.info(f"4-minute validation check - is_authorized_supervisor: {is_authorized_supervisor}, is_worker_owner: {is_worker_owner}, time_selected_utc: {time_selected_utc}, time_entered_utc: {time_entered_utc}")
+        if not is_authorized_supervisor:
+            # Check if time_selected_utc is more than 4 minutes in the future
+            max_future = time_entered_utc + timedelta(minutes=4)
+            if time_selected_utc > max_future:
+                logger.warning(f"Future time blocked - Selected: {time_selected_utc}, Current: {time_entered_utc}, Max allowed: {max_future}, is_authorized_supervisor: {is_authorized_supervisor}")
+                raise HTTPException(
+                    status_code=400,
+                    detail="Clock-in/out cannot be more than 4 minutes in the future. Please select a valid time."
+                )
+        else:
+            logger.info(f"Skipping 4-minute future validation for authorized supervisor/on-site lead. Selected time: {time_selected_utc}, Current time: {time_entered_utc}")
         
         # Get GPS data
         gps_lat = payload.get("gps", {}).get("lat") if payload.get("gps") else None

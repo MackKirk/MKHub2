@@ -2218,15 +2218,28 @@ function TimesheetTab({ projectId }:{ projectId:string }){
     const timeStr = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
     const timeSelectedLocal = `${shiftDate}T${timeStr}:00`;
 
+    // Check if user is supervisor/on-site lead doing clock-in/out for another worker
+    // This check happens before the 4-minute validation to allow supervisors/on-site leads to set future times
+    // Note: On-site lead check is handled by backend, so we only check supervisor here
+    const isWorkerOwner = currentUser && selectedShift?.worker_id && String(currentUser.id) === String(selectedShift.worker_id);
+    const isSupervisorDoingForOther = isSupervisorOrAdmin && selectedShift && !isWorkerOwner;
+    // For frontend validation, we only check supervisor status
+    // Backend will also check on-site lead status, so supervisors and on-site leads can set future times
+    const isAuthorizedSupervisor = isSupervisorDoingForOther;
+
     // Validate: Allow future times with 4 minute margin
-    // Create date using local timezone explicitly to avoid timezone issues
-    const [year, month, day] = shiftDate.split('-').map(Number);
-    const selectedDateTime = new Date(year, month - 1, day, hours, minutes, 0);
-    const now = new Date();
-    const maxFutureMs = 4 * 60 * 1000; // 4 minutes buffer for future times
-    if (selectedDateTime.getTime() > (now.getTime() + maxFutureMs)) {
-      toast.error('Clock-in/out cannot be more than 4 minutes in the future. Please select a valid time.');
-      return;
+    // This restriction only applies to personal clock-in/out (not when supervisor/on-site lead is clocking in for another worker)
+    // When supervisor or on-site lead is clocking in for another worker in Projects > Timesheet, allow any future time
+    if (!isAuthorizedSupervisor) {
+      // Create date using local timezone explicitly to avoid timezone issues
+      const [year, month, day] = shiftDate.split('-').map(Number);
+      const selectedDateTime = new Date(year, month - 1, day, hours, minutes, 0);
+      const now = new Date();
+      const maxFutureMs = 4 * 60 * 1000; // 4 minutes buffer for future times
+      if (selectedDateTime.getTime() > (now.getTime() + maxFutureMs)) {
+        toast.error('Clock-in/out cannot be more than 4 minutes in the future. Please select a valid time.');
+        return;
+      }
     }
 
     setSubmitting(true);
