@@ -36,6 +36,29 @@ export default function Users(){
     queryFn: ()=> api<any[]>('GET', `/projects/timesheet/summary?month=${encodeURIComponent(month)}`) 
   });
   
+  const { data:me } = useQuery({ queryKey:['me'], queryFn: ()=> api<any>('GET','/auth/me') });
+  
+  // Check if user has permission to invite users
+  const canInviteUser = useMemo(() => {
+    if (!me) return false;
+    const isAdmin = (me?.roles || []).some((r: string) => String(r || '').toLowerCase() === 'admin');
+    if (isAdmin) return true;
+    const perms = me?.permissions || [];
+    return perms.includes('hr:users:write') || perms.includes('users:write'); // Legacy permission
+  }, [me]);
+  
+  // Check if user has any view permissions to open user details
+  const canViewUserDetails = useMemo(() => {
+    if (!me) return false;
+    const isAdmin = (me?.roles || []).some((r: string) => String(r || '').toLowerCase() === 'admin');
+    if (isAdmin) return true;
+    const perms = me?.permissions || [];
+    return perms.includes('hr:users:view:general') || 
+           perms.includes('hr:users:view:timesheet') || 
+           perms.includes('hr:users:view:permissions') ||
+           perms.includes('users:read'); // Legacy permission
+  }, [me]);
+  
   const minsByUser: Record<string, number> = {};
   (summary||[]).forEach((r:any)=>{ minsByUser[String(r.user_id)]=Number(r.minutes||0); });
   
@@ -56,12 +79,14 @@ export default function Users(){
           <div className="text-2xl font-extrabold">Users</div>
           <div className="text-sm opacity-90">Manage employees, roles, and access. {total > 0 && `(${total} total)`}</div>
         </div>
-        <button
-          onClick={() => setShowInviteModal(true)}
-          className="px-4 py-2 bg-white text-[#d11616] rounded-lg font-semibold hover:bg-gray-100 transition-colors"
-        >
-          + Invite User
-        </button>
+        {canInviteUser && (
+          <button
+            onClick={() => setShowInviteModal(true)}
+            className="px-4 py-2 bg-white text-[#d11616] rounded-lg font-semibold hover:bg-gray-100 transition-colors"
+          >
+            + Invite User
+          </button>
+        )}
       </div>
       
       {/* Search Bar */}
@@ -91,8 +116,8 @@ export default function Users(){
           <div className="grid md:grid-cols-4 gap-4">
             {users.map(u=> {
               const isAdmin = (u.roles || []).some((r: string) => String(r || '').toLowerCase() === 'admin');
-              return (
-                <Link key={u.id} to={`/users/${encodeURIComponent(u.id)}`} className="rounded-xl border bg-white p-4 flex items-center gap-3 hover:shadow-md transition-shadow relative">
+              const cardContent = (
+                <>
                   {u.profile_photo_file_id? (
                     <img src={`/files/${u.profile_photo_file_id}/thumbnail?w=96`} className="w-12 h-12 rounded-full object-cover flex-shrink-0"/>
                   ) : (
@@ -111,8 +136,22 @@ export default function Users(){
                     <div className="text-[11px] text-gray-500 truncate">{(u.roles||[]).join(', ') || 'No roles'}</div>
                     <div className="text-[11px] text-gray-700">This month: {((minsByUser[u.id]||0)/60).toFixed(1)}h</div>
                   </div>
-                </Link>
+                </>
               );
+              
+              if (canViewUserDetails) {
+                return (
+                  <Link key={u.id} to={`/users/${encodeURIComponent(u.id)}`} className="rounded-xl border bg-white p-4 flex items-center gap-3 hover:shadow-md transition-shadow relative">
+                    {cardContent}
+                  </Link>
+                );
+              } else {
+                return (
+                  <div key={u.id} className="rounded-xl border bg-white p-4 flex items-center gap-3 relative opacity-75">
+                    {cardContent}
+                  </div>
+                );
+              }
             })}
           </div>
           

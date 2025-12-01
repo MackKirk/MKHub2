@@ -583,19 +583,18 @@ export default function ClockInOut() {
       return;
     }
 
-    // Check permission before allowing submission
-    if (!hasUnrestrictedClock) {
-      toast.error('You do not have permission to edit clock in/out time. Contact an administrator.');
-      return;
-    }
-
-    if (!selectedTime || !selectedTime.includes(':')) {
-      toast.error('Please select a time');
-      return;
+    // If user doesn't have permission to edit time, use current time automatically
+    let timeToUse = selectedTime;
+    if (!hasUnrestrictedClock || !timeToUse || !timeToUse.includes(':')) {
+      // Use current time if no permission or no time selected
+      const now = new Date();
+      const hours = now.getHours();
+      const minutes = Math.floor(now.getMinutes() / 5) * 5; // Round to nearest 5 minutes
+      timeToUse = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
     }
 
     // Validate time format and 5-minute increments
-    const [hours, minutes] = selectedTime.split(':').map(Number);
+    const [hours, minutes] = timeToUse.split(':').map(Number);
     if (isNaN(hours) || isNaN(minutes) || hours < 0 || hours > 23 || minutes % 5 !== 0 || minutes < 0 || minutes > 59) {
       toast.error('Please select a valid time in 5-minute increments');
       return;
@@ -1331,7 +1330,7 @@ export default function ClockInOut() {
                   </button>
                   <button
                     onClick={handleClockInOut}
-                    disabled={submitting || !selectedTime}
+                    disabled={submitting}
                     className="flex-1 px-4 py-2 rounded bg-brand-red text-white hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {submitting ? 'Submitting...' : 'Submit'}

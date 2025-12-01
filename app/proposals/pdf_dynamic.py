@@ -193,15 +193,30 @@ def build_dynamic_pages(data, output_path):
             text = sec.get("text", "")
 
             if title:
-                paragraphs = [p.strip() for p in text.split("\n") if p.strip()]
+                # Preserve empty lines by splitting and keeping all lines
+                lines = text.split("\n")
+                paragraphs = []
+                for line in lines:
+                    stripped = line.strip()
+                    if stripped:
+                        paragraphs.append(("text", stripped))
+                    else:
+                        # Empty line - mark it to add spacing later
+                        paragraphs.append(("empty", None))
 
                 block = [Paragraph(title, title_style)]
                 if paragraphs:
-                    block.append(Paragraph(paragraphs[0], user_style))
+                    first_para = paragraphs[0]
+                    if first_para[0] == "text":
+                        block.append(Paragraph(first_para[1], user_style))
                     story.append(KeepTogether(block))
 
-                    for para in paragraphs[1:]:
-                        story.append(Paragraph(para, user_style))
+                    for para_type, para_text in paragraphs[1:]:
+                        if para_type == "empty":
+                            # Add a spacer for empty lines to preserve spacing
+                            story.append(Spacer(1, 14))
+                        else:
+                            story.append(Paragraph(para_text, user_style))
                 else:
                     story.append(Paragraph(title, title_style))
 
@@ -252,7 +267,7 @@ def build_dynamic_pages(data, output_path):
                 first_table.setStyle(TableStyle([
                     ("VALIGN", (0, 0), (-1, -1), "TOP"),
                     ("ALIGN", (0, 0), (-1, -1), "CENTER"),
-                    ("BOTTOMPADDING", (0, 0), (-1, -1), 12),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
                 ]))
                 block.append(first_table)
                 story.append(KeepTogether(block))
@@ -266,7 +281,7 @@ def build_dynamic_pages(data, output_path):
                             ("BOTTOMPADDING", (0, 0), (-1, -1), 12),
                         ]))
                         story.append(table)
-            story.append(Spacer(1, 20))
+            story.append(Spacer(1, 15))
 
     # --- Pricing (conditional) - independent from Optional Services
     try:
@@ -309,8 +324,8 @@ def build_dynamic_pages(data, output_path):
     story.append(Paragraph("General Project Terms & Conditions", title_style))
     story.append(Paragraph((data.get("terms_text", "") or "").replace("\n", "<br/>"), user_style))
 
-    top_margin = 125
-    bottom_margin = 120  # Increased further to ensure footer (at ~60-80pt from bottom) is not overlapped
+    top_margin = 115
+    bottom_margin = 95  # Increased further to ensure footer (at ~60-80pt from bottom) is not overlapped
 
     frame = Frame(
         35,

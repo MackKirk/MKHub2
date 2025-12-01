@@ -27,11 +27,11 @@ export default function UserDetail(){
   const [tab, setTab] = useState<'general'|'timesheet'|'permissions'>('general');
   
   // Check permissions for each tab
+  // Note: hr:users:read alone is NOT enough - need specific view permissions
   const canViewGeneral = !!(
     (me?.roles || []).some((r: string) => String(r || '').toLowerCase() === 'admin') || 
-    (me?.permissions || []).includes('hr:users:read') ||
     (me?.permissions || []).includes('hr:users:view:general') ||
-    (me?.permissions || []).includes('users:read')
+    (me?.permissions || []).includes('users:read') // Legacy
   );
   
   const canEditGeneral = !!(
@@ -43,16 +43,14 @@ export default function UserDetail(){
   
   const canViewTimesheet = !!(
     (me?.roles || []).some((r: string) => String(r || '').toLowerCase() === 'admin') || 
-    (me?.permissions || []).includes('hr:users:read') ||
     (me?.permissions || []).includes('hr:users:view:timesheet') ||
-    (me?.permissions || []).includes('users:read')
+    (me?.permissions || []).includes('users:read') // Legacy
   );
   
   const canViewPermissions = !!(
     (me?.roles || []).some((r: string) => String(r || '').toLowerCase() === 'admin') || 
-    (me?.permissions || []).includes('hr:users:read') ||
     (me?.permissions || []).includes('hr:users:view:permissions') ||
-    (me?.permissions || []).includes('users:read')
+    (me?.permissions || []).includes('users:read') // Legacy
   );
   
   const canEditPermissions = !!(

@@ -529,14 +529,17 @@ def get_shift(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user)
 ):
-    """Get a single shift by ID."""
+    """Get a single shift by ID. All users can view shifts where they are the worker."""
     shift = db.query(Shift).filter(Shift.id == shift_id).first()
     if not shift:
         raise HTTPException(status_code=404, detail="Shift not found")
     
-    # Check permissions
-    if not (is_admin(user, db) or is_supervisor(user, db, str(shift.project_id)) or 
-            (is_worker(user, db) and str(shift.worker_id) == str(user.id))):
+    # Check permissions: allow if user is the worker, admin, or supervisor
+    is_worker_owner = str(shift.worker_id) == str(user.id)
+    is_admin_user = is_admin(user, db)
+    is_supervisor_user = is_supervisor(user, db, str(shift.project_id))
+    
+    if not (is_admin_user or is_supervisor_user or is_worker_owner):
         raise HTTPException(status_code=403, detail="Access denied")
     
     # Get project to check for default geofence location
@@ -964,24 +967,33 @@ def create_attendance(
         time_entered_utc = datetime.now(timezone.utc)
         
         # Check if user has permission to edit clock in/out time
-        # If time_selected_local is different from current time (within 4 minute margin), require unrestricted permission
+        # If user doesn't have permission and time is different, use current time automatically
         # EXCEPTION: Supervisors and on-site leads can edit time when clocking in/out for another worker in Projects > Timesheet
         from datetime import timedelta
         time_diff = abs((time_selected_utc - time_entered_utc).total_seconds() / 60)  # Difference in minutes
         
         # If time is more than 4 minutes different from current time, check unrestricted permission
-        # Skip this check if user is supervisor or on-site lead clocking in/out for another worker (Projects > Timesheet context)
-        if time_diff > 4 and not is_authorized_supervisor:
+        if time_diff > 4:
             from ..auth.security import _has_permission
             has_unrestricted = (
                 _has_permission(user, "hr:timesheet:unrestricted_clock") or
                 _has_permission(user, "timesheet:unrestricted_clock")
             )
             
-            if not has_unrestricted:
+            # If user doesn't have unrestricted permission and is doing personal clock-in/out, use current time
+            if not has_unrestricted and is_worker_owner:
+                logger.info(
+                    f"User {user.id} doesn't have unrestricted clock permission, using current time instead of {time_selected_utc}"
+                )
+                time_selected_utc = time_entered_utc
+                # Recalculate time_selected_local from the updated UTC time
+                from ..services.time_rules import utc_to_local
+                time_selected_local = utc_to_local(time_selected_utc, project_timezone)
+            elif not has_unrestricted and not is_authorized_supervisor:
+                # For non-personal clock-in/out without permission, still block
                 logger.warning(
                     f"User {user.id} attempted to set time {time_selected_utc} (current: {time_entered_utc}) "
-                    f"without unrestricted clock permission"
+                    f"without unrestricted clock permission for another worker"
                 )
                 raise HTTPException(
                     status_code=403,
@@ -1757,13 +1769,19 @@ def create_direct_attendance(
             from pytz import UTC
             time_selected_utc = time_selected_utc.replace(tzinfo=UTC)
         
+        # Get worker_id (default to current user)
+        worker_id = payload.get("worker_id", str(user.id))
+        if str(worker_id) != str(user.id) and not is_admin(user, db):
+            raise HTTPException(status_code=403, detail="You can only create direct attendance for yourself")
+        
         # Check if user has permission to edit clock in/out time
-        # If time_selected_local is different from current time (within 4 minute margin), require unrestricted permission
+        # If user doesn't have permission and time is different, use current time automatically
         from datetime import timezone, timedelta
         time_entered_utc = datetime.now(timezone.utc)
         time_diff = abs((time_selected_utc - time_entered_utc).total_seconds() / 60)  # Difference in minutes
         
         # If time is more than 4 minutes different from current time, check unrestricted permission
+        is_own_attendance = str(worker_id) == str(user.id)
         if time_diff > 4:
             from ..auth.security import _has_permission
             has_unrestricted = (
@@ -1771,20 +1789,25 @@ def create_direct_attendance(
                 _has_permission(user, "timesheet:unrestricted_clock")
             )
             
-            if not has_unrestricted:
+            # If user doesn't have unrestricted permission and is doing personal clock-in/out, use current time
+            if not has_unrestricted and is_own_attendance:
+                logger.info(
+                    f"User {user.id} doesn't have unrestricted clock permission, using current time instead of {time_selected_utc} (direct attendance)"
+                )
+                time_selected_utc = time_entered_utc
+                # Recalculate time_selected_local from the updated UTC time
+                from ..services.time_rules import local_to_utc, utc_to_local
+                time_selected_local = utc_to_local(time_selected_utc, settings.tz_default)
+            elif not has_unrestricted and not is_own_attendance:
+                # For non-personal clock-in/out without permission, still block
                 logger.warning(
                     f"User {user.id} attempted to set time {time_selected_utc} (current: {time_entered_utc}) "
-                    f"without unrestricted clock permission (direct attendance)"
+                    f"without unrestricted clock permission (direct attendance for another worker)"
                 )
                 raise HTTPException(
                     status_code=403,
                     detail="You do not have permission to edit clock in/out time. Contact an administrator to enable time editing."
                 )
-        
-        # Get worker_id (default to current user)
-        worker_id = payload.get("worker_id", str(user.id))
-        if str(worker_id) != str(user.id) and not is_admin(user, db):
-            raise HTTPException(status_code=403, detail="You can only create direct attendance for yourself")
         
         # Validate worker exists
         worker = db.query(User).filter(User.id == worker_id).first()
@@ -2125,7 +2148,7 @@ def get_weekly_attendance_summary(
     """
     Get weekly attendance summary for the current user or specified worker.
     Returns list of daily entries with clock-in/out times, hours worked, job type, etc.
-    If worker_id is provided, requires admin or supervisor permissions.
+    All users can view their own weekly summary. Viewing other workers' summaries requires permissions.
     """
     from datetime import date as date_type, timedelta
     
@@ -2144,21 +2167,24 @@ def get_weekly_attendance_summary(
     if worker_id:
         # Check if user has permission to view other workers' attendance
         if not has_permission:
-            raise HTTPException(
-                status_code=403,
-                detail="You do not have permission to view other workers' attendance summaries"
-            )
-        
-        try:
-            target_worker_ids = [uuid.UUID(worker_id)]
-        except ValueError:
-            raise HTTPException(status_code=400, detail="Invalid worker_id format")
+            # If no permission, only allow viewing own summary
+            if str(worker_id) != str(user.id):
+                raise HTTPException(
+                    status_code=403,
+                    detail="You do not have permission to view other workers' attendance summaries"
+                )
+            target_worker_ids = [user.id]
+        else:
+            try:
+                target_worker_ids = [uuid.UUID(worker_id)]
+            except ValueError:
+                raise HTTPException(status_code=400, detail="Invalid worker_id format")
     elif has_permission:
         # Get all workers (users with employee profiles or all users)
         all_workers = db.query(User.id).all()
         target_worker_ids = [w.id for w in all_workers]
     else:
-        # No permission, only current user
+        # No permission, only current user (all users can view their own summary)
         target_worker_ids = [user.id]
     
     # Calculate week start (Sunday) - ensure it's always a Sunday

@@ -682,7 +682,7 @@ def users_options(q: Optional[str] = None, limit: int = 100, db: Session = Depen
 
 
 @router.get("/users")
-def list_users(q: Optional[str] = None, limit: int = 100, db: Session = Depends(get_db), _=Depends(require_permissions("users:read"))):
+def list_users(q: Optional[str] = None, limit: int = 100, db: Session = Depends(get_db), _=Depends(require_permissions("users:read", "hr:users:read"))):
     query = db.query(User)
     if q:
         like = f"%{q}%"
@@ -699,7 +699,7 @@ def list_users(q: Optional[str] = None, limit: int = 100, db: Session = Depends(
 
 
 @router.get("/users/{user_id}")
-def get_user(user_id: str, db: Session = Depends(get_db), _=Depends(require_permissions("users:read"))):
+def get_user(user_id: str, db: Session = Depends(get_db), _=Depends(require_permissions("users:read", "hr:users:read", "hr:users:view:general"))):
     u = db.query(User).filter(User.id == user_id).first()
     if not u:
         raise HTTPException(status_code=404, detail="Not found")
@@ -715,16 +715,17 @@ def get_user(user_id: str, db: Session = Depends(get_db), _=Depends(require_perm
 
 @router.get("/users/{user_id}/profile")
 def get_user_profile(user_id: str, db: Session = Depends(get_db), me: User = Depends(get_current_user)):
-    # Allow self or users:read/admin
+    # Allow self or users:read/admin or any view permission (hr:users:view:general, hr:users:view:timesheet, hr:users:view:permissions)
     can_read = False
     try:
         if str(me.id) == str(user_id):
             can_read = True
         else:
-            # emulate require_permissions("users:read")
+            # Check admin role
             if any((getattr(r, 'name', None) or '').lower() == 'admin' for r in me.roles):
                 can_read = True
             else:
+                # Check permissions: users:read (legacy) or hr:users:read or any view permission
                 perm_map = {}
                 for r in me.roles:
                     if getattr(r, 'permissions', None):
@@ -733,7 +734,14 @@ def get_user_profile(user_id: str, db: Session = Depends(get_db), me: User = Dep
                 if getattr(me, 'permissions_override', None):
                     try: perm_map.update(me.permissions_override)
                     except Exception: pass
-                can_read = bool(perm_map.get('users:read'))
+                # Allow if has users:read (legacy) OR has any view permission (not just hr:users:read)
+                # hr:users:read alone is NOT enough to view user details - need specific view permissions
+                can_read = bool(
+                    perm_map.get('users:read') or  # Legacy permission allows full access
+                    perm_map.get('hr:users:view:general') or
+                    perm_map.get('hr:users:view:timesheet') or
+                    perm_map.get('hr:users:view:permissions')
+                )
     except Exception:
         can_read = False
     if not can_read:
@@ -764,7 +772,7 @@ def get_user_profile(user_id: str, db: Session = Depends(get_db), me: User = Dep
 
 
 @router.put("/users/{user_id}/profile")
-def update_user_profile(user_id: str, payload: EmployeeProfileInput, db: Session = Depends(get_db), _=Depends(require_permissions("users:write"))):
+def update_user_profile(user_id: str, payload: EmployeeProfileInput, db: Session = Depends(get_db), _=Depends(require_permissions("users:write", "hr:users:edit:general"))):
     from ..models.models import EmployeeProfile
     u = db.query(User).filter(User.id == user_id).first()
     if not u:
@@ -820,7 +828,7 @@ def update_user_permissions(user_id: str, permissions: dict = Body(...), db: Ses
 
 # ----- Multi-record CRUD -----
 @router.get("/users/{user_id}/passports")
-def list_passports(user_id: str, db: Session = Depends(get_db), _=Depends(require_permissions("users:read"))):
+def list_passports(user_id: str, db: Session = Depends(get_db), _=Depends(require_permissions("users:read", "hr:users:read", "hr:users:view:general"))):
     from ..models.models import EmployeePassport
     rows = db.query(EmployeePassport).filter(EmployeePassport.user_id == user_id).all()
     def _row(p):
@@ -835,7 +843,7 @@ def list_passports(user_id: str, db: Session = Depends(get_db), _=Depends(requir
 
 
 @router.post("/users/{user_id}/passports")
-def create_passport(user_id: str, payload: dict = Body(...), db: Session = Depends(get_db), _=Depends(require_permissions("users:write"))):
+def create_passport(user_id: str, payload: dict = Body(...), db: Session = Depends(get_db), _=Depends(require_permissions("users:write", "hr:users:edit:general"))):
     from ..models.models import EmployeePassport
     p = EmployeePassport(user_id=user_id)
     p.passport_number = payload.get("passport_number")
@@ -856,7 +864,7 @@ def create_passport(user_id: str, payload: dict = Body(...), db: Session = Depen
 
 
 @router.delete("/users/{user_id}/passports/{pid}")
-def delete_passport(user_id: str, pid: str, db: Session = Depends(get_db), _=Depends(require_permissions("users:write"))):
+def delete_passport(user_id: str, pid: str, db: Session = Depends(get_db), _=Depends(require_permissions("users:write", "hr:users:edit:general"))):
     from ..models.models import EmployeePassport
     db.query(EmployeePassport).filter(and_(EmployeePassport.user_id == user_id, EmployeePassport.id == pid)).delete()
     db.commit()
@@ -963,7 +971,7 @@ def admin_bulk_create_users(
 
 
 @router.get("/users/{user_id}/education")
-def list_education(user_id: str, db: Session = Depends(get_db), _=Depends(require_permissions("users:read"))):
+def list_education(user_id: str, db: Session = Depends(get_db), _=Depends(require_permissions("users:read", "hr:users:read", "hr:users:view:general"))):
     from ..models.models import EmployeeEducation
     rows = db.query(EmployeeEducation).filter(EmployeeEducation.user_id == user_id).all()
     def _row(e):
@@ -980,7 +988,7 @@ def list_education(user_id: str, db: Session = Depends(get_db), _=Depends(requir
 
 
 @router.post("/users/{user_id}/education")
-def create_education(user_id: str, payload: dict = Body(...), db: Session = Depends(get_db), _=Depends(require_permissions("users:write"))):
+def create_education(user_id: str, payload: dict = Body(...), db: Session = Depends(get_db), _=Depends(require_permissions("users:write", "hr:users:edit:general"))):
     from ..models.models import EmployeeEducation
     from datetime import datetime, timezone
     def _dt(s):
@@ -1003,7 +1011,7 @@ def create_education(user_id: str, payload: dict = Body(...), db: Session = Depe
 
 
 @router.delete("/users/{user_id}/education/{eid}")
-def delete_education(user_id: str, eid: str, db: Session = Depends(get_db), _=Depends(require_permissions("users:write"))):
+def delete_education(user_id: str, eid: str, db: Session = Depends(get_db), _=Depends(require_permissions("users:write", "hr:users:edit:general"))):
     from ..models.models import EmployeeEducation
     db.query(EmployeeEducation).filter(and_(EmployeeEducation.user_id == user_id, EmployeeEducation.id == eid)).delete()
     db.commit()
@@ -1011,7 +1019,7 @@ def delete_education(user_id: str, eid: str, db: Session = Depends(get_db), _=De
 
 
 @router.get("/users/{user_id}/documents")
-def list_documents(user_id: str, folder_id: Optional[str] = None, db: Session = Depends(get_db), _=Depends(require_permissions("users:read"))):
+def list_documents(user_id: str, folder_id: Optional[str] = None, db: Session = Depends(get_db), _=Depends(require_permissions("users:read", "hr:users:read", "hr:users:view:general"))):
     from ..models.models import EmployeeDocument
     q = db.query(EmployeeDocument).filter(EmployeeDocument.user_id == user_id)
     if folder_id:
@@ -1044,7 +1052,7 @@ def list_documents(user_id: str, folder_id: Optional[str] = None, db: Session = 
 
 
 @router.post("/users/{user_id}/documents")
-def create_document(user_id: str, payload: dict = Body(...), db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+def create_document(user_id: str, payload: dict = Body(...), db: Session = Depends(get_db), user: User = Depends(require_permissions("users:write", "hr:users:edit:general"))):
     from ..models.models import EmployeeDocument
     from datetime import datetime, timezone
     def _dt(s):
@@ -1074,7 +1082,7 @@ def create_document(user_id: str, payload: dict = Body(...), db: Session = Depen
 
 
 @router.delete("/users/{user_id}/documents/{doc_id}")
-def delete_document(user_id: str, doc_id: str, db: Session = Depends(get_db), _=Depends(require_permissions("users:write"))):
+def delete_document(user_id: str, doc_id: str, db: Session = Depends(get_db), _=Depends(require_permissions("users:write", "hr:users:edit:general"))):
     from ..models.models import EmployeeDocument
     db.query(EmployeeDocument).filter(and_(EmployeeDocument.user_id == user_id, EmployeeDocument.id == doc_id)).delete()
     db.commit()
@@ -1083,7 +1091,7 @@ def delete_document(user_id: str, doc_id: str, db: Session = Depends(get_db), _=
 
 # ===== Employee Folders =====
 @router.get("/users/{user_id}/folders")
-def list_folders(user_id: str, db: Session = Depends(get_db), _=Depends(require_permissions("users:read"))):
+def list_folders(user_id: str, db: Session = Depends(get_db), _=Depends(require_permissions("users:read", "hr:users:read", "hr:users:view:general"))):
     from ..models.models import EmployeeFolder
     rows = db.query(EmployeeFolder).filter(EmployeeFolder.user_id == user_id).order_by(EmployeeFolder.sort_index.asc(), EmployeeFolder.name.asc()).all()
     return [{
@@ -1095,7 +1103,7 @@ def list_folders(user_id: str, db: Session = Depends(get_db), _=Depends(require_
 
 
 @router.post("/users/{user_id}/folders")
-def create_folder(user_id: str, name: str = Body(...), parent_id: Optional[str] = Body(None), db: Session = Depends(get_db), user: User = Depends(require_permissions("users:write"))):
+def create_folder(user_id: str, name: str = Body(...), parent_id: Optional[str] = Body(None), db: Session = Depends(get_db), user: User = Depends(require_permissions("users:write", "hr:users:edit:general"))):
     from ..models.models import EmployeeFolder
     fid = None
     try:
@@ -1111,7 +1119,7 @@ def create_folder(user_id: str, name: str = Body(...), parent_id: Optional[str] 
 
 
 @router.delete("/users/{user_id}/folders/{folder_id}")
-def delete_folder(user_id: str, folder_id: str, db: Session = Depends(get_db), _=Depends(require_permissions("users:write"))):
+def delete_folder(user_id: str, folder_id: str, db: Session = Depends(get_db), _=Depends(require_permissions("users:write", "hr:users:edit:general"))):
     from ..models.models import EmployeeFolder, EmployeeDocument
     try:
         fid = uuid.UUID(folder_id)
@@ -1128,7 +1136,7 @@ def delete_folder(user_id: str, folder_id: str, db: Session = Depends(get_db), _
 
 
 @router.put("/users/{user_id}/folders/{folder_id}")
-def update_folder(user_id: str, folder_id: str, name: str = Body(None), parent_id: Optional[str] = Body(None), db: Session = Depends(get_db), _=Depends(require_permissions("users:write"))):
+def update_folder(user_id: str, folder_id: str, name: str = Body(None), parent_id: Optional[str] = Body(None), db: Session = Depends(get_db), _=Depends(require_permissions("users:write", "hr:users:edit:general"))):
     from ..models.models import EmployeeFolder
     try:
         fid = uuid.UUID(folder_id)
@@ -1151,7 +1159,7 @@ def update_folder(user_id: str, folder_id: str, name: str = Body(None), parent_i
 
 
 @router.put("/users/{user_id}/documents/{doc_id}")
-def update_document(user_id: str, doc_id: str, payload: dict = Body(...), db: Session = Depends(get_db), _=Depends(require_permissions("users:write"))):
+def update_document(user_id: str, doc_id: str, payload: dict = Body(...), db: Session = Depends(get_db), _=Depends(require_permissions("users:write", "hr:users:edit:general"))):
     from ..models.models import EmployeeDocument
     d = db.query(EmployeeDocument).filter(and_(EmployeeDocument.user_id == user_id, EmployeeDocument.id == doc_id)).first()
     if not d:
@@ -1170,7 +1178,7 @@ def update_document(user_id: str, doc_id: str, payload: dict = Body(...), db: Se
 
 # ===== Employee Notes =====
 @router.get("/users/{user_id}/notes")
-def list_notes(user_id: str, db: Session = Depends(get_db), _=Depends(require_permissions("users:read"))):
+def list_notes(user_id: str, db: Session = Depends(get_db), _=Depends(require_permissions("users:read", "hr:users:read", "hr:users:view:general"))):
     from ..models.models import EmployeeNote
     rows = db.query(EmployeeNote).filter(EmployeeNote.user_id == user_id).order_by(EmployeeNote.created_at.desc()).all()
     return [{
@@ -1208,7 +1216,7 @@ def delete_note(user_id: str, note_id: str, db: Session = Depends(get_db), _=Dep
     return {"status": "ok"}
 
 @router.get("/users/{user_id}/emergency-contacts")
-def list_emergency_contacts(user_id: str, db: Session = Depends(get_db), _=Depends(require_permissions("users:read"))):
+def list_emergency_contacts(user_id: str, db: Session = Depends(get_db), _=Depends(require_permissions("users:read", "hr:users:read", "hr:users:view:general"))):
     from ..models.models import EmployeeEmergencyContact
     rows = db.query(EmployeeEmergencyContact).filter(EmployeeEmergencyContact.user_id == user_id).all()
     def _row(e):
@@ -1227,7 +1235,7 @@ def list_emergency_contacts(user_id: str, db: Session = Depends(get_db), _=Depen
 
 
 @router.post("/users/{user_id}/emergency-contacts")
-def create_emergency_contact(user_id: str, payload: dict = Body(...), db: Session = Depends(get_db), _=Depends(require_permissions("users:write"))):
+def create_emergency_contact(user_id: str, payload: dict = Body(...), db: Session = Depends(get_db), _=Depends(require_permissions("users:write", "hr:users:edit:general"))):
     from ..models.models import EmployeeEmergencyContact
     e = EmployeeEmergencyContact(
         user_id=user_id,
@@ -1274,7 +1282,7 @@ def update_emergency_contact(user_id: str, eid: str, payload: dict = Body(...), 
 
 
 @router.delete("/users/{user_id}/emergency-contacts/{eid}")
-def delete_emergency_contact(user_id: str, eid: str, db: Session = Depends(get_db), _=Depends(require_permissions("users:write"))):
+def delete_emergency_contact(user_id: str, eid: str, db: Session = Depends(get_db), _=Depends(require_permissions("users:write", "hr:users:edit:general"))):
     from ..models.models import EmployeeEmergencyContact
     db.query(EmployeeEmergencyContact).filter(and_(EmployeeEmergencyContact.user_id == user_id, EmployeeEmergencyContact.id == eid)).delete()
     db.commit()
@@ -1286,7 +1294,7 @@ def delete_emergency_contact(user_id: str, eid: str, db: Session = Depends(get_d
 # =====================
 
 @router.get("/users/{user_id}/visas")
-def list_visas(user_id: str, db: Session = Depends(get_db), _=Depends(require_permissions("users:read"))):
+def list_visas(user_id: str, db: Session = Depends(get_db), _=Depends(require_permissions("users:read", "hr:users:read", "hr:users:view:general"))):
     from ..models.models import EmployeeVisa
     rows = db.query(EmployeeVisa).filter(EmployeeVisa.user_id == user_id).order_by(EmployeeVisa.issued_date.desc()).all()
     def _row(v):
@@ -1306,7 +1314,7 @@ def list_visas(user_id: str, db: Session = Depends(get_db), _=Depends(require_pe
 
 
 @router.post("/users/{user_id}/visas")
-def create_visa(user_id: str, payload: dict = Body(...), db: Session = Depends(get_db), _=Depends(require_permissions("users:write"))):
+def create_visa(user_id: str, payload: dict = Body(...), db: Session = Depends(get_db), _=Depends(require_permissions("users:write", "hr:users:edit:general"))):
     from ..models.models import EmployeeVisa
     from datetime import datetime
     
@@ -1388,7 +1396,7 @@ def update_visa(user_id: str, vid: str, payload: dict = Body(...), db: Session =
 
 
 @router.delete("/users/{user_id}/visas/{vid}")
-def delete_visa(user_id: str, vid: str, db: Session = Depends(get_db), _=Depends(require_permissions("users:write"))):
+def delete_visa(user_id: str, vid: str, db: Session = Depends(get_db), _=Depends(require_permissions("users:write", "hr:users:edit:general"))):
     from ..models.models import EmployeeVisa
     db.query(EmployeeVisa).filter(and_(EmployeeVisa.user_id == user_id, EmployeeVisa.id == vid)).delete()
     db.commit()

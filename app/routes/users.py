@@ -5,7 +5,7 @@ import uuid
 
 from ..db import get_db
 from ..models.models import User, Role, EmployeeProfile
-from ..auth.security import require_permissions
+from ..auth.security import require_permissions, get_current_user
 
 
 router = APIRouter(prefix="/users", tags=["users"])
@@ -80,10 +80,21 @@ def list_users(
 
 
 @router.get("/{user_id}")
-def get_user(user_id: str, db: Session = Depends(get_db), _=Depends(require_permissions("hr:users:read", "users:read"))):  # New HR permission or legacy
+def get_user(user_id: str, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Get user details. All users can view their own data."""
+    from ..auth.security import _has_permission
+    
     u = db.query(User).filter(User.id == user_id).first()
     if not u:
         raise HTTPException(status_code=404, detail="Not found")
+    
+    # Check if user has permission to view other users, or if viewing own data
+    has_permission = _has_permission(user, "hr:users:read") or _has_permission(user, "users:read")
+    is_own_data = str(user.id) == str(user_id)
+    
+    if not has_permission and not is_own_data:
+        raise HTTPException(status_code=403, detail="You can only view your own user data")
+    
     ep = db.query(EmployeeProfile).filter(EmployeeProfile.user_id == u.id).first()
     return _user_to_dict(u, ep)
 
