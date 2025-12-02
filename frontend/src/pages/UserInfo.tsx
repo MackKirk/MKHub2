@@ -621,7 +621,7 @@ function UserLabel({ id, fallback }:{ id:string, fallback:string }){
 export default function UserInfo(){
   const { userId } = useParams();
   const [sp] = useSearchParams();
-  const tabParam = sp.get('tab') as ('personal'|'job'|'emergency'|'docs'|'timesheet'|'permissions') | null;
+  const tabParam = sp.get('tab') as ('personal'|'job'|'docs'|'timesheet'|'permissions') | null;
   const [tab, setTab] = useState<typeof tabParam | 'personal'>(tabParam || 'personal');
   const confirm = useConfirm();
   const queryClient = useQueryClient();
@@ -635,7 +635,7 @@ export default function UserInfo(){
   );
   const canSelfEdit = me && userId && String(me.id) === String(userId);
   
-  // Check edit permissions for general tab (Personal, Job, Emergency, Docs)
+  // Check edit permissions for general tab (Personal, Job, Docs)
   const canEditGeneral = useMemo(() => {
     if (!me) return false;
     const isAdmin = (me?.roles || []).some((r: string) => String(r || '').toLowerCase() === 'admin');
@@ -771,7 +771,7 @@ export default function UserInfo(){
 
   const handleTabChange = async (newTab: typeof tabParam | 'personal') => {
     // Check if user has permission to view this tab
-    const isGeneralTab = ['personal', 'job', 'emergency', 'docs'].includes(newTab);
+    const isGeneralTab = ['personal', 'job', 'docs'].includes(newTab);
     const isTimesheetTab = newTab === 'timesheet';
     const isPermissionsTab = newTab === 'permissions';
     
@@ -920,7 +920,7 @@ export default function UserInfo(){
             </div>
             <div className="mt-4 flex items-center gap-2">
               {([
-                ...(canViewGeneral || canSelfEdit ? ['personal','job','emergency','docs'] : []),
+                ...(canViewGeneral || canSelfEdit ? ['personal','job','docs'] : []),
                 ...(canViewTimesheet || canSelfEdit ? ['timesheet'] : []),
                 ...(canViewPermissions ? ['permissions'] : [])
               ] as const).map((k)=> (
@@ -967,9 +967,17 @@ export default function UserInfo(){
                     <EducationSection userId={String(userId)} canEdit={canEditGeneral} />
                   </div>
                   <div>
-                    <div className="flex items-center gap-2"><h4 className="font-semibold">Visa Information</h4></div>
-                    <div className="text-xs text-gray-500 mt-0.5 mb-2">Work permits and visa details.</div>
-                    <VisaInformationSection userId={String(userId)} canEdit={canEditGeneral} />
+                    <div className="flex items-center gap-2"><h4 className="font-semibold">Legal & Documents</h4></div>
+                    <div className="text-xs text-gray-500 mt-0.5 mb-2">Legal status and identification.</div>
+                    <EditableGrid p={p} editable={canEditGeneral} selfEdit={!!canSelfEdit} userId={String(userId)} collectChanges={collectChanges} inlineSave={false} fields={[['SIN Number','sin_number']]} />
+                    <div className="mt-4">
+                      <VisaInformationSection userId={String(userId)} canEdit={canEditGeneral} />
+                    </div>
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2"><h4 className="font-semibold">Emergency Contacts</h4></div>
+                    <div className="text-xs text-gray-500 mt-0.5 mb-2">People to contact in case of emergency.</div>
+                    <EmergencyContactsSection userId={String(userId)} canEdit={canEditGeneral} />
                   </div>
                 </div>
               )}
@@ -989,20 +997,6 @@ export default function UserInfo(){
                     <div className="flex items-center gap-2"><h4 className="font-semibold">Time Off</h4></div>
                     <div className="text-xs text-gray-500 mt-0.5 mb-2">Request time off and view your balance.</div>
                     <TimeOffSection userId={String(userId)} canEdit={canEditGeneral} />
-                  </div>
-                </div>
-              )}
-              {tab==='emergency' && canViewGeneral && (
-                <div className="space-y-6 pb-24">
-                  <div>
-                    <div className="flex items-center gap-2"><h4 className="font-semibold">Emergency Contacts</h4></div>
-                    <div className="text-xs text-gray-500 mt-0.5 mb-2">People to contact in case of emergency.</div>
-                    <EmergencyContactsSection userId={String(userId)} canEdit={canEditGeneral} />
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2"><h4 className="font-semibold">Legal & Documents</h4></div>
-                    <div className="text-xs text-gray-500 mt-0.5 mb-2">Legal status and identification.</div>
-                    <EditableGrid p={p} editable={canEditGeneral} selfEdit={!!canSelfEdit} userId={String(userId)} collectChanges={collectChanges} inlineSave={false} fields={[['SIN Number','sin_number'],['Work Permit Status','work_permit_status'],['Visa Status','visa_status']]} />
                   </div>
                 </div>
               )}

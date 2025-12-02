@@ -1,6 +1,6 @@
 import { PropsWithChildren, useState, useMemo } from 'react';
-import { Link, NavLink, useLocation } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import NotificationBell from '@/components/NotificationBell';
 
@@ -132,6 +132,8 @@ const IconHumanResources = () => (
 
 export default function AppShell({ children }: PropsWithChildren){
   const location = useLocation();
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { data:meProfile } = useQuery({ queryKey:['me-profile'], queryFn: ()=>api<any>('GET','/auth/me/profile') });
   const { data:me } = useQuery({ queryKey:['me'], queryFn: ()=>api<any>('GET','/auth/me') });
   const displayName = (meProfile?.profile?.preferred_name) || ([meProfile?.profile?.first_name, meProfile?.profile?.last_name].filter(Boolean).join(' ') || meProfile?.user?.username || 'User');
@@ -139,6 +141,12 @@ export default function AppShell({ children }: PropsWithChildren){
   const avatarUrl = avatarId ? `/files/${avatarId}/thumbnail?w=96` : '/ui/assets/login/logo-light.svg';
   const [open, setOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  
+  const handleLogout = () => {
+    localStorage.removeItem('user_token');
+    queryClient.clear(); // Clear all React Query cache
+    navigate('/login', { replace: true });
+  };
   
   const menuCategories: MenuCategory[] = useMemo(() => [
     {
@@ -460,7 +468,7 @@ export default function AppShell({ children }: PropsWithChildren){
                 <div className="absolute right-0 mt-2 w-56 rounded-lg border bg-white text-black shadow-lg z-50">
                   <Link to="/profile" onClick={()=>setOpen(false)} className="block px-3 py-2 hover:bg-gray-50">My Information</Link>
                   <Link to="/reviews/my" onClick={()=>setOpen(false)} className="block px-3 py-2 hover:bg-gray-50">My Reviews</Link>
-                  <button onClick={()=>{ localStorage.removeItem('user_token'); location.href='/login'; }} className="w-full text-left px-3 py-2 hover:bg-gray-50">Logout</button>
+                  <button onClick={handleLogout} className="w-full text-left px-3 py-2 hover:bg-gray-50">Logout</button>
                 </div>
               )}
             </div>

@@ -206,7 +206,37 @@ export default function CustomerNew(){
                   if (!ok) return;
                 }
                 try{
-                  const payload:any = { ...form, name: form.display_name, client_type: form.client_type || 'Customer' };
+                  // Ensure name is always a non-empty string
+                  const nameValue = (form.display_name || form.name || '').trim();
+                  if (!nameValue) {
+                    toast.error('Display name is required');
+                    return;
+                  }
+                  const payload:any = { 
+                    ...form, 
+                    name: nameValue, 
+                    display_name: form.display_name || nameValue,
+                    client_type: form.client_type || 'Customer' 
+                  };
+                  // Remove fields that aren't in the Client schema
+                  const fieldsToRemove = ['email', 'phone', 'payment_terms_id'];
+                  fieldsToRemove.forEach(field => {
+                    delete payload[field];
+                  });
+                  
+                  // Remove empty strings and convert to null for optional fields
+                  // Also handle UUID fields that might be empty strings
+                  Object.keys(payload).forEach(key => {
+                    if (payload[key] === '') {
+                      payload[key] = null;
+                    }
+                    // Handle UUID fields - if empty string or invalid, set to null
+                    if (key === 'estimator_id') {
+                      if (!payload[key] || payload[key] === '') {
+                        payload[key] = null;
+                      }
+                    }
+                  });
                   const created:any = await api('POST','/clients', payload);
                   if (!created?.id){ toast.error('Create failed'); return; }
                   if (contacts.length){
@@ -228,7 +258,11 @@ export default function CustomerNew(){
                   }
                   toast.success('Customer created');
                   nav(`/customers/${encodeURIComponent(String(created.id))}`);
-                }catch(_e){ toast.error('Failed to create'); }
+                }catch(_e: any){ 
+                  const errorMsg = _e?.message || _e?.detail || 'Failed to create customer';
+                  toast.error(errorMsg);
+                  console.error('Create customer error:', _e);
+                }
               }} className="px-4 py-2 rounded bg-brand-red text-white">Create</button>
             )}
         </div>

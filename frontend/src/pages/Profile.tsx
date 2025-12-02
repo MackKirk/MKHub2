@@ -15,7 +15,7 @@ export default function Profile(){
   const p = data?.profile || {};
   const fileRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
-  const [tab, setTab] = useState<'personal'|'job'|'emergency'|'docs'>('personal');
+  const [tab, setTab] = useState<'personal'|'job'|'docs'>('personal');
   // Get current user ID for components
   const { data:me } = useQuery({ queryKey:['me'], queryFn: ()=> api<any>('GET','/auth/me') });
   const userId = me?.id ? String(me.id) : '';
@@ -36,22 +36,33 @@ export default function Profile(){
     hire_date: p.hire_date||'', termination_date: p.termination_date||'',
     job_title: p.job_title||'', division: p.division||'', work_email: p.work_email||'', work_phone: p.work_phone||'',
     manager_user_id: p.manager_user_id||'', pay_rate: p.pay_rate||'', pay_type: p.pay_type||'', employment_type: p.employment_type||'',
-    sin_number: p.sin_number||'', work_permit_status: p.work_permit_status||'', visa_status: p.visa_status||'',
+    sin_number: p.sin_number||'',
     emergency_contact_name: p.emergency_contact_name||'', emergency_contact_relationship: p.emergency_contact_relationship||'', emergency_contact_phone: p.emergency_contact_phone||''
   }); } }, [data]);
   const set = (k:string, v:any)=> setForm((s:any)=>({ ...s, [k]: v }));
 
   // Missing required indicators by category
-  const reqPersonal = ['gender','date_of_birth','marital_status','nationality','mobile_phone','address_line1','city','province','postal_code','country'];
-  const reqEmergency = ['sin_number','work_permit_status','visa_status','emergency_contact_name','emergency_contact_relationship','emergency_contact_phone'];
+  const reqPersonal = ['gender','date_of_birth','marital_status','nationality','mobile_phone','address_line1','city','province','postal_code','country','sin_number'];
   const missingPersonal = reqPersonal.filter(k => !String((form as any)[k]||'').trim());
-  const missingEmergency = reqEmergency.filter(k => !String((form as any)[k]||'').trim());
-  const totalMissing = missingPersonal.length + missingEmergency.length;
+  
+  // Check if at least one emergency contact exists
+  const { data: emergencyContactsData } = useQuery({ 
+    queryKey:['emergency-contacts', userId], 
+    queryFn: ()=> api<any[]>('GET', `/auth/users/${encodeURIComponent(userId)}/emergency-contacts`),
+    enabled: !!userId
+  });
+  const hasEmergencyContact = emergencyContactsData && emergencyContactsData.length > 0;
+  const missingPersonalWithContact = [...missingPersonal];
+  if (!hasEmergencyContact && userId) {
+    missingPersonalWithContact.push('emergency_contact');
+  }
+  
+  const totalMissing = missingPersonalWithContact.length;
   const labelMap: Record<string,string> = {
     gender:'Gender', date_of_birth:'Date of birth', marital_status:'Marital status', nationality:'Nationality',
     mobile_phone:'Mobile phone', address_line1:'Address line 1', city:'City', province:'Province/State', postal_code:'Postal code', country:'Country',
-    sin_number:'SIN/SSN', work_permit_status:'Work permit status', visa_status:'Visa status',
-    emergency_contact_name:'Emergency contact name', emergency_contact_relationship:'Emergency contact relationship', emergency_contact_phone:'Emergency contact phone'
+    sin_number:'SIN/SSN',
+    emergency_contact:'At least one emergency contact'
   };
   return (
     <div>
@@ -62,7 +73,7 @@ export default function Profile(){
         {totalMissing>0 && <span className="text-red-700 text-sm bg-red-50 border border-red-200 rounded-full px-2 py-0.5">Missing {totalMissing}</span>}
       </div>
       <p className="text-sm text-gray-600 mb-2">Please complete your profile. Fields marked with <span className="text-red-600">*</span> are required.</p>
-      <motion.div initial={{opacity:0, y:10}} animate={{opacity:1, y:0}} className="rounded-xl border shadow-hero bg-white">
+      <motion.div initial={{opacity:0, y:10}} animate={{opacity:1, y:0}} className="rounded-xl border shadow-hero bg-white pb-24">
         <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] rounded-t-xl p-5 text-white">
           <div className="flex gap-4 items-stretch min-h-[180px]">
             <div className="w-[220px] relative group">
@@ -75,12 +86,9 @@ export default function Profile(){
               <div className="text-sm opacity-90 mt-1">{p.job_title||data?.user?.email||''}</div>
               <div className="mt-auto flex gap-3">
                 <button onClick={()=>setTab('personal')} className={`px-4 py-2 rounded-full ${tab==='personal'?'bg-black text-white':'bg-white text-black'}`}>
-                  Personal {missingPersonal.length>0 && <span className="ml-2 text-xs bg-red-50 text-red-700 border border-red-200 rounded-full px-2">{missingPersonal.length}</span>}
+                  Personal {missingPersonalWithContact.length>0 && <span className="ml-2 text-xs bg-red-50 text-red-700 border border-red-200 rounded-full px-2">{missingPersonalWithContact.length}</span>}
                 </button>
                 <button onClick={()=>setTab('job')} className={`px-4 py-2 rounded-full ${tab==='job'?'bg-black text-white':'bg-white text-black'}`}>Job</button>
-                <button onClick={()=>setTab('emergency')} className={`px-4 py-2 rounded-full ${tab==='emergency'?'bg-black text-white':'bg-white text-black'}`}>
-                  Emergency {missingEmergency.length>0 && <span className="ml-2 text-xs bg-red-50 text-red-700 border border-red-200 rounded-full px-2">{missingEmergency.length}</span>}
-                </button>
                 <button onClick={()=>setTab('docs')} className={`px-4 py-2 rounded-full ${tab==='docs'?'bg-black text-white':'bg-white text-black'}`}>Documents</button>
               </div>
             </div>
@@ -196,9 +204,17 @@ export default function Profile(){
                         <EducationSection userId={userId} canEdit={true} />
                       </div>
                       <div>
-                        <div className="flex items-center gap-2"><h4 className="font-semibold">Visa Information</h4></div>
-                        <div className="text-xs text-gray-500 mt-0.5 mb-2">Work permits and visa details.</div>
+                        <div className="flex items-center gap-2"><h4 className="font-semibold">Legal & Documents</h4></div>
+                        <div className="text-xs text-gray-500 mt-0.5 mb-2">Legal status and identification.</div>
+                        <div className="grid md:grid-cols-2 gap-4 mb-4">
+                          <Field label="SIN/SSN" required invalid={missingPersonal.includes('sin_number')}><input value={form.sin_number || ''} onChange={e=>set('sin_number', e.target.value)} className="w-full rounded-lg border px-3 py-2"/></Field>
+                        </div>
                         <VisaInformationSection userId={userId} canEdit={true} />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2"><h4 className="font-semibold">Emergency Contacts</h4></div>
+                        <div className="text-xs text-gray-500 mt-0.5 mb-2">People to contact in case of emergency.</div>
+                        <EmergencyContactsSection userId={userId} canEdit={true} />
                       </div>
                     </>
                   )}
@@ -237,76 +253,56 @@ export default function Profile(){
                   )}
                 </div>
               )}
-              {tab==='emergency' && (
-                <div className="space-y-6 pb-24">
-                  <div>
-                    <div className="flex items-center gap-2"><h4 className="font-semibold">Emergency Contacts</h4></div>
-                    <div className="text-xs text-gray-500 mt-0.5 mb-2">People to contact in case of emergency.</div>
-                    {userId ? <EmergencyContactsSection userId={userId} canEdit={true} /> : <div className="text-sm text-gray-600">Loading...</div>}
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2"><h4 className="font-semibold">Primary Emergency Contact</h4></div>
-                    <div className="text-xs text-gray-500 mt-0.5 mb-2">Primary contact information for emergencies.</div>
-                    <div className="grid md:grid-cols-2 gap-4">
-                      <Field label="Emergency contact name" required invalid={missingEmergency.includes('emergency_contact_name')}><input value={form.emergency_contact_name || ''} onChange={e=>set('emergency_contact_name', e.target.value)} className="w-full rounded-lg border px-3 py-2"/></Field>
-                      <Field label="Emergency contact relationship" required invalid={missingEmergency.includes('emergency_contact_relationship')}><input value={form.emergency_contact_relationship || ''} onChange={e=>set('emergency_contact_relationship', e.target.value)} className="w-full rounded-lg border px-3 py-2"/></Field>
-                      <Field label="Emergency contact phone" required invalid={missingEmergency.includes('emergency_contact_phone')}><input value={form.emergency_contact_phone || ''} onChange={e=>set('emergency_contact_phone', e.target.value)} className="w-full rounded-lg border px-3 py-2"/></Field>
-                    </div>
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2"><h4 className="font-semibold">Legal & Documents</h4></div>
-                    <div className="text-xs text-gray-500 mt-0.5 mb-2">Legal status and identification.</div>
-                    <div className="grid md:grid-cols-2 gap-4">
-                      <Field label="SIN/SSN" required invalid={missingEmergency.includes('sin_number')}><input value={form.sin_number || ''} onChange={e=>set('sin_number', e.target.value)} className="w-full rounded-lg border px-3 py-2"/></Field>
-                      <Field label="Work permit status" required invalid={missingEmergency.includes('work_permit_status')}><input value={form.work_permit_status || ''} onChange={e=>set('work_permit_status', e.target.value)} className="w-full rounded-lg border px-3 py-2"/></Field>
-                      <Field label="Visa status" required invalid={missingEmergency.includes('visa_status')}><input value={form.visa_status || ''} onChange={e=>set('visa_status', e.target.value)} className="w-full rounded-lg border px-3 py-2"/></Field>
-                    </div>
-                  </div>
-                </div>
-              )}
               {tab==='docs' && (
                 userId ? <UserDocuments userId={userId} canEdit={true} /> : <div className="text-sm text-gray-600">Loading...</div>
               )}
-              <div className="mt-6">
-                <div className="bg-red-50 border border-red-200 rounded p-3">
-                  <div className="flex items-start justify-between gap-4 flex-wrap">
-                    <div className="text-sm text-gray-700 flex-1 min-w-[240px]">
-                      {totalMissing>0 ? (
-                        <>
-                          <div className="font-semibold text-red-700 mb-1">Missing required fields</div>
-                          <ul className="list-disc pl-5 text-red-700">
-                            {(tab === 'personal' ? missingPersonal : tab === 'emergency' ? missingEmergency : [...missingPersonal, ...missingEmergency]).map(k=> (<li key={k}>{labelMap[k]||k}</li>))}
-                          </ul>
-                        </>
-                      ) : (
-                        <div className="text-green-700 font-semibold">All required fields completed ✓</div>
-                      )}
-                    </div>
-                    <div className="flex gap-3">
-                      {tab === 'personal' && missingPersonal.length === 0 && (
-                        <button 
-                          onClick={() => setTab('emergency')}
-                          className="px-6 py-2 rounded-xl bg-gradient-to-r from-brand-red to-[#ee2b2b] text-white font-bold hover:opacity-90 transition-opacity"
-                        >
-                          Next →
-                        </button>
-                      )}
-                      <button disabled={totalMissing>0} onClick={async()=>{
-                        if (totalMissing>0){ toast.error('Please complete required fields'); return; }
-                        try{
-                          await api('PUT','/auth/me/profile', form);
-                          toast.success('Profile saved');
-                          await queryClient.invalidateQueries({ queryKey:['meProfile'] });
-                        }catch(e){ toast.error('Failed to save'); }
-                      }} className="px-5 py-2 rounded-xl bg-gradient-to-r from-brand-red to-[#ee2b2b] text-white font-bold disabled:opacity-50 disabled:cursor-not-allowed">Save</button>
+              {totalMissing > 0 && (
+                <div className="mt-6">
+                  <div className="bg-red-50 border border-red-200 rounded p-3">
+                    <div className="text-sm text-gray-700">
+                      <div className="font-semibold text-red-700 mb-1">Missing required fields</div>
+                      <ul className="list-disc pl-5 text-red-700">
+                        {missingPersonalWithContact.map(k=> (<li key={k}>{labelMap[k]||k}</li>))}
+                      </ul>
                     </div>
                   </div>
                 </div>
-              </div>
+              )}
             </>
           )}
         </div>
       </motion.div>
+      <div className="fixed bottom-0 left-0 right-0 z-40">
+        <div className="max-w-[1200px] mx-auto px-4">
+          <div className="mb-3 rounded-xl border bg-white shadow-hero p-3 flex items-center gap-3">
+            <div className={`text-sm ${totalMissing > 0 ? 'text-amber-700' : 'text-green-700'}`}>
+              {totalMissing > 0 ? (
+                <>
+                  Missing {totalMissing} required field{totalMissing > 1 ? 's' : ''}
+                </>
+              ) : (
+                'All required fields completed'
+              )}
+            </div>
+            <div className="flex gap-3 ml-auto">
+              <button 
+                disabled={totalMissing > 0} 
+                onClick={async()=>{
+                  if (totalMissing > 0){ toast.error('Please complete required fields'); return; }
+                  try{
+                    await api('PUT','/auth/me/profile', form);
+                    toast.success('Profile saved');
+                    await queryClient.invalidateQueries({ queryKey:['meProfile'] });
+                  }catch(e){ toast.error('Failed to save'); }
+                }} 
+                className={`px-4 py-2 rounded text-white ${totalMissing > 0 ? 'bg-gray-400 cursor-not-allowed' : 'bg-gradient-to-r from-brand-red to-[#ee2b2b]'}`}
+              >
+                Save
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -796,20 +792,29 @@ function EmergencyContactsSection({ userId, canEdit }:{ userId:string, canEdit:b
   const [name, setName] = useState('');
   const [relationship, setRelationship] = useState('');
   const [mobilePhone, setMobilePhone] = useState('');
-  const [homePhone, setHomePhone] = useState('');
   const [workPhone, setWorkPhone] = useState('');
   const [email, setEmail] = useState('');
   const [address, setAddress] = useState('');
+  const [addressCity, setAddressCity] = useState('');
+  const [addressProvince, setAddressProvince] = useState('');
+  const [addressPostalCode, setAddressPostalCode] = useState('');
+  const [addressCountry, setAddressCountry] = useState('');
   const [isPrimary, setIsPrimary] = useState(false);
   const [eName, setEName] = useState('');
   const [eRelationship, setERelationship] = useState('');
   const [eMobilePhone, setEMobilePhone] = useState('');
-  const [eHomePhone, setEHomePhone] = useState('');
   const [eWorkPhone, setEWorkPhone] = useState('');
   const [eEmail, setEEmail] = useState('');
   const [eAddress, setEAddress] = useState('');
+  const [eAddressCity, setEAddressCity] = useState('');
+  const [eAddressProvince, setEAddressProvince] = useState('');
+  const [eAddressPostalCode, setEAddressPostalCode] = useState('');
+  const [eAddressCountry, setEAddressCountry] = useState('');
   const [eIsPrimary, setEIsPrimary] = useState(false);
   const confirm = useConfirm();
+  
+  // Check if this is the first contact (no contacts exist)
+  const isFirstContact = !data || data.length === 0;
   
   const formatPhone = (v:string)=>{
     const d = String(v||'').replace(/\D+/g,'').slice(0,11);
@@ -824,10 +829,13 @@ function EmergencyContactsSection({ userId, canEdit }:{ userId:string, canEdit:b
     setEName(c.name||'');
     setERelationship(c.relationship||'');
     setEMobilePhone(c.mobile_phone||'');
-    setEHomePhone(c.home_phone||'');
     setEWorkPhone(c.work_phone||'');
     setEEmail(c.email||'');
     setEAddress(c.address||'');
+    setEAddressCity(c.address_city||'');
+    setEAddressProvince(c.address_province||'');
+    setEAddressPostalCode(c.address_postal_code||'');
+    setEAddressCountry(c.address_country||'');
     setEIsPrimary(c.is_primary||false);
   };
   
@@ -836,29 +844,62 @@ function EmergencyContactsSection({ userId, canEdit }:{ userId:string, canEdit:b
   };
   
   const handleCreate = async () => {
+    // Validate required fields
     if (!name.trim()) {
       toast.error('Name is required');
       return;
     }
+    if (!relationship.trim()) {
+      toast.error('Relationship is required');
+      return;
+    }
+    if (!mobilePhone.trim()) {
+      toast.error('Mobile Phone is required');
+      return;
+    }
+    if (!address.trim()) {
+      toast.error('Address is required');
+      return;
+    }
+    
     try {
+      // If this is the first contact, automatically set as primary
+      const willBePrimary = isFirstContact || isPrimary;
+      
+      // If setting as primary, first unset any existing primary contacts
+      if (willBePrimary && data && data.length > 0) {
+        const primaryContact = data.find((c: any) => c.is_primary);
+        if (primaryContact) {
+          await api('PATCH', `/auth/users/${encodeURIComponent(userId)}/emergency-contacts/${primaryContact.id}`, {
+            is_primary: false
+          });
+        }
+      }
+      
       await api('POST', `/auth/users/${encodeURIComponent(userId)}/emergency-contacts`, {
         name,
         relationship,
         mobile_phone: mobilePhone,
-        home_phone: homePhone,
         work_phone: workPhone,
         email,
         address,
-        is_primary: isPrimary
+        address_city: addressCity,
+        address_province: addressProvince,
+        address_postal_code: addressPostalCode,
+        address_country: addressCountry,
+        is_primary: willBePrimary
       });
       toast.success('Emergency contact created');
       setName('');
       setRelationship('');
       setMobilePhone('');
-      setHomePhone('');
       setWorkPhone('');
       setEmail('');
       setAddress('');
+      setAddressCity('');
+      setAddressProvince('');
+      setAddressPostalCode('');
+      setAddressCountry('');
       setIsPrimary(false);
       setCreateOpen(false);
       refetch();
@@ -868,19 +909,46 @@ function EmergencyContactsSection({ userId, canEdit }:{ userId:string, canEdit:b
   };
   
   const handleUpdate = async (contactId: string) => {
+    // Validate required fields
     if (!eName.trim()) {
       toast.error('Name is required');
       return;
     }
+    if (!eRelationship.trim()) {
+      toast.error('Relationship is required');
+      return;
+    }
+    if (!eMobilePhone.trim()) {
+      toast.error('Mobile Phone is required');
+      return;
+    }
+    if (!eAddress.trim()) {
+      toast.error('Address is required');
+      return;
+    }
+    
     try {
+      // If setting as primary, first unset any existing primary contacts
+      if (eIsPrimary && data && data.length > 0) {
+        const primaryContact = data.find((c: any) => c.is_primary && c.id !== contactId);
+        if (primaryContact) {
+          await api('PATCH', `/auth/users/${encodeURIComponent(userId)}/emergency-contacts/${primaryContact.id}`, {
+            is_primary: false
+          });
+        }
+      }
+      
       await api('PATCH', `/auth/users/${encodeURIComponent(userId)}/emergency-contacts/${contactId}`, {
         name: eName,
         relationship: eRelationship,
         mobile_phone: eMobilePhone,
-        home_phone: eHomePhone,
         work_phone: eWorkPhone,
         email: eEmail,
         address: eAddress,
+        address_city: eAddressCity,
+        address_province: eAddressProvince,
+        address_postal_code: eAddressPostalCode,
+        address_country: eAddressCountry,
         is_primary: eIsPrimary
       });
       toast.success('Emergency contact updated');
@@ -905,6 +973,16 @@ function EmergencyContactsSection({ userId, canEdit }:{ userId:string, canEdit:b
   
   const handleSetPrimary = async (contactId: string) => {
     try {
+      // First unset any existing primary contacts
+      if (data && data.length > 0) {
+        const primaryContact = data.find((c: any) => c.is_primary && c.id !== contactId);
+        if (primaryContact) {
+          await api('PATCH', `/auth/users/${encodeURIComponent(userId)}/emergency-contacts/${primaryContact.id}`, {
+            is_primary: false
+          });
+        }
+      }
+      
       await api('PATCH', `/auth/users/${encodeURIComponent(userId)}/emergency-contacts/${contactId}`, {
         is_primary: true
       });
@@ -947,7 +1025,8 @@ function EmergencyContactsSection({ userId, canEdit }:{ userId:string, canEdit:b
                         type="checkbox" 
                         checked={eIsPrimary} 
                         onChange={e => setEIsPrimary(e.target.checked)}
-                        className="rounded"
+                        disabled={data && data.length === 1 && eIsPrimary}
+                        className="rounded disabled:opacity-50 disabled:cursor-not-allowed"
                       />
                     </div>
                   </div>
@@ -961,27 +1040,29 @@ function EmergencyContactsSection({ userId, canEdit }:{ userId:string, canEdit:b
                       />
                     </div>
                     <div>
-                      <label className="text-xs text-gray-600">Relationship</label>
+                      <label className="text-xs text-gray-600">Relationship *</label>
                       <input 
                         className="border rounded px-2 py-1 w-full" 
                         value={eRelationship} 
                         onChange={e => setERelationship(e.target.value)} 
                       />
                     </div>
+                    <div className="flex items-center gap-2">
+                      <label className="text-xs text-gray-600">Primary</label>
+                      <input 
+                        type="checkbox" 
+                        checked={eIsPrimary} 
+                        onChange={e => setEIsPrimary(e.target.checked)}
+                        disabled={data && data.length === 1 && eIsPrimary}
+                        className="rounded disabled:opacity-50 disabled:cursor-not-allowed"
+                      />
+                    </div>
                     <div>
-                      <label className="text-xs text-gray-600">Mobile Phone</label>
+                      <label className="text-xs text-gray-600">Phone *</label>
                       <input 
                         className="border rounded px-2 py-1 w-full" 
                         value={eMobilePhone} 
                         onChange={e => setEMobilePhone(formatPhone(e.target.value))} 
-                      />
-                    </div>
-                    <div>
-                      <label className="text-xs text-gray-600">Home Phone</label>
-                      <input 
-                        className="border rounded px-2 py-1 w-full" 
-                        value={eHomePhone} 
-                        onChange={e => setEHomePhone(formatPhone(e.target.value))} 
                       />
                     </div>
                     <div>
@@ -1002,11 +1083,19 @@ function EmergencyContactsSection({ userId, canEdit }:{ userId:string, canEdit:b
                       />
                     </div>
                     <div className="col-span-2">
-                      <label className="text-xs text-gray-600">Address</label>
-                      <input 
-                        className="border rounded px-2 py-1 w-full" 
-                        value={eAddress} 
-                        onChange={e => setEAddress(e.target.value)} 
+                      <label className="text-xs text-gray-600">Address *</label>
+                      <AddressAutocomplete
+                        value={eAddress || ''}
+                        onChange={(value) => setEAddress(value)}
+                        onAddressSelect={(address) => {
+                          setEAddress(address.address_line1 || '');
+                          if (address.city !== undefined) setEAddressCity(address.city);
+                          if (address.province !== undefined) setEAddressProvince(address.province);
+                          if (address.postal_code !== undefined) setEAddressPostalCode(address.postal_code);
+                          if (address.country !== undefined) setEAddressCountry(address.country);
+                        }}
+                        placeholder="Start typing an address..."
+                        className="w-full rounded border px-2 py-1"
                       />
                     </div>
                   </div>
@@ -1043,12 +1132,6 @@ function EmergencyContactsSection({ userId, canEdit }:{ userId:string, canEdit:b
                       <div>
                         <div className="text-[11px] uppercase text-gray-500">Mobile</div>
                         <div className="text-gray-700">{c.mobile_phone}</div>
-                      </div>
-                    )}
-                    {c.home_phone && (
-                      <div>
-                        <div className="text-[11px] uppercase text-gray-500">Home</div>
-                        <div className="text-gray-700">{c.home_phone}</div>
                       </div>
                     )}
                     {c.work_phone && (
@@ -1104,7 +1187,7 @@ function EmergencyContactsSection({ userId, canEdit }:{ userId:string, canEdit:b
                 />
               </div>
               <div>
-                <label className="text-xs text-gray-600">Relationship</label>
+                <label className="text-xs text-gray-600">Relationship *</label>
                 <input 
                   className="border rounded px-3 py-2 w-full" 
                   value={relationship} 
@@ -1116,27 +1199,22 @@ function EmergencyContactsSection({ userId, canEdit }:{ userId:string, canEdit:b
                 <div className="flex items-center gap-2 mt-2">
                   <input 
                     type="checkbox" 
-                    checked={isPrimary} 
+                    checked={isFirstContact || isPrimary} 
                     onChange={e => setIsPrimary(e.target.checked)}
-                    className="rounded"
+                    disabled={isFirstContact}
+                    className="rounded disabled:opacity-50 disabled:cursor-not-allowed"
                   />
-                  <span className="text-xs text-gray-600">Set as primary contact</span>
+                  <span className="text-xs text-gray-600">
+                    {isFirstContact ? 'Primary contact' : 'Set as primary contact'}
+                  </span>
                 </div>
               </div>
               <div>
-                <label className="text-xs text-gray-600">Mobile Phone</label>
+                <label className="text-xs text-gray-600">Phone *</label>
                 <input 
                   className="border rounded px-3 py-2 w-full" 
                   value={mobilePhone} 
                   onChange={e => setMobilePhone(formatPhone(e.target.value))} 
-                />
-              </div>
-              <div>
-                <label className="text-xs text-gray-600">Home Phone</label>
-                <input 
-                  className="border rounded px-3 py-2 w-full" 
-                  value={homePhone} 
-                  onChange={e => setHomePhone(formatPhone(e.target.value))} 
                 />
               </div>
               <div>
@@ -1157,11 +1235,19 @@ function EmergencyContactsSection({ userId, canEdit }:{ userId:string, canEdit:b
                 />
               </div>
               <div className="col-span-2">
-                <label className="text-xs text-gray-600">Address</label>
-                <input 
-                  className="border rounded px-3 py-2 w-full" 
-                  value={address} 
-                  onChange={e => setAddress(e.target.value)} 
+                <label className="text-xs text-gray-600">Address *</label>
+                <AddressAutocomplete
+                  value={address || ''}
+                  onChange={(value) => setAddress(value)}
+                  onAddressSelect={(address) => {
+                    setAddress(address.address_line1 || '');
+                    if (address.city !== undefined) setAddressCity(address.city);
+                    if (address.province !== undefined) setAddressProvince(address.province);
+                    if (address.postal_code !== undefined) setAddressPostalCode(address.postal_code);
+                    if (address.country !== undefined) setAddressCountry(address.country);
+                  }}
+                  placeholder="Start typing an address..."
+                  className="w-full rounded border px-3 py-2"
                 />
               </div>
               <div className="col-span-2 text-right">
