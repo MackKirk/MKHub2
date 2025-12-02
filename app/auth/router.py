@@ -96,12 +96,21 @@ def invite_user(req: InviteRequest, db: Session = Depends(get_db), user: User = 
     last_name = name_parts[1] if len(name_parts) > 1 else email_local
     suggested = find_available_username(db, first_name, last_name)
     
+    # Store division_ids if provided (for multiple departments)
+    division_ids_list = None
+    if req.division_ids and len(req.division_ids) > 0:
+        division_ids_list = req.division_ids
+    elif req.division_id:
+        # Legacy: support single division_id for backward compatibility
+        division_ids_list = [req.division_id]
+    
     inv = Invite(
         email_personal=req.email_personal,
         token=token,
         suggested_username=suggested,
         created_by=user.id,
         expires_at=datetime.now(timezone.utc) + timedelta(days=7),
+        division_ids=division_ids_list,
     )
     db.add(inv)
     db.commit()
@@ -119,7 +128,7 @@ def invite_user(req: InviteRequest, db: Session = Depends(get_db), user: User = 
     # Email if SMTP is configured
     try:
         if settings.smtp_host and settings.mail_from and settings.public_base_url:
-            invite_link = f"{settings.public_base_url}/ui/register.html?token={token}"
+            invite_link = f"{settings.public_base_url}/register?token={token}"
             
             msg = MIMEMultipart("alternative")
             msg["Subject"] = f"Welcome to {settings.app_name} - Complete Your Onboarding"
@@ -225,10 +234,16 @@ def generate_invite_email_html(
                             <!-- CTA Button -->
                             <table role="presentation" style="width: 100%; margin: 30px 0;">
                                 <tr>
-                                    <td align="center">
-                                        <a href="{invite_link}" style="display: inline-block; padding: 14px 32px; background: linear-gradient(90deg, #d11616 0%, #ee2b2b 100%); color: #ffffff; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 16px; box-shadow: 0 4px 12px rgba(209, 22, 22, 0.3);">
-                                            Complete Your Onboarding
-                                        </a>
+                                    <td align="center" style="padding: 20px 0;">
+                                        <table role="presentation" cellspacing="0" cellpadding="0" border="0">
+                                            <tr>
+                                                <td align="center" style="background: linear-gradient(90deg, #d11616 0%, #ee2b2b 100%); border-radius: 8px; box-shadow: 0 4px 12px rgba(209, 22, 22, 0.3);">
+                                                    <a href="{invite_link}" style="display: inline-block; padding: 14px 32px; color: #ffffff; text-decoration: none; font-weight: 600; font-size: 16px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
+                                                        Complete Your Onboarding
+                                                    </a>
+                                                </td>
+                                            </tr>
+                                        </table>
                                     </td>
                                 </tr>
                             </table>
@@ -456,6 +471,22 @@ def register(payload: RegisterPayload, db: Session = Depends(get_db)):
         structlog.get_logger().warning("profile_create_failed", error=str(e))
         db.rollback()
 
+    # Apply divisions from invite if any
+    if inv.division_ids and len(inv.division_ids) > 0:
+        try:
+            from ..models.models import SettingList, SettingItem
+            divisions_list = db.query(SettingList).filter(SettingList.name == "divisions").first()
+            if divisions_list:
+                division_items = db.query(SettingItem).filter(
+                    SettingItem.list_id == divisions_list.id,
+                    SettingItem.id.in_([uuid.UUID(did) for did in inv.division_ids])
+                ).all()
+                user.divisions = division_items
+                db.commit()
+        except Exception as e:
+            structlog.get_logger().warning("division_assignment_failed", error=str(e))
+            # Don't fail registration if division assignment fails
+
     # Assign onboarding training courses
     try:
         from ..services.training import assign_onboarding_courses
@@ -570,6 +601,8 @@ def my_profile(user: User = Depends(get_current_user), db: Session = Depends(get
     from ..models.models import EmployeeProfile
 
     ep = db.query(EmployeeProfile).filter(EmployeeProfile.user_id == user.id).first()
+    # Get user divisions
+    divisions = [{"id": str(d.id), "label": d.label} for d in getattr(user, 'divisions', [])]
     data = {
         "user": {
             "id": str(user.id),
@@ -579,6 +612,7 @@ def my_profile(user: User = Depends(get_current_user), db: Session = Depends(get
             "created_at": user.created_at.isoformat() if user.created_at else None,
             "last_login_at": user.last_login_at.isoformat() if user.last_login_at else None,
             "roles": [r.name for r in user.roles],
+            "divisions": divisions,
             "first_name": None,
             "last_name": None,
         },
@@ -756,12 +790,15 @@ def get_user_profile(user_id: str, db: Session = Depends(get_db), me: User = Dep
     if not u:
         raise HTTPException(status_code=404, detail="Not found")
     ep = db.query(EmployeeProfile).filter(EmployeeProfile.user_id == u.id).first()
+    # Get user divisions
+    divisions = [{"id": str(d.id), "label": d.label} for d in getattr(u, 'divisions', [])]
     return {
         "user": {
             "id": str(u.id),
             "username": u.username,
             "email": u.email_personal,
             "is_active": u.is_active,
+            "divisions": divisions,
         },
         "profile": {
             k: getattr(ep, k)

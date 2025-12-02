@@ -5,6 +5,7 @@ import { queryClient } from './lib/queryClient';
 import ConfirmProvider from './components/ConfirmProvider';
 import AppShell from './AppShell';
 import Login from './pages/Login';
+import Register from './pages/Register';
 import PasswordReset from './pages/PasswordReset';
 import Protected from './lib/protected';
 import Profile from './pages/Profile';
@@ -74,6 +75,7 @@ export default function App(){
         <Route path="/" element={<Home/>} />
         <Route path="/index.html" element={<Home/>} />
         <Route path="/login" element={<Login/>} />
+        <Route path="/register" element={<Register/>} />
         <Route path="/password-reset" element={<PasswordReset/>} />
         <Route element={<Protected/>}>
           <Route path="/home" element={<AppShell><HomePage/></AppShell>} />

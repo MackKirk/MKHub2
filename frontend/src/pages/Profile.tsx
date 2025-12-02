@@ -8,7 +8,7 @@ import { useConfirm } from '@/components/ConfirmProvider';
 import NationalitySelect from '@/components/NationalitySelect';
 import AddressAutocomplete from '@/components/AddressAutocomplete';
 
-type ProfileResp = { user:{ username:string, email:string, first_name?:string, last_name?:string }, profile?: any };
+type ProfileResp = { user:{ username:string, email:string, first_name?:string, last_name?:string, divisions?: Array<{id:string, label:string}> }, profile?: any };
 
 export default function Profile(){
   const { data, isLoading } = useQuery({ queryKey:['meProfile'], queryFn: ()=>api<ProfileResp>('GET','/auth/me/profile') });
@@ -42,7 +42,7 @@ export default function Profile(){
   const set = (k:string, v:any)=> setForm((s:any)=>({ ...s, [k]: v }));
 
   // Missing required indicators by category
-  const reqPersonal = ['gender','date_of_birth','marital_status','nationality','mobile_phone','address_line1','city','province','postal_code','country','sin_number'];
+  const reqPersonal = ['gender','date_of_birth','marital_status','nationality','phone','address_line1','city','province','postal_code','country','sin_number'];
   const missingPersonal = reqPersonal.filter(k => !String((form as any)[k]||'').trim());
   
   // Check if at least one emergency contact exists
@@ -58,9 +58,19 @@ export default function Profile(){
   }
   
   const totalMissing = missingPersonalWithContact.length;
+  
+  // Phone formatting function (same as in emergency contacts)
+  const formatPhone = (v:string)=>{
+    const d = String(v||'').replace(/\D+/g,'').slice(0,11);
+    if (d.length<=3) return d;
+    if (d.length<=6) return `(${d.slice(0,3)}) ${d.slice(3)}`;
+    if (d.length<=10) return `(${d.slice(0,3)}) ${d.slice(3,6)}-${d.slice(6)}`;
+    return `+${d.slice(0,1)} (${d.slice(1,4)}) ${d.slice(4,7)}-${d.slice(7,11)}`;
+  };
+  
   const labelMap: Record<string,string> = {
     gender:'Gender', date_of_birth:'Date of birth', marital_status:'Marital status', nationality:'Nationality',
-    mobile_phone:'Mobile phone', address_line1:'Address line 1', city:'City', province:'Province/State', postal_code:'Postal code', country:'Country',
+    phone:'Phone 1', address_line1:'Address line 1', city:'City', province:'Province/State', postal_code:'Postal code', country:'Country',
     sin_number:'SIN/SSN',
     emergency_contact:'At least one emergency contact'
   };
@@ -192,8 +202,8 @@ export default function Profile(){
                     <div className="flex items-center gap-2"><h4 className="font-semibold">Contact</h4></div>
                     <div className="text-xs text-gray-500 mt-0.5 mb-2">How we can reach you.</div>
                     <div className="grid md:grid-cols-2 gap-4">
-                      <Field label="Phone"><input type="text" value={form.phone || ''} onChange={e=>set('phone', e.target.value)} className="w-full rounded-lg border px-3 py-2"/></Field>
-                      <Field label="Mobile phone" required invalid={missingPersonal.includes('mobile_phone')}><input type="text" value={form.mobile_phone || ''} onChange={e=>set('mobile_phone', e.target.value)} className="w-full rounded-lg border px-3 py-2"/></Field>
+                      <Field label="Phone 1" required invalid={missingPersonal.includes('phone')}><input type="text" value={form.phone || ''} onChange={e=>set('phone', formatPhone(e.target.value))} className="w-full rounded-lg border px-3 py-2"/></Field>
+                      <Field label="Phone 2"><input type="text" value={form.mobile_phone || ''} onChange={e=>set('mobile_phone', formatPhone(e.target.value))} className="w-full rounded-lg border px-3 py-2"/></Field>
                     </div>
                   </div>
                   {userId && (
@@ -218,6 +228,18 @@ export default function Profile(){
                       </div>
                     </>
                   )}
+                  {totalMissing > 0 && (
+                    <div className="mt-6">
+                      <div className="bg-red-50 border border-red-200 rounded p-3">
+                        <div className="text-sm text-gray-700">
+                          <div className="font-semibold text-red-700 mb-1">Missing required fields</div>
+                          <ul className="list-disc pl-5 text-red-700">
+                            {missingPersonalWithContact.map(k=> (<li key={k}>{labelMap[k]||k}</li>))}
+                          </ul>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
               {tab==='job' && (
@@ -238,7 +260,13 @@ export default function Profile(){
                     <div className="flex items-center gap-2"><h4 className="font-semibold">Organization</h4></div>
                     <div className="text-xs text-gray-500 mt-0.5 mb-2">Reporting and work contacts.</div>
                     <div className="grid md:grid-cols-2 gap-4">
-                      <Field label="Division"><input value={form.division || ''} readOnly className="w-full rounded-lg border px-3 py-2 bg-gray-50"/></Field>
+                      <Field label="Department">
+                        <div className="w-full rounded-lg border px-3 py-2 bg-gray-50 min-h-[42px] flex items-center">
+                          {data?.user?.divisions && data.user.divisions.length > 0
+                            ? data.user.divisions.map((d: any) => d.label).join(', ')
+                            : (form.division || '—')}
+                        </div>
+                      </Field>
                       <Field label="Work email"><input type="email" value={form.work_email || ''} readOnly className="w-full rounded-lg border px-3 py-2 bg-gray-50"/></Field>
                       <Field label="Work phone"><input value={form.work_phone || ''} readOnly className="w-full rounded-lg border px-3 py-2 bg-gray-50"/></Field>
                       <Field label="Manager"><input value={form.manager_user_id || ''} readOnly className="w-full rounded-lg border px-3 py-2 bg-gray-50"/></Field>
@@ -255,18 +283,6 @@ export default function Profile(){
               )}
               {tab==='docs' && (
                 userId ? <UserDocuments userId={userId} canEdit={true} /> : <div className="text-sm text-gray-600">Loading...</div>
-              )}
-              {totalMissing > 0 && (
-                <div className="mt-6">
-                  <div className="bg-red-50 border border-red-200 rounded p-3">
-                    <div className="text-sm text-gray-700">
-                      <div className="font-semibold text-red-700 mb-1">Missing required fields</div>
-                      <ul className="list-disc pl-5 text-red-700">
-                        {missingPersonalWithContact.map(k=> (<li key={k}>{labelMap[k]||k}</li>))}
-                      </ul>
-                    </div>
-                  </div>
-                </div>
               )}
             </>
           )}
@@ -857,10 +873,6 @@ function EmergencyContactsSection({ userId, canEdit }:{ userId:string, canEdit:b
       toast.error('Mobile Phone is required');
       return;
     }
-    if (!address.trim()) {
-      toast.error('Address is required');
-      return;
-    }
     
     try {
       // If this is the first contact, automatically set as primary
@@ -922,10 +934,6 @@ function EmergencyContactsSection({ userId, canEdit }:{ userId:string, canEdit:b
       toast.error('Mobile Phone is required');
       return;
     }
-    if (!eAddress.trim()) {
-      toast.error('Address is required');
-      return;
-    }
     
     try {
       // If setting as primary, first unset any existing primary contacts
@@ -960,8 +968,8 @@ function EmergencyContactsSection({ userId, canEdit }:{ userId:string, canEdit:b
   };
   
   const handleDelete = async (contactId: string) => {
-    const ok = await confirm({ title:'Delete contact', message:'Are you sure you want to delete this emergency contact?' });
-    if(!ok) return;
+    const result = await confirm({ title:'Delete emergency contact', message:'Are you sure you want to delete this emergency contact? This action cannot be undone.', confirmText:'Delete', cancelText:'Cancel' });
+    if(result !== 'confirm') return;
     try {
       await api('DELETE', `/auth/users/${encodeURIComponent(userId)}/emergency-contacts/${contactId}`);
       toast.success('Emergency contact deleted');
@@ -1083,7 +1091,7 @@ function EmergencyContactsSection({ userId, canEdit }:{ userId:string, canEdit:b
                       />
                     </div>
                     <div className="col-span-2">
-                      <label className="text-xs text-gray-600">Address *</label>
+                      <label className="text-xs text-gray-600">Address</label>
                       <AddressAutocomplete
                         value={eAddress || ''}
                         onChange={(value) => setEAddress(value)}
@@ -1235,7 +1243,7 @@ function EmergencyContactsSection({ userId, canEdit }:{ userId:string, canEdit:b
                 />
               </div>
               <div className="col-span-2">
-                <label className="text-xs text-gray-600">Address *</label>
+                <label className="text-xs text-gray-600">Address</label>
                 <AddressAutocomplete
                   value={address || ''}
                   onChange={(value) => setAddress(value)}

@@ -701,6 +701,8 @@ export default function UserInfo(){
   const [pending, setPending] = useState<any>({});
   const [dirty, setDirty] = useState<boolean>(false);
   const [permissionsDirty, setPermissionsDirty] = useState<boolean>(false);
+  const [divisionsDirty, setDivisionsDirty] = useState<boolean>(false);
+  const [selectedDivisions, setSelectedDivisions] = useState<string[]>([]);
   const permissionsRef = useRef<UserPermissionsRef>(null);
   const { data:usersOptions } = useQuery({ queryKey:['users-options'], queryFn: ()=> api<any[]>('GET','/auth/users/options') });
   const { data: supervisorProfile } = useQuery({
@@ -751,12 +753,19 @@ export default function UserInfo(){
     try{ const s=new Date(from); const now=new Date(); let months=(now.getFullYear()-s.getFullYear())*12+(now.getMonth()-s.getMonth()); if(now.getDate()<s.getDate()) months--; const y=Math.floor(months/12); const m=months%12; return y>0? `${y}y ${m}m` : `${m}m`; }catch{ return ''; }
   }
 
-  useEffect(()=>{ setPending({}); setDirty(false); setPermissionsDirty(false); }, [userId, data?.profile]);
+  useEffect(()=>{ 
+    setPending({}); 
+    setDirty(false); 
+    setPermissionsDirty(false);
+    setDivisionsDirty(false);
+    const divisions = (u?.divisions || []).map((d: any) => String(d.id));
+    setSelectedDivisions(divisions);
+  }, [userId, data?.profile, u?.divisions]);
 
   // Prevent navigation away from page if there are unsaved changes
   useEffect(() => {
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-      if (dirty || permissionsDirty) {
+      if (dirty || permissionsDirty || divisionsDirty) {
         e.preventDefault();
         e.returnValue = ''; // Chrome requires returnValue to be set
         return '';
@@ -767,7 +776,7 @@ export default function UserInfo(){
     return () => {
       window.removeEventListener('beforeunload', handleBeforeUnload);
     };
-  }, [dirty, permissionsDirty]);
+  }, [dirty, permissionsDirty, divisionsDirty]);
 
   const handleTabChange = async (newTab: typeof tabParam | 'personal') => {
     // Check if user has permission to view this tab
@@ -789,7 +798,7 @@ export default function UserInfo(){
     }
     
     // Check if there are unsaved changes before switching tabs
-    const hasUnsaved = dirty || permissionsDirty;
+    const hasUnsaved = dirty || permissionsDirty || divisionsDirty;
     
     if (hasUnsaved && tab !== newTab) {
       const result = await confirm({
@@ -810,6 +819,8 @@ export default function UserInfo(){
         setPending({});
         setDirty(false);
         setPermissionsDirty(false);
+        setDivisionsDirty(false);
+        setSelectedDivisions((u?.divisions || []).map((d: any) => String(d.id)));
         setTab(newTab);
       }
       // If cancelled, do nothing (stay on current tab)
@@ -820,8 +831,20 @@ export default function UserInfo(){
   };
 
   const collectChanges = (kv: Record<string, any>) => {
-    setPending((s:any)=> ({ ...s, ...kv }));
-    setDirty(true);
+    // Check if divisions changed
+    if (kv._divisions_changed) {
+      setSelectedDivisions(kv._selected_divisions || []);
+      setDivisionsDirty(true);
+      // Remove internal flags from pending
+      const { _divisions_changed, _selected_divisions, ...rest } = kv;
+      if (Object.keys(rest).length > 0) {
+        setPending((s:any)=> ({ ...s, ...rest }));
+        setDirty(true);
+      }
+    } else {
+      setPending((s:any)=> ({ ...s, ...kv }));
+      setDirty(true);
+    }
   };
 
   const saveAll = async()=>{
@@ -865,13 +888,24 @@ export default function UserInfo(){
         await queryClient.invalidateQueries({ queryKey: ['users-options'] });
       }
       
+      // Save divisions if any changes
+      if (divisionsDirty && (canEdit || canEditGeneral)) {
+        await api('PATCH', `/users/${encodeURIComponent(String(userId||''))}`, {
+          divisions: selectedDivisions
+        });
+        setDivisionsDirty(false);
+        // Invalidate and refetch user profile to get updated divisions
+        await queryClient.invalidateQueries({ queryKey: ['userProfile', userId] });
+        await queryClient.refetchQueries({ queryKey: ['userProfile', userId] });
+      }
+      
       // Save permissions if any
       if (permissionsDirty && permissionsRef.current) {
         await permissionsRef.current.save();
         setPermissionsDirty(false);
       }
       
-      if (dirty || permissionsDirty) {
+      if (dirty || permissionsDirty || divisionsDirty) {
         toast.success('Saved');
       }
     }catch(e: any){ 
@@ -900,11 +934,11 @@ export default function UserInfo(){
               <img className="w-[120px] h-[120px] object-cover rounded-xl border-2 border-brand-red" src={p.profile_photo_file_id? `/files/${p.profile_photo_file_id}/thumbnail?w=240`:'/ui/assets/login/logo-light.svg'} />
               <div className="flex-1">
                 <div className="text-3xl font-extrabold">{p.first_name||u?.username} {p.last_name||''}</div>
-                <div className="text-sm opacity-90 mt-1">{p.job_title||u?.email||''}{p.division? ` — ${p.division}`:''}</div>
+                <div className="text-sm opacity-90 mt-1">{p.job_title||u?.email||''}{u?.divisions && u.divisions.length > 0 ? ` — ${u.divisions.map((d: any) => d.label).join(', ')}` : (p.division ? ` — ${p.division}` : '')}</div>
                 <div className="grid md:grid-cols-3 gap-2 text-xs mt-3">
                   <div><span className="opacity-80">Username:</span> <span className="font-semibold">{u?.username||'—'}</span></div>
                   <div><span className="opacity-80">Phone:</span> <span className="font-semibold">{p.phone||'—'}</span></div>
-                  <div><span className="opacity-80">Personal email:</span> <span className="font-semibold">{u?.email_personal||'—'}</span></div>
+                  <div><span className="opacity-80">Personal email:</span> <span className="font-semibold">{u?.email||u?.email_personal||'—'}</span></div>
                   <div><span className="opacity-80">Work email:</span> <span className="font-semibold">{p.work_email||'—'}</span></div>
                   <div><span className="opacity-80">Status:</span> <span className="font-semibold">{u?.is_active? 'Active':'Terminated'}</span></div>
                   <div><span className="opacity-80">Hire date:</span> <span className="font-semibold">{p.hire_date? String(p.hire_date).slice(0,10):'—'}{p.hire_date? ` (${tenure(p.hire_date)})`:''}</span></div>
@@ -959,7 +993,7 @@ export default function UserInfo(){
                   <div>
                     <div className="flex items-center gap-2"><h4 className="font-semibold">Contact</h4></div>
                     <div className="text-xs text-gray-500 mt-0.5 mb-2">How we can reach you.</div>
-                    <EditableGrid p={p} editable={canEditGeneral} selfEdit={!!canSelfEdit} userId={String(userId)} collectChanges={collectChanges} inlineSave={false} fields={[['Phone','phone'],['Mobile phone','mobile_phone']]} />
+                    <EditableGrid p={p} editable={canEditGeneral} selfEdit={!!canSelfEdit} userId={String(userId)} collectChanges={collectChanges} inlineSave={false} fields={[['Phone 1','phone'],['Phone 2','mobile_phone']]} />
                   </div>
                   <div>
                     <div className="flex items-center gap-2"><h4 className="font-semibold">Education</h4></div>
@@ -991,7 +1025,21 @@ export default function UserInfo(){
                   <div>
                     <div className="flex items-center gap-2"><h4 className="font-semibold">Organization</h4></div>
                     <div className="text-xs text-gray-500 mt-0.5 mb-2">Reporting and work contacts.</div>
-                    <JobSection type="organization" p={p} editable={canEditGeneral} userId={String(userId)} collectChanges={collectChanges} usersOptions={usersOptions||[]} settings={settings} />
+                    <JobSection 
+                      type="organization" 
+                      p={p} 
+                      editable={canEditGeneral} 
+                      userId={String(userId)} 
+                      collectChanges={collectChanges} 
+                      usersOptions={usersOptions||[]} 
+                      settings={settings} 
+                      userDivisions={u?.divisions || []}
+                      selectedDivisions={selectedDivisions}
+                      onDivisionsChange={(divisions) => {
+                        setSelectedDivisions(divisions);
+                        setDivisionsDirty(true);
+                      }}
+                    />
                   </div>
                   <div>
                     <div className="flex items-center gap-2"><h4 className="font-semibold">Time Off</h4></div>
@@ -1011,8 +1059,8 @@ export default function UserInfo(){
         <div className="fixed bottom-0 left-0 right-0 z-40">
           <div className="max-w-[1200px] mx-auto px-4">
             <div className="mb-3 rounded-xl border bg-white shadow-hero p-3 flex items-center gap-3">
-              <div className={`text-sm ${(dirty || permissionsDirty)? 'text-amber-700':'text-green-700'}`}>{(dirty || permissionsDirty)? 'You have unsaved changes':'All changes saved'}</div>
-              <button onClick={saveAll} disabled={!dirty && !permissionsDirty} className={`ml-auto px-4 py-2 rounded text-white ${(dirty || permissionsDirty)? 'bg-gradient-to-r from-brand-red to-[#ee2b2b]':'bg-gray-400 cursor-not-allowed'}`}>Save</button>
+              <div className={`text-sm ${(dirty || permissionsDirty || divisionsDirty)? 'text-amber-700':'text-green-700'}`}>{(dirty || permissionsDirty || divisionsDirty)? 'You have unsaved changes':'All changes saved'}</div>
+              <button onClick={saveAll} disabled={!dirty && !permissionsDirty && !divisionsDirty} className={`ml-auto px-4 py-2 rounded text-white ${(dirty || permissionsDirty || divisionsDirty)? 'bg-gradient-to-r from-brand-red to-[#ee2b2b]':'bg-gray-400 cursor-not-allowed'}`}>Save</button>
             </div>
           </div>
         </div>
@@ -1046,6 +1094,15 @@ function EditableGrid({p, fields, editable, selfEdit, userId, collectChanges, in
   };
   const isEditable = !!(editable || selfEdit);
   
+  // Phone formatting function (same as in emergency contacts)
+  const formatPhone = (v:string)=>{
+    const d = String(v||'').replace(/\D+/g,'').slice(0,11);
+    if (d.length<=3) return d;
+    if (d.length<=6) return `(${d.slice(0,3)}) ${d.slice(3)}`;
+    if (d.length<=10) return `(${d.slice(0,3)}) ${d.slice(3,6)}-${d.slice(6)}`;
+    return `+${d.slice(0,1)} (${d.slice(1,4)}) ${d.slice(4,7)}-${d.slice(7,11)}`;
+  };
+  
   const genderOptions = ['Male', 'Female', 'Other', 'Prefer not to say'];
   const maritalStatusOptions = ['Single', 'Married', 'Common-law', 'Divorced', 'Widowed', 'Prefer not to say'];
   
@@ -1070,6 +1127,8 @@ function EditableGrid({p, fields, editable, selfEdit, userId, collectChanges, in
                       <option key={opt} value={opt}>{opt}</option>
                     ))}
                   </select>
+                ) : (key === 'phone' || key === 'mobile_phone') ? (
+                  <input value={form[key]||''} onChange={e=> { const formatted = formatPhone(e.target.value); setForm((s:any)=>({ ...s, [key]: formatted })); collectChanges && collectChanges({ [key]: formatted }); }} className="w-full rounded-lg border px-3 py-2"/>
                 ) : (
                   <input value={form[key]||''} onChange={e=> { setForm((s:any)=>({ ...s, [key]: e.target.value })); collectChanges && collectChanges({ [key]: e.target.value }); }} className="w-full rounded-lg border px-3 py-2"/>
                 )
@@ -1335,7 +1394,7 @@ function EducationSection({ userId, canEdit }:{ userId:string, canEdit:boolean }
   );
 }
 
-function JobSection({ type, p, editable, userId, collectChanges, usersOptions, settings, canViewCompensation = false }:{ type:'employment'|'organization', p:any, editable:boolean, userId:string, collectChanges: (kv:Record<string,any>)=>void, usersOptions:any[], settings:any, canViewCompensation?: boolean }){
+function JobSection({ type, p, editable, userId, collectChanges, usersOptions, settings, canViewCompensation = false, userDivisions = [], selectedDivisions = [], onDivisionsChange }: { type:'employment'|'organization', p:any, editable:boolean, userId:string, collectChanges: (kv:Record<string,any>)=>void, usersOptions:any[], settings:any, canViewCompensation?: boolean, userDivisions?: any[], selectedDivisions?: string[], onDivisionsChange?: (divisions: string[]) => void }){
   const isEditable = !!editable;
   const [form, setForm] = useState<any>(()=>({
     hire_date: p.hire_date||'',
@@ -1349,7 +1408,19 @@ function JobSection({ type, p, editable, userId, collectChanges, usersOptions, s
     pay_type: p.pay_type||'',
     employment_type: p.employment_type||'',
   }));
+  const [departmentDropdownOpen, setDepartmentDropdownOpen] = useState(false);
   const onField = (key:string, value:any)=>{ setForm((s:any)=>({ ...s, [key]: value })); collectChanges({ [key]: value }); };
+  
+  const handleDepartmentToggle = (divisionId: string) => {
+    const newSelection = selectedDivisions.includes(divisionId)
+      ? selectedDivisions.filter(id => id !== divisionId)
+      : [...selectedDivisions, divisionId];
+    // Notify parent of changes - divisions will be saved separately via PATCH /users/{user_id}
+    if (onDivisionsChange) {
+      onDivisionsChange(newSelection);
+    }
+    collectChanges({ _divisions_changed: true, _selected_divisions: newSelection });
+  };
   if (type==='employment'){
     return (
       <div className="grid md:grid-cols-2 gap-4">
@@ -1412,18 +1483,62 @@ function JobSection({ type, p, editable, userId, collectChanges, usersOptions, s
   }, [usersOptions, p?.manager_user_id]);
   return (
     <div className="grid md:grid-cols-2 gap-4">
-      <div>
-        <div className="text-sm text-gray-600">Division</div>
+      <div className="relative">
+        <div className="text-sm text-gray-600">Department</div>
         {isEditable? (
           (settings?.divisions?.length ? (
-            <select className="w-full rounded-lg border px-3 py-2" value={form.division} onChange={e=>onField('division', e.target.value)}>
-              <option value="">Select...</option>
-              {settings.divisions.map((it:any)=> <option key={it.id} value={it.label}>{it.label}</option>)}
-            </select>
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setDepartmentDropdownOpen(!departmentDropdownOpen)}
+                className="w-full rounded-lg border px-3 py-2 text-left bg-white flex items-center justify-between"
+              >
+                <span className={selectedDivisions.length === 0 ? 'text-gray-400' : ''}>
+                  {selectedDivisions.length === 0 
+                    ? 'Select departments...' 
+                    : selectedDivisions.map((id: string) => {
+                        const division = settings.divisions.find((d: any) => String(d.id) === id);
+                        return division?.label || '';
+                      }).filter(Boolean).join(', ') || 'No departments selected'}
+                </span>
+                <span className="text-gray-400">▼</span>
+              </button>
+              {departmentDropdownOpen && (
+                <>
+                  <div 
+                    className="fixed inset-0 z-10" 
+                    onClick={() => setDepartmentDropdownOpen(false)}
+                  />
+                  <div className="absolute z-20 w-full mt-1 bg-white border rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                    {settings.divisions.map((it: any) => (
+                      <label
+                        key={it.id}
+                        className="flex items-center gap-2 px-3 py-2 hover:bg-gray-50 cursor-pointer"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={selectedDivisions.includes(String(it.id))}
+                          onChange={() => handleDepartmentToggle(String(it.id))}
+                          className="rounded border-gray-300 text-brand-red focus:ring-brand-red"
+                        />
+                        <span className="text-sm">{it.label}</span>
+                      </label>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
           ) : (
             <input className="w-full rounded-lg border px-3 py-2" value={form.division} onChange={e=>onField('division', e.target.value)} />
           ))
-        ) : <div className="font-medium">{String(p.division||'')}</div>}
+        ) : (
+          <div className="font-medium">
+            {userDivisions && userDivisions.length > 0
+              ? userDivisions.map((d: any) => d.label).join(', ')
+              : String(p.division||'') || '—'}
+          </div>
+        )}
       </div>
       <div>
         <div className="text-sm text-gray-600">Supervisor</div>
@@ -3007,6 +3122,7 @@ function EmergencyContactsSection({ userId, canEdit }:{ userId:string, canEdit:b
     queryKey:['emergency-contacts', userId], 
     queryFn: ()=> api<any[]>('GET', `/auth/users/${encodeURIComponent(userId)}/emergency-contacts`) 
   });
+  const confirm = useConfirm();
   const [editId, setEditId] = useState<string|null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [name, setName] = useState('');
@@ -3107,7 +3223,8 @@ function EmergencyContactsSection({ userId, canEdit }:{ userId:string, canEdit:b
   };
   
   const handleDelete = async (contactId: string) => {
-    if (!confirm('Delete this emergency contact?')) return;
+    const result = await confirm({ title:'Delete emergency contact', message:'Are you sure you want to delete this emergency contact? This action cannot be undone.', confirmText:'Delete', cancelText:'Cancel' });
+    if(result !== 'confirm') return;
     try {
       await api('DELETE', `/auth/users/${encodeURIComponent(userId)}/emergency-contacts/${contactId}`);
       toast.success('Emergency contact deleted');

@@ -14,8 +14,9 @@ class UsernameSuggestResponse(BaseModel):
 
 class InviteRequest(BaseModel):
     email_personal: EmailStr
-    division_id: Optional[str] = None
-    division_name: Optional[str] = None
+    division_id: Optional[str] = None  # Legacy: kept for backward compatibility
+    division_name: Optional[str] = None  # Legacy: kept for backward compatibility
+    division_ids: Optional[List[str]] = None  # Array of division IDs (UUIDs as strings)
     document_ids: Optional[List[str]] = None
     needs_email: bool = False
     needs_business_card: bool = False
