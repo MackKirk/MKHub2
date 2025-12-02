@@ -235,15 +235,23 @@ def generate_invite_email_html(
                             <table role="presentation" style="width: 100%; margin: 30px 0;">
                                 <tr>
                                     <td align="center" style="padding: 20px 0;">
-                                        <table role="presentation" cellspacing="0" cellpadding="0" border="0">
+                                        <!--[if mso]>
+                                        <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="{invite_link}" style="height:50px;v-text-anchor:middle;width:300px;" arcsize="8%" stroke="f" fillcolor="#d11616">
+                                            <w:anchorlock/>
+                                            <center style="color:#ffffff;font-family:sans-serif;font-size:18px;font-weight:bold;">Complete Your Onboarding</center>
+                                        </v:roundrect>
+                                        <![endif]-->
+                                        <!--[if !mso]><!-- -->
+                                        <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="border-collapse: separate; mso-table-lspace: 0pt; mso-table-rspace: 0pt; width: auto;">
                                             <tr>
-                                                <td align="center" style="background: linear-gradient(90deg, #d11616 0%, #ee2b2b 100%); border-radius: 8px; box-shadow: 0 4px 12px rgba(209, 22, 22, 0.3);">
-                                                    <a href="{invite_link}" style="display: inline-block; padding: 14px 32px; color: #ffffff; text-decoration: none; font-weight: 600; font-size: 16px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
+                                                <td style="background-color: #d11616; border-radius: 8px; text-align: center;">
+                                                    <a href="{invite_link}" style="background-color: #d11616; border: 2px solid #d11616; border-radius: 8px; color: #ffffff; display: inline-block; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; font-size: 18px; font-weight: 700; line-height: 1.5; text-decoration: none; text-align: center; padding: 16px 40px; -webkit-text-size-adjust: none; mso-hide: all;">
                                                         Complete Your Onboarding
                                                     </a>
                                                 </td>
                                             </tr>
                                         </table>
+                                        <!--<![endif]-->
                                     </td>
                                 </tr>
                             </table>
