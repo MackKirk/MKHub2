@@ -103,13 +103,6 @@ export default function BusinessDashboard() {
   const divisions = Array.isArray(divisionsData) ? divisionsData : [];
   const statsByDivision = Array.isArray(divisionsStats) ? divisionsStats : [];
 
-  const selectedDivision = useMemo(() => {
-    return divisions.find(d => d.id === selectedDivisionId);
-  }, [divisions, selectedDivisionId]);
-
-  const handleDivisionClick = (divisionId: string) => {
-    setSelectedDivisionId(divisionId);
-  };
 
   const handleViewOpportunities = (divisionId?: string) => {
     const params = divisionId ? `?division_id=${encodeURIComponent(divisionId)}` : '';
@@ -143,71 +136,6 @@ export default function BusinessDashboard() {
         </div>
       </div>
 
-      {/* Quick Filter Buttons */}
-      {divisions.length > 0 && (
-        <div className="mb-4 rounded-xl border bg-white p-4">
-          <div className="text-sm font-medium text-gray-700 mb-3">Quick Filters by Division</div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-            {divisions.map((division) => {
-              const divisionStat = statsByDivision.find(s => s.id === division.id);
-              const oppCount = divisionStat?.opportunities_count || 0;
-              const projCount = divisionStat?.projects_count || 0;
-              const totalCount = oppCount + projCount;
-              
-              return (
-                <div
-                  key={division.id}
-                  className={`rounded-lg border p-3 transition-all ${
-                    totalCount > 0
-                      ? 'bg-white hover:shadow-md cursor-pointer'
-                      : 'bg-gray-50 opacity-60'
-                  }`}
-                >
-                  <div className="flex items-center gap-2 mb-2">
-                    <span className="text-2xl">{getDivisionIcon(division.label)}</span>
-                    <span className="font-medium text-sm flex-1">{division.label}</span>
-                  </div>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => {
-                        if (oppCount > 0) {
-                          navigate(`/opportunities?division_id=${encodeURIComponent(division.id)}`);
-                        }
-                      }}
-                      disabled={oppCount === 0}
-                      className={`flex-1 px-2 py-1.5 rounded text-xs font-medium transition-colors ${
-                        oppCount > 0
-                          ? 'bg-[#7f1010] text-white hover:bg-[#a31414]'
-                          : 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                      }`}
-                      title={oppCount > 0 ? `View ${oppCount} opportunities` : 'No opportunities'}
-                    >
-                      {oppCount} Opp
-                    </button>
-                    <button
-                      onClick={() => {
-                        if (projCount > 0) {
-                          navigate(`/projects?division_id=${encodeURIComponent(division.id)}`);
-                        }
-                      }}
-                      disabled={projCount === 0}
-                      className={`flex-1 px-2 py-1.5 rounded text-xs font-medium transition-colors ${
-                        projCount > 0
-                          ? 'bg-[#7f1010] text-white hover:bg-[#a31414]'
-                          : 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                      }`}
-                      title={projCount > 0 ? `View ${projCount} projects` : 'No projects'}
-                    >
-                      {projCount} Proj
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
       {/* Division Cards Grid - Similar to FleetDashboard */}
       {divisionsLoading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
@@ -232,10 +160,7 @@ export default function BusinessDashboard() {
             return (
               <div
                 key={division.id}
-                onClick={() => handleDivisionClick(division.id === selectedDivisionId ? '' : division.id)}
-                className={`rounded-xl border bg-white p-4 hover:shadow-md transition-all cursor-pointer ${
-                  selectedDivisionId === division.id ? 'ring-2 ring-[#7f1010] shadow-md' : ''
-                }`}
+                className="rounded-xl border bg-white p-4 hover:shadow-md transition-all"
               >
                 <div className="flex items-start justify-between mb-3">
                   <div className="text-4xl">{getDivisionIcon(division.label)}</div>
@@ -247,13 +172,35 @@ export default function BusinessDashboard() {
                 </div>
                 <div className="text-lg font-semibold text-gray-900 mb-2">{division.label}</div>
                 <div className="grid grid-cols-2 gap-2 text-sm">
-                  <div>
-                    <div className="text-gray-600">Opportunities</div>
-                    <div className="text-xl font-bold text-[#7f1010]">{oppCount}</div>
+                  <div 
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleViewOpportunities(division.id);
+                    }}
+                    className="cursor-pointer hover:bg-gray-50 rounded-lg p-2 -m-2 transition-all group border border-transparent hover:border-gray-200"
+                    title="View Opportunities"
+                  >
+                    <div className="text-gray-600 group-hover:text-[#7f1010] transition-colors font-medium text-xs uppercase tracking-wide">Opportunities</div>
+                    <div 
+                      className="text-xl font-bold text-[#7f1010] group-hover:text-[#a31414] transition-colors mt-1"
+                    >
+                      {oppCount}
+                    </div>
                   </div>
-                  <div>
-                    <div className="text-gray-600">Projects</div>
-                    <div className="text-xl font-bold text-[#7f1010]">{projCount}</div>
+                  <div 
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleViewProjects(division.id);
+                    }}
+                    className="cursor-pointer hover:bg-gray-50 rounded-lg p-2 -m-2 transition-all group border border-transparent hover:border-gray-200"
+                    title="View Projects"
+                  >
+                    <div className="text-gray-600 group-hover:text-[#7f1010] transition-colors font-medium text-xs uppercase tracking-wide">Projects</div>
+                    <div 
+                      className="text-xl font-bold text-[#7f1010] group-hover:text-[#a31414] transition-colors mt-1"
+                    >
+                      {projCount}
+                    </div>
                   </div>
                 </div>
                 {divisionStat && (divisionStat.opportunities_value > 0 || divisionStat.projects_value > 0) && (
@@ -281,44 +228,6 @@ export default function BusinessDashboard() {
           >
             Retry
           </button>
-        </div>
-      )}
-
-      {/* Selected Division Details */}
-      {selectedDivision && (
-        <div className="rounded-xl border bg-white p-4">
-          <div className="flex items-center justify-between mb-3">
-            <div>
-              <div className="text-lg font-semibold text-gray-900">
-                {getDivisionIcon(selectedDivision.label)} {selectedDivision.label}
-              </div>
-              {selectedDivision.subdivisions.length > 0 && (
-                <div className="text-sm text-gray-600 mt-1">
-                  {selectedDivision.subdivisions.length} subdivision{selectedDivision.subdivisions.length !== 1 ? 's' : ''}
-                </div>
-              )}
-            </div>
-            <button
-              onClick={() => setSelectedDivisionId('')}
-              className="text-sm text-gray-500 hover:text-gray-700"
-            >
-              Clear filter
-            </button>
-          </div>
-          <div className="flex gap-2">
-            <button
-              onClick={() => handleViewOpportunities(selectedDivision.id)}
-              className="px-4 py-2 bg-[#7f1010] text-white rounded-lg hover:bg-[#a31414] transition-colors"
-            >
-              View Opportunities
-            </button>
-            <button
-              onClick={() => handleViewProjects(selectedDivision.id)}
-              className="px-4 py-2 bg-[#7f1010] text-white rounded-lg hover:bg-[#a31414] transition-colors"
-            >
-              View Projects
-            </button>
-          </div>
         </div>
       )}
 

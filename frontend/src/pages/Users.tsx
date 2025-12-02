@@ -1,9 +1,10 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { Link } from 'react-router-dom';
 import { useState, useMemo } from 'react';
 import { getCurrentMonthLocal } from '@/lib/dateUtils';
 import InviteUserModal from '@/components/InviteUserModal';
+import toast from 'react-hot-toast';
 
 type User = { id:string, username:string, email?:string, name?:string, roles?:string[], is_active?:boolean, profile_photo_file_id?:string };
 type UsersResponse = { items: User[], total: number, page: number, limit: number, total_pages: number };
@@ -12,6 +13,8 @@ export default function Users(){
   const [page, setPage] = useState(1);
   const [searchQuery, setSearchQuery] = useState('');
   const limit = 48; // 4 columns * 12 rows = 48 items per page
+  const queryClient = useQueryClient();
+  const [isSyncing, setIsSyncing] = useState(false);
   
   // Build query params
   const queryParams = useMemo(() => {
@@ -48,6 +51,31 @@ export default function Users(){
     setSearchQuery(value);
     setPage(1);
   };
+
+  // TEMPORARY: Sync all from BambooHR
+  const handleSyncBambooHR = async () => {
+    if (!confirm('Tem certeza que deseja sincronizar todos os contatos do BambooHR? Isso pode levar alguns minutos.')) {
+      return;
+    }
+    
+    setIsSyncing(true);
+    try {
+      await api('POST', '/users/sync-bamboohr-all', {
+        update_existing: true,
+        include_photos: true,
+        force_update_photos: false
+      });
+      toast.success('Sincronização iniciada! Verifique os logs do servidor para detalhes.');
+      // Refresh users list after a delay
+      setTimeout(() => {
+        queryClient.invalidateQueries({ queryKey: ['users'] });
+      }, 2000);
+    } catch (error: any) {
+      toast.error(error?.message || 'Erro ao sincronizar contatos do BambooHR');
+    } finally {
+      setIsSyncing(false);
+    }
+  };
   
   return (
     <div>
@@ -56,12 +84,23 @@ export default function Users(){
           <div className="text-2xl font-extrabold">Users</div>
           <div className="text-sm opacity-90">Manage employees, roles, and access. {total > 0 && `(${total} total)`}</div>
         </div>
-        <button
-          onClick={() => setShowInviteModal(true)}
-          className="px-4 py-2 bg-white text-[#d11616] rounded-lg font-semibold hover:bg-gray-100 transition-colors"
-        >
-          + Invite User
-        </button>
+        <div className="flex items-center gap-2">
+          {/* TEMPORARY: Sync from BambooHR button */}
+          <button
+            onClick={handleSyncBambooHR}
+            disabled={isSyncing}
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            title="Sincronizar todos os contatos do BambooHR (temporário)"
+          >
+            {isSyncing ? 'Sincronizando...' : '🔄 Sync BambooHR'}
+          </button>
+          <button
+            onClick={() => setShowInviteModal(true)}
+            className="px-4 py-2 bg-white text-[#d11616] rounded-lg font-semibold hover:bg-gray-100 transition-colors"
+          >
+            + Invite User
+          </button>
+        </div>
       </div>
       
       {/* Search Bar */}

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Body
 from sqlalchemy.orm import Session
 from typing import Optional, List
 import uuid
@@ -122,5 +122,73 @@ def update_user(user_id: str, payload: dict, db: Session = Depends(get_db), _=De
     db.commit()
     ep = db.query(EmployeeProfile).filter(EmployeeProfile.user_id == u.id).first()
     return _user_to_dict(u, ep)
+
+
+# =====================
+# TEMPORARY: BambooHR Sync All (to be removed later)
+# =====================
+
+@router.post("/sync-bamboohr-all")
+def sync_all_users_from_bamboohr(
+    payload: dict = Body(default={}),
+    db: Session = Depends(get_db),
+    _=Depends(require_permissions("hr:users:write", "users:write"))
+):
+    """
+    TEMPORARY ENDPOINT - Sync all employees from BambooHR
+    
+    This endpoint will:
+    1. Fetch all employees from BambooHR
+    2. Create or update users in the system
+    3. Sync photos, visas, and emergency contacts
+    
+    This is a temporary endpoint and should be removed in the future.
+    """
+    import sys
+    import importlib.util
+    from pathlib import Path
+    
+    # Get the scripts directory
+    current_file = Path(__file__)
+    project_root = current_file.parent.parent.parent
+    script_dir = project_root / "scripts"
+    sys.path.insert(0, str(script_dir))
+    
+    try:
+        # Import the sync function
+        spec = importlib.util.spec_from_file_location("sync_bamboohr_employees", script_dir / "sync_bamboohr_employees.py")
+        if spec is None or spec.loader is None:
+            raise HTTPException(status_code=500, detail="Could not load sync module")
+        sync_module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(sync_module)
+        sync_employees = sync_module.sync_employees
+        
+        # Get parameters from payload
+        update_existing = payload.get("update_existing", True)
+        include_photos = payload.get("include_photos", True)
+        force_update_photos = payload.get("force_update_photos", False)
+        limit = payload.get("limit")  # Optional limit for testing
+        
+        # Run the sync (this will use its own database session)
+        sync_employees(
+            dry_run=False,
+            update_existing=update_existing,
+            limit=limit,
+            include_photos=include_photos,
+            force_update_photos=force_update_photos
+        )
+        
+        return {
+            "status": "success",
+            "message": "BambooHR sync completed. Check server logs for details."
+        }
+        
+    except Exception as e:
+        import traceback
+        error_msg = str(e)
+        traceback_str = traceback.format_exc()
+        print(f"[ERROR] Error during BambooHR sync: {error_msg}")
+        print(f"[ERROR] Traceback: {traceback_str}")
+        raise HTTPException(status_code=500, detail=f"Error during sync: {error_msg}")
 
 

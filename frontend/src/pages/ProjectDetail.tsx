@@ -295,6 +295,9 @@ export default function ProjectDetail(){
                     </button>
                   </div>
                 )}
+
+                {/* Project Divisions */}
+                <ProjectDivisionsHeroSection projectId={String(id)} proj={proj} />
                 
                 {proj?.date_eta && (
                   <div>
@@ -3576,9 +3579,15 @@ function ProjectQuickEdit({ projectId, proj, settings }:{ projectId:string, proj
   const [progress, setProgress] = useState<number>(Number(proj?.progress||0));
   const [estimator, setEstimator] = useState<string>(proj?.estimator_id||'');
   const [divisionLeads, setDivisionLeads] = useState<Record<string, string>>(proj?.division_onsite_leads || {});
+  const [projectDivs, setProjectDivs] = useState<string[]>(Array.isArray(proj?.project_division_ids)? proj.project_division_ids : []);
   const statuses = (settings?.project_statuses||[]) as any[];
   const divisions = (settings?.divisions||[]) as any[];
   const { data:employees } = useQuery({ queryKey:['employees'], queryFn: ()=>api<any[]>('GET','/employees') });
+  const { data:projectDivisions } = useQuery({ queryKey:['project-divisions'], queryFn: ()=>api<any[]>('GET','/settings/project-divisions'), staleTime: 300_000 });
+  
+  useEffect(()=>{
+    setProjectDivs(Array.isArray(proj?.project_division_ids)? proj.project_division_ids : []);
+  }, [proj?.project_division_ids]);
   const toggleDiv = (id:string)=> {
     setDivs(prev=> {
       const newDivs = prev.includes(id)? prev.filter(x=>x!==id) : [...prev, id];
@@ -3641,12 +3650,15 @@ function ProjectQuickEdit({ projectId, proj, settings }:{ projectId:string, proj
                   <button
                     type="button"
                     onClick={()=> setProjectDivs(prev=> prev.includes(divId)? prev.filter(x=>x!==divId) : [...prev, divId])}
-                    className={`w-full text-left px-2 py-1 rounded text-sm font-medium ${divSelected? 'bg-[#7f1010] text-white': 'bg-gray-50 hover:bg-gray-100'}`}
+                    className={`w-full text-left px-2 py-1 rounded text-sm font-medium flex items-center gap-2 ${
+                      divSelected? 'bg-[#7f1010] text-white': 'bg-gray-50 hover:bg-gray-100'
+                    }`}
                   >
-                    {div.label}
+                    <span className="text-lg">{getDivisionIcon(div.label)}</span>
+                    <span>{div.label}</span>
                   </button>
                   {subdivisions.length > 0 && (
-                    <div className="mt-1 pl-4 space-y-1">
+                    <div className="mt-1 pl-6 space-y-1">
                       {subdivisions.map((sub:any)=>{
                         const subId = String(sub.id);
                         const subSelected = projectDivs.includes(subId);
@@ -3655,9 +3667,12 @@ function ProjectQuickEdit({ projectId, proj, settings }:{ projectId:string, proj
                             key={subId}
                             type="button"
                             onClick={()=> setProjectDivs(prev=> prev.includes(subId)? prev.filter(x=>x!==subId) : [...prev, subId])}
-                            className={`w-full text-left px-2 py-1 rounded text-xs ${subSelected? 'bg-[#a31414] text-white': 'bg-gray-50 hover:bg-gray-100'}`}
+                            className={`w-full text-left px-2 py-1 rounded text-xs flex items-center gap-2 ${
+                              subSelected? 'bg-[#a31414] text-white': 'bg-gray-50 hover:bg-gray-100'
+                            }`}
                           >
-                            • {sub.label}
+                            <span className="text-base">{getDivisionIcon(div.label)}</span>
+                            <span>• {sub.label}</span>
                           </button>
                         );
                       })}
@@ -3733,34 +3748,242 @@ function ProjectQuickEdit({ projectId, proj, settings }:{ projectId:string, proj
   );
 }
 
-function ProjectGeneralInfoCard({ projectId, proj }:{ projectId:string, proj:any }){
+// Icon mapping for divisions
+const getDivisionIcon = (label: string): string => {
+  const iconMap: Record<string, string> = {
+    'Roofing': '🏠',
+    'Concrete Restoration & Waterproofing': '🏗️',
+    'Cladding & Exterior Finishes': '🧱',
+    'Repairs & Maintenance': '🔧',
+    'Mack Kirk Metals': '⚙️',
+    'Mechanical': '🔩',
+    'Electrical': '⚡',
+    'Carpentry': '🪵',
+    'Welding & Custom Fabrication': '🔥',
+    'Structural Upgrading': '📐',
+    'Solar PV': '☀️',
+    'Green Roofing': '🌱',
+  };
+  return iconMap[label] || '📦';
+};
+
+function ProjectDivisionsHeroSection({ projectId, proj }:{ projectId:string, proj:any }){
   const queryClient = useQueryClient();
-  const [description, setDescription] = useState<string>(proj?.description || '');
+  const [editingDivisions, setEditingDivisions] = useState(false);
+  const [projectDivs, setProjectDivs] = useState<string[]>(Array.isArray(proj?.project_division_ids) ? proj.project_division_ids : []);
   const [saving, setSaving] = useState(false);
   const { data:projectDivisions } = useQuery({ queryKey:['project-divisions'], queryFn: ()=>api<any[]>('GET','/settings/project-divisions'), staleTime: 300_000 });
 
   useEffect(()=>{
-    setDescription(proj?.description || '');
-  }, [proj?.description]);
+    setProjectDivs(Array.isArray(proj?.project_division_ids) ? proj.project_division_ids : []);
+  }, [proj?.project_division_ids]);
+
+  const projectDivIds = Array.isArray(proj?.project_division_ids) ? proj.project_division_ids : [];
+
+  // Get division icons and labels
+  const divisionIcons = useMemo(() => {
+    if (!Array.isArray(projectDivIds) || projectDivIds.length === 0 || !projectDivisions) return [];
+    const icons: Array<{ icon: string; label: string; id: string }> = [];
+    for (const divId of projectDivIds) {
+      for (const div of (projectDivisions || [])) {
+        if (String(div.id) === String(divId)) {
+          icons.push({ icon: getDivisionIcon(div.label), label: div.label, id: String(div.id) });
+          break;
+        }
+        for (const sub of (div.subdivisions || [])) {
+          if (String(sub.id) === String(divId)) {
+            icons.push({ icon: getDivisionIcon(div.label), label: `${div.label} - ${sub.label}`, id: String(sub.id) });
+            break;
+          }
+        }
+        if (icons.length > 0 && icons[icons.length - 1].id === String(divId)) break;
+      }
+    }
+    return icons;
+  }, [projectDivIds, projectDivisions]);
 
   const handleSave = useCallback(async()=>{
     try{
       setSaving(true);
-      await api('PATCH', `/projects/${projectId}`, { description: description?.trim()? description : null });
-      toast.success('Description saved');
+      await api('PATCH', `/projects/${projectId}`, { 
+        project_division_ids: projectDivs.length > 0 ? projectDivs : null
+      });
+      toast.success('Divisions saved');
       queryClient.invalidateQueries({ queryKey: ['project', projectId] });
+      setEditingDivisions(false);
     }catch(_e){
-      toast.error('Failed to save description');
+      toast.error('Failed to save divisions');
     }finally{
       setSaving(false);
     }
-  }, [projectId, description]);
+  }, [projectId, projectDivs, queryClient]);
+
+  return (
+    <div className="mb-6">
+      <div className="flex items-center justify-between mb-2">
+        <label className="text-xs text-gray-600 block">Project Divisions</label>
+        <button
+          onClick={() => setEditingDivisions(!editingDivisions)}
+          className="text-xs text-[#7f1010] hover:text-[#a31414] font-medium"
+        >
+          {editingDivisions ? 'Cancel' : projectDivIds.length > 0 ? 'Edit' : 'Add'}
+        </button>
+      </div>
+      
+      {editingDivisions ? (
+        <div className="space-y-3">
+          <div className="space-y-2 max-h-64 overflow-y-auto border rounded p-3 bg-gray-50">
+            {(projectDivisions||[]).map((div:any)=>{
+              const divId = String(div.id);
+              const divSelected = projectDivs.includes(divId);
+              const subdivisions = div.subdivisions || [];
+              
+              return (
+                <div key={divId} className="border rounded p-2 bg-white">
+                  <button
+                    type="button"
+                    onClick={()=> setProjectDivs(prev=> prev.includes(divId)? prev.filter(x=>x!==divId) : [...prev, divId])}
+                    className={`w-full text-left px-2 py-1 rounded text-sm font-medium flex items-center gap-2 ${
+                      divSelected? 'bg-[#7f1010] text-white': 'bg-gray-50 hover:bg-gray-100'
+                    }`}
+                  >
+                    <span className="text-lg">{getDivisionIcon(div.label)}</span>
+                    <span>{div.label}</span>
+                  </button>
+                  {subdivisions.length > 0 && (
+                    <div className="mt-1 pl-6 space-y-1">
+                      {subdivisions.map((sub:any)=>{
+                        const subId = String(sub.id);
+                        const subSelected = projectDivs.includes(subId);
+                        return (
+                          <button
+                            key={subId}
+                            type="button"
+                            onClick={()=> setProjectDivs(prev=> prev.includes(subId)? prev.filter(x=>x!==subId) : [...prev, subId])}
+                            className={`w-full text-left px-2 py-1 rounded text-xs flex items-center gap-2 ${
+                              subSelected? 'bg-[#a31414] text-white': 'bg-gray-50 hover:bg-gray-100'
+                            }`}
+                          >
+                            <span className="text-base">{getDivisionIcon(div.label)}</span>
+                            <span>• {sub.label}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+            {(!projectDivisions || projectDivisions.length === 0) && (
+              <div className="text-xs text-gray-500 text-center py-4">No project divisions available.</div>
+            )}
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className="flex-1 px-3 py-2 rounded bg-[#7f1010] text-white disabled:opacity-60 text-sm font-medium"
+            >
+              {saving ? 'Saving...' : 'Save'}
+            </button>
+            <button
+              onClick={() => {
+                setEditingDivisions(false);
+                setProjectDivs(Array.isArray(proj?.project_division_ids) ? proj.project_division_ids : []);
+              }}
+              className="px-3 py-2 rounded border bg-white hover:bg-gray-50 text-sm font-medium text-gray-700"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div>
+          {divisionIcons.length > 0 ? (
+            <div className="flex items-center gap-2 flex-wrap">
+              {divisionIcons.map((div) => (
+                <div
+                  key={div.id}
+                  className="relative group/icon"
+                  title={div.label}
+                >
+                  <div className="text-2xl cursor-pointer hover:scale-110 transition-transform">
+                    {div.icon}
+                  </div>
+                  {/* Tooltip */}
+                  <div className="absolute right-0 top-full mt-1 px-2 py-1 bg-gray-900 text-white text-xs rounded whitespace-nowrap opacity-0 group-hover/icon:opacity-100 transition-opacity pointer-events-none z-10">
+                    {div.label}
+                    <div className="absolute -top-1 right-2 w-2 h-2 bg-gray-900 rotate-45"></div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-xs text-gray-400 italic">No divisions assigned</div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ProjectGeneralInfoCard({ projectId, proj }:{ projectId:string, proj:any }){
+  const queryClient = useQueryClient();
+  const [description, setDescription] = useState<string>(proj?.description || '');
+  const [saving, setSaving] = useState(false);
+  const [editingDivisions, setEditingDivisions] = useState(false);
+  const [projectDivs, setProjectDivs] = useState<string[]>(Array.isArray(proj?.project_division_ids) ? proj.project_division_ids : []);
+  const { data:projectDivisions } = useQuery({ queryKey:['project-divisions'], queryFn: ()=>api<any[]>('GET','/settings/project-divisions'), staleTime: 300_000 });
+
+  useEffect(()=>{
+    setDescription(proj?.description || '');
+    setProjectDivs(Array.isArray(proj?.project_division_ids) ? proj.project_division_ids : []);
+  }, [proj?.description, proj?.project_division_ids]);
+
+  const handleSave = useCallback(async()=>{
+    try{
+      setSaving(true);
+      await api('PATCH', `/projects/${projectId}`, { 
+        description: description?.trim()? description : null,
+        project_division_ids: projectDivs.length > 0 ? projectDivs : null
+      });
+      toast.success('Saved');
+      queryClient.invalidateQueries({ queryKey: ['project', projectId] });
+      setEditingDivisions(false);
+    }catch(_e){
+      toast.error('Failed to save');
+    }finally{
+      setSaving(false);
+    }
+  }, [projectId, description, projectDivs, queryClient]);
 
   const city = proj?.address_city || proj?.site_city || '—';
   const province = proj?.address_province || proj?.site_province || proj?.site_state || '—';
   const country = proj?.address_country || proj?.site_country || '—';
   const postal = proj?.address_postal_code || proj?.postal_code || proj?.site_postal_code || proj?.site_zip || '—';
   const projectDivIds = Array.isArray(proj?.project_division_ids) ? proj.project_division_ids : [];
+
+  // Get division icons and labels
+  const divisionIcons = useMemo(() => {
+    if (!Array.isArray(projectDivIds) || projectDivIds.length === 0 || !projectDivisions) return [];
+    const icons: Array<{ icon: string; label: string; id: string }> = [];
+    for (const divId of projectDivIds) {
+      for (const div of (projectDivisions || [])) {
+        if (String(div.id) === String(divId)) {
+          icons.push({ icon: getDivisionIcon(div.label), label: div.label, id: String(div.id) });
+          break;
+        }
+        for (const sub of (div.subdivisions || [])) {
+          if (String(sub.id) === String(divId)) {
+            icons.push({ icon: getDivisionIcon(div.label), label: `${div.label} - ${sub.label}`, id: String(sub.id) });
+            break;
+          }
+        }
+        if (icons.length > 0 && icons[icons.length - 1].id === String(divId)) break;
+      }
+    }
+    return icons;
+  }, [projectDivIds, projectDivisions]);
 
   const fields = useMemo(()=>[
     { label: 'Project Name', value: proj?.name || proj?.site_name || '—' },
@@ -3772,7 +3995,30 @@ function ProjectGeneralInfoCard({ projectId, proj }:{ projectId:string, proj:any
 
   return (
     <div className="rounded-xl border bg-white p-4">
-      <h4 className="font-semibold mb-2">General Information</h4>
+      <div className="flex items-start justify-between mb-4">
+        <h4 className="font-semibold">General Information</h4>
+        {/* Division icons at top right */}
+        {divisionIcons.length > 0 && (
+          <div className="flex items-center gap-2 flex-shrink-0">
+            {divisionIcons.map((div) => (
+              <div
+                key={div.id}
+                className="relative group/icon"
+                title={div.label}
+              >
+                <div className="text-2xl cursor-pointer hover:scale-110 transition-transform">
+                  {div.icon}
+                </div>
+                {/* Tooltip */}
+                <div className="absolute right-0 top-full mt-1 px-2 py-1 bg-gray-900 text-white text-xs rounded whitespace-nowrap opacity-0 group-hover/icon:opacity-100 transition-opacity pointer-events-none z-10">
+                  {div.label}
+                  <div className="absolute -top-1 right-2 w-2 h-2 bg-gray-900 rotate-45"></div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
       <div className="space-y-4 text-sm">
         <div className="grid grid-cols-2 gap-3">
           {fields.map((item)=> (
@@ -3782,22 +4028,83 @@ function ProjectGeneralInfoCard({ projectId, proj }:{ projectId:string, proj:any
             </div>
           ))}
         </div>
-        {projectDivIds.length > 0 && projectDivisions && (
-          <div>
-            <label className="text-xs text-gray-600 mb-2 block">Project Divisions</label>
+        
+        {/* Project Divisions Section */}
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <label className="text-xs text-gray-600">Project Divisions</label>
+            <button
+              onClick={() => setEditingDivisions(!editingDivisions)}
+              className="text-xs text-[#7f1010] hover:text-[#a31414] font-medium"
+            >
+              {editingDivisions ? 'Cancel' : projectDivIds.length > 0 ? 'Edit' : 'Add Divisions'}
+            </button>
+          </div>
+          
+          {editingDivisions ? (
+            <div className="space-y-2 max-h-64 overflow-y-auto border rounded p-3 bg-gray-50">
+              {(projectDivisions||[]).map((div:any)=>{
+                const divId = String(div.id);
+                const divSelected = projectDivs.includes(divId);
+                const subdivisions = div.subdivisions || [];
+                
+                return (
+                  <div key={divId} className="border rounded p-2 bg-white">
+                    <button
+                      type="button"
+                      onClick={()=> setProjectDivs(prev=> prev.includes(divId)? prev.filter(x=>x!==divId) : [...prev, divId])}
+                      className={`w-full text-left px-2 py-1 rounded text-sm font-medium flex items-center gap-2 ${
+                        divSelected? 'bg-[#7f1010] text-white': 'bg-gray-50 hover:bg-gray-100'
+                      }`}
+                    >
+                      <span className="text-lg">{getDivisionIcon(div.label)}</span>
+                      <span>{div.label}</span>
+                    </button>
+                    {subdivisions.length > 0 && (
+                      <div className="mt-1 pl-6 space-y-1">
+                        {subdivisions.map((sub:any)=>{
+                          const subId = String(sub.id);
+                          const subSelected = projectDivs.includes(subId);
+                          return (
+                            <button
+                              key={subId}
+                              type="button"
+                              onClick={()=> setProjectDivs(prev=> prev.includes(subId)? prev.filter(x=>x!==subId) : [...prev, subId])}
+                              className={`w-full text-left px-2 py-1 rounded text-xs flex items-center gap-2 ${
+                                subSelected? 'bg-[#a31414] text-white': 'bg-gray-50 hover:bg-gray-100'
+                              }`}
+                            >
+                              <span className="text-base">{getDivisionIcon(div.label)}</span>
+                              <span>• {sub.label}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+              {(!projectDivisions || projectDivisions.length === 0) && (
+                <div className="text-xs text-gray-500 text-center py-4">No project divisions available.</div>
+              )}
+            </div>
+          ) : projectDivIds.length > 0 && projectDivisions ? (
             <div className="flex flex-wrap gap-2">
               {projectDivIds.map((divId: string) => {
                 // Find division or subdivision
                 let divLabel = '';
+                let divIcon = '';
                 let isSubdivision = false;
                 for (const div of (projectDivisions || [])) {
                   if (String(div.id) === String(divId)) {
                     divLabel = div.label;
+                    divIcon = getDivisionIcon(div.label);
                     break;
                   }
                   for (const sub of (div.subdivisions || [])) {
                     if (String(sub.id) === String(divId)) {
                       divLabel = sub.label;
+                      divIcon = getDivisionIcon(div.label);
                       isSubdivision = true;
                       break;
                     }
@@ -3808,20 +4115,24 @@ function ProjectGeneralInfoCard({ projectId, proj }:{ projectId:string, proj:any
                 return (
                   <span
                     key={divId}
-                    className={`px-2 py-1 rounded text-xs font-medium ${
+                    className={`px-2 py-1 rounded text-xs font-medium flex items-center gap-1 ${
                       isSubdivision
                         ? 'bg-[#a31414]/10 text-[#a31414] border border-[#a31414]/20'
                         : 'bg-[#7f1010]/10 text-[#7f1010] border border-[#7f1010]/20'
                     }`}
                     title={divLabel}
                   >
-                    {divLabel}
+                    <span>{divIcon}</span>
+                    <span>{divLabel}</span>
                   </span>
                 );
               })}
             </div>
-          </div>
-        )}
+          ) : (
+            <div className="text-xs text-gray-500 italic">No divisions assigned</div>
+          )}
+        </div>
+
         <div>
           <label className="text-xs text-gray-600">Description</label>
           <textarea

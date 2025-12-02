@@ -1597,6 +1597,7 @@ def business_projects(
     subdivision_id: Optional[str] = None,
     status: Optional[str] = None,
     q: Optional[str] = None,
+    min_value: Optional[float] = None,
     limit: int = 100,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user)
@@ -1656,7 +1657,77 @@ def business_projects(
     if q:
         query = query.filter(Project.name.ilike(f"%{q}%"))
     
-    projects = query.order_by(Project.created_at.desc()).limit(limit).all()
+    # Get projects first (before value filtering if needed)
+    projects = query.order_by(Project.created_at.desc()).limit(limit * 2 if min_value else limit).all()
+    
+    # Filter by minimum value (considering Grand Total from estimates)
+    if min_value is not None:
+        try:
+            min_val = float(min_value)
+            from ..models.models import Estimate, EstimateItem
+            import json
+            
+            filtered_projects = []
+            for p in projects:
+                project_value = None
+                
+                # First, try to get Grand Total from estimate (using same logic as estimate.py)
+                estimate = db.query(Estimate).filter(Estimate.project_id == p.id).order_by(Estimate.created_at.desc()).first()
+                if estimate and estimate.notes:
+                    try:
+                        ui_state = json.loads(estimate.notes)
+                        pst_rate = ui_state.get('pst_rate', 7.0)
+                        gst_rate = ui_state.get('gst_rate', 5.0)
+                        profit_rate = ui_state.get('profit_rate', 20.0)
+                        markup = estimate.markup or 0.0
+                        
+                        items = db.query(EstimateItem).filter(EstimateItem.estimate_id == estimate.id).all()
+                        item_extras_map = ui_state.get('item_extras', {})
+                        
+                        # Calculate total and taxable total (simplified version matching estimate.py)
+                        total = 0.0
+                        taxable_total = 0.0
+                        for item in items:
+                            # Calculate item total based on item type
+                            if item.item_type == 'labour' and item_extras_map.get(f'item_{item.id}', {}).get('labour_journey_type'):
+                                extras = item_extras_map.get(f'item_{item.id}', {})
+                                if extras.get('labour_journey_type') == 'contract':
+                                    item_total = (extras.get('labour_journey', 0) or 0) * (item.unit_price or 0.0)
+                                else:
+                                    item_total = (extras.get('labour_journey', 0) or 0) * (extras.get('labour_men', 0) or 0) * (item.unit_price or 0.0)
+                            else:
+                                item_total = (item.quantity or 0.0) * (item.unit_price or 0.0)
+                            
+                            total += item_total
+                            # PST only applies to taxable items
+                            if item_extras_map.get(f'item_{item.id}', {}).get('taxable', True) is not False:
+                                taxable_total += item_total
+                        
+                        # Calculate PST, subtotal, markup, profit, total estimate, GST, grand total
+                        pst = taxable_total * (pst_rate / 100)
+                        subtotal = total + pst
+                        markup_value = subtotal * (markup / 100)
+                        profit_value = subtotal * (profit_rate / 100)
+                        final_total = subtotal + markup_value + profit_value
+                        gst = final_total * (gst_rate / 100)
+                        project_value = final_total + gst
+                    except Exception as e:
+                        # If calculation fails, try estimate.total_cost
+                        project_value = getattr(estimate, 'total_cost', None)
+                
+                # Fallback to service_value or cost_estimated
+                if project_value is None:
+                    project_value = getattr(p, 'service_value', None) or getattr(p, 'cost_estimated', None)
+                
+                # Include project if value >= min_value
+                if project_value and project_value >= min_val:
+                    filtered_projects.append(p)
+                    if len(filtered_projects) >= limit:
+                        break
+            
+            projects = filtered_projects
+        except (ValueError, TypeError):
+            pass
     
     return [
         {
@@ -1676,7 +1747,7 @@ def business_projects(
             "service_value": getattr(p, 'service_value', None),
             "is_bidding": False,
         }
-        for p in projects
+        for p in projects[:limit]
     ]
 
 
