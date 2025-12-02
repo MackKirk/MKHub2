@@ -1,4 +1,4 @@
-import { PropsWithChildren, useState, useMemo } from 'react';
+import { PropsWithChildren, useState, useMemo, useEffect } from 'react';
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
@@ -136,6 +136,36 @@ export default function AppShell({ children }: PropsWithChildren){
   const queryClient = useQueryClient();
   const { data:meProfile } = useQuery({ queryKey:['me-profile'], queryFn: ()=>api<any>('GET','/auth/me/profile') });
   const { data:me } = useQuery({ queryKey:['me'], queryFn: ()=>api<any>('GET','/auth/me') });
+  const userId = me?.id ? String(me.id) : '';
+  
+  // Check emergency contacts
+  const { data: emergencyContactsData } = useQuery({ 
+    queryKey:['emergency-contacts', userId], 
+    queryFn: ()=> api<any[]>('GET', `/auth/users/${encodeURIComponent(userId)}/emergency-contacts`),
+    enabled: !!userId
+  });
+  
+  // Check if profile is complete (all required fields filled)
+  const isProfileComplete = useMemo(() => {
+    if (!meProfile?.profile) return false;
+    const p = meProfile.profile;
+    const reqPersonal = ['gender','date_of_birth','marital_status','nationality','phone','address_line1','city','province','postal_code','country','sin_number'];
+    const missingPersonal = reqPersonal.filter(k => !String((p as any)[k]||'').trim());
+    const hasEmergencyContact = emergencyContactsData && emergencyContactsData.length > 0;
+    const missingPersonalWithContact = [...missingPersonal];
+    if (!hasEmergencyContact && userId) {
+      missingPersonalWithContact.push('emergency_contact');
+    }
+    return missingPersonalWithContact.length === 0;
+  }, [meProfile, emergencyContactsData, userId]);
+  
+  // Redirect to profile if incomplete and trying to access other routes
+  useEffect(() => {
+    if (meProfile && !isProfileComplete && location.pathname !== '/profile') {
+      navigate('/profile', { replace: true });
+    }
+  }, [meProfile, isProfileComplete, location.pathname, navigate]);
+  
   const displayName = (meProfile?.profile?.preferred_name) || ([meProfile?.profile?.first_name, meProfile?.profile?.last_name].filter(Boolean).join(' ') || meProfile?.user?.username || 'User');
   const avatarId = meProfile?.profile?.profile_photo_file_id;
   const avatarUrl = avatarId ? `/files/${avatarId}/thumbnail?w=96` : '/ui/assets/login/logo-light.svg';
@@ -148,7 +178,23 @@ export default function AppShell({ children }: PropsWithChildren){
     navigate('/login', { replace: true });
   };
   
-  const menuCategories: MenuCategory[] = useMemo(() => [
+  const menuCategories: MenuCategory[] = useMemo(() => {
+    // If profile is incomplete, only show "My Information"
+    if (!isProfileComplete) {
+      return [
+        {
+          id: 'personal',
+          label: 'Personal',
+          icon: <IconUser />,
+          items: [
+            { id: 'profile', label: 'My Information', path: '/profile', icon: <IconUser /> },
+          ]
+        },
+      ];
+    }
+    
+    // If profile is complete, show all categories
+    return [
     {
       id: 'personal',
       label: 'Personal',
@@ -239,7 +285,8 @@ export default function AppShell({ children }: PropsWithChildren){
         { id: 'system-settings', label: 'System Settings', path: '/settings', icon: <IconSettings />, requiredPermission: 'settings:access' },
       ]
     },
-  ], [me]);
+  ];
+  }, [me, isProfileComplete]);
 
   // Check if current route is a project that is an opportunity
   const projectIdMatch = location.pathname.match(/^\/projects\/([^\/]+)$/);

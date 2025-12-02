@@ -309,6 +309,8 @@ export default function Profile(){
                     await api('PUT','/auth/me/profile', form);
                     toast.success('Profile saved');
                     await queryClient.invalidateQueries({ queryKey:['meProfile'] });
+                    await queryClient.invalidateQueries({ queryKey:['me-profile'] });
+                    await queryClient.invalidateQueries({ queryKey:['emergency-contacts'] });
                   }catch(e){ toast.error('Failed to save'); }
                 }} 
                 className={`px-4 py-2 rounded text-white ${totalMissing > 0 ? 'bg-gray-400 cursor-not-allowed' : 'bg-gradient-to-r from-brand-red to-[#ee2b2b]'}`}
@@ -915,6 +917,8 @@ function EmergencyContactsSection({ userId, canEdit }:{ userId:string, canEdit:b
       setIsPrimary(false);
       setCreateOpen(false);
       refetch();
+      await queryClient.invalidateQueries({ queryKey:['emergency-contacts'] });
+      await queryClient.invalidateQueries({ queryKey:['me-profile'] });
     } catch (error: any) {
       toast.error(error?.message || 'Failed to create contact');
     }
@@ -962,6 +966,8 @@ function EmergencyContactsSection({ userId, canEdit }:{ userId:string, canEdit:b
       toast.success('Emergency contact updated');
       setEditId(null);
       refetch();
+      await queryClient.invalidateQueries({ queryKey:['emergency-contacts'] });
+      await queryClient.invalidateQueries({ queryKey:['me-profile'] });
     } catch (error: any) {
       toast.error(error?.message || 'Failed to update contact');
     }
@@ -974,6 +980,8 @@ function EmergencyContactsSection({ userId, canEdit }:{ userId:string, canEdit:b
       await api('DELETE', `/auth/users/${encodeURIComponent(userId)}/emergency-contacts/${contactId}`);
       toast.success('Emergency contact deleted');
       refetch();
+      await queryClient.invalidateQueries({ queryKey:['emergency-contacts'] });
+      await queryClient.invalidateQueries({ queryKey:['me-profile'] });
     } catch (error: any) {
       toast.error(error?.message || 'Failed to delete contact');
     }
@@ -996,6 +1004,8 @@ function EmergencyContactsSection({ userId, canEdit }:{ userId:string, canEdit:b
       });
       toast.success('Primary contact updated');
       refetch();
+      await queryClient.invalidateQueries({ queryKey:['emergency-contacts'] });
+      await queryClient.invalidateQueries({ queryKey:['me-profile'] });
     } catch (error: any) {
       toast.error(error?.message || 'Failed to update contact');
     }

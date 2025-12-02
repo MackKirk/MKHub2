@@ -291,25 +291,33 @@ def get_settings_bundle(db: Session = Depends(get_db), user: UserType = Depends(
                  _has_permission(user, "users:write") or \
                  _has_permission(user, "users:read")
     
-    if not has_access:
-        raise HTTPException(status_code=403, detail="Forbidden")
-    rows = db.query(SettingList).all()
     out = {}
-    for lst in rows:
-        items = db.query(SettingItem).filter(SettingItem.list_id == lst.id).order_by(SettingItem.sort_index.asc()).all()
-        out[lst.name] = [{"id": str(i.id), "label": i.label, "value": i.value, "sort_index": i.sort_index, "meta": i.meta or None} for i in items]
-    # convenience aliases
-    out.setdefault("client_types", [])
-    out.setdefault("client_statuses", [])
-    out.setdefault("payment_terms", [])
-    out.setdefault("divisions", [])
-    out.setdefault("project_statuses", [])
-    out.setdefault("lead_sources", [])
-    out.setdefault("timesheet", [])
-    out.setdefault("report_categories", [])
-    # Add Google Places API key (if configured)
+    
+    # Only include setting lists if user has access
+    if has_access:
+        rows = db.query(SettingList).all()
+        for lst in rows:
+            items = db.query(SettingItem).filter(SettingItem.list_id == lst.id).order_by(SettingItem.sort_index.asc()).all()
+            out[lst.name] = [{"id": str(i.id), "label": i.label, "value": i.value, "sort_index": i.sort_index, "meta": i.meta or None} for i in items]
+        # convenience aliases
+        out.setdefault("client_types", [])
+        out.setdefault("client_statuses", [])
+        out.setdefault("payment_terms", [])
+        out.setdefault("divisions", [])
+        out.setdefault("project_statuses", [])
+        out.setdefault("lead_sources", [])
+        out.setdefault("timesheet", [])
+        out.setdefault("report_categories", [])
+    
+    # Always add Google Places API key (if configured) - needed for address autocomplete
+    # This should be available to all authenticated users, not just those with settings access
     if settings.google_places_api_key:
         out["google_places_api_key"] = settings.google_places_api_key
+    
+    # If user doesn't have access and no API key, return 403
+    if not has_access and not settings.google_places_api_key:
+        raise HTTPException(status_code=403, detail="Forbidden")
+    
     return out
 
 
