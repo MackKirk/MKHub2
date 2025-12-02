@@ -34,6 +34,7 @@ from ..logging import structlog
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from email.message import EmailMessage
 import secrets
 from sqlalchemy import and_
 import random
@@ -1515,23 +1516,95 @@ def password_forgot(identifier: str, db: Session = Depends(get_db)):
     db.add(pr)
     db.commit()
     # email link
+    email_sent = False
+    email_error = None
     try:
-        if settings.smtp_host and settings.mail_from and settings.public_base_url:
-            link = f"{settings.public_base_url}/ui/password-reset.html?token={token}"
+        if not settings.smtp_host:
+            structlog.get_logger().warning("password_reset_email_skipped", reason="SMTP_HOST not configured")
+        elif not settings.mail_from:
+            structlog.get_logger().warning("password_reset_email_skipped", reason="MAIL_FROM not configured")
+        elif not settings.public_base_url:
+            structlog.get_logger().warning("password_reset_email_skipped", reason="PUBLIC_BASE_URL not configured")
+        else:
+            link = f"{settings.public_base_url}/password-reset?token={token}"
             msg = EmailMessage()
             msg["Subject"] = f"Reset your {settings.app_name} password"
             msg["From"] = settings.mail_from
             msg["To"] = user.email_personal
-            msg.set_content(f"Click to reset your password: {link}")
-            with smtplib.SMTP(settings.smtp_host, settings.smtp_port) as s:
-                if settings.smtp_tls:
+            
+            # Create HTML email content
+            html_content = f"""
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Password Reset</title>
+</head>
+<body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+    <div style="background-color: #7f1010; color: white; padding: 20px; text-align: center; border-radius: 8px 8px 0 0;">
+        <h1 style="margin: 0;">Password Reset Request</h1>
+    </div>
+    <div style="background-color: #f9fafb; padding: 30px; border: 1px solid #e5e7eb; border-top: none; border-radius: 0 0 8px 8px;">
+        <p>Hello,</p>
+        <p>You requested to reset your password for {settings.app_name}. Click the button below to reset your password:</p>
+        <div style="text-align: center; margin: 30px 0;">
+            <a href="{link}" style="display: inline-block; background-color: #7f1010; color: white; padding: 12px 30px; text-decoration: none; border-radius: 6px; font-weight: bold;">Reset Password</a>
+        </div>
+        <p>Or copy and paste this link into your browser:</p>
+        <p style="word-break: break-all; color: #6b7280; font-size: 14px;">{link}</p>
+        <p style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #e5e7eb; color: #6b7280; font-size: 14px;">
+            <strong>Note:</strong> This link will expire in 1 hour. If you didn't request this password reset, please ignore this email.
+        </p>
+    </div>
+</body>
+</html>
+            """
+            
+            # Create plain text version
+            text_content = f"""
+Password Reset Request
+
+Hello,
+
+You requested to reset your password for {settings.app_name}. 
+
+Click this link to reset your password:
+{link}
+
+This link will expire in 1 hour. If you didn't request this password reset, please ignore this email.
+            """
+            
+            # Create multipart message
+            msg_multipart = MIMEMultipart("alternative")
+            msg_multipart["Subject"] = f"Reset your {settings.app_name} password"
+            msg_multipart["From"] = settings.mail_from
+            msg_multipart["To"] = user.email_personal
+            
+            text_part = MIMEText(text_content, "plain")
+            html_part = MIMEText(html_content, "html")
+            msg_multipart.attach(text_part)
+            msg_multipart.attach(html_part)
+            
+            if settings.smtp_tls:
+                with smtplib.SMTP(settings.smtp_host, settings.smtp_port) as s:
                     s.starttls()
-                if settings.smtp_username and settings.smtp_password:
-                    s.login(settings.smtp_username, settings.smtp_password)
-                s.send_message(msg)
+                    if settings.smtp_username and settings.smtp_password:
+                        s.login(settings.smtp_username, settings.smtp_password)
+                    s.send_message(msg_multipart)
+            else:
+                with smtplib.SMTP(settings.smtp_host, settings.smtp_port) as s:
+                    if settings.smtp_username and settings.smtp_password:
+                        s.login(settings.smtp_username, settings.smtp_password)
+                    s.send_message(msg_multipart)
+            
+            email_sent = True
+            structlog.get_logger().info("password_reset_email_sent", user_id=str(user.id), email=user.email_personal)
     except Exception as e:
-        structlog.get_logger().warning("password_reset_email_failed", error=str(e))
-    return {"status": "ok"}
+        email_error = str(e)
+        structlog.get_logger().error("password_reset_email_failed", error=str(e), user_id=str(user.id), email=user.email_personal, exc_info=True)
+    
+    return {"status": "ok", "email_sent": email_sent, "email_error": email_error}
 
 
 @router.post("/password/reset")
