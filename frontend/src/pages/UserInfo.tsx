@@ -6,6 +6,8 @@ import { formatDateLocal, getCurrentMonthLocal } from '@/lib/dateUtils';
 import toast from 'react-hot-toast';
 import GeoSelect from '@/components/GeoSelect';
 import { useConfirm } from '@/components/ConfirmProvider';
+import NationalitySelect from '@/components/NationalitySelect';
+import AddressAutocomplete from '@/components/AddressAutocomplete';
 
 // List of implemented permissions (permissions that are actually checked in the codebase)
 const IMPLEMENTED_PERMISSIONS = new Set([
@@ -18,7 +20,7 @@ const IMPLEMENTED_PERMISSIONS = new Set([
   // Human Resources permissions
   "hr:access",
   "hr:users:read", "hr:users:write",
-  "hr:users:view:general", "hr:users:edit:general",
+  "hr:users:view:general", "hr:users:view:job:compensation", "hr:users:edit:general",
   "hr:users:view:timesheet", "hr:users:edit:timesheet", "hr:users:view:permissions", "hr:users:edit:permissions",
   "hr:attendance:read", "hr:attendance:write",
   "hr:community:read", "hr:community:write",
@@ -169,6 +171,14 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
           return prev;
         }
       }
+      // Check dependencies for job compensation view permission
+      else if (key === 'hr:users:view:job:compensation') {
+        // Requires hr:users:read and hr:users:view:general
+        if (newValue && (!prev['hr:users:read'] || !prev['hr:users:view:general'])) {
+          toast.error('This permission requires "View Users List" and "View General Tab" to be enabled first');
+          return prev;
+        }
+      }
       // Check dependencies for invite user permission
       else if (key === 'hr:users:write') {
         // Requires hr:users:read
@@ -208,10 +218,14 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
           newPerms['hr:users:edit:timesheet'] = false;
         } else if (key === 'hr:users:view:permissions') {
           newPerms['hr:users:edit:permissions'] = false;
+        } else if (key === 'hr:users:view:general') {
+          // If disabling View General Tab, also disable job compensation view
+          newPerms['hr:users:view:job:compensation'] = false;
         } else if (key === 'hr:users:read') {
           // If disabling View Users List, disable all view, edit permissions and invite user
           newPerms['hr:users:write'] = false;
           newPerms['hr:users:view:general'] = false;
+          newPerms['hr:users:view:job:compensation'] = false;
           newPerms['hr:users:view:timesheet'] = false;
           newPerms['hr:users:view:permissions'] = false;
           newPerms['hr:users:edit:general'] = false;
@@ -229,6 +243,10 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
     // View permissions require hr:users:read
     if (permKey === 'hr:users:view:general' || permKey === 'hr:users:view:timesheet' || permKey === 'hr:users:view:permissions') {
       return !!permissions['hr:users:read'];
+    }
+    // Job compensation view requires hr:users:read and hr:users:view:general
+    if (permKey === 'hr:users:view:job:compensation') {
+      return !!(permissions['hr:users:read'] && permissions['hr:users:view:general']);
     }
     // Invite user requires hr:users:read
     if (permKey === 'hr:users:write') {
@@ -439,10 +457,11 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
                                     {viewPerms.map((perm: any) => {
                                       const isViewPermission = perm.key.startsWith('hr:users:view:');
                                       const canEnable = canEdit && (!isViewPermission || canEnableEditPermission(perm.key, permissions));
+                                      const isSubPermission = perm.key === 'hr:users:view:job:compensation';
                                       return (
                                       <label
                                         key={perm.id}
-                                        className={`flex items-start gap-2 p-2 rounded bg-white ${canEnable ? 'hover:bg-gray-50 cursor-pointer' : 'cursor-default'}`}
+                                        className={`flex items-start gap-2 p-2 rounded bg-white ${canEnable ? 'hover:bg-gray-50 cursor-pointer' : 'cursor-default'} ${isSubPermission ? 'ml-6' : ''}`}
                                       >
                                         <input
                                           type="checkbox"
@@ -623,6 +642,16 @@ export default function UserInfo(){
     if (isAdmin) return true;
     const perms = me?.permissions || [];
     return perms.includes('hr:users:edit:general') || perms.includes('users:write'); // Legacy
+  }, [me]);
+  
+  // Check view permission for job compensation fields (Employment Type, Pay Type, Pay Rate)
+  const canViewJobCompensation = useMemo(() => {
+    if (!me) return false;
+    const isAdmin = (me?.roles || []).some((r: string) => String(r || '').toLowerCase() === 'admin');
+    if (isAdmin) return true;
+    const perms = me?.permissions || [];
+    // Only check for the specific permission - admins can always see it, but regular users need the specific permission
+    return perms.includes('hr:users:view:job:compensation');
   }, [me]);
   
   // Check edit permissions for permissions tab
@@ -920,7 +949,7 @@ export default function UserInfo(){
                   <div>
                     <div className="flex items-center gap-2"><h4 className="font-semibold">Basic information</h4></div>
                     <div className="text-xs text-gray-500 mt-0.5 mb-2">Core personal details.</div>
-                    <EditableGrid p={p} editable={canEditGeneral} selfEdit={!!canSelfEdit} userId={String(userId)} collectChanges={collectChanges} inlineSave={false} fields={[['First name','first_name'],['Last name','last_name'],['Preferred name','preferred_name'],['Gender','gender'],['Marital status','marital_status'],['Date of birth','date_of_birth'],['Nationality','nationality']]} />
+                    <EditableGrid p={p} editable={canEditGeneral} selfEdit={!!canSelfEdit} userId={String(userId)} collectChanges={collectChanges} inlineSave={false} fields={[['First name','first_name'],['Last name','last_name'],['Middle name','middle_name'],['Prefered name','preferred_name'],['Gender','gender'],['Marital status','marital_status'],['Date of birth','date_of_birth'],['Nationality','nationality']]} />
                   </div>
                   <div>
                     <div className="flex items-center gap-2"><h4 className="font-semibold">Address</h4></div>
@@ -949,7 +978,7 @@ export default function UserInfo(){
                   <div>
                     <div className="flex items-center gap-2"><h4 className="font-semibold">Employment Details</h4></div>
                     <div className="text-xs text-gray-500 mt-0.5 mb-2">Dates and employment attributes.</div>
-                    <JobSection type="employment" p={p} editable={canEditGeneral} userId={String(userId)} collectChanges={collectChanges} usersOptions={usersOptions||[]} settings={settings} />
+                    <JobSection type="employment" p={p} editable={canEditGeneral} userId={String(userId)} collectChanges={collectChanges} usersOptions={usersOptions||[]} settings={settings} canViewCompensation={canViewJobCompensation} />
                   </div>
                   <div>
                     <div className="flex items-center gap-2"><h4 className="font-semibold">Organization</h4></div>
@@ -1007,7 +1036,7 @@ function LabelVal({label, value}:{label:string, value:any}){
   );
 }
 
-function EditableGrid({p, fields, editable, selfEdit, userId, collectChanges, inlineSave=true}:{p:any, fields:[string,string][], editable:boolean, selfEdit:boolean, userId:string, collectChanges?: (kv:Record<string,any>)=>void, inlineSave?: boolean}){
+function EditableGrid({p, fields, editable, selfEdit, userId, collectChanges, inlineSave=true, fieldOptions}:{p:any, fields:[string,string][], editable:boolean, selfEdit:boolean, userId:string, collectChanges?: (kv:Record<string,any>)=>void, inlineSave?: boolean, fieldOptions?: Record<string, string[]>}){
   const [form, setForm] = useState<any>(()=>({ ...p }));
   const save = async()=>{
     try{
@@ -1022,23 +1051,40 @@ function EditableGrid({p, fields, editable, selfEdit, userId, collectChanges, in
     }catch(_e){ toast.error('Failed to save'); }
   };
   const isEditable = !!(editable || selfEdit);
+  
+  const genderOptions = ['Male', 'Female', 'Other', 'Prefer not to say'];
+  const maritalStatusOptions = ['Single', 'Married', 'Common-law', 'Divorced', 'Widowed', 'Prefer not to say'];
+  
   return (
     <div>
       <div className="grid md:grid-cols-2 gap-4">
-        {fields.map(([label,key])=> (
-          <div key={key}>
-            <div className="text-sm text-gray-600">{label}</div>
-            {isEditable ? (
-              (key==='date_of_birth' || key==='hire_date' || key==='termination_date') ? (
-                <input type="date" value={(form[key]||'').slice(0,10)} onChange={e=> { setForm((s:any)=>({ ...s, [key]: e.target.value })); collectChanges && collectChanges({ [key]: e.target.value }); }} className="w-full rounded-lg border px-3 py-2"/>
+        {fields.map(([label,key])=> {
+          const options = fieldOptions?.[key] || (key === 'gender' ? genderOptions : key === 'marital_status' ? maritalStatusOptions : null);
+          
+          return (
+            <div key={key}>
+              <div className="text-sm text-gray-600">{label}</div>
+              {isEditable ? (
+                (key==='date_of_birth' || key==='hire_date' || key==='termination_date') ? (
+                  <input type="date" value={(form[key]||'').slice(0,10)} onChange={e=> { setForm((s:any)=>({ ...s, [key]: e.target.value })); collectChanges && collectChanges({ [key]: e.target.value }); }} className="w-full rounded-lg border px-3 py-2"/>
+                ) : key === 'nationality' ? (
+                  <NationalitySelect value={form[key]||''} onChange={v=> { setForm((s:any)=>({ ...s, [key]: v })); collectChanges && collectChanges({ [key]: v }); }} />
+                ) : options ? (
+                  <select value={form[key]||''} onChange={e=> { setForm((s:any)=>({ ...s, [key]: e.target.value })); collectChanges && collectChanges({ [key]: e.target.value }); }} className="w-full rounded-lg border px-3 py-2">
+                    <option value="">Select...</option>
+                    {options.map(opt => (
+                      <option key={opt} value={opt}>{opt}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <input value={form[key]||''} onChange={e=> { setForm((s:any)=>({ ...s, [key]: e.target.value })); collectChanges && collectChanges({ [key]: e.target.value }); }} className="w-full rounded-lg border px-3 py-2"/>
+                )
               ) : (
-                <input value={form[key]||''} onChange={e=> { setForm((s:any)=>({ ...s, [key]: e.target.value })); collectChanges && collectChanges({ [key]: e.target.value }); }} className="w-full rounded-lg border px-3 py-2"/>
-              )
-            ) : (
-              <div className="font-medium break-words">{(key==='date_of_birth' || key==='hire_date' || key==='termination_date')? String(p[key]??'').slice(0,10) : String(p[key]??'')}</div>
-            )}
-          </div>
-        ))}
+                <div className="font-medium break-words">{(key==='date_of_birth' || key==='hire_date' || key==='termination_date')? String(p[key]??'').slice(0,10) : String(p[key]??'')}</div>
+              )}
+            </div>
+          );
+        })}
       </div>
       {isEditable && inlineSave && (
         <div className="mt-4 text-right">
@@ -1052,7 +1098,9 @@ function EditableGrid({p, fields, editable, selfEdit, userId, collectChanges, in
 function AddressSection({ p, editable, selfEdit, userId, collectChanges, inlineSave=true }:{ p:any, editable:boolean, selfEdit:boolean, userId:string, collectChanges?: (kv:Record<string,any>)=>void, inlineSave?: boolean }){
   const [form, setForm] = useState<any>(()=>({
     address_line1: p.address_line1||'',
+    address_line1_complement: p.address_line1_complement||'',
     address_line2: p.address_line2||'',
+    address_line2_complement: p.address_line2_complement||'',
     city: p.city||'',
     province: p.province||'',
     postal_code: p.postal_code||'',
@@ -1063,13 +1111,15 @@ function AddressSection({ p, editable, selfEdit, userId, collectChanges, inlineS
   useEffect(() => {
     setForm({
       address_line1: p.address_line1||'',
+      address_line1_complement: p.address_line1_complement||'',
       address_line2: p.address_line2||'',
+      address_line2_complement: p.address_line2_complement||'',
       city: p.city||'',
       province: p.province||'',
       postal_code: p.postal_code||'',
       country: p.country||'',
     });
-  }, [p.address_line1, p.address_line2, p.city, p.province, p.postal_code, p.country]);
+  }, [p.address_line1, p.address_line1_complement, p.address_line2, p.address_line2_complement, p.city, p.province, p.postal_code, p.country]);
   const save = async()=>{
     try{
       if (editable) {
@@ -1089,52 +1139,119 @@ function AddressSection({ p, editable, selfEdit, userId, collectChanges, inlineS
         <div>
           <div className="text-sm text-gray-600">Address line 1</div>
           {isEditable? (
-            <input value={form.address_line1} onChange={e=> { setForm((s:any)=>({ ...s, address_line1: e.target.value })); collectChanges && collectChanges({ address_line1: e.target.value }); }} className="w-full rounded-lg border px-3 py-2"/>
+            <AddressAutocomplete
+              value={form.address_line1 || ''}
+              onChange={(value) => {
+                setForm((s:any)=>({ ...s, address_line1: value }));
+                collectChanges && collectChanges({ address_line1: value });
+              }}
+              onAddressSelect={(address) => {
+                setForm((s:any) => ({
+                  ...s,
+                  address_line1: address.address_line1 || s.address_line1,
+                  city: address.city !== undefined ? address.city : s.city,
+                  province: address.province !== undefined ? address.province : s.province,
+                  postal_code: address.postal_code !== undefined ? address.postal_code : s.postal_code,
+                  country: address.country !== undefined ? address.country : s.country,
+                }));
+                collectChanges && collectChanges({
+                  address_line1: address.address_line1,
+                  city: address.city,
+                  province: address.province,
+                  postal_code: address.postal_code,
+                  country: address.country,
+                });
+              }}
+              placeholder="Start typing an address..."
+              className="w-full rounded-lg border px-3 py-2"
+            />
           ) : (
             <div className="font-medium break-words">{String(p.address_line1||'')}</div>
           )}
         </div>
         <div>
+          <div className="text-sm text-gray-600">Complement (e.g., Apt, Unit, Basement)</div>
+          {isEditable? (
+            <input 
+              type="text" 
+              value={form.address_line1_complement || ''} 
+              onChange={e=> { 
+                setForm((s:any)=>({ ...s, address_line1_complement: e.target.value })); 
+                collectChanges && collectChanges({ address_line1_complement: e.target.value }); 
+              }} 
+              placeholder="Apt 101, Unit 2, Basement, etc."
+              className="w-full rounded-lg border px-3 py-2"
+            />
+          ) : (
+            <div className="font-medium break-words">{String(p.address_line1_complement||'')}</div>
+          )}
+        </div>
+        <div>
           <div className="text-sm text-gray-600">Address line 2</div>
           {isEditable? (
-            <input value={form.address_line2} onChange={e=> { setForm((s:any)=>({ ...s, address_line2: e.target.value })); collectChanges && collectChanges({ address_line2: e.target.value }); }} className="w-full rounded-lg border px-3 py-2"/>
+            <AddressAutocomplete
+              value={form.address_line2 || ''}
+              onChange={(value) => {
+                setForm((s:any)=>({ ...s, address_line2: value }));
+                collectChanges && collectChanges({ address_line2: value });
+              }}
+              placeholder="Start typing an address..."
+              className="w-full rounded-lg border px-3 py-2"
+            />
           ) : (
             <div className="font-medium break-words">{String(p.address_line2||'')}</div>
           )}
         </div>
-        <div className="md:col-span-2">
-          {isEditable ? (
-            <GeoSelect
-              country={form.country}
-              state={form.province}
-              city={form.city}
-              onChange={(v)=> { setForm((s:any)=> ({...s, country: v.country??s.country, province: v.state??s.province, city: v.city??s.city })); collectChanges && collectChanges({ country: v.country, province: v.state, city: v.city }); }}
-              labels={{ country:'Country', state:'Province/State', city:'City' }}
+        <div>
+          <div className="text-sm text-gray-600">Complement (e.g., Apt, Unit, Basement)</div>
+          {isEditable? (
+            <input 
+              type="text" 
+              value={form.address_line2_complement || ''} 
+              onChange={e=> { 
+                setForm((s:any)=>({ ...s, address_line2_complement: e.target.value })); 
+                collectChanges && collectChanges({ address_line2_complement: e.target.value }); 
+              }} 
+              placeholder="Apt 101, Unit 2, Basement, etc."
+              className="w-full rounded-lg border px-3 py-2"
             />
           ) : (
-            <div className="grid md:grid-cols-3 gap-4">
-              <div>
-                <div className="text-sm text-gray-600">Country</div>
-                <div className="font-medium">{String(p.country||'')}</div>
-              </div>
-              <div>
-                <div className="text-sm text-gray-600">Province/State</div>
-                <div className="font-medium">{String(p.province||'')}</div>
-              </div>
-              <div>
-                <div className="text-sm text-gray-600">City</div>
-                <div className="font-medium">{String(p.city||'')}</div>
-              </div>
-            </div>
+            <div className="font-medium break-words">{String(p.address_line2_complement||'')}</div>
           )}
         </div>
-        <div>
-          <div className="text-sm text-gray-600">Postal code</div>
-          {isEditable? (
-            <input value={form.postal_code} onChange={e=> { setForm((s:any)=>({ ...s, postal_code: e.target.value })); collectChanges && collectChanges({ postal_code: e.target.value }); }} className="w-full rounded-lg border px-3 py-2"/>
-          ) : (
-            <div className="font-medium break-words">{String(p.postal_code||'')}</div>
-          )}
+        <div className="grid md:grid-cols-2 gap-4">
+          <div>
+            <div className="text-sm text-gray-600">City</div>
+            {isEditable ? (
+              <input value={form.city || ''} readOnly className="w-full rounded-lg border px-3 py-2 bg-gray-50 cursor-not-allowed"/>
+            ) : (
+              <div className="font-medium break-words">{String(p.city||'')}</div>
+            )}
+          </div>
+          <div>
+            <div className="text-sm text-gray-600">Province/State</div>
+            {isEditable ? (
+              <input value={form.province || ''} readOnly className="w-full rounded-lg border px-3 py-2 bg-gray-50 cursor-not-allowed"/>
+            ) : (
+              <div className="font-medium break-words">{String(p.province||'')}</div>
+            )}
+          </div>
+          <div>
+            <div className="text-sm text-gray-600">Postal code</div>
+            {isEditable ? (
+              <input value={form.postal_code || ''} readOnly className="w-full rounded-lg border px-3 py-2 bg-gray-50 cursor-not-allowed"/>
+            ) : (
+              <div className="font-medium break-words">{String(p.postal_code||'')}</div>
+            )}
+          </div>
+          <div>
+            <div className="text-sm text-gray-600">Country</div>
+            {isEditable ? (
+              <input value={form.country || ''} readOnly className="w-full rounded-lg border px-3 py-2 bg-gray-50 cursor-not-allowed"/>
+            ) : (
+              <div className="font-medium break-words">{String(p.country||'')}</div>
+            )}
+          </div>
         </div>
       </div>
       {isEditable && inlineSave && (
@@ -1224,7 +1341,7 @@ function EducationSection({ userId, canEdit }:{ userId:string, canEdit:boolean }
   );
 }
 
-function JobSection({ type, p, editable, userId, collectChanges, usersOptions, settings }:{ type:'employment'|'organization', p:any, editable:boolean, userId:string, collectChanges: (kv:Record<string,any>)=>void, usersOptions:any[], settings:any }){
+function JobSection({ type, p, editable, userId, collectChanges, usersOptions, settings, canViewCompensation = false }:{ type:'employment'|'organization', p:any, editable:boolean, userId:string, collectChanges: (kv:Record<string,any>)=>void, usersOptions:any[], settings:any, canViewCompensation?: boolean }){
   const isEditable = !!editable;
   const [form, setForm] = useState<any>(()=>({
     hire_date: p.hire_date||'',
@@ -1250,36 +1367,42 @@ function JobSection({ type, p, editable, userId, collectChanges, usersOptions, s
           <div className="text-sm text-gray-600">Termination date</div>
           {isEditable? <input type="date" className="w-full rounded-lg border px-3 py-2" value={(form.termination_date||'').slice(0,10)} onChange={e=>onField('termination_date', e.target.value)} /> : <div className="font-medium">{String(p.termination_date||'').slice(0,10)}</div>}
         </div>
-        <div>
-          <div className="text-sm text-gray-600">Employment type</div>
-          {isEditable? (
-            (settings?.employment_types?.length ? (
-              <select className="w-full rounded-lg border px-3 py-2" value={form.employment_type} onChange={e=>onField('employment_type', e.target.value)}>
-                <option value="">Select...</option>
-                {settings.employment_types.map((it:any)=> <option key={it.id} value={it.label}>{it.label}</option>)}
-              </select>
-            ) : (
-              <input className="w-full rounded-lg border px-3 py-2" value={form.employment_type} onChange={e=>onField('employment_type', e.target.value)} />
-            ))
-          ) : <div className="font-medium">{String(p.employment_type||'')}</div>}
-        </div>
-        <div>
-          <div className="text-sm text-gray-600">Pay type</div>
-          {isEditable? (
-            (settings?.pay_types?.length ? (
-              <select className="w-full rounded-lg border px-3 py-2" value={form.pay_type} onChange={e=>onField('pay_type', e.target.value)}>
-                <option value="">Select...</option>
-                {settings.pay_types.map((it:any)=> <option key={it.id} value={it.label}>{it.label}</option>)}
-              </select>
-            ) : (
-              <input className="w-full rounded-lg border px-3 py-2" value={form.pay_type} onChange={e=>onField('pay_type', e.target.value)} />
-            ))
-          ) : <div className="font-medium">{String(p.pay_type||'')}</div>}
-        </div>
-        <div>
-          <div className="text-sm text-gray-600">Pay rate</div>
-          {isEditable? <input className="w-full rounded-lg border px-3 py-2" value={form.pay_rate} onChange={e=>onField('pay_rate', e.target.value)} /> : <div className="font-medium">{String(p.pay_rate||'')}</div>}
-        </div>
+        {canViewCompensation && (
+          <div>
+            <div className="text-sm text-gray-600">Employment type</div>
+            {isEditable? (
+              (settings?.employment_types?.length ? (
+                <select className="w-full rounded-lg border px-3 py-2" value={form.employment_type} onChange={e=>onField('employment_type', e.target.value)}>
+                  <option value="">Select...</option>
+                  {settings.employment_types.map((it:any)=> <option key={it.id} value={it.label}>{it.label}</option>)}
+                </select>
+              ) : (
+                <input className="w-full rounded-lg border px-3 py-2" value={form.employment_type} onChange={e=>onField('employment_type', e.target.value)} />
+              ))
+            ) : <div className="font-medium">{String(p.employment_type||'')}</div>}
+          </div>
+        )}
+        {canViewCompensation && (
+          <div>
+            <div className="text-sm text-gray-600">Pay type</div>
+            {isEditable? (
+              (settings?.pay_types?.length ? (
+                <select className="w-full rounded-lg border px-3 py-2" value={form.pay_type} onChange={e=>onField('pay_type', e.target.value)}>
+                  <option value="">Select...</option>
+                  {settings.pay_types.map((it:any)=> <option key={it.id} value={it.label}>{it.label}</option>)}
+                </select>
+              ) : (
+                <input className="w-full rounded-lg border px-3 py-2" value={form.pay_type} onChange={e=>onField('pay_type', e.target.value)} />
+              ))
+            ) : <div className="font-medium">{String(p.pay_type||'')}</div>}
+          </div>
+        )}
+        {canViewCompensation && (
+          <div>
+            <div className="text-sm text-gray-600">Pay rate</div>
+            {isEditable? <input className="w-full rounded-lg border px-3 py-2" value={form.pay_rate} onChange={e=>onField('pay_rate', e.target.value)} /> : <div className="font-medium">{String(p.pay_rate||'')}</div>}
+          </div>
+        )}
         <div>
           <div className="text-sm text-gray-600">Job title</div>
           {isEditable? <input className="w-full rounded-lg border px-3 py-2" value={form.job_title} onChange={e=>onField('job_title', e.target.value)} /> : <div className="font-medium">{String(p.job_title||'')}</div>}

@@ -188,25 +188,36 @@ export default function AddressAutocomplete({
         }
         // Try multiple administrative area types
         if (types.includes('administrative_area_level_1')) {
-          province = component.short_name || component.long_name;
+          province = component.long_name || component.short_name;
         }
         if (types.includes('administrative_area_level_2') && !province) {
-          province = component.short_name || component.long_name;
+          province = component.long_name || component.short_name;
         }
         if (types.includes('country')) {
-          country = component.short_name || component.long_name;
+          country = component.long_name || component.short_name;
         }
         if (types.includes('postal_code')) {
           postal_code = component.long_name;
         }
       });
 
-      // Update input value with street address (line 1)
-      // If we don't have a parsed street address, use formatted_address
-      const addressLine1Value = address_line1.trim() || place.formatted_address?.split(',')[0]?.trim() || place.formatted_address || '';
+      // Build formatted address for display (full address with city, province, country)
+      // This matches what Google shows in the autocomplete dropdown
+      const addressParts = [];
+      const streetAddress = address_line1.trim();
+      if (streetAddress) addressParts.push(streetAddress);
+      if (city) addressParts.push(city);
+      if (province) addressParts.push(province);
+      if (country) addressParts.push(country);
+      const formattedFullAddress = addressParts.join(', ');
+      
+      // Use formatted_address from Google if available, otherwise build our own
+      const displayAddress = place.formatted_address || formattedFullAddress || streetAddress;
       
       console.log('Parsed address:', {
-        address_line1: addressLine1Value,
+        streetAddress,
+        formattedFullAddress,
+        displayAddress,
         address_line2,
         city,
         province,
@@ -216,15 +227,16 @@ export default function AddressAutocomplete({
         lng,
       });
       
-      // Update the input field using ref to avoid stale closure
+      // Update the input field with full formatted address using ref to avoid stale closure
       if (onChangeRef.current) {
-        onChangeRef.current(addressLine1Value);
+        onChangeRef.current(displayAddress);
       }
 
       // Call onAddressSelect callback with parsed address using ref to avoid stale closure
       // Always call this, even if some fields are empty, so the parent can update all fields
+      // address_line1 will contain the full formatted address for display
       const addressData = {
-        address_line1: addressLine1Value,
+        address_line1: displayAddress, // Full formatted address for display
         address_line2: address_line2 || undefined,
         city: city || undefined,
         province: province || undefined,

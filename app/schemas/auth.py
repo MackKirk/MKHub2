@@ -66,6 +66,7 @@ class EmployeeProfileInput(BaseModel):
     # personal info
     first_name: Optional[str] = None
     last_name: Optional[str] = None
+    middle_name: Optional[str] = None
     preferred_name: Optional[str] = None
     gender: Optional[str] = None
     date_of_birth: Optional[str] = None
@@ -74,7 +75,9 @@ class EmployeeProfileInput(BaseModel):
     phone: Optional[str] = None
     mobile_phone: Optional[str] = None
     address_line1: Optional[str] = None
+    address_line1_complement: Optional[str] = None
     address_line2: Optional[str] = None
+    address_line2_complement: Optional[str] = None
     city: Optional[str] = None
     province: Optional[str] = None
     postal_code: Optional[str] = None

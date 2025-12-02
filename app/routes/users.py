@@ -29,6 +29,9 @@ def _user_to_dict(u: User, ep: Optional[EmployeeProfile]) -> dict:
         "divisions": divisions,
         "profile_photo_file_id": str(getattr(ep, 'profile_photo_file_id')) if (ep and getattr(ep, 'profile_photo_file_id', None)) else None,
         "manager_user_id": str(ep.manager_user_id) if (ep and ep.manager_user_id) else None,
+        "job_title": getattr(ep, 'job_title', None) if ep else None,
+        "phone": getattr(ep, 'phone', None) if ep else None,
+        "mobile_phone": getattr(ep, 'mobile_phone', None) if ep else None,
     }
 
 

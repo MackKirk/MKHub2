@@ -605,6 +605,7 @@ class EmployeeProfile(Base):
     # Dados Pessoais
     first_name: Mapped[Optional[str]] = mapped_column(String(100))
     last_name: Mapped[Optional[str]] = mapped_column(String(100))
+    middle_name: Mapped[Optional[str]] = mapped_column(String(100))
     preferred_name: Mapped[Optional[str]] = mapped_column(String(100))
     gender: Mapped[Optional[str]] = mapped_column(String(50))
     date_of_birth: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
@@ -613,7 +614,9 @@ class EmployeeProfile(Base):
     phone: Mapped[Optional[str]] = mapped_column(String(100))
     mobile_phone: Mapped[Optional[str]] = mapped_column(String(100))
     address_line1: Mapped[Optional[str]] = mapped_column(String(255))
+    address_line1_complement: Mapped[Optional[str]] = mapped_column(String(255))
     address_line2: Mapped[Optional[str]] = mapped_column(String(255))
+    address_line2_complement: Mapped[Optional[str]] = mapped_column(String(255))
     city: Mapped[Optional[str]] = mapped_column(String(100))
     province: Mapped[Optional[str]] = mapped_column(String(100))
     postal_code: Mapped[Optional[str]] = mapped_column(String(50))

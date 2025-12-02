@@ -2,10 +2,9 @@ import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { Link } from 'react-router-dom';
 import { useState, useMemo } from 'react';
-import { getCurrentMonthLocal } from '@/lib/dateUtils';
 import InviteUserModal from '@/components/InviteUserModal';
 
-type User = { id:string, username:string, email?:string, name?:string, roles?:string[], is_active?:boolean, profile_photo_file_id?:string };
+type User = { id:string, username:string, email?:string, name?:string, roles?:string[], is_active?:boolean, profile_photo_file_id?:string, job_title?:string, phone?:string, mobile_phone?:string };
 type UsersResponse = { items: User[], total: number, page: number, limit: number, total_pages: number };
 
 export default function Users(){
@@ -30,11 +29,6 @@ export default function Users(){
   });
   
   const [showInviteModal, setShowInviteModal] = useState(false);
-  const month = getCurrentMonthLocal();
-  const { data:summary } = useQuery({ 
-    queryKey:['timesheetSummary', month], 
-    queryFn: ()=> api<any[]>('GET', `/projects/timesheet/summary?month=${encodeURIComponent(month)}`) 
-  });
   
   const { data:me } = useQuery({ queryKey:['me'], queryFn: ()=> api<any>('GET','/auth/me') });
   
@@ -58,9 +52,6 @@ export default function Users(){
            perms.includes('hr:users:view:permissions') ||
            perms.includes('users:read'); // Legacy permission
   }, [me]);
-  
-  const minsByUser: Record<string, number> = {};
-  (summary||[]).forEach((r:any)=>{ minsByUser[String(r.user_id)]=Number(r.minutes||0); });
   
   const users = data?.items || [];
   const totalPages = data?.total_pages || 0;
@@ -133,8 +124,14 @@ export default function Users(){
                       )}
                     </div>
                     <div className="text-sm text-gray-600 truncate">{u.email||''}</div>
-                    <div className="text-[11px] text-gray-500 truncate">{(u.roles||[]).join(', ') || 'No roles'}</div>
-                    <div className="text-[11px] text-gray-700">This month: {((minsByUser[u.id]||0)/60).toFixed(1)}h</div>
+                    {u.job_title && (
+                      <div className="text-[11px] text-gray-700 truncate">{u.job_title}</div>
+                    )}
+                    {(u.phone || u.mobile_phone) && (
+                      <div className="text-[11px] text-gray-500 truncate">
+                        {[u.phone, u.mobile_phone].filter(Boolean).join(' / ')}
+                      </div>
+                    )}
                   </div>
                 </>
               );

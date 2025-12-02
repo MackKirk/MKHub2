@@ -28,6 +28,7 @@ from .security import (
     get_current_user,
     require_roles,
     require_permissions,
+    _has_permission,
 )
 from ..logging import structlog
 import smtplib
@@ -588,6 +589,7 @@ def my_profile(user: User = Depends(get_current_user), db: Session = Depends(get
         data["profile"] = {
             "first_name": ep.first_name,
             "last_name": ep.last_name,
+            "middle_name": ep.middle_name,
             "preferred_name": ep.preferred_name,
             "gender": ep.gender,
             "date_of_birth": _dt(ep.date_of_birth),
@@ -596,7 +598,9 @@ def my_profile(user: User = Depends(get_current_user), db: Session = Depends(get
             "phone": ep.phone,
             "mobile_phone": ep.mobile_phone,
             "address_line1": ep.address_line1,
+            "address_line1_complement": getattr(ep, 'address_line1_complement', None),
             "address_line2": ep.address_line2,
+            "address_line2_complement": getattr(ep, 'address_line2_complement', None),
             "city": ep.city,
             "province": ep.province,
             "postal_code": ep.postal_code,
@@ -650,8 +654,8 @@ def update_my_profile(payload: EmployeeProfileInput, user: User = Depends(get_cu
 
     # Allow self to update only personal/emergency contact fields, not job/company controlled fields
     allowed_keys = {
-        "preferred_name","phone","mobile_phone","gender","marital_status","date_of_birth","nationality",
-        "address_line1","address_line2","city","province","postal_code","country",
+        "first_name","last_name","middle_name","preferred_name","phone","mobile_phone","gender","marital_status","date_of_birth","nationality",
+        "address_line1","address_line1_complement","address_line2","address_line2_complement","city","province","postal_code","country",
         "sin_number","work_permit_status","visa_status",
         "emergency_contact_name","emergency_contact_relationship","emergency_contact_phone",
         "profile_photo_file_id",
@@ -761,8 +765,8 @@ def get_user_profile(user_id: str, db: Session = Depends(get_db), me: User = Dep
         "profile": {
             k: getattr(ep, k)
             for k in [
-                "first_name","last_name","preferred_name","gender","date_of_birth","marital_status","nationality",
-                "phone","mobile_phone","address_line1","address_line2","city","province","postal_code","country",
+                "first_name","last_name","middle_name","preferred_name","gender","date_of_birth","marital_status","nationality",
+                "phone","mobile_phone","address_line1","address_line1_complement","address_line2","address_line2_complement","city","province","postal_code","country",
                 "hire_date","termination_date","job_title","division","work_email","work_phone","manager_user_id",
                 "pay_rate","pay_type","employment_type","sin_number","work_permit_status","visa_status","profile_photo_file_id",
                 "emergency_contact_name","emergency_contact_relationship","emergency_contact_phone",
@@ -971,7 +975,11 @@ def admin_bulk_create_users(
 
 
 @router.get("/users/{user_id}/education")
-def list_education(user_id: str, db: Session = Depends(get_db), _=Depends(require_permissions("users:read", "hr:users:read", "hr:users:view:general"))):
+def list_education(user_id: str, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    # Allow self to view or require permissions
+    if str(user.id) != str(user_id):
+        if not (_has_permission(user, "users:read") or _has_permission(user, "hr:users:read") or _has_permission(user, "hr:users:view:general")):
+            raise HTTPException(status_code=403, detail="Forbidden")
     from ..models.models import EmployeeEducation
     rows = db.query(EmployeeEducation).filter(EmployeeEducation.user_id == user_id).all()
     def _row(e):
@@ -988,7 +996,11 @@ def list_education(user_id: str, db: Session = Depends(get_db), _=Depends(requir
 
 
 @router.post("/users/{user_id}/education")
-def create_education(user_id: str, payload: dict = Body(...), db: Session = Depends(get_db), _=Depends(require_permissions("users:write", "hr:users:edit:general"))):
+def create_education(user_id: str, payload: dict = Body(...), db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    # Allow self to edit or require permissions
+    if str(user.id) != str(user_id):
+        if not (_has_permission(user, "users:write") or _has_permission(user, "hr:users:edit:general")):
+            raise HTTPException(status_code=403, detail="Forbidden")
     from ..models.models import EmployeeEducation
     from datetime import datetime, timezone
     def _dt(s):
@@ -1011,7 +1023,11 @@ def create_education(user_id: str, payload: dict = Body(...), db: Session = Depe
 
 
 @router.delete("/users/{user_id}/education/{eid}")
-def delete_education(user_id: str, eid: str, db: Session = Depends(get_db), _=Depends(require_permissions("users:write", "hr:users:edit:general"))):
+def delete_education(user_id: str, eid: str, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    # Allow self to edit or require permissions
+    if str(user.id) != str(user_id):
+        if not (_has_permission(user, "users:write") or _has_permission(user, "hr:users:edit:general")):
+            raise HTTPException(status_code=403, detail="Forbidden")
     from ..models.models import EmployeeEducation
     db.query(EmployeeEducation).filter(and_(EmployeeEducation.user_id == user_id, EmployeeEducation.id == eid)).delete()
     db.commit()
@@ -1019,7 +1035,11 @@ def delete_education(user_id: str, eid: str, db: Session = Depends(get_db), _=De
 
 
 @router.get("/users/{user_id}/documents")
-def list_documents(user_id: str, folder_id: Optional[str] = None, db: Session = Depends(get_db), _=Depends(require_permissions("users:read", "hr:users:read", "hr:users:view:general"))):
+def list_documents(user_id: str, folder_id: Optional[str] = None, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    # Allow self to view or require permissions
+    if str(user.id) != str(user_id):
+        if not (_has_permission(user, "users:read") or _has_permission(user, "hr:users:read") or _has_permission(user, "hr:users:view:general")):
+            raise HTTPException(status_code=403, detail="Forbidden")
     from ..models.models import EmployeeDocument
     q = db.query(EmployeeDocument).filter(EmployeeDocument.user_id == user_id)
     if folder_id:
@@ -1052,7 +1072,11 @@ def list_documents(user_id: str, folder_id: Optional[str] = None, db: Session = 
 
 
 @router.post("/users/{user_id}/documents")
-def create_document(user_id: str, payload: dict = Body(...), db: Session = Depends(get_db), user: User = Depends(require_permissions("users:write", "hr:users:edit:general"))):
+def create_document(user_id: str, payload: dict = Body(...), db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    # Allow self to edit or require permissions
+    if str(user.id) != str(user_id):
+        if not (_has_permission(user, "users:write") or _has_permission(user, "hr:users:edit:general")):
+            raise HTTPException(status_code=403, detail="Forbidden")
     from ..models.models import EmployeeDocument
     from datetime import datetime, timezone
     def _dt(s):
@@ -1082,7 +1106,11 @@ def create_document(user_id: str, payload: dict = Body(...), db: Session = Depen
 
 
 @router.delete("/users/{user_id}/documents/{doc_id}")
-def delete_document(user_id: str, doc_id: str, db: Session = Depends(get_db), _=Depends(require_permissions("users:write", "hr:users:edit:general"))):
+def delete_document(user_id: str, doc_id: str, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    # Allow self to edit or require permissions
+    if str(user.id) != str(user_id):
+        if not (_has_permission(user, "users:write") or _has_permission(user, "hr:users:edit:general")):
+            raise HTTPException(status_code=403, detail="Forbidden")
     from ..models.models import EmployeeDocument
     db.query(EmployeeDocument).filter(and_(EmployeeDocument.user_id == user_id, EmployeeDocument.id == doc_id)).delete()
     db.commit()
@@ -1091,7 +1119,11 @@ def delete_document(user_id: str, doc_id: str, db: Session = Depends(get_db), _=
 
 # ===== Employee Folders =====
 @router.get("/users/{user_id}/folders")
-def list_folders(user_id: str, db: Session = Depends(get_db), _=Depends(require_permissions("users:read", "hr:users:read", "hr:users:view:general"))):
+def list_folders(user_id: str, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    # Allow self to view or require permissions
+    if str(user.id) != str(user_id):
+        if not (_has_permission(user, "users:read") or _has_permission(user, "hr:users:read") or _has_permission(user, "hr:users:view:general")):
+            raise HTTPException(status_code=403, detail="Forbidden")
     from ..models.models import EmployeeFolder
     rows = db.query(EmployeeFolder).filter(EmployeeFolder.user_id == user_id).order_by(EmployeeFolder.sort_index.asc(), EmployeeFolder.name.asc()).all()
     return [{
@@ -1103,7 +1135,11 @@ def list_folders(user_id: str, db: Session = Depends(get_db), _=Depends(require_
 
 
 @router.post("/users/{user_id}/folders")
-def create_folder(user_id: str, name: str = Body(...), parent_id: Optional[str] = Body(None), db: Session = Depends(get_db), user: User = Depends(require_permissions("users:write", "hr:users:edit:general"))):
+def create_folder(user_id: str, name: str = Body(...), parent_id: Optional[str] = Body(None), db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    # Allow self to edit or require permissions
+    if str(user.id) != str(user_id):
+        if not (_has_permission(user, "users:write") or _has_permission(user, "hr:users:edit:general")):
+            raise HTTPException(status_code=403, detail="Forbidden")
     from ..models.models import EmployeeFolder
     fid = None
     try:
@@ -1119,7 +1155,11 @@ def create_folder(user_id: str, name: str = Body(...), parent_id: Optional[str] 
 
 
 @router.delete("/users/{user_id}/folders/{folder_id}")
-def delete_folder(user_id: str, folder_id: str, db: Session = Depends(get_db), _=Depends(require_permissions("users:write", "hr:users:edit:general"))):
+def delete_folder(user_id: str, folder_id: str, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    # Allow self to edit or require permissions
+    if str(user.id) != str(user_id):
+        if not (_has_permission(user, "users:write") or _has_permission(user, "hr:users:edit:general")):
+            raise HTTPException(status_code=403, detail="Forbidden")
     from ..models.models import EmployeeFolder, EmployeeDocument
     try:
         fid = uuid.UUID(folder_id)
@@ -1136,7 +1176,11 @@ def delete_folder(user_id: str, folder_id: str, db: Session = Depends(get_db), _
 
 
 @router.put("/users/{user_id}/folders/{folder_id}")
-def update_folder(user_id: str, folder_id: str, name: str = Body(None), parent_id: Optional[str] = Body(None), db: Session = Depends(get_db), _=Depends(require_permissions("users:write", "hr:users:edit:general"))):
+def update_folder(user_id: str, folder_id: str, name: str = Body(None), parent_id: Optional[str] = Body(None), db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    # Allow self to edit or require permissions
+    if str(user.id) != str(user_id):
+        if not (_has_permission(user, "users:write") or _has_permission(user, "hr:users:edit:general")):
+            raise HTTPException(status_code=403, detail="Forbidden")
     from ..models.models import EmployeeFolder
     try:
         fid = uuid.UUID(folder_id)
@@ -1159,7 +1203,11 @@ def update_folder(user_id: str, folder_id: str, name: str = Body(None), parent_i
 
 
 @router.put("/users/{user_id}/documents/{doc_id}")
-def update_document(user_id: str, doc_id: str, payload: dict = Body(...), db: Session = Depends(get_db), _=Depends(require_permissions("users:write", "hr:users:edit:general"))):
+def update_document(user_id: str, doc_id: str, payload: dict = Body(...), db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    # Allow self to edit or require permissions
+    if str(user.id) != str(user_id):
+        if not (_has_permission(user, "users:write") or _has_permission(user, "hr:users:edit:general")):
+            raise HTTPException(status_code=403, detail="Forbidden")
     from ..models.models import EmployeeDocument
     d = db.query(EmployeeDocument).filter(and_(EmployeeDocument.user_id == user_id, EmployeeDocument.id == doc_id)).first()
     if not d:
@@ -1216,7 +1264,11 @@ def delete_note(user_id: str, note_id: str, db: Session = Depends(get_db), _=Dep
     return {"status": "ok"}
 
 @router.get("/users/{user_id}/emergency-contacts")
-def list_emergency_contacts(user_id: str, db: Session = Depends(get_db), _=Depends(require_permissions("users:read", "hr:users:read", "hr:users:view:general"))):
+def list_emergency_contacts(user_id: str, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    # Allow self to view or require permissions
+    if str(user.id) != str(user_id):
+        if not (_has_permission(user, "users:read") or _has_permission(user, "hr:users:read") or _has_permission(user, "hr:users:view:general")):
+            raise HTTPException(status_code=403, detail="Forbidden")
     from ..models.models import EmployeeEmergencyContact
     rows = db.query(EmployeeEmergencyContact).filter(EmployeeEmergencyContact.user_id == user_id).all()
     def _row(e):
@@ -1235,7 +1287,11 @@ def list_emergency_contacts(user_id: str, db: Session = Depends(get_db), _=Depen
 
 
 @router.post("/users/{user_id}/emergency-contacts")
-def create_emergency_contact(user_id: str, payload: dict = Body(...), db: Session = Depends(get_db), _=Depends(require_permissions("users:write", "hr:users:edit:general"))):
+def create_emergency_contact(user_id: str, payload: dict = Body(...), db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    # Allow self to edit or require permissions
+    if str(user.id) != str(user_id):
+        if not (_has_permission(user, "users:write") or _has_permission(user, "hr:users:edit:general")):
+            raise HTTPException(status_code=403, detail="Forbidden")
     from ..models.models import EmployeeEmergencyContact
     e = EmployeeEmergencyContact(
         user_id=user_id,
@@ -1254,7 +1310,11 @@ def create_emergency_contact(user_id: str, payload: dict = Body(...), db: Sessio
 
 
 @router.patch("/users/{user_id}/emergency-contacts/{eid}")
-def update_emergency_contact(user_id: str, eid: str, payload: dict = Body(...), db: Session = Depends(get_db), _=Depends(require_permissions("users:write"))):
+def update_emergency_contact(user_id: str, eid: str, payload: dict = Body(...), db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    # Allow self to edit or require permissions
+    if str(user.id) != str(user_id):
+        if not (_has_permission(user, "users:write") or _has_permission(user, "hr:users:edit:general")):
+            raise HTTPException(status_code=403, detail="Forbidden")
     from ..models.models import EmployeeEmergencyContact
     e = db.query(EmployeeEmergencyContact).filter(and_(EmployeeEmergencyContact.user_id == user_id, EmployeeEmergencyContact.id == eid)).first()
     if not e:
@@ -1282,7 +1342,11 @@ def update_emergency_contact(user_id: str, eid: str, payload: dict = Body(...), 
 
 
 @router.delete("/users/{user_id}/emergency-contacts/{eid}")
-def delete_emergency_contact(user_id: str, eid: str, db: Session = Depends(get_db), _=Depends(require_permissions("users:write", "hr:users:edit:general"))):
+def delete_emergency_contact(user_id: str, eid: str, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    # Allow self to edit or require permissions
+    if str(user.id) != str(user_id):
+        if not (_has_permission(user, "users:write") or _has_permission(user, "hr:users:edit:general")):
+            raise HTTPException(status_code=403, detail="Forbidden")
     from ..models.models import EmployeeEmergencyContact
     db.query(EmployeeEmergencyContact).filter(and_(EmployeeEmergencyContact.user_id == user_id, EmployeeEmergencyContact.id == eid)).delete()
     db.commit()
@@ -1294,7 +1358,11 @@ def delete_emergency_contact(user_id: str, eid: str, db: Session = Depends(get_d
 # =====================
 
 @router.get("/users/{user_id}/visas")
-def list_visas(user_id: str, db: Session = Depends(get_db), _=Depends(require_permissions("users:read", "hr:users:read", "hr:users:view:general"))):
+def list_visas(user_id: str, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    # Allow self to view or require permissions
+    if str(user.id) != str(user_id):
+        if not (_has_permission(user, "users:read") or _has_permission(user, "hr:users:read") or _has_permission(user, "hr:users:view:general")):
+            raise HTTPException(status_code=403, detail="Forbidden")
     from ..models.models import EmployeeVisa
     rows = db.query(EmployeeVisa).filter(EmployeeVisa.user_id == user_id).order_by(EmployeeVisa.issued_date.desc()).all()
     def _row(v):
@@ -1314,7 +1382,11 @@ def list_visas(user_id: str, db: Session = Depends(get_db), _=Depends(require_pe
 
 
 @router.post("/users/{user_id}/visas")
-def create_visa(user_id: str, payload: dict = Body(...), db: Session = Depends(get_db), _=Depends(require_permissions("users:write", "hr:users:edit:general"))):
+def create_visa(user_id: str, payload: dict = Body(...), db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    # Allow self to edit or require permissions
+    if str(user.id) != str(user_id):
+        if not (_has_permission(user, "users:write") or _has_permission(user, "hr:users:edit:general")):
+            raise HTTPException(status_code=403, detail="Forbidden")
     from ..models.models import EmployeeVisa
     from datetime import datetime
     
@@ -1352,7 +1424,11 @@ def create_visa(user_id: str, payload: dict = Body(...), db: Session = Depends(g
 
 
 @router.patch("/users/{user_id}/visas/{vid}")
-def update_visa(user_id: str, vid: str, payload: dict = Body(...), db: Session = Depends(get_db), _=Depends(require_permissions("users:write"))):
+def update_visa(user_id: str, vid: str, payload: dict = Body(...), db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    # Allow self to edit or require permissions
+    if str(user.id) != str(user_id):
+        if not (_has_permission(user, "users:write") or _has_permission(user, "hr:users:edit:general")):
+            raise HTTPException(status_code=403, detail="Forbidden")
     from ..models.models import EmployeeVisa
     from datetime import datetime
     
@@ -1396,7 +1472,11 @@ def update_visa(user_id: str, vid: str, payload: dict = Body(...), db: Session =
 
 
 @router.delete("/users/{user_id}/visas/{vid}")
-def delete_visa(user_id: str, vid: str, db: Session = Depends(get_db), _=Depends(require_permissions("users:write", "hr:users:edit:general"))):
+def delete_visa(user_id: str, vid: str, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    # Allow self to edit or require permissions
+    if str(user.id) != str(user_id):
+        if not (_has_permission(user, "users:write") or _has_permission(user, "hr:users:edit:general")):
+            raise HTTPException(status_code=403, detail="Forbidden")
     from ..models.models import EmployeeVisa
     db.query(EmployeeVisa).filter(and_(EmployeeVisa.user_id == user_id, EmployeeVisa.id == vid)).delete()
     db.commit()
