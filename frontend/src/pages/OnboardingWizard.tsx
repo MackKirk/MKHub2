@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { api } from '@/lib/api';
@@ -9,13 +9,25 @@ import { useConfirm } from '@/components/ConfirmProvider';
 
 type ProfileResp = { user: { username: string; email: string; first_name?: string; last_name?: string }, profile?: any };
 
+// Field component helper
+function Field({ label, children, required, invalid }: { label: string; children: any; required?: boolean; invalid?: boolean }) {
+  return (
+    <div className="space-y-2">
+      <label className="text-sm text-gray-600">{label} {required && <span className="text-red-600">*</span>}</label>
+      <div className={invalid ? 'ring-2 ring-red-400 rounded-lg p-0.5' : 'p-0'}>
+        {children}
+      </div>
+      {invalid && <div className="text-xs text-red-600">Required</div>}
+    </div>
+  );
+}
+
 export default function OnboardingWizard() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const confirm = useConfirm();
   
   // Get current user ID
-  const { data: me } = useQuery({ queryKey: ['me'], queryFn: () => api<any>('GET', '/auth/me') });
+  const { data: me, isLoading: meLoading } = useQuery({ queryKey: ['me'], queryFn: () => api<any>('GET', '/auth/me') });
   const userId = me?.id ? String(me.id) : '';
   
   // Load profile data
@@ -187,20 +199,9 @@ export default function OnboardingWizard() {
     }
   };
   
-  // Field component
-  const Field = ({ label, children, required, invalid }: { label: string; children: any; required?: boolean; invalid?: boolean }) => (
-    <div className="space-y-2">
-      <label className="text-sm text-gray-600">{label} {required && <span className="text-red-600">*</span>}</label>
-      <div className={invalid ? 'ring-2 ring-red-400 rounded-lg p-0.5' : 'p-0'}>
-        {children}
-      </div>
-      {invalid && <div className="text-xs text-red-600">Required</div>}
-    </div>
-  );
-  
-  if (profileLoading) {
+  if (meLoading || profileLoading || !userId) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="text-gray-600">Loading...</div>
       </div>
     );
