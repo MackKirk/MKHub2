@@ -7,6 +7,7 @@ import AppShell from './AppShell';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import PasswordReset from './pages/PasswordReset';
+import OnboardingWizard from './pages/OnboardingWizard';
 import Protected from './lib/protected';
 import Profile from './pages/Profile';
 import HomePage from './pages/Home';
@@ -78,6 +79,7 @@ export default function App(){
         <Route path="/register" element={<Register/>} />
         <Route path="/password-reset" element={<PasswordReset/>} />
         <Route element={<Protected/>}>
+          <Route path="/onboarding" element={<OnboardingWizard/>} />
           <Route path="/home" element={<AppShell><HomePage/></AppShell>} />
           <Route path="/profile" element={<AppShell><Profile/></AppShell>} />
           <Route path="/schedule" element={<AppShell><Schedule/></AppShell>} />

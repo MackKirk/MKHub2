@@ -159,10 +159,10 @@ export default function AppShell({ children }: PropsWithChildren){
     return missingPersonalWithContact.length === 0;
   }, [meProfile, emergencyContactsData, userId]);
   
-  // Redirect to profile if incomplete and trying to access other routes
+  // Redirect to onboarding if incomplete and trying to access other routes
   useEffect(() => {
-    if (meProfile && !isProfileComplete && location.pathname !== '/profile') {
-      navigate('/profile', { replace: true });
+    if (meProfile && !isProfileComplete && location.pathname !== '/profile' && location.pathname !== '/onboarding') {
+      navigate('/onboarding', { replace: true });
     }
   }, [meProfile, isProfileComplete, location.pathname, navigate]);
   
@@ -179,18 +179,9 @@ export default function AppShell({ children }: PropsWithChildren){
   };
   
   const menuCategories: MenuCategory[] = useMemo(() => {
-    // If profile is incomplete, only show "My Information"
+    // If profile is incomplete, don't show menu (user must complete onboarding)
     if (!isProfileComplete) {
-      return [
-        {
-          id: 'personal',
-          label: 'Personal',
-          icon: <IconUser />,
-          items: [
-            { id: 'profile', label: 'My Information', path: '/profile', icon: <IconUser /> },
-          ]
-        },
-      ];
+      return [];
     }
     
     // If profile is complete, show all categories
