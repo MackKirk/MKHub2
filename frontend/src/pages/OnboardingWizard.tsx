@@ -115,7 +115,7 @@ export default function OnboardingWizard() {
     2: ['address_line1', 'city', 'province', 'postal_code', 'country'],
     3: ['phone'],
     4: [], // Education is optional
-    5: ['sin_number'], // SIN/SSN is required
+    5: ['sin_number', 'work_eligibility_status'], // SIN/SSN and Work Eligibility Status are required
     6: [], // Emergency contacts checked separately
   };
   
@@ -1539,9 +1539,15 @@ function ImmigrationStatusDocumentSection({ userId, canEdit, isRequired }: { use
   const fileRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const queryClient = useQueryClient();
+  // Get current user to check if this is a self-update
+  const { data: me } = useQuery({ queryKey: ['me'], queryFn: () => api<any>('GET', '/auth/me') });
+  const isSelfUpdate = me?.id && String(me.id) === String(userId);
+  // Use /auth/me/profile for self-updates (no permission required), otherwise use /auth/users/{userId}/profile
   const { data: permitFile, refetch } = useQuery({
     queryKey: ['permit-file', userId],
-    queryFn: () => api<any>('GET', `/auth/users/${encodeURIComponent(userId)}/profile`),
+    queryFn: () => isSelfUpdate 
+      ? api<any>('GET', '/auth/me/profile')
+      : api<any>('GET', `/auth/users/${encodeURIComponent(userId)}/profile`),
   });
   const permitFileId = permitFile?.profile?.permit_file_id;
 
@@ -1579,11 +1585,20 @@ function ImmigrationStatusDocumentSection({ userId, canEdit, isRequired }: { use
         checksum_sha256: 'na',
         content_type: f.type || 'application/pdf'
       });
-      // Save to profile
-      await api('PUT', `/auth/users/${encodeURIComponent(userId)}/profile`, {
-        permit_file_id: conf.id
-      });
-      // Also add to Personal Documents folder
+      // Save to profile - use /auth/me/profile for self-updates (no permission required)
+      // Check if userId matches current user to use the self-update endpoint
+      const { data: me } = await api<any>('GET', '/auth/me');
+      const isSelfUpdate = me?.id && String(me.id) === String(userId);
+      if (isSelfUpdate) {
+        await api('PUT', '/auth/me/profile', {
+          permit_file_id: conf.id
+        });
+      } else {
+        await api('PUT', `/auth/users/${encodeURIComponent(userId)}/profile`, {
+          permit_file_id: conf.id
+        });
+      }
+      // Also add to Personal Documents folder (optional - don't fail if this fails)
       try {
         const personalFolderId = await getOrCreatePersonalDocumentsFolder(userId);
         await api('POST', `/auth/users/${encodeURIComponent(userId)}/documents`, {
@@ -1593,7 +1608,8 @@ function ImmigrationStatusDocumentSection({ userId, canEdit, isRequired }: { use
         });
       } catch (e: any) {
         console.error('Failed to add document to Personal Documents folder:', e);
-        // Don't fail the whole upload if folder creation fails
+        // Don't fail the whole upload if folder creation fails - the file is already saved to profile
+        // This is a nice-to-have feature, not critical for the upload
       }
       toast.success('Immigration Status Document uploaded successfully');
       await refetch();
@@ -1639,7 +1655,11 @@ function ImmigrationStatusDocumentSection({ userId, canEdit, isRequired }: { use
               <button
                 onClick={async () => {
                   try {
-                    await api('PUT', `/auth/users/${encodeURIComponent(userId)}/profile`, { permit_file_id: null });
+                    if (isSelfUpdate) {
+                      await api('PUT', '/auth/me/profile', { permit_file_id: null });
+                    } else {
+                      await api('PUT', `/auth/users/${encodeURIComponent(userId)}/profile`, { permit_file_id: null });
+                    }
                     toast.success('Immigration Status Document removed');
                     await refetch();
                     await queryClient.invalidateQueries({ queryKey: ['meProfile'] });

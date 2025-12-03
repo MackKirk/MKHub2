@@ -1631,9 +1631,10 @@ function ImmigrationStatusDocumentSection({ userId, canEdit, isRequired }: { use
   const fileRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const queryClient = useQueryClient();
+  // In Profile.tsx, userId is always the current user, so use /auth/me/profile
   const { data: permitFile, refetch } = useQuery({
     queryKey: ['permit-file', userId],
-    queryFn: () => api<any>('GET', `/auth/users/${encodeURIComponent(userId)}/profile`),
+    queryFn: () => api<any>('GET', '/auth/me/profile'),
   });
   const permitFileId = permitFile?.profile?.permit_file_id;
 
@@ -1671,8 +1672,8 @@ function ImmigrationStatusDocumentSection({ userId, canEdit, isRequired }: { use
         checksum_sha256: 'na',
         content_type: f.type || 'application/pdf'
       });
-      // Save to profile
-      await api('PUT', `/auth/users/${encodeURIComponent(userId)}/profile`, {
+      // Save to profile - use /auth/me/profile for self-updates (no permission required)
+      await api('PUT', '/auth/me/profile', {
         permit_file_id: conf.id
       });
       // Also add to Personal Documents folder
@@ -1731,7 +1732,7 @@ function ImmigrationStatusDocumentSection({ userId, canEdit, isRequired }: { use
               <button
                 onClick={async () => {
                   try {
-                    await api('PUT', `/auth/users/${encodeURIComponent(userId)}/profile`, { permit_file_id: null });
+                    await api('PUT', '/auth/me/profile', { permit_file_id: null });
                     toast.success('Immigration Status Document removed');
                     await refetch();
                     await queryClient.invalidateQueries({ queryKey: ['meProfile'] });

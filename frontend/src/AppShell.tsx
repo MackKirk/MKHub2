@@ -150,7 +150,7 @@ export default function AppShell({ children }: PropsWithChildren){
     // If we're still loading, don't consider it complete yet (but also don't redirect until we know)
     if (!meProfile?.profile) return false;
     const p = meProfile.profile;
-    const reqPersonal = ['gender','date_of_birth','marital_status','nationality','phone','address_line1','city','province','postal_code','country','sin_number'];
+    const reqPersonal = ['gender','date_of_birth','marital_status','nationality','phone','address_line1','city','province','postal_code','country','sin_number','work_eligibility_status'];
     const missingPersonal = reqPersonal.filter(k => !String((p as any)[k]||'').trim());
     // Only check emergency contacts if userId exists (query enabled) and query has finished loading
     const hasEmergencyContact = userId ? (emergencyContactsData !== undefined && emergencyContactsData.length > 0) : true;
