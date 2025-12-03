@@ -201,7 +201,7 @@ def generate_invite_email_html(
                     <!-- Header with Logo -->
                     <tr>
                         <td align="center" style="padding: 40px 20px 30px; background: linear-gradient(135deg, #7f1010 0%, #a31414 100%); border-radius: 12px 12px 0 0;">
-                            <img src="{logo_url}" alt="{app_name}" style="max-width: 200px; height: auto; display: block;" />
+                            <img src="{logo_url}" alt="{app_name}" style="max-width: 300px; height: auto; display: block;" />
                         </td>
                     </tr>
                     
@@ -236,16 +236,16 @@ def generate_invite_email_html(
                                 <tr>
                                     <td align="center" style="padding: 20px 0;">
                                         <!--[if mso]>
-                                        <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="{invite_link}" style="height:50px;v-text-anchor:middle;width:300px;" arcsize="8%" stroke="f" fillcolor="#d11616">
+                                        <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="{invite_link}" style="height:46px;v-text-anchor:middle;width:280px;" arcsize="8%" stroke="f" fillcolor="#d11616">
                                             <w:anchorlock/>
-                                            <center style="color:#ffffff;font-family:sans-serif;font-size:18px;font-weight:bold;">Complete Your Onboarding</center>
+                                            <center style="color:#ffffff;font-family:sans-serif;font-size:16px;font-weight:bold;">Complete Your Onboarding</center>
                                         </v:roundrect>
                                         <![endif]-->
                                         <!--[if !mso]><!-- -->
                                         <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="border-collapse: separate; mso-table-lspace: 0pt; mso-table-rspace: 0pt; width: auto;">
                                             <tr>
                                                 <td style="background-color: #d11616; border-radius: 8px; text-align: center;">
-                                                    <a href="{invite_link}" style="background-color: #d11616; border: 2px solid #d11616; border-radius: 8px; color: #ffffff; display: inline-block; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; font-size: 18px; font-weight: 700; line-height: 1.5; text-decoration: none; text-align: center; padding: 16px 40px; -webkit-text-size-adjust: none; mso-hide: all;">
+                                                    <a href="{invite_link}" style="background-color: #d11616; border: 2px solid #d11616; border-radius: 8px; color: #ffffff; display: inline-block; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; font-size: 16px; font-weight: 700; line-height: 1.5; text-decoration: none; text-align: center; padding: 14px 32px; -webkit-text-size-adjust: none; mso-hide: all;">
                                                         Complete Your Onboarding
                                                     </a>
                                                 </td>
@@ -309,6 +309,136 @@ def generate_invite_email_html(
     return html.strip()
 
 
+def generate_account_ready_email_html(
+    username: str,
+    app_name: str,
+    public_base_url: str,
+) -> str:
+    """Generate HTML email template for account ready notification."""
+    logo_url = f"{public_base_url}/proposals/assets/logo.png"
+    login_url = f"{public_base_url}/ui/login.html"
+    
+    html = f"""
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Your {app_name} Account is Ready</title>
+</head>
+<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f6f7f9;">
+    <table role="presentation" style="width: 100%; border-collapse: collapse;">
+        <tr>
+            <td align="center" style="padding: 40px 20px;">
+                <table role="presentation" style="max-width: 600px; width: 100%; background-color: #ffffff; border-radius: 12px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1); border: 1px solid #e5e7eb;">
+                    <!-- Header with Logo -->
+                    <tr>
+                        <td align="center" style="padding: 40px 20px 30px; background: linear-gradient(135deg, #7f1010 0%, #a31414 100%); border-radius: 12px 12px 0 0;">
+                            <img src="{logo_url}" alt="{app_name}" style="max-width: 300px; height: auto; display: block;" />
+                        </td>
+                    </tr>
+                    
+                    <!-- Content -->
+                    <tr>
+                        <td style="padding: 40px 30px;">
+                            <h1 style="margin: 0 0 20px 0; font-size: 28px; font-weight: 700; color: #0f172a; line-height: 1.3;">
+                                Your Account is Ready!
+                            </h1>
+                            
+                            <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 1.6; color: #374151;">
+                                Hello,
+                            </p>
+                            
+                            <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 1.6; color: #374151;">
+                                Great news! Your {app_name} account has been successfully created and is ready to use.
+                            </p>
+                            
+                            <p style="margin: 0 0 30px 0; font-size: 16px; line-height: 1.6; color: #374151;">
+                                You can now log in to your account using the following credentials:
+                            </p>
+                            
+                            <!-- Username Box -->
+                            <div style="background-color: #f9fafb; border: 2px solid #e5e7eb; border-radius: 8px; padding: 20px; margin: 30px 0;">
+                                <p style="margin: 0 0 10px 0; font-size: 14px; font-weight: 600; color: #6b7280; text-transform: uppercase; letter-spacing: 0.5px;">
+                                    Your Username
+                                </p>
+                                <p style="margin: 0; font-size: 24px; font-weight: 700; color: #0f172a; font-family: 'Courier New', monospace;">
+                                    {username}
+                                </p>
+                            </div>
+                            
+                            <p style="margin: 30px 0 20px 0; font-size: 16px; line-height: 1.6; color: #374151;">
+                                Please keep this information secure. You'll use your username along with the password you created during registration to access your account.
+                            </p>
+                            
+                            <!-- CTA Button -->
+                            <table role="presentation" style="width: 100%; margin: 30px 0;">
+                                <tr>
+                                    <td align="center" style="padding: 20px 0;">
+                                        <!--[if mso]>
+                                        <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="{login_url}" style="height:46px;v-text-anchor:middle;width:280px;" arcsize="8%" stroke="f" fillcolor="#d11616">
+                                            <w:anchorlock/>
+                                            <center style="color:#ffffff;font-family:sans-serif;font-size:16px;font-weight:bold;">Log In to Your Account</center>
+                                        </v:roundrect>
+                                        <![endif]-->
+                                        <!--[if !mso]><!-- -->
+                                        <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="border-collapse: separate; mso-table-lspace: 0pt; mso-table-rspace: 0pt; width: auto;">
+                                            <tr>
+                                                <td style="background-color: #d11616; border-radius: 8px; text-align: center;">
+                                                    <a href="{login_url}" style="background-color: #d11616; border: 2px solid #d11616; border-radius: 8px; color: #ffffff; display: inline-block; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; font-size: 16px; font-weight: 700; line-height: 1.5; text-decoration: none; text-align: center; padding: 14px 32px; -webkit-text-size-adjust: none; mso-hide: all;">
+                                                        Log In to Your Account
+                                                    </a>
+                                                </td>
+                                            </tr>
+                                        </table>
+                                        <!--<![endif]-->
+                                    </td>
+                                </tr>
+                            </table>
+                            
+                            <div style="border-top: 1px solid #e5e7eb; padding-top: 30px; margin-top: 30px;">
+                                <p style="margin: 0 0 10px 0; font-size: 14px; line-height: 1.6; color: #6b7280;">
+                                    If you have any questions or need assistance accessing your account, please don't hesitate to reach out to our support team.
+                                </p>
+                                <p style="margin: 0; font-size: 14px; line-height: 1.6; color: #6b7280;">
+                                    Welcome to {app_name}! We're excited to have you on board.
+                                </p>
+                            </div>
+                        </td>
+                    </tr>
+                    
+                    <!-- Footer -->
+                    <tr>
+                        <td style="padding: 30px; background-color: #f9fafb; border-top: 1px solid #e5e7eb; border-radius: 0 0 12px 12px;">
+                            <p style="margin: 0 0 10px 0; font-size: 16px; font-weight: 600; color: #0f172a;">
+                                Best regards,
+                            </p>
+                            <p style="margin: 0; font-size: 15px; color: #374151;">
+                                The {app_name} Team
+                            </p>
+                        </td>
+                    </tr>
+                </table>
+                
+                <!-- Footer Text -->
+                <table role="presentation" style="max-width: 600px; width: 100%; margin-top: 20px;">
+                    <tr>
+                        <td align="center" style="padding: 20px;">
+                            <p style="margin: 0; font-size: 12px; color: #9ca3af;">
+                                © {datetime.now(timezone.utc).year} {app_name}. All rights reserved.
+                            </p>
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>
+    """
+    return html.strip()
+
+
 def generate_invite_email_text(
     invitee_email: str,
     invite_link: str,
@@ -336,7 +466,7 @@ This invitation link will expire in 7 days. If you have any questions or need as
 
 Best regards,
 {inviter_name}
-    """.strip()
+""".strip()
 
 
 @router.get("/invite/{token}")
@@ -507,12 +637,45 @@ def register(payload: RegisterPayload, db: Session = Depends(get_db)):
     refresh = create_refresh_token(str(user.id))
     # Send username email if SMTP configured
     try:
-        if settings.smtp_host and settings.mail_from:
+        if settings.smtp_host and settings.mail_from and settings.public_base_url:
             msg = EmailMessage()
-            msg["Subject"] = f"Your {settings.app_name} account"
+            msg["Subject"] = f"Your {settings.app_name} Account is Ready"
             msg["From"] = settings.mail_from
             msg["To"] = email_personal
-            msg.set_content(f"Your account is ready. Username: {username}")
+            
+            # Generate HTML email
+            html_content = generate_account_ready_email_html(
+                username=username,
+                app_name=settings.app_name,
+                public_base_url=settings.public_base_url,
+            )
+            
+            # Plain text fallback
+            text_content = f"""Your {settings.app_name} Account is Ready
+
+Hello,
+
+Great news! Your {settings.app_name} account has been successfully created and is ready to use.
+
+You can now log in to your account using the following credentials:
+
+Your Username: {username}
+
+Please keep this information secure. You'll use your username along with the password you created during registration to access your account.
+
+Log in to your account: {settings.public_base_url}/ui/login.html
+
+If you have any questions or need assistance accessing your account, please don't hesitate to reach out to our support team.
+
+Welcome to {settings.app_name}! We're excited to have you on board.
+
+Best regards,
+The {settings.app_name} Team
+"""
+            
+            msg.set_content(text_content)
+            msg.add_alternative(html_content, subtype="html")
+            
             if settings.smtp_tls:
                 with smtplib.SMTP(settings.smtp_host, settings.smtp_port) as s:
                     s.starttls()
