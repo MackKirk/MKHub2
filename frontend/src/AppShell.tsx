@@ -1,4 +1,4 @@
-import { PropsWithChildren, useState, useMemo, useEffect } from 'react';
+import { PropsWithChildren, useState, useMemo, useEffect, useRef } from 'react';
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
@@ -164,7 +164,15 @@ export default function AppShell({ children }: PropsWithChildren){
   
   // Redirect to onboarding if incomplete and trying to access other routes
   // Only redirect if queries have finished loading and profile is confirmed incomplete
+  // IMPORTANT: Add debounce to prevent rapid redirects during form updates
+  const redirectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   useEffect(() => {
+    // Clear any pending redirect
+    if (redirectTimeoutRef.current) {
+      clearTimeout(redirectTimeoutRef.current);
+      redirectTimeoutRef.current = null;
+    }
+    
     // Don't redirect if we're still loading data
     if (meProfileLoading || (userId && emergencyContactsLoading)) {
       return;
@@ -172,8 +180,22 @@ export default function AppShell({ children }: PropsWithChildren){
     
     // Only redirect if profile data exists, is incomplete, and we're not already on onboarding/profile pages
     if (meProfile && !isProfileComplete && location.pathname !== '/profile' && location.pathname !== '/onboarding') {
-      navigate('/onboarding', { replace: true });
+      // Add a small delay to prevent rapid redirects during form updates
+      redirectTimeoutRef.current = setTimeout(() => {
+        // Double-check conditions before redirecting
+        if (meProfile && !isProfileComplete && location.pathname !== '/profile' && location.pathname !== '/onboarding') {
+          navigate('/onboarding', { replace: true });
+        }
+        redirectTimeoutRef.current = null;
+      }, 1000); // 1 second delay to allow form updates to settle
     }
+    
+    return () => {
+      if (redirectTimeoutRef.current) {
+        clearTimeout(redirectTimeoutRef.current);
+        redirectTimeoutRef.current = null;
+      }
+    };
   }, [meProfile, isProfileComplete, location.pathname, navigate, meProfileLoading, emergencyContactsLoading, userId]);
   
   const displayName = (meProfile?.profile?.preferred_name) || ([meProfile?.profile?.first_name, meProfile?.profile?.last_name].filter(Boolean).join(' ') || meProfile?.user?.username || 'User');

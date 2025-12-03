@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { api } from '@/lib/api';
@@ -37,7 +37,8 @@ export default function OnboardingWizard() {
     enabled: !!userId
   });
   
-  const p = profileData?.profile || {};
+  // Memoize profile to avoid unnecessary re-renders
+  const p = useMemo(() => profileData?.profile || {}, [profileData?.profile]);
   
   // Current step state
   const [currentStep, setCurrentStep] = useState(1);
@@ -46,36 +47,50 @@ export default function OnboardingWizard() {
   // Form state
   const [form, setForm] = useState<any>({});
   const [saving, setSaving] = useState(false);
+  const [formInitialized, setFormInitialized] = useState(false);
   
-  // Initialize form from profile data
+  // Initialize form from profile data (only once)
   useEffect(() => {
-    if (profileData) {
+    if (profileData && !formInitialized) {
+      const profile = profileData.profile || {};
       setForm({
-        first_name: p.first_name || '',
-        last_name: p.last_name || '',
-        middle_name: p.middle_name || '',
-        prefered_name: p.prefered_name || '',
-        gender: p.gender || '',
-        marital_status: p.marital_status || '',
-        date_of_birth: p.date_of_birth || '',
-        nationality: p.nationality || '',
-        address_line1: p.address_line1 || '',
-        address_line1_complement: p.address_line1_complement || '',
-        address_line2: p.address_line2 || '',
-        address_line2_complement: p.address_line2_complement || '',
-        city: p.city || '',
-        province: p.province || '',
-        postal_code: p.postal_code || '',
-        country: p.country || '',
-        phone: p.phone || '',
-        mobile_phone: p.mobile_phone || '',
-        sin_number: p.sin_number || '',
+        first_name: profile.first_name || '',
+        last_name: profile.last_name || '',
+        middle_name: profile.middle_name || '',
+        prefered_name: profile.prefered_name || '',
+        gender: profile.gender || '',
+        marital_status: profile.marital_status || '',
+        date_of_birth: profile.date_of_birth || '',
+        nationality: profile.nationality || '',
+        address_line1: profile.address_line1 || '',
+        address_line1_complement: profile.address_line1_complement || '',
+        address_line2: profile.address_line2 || '',
+        address_line2_complement: profile.address_line2_complement || '',
+        city: profile.city || '',
+        province: profile.province || '',
+        postal_code: profile.postal_code || '',
+        country: profile.country || '',
+        phone: profile.phone || '',
+        mobile_phone: profile.mobile_phone || '',
+        sin_number: profile.sin_number || '',
+        work_eligibility_status: profile.work_eligibility_status || '',
       });
+      setFormInitialized(true);
     }
-  }, [profileData]);
+  }, [profileData, formInitialized]);
   
-  const set = (k: string, v: any) => setForm((s: any) => ({ ...s, [k]: v }));
+  const set = useCallback((k: string, v: any) => {
+    setForm((s: any) => ({ ...s, [k]: v }));
+  }, []);
   
+  // SIN Number formatting function (NNN-NNN-NNN)
+  const formatSIN = (v: string) => {
+    const d = String(v || '').replace(/\D+/g, '').slice(0, 9);
+    if (d.length <= 3) return d;
+    if (d.length <= 6) return `${d.slice(0, 3)}-${d.slice(3)}`;
+    return `${d.slice(0, 3)}-${d.slice(3, 6)}-${d.slice(6)}`;
+  };
+
   // Phone formatting function
   const formatPhone = (v: string) => {
     const d = String(v || '').replace(/\D+/g, '').slice(0, 11);
@@ -123,8 +138,46 @@ export default function OnboardingWizard() {
     return true;
   }, [form, hasEmergencyContact]);
   
-  // Save profile data
-  const saveProfile = useCallback(async (showSuccess = false) => {
+  // Find the first step with missing required fields
+  const findFirstIncompleteStep = useCallback((formData: any, hasEmergency: boolean): number => {
+    for (let step = 1; step <= totalSteps; step++) {
+      const required = stepRequiredFields[step] || [];
+      
+      // Check basic required fields
+      let hasMissing = false;
+      for (const field of required) {
+        if (!String((formData as any)[field] || '').trim()) {
+          hasMissing = true;
+          break;
+        }
+      }
+      
+      // Step 6: Check emergency contacts separately
+      if (step === 6) {
+        if (!hasEmergency) {
+          return step;
+        }
+      } else if (hasMissing) {
+        return step;
+      }
+    }
+    
+    // All steps are complete, return the last step
+    return totalSteps;
+  }, [totalSteps]);
+  
+  // Initialize currentStep to the first incomplete step when form is initialized (only once)
+  const [stepInitialized, setStepInitialized] = useState(false);
+  useEffect(() => {
+    if (formInitialized && Object.keys(form).length > 0 && !emergencyContactsLoading && !stepInitialized) {
+      const firstIncomplete = findFirstIncompleteStep(form, hasEmergencyContact);
+      setCurrentStep(firstIncomplete);
+      setStepInitialized(true);
+    }
+  }, [formInitialized, form, emergencyContactsLoading, hasEmergencyContact, findFirstIncompleteStep, stepInitialized]);
+  
+  // Save profile data (only called when clicking Next or Previous)
+  const saveProfile = useCallback(async () => {
     if (!userId) return;
     
     setSaving(true);
@@ -132,36 +185,113 @@ export default function OnboardingWizard() {
       await api('PUT', '/auth/me/profile', form);
       await queryClient.invalidateQueries({ queryKey: ['meProfile'] });
       await queryClient.invalidateQueries({ queryKey: ['me-profile'] });
-      if (showSuccess) {
-        toast.success('Progress saved');
-      }
+      // Reset unsaved changes flag after successful save
+      setHasUnsavedChanges(false);
     } catch (error: any) {
       toast.error(error?.message || 'Failed to save');
+      throw error; // Re-throw to allow callers to handle the error
     } finally {
       setSaving(false);
     }
   }, [form, userId, queryClient]);
   
-  // Auto-save when form changes (debounced)
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      if (userId && Object.keys(form).length > 0) {
-        saveProfile(false);
-      }
-    }, 1000); // Debounce 1 second
-    
-    return () => clearTimeout(timer);
-  }, [form, userId, saveProfile]);
+  // Address change handler
+  const handleAddressChange = useCallback((value: string) => {
+    setForm((s: any) => ({ ...s, address_line1: value }));
+  }, []);
   
-  // Check if onboarding is complete
-  const reqPersonal = ['gender', 'date_of_birth', 'marital_status', 'nationality', 'phone', 'address_line1', 'city', 'province', 'postal_code', 'country', 'sin_number'];
-  const missingPersonal = reqPersonal.filter(k => !String((form as any)[k] || '').trim());
+  const handleAddressSelect = useCallback((address: any) => {
+    setForm((s: any) => ({
+      ...s,
+      address_line1: address.address_line1 || s.address_line1,
+      city: address.city !== undefined ? address.city : s.city,
+      province: address.province !== undefined ? address.province : s.province,
+      postal_code: address.postal_code !== undefined ? address.postal_code : s.postal_code,
+      country: address.country !== undefined ? address.country : s.country,
+    }));
+  }, []);
+  
+  // Check if onboarding is complete (memoized to prevent unnecessary recalculations)
+  const reqPersonal = useMemo(() => ['gender', 'date_of_birth', 'marital_status', 'nationality', 'phone', 'address_line1', 'city', 'province', 'postal_code', 'country', 'sin_number', 'work_eligibility_status'], []);
+  const missingPersonal = useMemo(() => {
+    return reqPersonal.filter(k => {
+      const value = String((form as any)[k] || '').trim();
+      return !value || value.length === 0;
+    });
+  }, [form, reqPersonal]);
+  
   // Only require emergency contacts if userId exists (meaning the query was enabled)
   // If emergency contacts query is still loading, we can't determine completion yet
   const emergencyContactsReady = userId ? (!emergencyContactsLoading && emergencyContactsData !== undefined) : true;
-  const isOnboardingComplete = missingPersonal.length === 0 && (userId ? (emergencyContactsReady && hasEmergencyContact) : true);
+  const isOnboardingComplete = useMemo(() => {
+    // Check each required field individually
+    for (const field of reqPersonal) {
+      const value = String((form as any)[field] || '').trim();
+      if (!value || value.length === 0) {
+        return false;
+      }
+    }
+    
+    // Check emergency contacts
+    if (userId) {
+      if (!emergencyContactsReady) {
+        return false;
+      }
+      if (!hasEmergencyContact) {
+        return false;
+      }
+    }
+    
+    return true;
+  }, [form, reqPersonal, userId, emergencyContactsReady, hasEmergencyContact]);
   
-  // Redirect to home if onboarding is already complete
+  // Check if onboarding is complete based on saved server data (not local form state)
+  // This prevents redirects during typing
+  const isOnboardingCompleteFromServer = useMemo(() => {
+    if (!profileData?.profile) return false;
+    
+    const p = profileData.profile;
+    const reqPersonal = ['gender', 'date_of_birth', 'marital_status', 'nationality', 'phone', 'address_line1', 'city', 'province', 'postal_code', 'country', 'sin_number', 'work_eligibility_status'];
+    
+    // Check each required field from server data
+    for (const field of reqPersonal) {
+      const value = String((p as any)[field] || '').trim();
+      if (!value || value.length === 0) {
+        return false;
+      }
+    }
+    
+    // Check emergency contacts
+    if (userId) {
+      if (emergencyContactsLoading) {
+        return false; // Still loading, can't determine
+      }
+      if (!hasEmergencyContact) {
+        return false;
+      }
+    }
+    
+    return true;
+  }, [profileData, userId, emergencyContactsLoading, hasEmergencyContact]);
+  
+  // Track if user has made any changes to the form (to prevent redirects during editing)
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  
+  // Update hasUnsavedChanges when form changes
+  useEffect(() => {
+    if (formInitialized && Object.keys(form).length > 0) {
+      // Compare form with server data to detect changes
+      const serverData = profileData?.profile || {};
+      const formChanged = Object.keys(form).some(key => {
+        const formValue = String((form as any)[key] || '').trim();
+        const serverValue = String((serverData as any)[key] || '').trim();
+        return formValue !== serverValue;
+      });
+      setHasUnsavedChanges(formChanged);
+    }
+  }, [form, profileData, formInitialized]);
+  
+  // Redirect to home if onboarding is already complete (based on server data only)
   // Only redirect if all data has finished loading and onboarding is confirmed complete
   useEffect(() => {
     // Don't redirect if we're still loading data
@@ -169,10 +299,22 @@ export default function OnboardingWizard() {
       return;
     }
     
-    if (profileData && isOnboardingComplete) {
+    // Don't redirect if form hasn't been initialized yet
+    if (!formInitialized) {
+      return;
+    }
+    
+    // Don't redirect if user has unsaved changes (prevents redirect during typing)
+    if (hasUnsavedChanges) {
+      return;
+    }
+    
+    // Only redirect if onboarding is truly complete based on server data
+    // This prevents redirects when user is typing in the form
+    if (profileData && isOnboardingCompleteFromServer) {
       navigate('/home', { replace: true });
     }
-  }, [isOnboardingComplete, profileData, profileLoading, navigate, userId, emergencyContactsLoading]);
+  }, [isOnboardingCompleteFromServer, profileData, profileLoading, navigate, userId, emergencyContactsLoading, formInitialized, hasUnsavedChanges]);
   
   // Handle next step
   const handleNext = async () => {
@@ -182,7 +324,12 @@ export default function OnboardingWizard() {
     }
     
     // Save before moving to next step
-    await saveProfile(false);
+    try {
+      await saveProfile();
+    } catch (error) {
+      // Error already handled in saveProfile
+      return;
+    }
     
     if (currentStep < totalSteps) {
       setCurrentStep(currentStep + 1);
@@ -202,7 +349,15 @@ export default function OnboardingWizard() {
   };
   
   // Handle previous step
-  const handlePrevious = () => {
+  const handlePrevious = async () => {
+    // Save before moving to previous step
+    try {
+      await saveProfile();
+    } catch (error) {
+      // Error already handled in saveProfile, but continue anyway
+      // User can still go back even if save fails
+    }
+    
     if (currentStep > 1) {
       setCurrentStep(currentStep - 1);
     }
@@ -340,15 +495,10 @@ export default function OnboardingWizard() {
               <div className="grid md:grid-cols-2 gap-4">
                 <Field label="Address line 1" required invalid={!form.address_line1}>
                   <AddressAutocomplete
+                    key="address-line1-onboarding"
                     value={form.address_line1 || ''}
-                    onChange={(value) => set('address_line1', value)}
-                    onAddressSelect={(address) => {
-                      set('address_line1', address.address_line1 || form.address_line1);
-                      if (address.city !== undefined) set('city', address.city);
-                      if (address.province !== undefined) set('province', address.province);
-                      if (address.postal_code !== undefined) set('postal_code', address.postal_code);
-                      if (address.country !== undefined) set('country', address.country);
-                    }}
+                    onChange={handleAddressChange}
+                    onAddressSelect={handleAddressSelect}
                     placeholder="Start typing an address..."
                     className="w-full rounded-lg border px-3 py-2"
                   />
@@ -358,23 +508,6 @@ export default function OnboardingWizard() {
                     type="text"
                     value={form.address_line1_complement || ''}
                     onChange={e => set('address_line1_complement', e.target.value)}
-                    placeholder="Apt 101, Unit 2, Basement, etc."
-                    className="w-full rounded-lg border px-3 py-2"
-                  />
-                </Field>
-                <Field label="Address line 2">
-                  <AddressAutocomplete
-                    value={form.address_line2 || ''}
-                    onChange={(value) => set('address_line2', value)}
-                    placeholder="Start typing an address..."
-                    className="w-full rounded-lg border px-3 py-2"
-                  />
-                </Field>
-                <Field label="Complement (e.g., Apt, Unit, Basement)">
-                  <input
-                    type="text"
-                    value={form.address_line2_complement || ''}
-                    onChange={e => set('address_line2_complement', e.target.value)}
                     placeholder="Apt 101, Unit 2, Basement, etc."
                     className="w-full rounded-lg border px-3 py-2"
                   />
@@ -409,6 +542,23 @@ export default function OnboardingWizard() {
                     value={form.country || ''}
                     readOnly
                     className="w-full rounded-lg border px-3 py-2 bg-gray-50 cursor-not-allowed"
+                  />
+                </Field>
+                <Field label="Address line 2">
+                  <AddressAutocomplete
+                    value={form.address_line2 || ''}
+                    onChange={(value) => set('address_line2', value)}
+                    placeholder="Start typing an address..."
+                    className="w-full rounded-lg border px-3 py-2"
+                  />
+                </Field>
+                <Field label="Complement (e.g., Apt, Unit, Basement)">
+                  <input
+                    type="text"
+                    value={form.address_line2_complement || ''}
+                    onChange={e => set('address_line2_complement', e.target.value)}
+                    placeholder="Apt 101, Unit 2, Basement, etc."
+                    className="w-full rounded-lg border px-3 py-2"
                   />
                 </Field>
               </div>
@@ -450,7 +600,7 @@ export default function OnboardingWizard() {
           
           {/* Step 5: Legal & Documents */}
           {currentStep === 5 && userId && (
-            <LegalDocumentsStep userId={userId} form={form} set={set} />
+            <LegalDocumentsStep userId={userId} form={form} set={set} formatSIN={formatSIN} />
           )}
           
           {/* Step 6: Emergency Contacts */}
@@ -503,11 +653,14 @@ function EducationStep({ userId }: { userId: string }) {
         toast.error('Institution required');
         return;
       }
+      // Convert month input (YYYY-MM) to full date (YYYY-MM-01) for API
+      const startDate = start ? `${start}-01` : null;
+      const endDate = end ? `${end}-01` : null;
       await api('POST', `/auth/users/${encodeURIComponent(userId)}/education`, {
         college_institution: inst,
         degree,
-        start_date: start || null,
-        end_date: end || null
+        start_date: startDate,
+        end_date: endDate
       });
       toast.success('Added');
       setShowAdd(false);
@@ -530,41 +683,51 @@ function EducationStep({ userId }: { userId: string }) {
     }
   };
   
+  const formatDateMonthYear = (dateStr: string | null | undefined) => {
+    if (!dateStr) return '';
+    try {
+      const date = new Date(dateStr);
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const year = date.getFullYear();
+      return `${year}-${month}`;
+    } catch {
+      return dateStr.slice(0, 7); // Fallback to YYYY-MM format
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div>
         <h2 className="text-xl font-semibold mb-1">Education</h2>
         <p className="text-sm text-gray-500">Academic history (optional)</p>
       </div>
-      <div className="border rounded-lg divide-y">
-        {isLoading ? (
-          <div className="p-3 text-sm text-gray-600">Loading...</div>
-        ) : (rows || []).length ? (
-          (rows || []).map((e: any) => (
-            <div key={e.id} className="p-3 text-sm flex items-center gap-3">
-              <div className="flex-1">
-                <div className="font-medium">{e.college_institution || 'Institution'}</div>
-                <div className="text-gray-600">
-                  {e.degree || ''} {e.major_specialization ? `· ${e.major_specialization}` : ''}
-                </div>
-                <div className="text-gray-500 text-xs">
-                  {e.start_date ? String(e.start_date).slice(0, 10) : ''}
-                  {(e.start_date || e.end_date) ? ' — ' : ''}
-                  {e.end_date ? String(e.end_date).slice(0, 10) : ''}
-                </div>
+      {isLoading ? (
+        <div className="text-sm text-gray-600">Loading...</div>
+      ) : (rows || []).length ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {(rows || []).map((e: any) => (
+            <div key={e.id} className="border rounded-lg p-4 text-sm">
+              <div className="font-medium text-gray-900 mb-1">{e.college_institution || 'Institution'}</div>
+              <div className="text-gray-600 mb-1">
+                {e.degree || ''} {e.major_specialization ? `· ${e.major_specialization}` : ''}
               </div>
-              <button
-                onClick={() => del(e.id)}
-                className="px-2 py-1 rounded border text-xs hover:bg-gray-50"
-              >
-                Delete
-              </button>
+              <div className="text-gray-500 text-xs">
+                {formatDateMonthYear(e.start_date)}{(e.start_date || e.end_date) ? ' — ' : ''}{formatDateMonthYear(e.end_date)}
+              </div>
+              <div className="mt-3 pt-3 border-t">
+                <button
+                  onClick={() => del(e.id)}
+                  className="px-2 py-1 rounded border text-xs hover:bg-gray-50"
+                >
+                  Delete
+                </button>
+              </div>
             </div>
-          ))
-        ) : (
-          <div className="p-3 text-sm text-gray-600">No education records. Click "Add education" to add one.</div>
-        )}
-      </div>
+          ))}
+        </div>
+      ) : (
+        <div className="text-sm text-gray-600">No education records. Click "Add education" to add one.</div>
+      )}
       <div className="mt-3">
         {!showAdd ? (
           <button
@@ -594,7 +757,7 @@ function EducationStep({ userId }: { userId: string }) {
             <div>
               <div className="text-xs text-gray-600 mb-1">Start date</div>
               <input
-                type="date"
+                type="month"
                 className="w-full rounded-lg border px-3 py-2"
                 value={start}
                 onChange={e => setStart(e.target.value)}
@@ -603,7 +766,7 @@ function EducationStep({ userId }: { userId: string }) {
             <div>
               <div className="text-xs text-gray-600 mb-1">End date</div>
               <input
-                type="date"
+                type="month"
                 className="w-full rounded-lg border px-3 py-2"
                 value={end}
                 onChange={e => setEnd(e.target.value)}
@@ -631,7 +794,7 @@ function EducationStep({ userId }: { userId: string }) {
 }
 
 // Legal & Documents Step Component
-function LegalDocumentsStep({ userId, form, set }: { userId: string; form: any; set: (k: string, v: any) => void }) {
+function LegalDocumentsStep({ userId, form, set, formatSIN }: { userId: string; form: any; set: (k: string, v: any) => void; formatSIN: (v: string) => string }) {
   return (
     <div className="space-y-6">
       <div>
@@ -646,14 +809,39 @@ function LegalDocumentsStep({ userId, form, set }: { userId: string; form: any; 
           <div className={!form.sin_number ? 'ring-2 ring-red-400 rounded-lg p-0.5' : 'p-0'}>
             <input
               value={form.sin_number || ''}
-              onChange={e => set('sin_number', e.target.value)}
+              onChange={e => set('sin_number', formatSIN(e.target.value))}
+              maxLength={11}
+              placeholder="123-456-789"
               className="w-full rounded-lg border px-3 py-2"
             />
           </div>
           {!form.sin_number && <div className="text-xs text-red-600">Required</div>}
         </div>
+        <div className="space-y-2">
+          <label className="text-sm text-gray-600">
+            Work Eligibility Status <span className="text-red-600">*</span>
+          </label>
+          <div className={!form.work_eligibility_status ? 'ring-2 ring-red-400 rounded-lg p-0.5' : 'p-0'}>
+            <select
+              value={form.work_eligibility_status || ''}
+              onChange={e => set('work_eligibility_status', e.target.value)}
+              className="w-full rounded-lg border px-3 py-2"
+            >
+              <option value="">Select...</option>
+              <option value="Canadian Citizen">Canadian Citizen</option>
+              <option value="Permanent Resident">Permanent Resident</option>
+              <option value="Temporary Resident (with work authorization)">Temporary Resident (with work authorization)</option>
+              <option value="Other">Other</option>
+            </select>
+          </div>
+          {!form.work_eligibility_status && <div className="text-xs text-red-600">Required</div>}
+        </div>
       </div>
-      <VisaInformationSection userId={userId} canEdit={true} />
+      <WorkEligibilityDocumentsSection 
+        userId={userId} 
+        canEdit={true} 
+        workEligibilityStatus={form.work_eligibility_status}
+      />
     </div>
   );
 }
@@ -1179,8 +1367,333 @@ function EmergencyContactsStep({ userId }: { userId: string }) {
   );
 }
 
+// Work Eligibility Documents Section - always shows Visa Information and Immigration Status Document
+function WorkEligibilityDocumentsSection({ userId, canEdit, workEligibilityStatus }: { userId: string; canEdit: boolean; workEligibilityStatus?: string }) {
+  // Always show both sections regardless of status
+  return (
+    <div className="space-y-4">
+      <VisaInformationSection userId={userId} canEdit={canEdit} isRequired={false} showInlineForm={false} />
+      <ImmigrationStatusDocumentSection userId={userId} canEdit={canEdit} isRequired={false} />
+    </div>
+  );
+}
+
+// PR Card Upload Section (for Canadian Citizen and Permanent Resident)
+function PRCardUploadSection({ userId, canEdit }: { userId: string; canEdit: boolean }) {
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+  const queryClient = useQueryClient();
+  const { data: prCardFile, refetch } = useQuery({
+    queryKey: ['pr-card-file', userId],
+    queryFn: () => api<any>('GET', `/auth/users/${encodeURIComponent(userId)}/profile`),
+  });
+  const prCardFileId = prCardFile?.profile?.pr_card_file_id;
+
+  const handleUpload = async () => {
+    const f = fileRef.current?.files?.[0];
+    if (!f) return;
+    
+    // Validate file type
+    const isPDF = f.type === 'application/pdf';
+    const isImage = f.type.startsWith('image/');
+    if (!isPDF && !isImage) {
+      toast.error('Please upload a PDF or image file');
+      return;
+    }
+
+    setUploading(true);
+    try {
+      const up: any = await api('POST', '/files/upload', {
+        project_id: null,
+        client_id: null,
+        employee_id: userId,
+        category_id: 'pr-card',
+        original_name: f.name,
+        content_type: f.type || 'application/pdf'
+      });
+      const put = await fetch(up.upload_url, {
+        method: 'PUT',
+        headers: { 'Content-Type': f.type || 'application/pdf', 'x-ms-blob-type': 'BlockBlob' },
+        body: f
+      });
+      if (!put.ok) throw new Error('upload failed');
+      const conf: any = await api('POST', '/files/confirm', {
+        key: up.key,
+        size_bytes: f.size,
+        checksum_sha256: 'na',
+        content_type: f.type || 'application/pdf'
+      });
+      await api('PUT', `/auth/users/${encodeURIComponent(userId)}/profile`, {
+        pr_card_file_id: conf.id
+      });
+      toast.success('PR Card uploaded successfully');
+      await refetch();
+      await queryClient.invalidateQueries({ queryKey: ['meProfile'] });
+      await queryClient.invalidateQueries({ queryKey: ['me-profile'] });
+    } catch (e: any) {
+      toast.error(e?.message || 'Failed to upload PR Card');
+    } finally {
+      setUploading(false);
+      if (fileRef.current) fileRef.current.value = '';
+    }
+  };
+
+  return (
+    <div className="rounded-xl border bg-white p-4">
+      <div className="mb-4 flex items-center gap-2">
+        <div className="w-8 h-8 rounded bg-amber-100 flex items-center justify-center">
+          <svg className="w-5 h-5 text-amber-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V8a2 2 0 00-2-2h-5m-4 0V5a2 2 0 114 0v1m-4 0a2 2 0 104 0m-5 8a2 2 0 100-4 2 2 0 000 4zm0 0c1.306 0 2.417.835 2.83 2M9 14a3.001 3.001 0 00-2.83 2M15 11h3m-3 4h2" />
+          </svg>
+        </div>
+        <h5 className="font-semibold text-amber-900">PR Card (Optional)</h5>
+      </div>
+      {prCardFileId ? (
+        <div className="space-y-3">
+          <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
+            <div className="flex-1">
+              <div className="text-sm font-medium text-gray-900">PR Card Document</div>
+              <div className="text-xs text-gray-500">Document uploaded</div>
+            </div>
+            <a
+              href={`/files/${prCardFileId}/download`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="px-3 py-1.5 rounded border border-amber-300 text-amber-700 text-sm font-medium hover:bg-amber-50"
+            >
+              View
+            </a>
+            {canEdit && (
+              <button
+                onClick={async () => {
+                  try {
+                    await api('PUT', `/auth/users/${encodeURIComponent(userId)}/profile`, { pr_card_file_id: null });
+                    toast.success('PR Card removed');
+                    await refetch();
+                    await queryClient.invalidateQueries({ queryKey: ['meProfile'] });
+                    await queryClient.invalidateQueries({ queryKey: ['me-profile'] });
+                  } catch (e: any) {
+                    toast.error(e?.message || 'Failed to remove PR Card');
+                  }
+                }}
+                className="px-3 py-1.5 rounded border border-red-300 text-red-700 text-sm font-medium hover:bg-red-50"
+              >
+                Remove
+              </button>
+            )}
+          </div>
+          {canEdit && (
+            <div>
+              <input ref={fileRef} type="file" accept=".pdf,image/*" className="hidden" onChange={handleUpload} />
+              <button
+                onClick={() => fileRef.current?.click()}
+                disabled={uploading}
+                className="px-3 py-1.5 rounded border border-amber-300 text-amber-700 text-sm font-medium hover:bg-amber-50 disabled:opacity-50"
+              >
+                {uploading ? 'Uploading...' : 'Replace Document'}
+              </button>
+            </div>
+          )}
+        </div>
+      ) : (
+        canEdit && (
+          <div>
+            <input ref={fileRef} type="file" accept=".pdf,image/*" className="hidden" onChange={handleUpload} />
+            <button
+              onClick={() => fileRef.current?.click()}
+              disabled={uploading}
+              className="px-3 py-1.5 rounded border border-amber-300 text-amber-700 text-sm font-medium hover:bg-amber-50 disabled:opacity-50"
+            >
+              {uploading ? 'Uploading...' : 'Upload Document'}
+            </button>
+          </div>
+        )
+      )}
+    </div>
+  );
+}
+
+// Helper function to get or create "Personal Documents" folder
+async function getOrCreatePersonalDocumentsFolder(userId: string): Promise<string> {
+  try {
+    // Get all folders
+    const folders: any[] = await api('GET', `/auth/users/${encodeURIComponent(userId)}/folders`);
+    // Find "Personal Documents" folder
+    const personalFolder = folders.find((f: any) => f.name === 'Personal Documents');
+    if (personalFolder) {
+      return personalFolder.id;
+    }
+    // Create if doesn't exist
+    const newFolder: any = await api('POST', `/auth/users/${encodeURIComponent(userId)}/folders`, {
+      name: 'Personal Documents'
+    });
+    return newFolder.id;
+  } catch (e: any) {
+    console.error('Failed to get or create Personal Documents folder:', e);
+    throw e;
+  }
+}
+
+// Immigration Status Document Upload Section (optional)
+function ImmigrationStatusDocumentSection({ userId, canEdit, isRequired }: { userId: string; canEdit: boolean; isRequired?: boolean }) {
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+  const queryClient = useQueryClient();
+  const { data: permitFile, refetch } = useQuery({
+    queryKey: ['permit-file', userId],
+    queryFn: () => api<any>('GET', `/auth/users/${encodeURIComponent(userId)}/profile`),
+  });
+  const permitFileId = permitFile?.profile?.permit_file_id;
+
+  const handleUpload = async () => {
+    const f = fileRef.current?.files?.[0];
+    if (!f) return;
+    
+    // Validate file type
+    const isPDF = f.type === 'application/pdf';
+    const isImage = f.type.startsWith('image/');
+    if (!isPDF && !isImage) {
+      toast.error('Please upload a PDF or image file');
+      return;
+    }
+
+    setUploading(true);
+    try {
+      const up: any = await api('POST', '/files/upload', {
+        project_id: null,
+        client_id: null,
+        employee_id: userId,
+        category_id: 'permit',
+        original_name: f.name,
+        content_type: f.type || 'application/pdf'
+      });
+      const put = await fetch(up.upload_url, {
+        method: 'PUT',
+        headers: { 'Content-Type': f.type || 'application/pdf', 'x-ms-blob-type': 'BlockBlob' },
+        body: f
+      });
+      if (!put.ok) throw new Error('upload failed');
+      const conf: any = await api('POST', '/files/confirm', {
+        key: up.key,
+        size_bytes: f.size,
+        checksum_sha256: 'na',
+        content_type: f.type || 'application/pdf'
+      });
+      // Save to profile
+      await api('PUT', `/auth/users/${encodeURIComponent(userId)}/profile`, {
+        permit_file_id: conf.id
+      });
+      // Also add to Personal Documents folder
+      try {
+        const personalFolderId = await getOrCreatePersonalDocumentsFolder(userId);
+        await api('POST', `/auth/users/${encodeURIComponent(userId)}/documents`, {
+          folder_id: personalFolderId,
+          title: `Immigration Status Document - ${f.name}`,
+          file_id: conf.id
+        });
+      } catch (e: any) {
+        console.error('Failed to add document to Personal Documents folder:', e);
+        // Don't fail the whole upload if folder creation fails
+      }
+      toast.success('Immigration Status Document uploaded successfully');
+      await refetch();
+      await queryClient.invalidateQueries({ queryKey: ['meProfile'] });
+      await queryClient.invalidateQueries({ queryKey: ['me-profile'] });
+      await queryClient.invalidateQueries({ queryKey: ['user-docs', userId] });
+      await queryClient.invalidateQueries({ queryKey: ['user-folders', userId] });
+    } catch (e: any) {
+      toast.error(e?.message || 'Failed to upload Immigration Status Document');
+    } finally {
+      setUploading(false);
+      if (fileRef.current) fileRef.current.value = '';
+    }
+  };
+
+  return (
+    <div className="rounded-xl border bg-white p-4">
+      <div className="mb-4 flex items-center gap-2">
+        <div className="w-8 h-8 rounded bg-amber-100 flex items-center justify-center">
+          <svg className="w-5 h-5 text-amber-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V8a2 2 0 00-2-2h-5m-4 0V5a2 2 0 114 0v1m-4 0a2 2 0 104 0m-5 8a2 2 0 100-4 2 2 0 000 4zm0 0c1.306 0 2.417.835 2.83 2M9 14a3.001 3.001 0 00-2.83 2M15 11h3m-3 4h2" />
+          </svg>
+        </div>
+        <h5 className="font-semibold text-amber-900">Immigration Status Document {isRequired && <span className="text-red-600">*</span>}</h5>
+      </div>
+      <div className="text-xs text-gray-500 mb-3">Examples: Work Permit, Study Permit, PGWP, PR Card...</div>
+      {permitFileId ? (
+        <div className="space-y-3">
+          <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
+            <div className="flex-1">
+              <div className="text-sm font-medium text-gray-900">Immigration Status Document</div>
+              <div className="text-xs text-gray-500">Document uploaded</div>
+            </div>
+            <a
+              href={`/files/${permitFileId}/download`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="px-3 py-1.5 rounded border border-amber-300 text-amber-700 text-sm font-medium hover:bg-amber-50"
+            >
+              View
+            </a>
+            {canEdit && (
+              <button
+                onClick={async () => {
+                  try {
+                    await api('PUT', `/auth/users/${encodeURIComponent(userId)}/profile`, { permit_file_id: null });
+                    toast.success('Immigration Status Document removed');
+                    await refetch();
+                    await queryClient.invalidateQueries({ queryKey: ['meProfile'] });
+                    await queryClient.invalidateQueries({ queryKey: ['me-profile'] });
+                  } catch (e: any) {
+                    toast.error(e?.message || 'Failed to remove Immigration Status Document');
+                  }
+                }}
+                className="px-3 py-1.5 rounded border border-red-300 text-red-700 text-sm font-medium hover:bg-red-50"
+              >
+                Remove
+              </button>
+            )}
+          </div>
+          {canEdit && (
+            <div>
+              <input ref={fileRef} type="file" accept=".pdf,image/*" className="hidden" onChange={handleUpload} />
+              <button
+                onClick={() => fileRef.current?.click()}
+                disabled={uploading}
+                className="px-3 py-1.5 rounded border border-amber-300 text-amber-700 text-sm font-medium hover:bg-amber-50 disabled:opacity-50"
+              >
+                {uploading ? 'Uploading...' : 'Replace Document'}
+              </button>
+            </div>
+          )}
+        </div>
+      ) : (
+        <div>
+          {canEdit ? (
+            <>
+              <input ref={fileRef} type="file" accept=".pdf,image/*" className="hidden" onChange={handleUpload} />
+              <button
+                onClick={() => fileRef.current?.click()}
+                disabled={uploading}
+                className="px-3 py-1.5 rounded border border-amber-300 text-amber-700 text-sm font-medium hover:bg-amber-50 disabled:opacity-50"
+              >
+                {uploading ? 'Uploading...' : 'Upload Document'}
+              </button>
+              {isRequired && !permitFileId && (
+                <div className="text-xs text-red-600 mt-1">Immigration Status Document is required</div>
+              )}
+            </>
+          ) : (
+            <div className="text-sm text-gray-600">No permit document uploaded</div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // Visa Information Section (reused from Profile.tsx but simplified for wizard)
-function VisaInformationSection({ userId, canEdit }: { userId: string; canEdit: boolean }) {
+function VisaInformationSection({ userId, canEdit, isRequired = false, showInlineForm = false }: { userId: string; canEdit: boolean; isRequired?: boolean; showInlineForm?: boolean }) {
   const { data, refetch } = useQuery({
     queryKey: ['employee-visas', userId],
     queryFn: () => api<any[]>('GET', `/auth/users/${encodeURIComponent(userId)}/visas`)
@@ -1252,7 +1765,7 @@ function VisaInformationSection({ userId, canEdit }: { userId: string; canEdit: 
       setStatus('Active');
       setNotes('');
       setCreateOpen(false);
-      refetch();
+      await refetch();
     } catch (error: any) {
       toast.error(error?.message || 'Failed to create visa entry');
     }
@@ -1302,9 +1815,9 @@ function VisaInformationSection({ userId, canEdit }: { userId: string; canEdit: 
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V8a2 2 0 00-2-2h-5m-4 0V5a2 2 0 114 0v1m-4 0a2 2 0 104 0m-5 8a2 2 0 100-4 2 2 0 000 4zm0 0c1.306 0 2.417.835 2.83 2M9 14a3.001 3.001 0 00-2.83 2M15 11h3m-3 4h2" />
             </svg>
           </div>
-          <h5 className="font-semibold text-amber-900">Visa Information (Optional)</h5>
+          <h5 className="font-semibold text-amber-900">Visa Information {isRequired && <span className="text-red-600">*</span>}</h5>
         </div>
-        {canEdit && (
+        {canEdit && !showInlineForm && (
           <button
             onClick={() => setCreateOpen(true)}
             className="px-3 py-1.5 rounded border border-amber-300 text-amber-700 text-sm font-medium hover:bg-amber-50"
@@ -1431,7 +1944,9 @@ function VisaInformationSection({ userId, canEdit }: { userId: string; canEdit: 
           })}
         </div>
       ) : (
-        <div className="text-sm text-gray-600 py-4 text-center">No visa information. This is optional.</div>
+        <div className="text-sm text-gray-600 py-4 text-center">
+          {isRequired ? 'Visa information is required' : 'No visa information. This is optional.'}
+        </div>
       )}
       
       {createOpen && (

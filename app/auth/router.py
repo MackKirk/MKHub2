@@ -659,6 +659,8 @@ def my_profile(user: User = Depends(get_current_user), db: Session = Depends(get
             "pay_type": ep.pay_type,
             "employment_type": ep.employment_type,
             "sin_number": ep.sin_number,
+            # New API field backed by legacy column
+            "work_eligibility_status": getattr(ep, "work_permit_status", None),
             "work_permit_status": ep.work_permit_status,
             "visa_status": ep.visa_status,
             "profile_photo_file_id": str(ep.profile_photo_file_id) if getattr(ep, 'profile_photo_file_id', None) else None,
@@ -699,11 +701,14 @@ def update_my_profile(payload: EmployeeProfileInput, user: User = Depends(get_cu
     allowed_keys = {
         "first_name","last_name","middle_name","preferred_name","phone","mobile_phone","gender","marital_status","date_of_birth","nationality",
         "address_line1","address_line1_complement","address_line2","address_line2_complement","city","province","postal_code","country",
-        "sin_number","work_permit_status","visa_status",
+        "sin_number","work_permit_status","visa_status","work_eligibility_status",
         "emergency_contact_name","emergency_contact_relationship","emergency_contact_phone",
         "profile_photo_file_id",
     }
     incoming = payload.dict(exclude_unset=True)
+    # Map new API field to legacy column so existing DB schema still works
+    if "work_eligibility_status" in incoming and incoming.get("work_eligibility_status") is not None:
+        incoming["work_permit_status"] = incoming["work_eligibility_status"]
     data = { k: v for k, v in incoming.items() if k in allowed_keys }
     # Convert empty strings to None
     data = { k: (None if v == "" else v) for k, v in data.items() }
@@ -800,15 +805,9 @@ def get_user_profile(user_id: str, db: Session = Depends(get_db), me: User = Dep
     ep = db.query(EmployeeProfile).filter(EmployeeProfile.user_id == u.id).first()
     # Get user divisions
     divisions = [{"id": str(d.id), "label": d.label} for d in getattr(u, 'divisions', [])]
-    return {
-        "user": {
-            "id": str(u.id),
-            "username": u.username,
-            "email": u.email_personal,
-            "is_active": u.is_active,
-            "divisions": divisions,
-        },
-        "profile": {
+    profile_data = None
+    if ep:
+        profile_data = {
             k: getattr(ep, k)
             for k in [
                 "first_name","last_name","middle_name","preferred_name","gender","date_of_birth","marital_status","nationality",
@@ -817,7 +816,18 @@ def get_user_profile(user_id: str, db: Session = Depends(get_db), me: User = Dep
                 "pay_rate","pay_type","employment_type","sin_number","work_permit_status","visa_status","profile_photo_file_id",
                 "emergency_contact_name","emergency_contact_relationship","emergency_contact_phone",
             ]
-        } if ep else None,
+        }
+        # New API field backed by legacy column
+        profile_data["work_eligibility_status"] = getattr(ep, "work_permit_status", None)
+    return {
+        "user": {
+            "id": str(u.id),
+            "username": u.username,
+            "email": u.email_personal,
+            "is_active": u.is_active,
+            "divisions": divisions,
+        },
+        "profile": profile_data,
     }
 
 
@@ -833,6 +843,9 @@ def update_user_profile(user_id: str, payload: EmployeeProfileInput, db: Session
         db.add(ep)
     # Admin/editor can update all fields. Keep behavior, but normalize dates
     data = payload.dict(exclude_unset=True)
+    # Map new API field to legacy column
+    if "work_eligibility_status" in data and data.get("work_eligibility_status") is not None:
+        data["work_permit_status"] = data["work_eligibility_status"]
     for k in ("date_of_birth","hire_date","termination_date"):
         if k in data and isinstance(data[k], str):
             try:
