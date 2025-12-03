@@ -85,6 +85,15 @@ export default function OnboardingWizard() {
     return `+${d.slice(0, 1)} (${d.slice(1, 4)}) ${d.slice(4, 7)}-${d.slice(7, 11)}`;
   };
   
+  // Check emergency contacts (needed for validation)
+  const { data: emergencyContactsData, isLoading: emergencyContactsLoading } = useQuery({
+    queryKey: ['emergency-contacts', userId],
+    queryFn: () => api<any[]>('GET', `/auth/users/${encodeURIComponent(userId)}/emergency-contacts`),
+    enabled: !!userId
+  });
+  
+  const hasEmergencyContact = emergencyContactsData && emergencyContactsData.length > 0;
+  
   // Required fields for each step
   const stepRequiredFields: Record<number, string[]> = {
     1: ['gender', 'date_of_birth', 'marital_status', 'nationality'],
@@ -133,15 +142,6 @@ export default function OnboardingWizard() {
     }
   }, [form, userId, queryClient]);
   
-  // Check emergency contacts (needed for validation)
-  const { data: emergencyContactsData } = useQuery({
-    queryKey: ['emergency-contacts', userId],
-    queryFn: () => api<any[]>('GET', `/auth/users/${encodeURIComponent(userId)}/emergency-contacts`),
-    enabled: !!userId
-  });
-  
-  const hasEmergencyContact = emergencyContactsData && emergencyContactsData.length > 0;
-  
   // Auto-save when form changes (debounced)
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -156,14 +156,23 @@ export default function OnboardingWizard() {
   // Check if onboarding is complete
   const reqPersonal = ['gender', 'date_of_birth', 'marital_status', 'nationality', 'phone', 'address_line1', 'city', 'province', 'postal_code', 'country', 'sin_number'];
   const missingPersonal = reqPersonal.filter(k => !String((form as any)[k] || '').trim());
-  const isOnboardingComplete = missingPersonal.length === 0 && hasEmergencyContact;
+  // Only require emergency contacts if userId exists (meaning the query was enabled)
+  // If emergency contacts query is still loading, we can't determine completion yet
+  const emergencyContactsReady = userId ? (!emergencyContactsLoading && emergencyContactsData !== undefined) : true;
+  const isOnboardingComplete = missingPersonal.length === 0 && (userId ? (emergencyContactsReady && hasEmergencyContact) : true);
   
   // Redirect to home if onboarding is already complete
+  // Only redirect if all data has finished loading and onboarding is confirmed complete
   useEffect(() => {
-    if (profileData && isOnboardingComplete && !profileLoading) {
+    // Don't redirect if we're still loading data
+    if (profileLoading || (userId && emergencyContactsLoading)) {
+      return;
+    }
+    
+    if (profileData && isOnboardingComplete) {
       navigate('/home', { replace: true });
     }
-  }, [isOnboardingComplete, profileData, profileLoading, navigate]);
+  }, [isOnboardingComplete, profileData, profileLoading, navigate, userId, emergencyContactsLoading]);
   
   // Handle next step
   const handleNext = async () => {

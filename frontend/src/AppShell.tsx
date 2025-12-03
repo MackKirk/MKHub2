@@ -134,12 +134,12 @@ export default function AppShell({ children }: PropsWithChildren){
   const location = useLocation();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { data:meProfile } = useQuery({ queryKey:['me-profile'], queryFn: ()=>api<any>('GET','/auth/me/profile') });
+  const { data:meProfile, isLoading: meProfileLoading } = useQuery({ queryKey:['me-profile'], queryFn: ()=>api<any>('GET','/auth/me/profile') });
   const { data:me } = useQuery({ queryKey:['me'], queryFn: ()=>api<any>('GET','/auth/me') });
   const userId = me?.id ? String(me.id) : '';
   
   // Check emergency contacts
-  const { data: emergencyContactsData } = useQuery({ 
+  const { data: emergencyContactsData, isLoading: emergencyContactsLoading } = useQuery({ 
     queryKey:['emergency-contacts', userId], 
     queryFn: ()=> api<any[]>('GET', `/auth/users/${encodeURIComponent(userId)}/emergency-contacts`),
     enabled: !!userId
@@ -147,24 +147,34 @@ export default function AppShell({ children }: PropsWithChildren){
   
   // Check if profile is complete (all required fields filled)
   const isProfileComplete = useMemo(() => {
+    // If we're still loading, don't consider it complete yet (but also don't redirect until we know)
     if (!meProfile?.profile) return false;
     const p = meProfile.profile;
     const reqPersonal = ['gender','date_of_birth','marital_status','nationality','phone','address_line1','city','province','postal_code','country','sin_number'];
     const missingPersonal = reqPersonal.filter(k => !String((p as any)[k]||'').trim());
-    const hasEmergencyContact = emergencyContactsData && emergencyContactsData.length > 0;
+    // Only check emergency contacts if userId exists (query enabled) and query has finished loading
+    const hasEmergencyContact = userId ? (emergencyContactsData !== undefined && emergencyContactsData.length > 0) : true;
     const missingPersonalWithContact = [...missingPersonal];
-    if (!hasEmergencyContact && userId) {
+    // Only require emergency contact if we have a userId (meaning the query was enabled)
+    if (!hasEmergencyContact && userId && !emergencyContactsLoading) {
       missingPersonalWithContact.push('emergency_contact');
     }
     return missingPersonalWithContact.length === 0;
-  }, [meProfile, emergencyContactsData, userId]);
+  }, [meProfile, emergencyContactsData, userId, emergencyContactsLoading]);
   
   // Redirect to onboarding if incomplete and trying to access other routes
+  // Only redirect if queries have finished loading and profile is confirmed incomplete
   useEffect(() => {
+    // Don't redirect if we're still loading data
+    if (meProfileLoading || (userId && emergencyContactsLoading)) {
+      return;
+    }
+    
+    // Only redirect if profile data exists, is incomplete, and we're not already on onboarding/profile pages
     if (meProfile && !isProfileComplete && location.pathname !== '/profile' && location.pathname !== '/onboarding') {
       navigate('/onboarding', { replace: true });
     }
-  }, [meProfile, isProfileComplete, location.pathname, navigate]);
+  }, [meProfile, isProfileComplete, location.pathname, navigate, meProfileLoading, emergencyContactsLoading, userId]);
   
   const displayName = (meProfile?.profile?.preferred_name) || ([meProfile?.profile?.first_name, meProfile?.profile?.last_name].filter(Boolean).join(' ') || meProfile?.user?.username || 'User');
   const avatarId = meProfile?.profile?.profile_photo_file_id;
