@@ -1514,22 +1514,24 @@ function PRCardUploadSection({ userId, canEdit }: { userId: string; canEdit: boo
 }
 
 // Helper function to get or create "Personal Documents" folder
+// In onboarding, userId is always the current user, so we can use /auth/me/profile endpoints
 async function getOrCreatePersonalDocumentsFolder(userId: string): Promise<string> {
   try {
-    // Get all folders
+    // Get all folders - use /auth/users/{userId}/folders which allows self-access
     const folders: any[] = await api('GET', `/auth/users/${encodeURIComponent(userId)}/folders`);
     // Find "Personal Documents" folder
     const personalFolder = folders.find((f: any) => f.name === 'Personal Documents');
     if (personalFolder) {
       return personalFolder.id;
     }
-    // Create if doesn't exist
+    // Create if doesn't exist - use /auth/users/{userId}/folders which allows self-access
     const newFolder: any = await api('POST', `/auth/users/${encodeURIComponent(userId)}/folders`, {
       name: 'Personal Documents'
     });
     return newFolder.id;
   } catch (e: any) {
     console.error('Failed to get or create Personal Documents folder:', e);
+    // Don't throw - let the caller handle it gracefully
     throw e;
   }
 }
@@ -1539,15 +1541,10 @@ function ImmigrationStatusDocumentSection({ userId, canEdit, isRequired }: { use
   const fileRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const queryClient = useQueryClient();
-  // Get current user to check if this is a self-update
-  const { data: me } = useQuery({ queryKey: ['me'], queryFn: () => api<any>('GET', '/auth/me') });
-  const isSelfUpdate = me?.id && String(me.id) === String(userId);
-  // Use /auth/me/profile for self-updates (no permission required), otherwise use /auth/users/{userId}/profile
+  // In onboarding, userId is always the current user, so use /auth/me/profile (no permission required)
   const { data: permitFile, refetch } = useQuery({
     queryKey: ['permit-file', userId],
-    queryFn: () => isSelfUpdate 
-      ? api<any>('GET', '/auth/me/profile')
-      : api<any>('GET', `/auth/users/${encodeURIComponent(userId)}/profile`),
+    queryFn: () => api<any>('GET', '/auth/me/profile'),
   });
   const permitFileId = permitFile?.profile?.permit_file_id;
 
@@ -1565,6 +1562,7 @@ function ImmigrationStatusDocumentSection({ userId, canEdit, isRequired }: { use
 
     setUploading(true);
     try {
+      // Step 1: Get upload URL
       const up: any = await api('POST', '/files/upload', {
         project_id: null,
         client_id: null,
@@ -1573,32 +1571,31 @@ function ImmigrationStatusDocumentSection({ userId, canEdit, isRequired }: { use
         original_name: f.name,
         content_type: f.type || 'application/pdf'
       });
+      
+      // Step 2: Upload file to storage
       const put = await fetch(up.upload_url, {
         method: 'PUT',
         headers: { 'Content-Type': f.type || 'application/pdf', 'x-ms-blob-type': 'BlockBlob' },
         body: f
       });
-      if (!put.ok) throw new Error('upload failed');
+      if (!put.ok) {
+        throw new Error(`Upload to storage failed: ${put.status} ${put.statusText}`);
+      }
+      
+      // Step 3: Confirm upload
       const conf: any = await api('POST', '/files/confirm', {
         key: up.key,
         size_bytes: f.size,
         checksum_sha256: 'na',
         content_type: f.type || 'application/pdf'
       });
-      // Save to profile - use /auth/me/profile for self-updates (no permission required)
-      // Check if userId matches current user to use the self-update endpoint
-      const { data: me } = await api<any>('GET', '/auth/me');
-      const isSelfUpdate = me?.id && String(me.id) === String(userId);
-      if (isSelfUpdate) {
-        await api('PUT', '/auth/me/profile', {
-          permit_file_id: conf.id
-        });
-      } else {
-        await api('PUT', `/auth/users/${encodeURIComponent(userId)}/profile`, {
-          permit_file_id: conf.id
-        });
-      }
-      // Also add to Personal Documents folder (optional - don't fail if this fails)
+      
+      // Step 4: Save to profile - in onboarding, userId is always the current user, so use /auth/me/profile (no permission required)
+      await api('PUT', '/auth/me/profile', {
+        permit_file_id: conf.id
+      });
+      
+      // Step 5: Also add to Personal Documents folder (optional - don't fail if this fails)
       try {
         const personalFolderId = await getOrCreatePersonalDocumentsFolder(userId);
         await api('POST', `/auth/users/${encodeURIComponent(userId)}/documents`, {
@@ -1607,10 +1604,11 @@ function ImmigrationStatusDocumentSection({ userId, canEdit, isRequired }: { use
           file_id: conf.id
         });
       } catch (e: any) {
-        console.error('Failed to add document to Personal Documents folder:', e);
+        console.warn('Failed to add document to Personal Documents folder (non-critical):', e);
         // Don't fail the whole upload if folder creation fails - the file is already saved to profile
         // This is a nice-to-have feature, not critical for the upload
       }
+      
       toast.success('Immigration Status Document uploaded successfully');
       await refetch();
       await queryClient.invalidateQueries({ queryKey: ['meProfile'] });
@@ -1618,7 +1616,9 @@ function ImmigrationStatusDocumentSection({ userId, canEdit, isRequired }: { use
       await queryClient.invalidateQueries({ queryKey: ['user-docs', userId] });
       await queryClient.invalidateQueries({ queryKey: ['user-folders', userId] });
     } catch (e: any) {
-      toast.error(e?.message || 'Failed to upload Immigration Status Document');
+      console.error('Upload error:', e);
+      const errorMessage = e?.message || e?.toString() || 'Failed to upload Immigration Status Document';
+      toast.error(errorMessage);
     } finally {
       setUploading(false);
       if (fileRef.current) fileRef.current.value = '';
@@ -1655,11 +1655,8 @@ function ImmigrationStatusDocumentSection({ userId, canEdit, isRequired }: { use
               <button
                 onClick={async () => {
                   try {
-                    if (isSelfUpdate) {
-                      await api('PUT', '/auth/me/profile', { permit_file_id: null });
-                    } else {
-                      await api('PUT', `/auth/users/${encodeURIComponent(userId)}/profile`, { permit_file_id: null });
-                    }
+                    // In onboarding, userId is always the current user, so use /auth/me/profile
+                    await api('PUT', '/auth/me/profile', { permit_file_id: null });
                     toast.success('Immigration Status Document removed');
                     await refetch();
                     await queryClient.invalidateQueries({ queryKey: ['meProfile'] });
