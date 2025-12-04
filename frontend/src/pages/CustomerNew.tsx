@@ -4,8 +4,8 @@ import toast from 'react-hot-toast';
 import { useQuery } from '@tanstack/react-query';
 import { useConfirm } from '@/components/ConfirmProvider';
 import { useNavigate } from 'react-router-dom';
-import GeoSelect from '@/components/GeoSelect';
 import ImagePicker from '@/components/ImagePicker';
+import AddressAutocomplete from '@/components/AddressAutocomplete';
 
 export default function CustomerNew(){
   const confirm = useConfirm();
@@ -18,7 +18,7 @@ export default function CustomerNew(){
   const leadSources = (settings?.lead_sources||[]) as any[];
   const [form, setForm] = useState<any>({
     display_name:'', legal_name:'', name:'', client_status:'Active', client_type:'Customer',
-    email:'', phone:'', address_line1:'', address_line2:'', city:'', province:'', country:'', postal_code:'',
+    email:'', phone:'', address_line1:'', address_line2:'', city:'', province:'British Columbia', country:'Canada', postal_code:'',
     payment_terms_id:'', po_required:false, tax_number:'', lead_source:'', estimator_id:'', description:''
   });
   useEffect(()=>{ setForm((s:any)=> ({ ...s, name: s.display_name })); }, [form.display_name]);
@@ -37,6 +37,198 @@ export default function CustomerNew(){
   const [step, setStep] = useState<number>(1);
   const next = ()=> setStep(s=> Math.min(2, s+1));
   const prev = ()=> setStep(s=> Math.max(1, s-1));
+  
+  // Geo data for address fields
+  const [countries, setCountries] = useState<string[]>([]);
+  const [states, setStates] = useState<string[]>([]);
+  const [cities, setCities] = useState<string[]>([]);
+  const [loadingStates, setLoadingStates] = useState(false);
+  const [loadingCities, setLoadingCities] = useState(false);
+  const [countriesLoaded, setCountriesLoaded] = useState(false);
+  
+  const API_BASE = 'https://countriesnow.space/api/v0.1';
+  async function fetchJSON(url: string, opts?: RequestInit) {
+    const r = await fetch(url, opts);
+    if (!r.ok) throw new Error('geo api error');
+    return r.json();
+  }
+  
+  // Load countries
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const res = await fetchJSON(`${API_BASE}/countries`);
+        const arr: string[] = res?.data?.map((c: any) => c?.country).filter(Boolean) ?? [];
+        if (alive) {
+          setCountries(arr);
+          setCountriesLoaded(true);
+        }
+      } catch (_e) {
+        if (alive) {
+          setCountries([]);
+          setCountriesLoaded(true);
+        }
+      }
+    })();
+    return () => { alive = false; };
+  }, []);
+  
+  // Load states when country changes
+  useEffect(() => {
+    let alive = true;
+    if (!form.country) {
+      setStates([]);
+      setCities([]);
+      return;
+    }
+    if (!countriesLoaded) return;
+    setLoadingStates(true);
+    (async () => {
+      try {
+        const res = await fetchJSON(`${API_BASE}/countries/states`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ country: form.country }),
+        });
+        const arr: string[] = res?.data?.states?.map((s: any) => s?.name).filter(Boolean) ?? [];
+        if (alive) setStates(arr);
+      } catch (_e) {
+        if (alive) setStates([]);
+      } finally {
+        if (alive) setLoadingStates(false);
+      }
+    })();
+    return () => { alive = false; };
+  }, [form.country, countriesLoaded]);
+  
+  // Load cities when state changes
+  useEffect(() => {
+    let alive = true;
+    if (!form.country) {
+      setCities([]);
+      return;
+    }
+    if (form.province && loadingStates) return;
+    setLoadingCities(true);
+    (async () => {
+      try {
+        if (form.province) {
+          const res = await fetchJSON(`${API_BASE}/countries/state/cities`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ country: form.country, state: form.province }),
+          });
+          const arr: string[] = res?.data ?? [];
+          if (alive) setCities(arr);
+        } else {
+          const res = await fetchJSON(`${API_BASE}/countries`);
+          const entry = (res?.data ?? []).find((c: any) => c?.country === form.country);
+          const arr: string[] = entry?.cities ?? [];
+          if (alive) setCities(arr);
+        }
+      } catch (_e) {
+        if (alive) setCities([]);
+      } finally {
+        if (alive) setLoadingCities(false);
+      }
+    })();
+    return () => { alive = false; };
+  }, [form.country, form.province, loadingStates]);
+  
+  const allCountries = useMemo(() => {
+    const existing = form.country && !countries.includes(form.country) ? [form.country] : [];
+    return [...countries, ...existing];
+  }, [countries, form.country]);
+  
+  const allStates = useMemo(() => {
+    const existing = form.province && !states.includes(form.province) ? [form.province] : [];
+    return [...states, ...existing];
+  }, [states, form.province]);
+  
+  const allCities = useMemo(() => {
+    const existing = form.city && !cities.includes(form.city) ? [form.city] : [];
+    return [...cities, ...existing];
+  }, [cities, form.city]);
+  
+  // Geo data for billing address fields
+  const [billingStates, setBillingStates] = useState<string[]>([]);
+  const [billingCities, setBillingCities] = useState<string[]>([]);
+  const [loadingBillingStates, setLoadingBillingStates] = useState(false);
+  const [loadingBillingCities, setLoadingBillingCities] = useState(false);
+  
+  // Load billing states when billing country changes
+  useEffect(() => {
+    let alive = true;
+    if (!form.billing_country) {
+      setBillingStates([]);
+      setBillingCities([]);
+      return;
+    }
+    if (!countriesLoaded) return;
+    setLoadingBillingStates(true);
+    (async () => {
+      try {
+        const res = await fetchJSON(`${API_BASE}/countries/states`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ country: form.billing_country }),
+        });
+        const arr: string[] = res?.data?.states?.map((s: any) => s?.name).filter(Boolean) ?? [];
+        if (alive) setBillingStates(arr);
+      } catch (_e) {
+        if (alive) setBillingStates([]);
+      } finally {
+        if (alive) setLoadingBillingStates(false);
+      }
+    })();
+    return () => { alive = false; };
+  }, [form.billing_country, countriesLoaded]);
+  
+  // Load billing cities when billing state changes
+  useEffect(() => {
+    let alive = true;
+    if (!form.billing_country) {
+      setBillingCities([]);
+      return;
+    }
+    if (form.billing_province && loadingBillingStates) return;
+    setLoadingBillingCities(true);
+    (async () => {
+      try {
+        if (form.billing_province) {
+          const res = await fetchJSON(`${API_BASE}/countries/state/cities`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ country: form.billing_country, state: form.billing_province }),
+          });
+          const arr: string[] = res?.data ?? [];
+          if (alive) setBillingCities(arr);
+        } else {
+          const res = await fetchJSON(`${API_BASE}/countries`);
+          const entry = (res?.data ?? []).find((c: any) => c?.country === form.billing_country);
+          const arr: string[] = entry?.cities ?? [];
+          if (alive) setBillingCities(arr);
+        }
+      } catch (_e) {
+        if (alive) setBillingCities([]);
+      } finally {
+        if (alive) setLoadingBillingCities(false);
+      }
+    })();
+    return () => { alive = false; };
+  }, [form.billing_country, form.billing_province, loadingBillingStates]);
+  
+  const allBillingStates = useMemo(() => {
+    const existing = form.billing_province && !billingStates.includes(form.billing_province) ? [form.billing_province] : [];
+    return [...billingStates, ...existing];
+  }, [billingStates, form.billing_province]);
+  
+  const allBillingCities = useMemo(() => {
+    const existing = form.billing_city && !billingCities.includes(form.billing_city) ? [form.billing_city] : [];
+    return [...billingCities, ...existing];
+  }, [billingCities, form.billing_city]);
+  
   const formatPhone = (v:string)=>{
     const d = String(v||'').replace(/\D+/g,'').slice(0,11);
     if (d.length<=3) return d;
@@ -108,18 +300,64 @@ export default function CustomerNew(){
               <div className="flex items-center gap-2"><h4 className="font-semibold">Address</h4></div>
               <div className="text-xs text-gray-500 mt-0.5 mb-2">Primary mailing and location address.</div>
               <div className="grid md:grid-cols-2 gap-3">
-                <div className="md:col-span-2"><label className="text-xs text-gray-600">Address line 1</label><input className="w-full border rounded px-3 py-2" value={form.address_line1} onChange={e=>setForm((s:any)=>({...s, address_line1: e.target.value}))} /></div>
-                <div className="md:col-span-2"><label className="text-xs text-gray-600">Address line 2</label><input className="w-full border rounded px-3 py-2" value={form.address_line2} onChange={e=>setForm((s:any)=>({...s, address_line2: e.target.value}))} /></div>
                 <div className="md:col-span-2">
-                  <GeoSelect
-                    country={form.country||''}
-                    state={form.province||''}
-                    city={form.city||''}
-                    onChange={(v)=> setForm((s:any)=> ({...s, country: v.country??s.country, province: v.state??s.province, city: v.city??s.city }))}
-                    labels={{ country:'Country', state:'Province/State', city:'City' }}
+                  <label className="text-xs text-gray-600">Address line 1</label>
+                  <AddressAutocomplete
+                    value={form.address_line1}
+                    onChange={(value) => setForm((s:any)=>({...s, address_line1: value}))}
+                    onAddressSelect={(address) => {
+                      setForm((s:any) => ({
+                        ...s,
+                        address_line1: address.address_line1 || s.address_line1,
+                        address_line2: address.address_line2 !== undefined ? address.address_line2 : s.address_line2,
+                        city: address.city !== undefined ? address.city : s.city,
+                        province: address.province !== undefined ? address.province : s.province,
+                        country: address.country !== undefined ? address.country : s.country,
+                        postal_code: address.postal_code !== undefined ? address.postal_code : s.postal_code,
+                      }));
+                    }}
+                    className="w-full border rounded px-3 py-2"
                   />
                 </div>
-                <div><label className="text-xs text-gray-600">Postal code</label><input className="w-full border rounded px-3 py-2" value={form.postal_code} onChange={e=>setForm((s:any)=>({...s, postal_code: e.target.value}))} /></div>
+                <div className="md:col-span-2">
+                  <label className="text-xs text-gray-600">Address line 2</label>
+                  <AddressAutocomplete
+                    value={form.address_line2}
+                    onChange={(value) => setForm((s:any)=>({...s, address_line2: value}))}
+                    className="w-full border rounded px-3 py-2"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-gray-600">Country</label>
+                  <select className="w-full border rounded px-3 py-2" value={form.country || ''} onChange={(e) => setForm((s:any)=>({...s, country: e.target.value}))} disabled={!countriesLoaded}>
+                    <option value="">{countriesLoaded ? 'Select...' : 'Loading...'}</option>
+                    {allCountries.map((c) => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs text-gray-600">Province/State</label>
+                  <select className="w-full border rounded px-3 py-2" value={form.province || ''} onChange={(e) => setForm((s:any)=>({...s, province: e.target.value}))} disabled={!form.country || loadingStates}>
+                    <option value="">{loadingStates ? 'Loading...' : 'Select...'}</option>
+                    {allStates.map((s) => (
+                      <option key={s} value={s}>{s}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs text-gray-600">City</label>
+                  <select className="w-full border rounded px-3 py-2" value={form.city || ''} onChange={(e) => setForm((s:any)=>({...s, city: e.target.value}))} disabled={!form.country || loadingCities}>
+                    <option value="">{loadingCities ? 'Loading...' : 'Select...'}</option>
+                    {allCities.map((ct) => (
+                      <option key={ct} value={ct}>{ct}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs text-gray-600">Postal code</label>
+                  <input className="w-full border rounded px-3 py-2" value={form.postal_code} onChange={e=>setForm((s:any)=>({...s, postal_code: e.target.value}))} />
+                </div>
               </div>
             </div>
             <div>
@@ -136,18 +374,64 @@ export default function CustomerNew(){
                 </div>
                 {form.use_diff_billing && (
                   <>
-                    <div className="md:col-span-2"><label className="text-xs text-gray-600">Billing Address 1</label><input className="w-full border rounded px-3 py-2" value={form.billing_address_line1||''} onChange={e=>setForm((s:any)=>({...s, billing_address_line1: e.target.value}))} /></div>
-                    <div className="md:col-span-2"><label className="text-xs text-gray-600">Billing Address 2</label><input className="w-full border rounded px-3 py-2" value={form.billing_address_line2||''} onChange={e=>setForm((s:any)=>({...s, billing_address_line2: e.target.value}))} /></div>
                     <div className="md:col-span-2">
-                      <GeoSelect
-                        country={form.billing_country||''}
-                        state={form.billing_province||''}
-                        city={form.billing_city||''}
-                        onChange={(v)=> setForm((s:any)=> ({...s, billing_country: v.country??s.billing_country, billing_province: v.state??s.billing_province, billing_city: v.city??s.billing_city }))}
-                        labels={{ country:'Billing Country', state:'Billing Province/State', city:'Billing City' }}
+                      <label className="text-xs text-gray-600">Billing Address 1</label>
+                      <AddressAutocomplete
+                        value={form.billing_address_line1||''}
+                        onChange={(value) => setForm((s:any)=>({...s, billing_address_line1: value}))}
+                        onAddressSelect={(address) => {
+                          setForm((s:any) => ({
+                            ...s,
+                            billing_address_line1: address.address_line1 || s.billing_address_line1,
+                            billing_address_line2: address.address_line2 !== undefined ? address.address_line2 : s.billing_address_line2,
+                            billing_city: address.city !== undefined ? address.city : s.billing_city,
+                            billing_province: address.province !== undefined ? address.province : s.billing_province,
+                            billing_country: address.country !== undefined ? address.country : s.billing_country,
+                            billing_postal_code: address.postal_code !== undefined ? address.postal_code : s.billing_postal_code,
+                          }));
+                        }}
+                        className="w-full border rounded px-3 py-2"
                       />
                     </div>
-                    <div><label className="text-xs text-gray-600">Billing Postal code</label><input className="w-full border rounded px-3 py-2" value={form.billing_postal_code||''} onChange={e=>setForm((s:any)=>({...s, billing_postal_code: e.target.value}))} /></div>
+                    <div className="md:col-span-2">
+                      <label className="text-xs text-gray-600">Billing Address 2</label>
+                      <AddressAutocomplete
+                        value={form.billing_address_line2||''}
+                        onChange={(value) => setForm((s:any)=>({...s, billing_address_line2: value}))}
+                        className="w-full border rounded px-3 py-2"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-600">Billing Country</label>
+                      <select className="w-full border rounded px-3 py-2" value={form.billing_country || ''} onChange={(e) => setForm((s:any)=>({...s, billing_country: e.target.value}))} disabled={!countriesLoaded}>
+                        <option value="">{countriesLoaded ? 'Select...' : 'Loading...'}</option>
+                        {allCountries.map((c) => (
+                          <option key={c} value={c}>{c}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-600">Billing Province/State</label>
+                      <select className="w-full border rounded px-3 py-2" value={form.billing_province || ''} onChange={(e) => setForm((s:any)=>({...s, billing_province: e.target.value}))} disabled={!form.billing_country || loadingBillingStates}>
+                        <option value="">{loadingBillingStates ? 'Loading...' : 'Select...'}</option>
+                        {allBillingStates.map((s) => (
+                          <option key={s} value={s}>{s}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-600">Billing City</label>
+                      <select className="w-full border rounded px-3 py-2" value={form.billing_city || ''} onChange={(e) => setForm((s:any)=>({...s, billing_city: e.target.value}))} disabled={!form.billing_country || loadingBillingCities}>
+                        <option value="">{loadingBillingCities ? 'Loading...' : 'Select...'}</option>
+                        {allBillingCities.map((ct) => (
+                          <option key={ct} value={ct}>{ct}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-600">Billing Postal code</label>
+                      <input className="w-full border rounded px-3 py-2" value={form.billing_postal_code||''} onChange={e=>setForm((s:any)=>({...s, billing_postal_code: e.target.value}))} />
+                    </div>
                   </>
                 )}
               </div>
