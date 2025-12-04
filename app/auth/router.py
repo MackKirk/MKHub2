@@ -309,6 +309,124 @@ def generate_invite_email_html(
     return html.strip()
 
 
+def generate_password_reset_email_html(
+    reset_link: str,
+    app_name: str,
+    public_base_url: str,
+) -> str:
+    """Generate HTML email template for password reset."""
+    logo_url = f"{public_base_url}/proposals/assets/logo.png"
+    
+    html = f"""
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Password Reset Request</title>
+</head>
+<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f6f7f9;">
+    <table role="presentation" style="width: 100%; border-collapse: collapse;">
+        <tr>
+            <td align="center" style="padding: 40px 20px;">
+                <table role="presentation" style="max-width: 600px; width: 100%; background-color: #ffffff; border-radius: 12px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1); border: 1px solid #e5e7eb;">
+                    <!-- Header with Logo -->
+                    <tr>
+                        <td align="center" style="padding: 40px 20px 30px; background: linear-gradient(135deg, #7f1010 0%, #a31414 100%); border-radius: 12px 12px 0 0;">
+                            <img src="{logo_url}" alt="{app_name}" style="max-width: 300px; height: auto; display: block;" />
+                        </td>
+                    </tr>
+                    
+                    <!-- Content -->
+                    <tr>
+                        <td style="padding: 40px 30px;">
+                            <h1 style="margin: 0 0 20px 0; font-size: 28px; font-weight: 700; color: #0f172a; line-height: 1.3;">
+                                Password Reset Request
+                            </h1>
+                            
+                            <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 1.6; color: #374151;">
+                                Hello,
+                            </p>
+                            
+                            <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 1.6; color: #374151;">
+                                You requested to reset your password for {app_name}. Click the button below to reset your password:
+                            </p>
+                            
+                            <!-- CTA Button -->
+                            <table role="presentation" style="width: 100%; margin: 30px 0;">
+                                <tr>
+                                    <td align="center" style="padding: 20px 0;">
+                                        <!--[if mso]>
+                                        <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="{reset_link}" style="height:46px;v-text-anchor:middle;width:280px;" arcsize="8%" stroke="f" fillcolor="#d11616">
+                                            <w:anchorlock/>
+                                            <center style="color:#ffffff;font-family:sans-serif;font-size:16px;font-weight:bold;">Reset Password</center>
+                                        </v:roundrect>
+                                        <![endif]-->
+                                        <!--[if !mso]><!-- -->
+                                        <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="border-collapse: separate; mso-table-lspace: 0pt; mso-table-rspace: 0pt; width: auto;">
+                                            <tr>
+                                                <td style="background-color: #d11616; border-radius: 8px; text-align: center;">
+                                                    <a href="{reset_link}" style="background-color: #d11616; border: 2px solid #d11616; border-radius: 8px; color: #ffffff; display: inline-block; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; font-size: 16px; font-weight: 700; line-height: 1.5; text-decoration: none; text-align: center; padding: 14px 32px; -webkit-text-size-adjust: none; mso-hide: all;">
+                                                        Reset Password
+                                                    </a>
+                                                </td>
+                                            </tr>
+                                        </table>
+                                        <!--<![endif]-->
+                                    </td>
+                                </tr>
+                            </table>
+                            
+                            <p style="margin: 30px 0 20px 0; font-size: 14px; line-height: 1.6; color: #6b7280;">
+                                Or copy and paste this link into your browser:
+                            </p>
+                            <p style="margin: 0 0 30px 0; font-size: 14px; line-height: 1.6; color: #2563eb; word-break: break-all;">
+                                {reset_link}
+                            </p>
+                            
+                            <div style="border-top: 1px solid #e5e7eb; padding-top: 30px; margin-top: 30px;">
+                                <p style="margin: 0 0 10px 0; font-size: 14px; line-height: 1.6; color: #6b7280;">
+                                    <strong>Note:</strong> This link will expire in 1 hour. If you didn't request this password reset, please ignore this email.
+                                </p>
+                                <p style="margin: 0; font-size: 14px; line-height: 1.6; color: #6b7280;">
+                                    For security reasons, please do not share this link with anyone.
+                                </p>
+                            </div>
+                        </td>
+                    </tr>
+                    
+                    <!-- Footer -->
+                    <tr>
+                        <td style="padding: 30px; background-color: #f9fafb; border-top: 1px solid #e5e7eb; border-radius: 0 0 12px 12px;">
+                            <p style="margin: 0 0 10px 0; font-size: 16px; font-weight: 600; color: #0f172a;">
+                                Best regards,
+                            </p>
+                            <p style="margin: 0; font-size: 15px; color: #374151;">
+                                The {app_name} Team
+                            </p>
+                        </td>
+                    </tr>
+                </table>
+                
+                <!-- Footer Text -->
+                <table role="presentation" style="max-width: 600px; width: 100%; margin-top: 20px;">
+                    <tr>
+                        <td align="center" style="padding: 20px;">
+                            <p style="margin: 0; font-size: 12px; color: #9ca3af;">
+                                © {datetime.now(timezone.utc).year} {app_name}. All rights reserved.
+                            </p>
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>
+    """
+    return html.strip()
+
+
 def generate_account_ready_email_html(
     username: str,
     app_name: str,
@@ -1748,43 +1866,16 @@ def password_forgot(identifier: str, db: Session = Depends(get_db)):
             structlog.get_logger().warning("password_reset_email_skipped", reason="PUBLIC_BASE_URL not configured")
         else:
             link = f"{settings.public_base_url}/password-reset?token={token}"
-            msg = EmailMessage()
-            msg["Subject"] = f"Reset your {settings.app_name} password"
-            msg["From"] = settings.mail_from
-            msg["To"] = user.email_personal
             
-            # Create HTML email content
-            html_content = f"""
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Password Reset</title>
-</head>
-<body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
-    <div style="background-color: #7f1010; color: white; padding: 20px; text-align: center; border-radius: 8px 8px 0 0;">
-        <h1 style="margin: 0;">Password Reset Request</h1>
-    </div>
-    <div style="background-color: #f9fafb; padding: 30px; border: 1px solid #e5e7eb; border-top: none; border-radius: 0 0 8px 8px;">
-        <p>Hello,</p>
-        <p>You requested to reset your password for {settings.app_name}. Click the button below to reset your password:</p>
-        <div style="text-align: center; margin: 30px 0;">
-            <a href="{link}" style="display: inline-block; background-color: #7f1010; color: white; padding: 12px 30px; text-decoration: none; border-radius: 6px; font-weight: bold;">Reset Password</a>
-        </div>
-        <p>Or copy and paste this link into your browser:</p>
-        <p style="word-break: break-all; color: #6b7280; font-size: 14px;">{link}</p>
-        <p style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #e5e7eb; color: #6b7280; font-size: 14px;">
-            <strong>Note:</strong> This link will expire in 1 hour. If you didn't request this password reset, please ignore this email.
-        </p>
-    </div>
-</body>
-</html>
-            """
+            # Generate HTML email
+            html_content = generate_password_reset_email_html(
+                reset_link=link,
+                app_name=settings.app_name,
+                public_base_url=settings.public_base_url,
+            )
             
-            # Create plain text version
-            text_content = f"""
-Password Reset Request
+            # Plain text fallback
+            text_content = f"""Password Reset Request
 
 Hello,
 
@@ -1794,7 +1885,12 @@ Click this link to reset your password:
 {link}
 
 This link will expire in 1 hour. If you didn't request this password reset, please ignore this email.
-            """
+
+For security reasons, please do not share this link with anyone.
+
+Best regards,
+The {settings.app_name} Team
+"""
             
             # Create multipart message
             msg_multipart = MIMEMultipart("alternative")
