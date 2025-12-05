@@ -1,10 +1,11 @@
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
 import InspectionChecklist from '@/components/InspectionChecklist';
 import { formatDateLocal } from '@/lib/dateUtils';
+import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard';
 
 type FleetAsset = {
   id: string;
@@ -99,6 +100,7 @@ export default function FleetAssetDetail() {
   const [showWorkOrderForm, setShowWorkOrderForm] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editForm, setEditForm] = useState<any>({});
+  const [initialEditForm, setInitialEditForm] = useState<any>({});
 
   useEffect(() => {
     const searchParams = new URLSearchParams(location.search);
@@ -148,7 +150,7 @@ export default function FleetAssetDetail() {
   // Initialize edit form when entering edit mode
   useEffect(() => {
     if (isEditing && asset) {
-      setEditForm({
+      const initial = {
         name: asset.name || '',
         vin: asset.vin || '',
         license_plate: asset.license_plate || '',
@@ -168,9 +170,26 @@ export default function FleetAssetDetail() {
         ferry_length: asset.ferry_length || '',
         gvw_kg: asset.gvw_kg || '',
         notes: asset.notes || '',
-      });
+      };
+      setEditForm(initial);
+      setInitialEditForm(initial);
     }
   }, [isEditing, asset]);
+
+  // Check if form has unsaved changes
+  const hasUnsavedChanges = useMemo(() => {
+    if (!isEditing) return false;
+    return JSON.stringify(editForm) !== JSON.stringify(initialEditForm);
+  }, [isEditing, editForm, initialEditForm]);
+
+  // Save function for unsaved changes guard
+  const handleSaveForGuard = async () => {
+    if (!hasUnsavedChanges || !isEditing) return;
+    handleSave();
+  };
+
+  // Use unsaved changes guard
+  useUnsavedChangesGuard(hasUnsavedChanges, handleSaveForGuard);
 
   const updateMutation = useMutation({
     mutationFn: async (data: any) => {
@@ -179,6 +198,7 @@ export default function FleetAssetDetail() {
     onSuccess: () => {
       toast.success('Asset updated successfully');
       setIsEditing(false);
+      setInitialEditForm({ ...editForm });
       queryClient.invalidateQueries({ queryKey: ['fleetAsset', id] });
     },
     onError: (error: any) => {

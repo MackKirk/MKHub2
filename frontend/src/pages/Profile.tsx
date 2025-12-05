@@ -7,6 +7,7 @@ import toast from 'react-hot-toast';
 import { useConfirm } from '@/components/ConfirmProvider';
 import NationalitySelect from '@/components/NationalitySelect';
 import AddressAutocomplete from '@/components/AddressAutocomplete';
+import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard';
 
 type ProfileResp = { user:{ username:string, email:string, first_name?:string, last_name?:string, divisions?: Array<{id:string, label:string}> }, profile?: any };
 
@@ -23,6 +24,7 @@ export default function Profile(){
   
   // Local form state
   const [form, setForm] = useState<any>({});
+  const [initialForm, setInitialForm] = useState<any>({});
   const { data: visasData } = useQuery({ 
     queryKey:['employee-visas', userId], 
     queryFn: ()=> api<any[]>('GET', `/auth/users/${encodeURIComponent(userId)}/visas`).catch(() => []),
@@ -31,7 +33,7 @@ export default function Profile(){
   const hasVisas = visasData && visasData.length > 0;
   
   useMemo(()=>{ if (data){ 
-    setForm({
+    const initial = {
       first_name: p.first_name||'',
       last_name: p.last_name||'',
       middle_name: p.middle_name||'',
@@ -48,7 +50,9 @@ export default function Profile(){
       sin_number: p.sin_number||'',
       work_eligibility_status: p.work_eligibility_status||'',
       emergency_contact_name: p.emergency_contact_name||'', emergency_contact_relationship: p.emergency_contact_relationship||'', emergency_contact_phone: p.emergency_contact_phone||''
-    }); 
+    };
+    setForm(initial);
+    setInitialForm(initial);
   } }, [data]);
   
   // Auto-fill and save work_eligibility_status if user has visas but no status
@@ -77,6 +81,40 @@ export default function Profile(){
     }
   }, [isEditingPersonal, data, p.work_eligibility_status]);
   const set = (k:string, v:any)=> setForm((s:any)=>({ ...s, [k]: v }));
+
+  // Check if form has unsaved changes
+  const hasUnsavedChanges = useMemo(() => {
+    if (!isEditingPersonal) return false;
+    return JSON.stringify(form) !== JSON.stringify(initialForm);
+  }, [isEditingPersonal, form, initialForm]);
+
+  // Save function for unsaved changes guard
+  const handleSave = async () => {
+    if (!isEditingPersonal) return;
+    if (totalMissing > 0) {
+      toast.error('Please complete required fields');
+      return;
+    }
+    try {
+      console.log('Saving form with work_eligibility_status:', form.work_eligibility_status);
+      await api('PUT', '/auth/me/profile', form);
+      setInitialForm({ ...form });
+      await queryClient.invalidateQueries({ queryKey:['meProfile'] });
+      await queryClient.invalidateQueries({ queryKey:['me-profile'] });
+      await queryClient.invalidateQueries({ queryKey:['emergency-contacts'] });
+      await queryClient.refetchQueries({ queryKey:['meProfile'] });
+      // Wait a bit for the refetch to complete before closing edit mode
+      await new Promise(resolve => setTimeout(resolve, 300));
+      setIsEditingPersonal(false);
+      toast.success('Profile saved');
+    } catch (e: any) {
+      console.error('Failed to save profile:', e);
+      toast.error('Failed to save');
+    }
+  };
+
+  // Use unsaved changes guard
+  useUnsavedChangesGuard(hasUnsavedChanges, handleSave);
 
   // Missing required indicators by category
   const reqPersonal = ['gender','date_of_birth','marital_status','nationality','phone','address_line1','city','province','postal_code','country','sin_number','work_eligibility_status'];
@@ -435,21 +473,7 @@ export default function Profile(){
                   disabled={totalMissing > 0} 
                   onClick={async()=>{
                     if (totalMissing > 0){ toast.error('Please complete required fields'); return; }
-                    try{
-                      console.log('Saving form with work_eligibility_status:', form.work_eligibility_status);
-                      await api('PUT','/auth/me/profile', form);
-                      toast.success('Profile saved');
-                      await queryClient.invalidateQueries({ queryKey:['meProfile'] });
-                      await queryClient.invalidateQueries({ queryKey:['me-profile'] });
-                      await queryClient.invalidateQueries({ queryKey:['emergency-contacts'] });
-                      await queryClient.refetchQueries({ queryKey:['meProfile'] });
-                      // Wait a bit for the refetch to complete before closing edit mode
-                      await new Promise(resolve => setTimeout(resolve, 300));
-                      setIsEditingPersonal(false);
-                    }catch(e){ 
-                      console.error('Failed to save profile:', e);
-                      toast.error('Failed to save'); 
-                    }
+                    await handleSave();
                   }} 
                   className={`px-4 py-2 rounded text-white ${totalMissing > 0 ? 'bg-gray-400 cursor-not-allowed' : 'bg-gradient-to-r from-brand-red to-[#ee2b2b]'}`}
                 >

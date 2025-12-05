@@ -23,6 +23,17 @@ pdfmetrics.registerFont(TTFont("Montserrat-Bold", os.path.join(fonts_path, "Mont
 
 
 def build_cover_page(c, data):
+    # Draw static background for cover (header, footer, globe, logos, etc.)
+    try:
+        cover_bg_path = os.path.join(BASE_DIR, "assets", "templates", "cover_template.png")
+        if os.path.exists(cover_bg_path):
+            bg = ImageReader(cover_bg_path)
+            c.drawImage(bg, 0, 0, width=page_width, height=page_height)
+    except Exception:
+        # Fail gracefully if background image is missing
+        pass
+
+    # Optional: draw dynamic cover image on top of the background, reusing previous behavior
     cover_img_path = data.get("cover_image")
     if cover_img_path and os.path.exists(cover_img_path):
         bw_path = os.path.join(BASE_DIR, "assets", "cover_bw_tmp.png")
@@ -31,18 +42,27 @@ def build_cover_page(c, data):
             bw = ImageOps.autocontrast(bw)
             bw.save(bw_path)
         img = ImageReader(bw_path)
+        # Position chosen to keep within the white area of the new template
         c.drawImage(img, 14, 285, 566, 537, mask="auto")
         os.remove(bw_path)
 
-    logo_path = os.path.join(BASE_DIR, "assets", "logo.png")
-    if os.path.exists(logo_path):
-        logo = ImageReader(logo_path)
-        c.drawImage(logo, 175, 690, width=230, height=125, mask="auto")
+    # Draw company logo on top of the cover image (as in the original design)
+    try:
+        logo_path = os.path.join(BASE_DIR, "assets", "logo.png")
+        if os.path.exists(logo_path):
+            logo = ImageReader(logo_path)
+            c.drawImage(logo, 175, 690, width=230, height=125, mask="auto")
+    except Exception:
+        pass
 
-    overlay_path = os.path.join(BASE_DIR, "assets", "Asset 1@2x.png")
-    if os.path.exists(overlay_path):
-        overlay = ImageReader(overlay_path)
-        c.drawImage(overlay, 39, 304, width=516, height=60, mask="auto")
+    # Draw grey overlay bar (Asset 1) over the lower part of the hero image
+    try:
+        overlay_path = os.path.join(BASE_DIR, "assets", "Asset 1@2x.png")
+        if os.path.exists(overlay_path):
+            overlay = ImageReader(overlay_path)
+            c.drawImage(overlay, 39, 304, width=516, height=60, mask="auto")
+    except Exception:
+        pass
 
     # Helper to auto-fit text into a max width
     def fit_size(text, font="Montserrat-Bold", max_size=17.2, min_size=8.0, max_width=516.0):
@@ -110,7 +130,11 @@ def draw_wrapped_text(c, text, x, y, max_width, font="Montserrat-Bold", size=11.
 
 
 def build_page2(c, data):
-    template_path = os.path.join(BASE_DIR, "assets", "templates", "page2_template.png")
+    # Use new PNG template for page 2 (fallback to legacy name if needed)
+    template_path = os.path.join(BASE_DIR, "assets", "templates", "page_template.png")
+    if not os.path.exists(template_path):
+        # Backwards compatibility with old file name
+        template_path = os.path.join(BASE_DIR, "assets", "templates", "page_template.png")
     if os.path.exists(template_path):
         bg = ImageReader(template_path)
         c.drawImage(bg, 0, 0, width=page_width, height=page_height)

@@ -4,7 +4,9 @@ import { api } from '@/lib/api';
 import { useEffect, useMemo, useState, ReactNode } from 'react';
 import toast from 'react-hot-toast';
 import ImagePicker from '@/components/ImagePicker';
+import ImageEditor from '@/components/ImageEditor';
 import { useConfirm } from '@/components/ConfirmProvider';
+import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard';
 
 type Client = { id:string, name?:string, display_name?:string, city?:string, province?:string, postal_code?:string, country?:string, address_line1?:string, address_line2?:string, created_at?:string };
 type Site = { id:string, site_name?:string, site_address_line1?:string, site_city?:string, site_province?:string, site_country?:string };
@@ -96,6 +98,62 @@ export default function CustomerDetail(){
   const [pickerOpen, setPickerOpen] = useState(false);
   const [sitePicker, setSitePicker] = useState<{ open:boolean, siteId?:string }|null>(null);
   const [projectPicker, setProjectPicker] = useState<{ open:boolean, projectId?:string }|null>(null);
+  
+  // Save function for unsaved changes guard
+  const handleSave = async () => {
+    if (!dirty || !id) return;
+    const toList = (s:string)=> (String(s||'').split(',').map(x=>x.trim()).filter(Boolean));
+    const payload:any = {
+      display_name: form.display_name||null,
+      legal_name: form.legal_name||null,
+      client_type: form.client_type||null,
+      client_status: form.client_status||null,
+      lead_source: form.lead_source||null,
+      billing_email: form.billing_email||null,
+      po_required: form.po_required==='true',
+      tax_number: form.tax_number||null,
+      address_line1: form.address_line1||null,
+      address_line2: form.address_line2||null,
+      country: form.country||null,
+      province: form.province||null,
+      city: form.city||null,
+      postal_code: form.postal_code||null,
+      billing_same_as_address: !!form.billing_same_as_address,
+      billing_address_line1: form.billing_same_as_address? (form.address_line1||null) : (form.billing_address_line1||null),
+      billing_address_line2: form.billing_same_as_address? (form.address_line2||null) : (form.billing_address_line2||null),
+      billing_country: form.billing_same_as_address? (form.country||null) : (form.billing_country||null),
+      billing_province: form.billing_same_as_address? (form.province||null) : (form.billing_province||null),
+      billing_city: form.billing_same_as_address? (form.city||null) : (form.billing_city||null),
+      billing_postal_code: form.billing_same_as_address? (form.postal_code||null) : (form.billing_postal_code||null),
+      preferred_language: form.preferred_language||null,
+      preferred_channels: toList(form.preferred_channels||''),
+      marketing_opt_in: form.marketing_opt_in==='true',
+      invoice_delivery_method: form.invoice_delivery_method||null,
+      statement_delivery_method: form.statement_delivery_method||null,
+      cc_emails_for_invoices: toList(form.cc_emails_for_invoices||''),
+      cc_emails_for_estimates: toList(form.cc_emails_for_estimates||''),
+      do_not_contact: form.do_not_contact==='true',
+      do_not_contact_reason: form.do_not_contact_reason||null,
+      description: form.description||null,
+    };
+    const reqOk = String(form.display_name||'').trim().length>0 && String(form.legal_name||'').trim().length>0;
+    if(!reqOk){ toast.error('Display name and Legal name are required'); return; }
+    try{ 
+      await api('PATCH', `/clients/${id}`, payload); 
+      setDirty(false); 
+    }catch(e: any){ 
+      const msg = e?.message || 'Save failed';
+      if(msg.includes('HTTP 4') && !msg.includes('HTTP 40')) {
+        toast.error(msg);
+      } else {
+        setDirty(false);
+      }
+    }
+  };
+  
+  // Use unsaved changes guard
+  useUnsavedChangesGuard(dirty, handleSave);
+  
   useEffect(()=>{ if(client){ setForm({
     display_name: client.display_name||'', legal_name: client.legal_name||'', code: client.id?.slice(0,8) || '',
     client_type: (client as any).client_type||'', client_status: (client as any).client_status||'', lead_source:(client as any).lead_source||'',
@@ -642,6 +700,7 @@ function CustomerDocuments({ id, files, sites, onRefresh }:{ id:string, files: C
   const [previewPdf, setPreviewPdf] = useState<{ url:string, name:string }|null>(null);
   const [selectMode, setSelectMode] = useState<boolean>(false);
   const [selectedDocIds, setSelectedDocIds] = useState<Set<string>>(new Set());
+  const [editingImage, setEditingImage] = useState<{ fileObjectId: string; name: string } | null>(null);
 
   useEffect(()=>{ if (!previewPdf) return; const onKey = (e: KeyboardEvent)=>{ if(e.key==='Escape') setPreviewPdf(null); }; window.addEventListener('keydown', onKey); return ()=> window.removeEventListener('keydown', onKey); }, [previewPdf]);
 
@@ -789,6 +848,7 @@ function CustomerDocuments({ id, files, sites, onRefresh }:{ id:string, files: C
             <img className="w-full h-24 object-cover rounded border" src={`/files/${f.file_object_id}/thumbnail?w=300`} />
             <div className="absolute right-2 top-2 hidden group-hover:flex gap-1">
               <button onClick={async(e)=>{ e.stopPropagation(); const url = await fetchDownloadUrl(String(f.file_object_id)); if(url) window.open(url,'_blank'); }} className="bg-black/70 hover:bg-black/80 text-white text-[11px] px-2 py-1 rounded" title="Zoom">🔍</button>
+              <button onClick={(e)=>{ e.stopPropagation(); setEditingImage({ fileObjectId: f.file_object_id, name: f.original_name || 'image' }); }} className="bg-blue-600 hover:bg-blue-700 text-white text-[11px] px-2 py-1 rounded" title="Edit">✏️</button>
               <button onClick={(e)=>{ e.stopPropagation(); removePic(f.id); }} className="bg-red-600 hover:bg-red-700 text-white text-[11px] px-2 py-1 rounded" title="Delete">🗑️</button>
             </div>
             <div className={`absolute left-2 top-2 text-[10px] font-bold rounded-full w-6 h-6 grid place-items-center ${isSite? 'bg-blue-500 text-white':'bg-green-500 text-white'}`} title={isSite? 'Site image':'Client image'}>
@@ -910,6 +970,62 @@ function CustomerDocuments({ id, files, sites, onRefresh }:{ id:string, files: C
             <iframe className="flex-1" src={previewPdf.url} title="PDF Preview"></iframe>
           </div>
         </div>
+      )}
+      
+      {editingImage && (
+        <ImageEditor
+          isOpen={!!editingImage}
+          onClose={() => setEditingImage(null)}
+          imageUrl={`/files/${editingImage.fileObjectId}/thumbnail?w=1600`}
+          imageName={editingImage.name}
+          fileObjectId={editingImage.fileObjectId}
+          onSave={async (blob) => {
+            try {
+              // Generate filename with _edited suffix
+              const originalName = editingImage.name || 'image';
+              const dot = originalName.lastIndexOf('.');
+              const nameNoExt = dot > 0 ? originalName.slice(0, dot) : originalName.replace(/\.+$/, '');
+              const ext = dot > 0 ? originalName.slice(dot) : '.png';
+              const editedName = `${nameNoExt}_edited${ext}`;
+              
+              // Upload edited image
+              const up: any = await api('POST', '/files/upload', {
+                project_id: null,
+                client_id: id,
+                employee_id: null,
+                category_id: 'image-edited',
+                original_name: editedName,
+                content_type: 'image/png'
+              });
+              
+              await fetch(up.upload_url, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'image/png', 'x-ms-blob-type': 'BlockBlob' },
+                body: blob
+              });
+              
+              const conf: any = await api('POST', '/files/confirm', {
+                key: up.key,
+                size_bytes: blob.size,
+                checksum_sha256: 'na',
+                content_type: 'image/png'
+              });
+              
+              // Get original file to preserve site_id and category
+              const originalFile = files.find(f => f.file_object_id === editingImage.fileObjectId);
+              
+              // Attach edited image to client (keeping same site_id and category if original had them)
+              await api('POST', `/clients/${encodeURIComponent(id)}/files?file_object_id=${encodeURIComponent(conf.id)}&category=${encodeURIComponent(originalFile?.category || 'image-edited')}&original_name=${encodeURIComponent(editedName)}${originalFile?.site_id ? `&site_id=${encodeURIComponent(originalFile.site_id)}` : ''}`);
+              
+              toast.success('Image saved as edited copy');
+              await onRefresh();
+              setEditingImage(null);
+            } catch (e: any) {
+              console.error('Failed to save edited image:', e);
+              toast.error('Failed to save edited image');
+            }
+          }}
+        />
       )}
     </div>
   );

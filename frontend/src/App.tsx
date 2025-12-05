@@ -4,6 +4,7 @@ import { Toaster } from 'react-hot-toast';
 import { lazy, Suspense } from 'react';
 import { queryClient } from './lib/queryClient';
 import ConfirmProvider from './components/ConfirmProvider';
+import UnsavedChangesProvider from './components/UnsavedChangesProvider';
 import AppShell from './AppShell';
 import Login from './pages/Login';
 import Register from './pages/Register';
@@ -73,6 +74,7 @@ export default function App(){
   const state = location.state as { backgroundLocation?: Location } | undefined;
   return (
     <QueryClientProvider client={queryClient}>
+      <UnsavedChangesProvider>
       <ConfirmProvider>
       <Routes location={state?.backgroundLocation || location}>
         <Route path="/" element={<Home/>} />
@@ -150,6 +152,7 @@ export default function App(){
       )}
       <Toaster position="top-right" />
       </ConfirmProvider>
+      </UnsavedChangesProvider>
     </QueryClientProvider>
   );
 }

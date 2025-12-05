@@ -3,6 +3,8 @@ import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import NotificationBell from '@/components/NotificationBell';
+import { useUnsavedChanges } from '@/components/UnsavedChangesProvider';
+import { useConfirm } from '@/components/ConfirmProvider';
 
 type MenuItem = {
   id: string;
@@ -204,7 +206,27 @@ export default function AppShell({ children }: PropsWithChildren){
   const [open, setOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   
-  const handleLogout = () => {
+  const { hasUnsavedChanges } = useUnsavedChanges();
+  const confirm = useConfirm();
+  
+  const handleLogout = async () => {
+    if (hasUnsavedChanges) {
+      const result = await confirm({
+        title: 'Unsaved Changes',
+        message: 'You have unsaved changes. What would you like to do?',
+        confirmText: 'Save and Logout',
+        cancelText: 'Cancel',
+        showDiscard: true,
+        discardText: 'Discard Changes'
+      });
+      
+      if (result === 'cancel') {
+        return; // Don't logout
+      }
+      // For 'confirm' and 'discard', proceed with logout
+      // Note: We can't save from here, so we just proceed
+    }
+    
     localStorage.removeItem('user_token');
     queryClient.clear(); // Clear all React Query cache
     navigate('/login', { replace: true });

@@ -1,11 +1,12 @@
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useRef } from 'react';
 import toast from 'react-hot-toast';
 import ImagePicker from '@/components/ImagePicker';
 import { useConfirm } from '@/components/ConfirmProvider';
 import AddressAutocomplete from '@/components/AddressAutocomplete';
+import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard';
 
 type Site = {
   id:string,
@@ -31,12 +32,48 @@ export default function SiteDetail(){
   const { data:files } = useQuery({ queryKey:['clientFilesForSiteHeader', customerId], queryFn: ()=> api<ClientFile[]>('GET', `/clients/${customerId}/files`), enabled: !!customerId });
   const s = useMemo(()=> (sites||[]).find(x=> String(x.id)===String(siteId)) || null, [sites, siteId]);
   const [form, setForm] = useState<any>(()=> s? { ...s } : { site_name:'', site_address_line1:'', site_address_line2:'', site_city:'', site_province:'', site_postal_code:'', site_country:'', site_lat:null, site_lng:null, site_notes:'' });
+  const [initialForm, setInitialForm] = useState<any>(()=> s? { ...s } : { site_name:'', site_address_line1:'', site_address_line2:'', site_city:'', site_province:'', site_postal_code:'', site_country:'', site_lat:null, site_lng:null, site_notes:'' });
   const setField = (k:string, v:any)=> setForm((prev:any)=> ({ ...prev, [k]: v }));
   const qc = useQueryClient();
   const isNew = String(siteId||'') === 'new' || !(s && (s as any).id);
 
   // keep form in sync only when an existing site loads/changes
-  useEffect(()=>{ if(s && (s as any).id){ setForm({ ...s }); } }, [s && (s as any).id]);
+  useEffect(()=>{ 
+    if(s && (s as any).id){ 
+      const siteData = { ...s };
+      setForm(siteData);
+      setInitialForm(siteData);
+    } 
+  }, [s && (s as any).id]);
+
+  // Check if form has unsaved changes
+  const hasUnsavedChanges = useMemo(() => {
+    return JSON.stringify(form) !== JSON.stringify(initialForm);
+  }, [form, initialForm]);
+
+  // Save function for unsaved changes guard
+  const handleSave = async () => {
+    if (!hasUnsavedChanges) return;
+    try{
+      if(isNew){
+        await api('POST', `/clients/${encodeURIComponent(String(customerId||''))}/sites`, form);
+      } else {
+        await api('PATCH', `/clients/${encodeURIComponent(String(customerId||''))}/sites/${encodeURIComponent(String(siteId||''))}`, form);
+      }
+      setInitialForm({ ...form });
+      try{ await qc.invalidateQueries({ queryKey:['clientSites', customerId] }); }catch(_e){}
+    }catch(_e){ 
+      toast.error('Save failed'); 
+    }
+  };
+
+  // Discard function to reset form to initial state
+  const handleDiscard = () => {
+    setForm({ ...initialForm });
+  };
+
+  // Use unsaved changes guard
+  useUnsavedChangesGuard(hasUnsavedChanges, handleSave, handleDiscard);
 
   // ESC to close
   useEffect(()=>{
@@ -60,7 +97,28 @@ export default function SiteDetail(){
       <div className="w-[900px] max-w-[95vw] max-h-[90vh] bg-white rounded-xl overflow-hidden flex flex-col">
         <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] p-6 flex items-center gap-6 relative">
           <button
-            onClick={()=> nav(-1)}
+            onClick={async ()=>{
+              if (hasUnsavedChanges) {
+                const result = await confirm({
+                  title: 'Unsaved Changes',
+                  message: 'You have unsaved changes. What would you like to do?',
+                  confirmText: 'Save and Leave',
+                  cancelText: 'Cancel',
+                  showDiscard: true,
+                  discardText: 'Discard Changes'
+                });
+                
+                if (result === 'confirm') {
+                  await handleSave();
+                  nav(-1);
+                } else if (result === 'discard') {
+                  setForm({ ...initialForm });
+                  nav(-1);
+                }
+              } else {
+                nav(-1);
+              }
+            }}
             className="absolute top-4 right-4 text-white/80 hover:text-white text-2xl font-bold w-8 h-8 flex items-center justify-center rounded hover:bg-white/10"
             title="Close"
           >
@@ -184,7 +242,28 @@ export default function SiteDetail(){
             )}
           </div>
           <div className="flex items-center gap-2">
-            <button onClick={()=> nav(-1)} className="px-4 py-2 rounded bg-gray-200 hover:bg-gray-300">Close</button>
+            <button onClick={async ()=>{
+              if (hasUnsavedChanges) {
+                const result = await confirm({
+                  title: 'Unsaved Changes',
+                  message: 'You have unsaved changes. What would you like to do?',
+                  confirmText: 'Save and Leave',
+                  cancelText: 'Cancel',
+                  showDiscard: true,
+                  discardText: 'Discard Changes'
+                });
+                
+                if (result === 'confirm') {
+                  await handleSave();
+                  nav(-1);
+                } else if (result === 'discard') {
+                  setForm({ ...initialForm });
+                  nav(-1);
+                }
+              } else {
+                nav(-1);
+              }
+            }} className="px-4 py-2 rounded bg-gray-200 hover:bg-gray-300">Close</button>
             <button onClick={async()=>{
               try{
                 if(isNew){
@@ -194,6 +273,7 @@ export default function SiteDetail(){
                   await api('PATCH', `/clients/${encodeURIComponent(String(customerId||''))}/sites/${encodeURIComponent(String(siteId||''))}`, form);
                   toast.success('Saved');
                 }
+                setInitialForm({ ...form });
                 try{ await qc.invalidateQueries({ queryKey:['clientSites', customerId] }); }catch(_e){}
                 nav(-1);
               }catch(_e){ toast.error('Save failed'); }

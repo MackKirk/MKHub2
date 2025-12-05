@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useRef } from 'react';
 import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
 import { useQuery } from '@tanstack/react-query';
@@ -6,6 +6,7 @@ import { useConfirm } from '@/components/ConfirmProvider';
 import { useNavigate } from 'react-router-dom';
 import ImagePicker from '@/components/ImagePicker';
 import AddressAutocomplete from '@/components/AddressAutocomplete';
+import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard';
 
 export default function CustomerNew(){
   const confirm = useConfirm();

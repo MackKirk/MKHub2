@@ -8,6 +8,7 @@ import GeoSelect from '@/components/GeoSelect';
 import { useConfirm } from '@/components/ConfirmProvider';
 import NationalitySelect from '@/components/NationalitySelect';
 import AddressAutocomplete from '@/components/AddressAutocomplete';
+import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard';
 
 // List of implemented permissions (permissions that are actually checked in the codebase)
 const IMPLEMENTED_PERMISSIONS = new Set([
@@ -790,22 +791,6 @@ export default function UserInfo(){
     setSelectedDivisions(divisions);
   }, [userId, data?.profile, u?.divisions]);
 
-  // Prevent navigation away from page if there are unsaved changes
-  useEffect(() => {
-    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-      if (dirty || permissionsDirty || divisionsDirty) {
-        e.preventDefault();
-        e.returnValue = ''; // Chrome requires returnValue to be set
-        return '';
-      }
-    };
-
-    window.addEventListener('beforeunload', handleBeforeUnload);
-    return () => {
-      window.removeEventListener('beforeunload', handleBeforeUnload);
-    };
-  }, [dirty, permissionsDirty, divisionsDirty]);
-
   const handleTabChange = async (newTab: typeof tabParam | 'personal') => {
     // Check if user has permission to view this tab
     const isGeneralTab = ['personal', 'job', 'docs'].includes(newTab);
@@ -945,6 +930,9 @@ export default function UserInfo(){
     }
   };
 
+  // Use unsaved changes guard
+  const hasUnsaved = dirty || permissionsDirty || divisionsDirty;
+  useUnsavedChangesGuard(hasUnsaved, saveAll);
 
   return (
     <div>

@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState, useRef, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { formatDateLocal, getTodayLocal } from '@/lib/dateUtils';
 import toast from 'react-hot-toast';
 import ImagePicker from '@/components/ImagePicker';
 import { useConfirm } from '@/components/ConfirmProvider';
+import { useUnsavedChanges } from '@/components/UnsavedChangesProvider';
 
 type Client = { id:string, name?:string, display_name?:string, address_line1?:string, city?:string, province?:string, country?:string };
 type Site = { id:string, site_name?:string, site_address_line1?:string, site_city?:string, site_province?:string, site_country?:string };
@@ -35,6 +36,7 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
   const [additionalNotes, setAdditionalNotes] = useState<string>('');
   const [pricingItems, setPricingItems] = useState<{ name:string, price:string }[]>([]);
   const [optionalServices, setOptionalServices] = useState<{ service:string, price:string }[]>([]);
+  const [showTotalInPdf, setShowTotalInPdf] = useState<boolean>(true);
   const [terms, setTerms] = useState<string>('');
   const [sections, setSections] = useState<any[]>([]);
   const [coverBlob, setCoverBlob] = useState<Blob|null>(null);
@@ -54,10 +56,12 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
   const [focusTarget, setFocusTarget] = useState<{ type:'title'|'caption', sectionIndex:number, imageIndex?: number }|null>(null);
   const [activeSectionIndex, setActiveSectionIndex] = useState<number>(-1);
   const confirm = useConfirm();
+  const { setHasUnsavedChanges: setGlobalUnsavedChanges } = useUnsavedChanges();
   const autoSaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isAutoSavingRef = useRef<boolean>(false);
   const lastAutoSaveRef = useRef<number>(0);
   const proposalIdRef = useRef<string | undefined>(mode === 'edit' ? initial?.id : undefined);
+  const handleSaveRef = useRef<() => Promise<void>>();
 
   // --- Helpers declared early so effects can safely reference them
   const sanitizeSections = (arr:any[])=> (arr||[]).map((sec:any)=>{
@@ -113,6 +117,7 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
         additionalNotes,
         pricingItems,
         optionalServices,
+        showTotalInPdf,
         terms,
         sections: sanitizeSections(sections),
         coverFoId,
@@ -155,6 +160,7 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
     setPricingItems(loadedItems);
     const os = Array.isArray(d.optional_services)? d.optional_services : [];
     setOptionalServices(os.map((s:any)=> ({ service: String(s.service||''), price: formatAccounting(s.price ?? '') })));
+    setShowTotalInPdf(d.show_total_in_pdf !== undefined ? Boolean(d.show_total_in_pdf) : true);
     setTerms(String(d.terms_text||''));
     const loaded = Array.isArray(d.sections)? JSON.parse(JSON.stringify(d.sections)) : [];
     const normalized = loaded.map((sec:any)=>{
@@ -200,15 +206,167 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
     }, 0);
   }, [focusTarget, sections]);
 
-  // Warn on unload when unsaved
-  useEffect(()=>{
-    const handler = (e: BeforeUnloadEvent)=>{
-      const fp = computeFingerprint();
-      if (isReady && fp!==lastSavedHash){ e.preventDefault(); e.returnValue=''; }
+  // Check if there are unsaved changes
+  const hasUnsavedChanges = useMemo(() => {
+    if (!isReady) return false;
+    const fp = computeFingerprint();
+    return fp !== lastSavedHash;
+  }, [isReady, lastSavedHash, coverTitle, orderNumber, date, createdFor, primary, typeOfProject, otherNotes, projectDescription, additionalNotes, pricingItems, optionalServices, showTotalInPdf, terms, sections, coverFoId, page2FoId, clientId, siteId, projectId]);
+
+  // Update global unsaved changes state
+  useEffect(() => {
+    setGlobalUnsavedChanges(hasUnsavedChanges);
+  }, [hasUnsavedChanges, setGlobalUnsavedChanges]);
+
+  const location = useLocation();
+  
+  // Intercept React Router navigation by intercepting link clicks
+  useEffect(() => {
+    if (!hasUnsavedChanges) return;
+
+    const handleClick = async (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      // Check if clicking on a link (NavLink, Link, or anchor with href)
+      const link = target.closest('a[href]');
+      if (!link) return;
+      
+      // Skip if it's an external link, download link, or same page anchor
+      const href = link.getAttribute('href');
+      if (!href || 
+          href.startsWith('http') || 
+          href.startsWith('mailto:') || 
+          href.startsWith('tel:') || 
+          href.startsWith('#') ||
+          link.hasAttribute('download') ||
+          link.hasAttribute('target')) {
+        return;
+      }
+      
+      // Skip if it's the same route
+      if (href === location.pathname || href === window.location.pathname) {
+        return;
+      }
+      
+      // Prevent default navigation
+      e.preventDefault();
+      e.stopPropagation();
+      
+      const result = await confirm({
+        title: 'Unsaved Changes',
+        message: 'You have unsaved changes. What would you like to do?',
+        confirmText: 'Save and Leave',
+        cancelText: 'Cancel',
+        showDiscard: true,
+        discardText: 'Discard Changes'
+      });
+      
+      if (result === 'confirm') {
+        if (handleSaveRef.current) {
+          await handleSaveRef.current();
+        }
+        // Navigate after save
+        nav(href);
+      } else if (result === 'discard') {
+        // Navigate without saving
+        nav(href);
+      }
+      // If cancelled, do nothing
     };
-    window.addEventListener('beforeunload', handler);
-    return ()=> window.removeEventListener('beforeunload', handler);
-      }, [isReady, lastSavedHash, coverTitle, orderNumber, date, createdFor, primary, typeOfProject, otherNotes, projectDescription, additionalNotes, pricingItems, terms, sections, coverFoId, page2FoId, clientId, siteId, projectId]);
+
+    // Use capture phase to intercept before React Router
+    document.addEventListener('click', handleClick, true);
+    
+    return () => {
+      document.removeEventListener('click', handleClick, true);
+    };
+  }, [hasUnsavedChanges, location.pathname, nav, confirm]);
+
+  // Prevent navigation away from page if there are unsaved changes
+  useEffect(() => {
+    const hasUnsaved = hasUnsavedChanges;
+    
+    // Intercept keyboard shortcuts for reload (F5, Ctrl+R, Ctrl+Shift+R)
+    const handleKeyDown = async (e: KeyboardEvent) => {
+      if (!hasUnsaved) return;
+      
+      // F5 or Ctrl+R or Ctrl+Shift+R
+      if (e.key === 'F5' || (e.ctrlKey && e.key === 'r') || (e.ctrlKey && e.shiftKey && e.key === 'R')) {
+        e.preventDefault();
+        const result = await confirm({
+          title: 'Reload Site?',
+          message: 'You have unsaved changes. What would you like to do?',
+          confirmText: 'Save and Reload',
+          cancelText: 'Cancel',
+          showDiscard: true,
+          discardText: 'Discard Changes'
+        });
+        
+        if (result === 'confirm') {
+          if (handleSaveRef.current) {
+            await handleSaveRef.current();
+          }
+          window.location.reload();
+        } else if (result === 'discard') {
+          window.location.reload();
+        }
+        // If cancelled, do nothing
+      }
+    };
+
+    // Handle beforeunload (for browser close/refresh via UI button)
+    // Note: This can only show the browser's default dialog, not a custom modal
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (hasUnsaved) {
+        // Modern browsers ignore custom messages and show their own
+        // But we still need to set returnValue to trigger the dialog
+        e.preventDefault();
+        e.returnValue = 'You have unsaved changes. Are you sure you want to leave?';
+        return e.returnValue;
+      }
+    };
+
+    // Intercept browser back button
+    const handlePopState = async (e: PopStateEvent) => {
+      if (!hasUnsaved) return;
+      
+      // Push state back to prevent navigation
+      window.history.pushState(null, '', window.location.href);
+      
+      const result = await confirm({
+        title: 'Unsaved Changes',
+        message: 'You have unsaved changes. What would you like to do?',
+        confirmText: 'Save and Leave',
+        cancelText: 'Cancel',
+        showDiscard: true,
+        discardText: 'Discard Changes'
+      });
+      
+      if (result === 'confirm') {
+        if (handleSaveRef.current) {
+          await handleSaveRef.current();
+        }
+        window.history.back();
+      } else if (result === 'discard') {
+        window.history.back();
+      }
+      // If cancelled, do nothing (already pushed state back)
+    };
+
+    // Push a state to enable popstate detection
+    if (hasUnsaved) {
+      window.history.pushState(null, '', window.location.href);
+    }
+
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    window.addEventListener('popstate', handlePopState);
+    
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      window.removeEventListener('popstate', handlePopState);
+    };
+  }, [hasUnsavedChanges, confirm]);
 
   // derive company fields
   const companyName = (client?.display_name || client?.name || '').slice(0,50);
@@ -241,9 +399,9 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
       // Update lastAutoSaveRef when proposal is loaded to prevent immediate auto-save
       lastAutoSaveRef.current = Date.now();
     }
-      }, [isReady, lastSavedHash, coverTitle, orderNumber, date, createdFor, primary, typeOfProject, otherNotes, projectDescription, additionalNotes, pricingItems, optionalServices, terms, sections, coverFoId, page2FoId, clientId, siteId, projectId, computeFingerprint]);
+      }, [isReady, lastSavedHash, coverTitle, orderNumber, date, createdFor, primary, typeOfProject, otherNotes, projectDescription, additionalNotes, pricingItems, optionalServices, showTotalInPdf, terms, sections, coverFoId, page2FoId, clientId, siteId, projectId, computeFingerprint]);
 
-  const handleSave = async()=>{
+  const handleSave = useCallback(async()=>{
     if (disabled) {
       toast.error('Editing is restricted for this project status');
       return;
@@ -268,6 +426,7 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
         bid_price: 0, // Legacy field
         total: Number(parseAccounting(total)||'0'),
         terms_text: terms||'',
+        show_total_in_pdf: showTotalInPdf,
         additional_costs: pricingItems.map(c=> ({ label: c.name, value: Number(parseAccounting(c.price)||'0') })),
         optional_services: optionalServices.map(s=> ({ service: s.service, price: Number(parseAccounting(s.price)||'0') })),
         sections: sanitizeSections(sections),
@@ -303,7 +462,12 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
       }
       lastAutoSaveRef.current = Date.now();
     }catch(e){ toast.error('Save failed'); }
-  };
+  }, [disabled, mode, initial?.id, projectId, clientId, siteId, coverTitle, orderNumber, date, createdFor, primary, typeOfProject, otherNotes, projectDescription, additionalNotes, total, showTotalInPdf, terms, pricingItems, optionalServices, sections, coverFoId, page2FoId, nav, queryClient, onSave, computeFingerprint, sanitizeSections, parseAccounting]);
+
+  // Update ref when handleSave changes
+  useEffect(() => {
+    handleSaveRef.current = handleSave;
+  }, [handleSave]);
 
   // Auto-save function (silent save without toast)
   const autoSave = useCallback(async () => {
@@ -335,6 +499,7 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
         bid_price: 0, // Legacy field
         total: Number(parseAccounting(total)||'0'),
         terms_text: terms||'',
+        show_total_in_pdf: showTotalInPdf,
         additional_costs: pricingItems.map(c=> ({ label: c.name, value: Number(parseAccounting(c.price)||'0') })),
         optional_services: optionalServices.map(s=> ({ service: s.service, price: Number(parseAccounting(s.price)||'0') })),
         sections: sanitizeSections(sections),
@@ -362,7 +527,7 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
     } finally {
       isAutoSavingRef.current = false;
     }
-    }, [clientId, projectId, siteId, coverTitle, orderNumber, date, createdFor, primary, typeOfProject, otherNotes, projectDescription, additionalNotes, pricingItems, optionalServices, total, terms, sections, coverFoId, page2FoId, mode, initial, queryClient, sanitizeSections, computeFingerprint]);
+    }, [clientId, projectId, siteId, coverTitle, orderNumber, date, createdFor, primary, typeOfProject, otherNotes, projectDescription, additionalNotes, pricingItems, optionalServices, showTotalInPdf, total, terms, sections, coverFoId, page2FoId, mode, initial, queryClient, sanitizeSections, computeFingerprint, parseAccounting]);
 
   // Auto-save on changes (debounced)
   useEffect(() => {
@@ -384,7 +549,7 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
         clearTimeout(autoSaveTimeoutRef.current);
       }
     };
-    }, [isReady, clientId, coverTitle, orderNumber, date, createdFor, primary, typeOfProject, otherNotes, projectDescription, additionalNotes, pricingItems, optionalServices, terms, sections, coverFoId, page2FoId, autoSave]);
+    }, [isReady, clientId, coverTitle, orderNumber, date, createdFor, primary, typeOfProject, otherNotes, projectDescription, additionalNotes, pricingItems, optionalServices, showTotalInPdf, terms, sections, coverFoId, page2FoId, autoSave]);
 
   // Periodic auto-save (every 30 seconds)
   useEffect(() => {
@@ -418,6 +583,7 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
       form.append('additional_project_notes', additionalNotes||'');
       form.append('bid_price', String(0)); // Legacy field
       form.append('total', String(Number(parseAccounting(total)||'0')));
+      form.append('show_total_in_pdf', String(showTotalInPdf));
       form.append('terms_text', terms||'');
       form.append('additional_costs', JSON.stringify(pricingItems.map(c=> ({ label: c.name, value: Number(parseAccounting(c.price)||'0') }))));
       form.append('optional_services', JSON.stringify(optionalServices.map(s=> ({ service: s.service, price: Number(parseAccounting(s.price)||'0') }))));
@@ -601,8 +767,8 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 7h10v10H7V7Zm-2 2v10h10v2H5a2 2 0 0 1-2-2V9h2Zm6-6h8a2 2 0 0 1 2 2v8h-2V5H11V3Z"></path></svg>
                     </button>
                     <button className="px-2 py-1 rounded text-gray-500 hover:text-red-600" title="Remove section" onClick={async()=>{
-                      const ok = await confirm({ title:'Remove section', message:'Are you sure you want to remove this section?' });
-                      if (!ok) return;
+                      const result = await confirm({ title:'Remove section', message:'Are you sure you want to remove this section?' });
+                      if (result !== 'confirm') return;
                       setSections(arr=> arr.filter((_,i)=> i!==idx));
                     }}>
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M9 3h6a1 1 0 0 1 1 1v2h4v2h-1l-1 13a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 8H4V6h4V4a1 1 0 0 1 1-1Zm1 3h4V5h-4v1Zm-2 2 1 12h8l1-12H8Z"></path></svg>
@@ -644,8 +810,8 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
                                 }));
                               }}>Duplicate</button>
                               <button className="px-2 py-1 rounded text-gray-500 hover:text-red-600" title="Remove image" onClick={async()=>{
-                                const ok = await confirm({ title:'Remove image', message:'Are you sure you want to remove this image?' });
-                                if (!ok) return;
+                                const result = await confirm({ title:'Remove image', message:'Are you sure you want to remove this image?' });
+                                if (result !== 'confirm') return;
                                 setSections(arr=> arr.map((x,i)=> i===idx? { ...x, images: (x.images||[]).filter((_:any,k:number)=> k!==j) }: x));
                               }}>
                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M9 3h6a1 1 0 0 1 1 1v2h4v2h-1l-1 13a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 8H4V6h4V4a1 1 0 0 1 1-1Zm1 3h4V5h-4v1Zm-2 2 1 12h8l1-12H8Z"></path></svg>
@@ -687,7 +853,18 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
             <button className="px-3 py-1.5 rounded bg-gray-100" onClick={()=> setPricingItems(arr=> [...arr, { name:'', price:'' }])}>+ Add Cost</button>
           </div>
           <div className="mt-3">
-            <div className="text-sm font-semibold">Total: <span className="text-gray-600">${total}</span></div>
+            <div className="flex items-center gap-2">
+              <div className="text-sm font-semibold">Total: <span className="text-gray-600">${total}</span></div>
+              <label className="flex items-center gap-1 text-sm text-gray-600 cursor-pointer">
+                <input 
+                  type="checkbox" 
+                  checked={showTotalInPdf} 
+                  onChange={e=> setShowTotalInPdf(e.target.checked)}
+                  className="cursor-pointer"
+                />
+                <span>Show Total in PDF</span>
+              </label>
+            </div>
           </div>
           <div className="mt-3">
             <div className="text-sm font-semibold mb-1">Optional Services</div>
@@ -718,7 +895,28 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
       <div className="mt-2 flex items-center justify-between">
         {/* Only show Back button when not in project context */}
         {(!projectId || window.location.pathname.includes('/proposals/')) && (
-          <button className="px-3 py-2 rounded bg-gray-100" onClick={()=> nav(-1)}>Back</button>
+          <button className="px-3 py-2 rounded bg-gray-100" onClick={async ()=>{
+            if (hasUnsavedChanges) {
+              const result = await confirm({
+                title: 'Unsaved Changes',
+                message: 'You have unsaved changes. What would you like to do?',
+                confirmText: 'Save and Leave',
+                cancelText: 'Cancel',
+                showDiscard: true,
+                discardText: 'Discard Changes'
+              });
+              
+              if (result === 'confirm') {
+                await handleSave();
+                nav(-1);
+              } else if (result === 'discard') {
+                nav(-1);
+              }
+              // If cancelled, do nothing
+            } else {
+              nav(-1);
+            }
+          }}>Back</button>
         )}
         {projectId && !window.location.pathname.includes('/proposals/') && <div />}
         <div className="space-x-2">
@@ -726,11 +924,11 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
             <button 
               className="px-3 py-2 rounded bg-red-600 text-white hover:bg-red-700" 
               onClick={async () => {
-                const ok = await confirm({ 
+                const result = await confirm({ 
                   title: 'Delete Proposal', 
                   message: 'Are you sure you want to delete this proposal? This action cannot be undone.' 
                 });
-                if (!ok) return;
+                if (result !== 'confirm') return;
                 try {
                   if (initial?.id) {
                     await api('DELETE', `/proposals/${encodeURIComponent(initial.id)}`);

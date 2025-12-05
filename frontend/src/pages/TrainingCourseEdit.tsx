@@ -2,7 +2,8 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
+import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard';
 
 type Course = {
   id: string;
@@ -82,11 +83,12 @@ export default function TrainingCourseEdit() {
     required_division_ids: [],
     required_user_ids: [],
   });
+  const initialFormDataRef = useRef<Partial<Course>>({});
 
   // Initialize form data when course loads
   useEffect(() => {
     if (course && !isNew) {
-      setFormData({
+      const initial = {
         title: course.title,
         description: course.description,
         category_id: course.category_id,
@@ -103,9 +105,40 @@ export default function TrainingCourseEdit() {
         required_role_ids: course.required_role_ids || [],
         required_division_ids: course.required_division_ids || [],
         required_user_ids: course.required_user_ids || [],
-      });
+      };
+      setFormData(initial);
+      initialFormDataRef.current = initial;
+    } else if (isNew) {
+      const initial = {
+        title: '',
+        description: '',
+        status: 'draft',
+        is_required: false,
+        renewal_frequency: 'none',
+        generates_certificate: false,
+        tags: [],
+        required_role_ids: [],
+        required_division_ids: [],
+        required_user_ids: [],
+      };
+      setFormData(initial);
+      initialFormDataRef.current = initial;
     }
   }, [course, isNew]);
+
+  // Check if form has unsaved changes
+  const hasUnsavedChanges = useMemo(() => {
+    return JSON.stringify(formData) !== JSON.stringify(initialFormDataRef.current);
+  }, [formData]);
+
+  // Save function for unsaved changes guard
+  const handleSaveForGuard = async () => {
+    if (!hasUnsavedChanges) return;
+    handleSave();
+  };
+
+  // Use unsaved changes guard
+  useUnsavedChangesGuard(hasUnsavedChanges, handleSaveForGuard);
 
   const saveMutation = useMutation({
     mutationFn: (data: any) => {
@@ -120,6 +153,7 @@ export default function TrainingCourseEdit() {
       if (isNew && data.id) {
         navigate(`/training/admin/${data.id}`);
       } else {
+        initialFormDataRef.current = { ...formData };
         queryClient.invalidateQueries({ queryKey: ['training-admin-course', courseId] });
       }
     },
