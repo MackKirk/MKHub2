@@ -1,6 +1,18 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { api } from '@/lib/api';
 
+// Icon paths - using ui/assets/icons (served by backend)
+// Adding cache-busting query parameter to force reload
+const iconCacheBuster = `?v=${Date.now()}`;
+const selectIcon = `/ui/assets/icons/select.png${iconCacheBuster}`;
+const rectIcon = `/ui/assets/icons/rec.png${iconCacheBuster}`;
+const arrowIcon = `/ui/assets/icons/arrow.png${iconCacheBuster}`;
+const textIcon = `/ui/assets/icons/text.png${iconCacheBuster}`;
+const circleIcon = `/ui/assets/icons/circ.png${iconCacheBuster}`;
+const pencilIcon = `/ui/assets/icons/pencil2.png${iconCacheBuster}`;
+const pencilCursorIcon = `/ui/assets/icons/pencil-cursor.png${iconCacheBuster}`;
+const saveIcon = `/ui/assets/icons/save.png${iconCacheBuster}`;
+
 type AnnotationItem = {
   id: string;
   type: 'rect' | 'arrow' | 'text' | 'circle' | 'path';
@@ -11,11 +23,13 @@ type AnnotationItem = {
   x2?: number;
   y2?: number;
   r?: number;
+  rx?: number; // For ellipses
+  ry?: number; // For ellipses
   points?: { x: number; y: number }[];
   text?: string;
   color: string;
   stroke: number;
-  font?: string;
+  fontSize?: number;
   _editing?: boolean;
 };
 
@@ -41,8 +55,10 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [color, setColor] = useState('#ff0000');
   const [stroke, setStroke] = useState(3);
-  const [font, setFont] = useState('16px Montserrat');
+  const [fontSize, setFontSize] = useState(16);
   const [text, setText] = useState('');
+  const [cursorVisible, setCursorVisible] = useState(true);
+  const cursorBlinkRef = useRef<ReturnType<typeof setInterval> | null>(null);
   
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const overlayRef = useRef<HTMLCanvasElement>(null);
@@ -51,11 +67,33 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
   const draggingRef = useRef<{ active: boolean; startX: number; startY: number } | null>(null);
   const drawingRef = useRef<AnnotationItem | null>(null);
   const movingRef = useRef<{ item: AnnotationItem; startX: number; startY: number } | null>(null);
+  const resizingRef = useRef<{ item: AnnotationItem; handle: string; startX: number; startY: number; startW?: number; startH?: number; startR?: number; startRx?: number; startRy?: number; startX2?: number; startY2?: number } | null>(null);
   const marqueeRef = useRef<{ x: number; y: number; x2: number; y2: number } | null>(null);
   const textEditingRef = useRef<string | null>(null);
   const loadedFileIdRef = useRef<string | null>(null);
   const loadingRef = useRef<boolean>(false);
   
+  // Cleanup cursor blink on unmount
+  useEffect(() => {
+    return () => {
+      if (cursorBlinkRef.current) {
+        clearInterval(cursorBlinkRef.current);
+      }
+    };
+  }, []);
+
+  // Update fontSize of text item being edited when fontSize changes
+  useEffect(() => {
+    if (textEditingRef.current) {
+      setItems(prev => prev.map(it => {
+        if (it.id === textEditingRef.current && it.type === 'text') {
+          return { ...it, fontSize };
+        }
+        return it;
+      }));
+    }
+  }, [fontSize]);
+
   // Load image - only when modal opens or fileObjectId changes
   useEffect(() => {
     if (!isOpen) {
@@ -64,6 +102,10 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
       setLoadError(null);
       loadedFileIdRef.current = null;
       loadingRef.current = false;
+      if (cursorBlinkRef.current) {
+        clearInterval(cursorBlinkRef.current);
+        cursorBlinkRef.current = null;
+      }
       return;
     }
     
@@ -265,12 +307,21 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
       return { x, y, w: Math.abs((it.x2 || it.x) - it.x), h: Math.abs((it.y2 || it.y) - it.y) };
     }
     if (it.type === 'text') {
-      ctx.font = it.font || font;
+      // Use w and h if available (when creating text area), otherwise calculate from text
+      if (it.w && it.h) {
+        return { x: it.x, y: it.y, w: it.w, h: it.h };
+      }
+      const itemFontSize = it.fontSize || fontSize;
+      ctx.font = `${itemFontSize}px Montserrat`;
       const w = ctx.measureText(it.text || '').width;
-      const h = parseInt(it.font || font, 10) || 16;
+      const h = itemFontSize;
       return { x: it.x, y: it.y - h, w, h };
     }
     if (it.type === 'circle') {
+      // Support both circle (r) and ellipse (rx, ry)
+      if (it.rx !== undefined && it.ry !== undefined) {
+        return { x: it.x - it.rx, y: it.y - it.ry, w: it.rx * 2, h: it.ry * 2 };
+      }
       const r = Math.max(1, it.r || 1);
       return { x: it.x - r, y: it.y - r, w: r * 2, h: r * 2 };
     }
@@ -287,7 +338,7 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
       return { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
     }
     return null;
-  }, [font]);
+  }, [fontSize]);
 
   // Draw overlay annotations
   const drawOverlay = useCallback(() => {
@@ -325,11 +376,128 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
         ctx.closePath();
         ctx.fill();
       } else if (it.type === 'text') {
-        ctx.font = it.font || font;
-        ctx.fillText(it.text || '', it.x, it.y);
+        const itemFontSize = it.fontSize || fontSize;
+        ctx.font = `${itemFontSize}px Montserrat`;
+        const padding = 4;
+        
+        // Draw text area border if it has dimensions (being created/edited) - transparent background
+        if (it.w && it.h && (it._editing || selectedIds.includes(it.id))) {
+          ctx.strokeStyle = it.color;
+          ctx.lineWidth = 1;
+          ctx.setLineDash([2, 2]);
+          ctx.strokeRect(it.x, it.y, it.w, it.h);
+          ctx.setLineDash([]);
+        }
+        
+        // Draw text within the box bounds with clipping
+        ctx.save();
+        // Clip to text box area
+        ctx.beginPath();
+        ctx.rect(it.x, it.y, it.w || 200, it.h || 30);
+        ctx.clip();
+        
+        ctx.fillStyle = it.color;
+        const textContent = it.text || '';
+        const maxWidth = (it.w || 200) - padding * 2;
+        const lineHeight = itemFontSize * 1.2;
+        const startY = it.y + padding + itemFontSize;
+        
+        // Word wrap text - handle both spaces and newlines
+        const lines: string[] = [];
+        const paragraphs = textContent.split('\n');
+        
+        for (const para of paragraphs) {
+          if (!para.trim() && lines.length > 0) {
+            // Empty line
+            lines.push('');
+            continue;
+          }
+          
+          const words = para.split(' ');
+          let currentLine = '';
+          
+          for (let i = 0; i < words.length; i++) {
+            const word = words[i];
+            
+            // Check if word itself is too long for a single line
+            const wordMetrics = ctx.measureText(word);
+            if (wordMetrics.width > maxWidth) {
+              // Word is too long, break it by characters
+              // First, save current line if it has content
+              if (currentLine) {
+                lines.push(currentLine);
+                currentLine = '';
+              }
+              
+              // Break word by characters
+              let charLine = '';
+              for (let j = 0; j < word.length; j++) {
+                const charTest = charLine + word[j];
+                const charMetrics = ctx.measureText(charTest);
+                if (charMetrics.width > maxWidth && charLine) {
+                  lines.push(charLine);
+                  charLine = word[j];
+                } else {
+                  charLine = charTest;
+                }
+              }
+              currentLine = charLine;
+            } else {
+              // Word fits, try to add it to current line
+              const testLine = currentLine + (currentLine ? ' ' : '') + word;
+              const metrics = ctx.measureText(testLine);
+              
+              if (metrics.width > maxWidth && currentLine) {
+                // Current line is full, save it and start new line with this word
+                lines.push(currentLine);
+                currentLine = word;
+              } else {
+                currentLine = testLine;
+              }
+            }
+          }
+          if (currentLine) {
+            lines.push(currentLine);
+          }
+        }
+        
+        // If no text, show at least one empty line for cursor
+        if (lines.length === 0) {
+          lines.push('');
+        }
+        
+        // Draw each line within box bounds
+        let y = startY;
+        let lastLineWidth = 0;
+        const maxY = it.y + (it.h || 30) - padding;
+        
+        for (let i = 0; i < lines.length; i++) {
+          if (y > maxY) break;
+          // Draw the line - it's already wrapped correctly
+          ctx.fillText(lines[i], it.x + padding, y);
+          if (i === lines.length - 1) {
+            lastLineWidth = ctx.measureText(lines[i]).width;
+          }
+          y += lineHeight;
+        }
+        
+        // Draw cursor when editing (at end of last line, within bounds)
+        if (it._editing && cursorVisible) {
+          const cursorX = Math.min(it.x + padding + lastLineWidth, it.x + (it.w || 200) - padding);
+          const cursorY = Math.min(startY + Math.min(lines.length - 1, Math.floor((maxY - startY) / lineHeight)) * lineHeight - itemFontSize, maxY - itemFontSize);
+          ctx.fillStyle = it.color;
+          ctx.fillRect(cursorX, cursorY, 2, itemFontSize);
+        }
+        
+        ctx.restore();
       } else if (it.type === 'circle') {
         ctx.beginPath();
-        ctx.arc(it.x, it.y, Math.max(1, it.r || 1), 0, Math.PI * 2);
+        // Support both circle (r) and ellipse (rx, ry)
+        if (it.rx !== undefined && it.ry !== undefined) {
+          ctx.ellipse(it.x, it.y, Math.max(1, it.rx), Math.max(1, it.ry), 0, 0, Math.PI * 2);
+        } else {
+          ctx.arc(it.x, it.y, Math.max(1, it.r || 1), 0, Math.PI * 2);
+        }
         ctx.stroke();
       } else if (it.type === 'path') {
         const pts = it.points || [];
@@ -343,23 +511,52 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
         }
       }
       
-      // Draw selection border
-      if (selectedIds.includes(it.id)) {
+      // Draw selection border in red when items are selected (only in select mode, not during drawing)
+      if (selectedIds.includes(it.id) && mode === 'select' && !drawingRef.current) {
         ctx.setLineDash([4, 3]);
-        ctx.strokeStyle = '#3b82f6';
+        ctx.strokeStyle = '#d11616'; // brand-red
+        ctx.lineWidth = 1;
         const bb = getItemBounds(it);
         if (bb) {
           ctx.strokeRect(bb.x, bb.y, bb.w, bb.h);
+          
+          // Draw resize handles (8 handles: corners and midpoints)
+          // For paths, only show corner handles
+          const handleSize = 8;
+          const isPath = it.type === 'path';
+          const handles = isPath ? [
+            { x: bb.x, y: bb.y, name: 'nw' }, // top-left
+            { x: bb.x + bb.w, y: bb.y, name: 'ne' }, // top-right
+            { x: bb.x + bb.w, y: bb.y + bb.h, name: 'se' }, // bottom-right
+            { x: bb.x, y: bb.y + bb.h, name: 'sw' }, // bottom-left
+          ] : [
+            { x: bb.x, y: bb.y, name: 'nw' }, // top-left
+            { x: bb.x + bb.w / 2, y: bb.y, name: 'n' }, // top
+            { x: bb.x + bb.w, y: bb.y, name: 'ne' }, // top-right
+            { x: bb.x + bb.w, y: bb.y + bb.h / 2, name: 'e' }, // right
+            { x: bb.x + bb.w, y: bb.y + bb.h, name: 'se' }, // bottom-right
+            { x: bb.x + bb.w / 2, y: bb.y + bb.h, name: 's' }, // bottom
+            { x: bb.x, y: bb.y + bb.h, name: 'sw' }, // bottom-left
+            { x: bb.x, y: bb.y + bb.h / 2, name: 'w' }, // left
+          ];
+          
+          ctx.fillStyle = '#d11616';
+          ctx.setLineDash([]);
+          for (const handle of handles) {
+            ctx.fillRect(handle.x - handleSize / 2, handle.y - handleSize / 2, handleSize, handleSize);
+            ctx.strokeRect(handle.x - handleSize / 2, handle.y - handleSize / 2, handleSize, handleSize);
+          }
         }
       }
       ctx.restore();
     }
     
-    // Draw marquee
-    if (marqueeRef.current) {
+    // Draw marquee selection box
+    if (marqueeRef.current && mode === 'select') {
       ctx.save();
       ctx.setLineDash([5, 4]);
-      ctx.strokeStyle = '#3b82f6';
+      ctx.strokeStyle = '#d11616'; // brand-red
+      ctx.lineWidth = 1;
       const m = marqueeRef.current;
       const x = Math.min(m.x, m.x2);
       const y = Math.min(m.y, m.y2);
@@ -368,7 +565,7 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
       ctx.strokeRect(x, y, w, h);
       ctx.restore();
     }
-  }, [items, selectedIds, font, getItemBounds]);
+  }, [items, selectedIds, fontSize, getItemBounds, mode, cursorVisible]);
 
   // Redraw both canvases
   useEffect(() => {
@@ -381,6 +578,13 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
     return () => clearTimeout(timeout);
   }, [isOpen, img, drawBase, drawOverlay]);
 
+  // Redraw overlay when cursor visibility changes or items change
+  useEffect(() => {
+    if (isOpen && img) {
+      drawOverlay();
+    }
+  }, [cursorVisible, items, isOpen, img, drawOverlay]);
+
   // Find item at position
   const itemAt = useCallback((x: number, y: number): AnnotationItem | null => {
     for (let i = items.length - 1; i >= 0; i--) {
@@ -392,6 +596,32 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
     }
     return null;
   }, [items, getItemBounds]);
+
+  // Get handle at position for resize
+  const getHandleAt = useCallback((x: number, y: number, item: AnnotationItem): string | null => {
+    if (mode !== 'select') return null;
+    const bb = getItemBounds(item);
+    if (!bb) return null;
+    
+    const handleSize = 8;
+    const handles = [
+      { x: bb.x, y: bb.y, name: 'nw' },
+      { x: bb.x + bb.w / 2, y: bb.y, name: 'n' },
+      { x: bb.x + bb.w, y: bb.y, name: 'ne' },
+      { x: bb.x + bb.w, y: bb.y + bb.h / 2, name: 'e' },
+      { x: bb.x + bb.w, y: bb.y + bb.h, name: 'se' },
+      { x: bb.x + bb.w / 2, y: bb.y + bb.h, name: 's' },
+      { x: bb.x, y: bb.y + bb.h, name: 'sw' },
+      { x: bb.x, y: bb.y + bb.h / 2, name: 'w' },
+    ];
+    
+    for (const handle of handles) {
+      if (Math.abs(x - handle.x) <= handleSize / 2 && Math.abs(y - handle.y) <= handleSize / 2) {
+        return handle.name;
+      }
+    }
+    return null;
+  }, [mode, getItemBounds]);
 
   // Canvas mouse handlers
   const handleCanvasMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -524,7 +754,8 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
           type: 'circle',
           x,
           y,
-          r: 1,
+          rx: 1, // Start as ellipse to allow oval shapes
+          ry: 1,
           color,
           stroke,
         };
@@ -545,32 +776,112 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
         setSelectedIds([newItem.id]);
         drawingRef.current = newItem;
       } else if (mode === 'text') {
+        // Create a text area by drawing a rectangle first
         const newItem: AnnotationItem = {
           id: 'it_' + Date.now(),
           type: 'text',
           x,
           y,
-          text: text || '',
-          font,
+          w: 200, // default width
+          h: 30, // default height
+          text: '', // Start with empty text
+          fontSize,
           color,
           stroke,
-          _editing: true,
+          _editing: false,
         };
         setItems(prev => [...prev, newItem]);
         setSelectedIds([newItem.id]);
-        textEditingRef.current = newItem.id;
+        drawingRef.current = newItem; // Use drawingRef to allow resizing the text area
       } else if (mode === 'select') {
         if (e.shiftKey) {
           marqueeRef.current = { x, y, x2: x, y2: y };
         } else {
-          const hit = itemAt(x, y);
-          if (hit) {
-            setSelectedIds(prev => prev.includes(hit.id) ? prev : [hit.id]);
-            movingRef.current = { item: hit, startX: x, startY: y };
-          } else {
-            setSelectedIds([]);
-            // Click on empty area -> return to pan mode
-            setMode('pan');
+          // First check if clicking on a resize handle of any selected item
+          let handleClicked = false;
+          for (const item of items) {
+            if (selectedIds.includes(item.id)) {
+              const handle = getHandleAt(x, y, item);
+              if (handle) {
+                handleClicked = true;
+                const bb = getItemBounds(item);
+                if (bb) {
+                  // Store original item state for resizing
+                  resizingRef.current = {
+                    item: { ...item }, // Deep copy to preserve original state
+                    handle,
+                    startX: x,
+                    startY: y,
+                    startW: bb.w,
+                    startH: bb.h,
+                    startR: item.type === 'circle' ? (item.r || (item.rx && item.ry ? Math.max(item.rx, item.ry) : undefined)) : undefined,
+                    startRx: item.type === 'circle' ? (item.rx || item.r) : undefined,
+                    startRy: item.type === 'circle' ? (item.ry || item.r) : undefined,
+                    startX2: item.type === 'arrow' ? item.x2 : undefined,
+                    startY2: item.type === 'arrow' ? item.y2 : undefined,
+                  };
+                }
+                break;
+              }
+            }
+          }
+          
+          if (!handleClicked) {
+            const hit = itemAt(x, y);
+            if (hit) {
+              // Disable text editing for all items first
+              if (textEditingRef.current) {
+                setItems(prev => prev.map(it => ({ ...it, _editing: false })));
+                textEditingRef.current = null;
+                if (cursorBlinkRef.current) {
+                  clearInterval(cursorBlinkRef.current);
+                  cursorBlinkRef.current = null;
+                }
+              }
+              
+              // Select the item (or keep it selected if already selected)
+              if (!selectedIds.includes(hit.id)) {
+                setSelectedIds([hit.id]);
+              }
+              
+              // Click on text item to edit (single click now, not double)
+              if (hit.type === 'text') {
+                setItems(prev => prev.map(it => it.id === hit.id ? { ...it, _editing: true } : it));
+                textEditingRef.current = hit.id;
+                if (cursorBlinkRef.current) {
+                  clearInterval(cursorBlinkRef.current);
+                }
+                setCursorVisible(true);
+                cursorBlinkRef.current = setInterval(() => {
+                  setCursorVisible(prev => !prev);
+                }, 500);
+                // Focus canvas for text input
+                setTimeout(() => {
+                  if (overlayRef.current) {
+                    overlayRef.current.focus();
+                  }
+                }, 100);
+                // Don't start moving when editing text
+                movingRef.current = null;
+              } else {
+                // Start moving - will be activated on mouse move
+                // Store original item state
+                movingRef.current = { item: { ...hit }, startX: x, startY: y };
+              }
+            } else {
+              // Click on empty area - disable text editing
+              if (textEditingRef.current) {
+                setItems(prev => prev.map(it => ({ ...it, _editing: false })));
+                textEditingRef.current = null;
+                if (cursorBlinkRef.current) {
+                  clearInterval(cursorBlinkRef.current);
+                  cursorBlinkRef.current = null;
+                }
+              }
+              setSelectedIds([]);
+              // Click on empty area -> return to pan mode
+              setMode('pan');
+            }
           }
         }
       }
@@ -594,9 +905,18 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
       } else if (drawingRef.current.type === 'arrow') {
         setItems(prev => prev.map(it => it.id === drawingRef.current!.id ? { ...it, x2: x, y2: y } : it));
       } else if (drawingRef.current.type === 'circle') {
-        const dx = x - drawingRef.current.x;
-        const dy = y - drawingRef.current.y;
-        setItems(prev => prev.map(it => it.id === drawingRef.current!.id ? { ...it, r: Math.max(1, Math.hypot(dx, dy)) } : it));
+        const dx = Math.abs(x - drawingRef.current.x);
+        const dy = Math.abs(y - drawingRef.current.y);
+        // Allow independent rx and ry for oval shapes
+        setItems(prev => prev.map(it => {
+          if (it.id === drawingRef.current!.id) {
+            return { ...it, rx: Math.max(1, dx), ry: Math.max(1, dy) };
+          }
+          return it;
+        }));
+      } else if (drawingRef.current.type === 'text') {
+        // Allow resizing text area
+        setItems(prev => prev.map(it => it.id === drawingRef.current!.id ? { ...it, w: x - it.x, h: y - it.y } : it));
       } else if (drawingRef.current.type === 'path') {
         setItems(prev => prev.map(it => {
           if (it.id === drawingRef.current!.id) {
@@ -606,6 +926,179 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
           return it;
         }));
       }
+      drawOverlay();
+      return;
+    }
+    
+    if (resizingRef.current) {
+      const resizeState = resizingRef.current;
+      const dx = x - resizeState.startX;
+      const dy = y - resizeState.startY;
+      const item = resizeState.item;
+      
+      setItems(prev => prev.map(it => {
+        if (it.id === item.id) {
+          if (it.type === 'rect') {
+            const { handle, startW, startH } = resizeState;
+            // Get original position from item state
+            const origX = item.x;
+            const origY = item.y;
+            
+            // Allow negative width/height to flip (like Paint)
+            let newW = startW! + (handle.includes('e') ? dx : handle.includes('w') ? -dx : 0);
+            let newH = startH! + (handle.includes('s') ? dy : handle.includes('n') ? -dy : 0);
+            let newX = origX;
+            let newY = origY;
+            
+            // Adjust position when resizing from left or top
+            if (handle.includes('w')) { newX = origX + dx; }
+            if (handle.includes('n')) { newY = origY + dy; }
+            
+            return { ...it, x: newX, y: newY, w: newW, h: newH };
+          } else if (it.type === 'circle') {
+            const { handle, startR, startRx, startRy } = resizeState;
+            const centerX = item.x;
+            const centerY = item.y;
+            
+            // Support both circle (r) and ellipse (rx, ry)
+            if (item.rx !== undefined || item.ry !== undefined || startRx !== undefined || startRy !== undefined) {
+              // Ellipse mode - allow independent x and y radii
+              let newRx = startRx !== undefined ? startRx : (item.rx || item.r || 1);
+              let newRy = startRy !== undefined ? startRy : (item.ry || item.r || 1);
+              let newX = centerX;
+              let newY = centerY;
+              
+              if (handle === 'se' || handle === 'ne' || handle === 'sw' || handle === 'nw') {
+                // Corner handles - calculate distance from center
+                const distX = Math.abs(x - centerX);
+                const distY = Math.abs(y - centerY);
+                if (handle === 'se' || handle === 'ne') { newRx = distX; }
+                if (handle === 'sw' || handle === 'nw') { newRx = distX; }
+                if (handle === 'se' || handle === 'sw') { newRy = distY; }
+                if (handle === 'ne' || handle === 'nw') { newRy = distY; }
+              } else if (handle.includes('e')) { 
+                newRx = startRx! + dx;
+              } else if (handle.includes('w')) { 
+                newRx = startRx! - dx;
+                newX = centerX + dx;
+              } else if (handle.includes('s')) { 
+                newRy = startRy! + dy;
+              } else if (handle.includes('n')) { 
+                newRy = startRy! - dy;
+                newY = centerY + dy;
+              }
+              
+              return { ...it, x: newX, y: newY, rx: Math.max(1, newRx), ry: Math.max(1, newRy) };
+            } else {
+              // Circle mode - maintain aspect ratio
+              let newR = startR!;
+              
+              if (handle === 'se' || handle === 'ne' || handle === 'sw' || handle === 'nw') {
+                const dist = Math.hypot(x - centerX, y - centerY);
+                newR = Math.max(1, dist);
+              } else if (handle.includes('e')) { 
+                newR = Math.max(1, startR! + dx); 
+              } else if (handle.includes('w')) { 
+                newR = Math.max(1, startR! - dx); 
+              } else if (handle.includes('s')) { 
+                newR = Math.max(1, startR! + dy); 
+              } else if (handle.includes('n')) { 
+                newR = Math.max(1, startR! - dy); 
+              }
+              
+              return { ...it, r: newR };
+            }
+          } else if (it.type === 'arrow') {
+            const { handle } = resizeState;
+            const origX = item.x;
+            const origY = item.y;
+            const origX2 = item.x2 || item.x;
+            const origY2 = item.y2 || item.y;
+            
+            // For arrows, map bounding box handles to actual arrow endpoints
+            // Calculate the bounding box
+            const bbX = Math.min(origX, origX2);
+            const bbY = Math.min(origY, origY2);
+            const bbW = Math.abs(origX2 - origX);
+            const bbH = Math.abs(origY2 - origY);
+            
+            // Calculate handle position in bounding box
+            let handleX = 0, handleY = 0;
+            if (handle === 'nw') { handleX = bbX; handleY = bbY; }
+            else if (handle === 'ne') { handleX = bbX + bbW; handleY = bbY; }
+            else if (handle === 'se') { handleX = bbX + bbW; handleY = bbY + bbH; }
+            else if (handle === 'sw') { handleX = bbX; handleY = bbY + bbH; }
+            else if (handle === 'n') { handleX = bbX + bbW / 2; handleY = bbY; }
+            else if (handle === 's') { handleX = bbX + bbW / 2; handleY = bbY + bbH; }
+            else if (handle === 'e') { handleX = bbX + bbW; handleY = bbY + bbH / 2; }
+            else if (handle === 'w') { handleX = bbX; handleY = bbY + bbH / 2; }
+            
+            // Find which arrow point is closer to the handle
+            const distToStart = Math.hypot(handleX - origX, handleY - origY);
+            const distToEnd = Math.hypot(handleX - origX2, handleY - origY2);
+            
+            // Move the closer point
+            if (distToStart <= distToEnd) {
+              return { ...it, x: origX + dx, y: origY + dy };
+            } else {
+              return { ...it, x2: origX2 + dx, y2: origY2 + dy };
+            }
+          } else if (it.type === 'path') {
+            // For paths, allow resizing the bounding box
+            const { handle, startW, startH } = resizeState;
+            const origX = item.x;
+            const origY = item.y;
+            const origPoints = item.points || [];
+            if (!origPoints.length) return it;
+            
+            // Get original bounds
+            let minX = origPoints[0].x, minY = origPoints[0].y, maxX = origPoints[0].x, maxY = origPoints[0].y;
+            for (const p of origPoints) {
+              if (p.x < minX) minX = p.x;
+              if (p.y < minY) minY = p.y;
+              if (p.x > maxX) maxX = p.x;
+              if (p.y > maxY) maxY = p.y;
+            }
+            const origW = maxX - minX;
+            const origH = maxY - minY;
+            
+            // Calculate scale factors
+            let scaleX = 1, scaleY = 1;
+            let offsetX = 0, offsetY = 0;
+            
+            if (handle.includes('e')) { scaleX = (startW! + dx) / startW!; }
+            if (handle.includes('w')) { scaleX = (startW! - dx) / startW!; offsetX = dx; }
+            if (handle.includes('s')) { scaleY = (startH! + dy) / startH!; }
+            if (handle.includes('n')) { scaleY = (startH! - dy) / startH!; offsetY = dy; }
+            
+            // Scale and translate points
+            const newPoints = origPoints.map(p => ({
+              x: (p.x - minX) * scaleX + minX + offsetX,
+              y: (p.y - minY) * scaleY + minY + offsetY
+            }));
+            
+            return { ...it, points: newPoints };
+          } else if (it.type === 'text') {
+            const { handle, startW, startH } = resizeState;
+            const origX = item.x;
+            const origY = item.y;
+            
+            let newW = startW!;
+            let newH = startH!;
+            let newX = origX;
+            let newY = origY;
+            
+            if (handle.includes('e')) { newW = Math.max(50, startW! + dx); }
+            if (handle.includes('w')) { newW = Math.max(50, startW! - dx); newX = origX + dx; }
+            if (handle.includes('s')) { newH = Math.max(20, startH! + dy); }
+            if (handle.includes('n')) { newH = Math.max(20, startH! - dy); newY = origY + dy; }
+            
+            return { ...it, x: newX, y: newY, w: newW, h: newH };
+          }
+        }
+        return it;
+      }));
+      drawOverlay();
       return;
     }
     
@@ -613,26 +1106,42 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
       const moveState = movingRef.current;
       const dx = x - moveState.startX;
       const dy = y - moveState.startY;
-      setItems(prev => prev.map(it => {
-        if (selectedIds.includes(it.id)) {
-          if (it.type === 'rect') {
-            return { ...it, x: it.x + dx, y: it.y + dy };
-          } else if (it.type === 'arrow') {
-            return { ...it, x: it.x + dx, y: it.y + dy, x2: (it.x2 || it.x) + dx, y2: (it.y2 || it.y) + dy };
-          } else if (it.type === 'text') {
-            return { ...it, x: it.x + dx, y: it.y + dy };
-          } else if (it.type === 'circle') {
-            return { ...it, x: it.x + dx, y: it.y + dy };
-          } else if (it.type === 'path') {
-            return { ...it, points: (it.points || []).map(p => ({ x: p.x + dx, y: p.y + dy })) };
+      
+      // Only move if there's significant movement to avoid accidental moves
+      if (Math.abs(dx) > 1 || Math.abs(dy) > 1) {
+        setItems(prev => prev.map(it => {
+          if (it.id === moveState.item.id) {
+            // Use original item position from moveState, not current state
+            const origX = moveState.item.x;
+            const origY = moveState.item.y;
+            
+            if (it.type === 'rect') {
+              return { ...it, x: origX + dx, y: origY + dy };
+            } else if (it.type === 'arrow') {
+              const origX2 = moveState.item.x2 || moveState.item.x;
+              const origY2 = moveState.item.y2 || moveState.item.y;
+              return { 
+                ...it, 
+                x: origX + dx, 
+                y: origY + dy, 
+                x2: origX2 + dx, 
+                y2: origY2 + dy 
+              };
+            } else if (it.type === 'text') {
+              return { ...it, x: origX + dx, y: origY + dy };
+            } else if (it.type === 'circle') {
+              return { ...it, x: origX + dx, y: origY + dy };
+            } else if (it.type === 'path') {
+              const origPoints = moveState.item.points || [];
+              return { 
+                ...it, 
+                points: origPoints.map(p => ({ x: p.x + dx, y: p.y + dy })) 
+              };
+            }
           }
-        }
-        return it;
-      }));
-      // Verify ref still exists before updating
-      if (movingRef.current) {
-        movingRef.current.startX = x;
-        movingRef.current.startY = y;
+          return it;
+        }));
+        drawOverlay();
       }
     }
   };
@@ -654,8 +1163,38 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
       setSelectedIds(sel);
       marqueeRef.current = null;
     }
+    
+    // If we just finished drawing rect, arrow, circle, or text, switch to pan mode
+    if (drawingRef.current) {
+      const drawnType = drawingRef.current.type;
+      const drawnId = drawingRef.current.id;
+      if (drawnType === 'rect' || drawnType === 'arrow' || drawnType === 'circle') {
+        setMode('pan');
+      } else if (drawnType === 'text') {
+        // For text, enable editing after creating the area
+        setItems(prev => prev.map(it => it.id === drawnId ? { ...it, _editing: true } : it));
+        textEditingRef.current = drawnId;
+        setMode('pan');
+        // Start cursor blink
+        if (cursorBlinkRef.current) {
+          clearInterval(cursorBlinkRef.current);
+        }
+        setCursorVisible(true);
+        cursorBlinkRef.current = setInterval(() => {
+          setCursorVisible(prev => !prev);
+        }, 500);
+        // Focus canvas for text input
+        setTimeout(() => {
+          if (overlayRef.current) {
+            overlayRef.current.focus();
+          }
+        }, 100);
+      }
+    }
+    
     drawingRef.current = null;
     movingRef.current = null;
+    resizingRef.current = null;
   };
 
   // Keyboard handlers
@@ -666,6 +1205,7 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
         setItems(prev => prev.filter(it => !selectedIds.includes(it.id)));
         setSelectedIds([]);
       } else if (textEditingRef.current && e.key.length === 1 && !e.ctrlKey && !e.metaKey) {
+        e.preventDefault();
         setItems(prev => prev.map(it => {
           if (it.id === textEditingRef.current && it.type === 'text') {
             return { ...it, text: (it.text || '') + e.key };
@@ -673,16 +1213,30 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
           return it;
         }));
       } else if (textEditingRef.current && e.key === 'Backspace') {
+        e.preventDefault();
         setItems(prev => prev.map(it => {
           if (it.id === textEditingRef.current && it.type === 'text') {
             return { ...it, text: (it.text || '').slice(0, -1) };
           }
           return it;
         }));
-      } else if (textEditingRef.current && (e.key === 'Enter' || e.key === 'Escape')) {
+      } else if (textEditingRef.current && e.key === 'Enter') {
+        e.preventDefault();
+        setItems(prev => prev.map(it => {
+          if (it.id === textEditingRef.current && it.type === 'text') {
+            return { ...it, text: (it.text || '') + '\n' };
+          }
+          return it;
+        }));
+      } else if (textEditingRef.current && e.key === 'Escape') {
+        e.preventDefault();
         textEditingRef.current = null;
         setItems(prev => prev.map(it => ({ ...it, _editing: false })));
         setSelectedIds([]);
+        if (cursorBlinkRef.current) {
+          clearInterval(cursorBlinkRef.current);
+          cursorBlinkRef.current = null;
+        }
       } else if (e.key === 'Escape' && mode !== 'pan') {
         // Escape key -> return to pan mode
         setMode('pan');
@@ -757,12 +1311,17 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
         ctx.closePath();
         ctx.fill();
       } else if (it.type === 'text') {
-        const fontSize = parseInt(it.font || font, 10) * scaleX;
-        ctx.font = `${fontSize}px ${(it.font || font).split(' ').slice(1).join(' ') || 'Montserrat'}`;
+        const itemFontSize = (it.fontSize || fontSize) * scaleX;
+        ctx.font = `${itemFontSize}px Montserrat`;
         ctx.fillText(it.text || '', it.x * scaleX, it.y * scaleY);
       } else if (it.type === 'circle') {
         ctx.beginPath();
-        ctx.arc(it.x * scaleX, it.y * scaleY, Math.max(1, (it.r || 1) * scaleX), 0, Math.PI * 2);
+        // Support both circle (r) and ellipse (rx, ry)
+        if (it.rx !== undefined && it.ry !== undefined) {
+          ctx.ellipse(it.x * scaleX, it.y * scaleY, Math.max(1, it.rx * scaleX), Math.max(1, it.ry * scaleY), 0, 0, Math.PI * 2);
+        } else {
+          ctx.arc(it.x * scaleX, it.y * scaleY, Math.max(1, (it.r || 1) * scaleX), 0, Math.PI * 2);
+        }
         ctx.stroke();
       } else if (it.type === 'path') {
         const pts = it.points || [];
@@ -800,13 +1359,11 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
         <div className="flex-1 overflow-auto p-4">
           <div ref={containerRef} className="flex gap-4 flex-wrap">
             <div className="flex-1">
-              <div className="relative border border-gray-300 bg-gray-100 inline-block">
+              <div className="relative border border-gray-300 bg-gray-100 inline-block" style={isLoading ? { height: '500px', width: '500px', display: 'flex', alignItems: 'center', justifyContent: 'center' } : undefined}>
                 {isLoading && (
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <div className="text-center">
-                      <div className="mx-auto mb-4 h-10 w-10 rounded-full border-4 border-gray-200 border-t-brand-red animate-spin" />
-                      <div className="text-sm text-gray-600">Loading image...</div>
-                    </div>
+                  <div className="text-center">
+                    <div className="mx-auto mb-4 h-10 w-10 rounded-full border-4 border-gray-200 border-t-brand-red animate-spin" />
+                    <div className="text-sm text-gray-600">Loading image...</div>
                   </div>
                 )}
                 {loadError && !isLoading && (
@@ -837,14 +1394,43 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
                     <canvas
                       ref={overlayRef}
                       className="absolute left-0 top-0"
+                      tabIndex={0}
                       style={{ 
-                        cursor: mode !== 'pan' ? 'crosshair' : 'default',
-                        pointerEvents: mode !== 'pan' ? 'auto' : 'none'
+                        cursor: mode === 'select' ? 'default' : mode === 'draw' ? `url("${pencilCursorIcon}") 6 28, auto` : mode !== 'pan' ? 'crosshair' : textEditingRef.current ? 'text' : 'default',
+                        pointerEvents: mode !== 'pan' ? 'auto' : 'none',
+                        outline: 'none'
+                      }}
+                      onMouseMove={(e) => {
+                        if (mode === 'select') {
+                          const rect = (e.target as HTMLCanvasElement).getBoundingClientRect();
+                          const x = e.clientX - rect.left;
+                          const y = e.clientY - rect.top;
+                          let cursor = 'default';
+                          for (const item of items) {
+                            if (selectedIds.includes(item.id)) {
+                              const handle = getHandleAt(x, y, item);
+                              if (handle) {
+                                if (handle === 'nw' || handle === 'se') cursor = 'nwse-resize';
+                                else if (handle === 'ne' || handle === 'sw') cursor = 'nesw-resize';
+                                else if (handle === 'n' || handle === 's') cursor = 'ns-resize';
+                                else if (handle === 'e' || handle === 'w') cursor = 'ew-resize';
+                                break;
+                              }
+                            }
+                          }
+                          (e.target as HTMLCanvasElement).style.cursor = cursor;
+                        }
+                        handleOverlayMouseMove(e);
                       }}
                       onMouseDown={handleOverlayMouseDown}
-                      onMouseMove={handleOverlayMouseMove}
                       onMouseUp={handleOverlayMouseUp}
                       onMouseLeave={handleOverlayMouseUp}
+                      onFocus={() => {
+                        // Focus canvas when editing text
+                        if (textEditingRef.current && overlayRef.current) {
+                          overlayRef.current.focus();
+                        }
+                      }}
                     />
                   </>
                 )}
@@ -885,23 +1471,90 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
               <div className="pt-4 border-t">
                 <label className="block text-sm font-medium mb-2">Annotation Tools</label>
                 <div className="grid grid-cols-2 gap-2">
-                  <button onClick={() => setMode('select')} className={`px-3 py-2 rounded text-sm ${mode === 'select' ? 'bg-blue-500 text-white' : 'bg-gray-100'}`}>
-                    🖱️ Select
+                  <button onClick={() => {
+                    // Disable text editing when changing tools
+                    if (textEditingRef.current) {
+                      setItems(prev => prev.map(it => ({ ...it, _editing: false })));
+                      textEditingRef.current = null;
+                      if (cursorBlinkRef.current) {
+                        clearInterval(cursorBlinkRef.current);
+                        cursorBlinkRef.current = null;
+                      }
+                    }
+                    setMode(mode === 'select' ? 'pan' : 'select');
+                  }} className={`px-3 py-2 rounded text-sm flex items-center justify-center gap-2 ${mode === 'select' ? 'bg-brand-red text-white' : 'bg-gray-100'}`}>
+                    <img src={selectIcon} alt="Select" className="w-5 h-5" />
+                    Select
                   </button>
-                  <button onClick={() => setMode('rect')} className={`px-3 py-2 rounded text-sm ${mode === 'rect' ? 'bg-blue-500 text-white' : 'bg-gray-100'}`}>
-                    ▭ Rect
+                  <button onClick={() => {
+                    if (textEditingRef.current) {
+                      setItems(prev => prev.map(it => ({ ...it, _editing: false })));
+                      textEditingRef.current = null;
+                      if (cursorBlinkRef.current) {
+                        clearInterval(cursorBlinkRef.current);
+                        cursorBlinkRef.current = null;
+                      }
+                    }
+                    setMode(mode === 'rect' ? 'pan' : 'rect');
+                  }} className={`px-3 py-2 rounded text-sm flex items-center justify-center gap-2 ${mode === 'rect' ? 'bg-brand-red text-white' : 'bg-gray-100'}`}>
+                    <img src={rectIcon} alt="Rect" className="w-5 h-5" />
+                    Rect
                   </button>
-                  <button onClick={() => setMode('arrow')} className={`px-3 py-2 rounded text-sm ${mode === 'arrow' ? 'bg-blue-500 text-white' : 'bg-gray-100'}`}>
-                    ➤ Arrow
+                  <button onClick={() => {
+                    if (textEditingRef.current) {
+                      setItems(prev => prev.map(it => ({ ...it, _editing: false })));
+                      textEditingRef.current = null;
+                      if (cursorBlinkRef.current) {
+                        clearInterval(cursorBlinkRef.current);
+                        cursorBlinkRef.current = null;
+                      }
+                    }
+                    setMode(mode === 'arrow' ? 'pan' : 'arrow');
+                  }} className={`px-3 py-2 rounded text-sm flex items-center justify-center gap-2 ${mode === 'arrow' ? 'bg-brand-red text-white' : 'bg-gray-100'}`}>
+                    <img src={arrowIcon} alt="Arrow" className="w-5 h-5" />
+                    Arrow
                   </button>
-                  <button onClick={() => setMode('text')} className={`px-3 py-2 rounded text-sm ${mode === 'text' ? 'bg-blue-500 text-white' : 'bg-gray-100'}`}>
-                    T Text
+                  <button onClick={() => {
+                    if (textEditingRef.current) {
+                      setItems(prev => prev.map(it => ({ ...it, _editing: false })));
+                      textEditingRef.current = null;
+                      if (cursorBlinkRef.current) {
+                        clearInterval(cursorBlinkRef.current);
+                        cursorBlinkRef.current = null;
+                      }
+                    }
+                    setMode(mode === 'text' ? 'pan' : 'text');
+                  }} className={`px-3 py-2 rounded text-sm flex items-center justify-center gap-2 ${mode === 'text' ? 'bg-brand-red text-white' : 'bg-gray-100'}`}>
+                    <img src={textIcon} alt="Text" className="w-5 h-5" />
+                    Text
                   </button>
-                  <button onClick={() => setMode('circle')} className={`px-3 py-2 rounded text-sm ${mode === 'circle' ? 'bg-blue-500 text-white' : 'bg-gray-100'}`}>
-                    ◯ Circle
+                  <button onClick={() => {
+                    if (textEditingRef.current) {
+                      setItems(prev => prev.map(it => ({ ...it, _editing: false })));
+                      textEditingRef.current = null;
+                      if (cursorBlinkRef.current) {
+                        clearInterval(cursorBlinkRef.current);
+                        cursorBlinkRef.current = null;
+                      }
+                    }
+                    setMode(mode === 'circle' ? 'pan' : 'circle');
+                  }} className={`px-3 py-2 rounded text-sm flex items-center justify-center gap-2 ${mode === 'circle' ? 'bg-brand-red text-white' : 'bg-gray-100'}`}>
+                    <img src={circleIcon} alt="Circle" className="w-5 h-5" />
+                    Circle
                   </button>
-                  <button onClick={() => setMode('draw')} className={`px-3 py-2 rounded text-sm ${mode === 'draw' ? 'bg-blue-500 text-white' : 'bg-gray-100'}`}>
-                    ✏️ Draw
+                  <button onClick={() => {
+                    if (textEditingRef.current) {
+                      setItems(prev => prev.map(it => ({ ...it, _editing: false })));
+                      textEditingRef.current = null;
+                      if (cursorBlinkRef.current) {
+                        clearInterval(cursorBlinkRef.current);
+                        cursorBlinkRef.current = null;
+                      }
+                    }
+                    setMode(mode === 'draw' ? 'pan' : 'draw');
+                  }} className={`px-3 py-2 rounded text-sm flex items-center justify-center gap-2 ${mode === 'draw' ? 'bg-brand-red text-white' : 'bg-gray-100'}`}>
+                    <img src={pencilIcon} alt="Draw" className="w-5 h-5" />
+                    Draw
                   </button>
                 </div>
               </div>
@@ -915,21 +1568,16 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
                 <input type="range" min="1" max="20" value={stroke} onChange={e => setStroke(parseInt(e.target.value))} className="w-full" />
               </div>
               <div>
-                <label className="block text-sm font-medium mb-2">Font</label>
-                <input type="text" value={font} onChange={e => setFont(e.target.value)} className="w-full border rounded px-2 py-1" />
+                <label className="block text-sm font-medium mb-2">Font Size: {fontSize}</label>
+                <input type="range" min="8" max="72" value={fontSize} onChange={e => setFontSize(parseInt(e.target.value))} className="w-full" />
               </div>
-              {mode === 'text' && (
-                <div>
-                  <label className="block text-sm font-medium mb-2">Text (for text tool)</label>
-                  <input type="text" value={text} onChange={e => setText(e.target.value)} placeholder="Your text" className="w-full border rounded px-2 py-1" />
-                </div>
-              )}
               
               <div className="pt-4 border-t">
                 <button onClick={handleReset} className="w-full px-3 py-2 rounded bg-gray-100 mb-2">
                   Reset
                 </button>
-                <button onClick={handleSave} className="w-full px-3 py-2 rounded bg-brand-red text-white">
+                <button onClick={handleSave} className="w-full px-3 py-2 rounded bg-brand-red text-white flex items-center justify-center gap-2">
+                  <img src={saveIcon} alt="Save" className="w-5 h-5" />
                   Save Image
                 </button>
               </div>

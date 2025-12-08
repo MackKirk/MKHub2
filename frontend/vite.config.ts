@@ -26,9 +26,14 @@ export default defineConfig({
         target: 'http://localhost:8000',
         changeOrigin: true,
       },
+      '/ui': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+      },
     }
   },
-  build: { outDir: 'dist' }
+  build: { outDir: 'dist' },
+  publicDir: 'public'
 });
 
 
