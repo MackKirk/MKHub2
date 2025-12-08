@@ -231,7 +231,7 @@ export default function ProjectDetail(){
                 <div className="grid grid-cols-2 gap-4 mb-4">
                   <div>
                     <label className="text-xs text-gray-600 block mb-1">Project Name</label>
-                    <div className="text-sm font-medium">{proj?.name||'—'}</div>
+                    <div className="text-sm font-medium break-words">{proj?.name||'—'}</div>
                   </div>
                   <div>
                     <label className="text-xs text-gray-600 block mb-1">Code</label>

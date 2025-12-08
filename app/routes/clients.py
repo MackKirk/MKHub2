@@ -33,24 +33,49 @@ def create_client(
         # Ensure a name is always present (display_name fallback)
         if not data.get("name"):
             data["name"] = data.get("display_name") or "client"
-        # Ensure client code uniqueness by simple slug if missing
+        # Ensure client code uniqueness by sequential 5-digit number if missing
         if not data.get("code"):
-            base = (data.get("name") or "client").lower().replace(" ", "-")[:20]
-            code = base
-            i = 1
+            # Get all existing codes
+            try:
+                existing_clients = db.query(Client.code).filter(Client.code.isnot(None)).all()
+            except ProgrammingError as e:
+                error_msg = str(e.orig) if hasattr(e, 'orig') else str(e)
+                if 'is_system' in error_msg and 'does not exist' in error_msg:
+                    db.rollback()
+                    existing_clients = db.query(Client).options(defer(Client.is_system)).with_entities(Client.code).filter(Client.code.isnot(None)).all()
+                else:
+                    raise
+            
+            # Filter and find max numeric code (5 digits)
+            numeric_codes = []
+            for row in existing_clients:
+                # Extract code value (could be tuple or direct value)
+                code_value = row[0] if isinstance(row, (tuple, list)) else row
+                if code_value and isinstance(code_value, str) and code_value.isdigit() and len(code_value) == 5:
+                    try:
+                        numeric_codes.append(int(code_value))
+                    except ValueError:
+                        pass
+            
+            max_code = max(numeric_codes) if numeric_codes else 0
+            next_code = max_code + 1
+            code = f"{next_code:05d}"  # Format as 00001, 00002, etc.
+            
+            # Double-check uniqueness (safety check)
             try:
                 while db.query(Client).filter(Client.code == code).first():
-                    code = f"{base}-{i}"
-                    i += 1
+                    next_code += 1
+                    code = f"{next_code:05d}"
             except ProgrammingError as e:
                 error_msg = str(e.orig) if hasattr(e, 'orig') else str(e)
                 if 'is_system' in error_msg and 'does not exist' in error_msg:
                     db.rollback()
                     while db.query(Client).options(defer(Client.is_system)).filter(Client.code == code).first():
-                        code = f"{base}-{i}"
-                        i += 1
+                        next_code += 1
+                        code = f"{next_code:05d}"
                 else:
                     raise
+            
             data["code"] = code
         c = Client(**data)
         db.add(c)

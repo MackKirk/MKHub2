@@ -11,6 +11,7 @@ const textIcon = `/ui/assets/icons/text.png${iconCacheBuster}`;
 const circleIcon = `/ui/assets/icons/circ.png${iconCacheBuster}`;
 const pencilIcon = `/ui/assets/icons/pencil2.png${iconCacheBuster}`;
 const pencilCursorIcon = `/ui/assets/icons/pencil-cursor.png${iconCacheBuster}`;
+const deleteIcon = `/ui/assets/icons/del.png${iconCacheBuster}`;
 const saveIcon = `/ui/assets/icons/save.png${iconCacheBuster}`;
 
 type AnnotationItem = {
@@ -31,6 +32,9 @@ type AnnotationItem = {
   stroke: number;
   fontSize?: number;
   _editing?: boolean;
+  cursorPosition?: number; // Position of cursor in text (character index)
+  selectionStart?: number;
+  selectionEnd?: number;
 };
 
 type ImageEditorProps = {
@@ -43,7 +47,7 @@ type ImageEditorProps = {
 };
 
 export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'image', fileObjectId, onSave }: ImageEditorProps) {
-  const [mode, setMode] = useState<'pan' | 'rect' | 'arrow' | 'text' | 'circle' | 'draw' | 'select'>('pan');
+  const [mode, setMode] = useState<'pan' | 'rect' | 'arrow' | 'text' | 'circle' | 'draw' | 'select' | 'delete'>('pan');
   const [img, setImg] = useState<HTMLImageElement | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -70,6 +74,9 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
   const resizingRef = useRef<{ item: AnnotationItem; handle: string; startX: number; startY: number; startW?: number; startH?: number; startR?: number; startRx?: number; startRy?: number; startX2?: number; startY2?: number } | null>(null);
   const marqueeRef = useRef<{ x: number; y: number; x2: number; y2: number } | null>(null);
   const textEditingRef = useRef<string | null>(null);
+  const textCursorPositionRef = useRef<number>(0); // Current cursor/caret position
+  const textSelectionStartRef = useRef<number | null>(null); // Selection start (null = no selection)
+  const textSelectingRef = useRef<boolean>(false); // mouse-drag selection flag
   const loadedFileIdRef = useRef<string | null>(null);
   const loadingRef = useRef<boolean>(false);
   
@@ -93,6 +100,36 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
       }));
     }
   }, [fontSize]);
+
+  // Helper to exit text editing mode (used by ESC and click-outside)
+  const exitTextEditing = useCallback(() => {
+    const editingId = textEditingRef.current;
+    if (!editingId) return;
+
+    textEditingRef.current = null;
+    textCursorPositionRef.current = 0;
+    textSelectionStartRef.current = null;
+
+    // Turn off editing flag for the text item
+    setItems(prev => prev.map(it =>
+      it.id === editingId && it.type === 'text'
+        ? { ...it, _editing: false, selectionStart: undefined, selectionEnd: undefined }
+        : it
+    ));
+
+    // Keep the text selected so user can still move/resize it
+    setSelectedIds(prev =>
+      prev.length === 1 && prev[0] === editingId ? prev : [editingId]
+    );
+
+    if (cursorBlinkRef.current) {
+      clearInterval(cursorBlinkRef.current);
+      cursorBlinkRef.current = null;
+    }
+
+    // After leaving text editing we always return to pan mode
+    setMode('pan');
+  }, [setItems, setSelectedIds, setMode]);
 
   // Load image - only when modal opens or fileObjectId changes
   useEffect(() => {
@@ -380,8 +417,10 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
         ctx.font = `${itemFontSize}px Montserrat`;
         const padding = 4;
         
-        // Draw text area border if it has dimensions (being created/edited) - transparent background
-        if (it.w && it.h && (it._editing || selectedIds.includes(it.id))) {
+        // Draw text area border:
+        // - while actively editing the text
+        // - OR while initially drawing the text box (drawingRef)
+        if (it.w && it.h && (it._editing || (drawingRef.current && drawingRef.current.id === it.id))) {
           ctx.strokeStyle = it.color;
           ctx.lineWidth = 1;
           ctx.setLineDash([2, 2]);
@@ -471,22 +510,104 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
         let lastLineWidth = 0;
         const maxY = it.y + (it.h || 30) - padding;
         
+        // Calculate cursor position (only when editing)
+        let cursorX = it.x + padding;
+        let cursorY = startY;
+        let charCount = 0;
+        let foundCursor = false;
+        
+        if (it._editing) {
+          const cursorPos = it.cursorPosition !== undefined ? it.cursorPosition : textContent.length;
+          
+          for (let i = 0; i < lines.length; i++) {
+            if (y > maxY) break;
+            const line = lines[i];
+            const lineLength = line.length;
+            
+            if (!foundCursor && charCount + lineLength >= cursorPos) {
+              // Cursor is in this line
+              const posInLine = cursorPos - charCount;
+              const textBeforeCursor = line.substring(0, posInLine);
+              cursorX = it.x + padding + ctx.measureText(textBeforeCursor).width;
+              cursorY = y;
+              foundCursor = true;
+            }
+            
+            charCount += lineLength;
+            if (i < lines.length - 1) {
+              charCount += 1; // newline
+            }
+            y += lineHeight;
+          }
+          
+          // If cursor is at the end
+          if (!foundCursor) {
+            y = startY;
+            for (let i = 0; i < lines.length; i++) {
+              if (y > maxY) break;
+              const line = lines[i];
+              if (i === lines.length - 1) {
+                lastLineWidth = ctx.measureText(line).width;
+              }
+              y += lineHeight;
+            }
+            cursorX = it.x + padding + lastLineWidth;
+            cursorY = startY + Math.min(lines.length - 1, Math.floor((maxY - startY) / lineHeight)) * lineHeight;
+          }
+        }
+        
+        // Draw text lines (always, not just when editing)
+        y = startY;
+        const selStart = it.selectionStart ?? null;
+        const selEnd = it.selectionEnd ?? null;
+        const hasSelection = selStart !== null && selEnd !== null && selEnd > selStart;
+        charCount = 0;
+
         for (let i = 0; i < lines.length; i++) {
           if (y > maxY) break;
-          // Draw the line - it's already wrapped correctly
-          ctx.fillText(lines[i], it.x + padding, y);
+          const line = lines[i];
+          const lineLength = line.length;
+
+          // Draw selection background for this line if needed
+          if (hasSelection) {
+            const lineStartIndex = charCount;
+            const lineEndIndex = charCount + lineLength;
+            const start = Math.max(selStart!, lineStartIndex);
+            const end = Math.min(selEnd!, lineEndIndex);
+            if (end > start) {
+              const startInLine = start - lineStartIndex;
+              const endInLine = end - lineStartIndex;
+              const beforeText = line.substring(0, startInLine);
+              const selectedText = line.substring(startInLine, endInLine);
+              const selX = it.x + padding + ctx.measureText(beforeText).width;
+              const selW = ctx.measureText(selectedText).width;
+              ctx.save();
+              ctx.fillStyle = 'rgba(0, 0, 0, 0.15)';
+              ctx.fillRect(selX, y - itemFontSize, selW, itemFontSize + 2);
+              ctx.restore();
+            }
+          }
+
+          ctx.fillStyle = it.color;
+          ctx.fillText(line, it.x + padding, y);
           if (i === lines.length - 1) {
             lastLineWidth = ctx.measureText(lines[i]).width;
+          }
+          charCount += lineLength;
+          if (i < lines.length - 1) {
+            charCount += 1;
           }
           y += lineHeight;
         }
         
-        // Draw cursor when editing (at end of last line, within bounds)
+        // Draw cursor when editing
         if (it._editing && cursorVisible) {
-          const cursorX = Math.min(it.x + padding + lastLineWidth, it.x + (it.w || 200) - padding);
-          const cursorY = Math.min(startY + Math.min(lines.length - 1, Math.floor((maxY - startY) / lineHeight)) * lineHeight - itemFontSize, maxY - itemFontSize);
+          cursorX = Math.min(Math.max(cursorX, it.x + padding), it.x + (it.w || 200) - padding);
+          // Cursor Y should align with text baseline - cursorY is the baseline of the current line
+          // Draw cursor from baseline upward (baseline - fontSize gives us the top of the cursor)
+          const cursorTop = cursorY - itemFontSize;
           ctx.fillStyle = it.color;
-          ctx.fillRect(cursorX, cursorY, 2, itemFontSize);
+          ctx.fillRect(cursorX, cursorTop, 2, itemFontSize);
         }
         
         ctx.restore();
@@ -522,7 +643,7 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
           
           // Draw resize handles (8 handles: corners and midpoints)
           // For paths, only show corner handles
-          const handleSize = 8;
+          const handleSize = 12; // slightly larger for easier interaction
           const isPath = it.type === 'path';
           const handles = isPath ? [
             { x: bb.x, y: bb.y, name: 'nw' }, // top-left
@@ -585,6 +706,110 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
     }
   }, [cursorVisible, items, isOpen, img, drawOverlay]);
 
+  // Calculate cursor position in text based on click position
+  const getTextCursorPosition = useCallback((item: AnnotationItem, clickX: number, clickY: number): number => {
+    const overlay = overlayRef.current;
+    if (!overlay || item.type !== 'text') return 0;
+    const ctx = overlay.getContext('2d');
+    if (!ctx) return 0;
+
+    const itemFontSize = item.fontSize || fontSize;
+    ctx.font = `${itemFontSize}px Montserrat`;
+    const padding = 4;
+    const textContent = item.text || '';
+    
+    // Calculate which line was clicked
+    const lineHeight = itemFontSize * 1.2;
+    const startY = item.y + padding + itemFontSize;
+    const relativeY = clickY - startY;
+    const lineIndex = Math.max(0, Math.floor(relativeY / lineHeight));
+    
+    // Word wrap the text to get lines
+    const maxWidth = (item.w || 200) - padding * 2;
+    const lines: string[] = [];
+    const paragraphs = textContent.split('\n');
+    
+    for (const para of paragraphs) {
+      if (!para.trim() && lines.length > 0) {
+        lines.push('');
+        continue;
+      }
+      
+      const words = para.split(' ');
+      let currentLine = '';
+      
+      for (let i = 0; i < words.length; i++) {
+        const word = words[i];
+        const wordMetrics = ctx.measureText(word);
+        if (wordMetrics.width > maxWidth) {
+          if (currentLine) {
+            lines.push(currentLine);
+            currentLine = '';
+          }
+          let charLine = '';
+          for (let j = 0; j < word.length; j++) {
+            const charTest = charLine + word[j];
+            const charMetrics = ctx.measureText(charTest);
+            if (charMetrics.width > maxWidth && charLine) {
+              lines.push(charLine);
+              charLine = word[j];
+            } else {
+              charLine = charTest;
+            }
+          }
+          currentLine = charLine;
+        } else {
+          const testLine = currentLine + (currentLine ? ' ' : '') + word;
+          const metrics = ctx.measureText(testLine);
+          if (metrics.width > maxWidth && currentLine) {
+            lines.push(currentLine);
+            currentLine = word;
+          } else {
+            currentLine = testLine;
+          }
+        }
+      }
+      if (currentLine) {
+        lines.push(currentLine);
+      }
+    }
+    
+    if (lines.length === 0) {
+      lines.push('');
+    }
+    
+    // Get the line that was clicked
+    const targetLine = lines[Math.min(lineIndex, lines.length - 1)] || '';
+    
+    // Calculate character position in that line
+    const relativeX = clickX - (item.x + padding);
+    let charPos = 0;
+    let currentWidth = 0;
+    
+    for (let i = 0; i <= targetLine.length; i++) {
+      const testText = targetLine.substring(0, i);
+      const width = ctx.measureText(testText).width;
+      if (width > relativeX) {
+        charPos = i;
+        break;
+      }
+      currentWidth = width;
+      charPos = i;
+    }
+    
+    // Calculate absolute position in full text
+    let absolutePos = 0;
+    for (let i = 0; i < Math.min(lineIndex, lines.length); i++) {
+      absolutePos += lines[i].length;
+      if (i < lines.length - 1) {
+        absolutePos += 1; // newline
+      }
+    }
+    absolutePos += charPos;
+    
+    return Math.max(0, Math.min(absolutePos, textContent.length));
+  }, [fontSize]);
+
   // Find item at position
   const itemAt = useCallback((x: number, y: number): AnnotationItem | null => {
     for (let i = items.length - 1; i >= 0; i--) {
@@ -603,7 +828,8 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
     const bb = getItemBounds(item);
     if (!bb) return null;
     
-    const handleSize = 8;
+    // Slightly larger handle hit area to make it easier to grab borders
+    const handleSize = 14;
     const handles = [
       { x: bb.x, y: bb.y, name: 'nw' },
       { x: bb.x + bb.w / 2, y: bb.y, name: 'n' },
@@ -625,6 +851,12 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
 
   // Canvas mouse handlers
   const handleCanvasMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    // Disable pan when editing text - clicking canvas should exit edit mode
+    if (textEditingRef.current) {
+      // Same behavior as pressing ESC
+      exitTextEditing();
+      return;
+    }
     if (mode !== 'pan') return;
     const rect = (e.target as HTMLCanvasElement).getBoundingClientRect();
     draggingRef.current = {
@@ -653,6 +885,8 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
     if (!isOpen) return;
 
     const handleGlobalMouseMove = (e: MouseEvent) => {
+      // Disable pan when editing text
+      if (textEditingRef.current) return;
       if (mode !== 'pan') return;
       
       const dragState = draggingRef.current;
@@ -715,12 +949,83 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
 
   // Overlay mouse handlers
   const handleOverlayMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (mode === 'pan') return; // Pan mode handles canvas, not overlay
     const rect = (e.target as HTMLCanvasElement).getBoundingClientRect();
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
     
-    if (mode === 'rect') {
+    // Handle clicks when editing text (even in pan mode)
+    if (textEditingRef.current) {
+      const editingItem = items.find(it => it.id === textEditingRef.current && it.type === 'text');
+      if (editingItem) {
+        const boxW = editingItem.w || 200;
+        const boxH = editingItem.h || 30;
+        const safetyMargin = 10; // safety margin around text box before exiting edit mode
+        const innerMargin = 4;   // inner margin to distinguish border vs inner text
+
+        const insideExpandedBox =
+          x >= editingItem.x - safetyMargin &&
+          x <= editingItem.x + boxW + safetyMargin &&
+          y >= editingItem.y - safetyMargin &&
+          y <= editingItem.y + boxH + safetyMargin;
+
+        if (insideExpandedBox) {
+          // If user clicked on a resize handle while editing, let the normal
+          // select/resize logic run (so we can move/resize the box)
+          const handle = getHandleAt(x, y, editingItem);
+          if (handle) {
+            // fall through to normal select/resize logic below (resize handles)
+          } else {
+            const insideCoreBox =
+              x >= editingItem.x + innerMargin &&
+              x <= editingItem.x + boxW - innerMargin &&
+              y >= editingItem.y + innerMargin &&
+              y <= editingItem.y + boxH - innerMargin;
+
+            if (insideCoreBox) {
+              // Click inside the core text area → start caret + drag-selection
+              const cursorPos = getTextCursorPosition(editingItem, x, y);
+              textCursorPositionRef.current = cursorPos;
+              textSelectionStartRef.current = cursorPos;
+              textSelectingRef.current = true;
+              setItems(prev => prev.map(it => 
+                it.id === editingItem.id ? { ...it, cursorPosition: cursorPos, selectionStart: undefined, selectionEnd: undefined } : it
+              ));
+              // Ensure overlay has focus for keyboard events (arrows, etc)
+              if (overlayRef.current) {
+                overlayRef.current.focus();
+              }
+              e.stopPropagation();
+              return;
+            } else {
+              // Click in border zone (between core box and expanded margin) → move whole box
+              if (!selectedIds.includes(editingItem.id)) {
+                setSelectedIds([editingItem.id]);
+              }
+              movingRef.current = { item: { ...editingItem }, startX: x, startY: y };
+              e.stopPropagation();
+              return;
+            }
+          }
+        } else {
+          // Clicking completely outside the expanded text box → exit edit mode (same as ESC)
+          exitTextEditing();
+          e.stopPropagation();
+          return;
+        }
+      }
+    }
+    
+    // When not editing text, overlay only handles clicks in non-pan modes
+    if (mode === 'pan') return; // Pan mode handles base canvas, not overlay
+    
+    if (mode === 'delete') {
+      const hit = itemAt(x, y);
+      if (hit) {
+        setItems(prev => prev.filter(it => it.id !== hit.id));
+        setSelectedIds(prev => prev.filter(id => id !== hit.id));
+      }
+      return;
+    } else if (mode === 'rect') {
         const newItem: AnnotationItem = {
           id: 'it_' + Date.now(),
           type: 'rect',
@@ -828,56 +1133,66 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
           
           if (!handleClicked) {
             const hit = itemAt(x, y);
-            if (hit) {
-              // Disable text editing for all items first
-              if (textEditingRef.current) {
-                setItems(prev => prev.map(it => ({ ...it, _editing: false })));
-                textEditingRef.current = null;
-                if (cursorBlinkRef.current) {
-                  clearInterval(cursorBlinkRef.current);
-                  cursorBlinkRef.current = null;
-                }
+            
+            // If clicking on a text item that's being edited, calculate cursor position
+            if (hit && hit.type === 'text' && textEditingRef.current === hit.id) {
+              // Clicking inside the text box - calculate cursor position
+              const cursorPos = getTextCursorPosition(hit, x, y);
+              textCursorPositionRef.current = cursorPos;
+              setItems(prev => prev.map(it => 
+                it.id === hit.id ? { ...it, cursorPosition: cursorPos } : it
+              ));
+              return; // Don't do anything else, just update cursor position
+            }
+            
+            // If clicking outside the text being edited, exit edit mode and return to pan
+            if (textEditingRef.current && (!hit || hit.type !== 'text' || hit.id !== textEditingRef.current)) {
+              setItems(prev => prev.map(it => ({ ...it, _editing: false })));
+              textEditingRef.current = null;
+              textCursorPositionRef.current = 0;
+              if (cursorBlinkRef.current) {
+                clearInterval(cursorBlinkRef.current);
+                cursorBlinkRef.current = null;
               }
-              
-              // Select the item (or keep it selected if already selected)
-              if (!selectedIds.includes(hit.id)) {
-                setSelectedIds([hit.id]);
+              setMode('pan');
+              return; // Don't continue with selection logic
+            }
+            
+          if (hit) {
+            // Select the item (or keep it selected if already selected)
+            if (!selectedIds.includes(hit.id)) {
+              setSelectedIds([hit.id]);
+            }
+            
+            if (hit.type === 'text') {
+              // SINGLE STATE for text:
+              // - Click inside area enters edit mode
+              // - Resize handles still work (handled above via getHandleAt)
+            const cursorPos = getTextCursorPosition(hit, x, y);
+            textCursorPositionRef.current = cursorPos;
+            textSelectionStartRef.current = null;
+            setItems(prev => prev.map(it => 
+              it.id === hit.id ? { ...it, _editing: true, cursorPosition: cursorPos, selectionStart: undefined, selectionEnd: undefined } : it
+            ));
+              textEditingRef.current = hit.id;
+              if (cursorBlinkRef.current) {
+                clearInterval(cursorBlinkRef.current);
               }
-              
-              // Click on text item to edit (single click now, not double)
-              if (hit.type === 'text') {
-                setItems(prev => prev.map(it => it.id === hit.id ? { ...it, _editing: true } : it));
-                textEditingRef.current = hit.id;
-                if (cursorBlinkRef.current) {
-                  clearInterval(cursorBlinkRef.current);
-                }
-                setCursorVisible(true);
-                cursorBlinkRef.current = setInterval(() => {
-                  setCursorVisible(prev => !prev);
-                }, 500);
-                // Focus canvas for text input
-                setTimeout(() => {
-                  if (overlayRef.current) {
-                    overlayRef.current.focus();
-                  }
-                }, 100);
-                // Don't start moving when editing text
-                movingRef.current = null;
-              } else {
-                // Start moving - will be activated on mouse move
-                // Store original item state
-                movingRef.current = { item: { ...hit }, startX: x, startY: y };
+              setCursorVisible(true);
+              cursorBlinkRef.current = setInterval(() => {
+                setCursorVisible(prev => !prev);
+              }, 500);
+              if (overlayRef.current) {
+                overlayRef.current.focus();
               }
+              // While editing, moving is only via resize handles / selection logic
+              movingRef.current = null;
             } else {
-              // Click on empty area - disable text editing
-              if (textEditingRef.current) {
-                setItems(prev => prev.map(it => ({ ...it, _editing: false })));
-                textEditingRef.current = null;
-                if (cursorBlinkRef.current) {
-                  clearInterval(cursorBlinkRef.current);
-                  cursorBlinkRef.current = null;
-                }
-              }
+              // Non-text items: select and prepare to move
+              movingRef.current = { item: { ...hit }, startX: x, startY: y };
+            }
+          } else {
+              // Click on empty area - disable text editing (already handled above)
               setSelectedIds([]);
               // Click on empty area -> return to pan mode
               setMode('pan');
@@ -891,6 +1206,26 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
     const rect = (e.target as HTMLCanvasElement).getBoundingClientRect();
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
+    
+    // Mouse-drag text selection while editing
+    if (textEditingRef.current && textSelectingRef.current) {
+      const editingItem = items.find(it => it.id === textEditingRef.current && it.type === 'text');
+      if (editingItem) {
+        const currentText = editingItem.text || '';
+        const anchor = textSelectionStartRef.current ?? textCursorPositionRef.current;
+        const cursorPos = getTextCursorPosition(editingItem, x, y);
+        textCursorPositionRef.current = cursorPos;
+        textSelectionStartRef.current = anchor;
+        const start = Math.max(0, Math.min(anchor, cursorPos));
+        const end = Math.min(currentText.length, Math.max(anchor, cursorPos));
+        setItems(prev => prev.map(it => 
+          it.id === editingItem.id
+            ? { ...it, cursorPosition: cursorPos, selectionStart: start, selectionEnd: end }
+            : it
+        ));
+      }
+      return;
+    }
     
     if (marqueeRef.current) {
       marqueeRef.current.x2 = x;
@@ -1147,6 +1482,9 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
   };
 
   const handleOverlayMouseUp = () => {
+    if (textSelectingRef.current) {
+      textSelectingRef.current = false;
+    }
     if (marqueeRef.current) {
       const m = marqueeRef.current;
       const x = Math.min(m.x, m.x2);
@@ -1201,42 +1539,185 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
   useEffect(() => {
     if (!isOpen) return;
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Delete' && selectedIds.length) {
+      // Don't delete when editing text - ESC should exit edit mode instead
+        if (textEditingRef.current) {
+          const editingItem = items.find(it => it.id === textEditingRef.current && it.type === 'text');
+          if (editingItem) {
+            const currentText = editingItem.text || '';
+            let cursorPos = editingItem.cursorPosition !== undefined ? editingItem.cursorPosition : currentText.length;
+            cursorPos = Math.max(0, Math.min(cursorPos, currentText.length));
+            let selStart = textSelectionStartRef.current;
+
+            const hasSelection = selStart !== null && selStart !== cursorPos;
+            const normSelection = () => {
+              if (selStart === null) return { start: cursorPos, end: cursorPos };
+              const start = Math.min(selStart, cursorPos);
+              const end = Math.max(selStart, cursorPos);
+              return { start, end };
+            };
+          
+            if (e.key === 'ArrowLeft') {
+            e.preventDefault();
+              if (e.shiftKey) {
+                if (selStart === null) selStart = cursorPos;
+                cursorPos = Math.max(0, cursorPos - 1);
+                textSelectionStartRef.current = selStart;
+              } else {
+                cursorPos = Math.max(0, cursorPos - 1);
+                selStart = null;
+                textSelectionStartRef.current = null;
+              }
+              textCursorPositionRef.current = cursorPos;
+              const { start, end } = normSelection();
+              setItems(prev => prev.map(it => 
+                it.id === textEditingRef.current ? { ...it, cursorPosition: cursorPos, selectionStart: selStart === null ? undefined : start, selectionEnd: selStart === null ? undefined : end } : it
+              ));
+          } else if (e.key === 'ArrowRight') {
+            e.preventDefault();
+            if (e.shiftKey) {
+              if (selStart === null) selStart = cursorPos;
+              cursorPos = Math.min(currentText.length, cursorPos + 1);
+              textSelectionStartRef.current = selStart;
+            } else {
+              cursorPos = Math.min(currentText.length, cursorPos + 1);
+              selStart = null;
+              textSelectionStartRef.current = null;
+            }
+            textCursorPositionRef.current = cursorPos;
+            const { start, end } = normSelection();
+            setItems(prev => prev.map(it => 
+              it.id === textEditingRef.current ? { ...it, cursorPosition: cursorPos, selectionStart: selStart === null ? undefined : start, selectionEnd: selStart === null ? undefined : end } : it
+            ));
+          } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            // Move to start of current line or previous line
+            const textBefore = currentText.substring(0, cursorPos);
+            const lastNewline = textBefore.lastIndexOf('\n');
+            if (lastNewline >= 0) {
+              const lineStart = lastNewline + 1;
+              const currentLineStart = lineStart;
+              const prevLineStart = textBefore.lastIndexOf('\n', lastNewline - 1) + 1;
+              const offsetInLine = cursorPos - currentLineStart;
+              cursorPos = Math.min(prevLineStart + offsetInLine, lastNewline);
+            } else {
+              cursorPos = 0;
+            }
+            textCursorPositionRef.current = cursorPos;
+            textSelectionStartRef.current = selStart; // keep selection anchor if using Shift+Up/Down later
+            const { start, end } = normSelection();
+            setItems(prev => prev.map(it => 
+              it.id === textEditingRef.current ? { ...it, cursorPosition: cursorPos, selectionStart: selStart === null ? undefined : start, selectionEnd: selStart === null ? undefined : end } : it
+            ));
+          } else if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            // Move to next line
+            const textBefore = currentText.substring(0, cursorPos);
+            const lastNewline = textBefore.lastIndexOf('\n');
+            const lineStart = lastNewline + 1;
+            const offsetInLine = cursorPos - lineStart;
+            const textAfter = currentText.substring(cursorPos);
+            const nextNewline = textAfter.indexOf('\n');
+            if (nextNewline >= 0) {
+              cursorPos = cursorPos + nextNewline + 1 + Math.min(offsetInLine, nextNewline);
+            } else {
+              cursorPos = currentText.length;
+            }
+            textCursorPositionRef.current = cursorPos;
+            textSelectionStartRef.current = selStart;
+            const { start, end } = normSelection();
+            setItems(prev => prev.map(it => 
+              it.id === textEditingRef.current ? { ...it, cursorPosition: cursorPos, selectionStart: selStart === null ? undefined : start, selectionEnd: selStart === null ? undefined : end } : it
+            ));
+          } else if (e.key === 'Backspace') {
+            e.preventDefault();
+            const { start, end } = hasSelection ? normSelection() : { start: cursorPos - 1, end: cursorPos };
+            if (start >= 0 && end > start) {
+              const newText = currentText.substring(0, start) + currentText.substring(end);
+              cursorPos = start;
+              textCursorPositionRef.current = cursorPos;
+              textSelectionStartRef.current = null;
+              setItems(prev => prev.map(it => 
+                it.id === textEditingRef.current ? { ...it, text: newText, cursorPosition: cursorPos, selectionStart: undefined, selectionEnd: undefined } : it
+              ));
+            }
+          } else if (e.key === 'Enter') {
+            e.preventDefault();
+            const { start, end } = hasSelection ? normSelection() : { start: cursorPos, end: cursorPos };
+            const newText = currentText.substring(0, start) + '\n' + currentText.substring(end);
+            cursorPos = start + 1;
+            textCursorPositionRef.current = cursorPos;
+            textSelectionStartRef.current = null;
+            setItems(prev => prev.map(it => 
+              it.id === textEditingRef.current ? { ...it, text: newText, cursorPosition: cursorPos, selectionStart: undefined, selectionEnd: undefined } : it
+            ));
+          } else if (e.key === 'Escape') {
+            e.preventDefault();
+            // Unified behavior for ESC while editing text
+            exitTextEditing();
+          } else if ((e.key === 'c' || e.key === 'C') && (e.ctrlKey || e.metaKey)) {
+            // Copy selection to clipboard (or whole text if nothing selected)
+            e.preventDefault();
+            const { start, end } = hasSelection ? normSelection() : { start: 0, end: currentText.length };
+            const selectedText = currentText.substring(start, end);
+            if (selectedText) {
+              if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(selectedText).catch(() => {});
+              }
+            }
+          } else if ((e.key === 'a' || e.key === 'A') && (e.ctrlKey || e.metaKey)) {
+            // Select all
+            e.preventDefault();
+            textSelectionStartRef.current = 0;
+            cursorPos = currentText.length;
+            textCursorPositionRef.current = cursorPos;
+            setItems(prev => prev.map(it => 
+              it.id === textEditingRef.current ? { 
+                ...it, 
+                cursorPosition: cursorPos, 
+                selectionStart: 0, 
+                selectionEnd: currentText.length 
+              } : it
+            ));
+          } else if ((e.key === 'v' || e.key === 'V') && (e.ctrlKey || e.metaKey)) {
+            // Paste from clipboard, replacing selection or inserting at caret
+            e.preventDefault();
+            const applyPaste = (pasteText: string) => {
+              if (!pasteText) return;
+              const { start, end } = hasSelection ? normSelection() : { start: cursorPos, end: cursorPos };
+              const newText = currentText.substring(0, start) + pasteText + currentText.substring(end);
+              cursorPos = start + pasteText.length;
+              textCursorPositionRef.current = cursorPos;
+              textSelectionStartRef.current = null;
+              setItems(prev => prev.map(it => 
+                it.id === textEditingRef.current ? { 
+                  ...it, 
+                  text: newText, 
+                  cursorPosition: cursorPos, 
+                  selectionStart: undefined, 
+                  selectionEnd: undefined 
+                } : it
+              ));
+            };
+
+            if (navigator.clipboard && navigator.clipboard.readText) {
+              navigator.clipboard.readText().then(applyPaste).catch(() => {});
+            }
+          } else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey) {
+            e.preventDefault();
+            const { start, end } = hasSelection ? normSelection() : { start: cursorPos, end: cursorPos };
+            const newText = currentText.substring(0, start) + e.key + currentText.substring(end);
+            cursorPos = start + 1;
+            textCursorPositionRef.current = cursorPos;
+            textSelectionStartRef.current = null;
+            setItems(prev => prev.map(it => 
+              it.id === textEditingRef.current ? { ...it, text: newText, cursorPosition: cursorPos, selectionStart: undefined, selectionEnd: undefined } : it
+            ));
+          }
+        }
+      } else if (e.key === 'Delete' && selectedIds.length) {
+        // Only delete when not editing text
         setItems(prev => prev.filter(it => !selectedIds.includes(it.id)));
         setSelectedIds([]);
-      } else if (textEditingRef.current && e.key.length === 1 && !e.ctrlKey && !e.metaKey) {
-        e.preventDefault();
-        setItems(prev => prev.map(it => {
-          if (it.id === textEditingRef.current && it.type === 'text') {
-            return { ...it, text: (it.text || '') + e.key };
-          }
-          return it;
-        }));
-      } else if (textEditingRef.current && e.key === 'Backspace') {
-        e.preventDefault();
-        setItems(prev => prev.map(it => {
-          if (it.id === textEditingRef.current && it.type === 'text') {
-            return { ...it, text: (it.text || '').slice(0, -1) };
-          }
-          return it;
-        }));
-      } else if (textEditingRef.current && e.key === 'Enter') {
-        e.preventDefault();
-        setItems(prev => prev.map(it => {
-          if (it.id === textEditingRef.current && it.type === 'text') {
-            return { ...it, text: (it.text || '') + '\n' };
-          }
-          return it;
-        }));
-      } else if (textEditingRef.current && e.key === 'Escape') {
-        e.preventDefault();
-        textEditingRef.current = null;
-        setItems(prev => prev.map(it => ({ ...it, _editing: false })));
-        setSelectedIds([]);
-        if (cursorBlinkRef.current) {
-          clearInterval(cursorBlinkRef.current);
-          cursorBlinkRef.current = null;
-        }
       } else if (e.key === 'Escape' && mode !== 'pan') {
         // Escape key -> return to pan mode
         setMode('pan');
@@ -1245,7 +1726,7 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, selectedIds]);
+  }, [isOpen, selectedIds, items, mode]);
 
   // Reset
   const handleReset = () => {
@@ -1263,16 +1744,21 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
     const overlay = overlayRef.current;
     if (!canvas || !overlay || !img) return;
     
-    // Create final canvas with same size as image
+    // Create final canvas with same size as the editing canvas to match what user sees
     const finalCanvas = document.createElement('canvas');
-    finalCanvas.width = img.naturalWidth;
-    finalCanvas.height = img.naturalHeight;
+    finalCanvas.width = canvas.width;
+    finalCanvas.height = canvas.height;
     const ctx = finalCanvas.getContext('2d');
     if (!ctx) return;
     
-    // Draw image with transformations
+    // Draw base image with transformations (same as drawBase function)
     ctx.save();
-    ctx.translate(finalCanvas.width / 2 + (offsetX * finalCanvas.width / canvas.width), finalCanvas.height / 2 + (offsetY * finalCanvas.height / canvas.height));
+    const clamped = clampOffset(offsetX, offsetY);
+    ctx.clearRect(0, 0, finalCanvas.width, finalCanvas.height);
+    ctx.fillStyle = '#f6f6f6';
+    ctx.fillRect(0, 0, finalCanvas.width, finalCanvas.height);
+    
+    ctx.translate(finalCanvas.width / 2 + clamped.x, finalCanvas.height / 2 + clamped.y);
     ctx.rotate(angle * Math.PI / 180);
     const iw = img.naturalWidth;
     const ih = img.naturalHeight;
@@ -1282,54 +1768,126 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
     ctx.drawImage(img, -dw / 2, -dh / 2, dw, dh);
     ctx.restore();
     
-    // Scale annotations and draw them
-    const scaleX = finalCanvas.width / canvas.width;
-    const scaleY = finalCanvas.height / canvas.height;
+    // Draw annotations (same as drawOverlay function, but simplified for text)
     for (const it of items) {
       ctx.save();
       ctx.strokeStyle = it.color;
       ctx.fillStyle = it.color;
-      ctx.lineWidth = it.stroke * scaleX;
+      ctx.lineWidth = it.stroke;
       
       if (it.type === 'rect') {
-        ctx.strokeRect(it.x * scaleX, it.y * scaleY, (it.w || 0) * scaleX, (it.h || 0) * scaleY);
+        ctx.strokeRect(it.x, it.y, it.w || 0, it.h || 0);
       } else if (it.type === 'arrow') {
-        const x1 = it.x * scaleX, y1 = it.y * scaleY;
-        const x2 = (it.x2 || it.x) * scaleX, y2 = (it.y2 || it.y) * scaleY;
-        const dx = x2 - x1, dy = y2 - y1;
+        const dx = (it.x2 || it.x) - it.x;
+        const dy = (it.y2 || it.y) - it.y;
         const len = Math.hypot(dx, dy) || 1;
-        const ux = dx / len, uy = dy / len;
-        const head = (10 + it.stroke * 2) * scaleX;
+        const ux = dx / len;
+        const uy = dy / len;
+        const head = 10 + it.stroke * 2;
         ctx.beginPath();
-        ctx.moveTo(x1, y1);
-        ctx.lineTo(x2, y2);
+        ctx.moveTo(it.x, it.y);
+        ctx.lineTo(it.x2 || it.x, it.y2 || it.y);
         ctx.stroke();
         ctx.beginPath();
-        ctx.moveTo(x2, y2);
-        ctx.lineTo(x2 - ux * head - uy * head * 0.5, y2 - uy * head + ux * head * 0.5);
-        ctx.lineTo(x2 - ux * head + uy * head * 0.5, y2 - uy * head - ux * head * 0.5);
+        ctx.moveTo(it.x2 || it.x, it.y2 || it.y);
+        ctx.lineTo((it.x2 || it.x) - ux * head - uy * head * 0.5, (it.y2 || it.y) - uy * head + ux * head * 0.5);
+        ctx.lineTo((it.x2 || it.x) - ux * head + uy * head * 0.5, (it.y2 || it.y) - uy * head - ux * head * 0.5);
         ctx.closePath();
         ctx.fill();
       } else if (it.type === 'text') {
-        const itemFontSize = (it.fontSize || fontSize) * scaleX;
+        const itemFontSize = it.fontSize || fontSize;
         ctx.font = `${itemFontSize}px Montserrat`;
-        ctx.fillText(it.text || '', it.x * scaleX, it.y * scaleY);
+        const padding = 4;
+        const textContent = it.text || '';
+        const maxWidth = (it.w || 200) - padding * 2;
+        const lineHeight = itemFontSize * 1.2;
+        const startY = it.y + padding + itemFontSize;
+        
+        // Word wrap text (same logic as drawOverlay)
+        const lines: string[] = [];
+        const paragraphs = textContent.split('\n');
+        
+        for (const para of paragraphs) {
+          if (!para.trim() && lines.length > 0) {
+            lines.push('');
+            continue;
+          }
+          
+          const words = para.split(' ');
+          let currentLine = '';
+          
+          for (let i = 0; i < words.length; i++) {
+            const word = words[i];
+            const wordMetrics = ctx.measureText(word);
+            if (wordMetrics.width > maxWidth) {
+              if (currentLine) {
+                lines.push(currentLine);
+                currentLine = '';
+              }
+              let charLine = '';
+              for (let j = 0; j < word.length; j++) {
+                const charTest = charLine + word[j];
+                const charMetrics = ctx.measureText(charTest);
+                if (charMetrics.width > maxWidth && charLine) {
+                  lines.push(charLine);
+                  charLine = word[j];
+                } else {
+                  charLine = charTest;
+                }
+              }
+              currentLine = charLine;
+            } else {
+              const testLine = currentLine + (currentLine ? ' ' : '') + word;
+              const metrics = ctx.measureText(testLine);
+              if (metrics.width > maxWidth && currentLine) {
+                lines.push(currentLine);
+                currentLine = word;
+              } else {
+                currentLine = testLine;
+              }
+            }
+          }
+          if (currentLine) {
+            lines.push(currentLine);
+          }
+        }
+        
+        if (lines.length === 0) {
+          lines.push('');
+        }
+        
+        // Clip to text box area
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(it.x, it.y, it.w || 200, it.h || 30);
+        ctx.clip();
+        
+        ctx.fillStyle = it.color;
+        let y = startY;
+        const maxY = it.y + (it.h || 30) - padding;
+        
+        for (let i = 0; i < lines.length; i++) {
+          if (y > maxY) break;
+          ctx.fillText(lines[i], it.x + padding, y);
+          y += lineHeight;
+        }
+        
+        ctx.restore();
       } else if (it.type === 'circle') {
         ctx.beginPath();
-        // Support both circle (r) and ellipse (rx, ry)
         if (it.rx !== undefined && it.ry !== undefined) {
-          ctx.ellipse(it.x * scaleX, it.y * scaleY, Math.max(1, it.rx * scaleX), Math.max(1, it.ry * scaleY), 0, 0, Math.PI * 2);
+          ctx.ellipse(it.x, it.y, Math.max(1, it.rx), Math.max(1, it.ry), 0, 0, Math.PI * 2);
         } else {
-          ctx.arc(it.x * scaleX, it.y * scaleY, Math.max(1, (it.r || 1) * scaleX), 0, Math.PI * 2);
+          ctx.arc(it.x, it.y, Math.max(1, it.r || 1), 0, Math.PI * 2);
         }
         ctx.stroke();
       } else if (it.type === 'path') {
         const pts = it.points || [];
         if (pts.length > 1) {
           ctx.beginPath();
-          ctx.moveTo(pts[0].x * scaleX, pts[0].y * scaleY);
+          ctx.moveTo(pts[0].x, pts[0].y);
           for (let i = 1; i < pts.length; i++) {
-            ctx.lineTo(pts[i].x * scaleX, pts[i].y * scaleY);
+            ctx.lineTo(pts[i].x, pts[i].y);
           }
           ctx.stroke();
         }
@@ -1383,8 +1941,9 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
                       ref={canvasRef}
                       className="block"
                       style={{ 
-                        cursor: mode === 'pan' ? (draggingRef.current?.active ? 'grabbing' : 'grab') : 'default',
-                        display: 'block'
+                        cursor: (mode === 'pan' && !textEditingRef.current) ? (draggingRef.current?.active ? 'grabbing' : 'grab') : 'default',
+                        display: 'block',
+                        pointerEvents: textEditingRef.current ? 'none' : 'auto'
                       }}
                       onMouseDown={handleCanvasMouseDown}
                       onMouseMove={handleCanvasMouseMove}
@@ -1396,8 +1955,16 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
                       className="absolute left-0 top-0"
                       tabIndex={0}
                       style={{ 
-                        cursor: mode === 'select' ? 'default' : mode === 'draw' ? `url("${pencilCursorIcon}") 6 28, auto` : mode !== 'pan' ? 'crosshair' : textEditingRef.current ? 'text' : 'default',
-                        pointerEvents: mode !== 'pan' ? 'auto' : 'none',
+                        cursor: (mode === 'select' || mode === 'delete')
+                          ? 'default'
+                          : mode === 'draw'
+                            ? `url("${pencilCursorIcon}") 6 28, auto`
+                            : mode !== 'pan'
+                              ? 'crosshair'
+                              : textEditingRef.current
+                                ? 'text'
+                                : 'default',
+                        pointerEvents: (mode !== 'pan' || textEditingRef.current) ? 'auto' : 'none',
                         outline: 'none'
                       }}
                       onMouseMove={(e) => {
@@ -1474,11 +2041,12 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
                   <button onClick={() => {
                     // Disable text editing when changing tools
                     if (textEditingRef.current) {
-                      setItems(prev => prev.map(it => ({ ...it, _editing: false })));
-                      textEditingRef.current = null;
-                      if (cursorBlinkRef.current) {
-                        clearInterval(cursorBlinkRef.current);
-                        cursorBlinkRef.current = null;
+                      exitTextEditing();
+                    } else {
+                      // Also clear current selection when entering select mode,
+                      // so nothing starts pre-selected
+                      if (mode !== 'select') {
+                        setSelectedIds([]);
                       }
                     }
                     setMode(mode === 'select' ? 'pan' : 'select');
@@ -1544,17 +2112,21 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
                   </button>
                   <button onClick={() => {
                     if (textEditingRef.current) {
-                      setItems(prev => prev.map(it => ({ ...it, _editing: false })));
-                      textEditingRef.current = null;
-                      if (cursorBlinkRef.current) {
-                        clearInterval(cursorBlinkRef.current);
-                        cursorBlinkRef.current = null;
-                      }
+                      exitTextEditing();
                     }
                     setMode(mode === 'draw' ? 'pan' : 'draw');
                   }} className={`px-3 py-2 rounded text-sm flex items-center justify-center gap-2 ${mode === 'draw' ? 'bg-brand-red text-white' : 'bg-gray-100'}`}>
                     <img src={pencilIcon} alt="Draw" className="w-5 h-5" />
                     Draw
+                  </button>
+                  <button onClick={() => {
+                    if (textEditingRef.current) {
+                      exitTextEditing();
+                    }
+                    setMode(mode === 'delete' ? 'pan' : 'delete');
+                  }} className={`px-3 py-2 rounded text-sm flex items-center justify-center gap-2 ${mode === 'delete' ? 'bg-brand-red text-white' : 'bg-gray-100'}`}>
+                    <img src={deleteIcon} alt="Delete" className="w-5 h-5" />
+                    Delete
                   </button>
                 </div>
               </div>

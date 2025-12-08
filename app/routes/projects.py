@@ -20,18 +20,47 @@ def create_project(payload: dict, db: Session = Depends(get_db)):
     # Minimal validation: require client_id
     if not payload.get("client_id"):
         raise HTTPException(status_code=400, detail="client_id is required")
-    # Always auto-generate project code: MK-<seq>/<slug>-<year>
-    # Sequence is a simple global sequence based on current count; ensure uniqueness
+    # Always auto-generate project code: MK-<seq>/<client_code>-<year>
+    # Format: MK-00001/00001-2025 (prefix seq 5 digits + client code 5 digits + year)
     from datetime import datetime as _dt
-    raw_name = (payload.get("name") or "project").strip()
-    slug = "-".join([s for s in "".join([c if c.isalnum() else " " for c in raw_name]).split() if s]).strip() or "project"
+    
+    # Get client to retrieve its code
+    client_id = payload.get("client_id")
+    if not client_id:
+        raise HTTPException(status_code=400, detail="client_id is required")
+    
+    try:
+        client_uuid = uuid.UUID(str(client_id))
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid client_id format")
+    
+    client = db.query(Client).filter(Client.id == client_uuid).first()
+    if not client:
+        raise HTTPException(status_code=404, detail="Client not found")
+    
+    if not client.code:
+        raise HTTPException(status_code=400, detail="Client must have a code. Please update the client first.")
+    
+    client_code = client.code  # Should be 5-digit number (00001, 00002, etc.)
+    
+    # Debug: Ensure we're using the code, not generating from name
+    # If client_code is not a 5-digit number, it means migration didn't work
+    if not (client_code.isdigit() and len(client_code) == 5):
+        # Log warning but still use the code (for backward compatibility during migration)
+        import logging
+        logging.warning(f"Client {client.id} has non-numeric code '{client_code}'. Migration may be incomplete.")
     year = _dt.utcnow().year
+    
+    # Get sequence number (5 digits: 00001, 00002, etc.)
     seq = db.query(func.count(Project.id)).scalar() or 0
     seq += 1
-    code = f"MK-{seq:06d}/{slug}-{year}"
+    code = f"MK-{seq:05d}/{client_code}-{year}"
+    
+    # Ensure uniqueness
     while db.query(Project).filter(Project.code == code).first():
         seq += 1
-        code = f"MK-{seq:06d}/{slug}-{year}"
+        code = f"MK-{seq:05d}/{client_code}-{year}"
+    
     payload["code"] = code
     
     # If site_id is provided, copy lat/lng from site to project for geofencing
@@ -132,6 +161,16 @@ def list_projects(client: Optional[str] = None, site: Optional[str] = None, stat
 
 @router.get("/{project_id}")
 def get_project(project_id: str, db: Session = Depends(get_db)):
+    # Handle special routes like "new" that shouldn't be treated as UUIDs
+    if project_id == "new":
+        raise HTTPException(status_code=404, detail="Not found")
+    
+    # Validate that project_id is a valid UUID format before querying
+    try:
+        uuid.UUID(str(project_id))
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Invalid project ID format")
+    
     p = db.query(Project).filter(Project.id == project_id).first()
     if not p:
         raise HTTPException(status_code=404, detail="Not found")
