@@ -32,6 +32,8 @@ services:
         generateValue: true
       - key: TZ_DEFAULT
         value: "America/Vancouver"
+      - key: GOOGLE_PLACES_API_KEY
+        sync: false
     disk:
       name: data
       mountPath: /opt/render/project/src/var

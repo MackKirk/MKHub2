@@ -3,8 +3,9 @@ import uuid
 from reportlab.lib.pagesizes import A4
 from reportlab.platypus import (
     BaseDocTemplate, Paragraph, Spacer, Frame, PageTemplate, PageBreak, Flowable, KeepTogether,
-    Table, TableStyle, Image
+    Table, TableStyle, Image, CondPageBreak, NextPageTemplate
 )
+from reportlab.lib.utils import ImageReader
 from PIL import Image as PILImage
 try:
     from pillow_heif import register_heif_opener  # HEIC/HEIF support
@@ -24,6 +25,17 @@ pdfmetrics.registerFont(TTFont("Montserrat-Bold", os.path.join(fonts_path, "Mont
 
 
 def draw_template_page3(c, doc, data):
+    # Draw static background template (header, footer, globe, etc.)
+    try:
+        page_width, page_height = A4
+        bg_path = os.path.join(BASE_DIR, "assets", "templates", "page_template.png")
+        if os.path.exists(bg_path):
+            bg = ImageReader(bg_path)
+            c.drawImage(bg, 0, 0, width=page_width, height=page_height)
+    except Exception:
+        # Fail gracefully – if background can't be drawn, continue with text only
+        pass
+
     c.setFillColor(colors.white)
     # Auto-fit cover title into the available width
     title = data.get("cover_title", "") or ""
@@ -48,7 +60,8 @@ class PricingTable(Flowable):
         super().__init__()
         self.data = data
         additional_costs = data.get("additional_costs") or []
-        base_height = 70  # Reduced since we removed "Bid Price" separate line
+        show_total = data.get('show_total_in_pdf', True)
+        base_height = 70 if show_total else 50  # Reduced height if total is hidden
         additional_height = len(additional_costs) * 18
         self.height = base_height + additional_height
         self.top_padding = 10
@@ -79,34 +92,37 @@ class PricingTable(Flowable):
                 c.drawRightString(x_right, y, value)
                 y -= 16
 
-        y -= 20
-        c.setStrokeColor(colors.HexColor("#d62028"))
-        c.setLineWidth(2)
-        c.line(x_right - 40, y + 20, x_right, y + 20)
+        # Check if total should be shown in PDF
+        show_total = self.data.get('show_total_in_pdf', True)
+        if show_total:
+            y -= 20
+            c.setStrokeColor(colors.HexColor("#d62028"))
+            c.setLineWidth(2)
+            c.line(x_right - 40, y + 20, x_right, y + 20)
 
-        # Calculate total: sum of all additional costs
-        total_calc = 0.0
-        for cost in additional_costs:
+            # Calculate total: sum of all additional costs
+            total_calc = 0.0
+            for cost in additional_costs:
+                try:
+                    total_calc += float(cost.get('value', 0) or 0)
+                except Exception:
+                    pass
+            
+            # Use calculated total if provided total is invalid
+            total_val = self.data.get('total')
             try:
-                total_calc += float(cost.get('value', 0) or 0)
+                total_val = float(total_val)
+                if not (total_val == total_val):  # Check for NaN
+                    total_val = total_calc
             except Exception:
-                pass
-        
-        # Use calculated total if provided total is invalid
-        total_val = self.data.get('total')
-        try:
-            total_val = float(total_val)
-            if not (total_val == total_val):  # Check for NaN
                 total_val = total_calc
-        except Exception:
-            total_val = total_calc
 
-        c.setFont("Montserrat-Bold", 11.5)
-        c.setFillColor(colors.black)
-        c.drawString(x_left, y, "TOTAL:")
+            c.setFont("Montserrat-Bold", 11.5)
+            c.setFillColor(colors.black)
+            c.drawString(x_left, y, "TOTAL:")
 
-        c.setFillColor(colors.grey)
-        c.drawRightString(x_right, y, f"${total_val:,.2f}")
+            c.setFillColor(colors.grey)
+            c.drawRightString(x_right, y, f"${total_val:,.2f}")
 
 
 class OptionalServicesTable(Flowable):
@@ -164,13 +180,16 @@ class YellowLine(Flowable):
 def build_dynamic_pages(data, output_path):
     doc = BaseDocTemplate(output_path, pagesize=A4,
                           rightMargin=40, leftMargin=40,
-                          topMargin=100, bottomMargin=180)
+                          topMargin=100, bottomMargin=180,
+                          allowSplitting=1)  # Allow content to split across pages to avoid layout issues
 
     styles = getSampleStyleSheet()
     title_style = ParagraphStyle("TitleRed", parent=styles["Normal"],
         fontName="Montserrat-Bold", fontSize=11.5, textColor=colors.HexColor("#d62028"), spaceAfter=12)
     user_style = ParagraphStyle("UserGrey", parent=styles["Normal"],
         fontName="Montserrat-Bold", fontSize=9.5, leading=14, textColor=colors.grey)
+    user_style_centered = ParagraphStyle("UserGreyCentered", parent=styles["Normal"],
+        fontName="Montserrat-Bold", fontSize=9.5, leading=14, textColor=colors.grey, alignment=1)  # 1 = TA_CENTER
 
     class YellowLine2(Flowable):
         def __init__(self, width=20, height=2):
@@ -183,6 +202,8 @@ def build_dynamic_pages(data, output_path):
             c.setStrokeColor(colors.HexColor("#FFB200"))
             c.setLineWidth(2)
             c.line(0, 0, self.width, 0)
+
+    frame_width = A4[0] - 70  # Must match Frame width defined later
 
     story = []
     temp_images: list[str] = []
@@ -204,13 +225,21 @@ def build_dynamic_pages(data, output_path):
                         # Empty line - mark it to add spacing later
                         paragraphs.append(("empty", None))
 
-                block = [Paragraph(title, title_style)]
                 if paragraphs:
+                    # Keep title with at least first paragraph to avoid orphaned titles
                     first_para = paragraphs[0]
                     if first_para[0] == "text":
-                        block.append(Paragraph(first_para[1], user_style))
-                    story.append(KeepTogether(block))
+                        title_para = Paragraph(title, title_style)
+                        first_para_flow = Paragraph(first_para[1], user_style)
+                        # Compute exact height needed for title + first paragraph
+                        _, th = title_para.wrap(frame_width, 0)
+                        _, ph = first_para_flow.wrap(frame_width, 0)
+                        story.append(CondPageBreak(th + ph + 12))
+                        # Title + first paragraph must stay together
+                        title_and_first = [title_para, first_para_flow]
+                        story.append(KeepTogether(title_and_first))
 
+                    # Add remaining paragraphs
                     for para_type, para_text in paragraphs[1:]:
                         if para_type == "empty":
                             # Add a spacer for empty lines to preserve spacing
@@ -218,6 +247,7 @@ def build_dynamic_pages(data, output_path):
                         else:
                             story.append(Paragraph(para_text, user_style))
                 else:
+                    # No content, just add title (but this shouldn't happen in practice)
                     story.append(Paragraph(title, title_style))
 
             story.append(Spacer(1, 12))
@@ -225,6 +255,8 @@ def build_dynamic_pages(data, output_path):
         elif sec.get("type") == "images":
             imgs = []
             row = []
+            # Store flow-to-caption mapping for later processing
+            flow_captions = {}  # Maps flow object id to caption text
 
             for i, img in enumerate(sec.get("images", [])):
                 flow = []
@@ -242,11 +274,13 @@ def build_dynamic_pages(data, output_path):
                     except Exception:
                         pass
                 caption = img.get("caption", "")
+                caption_text = caption[:90] if caption else None
 
                 if caption:
-                    caption = caption[:90]
                     flow.append(Spacer(1, 4))
-                    flow.append(Paragraph(caption, user_style))
+                    flow.append(Paragraph(caption_text, user_style))
+                    # Store caption for this flow using id() as key
+                    flow_captions[id(flow)] = caption_text
                 if flow:
                     row.append(flow)
 
@@ -256,32 +290,98 @@ def build_dynamic_pages(data, output_path):
 
             if row:
                 imgs.append(row)
+            
+            # Second pass: fix captions for rows that have only 1 image
+            for r in imgs:
+                if len(r) == 1:
+                    # This row has only 1 image, replace caption paragraph with centered version
+                    for flow in r:
+                        if flow and id(flow) in flow_captions:
+                            # Find and replace Paragraph with centered version
+                            caption_text = flow_captions[id(flow)]
+                            for idx, item in enumerate(flow):
+                                if isinstance(item, Paragraph):
+                                    # Replace with centered version
+                                    flow[idx] = Paragraph(caption_text, user_style_centered)
+                                    break  # Only replace first paragraph (the caption)
 
             if imgs:
-                # Ensure rows have two columns for table consistency
-                for r in imgs:
-                    while len(r) < 2:
-                        r.append([Spacer(1, 1)])
-                block = [Paragraph(sec.get("title", ""), title_style)]
-                first_table = Table([imgs[0]], colWidths=[275, 275])
-                first_table.setStyle(TableStyle([
-                    ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                    ("ALIGN", (0, 0), (-1, -1), "CENTER"),
-                    ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
-                ]))
-                block.append(first_table)
-                story.append(KeepTogether(block))
+                first_row = imgs[0]
+
+                # Check if first row has only 1 image
+                if len(first_row) == 1:
+                    # Single image: use 3-column structure (empty, image, empty) to center without SPAN
+                    # This avoids layout issues that SPAN can cause
+                    empty_cell = [Spacer(1, 1)]
+                    centered_row = [empty_cell, first_row[0], empty_cell]
+                    first_table = Table([centered_row], colWidths=[137.5, 275, 137.5])  # Total: 550 (same as 275+275)
+                    first_style = [
+                        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                        ("ALIGN", (1, 0), (1, 0), "CENTER"),  # Center the image column
+                        ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+                        ("LEFTPADDING", (0, 0), (0, 0), 0),
+                        ("RIGHTPADDING", (0, 0), (0, 0), 0),
+                        ("LEFTPADDING", (2, 0), (2, 0), 0),
+                        ("RIGHTPADDING", (2, 0), (2, 0), 0),
+                    ]
+                else:
+                    # Two images: use standard two-column structure
+                    first_table = Table([first_row], colWidths=[275, 275])
+                    first_style = [
+                        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                        ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+                    ]
+                first_table.setStyle(TableStyle(first_style))
+
+                # Compute exact height needed for title + first image row
+                title_para = Paragraph(sec.get("title", ""), title_style)
+                _, th = title_para.wrap(frame_width, 0)
+                _, ih = first_table.wrap(frame_width, 0)
+                story.append(CondPageBreak(th + ih + 12))
+
+                # Keep title and first image together to avoid splitting across pages
+                # This prevents title from staying on one page while image goes to next
+                title_and_first = [title_para, first_table]
+                story.append(KeepTogether(title_and_first))
 
                 if len(imgs) > 1:
                     for row_data in imgs[1:]:
-                        table = Table([row_data], colWidths=[275, 275])
-                        table.setStyle(TableStyle([
-                            ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                            ("ALIGN", (0, 0), (-1, -1), "CENTER"),
-                            ("BOTTOMPADDING", (0, 0), (-1, -1), 12),
-                        ]))
+                        # Build table for this row (1 or 2 images)
+                        if len(row_data) == 1:
+                            empty_cell = [Spacer(1, 1)]
+                            centered_row = [empty_cell, row_data[0], empty_cell]
+                            table = Table([centered_row], colWidths=[137.5, 275, 137.5])  # Total: 550
+                            row_style = [
+                                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                                ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                                ("ALIGN", (1, 0), (1, 0), "CENTER"),  # Center the image column
+                                ("BOTTOMPADDING", (0, 0), (-1, -1), 12),
+                                ("LEFTPADDING", (0, 0), (0, 0), 0),
+                                ("RIGHTPADDING", (0, 0), (0, 0), 0),
+                                ("LEFTPADDING", (2, 0), (2, 0), 0),
+                                ("RIGHTPADDING", (2, 0), (2, 0), 0),
+                            ]
+                        else:
+                            table = Table([row_data], colWidths=[275, 275])
+                            row_style = [
+                                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                                ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                                ("BOTTOMPADDING", (0, 0), (-1, -1), 12),
+                            ]
+
+                        # Compute exact height for this row and ensure there is enough space
+                        _, rh = table.wrap(frame_width, 0)
+                        story.append(CondPageBreak(rh + 8))
+
+                        table.setStyle(TableStyle(row_style))
                         story.append(table)
-            story.append(Spacer(1, 15))
+                # Add extra spacer after image section to ensure proper page layout
+                story.append(Spacer(1, 15))
+            else:
+                # No images, just add normal spacer
+                story.append(Spacer(1, 15))
 
     # --- Pricing (conditional) - independent from Optional Services
     try:
@@ -320,28 +420,60 @@ def build_dynamic_pages(data, output_path):
             story.append(Spacer(1, 20))
             story.append(OptionalServicesTable({ **data, "optional_services": valid_services }))
 
+    # --- Final Terms Page ---
+    story.append(NextPageTemplate('page3_terms'))
     story.append(PageBreak())
-    story.append(Paragraph("General Project Terms & Conditions", title_style))
-    story.append(Paragraph((data.get("terms_text", "") or "").replace("\n", "<br/>"), user_style))
+    terms_title_para = Paragraph("General Project Terms & Conditions", title_style)
+    terms_body_para = Paragraph((data.get("terms_text", "") or "").replace("\n", "<br/>"), user_style)
+    # Ensure there is enough space for title + first chunk of terms on this page
+    _, tth = terms_title_para.wrap(frame_width, 0)
+    _, tbh = terms_body_para.wrap(frame_width, 0)
+    story.append(CondPageBreak(tth + min(tbh, 80)))  # require some body text below title
+    story.append(KeepTogether([terms_title_para, terms_body_para]))
 
     top_margin = 115
-    bottom_margin = 95  # Increased further to ensure footer (at ~60-80pt from bottom) is not overlapped
+    # Bottom margin large enough to stay clear of the footer/globe, but still allow 3 rows of images.
+    bottom_margin = 100
 
-    frame = Frame(
+    # Main content frame (sections, images, pricing, etc.)
+    frame_main = Frame(
         35,
         bottom_margin,
         A4[0] - 70,
         A4[1] - (top_margin + bottom_margin),
-        id='normal'
+        id='page3_main',
+        leftPadding=0,
+        rightPadding=0,
+        topPadding=0,
+        bottomPadding=0
     )
 
-    template_page3 = PageTemplate(
-        id='page3',
-        frames=[frame],
+    # Slightly smaller frame for the final terms page to stay further from the footer/globe
+    frame_terms = Frame(
+        35,
+        bottom_margin + 40,  # Push content further up on the terms page
+        A4[0] - 70,
+        A4[1] - (top_margin + bottom_margin + 40),
+        id='page3_terms',
+        leftPadding=0,
+        rightPadding=0,
+        topPadding=0,
+        bottomPadding=0
+    )
+
+    template_main = PageTemplate(
+        id='page3_main',
+        frames=[frame_main],
         onPage=lambda c, d: draw_template_page3(c, d, data)
     )
 
-    doc.addPageTemplates([template_page3])
+    template_terms = PageTemplate(
+        id='page3_terms',
+        frames=[frame_terms],
+        onPage=lambda c, d: draw_template_page3(c, d, data)
+    )
+
+    doc.addPageTemplates([template_main, template_terms])
     doc.build(story)
     # Cleanup temp images
     for p in temp_images:

@@ -14,8 +14,9 @@ class UsernameSuggestResponse(BaseModel):
 
 class InviteRequest(BaseModel):
     email_personal: EmailStr
-    division_id: Optional[str] = None
-    division_name: Optional[str] = None
+    division_id: Optional[str] = None  # Legacy: kept for backward compatibility
+    division_name: Optional[str] = None  # Legacy: kept for backward compatibility
+    division_ids: Optional[List[str]] = None  # Array of division IDs (UUIDs as strings)
     document_ids: Optional[List[str]] = None
     needs_email: bool = False
     needs_business_card: bool = False
@@ -97,6 +98,9 @@ class EmployeeProfileInput(BaseModel):
     # legal
     profile_photo_file_id: Optional[str] = None
     sin_number: Optional[str] = None
+    # Backwards-compatible: API still stores this in the legacy work_permit_status column,
+    # but the new UI treats it as "work_eligibility_status".
+    work_eligibility_status: Optional[str] = None
     work_permit_status: Optional[str] = None
     visa_status: Optional[str] = None
     emergency_contact_name: Optional[str] = None

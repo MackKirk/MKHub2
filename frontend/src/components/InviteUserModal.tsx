@@ -17,7 +17,8 @@ export default function InviteUserModal({ isOpen, onClose }: InviteModalProps) {
   const employmentTypes = (settings?.employment_types || []) as any[];
   
   const [email, setEmail] = useState('');
-  const [divisionId, setDivisionId] = useState('');
+  const [selectedDivisionIds, setSelectedDivisionIds] = useState<string[]>([]);
+  const [divisionDropdownOpen, setDivisionDropdownOpen] = useState(false);
   const [documentIds, setDocumentIds] = useState<string[]>([]);
   const [needsEmail, setNeedsEmail] = useState(false);
   const [needsBusinessCard, setNeedsBusinessCard] = useState(false);
@@ -40,14 +41,19 @@ export default function InviteUserModal({ isOpen, onClose }: InviteModalProps) {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    
+    // Validate that at least one department is selected
+    if (selectedDivisionIds.length === 0) {
+      setError('Please select at least one department');
+      return;
+    }
+    
     setLoading(true);
 
     try {
-      const selectedDivision = divisions.find(d => d.id === divisionId);
       await api('POST', '/auth/invite', {
         email_personal: email,
-        division_id: divisionId || null,
-        division_name: selectedDivision?.label || null,
+        division_ids: selectedDivisionIds.length > 0 ? selectedDivisionIds : null,
         document_ids: documentIds.length > 0 ? documentIds : null,
         needs_email: needsEmail,
         needs_business_card: needsBusinessCard,
@@ -68,7 +74,7 @@ export default function InviteUserModal({ isOpen, onClose }: InviteModalProps) {
       
       // Reset form
       setEmail('');
-      setDivisionId('');
+      setSelectedDivisionIds([]);
       setDocumentIds([]);
       setNeedsEmail(false);
       setNeedsBusinessCard(false);
@@ -125,23 +131,60 @@ export default function InviteUserModal({ isOpen, onClose }: InviteModalProps) {
             />
           </div>
 
-          <div>
+          <div className="relative">
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Division *
+              Department *
             </label>
-            <select
-              required
-              value={divisionId}
-              onChange={(e) => setDivisionId(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#d11616]"
-            >
-              <option value="">Select a division...</option>
-              {divisions.map((div) => (
-                <option key={div.id} value={div.id}>
-                  {div.label}
-                </option>
-              ))}
-            </select>
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setDivisionDropdownOpen(!divisionDropdownOpen)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md text-left bg-white flex items-center justify-between focus:outline-none focus:ring-2 focus:ring-[#d11616]"
+              >
+                <span className={selectedDivisionIds.length === 0 ? 'text-gray-400' : ''}>
+                  {selectedDivisionIds.length === 0 
+                    ? 'Select departments...' 
+                    : selectedDivisionIds.map((id: string) => {
+                        const division = divisions.find((d: any) => String(d.id) === id);
+                        return division?.label || '';
+                      }).filter(Boolean).join(', ') || 'No departments selected'}
+                </span>
+                <span className="text-gray-400">▼</span>
+              </button>
+              {divisionDropdownOpen && (
+                <>
+                  <div 
+                    className="fixed inset-0 z-10" 
+                    onClick={() => setDivisionDropdownOpen(false)}
+                  />
+                  <div className="absolute z-20 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-y-auto">
+                    {divisions.map((div: any) => (
+                      <label
+                        key={div.id}
+                        className="flex items-center gap-2 px-3 py-2 hover:bg-gray-50 cursor-pointer"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={selectedDivisionIds.includes(String(div.id))}
+                          onChange={() => {
+                            const newSelection = selectedDivisionIds.includes(String(div.id))
+                              ? selectedDivisionIds.filter(id => id !== String(div.id))
+                              : [...selectedDivisionIds, String(div.id)];
+                            setSelectedDivisionIds(newSelection);
+                          }}
+                          className="rounded border-gray-300 text-[#d11616] focus:ring-[#d11616]"
+                        />
+                        <span className="text-sm">{div.label}</span>
+                      </label>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+            {selectedDivisionIds.length === 0 && (
+              <p className="text-xs text-red-600 mt-1">At least one department is required</p>
+            )}
           </div>
 
           <div>

@@ -8,6 +8,7 @@ import GeoSelect from '@/components/GeoSelect';
 import { useConfirm } from '@/components/ConfirmProvider';
 import NationalitySelect from '@/components/NationalitySelect';
 import AddressAutocomplete from '@/components/AddressAutocomplete';
+import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard';
 
 // List of implemented permissions (permissions that are actually checked in the codebase)
 const IMPLEMENTED_PERMISSIONS = new Set([
@@ -621,7 +622,7 @@ function UserLabel({ id, fallback }:{ id:string, fallback:string }){
 export default function UserInfo(){
   const { userId } = useParams();
   const [sp] = useSearchParams();
-  const tabParam = sp.get('tab') as ('personal'|'job'|'emergency'|'docs'|'timesheet'|'permissions') | null;
+  const tabParam = sp.get('tab') as ('personal'|'job'|'docs'|'timesheet'|'permissions') | null;
   const [tab, setTab] = useState<typeof tabParam | 'personal'>(tabParam || 'personal');
   const confirm = useConfirm();
   const queryClient = useQueryClient();
@@ -635,7 +636,7 @@ export default function UserInfo(){
   );
   const canSelfEdit = me && userId && String(me.id) === String(userId);
   
-  // Check edit permissions for general tab (Personal, Job, Emergency, Docs)
+  // Check edit permissions for general tab (Personal, Job, Docs)
   const canEditGeneral = useMemo(() => {
     if (!me) return false;
     const isAdmin = (me?.roles || []).some((r: string) => String(r || '').toLowerCase() === 'admin');
@@ -698,9 +699,39 @@ export default function UserInfo(){
   }, [me]);
   const p = data?.profile || {};
   const u = data?.user || {};
+  const { data: visasData } = useQuery({ 
+    queryKey:['employee-visas', userId], 
+    queryFn: ()=> api<any[]>('GET', `/auth/users/${encodeURIComponent(String(userId))}/visas`).catch(() => []),
+    enabled: !!userId
+  });
+  const hasVisas = visasData && visasData.length > 0;
+  
   const [pending, setPending] = useState<any>({});
   const [dirty, setDirty] = useState<boolean>(false);
   const [permissionsDirty, setPermissionsDirty] = useState<boolean>(false);
+  const [divisionsDirty, setDivisionsDirty] = useState<boolean>(false);
+  const [selectedDivisions, setSelectedDivisions] = useState<string[]>([]);
+  const [isEditingPersonal, setIsEditingPersonal] = useState(false);
+  
+  // Auto-fill work_eligibility_status if user has visas but no status
+  useEffect(() => {
+    const hasNoStatus = !p.work_eligibility_status || (typeof p.work_eligibility_status === 'string' && p.work_eligibility_status.trim() === '');
+    if (hasVisas && hasNoStatus && userId && !isEditingPersonal) {
+      const autoFillStatus = 'Temporary Resident (with work authorization)';
+      // Only auto-save if user has edit permissions
+      if (canEdit || canEditGeneral) {
+        api('PUT', `/auth/users/${encodeURIComponent(String(userId))}/profile`, { work_eligibility_status: autoFillStatus })
+          .then(() => {
+            queryClient.invalidateQueries({ queryKey: ['userProfile', userId] });
+            queryClient.refetchQueries({ queryKey: ['userProfile', userId] });
+          })
+          .catch((e) => {
+            console.error('Failed to auto-fill work_eligibility_status:', e);
+          });
+      }
+    }
+  }, [hasVisas, p.work_eligibility_status, userId, canEdit, canEditGeneral, isEditingPersonal, queryClient]);
+  const [isEditingJob, setIsEditingJob] = useState(false);
   const permissionsRef = useRef<UserPermissionsRef>(null);
   const { data:usersOptions } = useQuery({ queryKey:['users-options'], queryFn: ()=> api<any[]>('GET','/auth/users/options') });
   const { data: supervisorProfile } = useQuery({
@@ -751,27 +782,18 @@ export default function UserInfo(){
     try{ const s=new Date(from); const now=new Date(); let months=(now.getFullYear()-s.getFullYear())*12+(now.getMonth()-s.getMonth()); if(now.getDate()<s.getDate()) months--; const y=Math.floor(months/12); const m=months%12; return y>0? `${y}y ${m}m` : `${m}m`; }catch{ return ''; }
   }
 
-  useEffect(()=>{ setPending({}); setDirty(false); setPermissionsDirty(false); }, [userId, data?.profile]);
-
-  // Prevent navigation away from page if there are unsaved changes
-  useEffect(() => {
-    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-      if (dirty || permissionsDirty) {
-        e.preventDefault();
-        e.returnValue = ''; // Chrome requires returnValue to be set
-        return '';
-      }
-    };
-
-    window.addEventListener('beforeunload', handleBeforeUnload);
-    return () => {
-      window.removeEventListener('beforeunload', handleBeforeUnload);
-    };
-  }, [dirty, permissionsDirty]);
+  useEffect(()=>{ 
+    setPending({}); 
+    setDirty(false); 
+    setPermissionsDirty(false);
+    setDivisionsDirty(false);
+    const divisions = (u?.divisions || []).map((d: any) => String(d.id));
+    setSelectedDivisions(divisions);
+  }, [userId, data?.profile, u?.divisions]);
 
   const handleTabChange = async (newTab: typeof tabParam | 'personal') => {
     // Check if user has permission to view this tab
-    const isGeneralTab = ['personal', 'job', 'emergency', 'docs'].includes(newTab);
+    const isGeneralTab = ['personal', 'job', 'docs'].includes(newTab);
     const isTimesheetTab = newTab === 'timesheet';
     const isPermissionsTab = newTab === 'permissions';
     
@@ -789,7 +811,7 @@ export default function UserInfo(){
     }
     
     // Check if there are unsaved changes before switching tabs
-    const hasUnsaved = dirty || permissionsDirty;
+    const hasUnsaved = dirty || permissionsDirty || divisionsDirty;
     
     if (hasUnsaved && tab !== newTab) {
       const result = await confirm({
@@ -810,6 +832,8 @@ export default function UserInfo(){
         setPending({});
         setDirty(false);
         setPermissionsDirty(false);
+        setDivisionsDirty(false);
+        setSelectedDivisions((u?.divisions || []).map((d: any) => String(d.id)));
         setTab(newTab);
       }
       // If cancelled, do nothing (stay on current tab)
@@ -820,8 +844,20 @@ export default function UserInfo(){
   };
 
   const collectChanges = (kv: Record<string, any>) => {
-    setPending((s:any)=> ({ ...s, ...kv }));
-    setDirty(true);
+    // Check if divisions changed
+    if (kv._divisions_changed) {
+      setSelectedDivisions(kv._selected_divisions || []);
+      setDivisionsDirty(true);
+      // Remove internal flags from pending
+      const { _divisions_changed, _selected_divisions, ...rest } = kv;
+      if (Object.keys(rest).length > 0) {
+        setPending((s:any)=> ({ ...s, ...rest }));
+        setDirty(true);
+      }
+    } else {
+      setPending((s:any)=> ({ ...s, ...kv }));
+      setDirty(true);
+    }
   };
 
   const saveAll = async()=>{
@@ -831,6 +867,7 @@ export default function UserInfo(){
       
       // Save profile changes if any
       if(dirty) {
+        console.log('Saving pending changes with work_eligibility_status:', pending.work_eligibility_status);
         if (canEdit || canEditGeneral) {
           await api('PUT', `/auth/users/${encodeURIComponent(String(userId||''))}/profile`, pending);
         } else if (canSelfEdit) {
@@ -844,6 +881,8 @@ export default function UserInfo(){
         // Invalidate and refetch user profile to get updated data
         await queryClient.invalidateQueries({ queryKey: ['userProfile', userId] });
         await queryClient.refetchQueries({ queryKey: ['userProfile', userId] });
+        // Wait a bit for the refetch to complete
+        await new Promise(resolve => setTimeout(resolve, 300));
         
         // If manager_user_id changed, invalidate both old and new supervisor queries
         const newManagerUserId = pending.manager_user_id !== undefined ? pending.manager_user_id : oldManagerUserId;
@@ -865,13 +904,24 @@ export default function UserInfo(){
         await queryClient.invalidateQueries({ queryKey: ['users-options'] });
       }
       
+      // Save divisions if any changes
+      if (divisionsDirty && (canEdit || canEditGeneral)) {
+        await api('PATCH', `/users/${encodeURIComponent(String(userId||''))}`, {
+          divisions: selectedDivisions
+        });
+        setDivisionsDirty(false);
+        // Invalidate and refetch user profile to get updated divisions
+        await queryClient.invalidateQueries({ queryKey: ['userProfile', userId] });
+        await queryClient.refetchQueries({ queryKey: ['userProfile', userId] });
+      }
+      
       // Save permissions if any
       if (permissionsDirty && permissionsRef.current) {
         await permissionsRef.current.save();
         setPermissionsDirty(false);
       }
       
-      if (dirty || permissionsDirty) {
+      if (dirty || permissionsDirty || divisionsDirty) {
         toast.success('Saved');
       }
     }catch(e: any){ 
@@ -880,6 +930,9 @@ export default function UserInfo(){
     }
   };
 
+  // Use unsaved changes guard
+  const hasUnsaved = dirty || permissionsDirty || divisionsDirty;
+  useUnsavedChangesGuard(hasUnsaved, saveAll);
 
   return (
     <div>
@@ -900,11 +953,11 @@ export default function UserInfo(){
               <img className="w-[120px] h-[120px] object-cover rounded-xl border-2 border-brand-red" src={p.profile_photo_file_id? `/files/${p.profile_photo_file_id}/thumbnail?w=240`:'/ui/assets/login/logo-light.svg'} />
               <div className="flex-1">
                 <div className="text-3xl font-extrabold">{p.first_name||u?.username} {p.last_name||''}</div>
-                <div className="text-sm opacity-90 mt-1">{p.job_title||u?.email||''}{p.division? ` — ${p.division}`:''}</div>
+                <div className="text-sm opacity-90 mt-1">{p.job_title||u?.email||''}{u?.divisions && u.divisions.length > 0 ? ` — ${u.divisions.map((d: any) => d.label).join(', ')}` : (p.division ? ` — ${p.division}` : '')}</div>
                 <div className="grid md:grid-cols-3 gap-2 text-xs mt-3">
                   <div><span className="opacity-80">Username:</span> <span className="font-semibold">{u?.username||'—'}</span></div>
                   <div><span className="opacity-80">Phone:</span> <span className="font-semibold">{p.phone||'—'}</span></div>
-                  <div><span className="opacity-80">Personal email:</span> <span className="font-semibold">{u?.email_personal||'—'}</span></div>
+                  <div><span className="opacity-80">Personal email:</span> <span className="font-semibold">{u?.email||u?.email_personal||'—'}</span></div>
                   <div><span className="opacity-80">Work email:</span> <span className="font-semibold">{p.work_email||'—'}</span></div>
                   <div><span className="opacity-80">Status:</span> <span className="font-semibold">{u?.is_active? 'Active':'Terminated'}</span></div>
                   <div><span className="opacity-80">Hire date:</span> <span className="font-semibold">{p.hire_date? String(p.hire_date).slice(0,10):'—'}{p.hire_date? ` (${tenure(p.hire_date)})`:''}</span></div>
@@ -920,7 +973,7 @@ export default function UserInfo(){
             </div>
             <div className="mt-4 flex items-center gap-2">
               {([
-                ...(canViewGeneral || canSelfEdit ? ['personal','job','emergency','docs'] : []),
+                ...(canViewGeneral || canSelfEdit ? ['personal','job','docs'] : []),
                 ...(canViewTimesheet || canSelfEdit ? ['timesheet'] : []),
                 ...(canViewPermissions ? ['permissions'] : [])
               ] as const).map((k)=> (
@@ -947,62 +1000,101 @@ export default function UserInfo(){
               {tab==='personal' && canViewGeneral && (
                 <div className="space-y-6 pb-24">
                   <div>
-                    <div className="flex items-center gap-2"><h4 className="font-semibold">Basic information</h4></div>
+                    <div className="flex items-center justify-between gap-2">
+                      <h4 className="font-semibold">Basic information</h4>
+                      {!isEditingPersonal && (canEditGeneral || canSelfEdit) && (
+                        <button
+                          onClick={() => setIsEditingPersonal(true)}
+                          className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-brand-red to-[#ee2b2b] text-white text-sm font-medium hover:opacity-90 flex items-center gap-1.5"
+                        >
+                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                          </svg>
+                          Edit
+                        </button>
+                      )}
+                    </div>
                     <div className="text-xs text-gray-500 mt-0.5 mb-2">Core personal details.</div>
-                    <EditableGrid p={p} editable={canEditGeneral} selfEdit={!!canSelfEdit} userId={String(userId)} collectChanges={collectChanges} inlineSave={false} fields={[['First name','first_name'],['Last name','last_name'],['Middle name','middle_name'],['Prefered name','preferred_name'],['Gender','gender'],['Marital status','marital_status'],['Date of birth','date_of_birth'],['Nationality','nationality']]} />
+                    <EditableGrid p={p} editable={isEditingPersonal && (canEditGeneral || !!canSelfEdit)} selfEdit={!!canSelfEdit} userId={String(userId)} collectChanges={collectChanges} inlineSave={false} fields={[['First name','first_name'],['Last name','last_name'],['Middle name','middle_name'],['Prefered name','preferred_name'],['Gender','gender'],['Marital status','marital_status'],['Date of birth','date_of_birth'],['Nationality','nationality']]} />
                   </div>
                   <div>
                     <div className="flex items-center gap-2"><h4 className="font-semibold">Address</h4></div>
                     <div className="text-xs text-gray-500 mt-0.5 mb-2">Home address for contact and records.</div>
-                    <AddressSection p={p} editable={canEditGeneral} selfEdit={!!canSelfEdit} userId={String(userId)} collectChanges={collectChanges} inlineSave={false} />
+                    <AddressSection p={p} editable={isEditingPersonal && (canEditGeneral || !!canSelfEdit)} selfEdit={!!canSelfEdit} userId={String(userId)} collectChanges={collectChanges} inlineSave={false} />
                   </div>
                   <div>
                     <div className="flex items-center gap-2"><h4 className="font-semibold">Contact</h4></div>
                     <div className="text-xs text-gray-500 mt-0.5 mb-2">How we can reach you.</div>
-                    <EditableGrid p={p} editable={canEditGeneral} selfEdit={!!canSelfEdit} userId={String(userId)} collectChanges={collectChanges} inlineSave={false} fields={[['Phone','phone'],['Mobile phone','mobile_phone']]} />
+                    <EditableGrid p={p} editable={isEditingPersonal && (canEditGeneral || !!canSelfEdit)} selfEdit={!!canSelfEdit} userId={String(userId)} collectChanges={collectChanges} inlineSave={false} fields={[['Phone 1','phone'],['Phone 2','mobile_phone']]} />
                   </div>
                   <div>
                     <div className="flex items-center gap-2"><h4 className="font-semibold">Education</h4></div>
                     <div className="text-xs text-gray-500 mt-0.5 mb-2">Academic history.</div>
-                    <EducationSection userId={String(userId)} canEdit={canEditGeneral} />
+                    <EducationSection userId={String(userId)} canEdit={isEditingPersonal && (canEditGeneral || !!canSelfEdit)} />
                   </div>
                   <div>
-                    <div className="flex items-center gap-2"><h4 className="font-semibold">Visa Information</h4></div>
-                    <div className="text-xs text-gray-500 mt-0.5 mb-2">Work permits and visa details.</div>
-                    <VisaInformationSection userId={String(userId)} canEdit={canEditGeneral} />
+                    <div className="flex items-center gap-2"><h4 className="font-semibold">Legal & Documents</h4></div>
+                    <div className="text-xs text-gray-500 mt-0.5 mb-2">Legal status and identification.</div>
+                    <div className="grid md:grid-cols-2 gap-4 mb-4">
+                      <EditableGrid p={p} editable={isEditingPersonal && (canEditGeneral || !!canSelfEdit)} selfEdit={!!canSelfEdit} userId={String(userId)} collectChanges={collectChanges} inlineSave={false} fields={[['SIN Number','sin_number']]} />
+                      <EditableGrid p={p} editable={isEditingPersonal && (canEditGeneral || !!canSelfEdit)} selfEdit={!!canSelfEdit} userId={String(userId)} collectChanges={collectChanges} inlineSave={false} fields={[['Work Eligibility Status','work_eligibility_status']]} fieldOptions={{ work_eligibility_status: ['Canadian Citizen', 'Permanent Resident', 'Temporary Resident (with work authorization)', 'Other'] }} />
+                    </div>
+                    <WorkEligibilityDocumentsSection 
+                      userId={String(userId)} 
+                      canEdit={isEditingPersonal && (canEditGeneral || !!canSelfEdit)} 
+                      workEligibilityStatus={isEditingPersonal && pending.work_eligibility_status !== undefined ? pending.work_eligibility_status : (p.work_eligibility_status || '')}
+                    />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2"><h4 className="font-semibold">Emergency Contacts</h4></div>
+                    <div className="text-xs text-gray-500 mt-0.5 mb-2">People to contact in case of emergency.</div>
+                    <EmergencyContactsSection userId={String(userId)} canEdit={isEditingPersonal && (canEditGeneral || !!canSelfEdit)} />
                   </div>
                 </div>
               )}
               {tab==='job' && canViewGeneral && (
                 <div className="space-y-6 pb-24">
                   <div>
-                    <div className="flex items-center gap-2"><h4 className="font-semibold">Employment Details</h4></div>
+                    <div className="flex items-center justify-between gap-2">
+                      <h4 className="font-semibold">Employment Details</h4>
+                      {!isEditingJob && (canEditGeneral || !!canSelfEdit) && (
+                        <button
+                          onClick={() => setIsEditingJob(true)}
+                          className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-brand-red to-[#ee2b2b] text-white text-sm font-medium hover:opacity-90 flex items-center gap-1.5"
+                        >
+                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                          </svg>
+                          Edit
+                        </button>
+                      )}
+                    </div>
                     <div className="text-xs text-gray-500 mt-0.5 mb-2">Dates and employment attributes.</div>
-                    <JobSection type="employment" p={p} editable={canEditGeneral} userId={String(userId)} collectChanges={collectChanges} usersOptions={usersOptions||[]} settings={settings} canViewCompensation={canViewJobCompensation} />
+                    <JobSection type="employment" p={p} editable={isEditingJob && (canEditGeneral || !!canSelfEdit)} userId={String(userId)} collectChanges={collectChanges} usersOptions={usersOptions||[]} settings={settings} canViewCompensation={canViewJobCompensation} />
                   </div>
                   <div>
                     <div className="flex items-center gap-2"><h4 className="font-semibold">Organization</h4></div>
                     <div className="text-xs text-gray-500 mt-0.5 mb-2">Reporting and work contacts.</div>
-                    <JobSection type="organization" p={p} editable={canEditGeneral} userId={String(userId)} collectChanges={collectChanges} usersOptions={usersOptions||[]} settings={settings} />
+                    <JobSection 
+                      type="organization" 
+                      p={p} 
+                      editable={isEditingJob && (canEditGeneral || !!canSelfEdit)} 
+                      userId={String(userId)} 
+                      collectChanges={collectChanges} 
+                      usersOptions={usersOptions||[]} 
+                      settings={settings} 
+                      userDivisions={u?.divisions || []}
+                      selectedDivisions={selectedDivisions}
+                      onDivisionsChange={(divisions) => {
+                        setSelectedDivisions(divisions);
+                        setDivisionsDirty(true);
+                      }}
+                    />
                   </div>
                   <div>
                     <div className="flex items-center gap-2"><h4 className="font-semibold">Time Off</h4></div>
                     <div className="text-xs text-gray-500 mt-0.5 mb-2">Request time off and view your balance.</div>
                     <TimeOffSection userId={String(userId)} canEdit={canEditGeneral} />
-                  </div>
-                </div>
-              )}
-              {tab==='emergency' && canViewGeneral && (
-                <div className="space-y-6 pb-24">
-                  <div>
-                    <div className="flex items-center gap-2"><h4 className="font-semibold">Emergency Contacts</h4></div>
-                    <div className="text-xs text-gray-500 mt-0.5 mb-2">People to contact in case of emergency.</div>
-                    <EmergencyContactsSection userId={String(userId)} canEdit={canEditGeneral} />
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2"><h4 className="font-semibold">Legal & Documents</h4></div>
-                    <div className="text-xs text-gray-500 mt-0.5 mb-2">Legal status and identification.</div>
-                    <EditableGrid p={p} editable={canEditGeneral} selfEdit={!!canSelfEdit} userId={String(userId)} collectChanges={collectChanges} inlineSave={false} fields={[['SIN Number','sin_number'],['Work Permit Status','work_permit_status'],['Visa Status','visa_status']]} />
                   </div>
                 </div>
               )}
@@ -1013,12 +1105,49 @@ export default function UserInfo(){
           )}
         </div>
       </div>
-      {(canEditGeneral || canEditTimesheet || canEditPermissions || canSelfEdit) && (
+      {((isEditingPersonal || isEditingJob) && (canEditGeneral || canSelfEdit)) && (
         <div className="fixed bottom-0 left-0 right-0 z-40">
           <div className="max-w-[1200px] mx-auto px-4">
             <div className="mb-3 rounded-xl border bg-white shadow-hero p-3 flex items-center gap-3">
-              <div className={`text-sm ${(dirty || permissionsDirty)? 'text-amber-700':'text-green-700'}`}>{(dirty || permissionsDirty)? 'You have unsaved changes':'All changes saved'}</div>
-              <button onClick={saveAll} disabled={!dirty && !permissionsDirty} className={`ml-auto px-4 py-2 rounded text-white ${(dirty || permissionsDirty)? 'bg-gradient-to-r from-brand-red to-[#ee2b2b]':'bg-gray-400 cursor-not-allowed'}`}>Save</button>
+              <div className={`text-sm ${(dirty || divisionsDirty)? 'text-amber-700':'text-green-700'}`}>{(dirty || divisionsDirty)? 'You have unsaved changes':'All changes saved'}</div>
+              <div className="flex gap-3 ml-auto">
+                <button 
+                  onClick={() => {
+                    setIsEditingPersonal(false);
+                    setIsEditingJob(false);
+                    setPending({});
+                    setDirty(false);
+                    setDivisionsDirty(false);
+                    // Reset divisions to original
+                    const divisions = (u?.divisions || []).map((d: any) => String(d.id));
+                    setSelectedDivisions(divisions);
+                  }}
+                  className="px-4 py-2 rounded border bg-white text-gray-700 hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+                <button 
+                  onClick={async () => {
+                    await saveAll();
+                    setIsEditingPersonal(false);
+                    setIsEditingJob(false);
+                  }} 
+                  disabled={!dirty && !divisionsDirty} 
+                  className={`px-4 py-2 rounded text-white ${(dirty || divisionsDirty)? 'bg-gradient-to-r from-brand-red to-[#ee2b2b]':'bg-gray-400 cursor-not-allowed'}`}
+                >
+                  Save
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {(tab === 'permissions' && canEditPermissions) && (
+        <div className="fixed bottom-0 left-0 right-0 z-40">
+          <div className="max-w-[1200px] mx-auto px-4">
+            <div className="mb-3 rounded-xl border bg-white shadow-hero p-3 flex items-center gap-3">
+              <div className={`text-sm ${permissionsDirty? 'text-amber-700':'text-green-700'}`}>{permissionsDirty? 'You have unsaved changes':'All changes saved'}</div>
+              <button onClick={async () => { await permissionsRef.current?.save(); }} disabled={!permissionsDirty} className={`ml-auto px-4 py-2 rounded text-white ${permissionsDirty? 'bg-gradient-to-r from-brand-red to-[#ee2b2b]':'bg-gray-400 cursor-not-allowed'}`}>Save</button>
             </div>
           </div>
         </div>
@@ -1038,6 +1167,18 @@ function LabelVal({label, value}:{label:string, value:any}){
 
 function EditableGrid({p, fields, editable, selfEdit, userId, collectChanges, inlineSave=true, fieldOptions}:{p:any, fields:[string,string][], editable:boolean, selfEdit:boolean, userId:string, collectChanges?: (kv:Record<string,any>)=>void, inlineSave?: boolean, fieldOptions?: Record<string, string[]>}){
   const [form, setForm] = useState<any>(()=>({ ...p }));
+  const prevEditableRef = useRef(editable);
+  useEffect(() => {
+    // When entering edit mode, initialize form with current p values
+    if (editable && !prevEditableRef.current) {
+      setForm({ ...p });
+    }
+    // When exiting edit mode, update form with latest p values
+    if (!editable && prevEditableRef.current) {
+      setForm({ ...p });
+    }
+    prevEditableRef.current = editable;
+  }, [editable, p]);
   const save = async()=>{
     try{
       if (editable) {
@@ -1051,6 +1192,23 @@ function EditableGrid({p, fields, editable, selfEdit, userId, collectChanges, in
     }catch(_e){ toast.error('Failed to save'); }
   };
   const isEditable = !!(editable || selfEdit);
+  
+  // Phone formatting function (same as in emergency contacts)
+  const formatPhone = (v:string)=>{
+    const d = String(v||'').replace(/\D+/g,'').slice(0,11);
+    if (d.length<=3) return d;
+    if (d.length<=6) return `(${d.slice(0,3)}) ${d.slice(3)}`;
+    if (d.length<=10) return `(${d.slice(0,3)}) ${d.slice(3,6)}-${d.slice(6)}`;
+    return `+${d.slice(0,1)} (${d.slice(1,4)}) ${d.slice(4,7)}-${d.slice(7,11)}`;
+  };
+
+  // SIN Number formatting function (NNN-NNN-NNN)
+  const formatSIN = (v:string)=>{
+    const d = String(v||'').replace(/\D+/g,'').slice(0,9);
+    if (d.length<=3) return d;
+    if (d.length<=6) return `${d.slice(0,3)}-${d.slice(3)}`;
+    return `${d.slice(0,3)}-${d.slice(3,6)}-${d.slice(6)}`;
+  };
   
   const genderOptions = ['Male', 'Female', 'Other', 'Prefer not to say'];
   const maritalStatusOptions = ['Single', 'Married', 'Common-law', 'Divorced', 'Widowed', 'Prefer not to say'];
@@ -1076,11 +1234,15 @@ function EditableGrid({p, fields, editable, selfEdit, userId, collectChanges, in
                       <option key={opt} value={opt}>{opt}</option>
                     ))}
                   </select>
+                ) : (key === 'phone' || key === 'mobile_phone') ? (
+                  <input value={form[key]||''} onChange={e=> { const formatted = formatPhone(e.target.value); setForm((s:any)=>({ ...s, [key]: formatted })); collectChanges && collectChanges({ [key]: formatted }); }} className="w-full rounded-lg border px-3 py-2"/>
+                ) : key === 'sin_number' ? (
+                  <input value={form[key]||''} onChange={e=> { const formatted = formatSIN(e.target.value); setForm((s:any)=>({ ...s, [key]: formatted })); collectChanges && collectChanges({ [key]: formatted }); }} maxLength={11} placeholder="123-456-789" className="w-full rounded-lg border px-3 py-2"/>
                 ) : (
                   <input value={form[key]||''} onChange={e=> { setForm((s:any)=>({ ...s, [key]: e.target.value })); collectChanges && collectChanges({ [key]: e.target.value }); }} className="w-full rounded-lg border px-3 py-2"/>
                 )
               ) : (
-                <div className="font-medium break-words">{(key==='date_of_birth' || key==='hire_date' || key==='termination_date')? String(p[key]??'').slice(0,10) : String(p[key]??'')}</div>
+                <div className="text-gray-900 font-medium py-1 break-words">{(key==='date_of_birth' || key==='hire_date' || key==='termination_date')? (String(p[key]??'').slice(0,10) || '—') : (String(p[key]??'') || '—')}</div>
               )}
             </div>
           );
@@ -1166,7 +1328,7 @@ function AddressSection({ p, editable, selfEdit, userId, collectChanges, inlineS
               className="w-full rounded-lg border px-3 py-2"
             />
           ) : (
-            <div className="font-medium break-words">{String(p.address_line1||'')}</div>
+            <div className="text-gray-900 font-medium py-1 break-words">{String(p.address_line1||'') || '—'}</div>
           )}
         </div>
         <div>
@@ -1183,8 +1345,42 @@ function AddressSection({ p, editable, selfEdit, userId, collectChanges, inlineS
               className="w-full rounded-lg border px-3 py-2"
             />
           ) : (
-            <div className="font-medium break-words">{String(p.address_line1_complement||'')}</div>
+            <div className="text-gray-900 font-medium py-1 break-words">{String(p.address_line1_complement||'') || '—'}</div>
           )}
+        </div>
+        <div className="grid md:grid-cols-2 gap-4">
+          <div>
+            <div className="text-sm text-gray-600">City</div>
+            {isEditable ? (
+              <input value={form.city || ''} readOnly className="w-full rounded-lg border px-3 py-2 bg-gray-50 cursor-not-allowed"/>
+            ) : (
+              <div className="text-gray-900 font-medium py-1 break-words">{String(p.city||'') || '—'}</div>
+            )}
+          </div>
+          <div>
+            <div className="text-sm text-gray-600">Province/State</div>
+            {isEditable ? (
+              <input value={form.province || ''} readOnly className="w-full rounded-lg border px-3 py-2 bg-gray-50 cursor-not-allowed"/>
+            ) : (
+              <div className="text-gray-900 font-medium py-1 break-words">{String(p.province||'') || '—'}</div>
+            )}
+          </div>
+          <div>
+            <div className="text-sm text-gray-600">Postal code</div>
+            {isEditable ? (
+              <input value={form.postal_code || ''} readOnly className="w-full rounded-lg border px-3 py-2 bg-gray-50 cursor-not-allowed"/>
+            ) : (
+              <div className="text-gray-900 font-medium py-1 break-words">{String(p.postal_code||'') || '—'}</div>
+            )}
+          </div>
+          <div>
+            <div className="text-sm text-gray-600">Country</div>
+            {isEditable ? (
+              <input value={form.country || ''} readOnly className="w-full rounded-lg border px-3 py-2 bg-gray-50 cursor-not-allowed"/>
+            ) : (
+              <div className="text-gray-900 font-medium py-1 break-words">{String(p.country||'') || '—'}</div>
+            )}
+          </div>
         </div>
         <div>
           <div className="text-sm text-gray-600">Address line 2</div>
@@ -1199,7 +1395,7 @@ function AddressSection({ p, editable, selfEdit, userId, collectChanges, inlineS
               className="w-full rounded-lg border px-3 py-2"
             />
           ) : (
-            <div className="font-medium break-words">{String(p.address_line2||'')}</div>
+            <div className="text-gray-900 font-medium py-1 break-words">{String(p.address_line2||'') || '—'}</div>
           )}
         </div>
         <div>
@@ -1216,42 +1412,8 @@ function AddressSection({ p, editable, selfEdit, userId, collectChanges, inlineS
               className="w-full rounded-lg border px-3 py-2"
             />
           ) : (
-            <div className="font-medium break-words">{String(p.address_line2_complement||'')}</div>
+            <div className="text-gray-900 font-medium py-1 break-words">{String(p.address_line2_complement||'') || '—'}</div>
           )}
-        </div>
-        <div className="grid md:grid-cols-2 gap-4">
-          <div>
-            <div className="text-sm text-gray-600">City</div>
-            {isEditable ? (
-              <input value={form.city || ''} readOnly className="w-full rounded-lg border px-3 py-2 bg-gray-50 cursor-not-allowed"/>
-            ) : (
-              <div className="font-medium break-words">{String(p.city||'')}</div>
-            )}
-          </div>
-          <div>
-            <div className="text-sm text-gray-600">Province/State</div>
-            {isEditable ? (
-              <input value={form.province || ''} readOnly className="w-full rounded-lg border px-3 py-2 bg-gray-50 cursor-not-allowed"/>
-            ) : (
-              <div className="font-medium break-words">{String(p.province||'')}</div>
-            )}
-          </div>
-          <div>
-            <div className="text-sm text-gray-600">Postal code</div>
-            {isEditable ? (
-              <input value={form.postal_code || ''} readOnly className="w-full rounded-lg border px-3 py-2 bg-gray-50 cursor-not-allowed"/>
-            ) : (
-              <div className="font-medium break-words">{String(p.postal_code||'')}</div>
-            )}
-          </div>
-          <div>
-            <div className="text-sm text-gray-600">Country</div>
-            {isEditable ? (
-              <input value={form.country || ''} readOnly className="w-full rounded-lg border px-3 py-2 bg-gray-50 cursor-not-allowed"/>
-            ) : (
-              <div className="font-medium break-words">{String(p.country||'')}</div>
-            )}
-          </div>
         </div>
       </div>
       {isEditable && inlineSave && (
@@ -1286,27 +1448,52 @@ function EducationSection({ userId, canEdit }:{ userId:string, canEdit:boolean }
   const add = async()=>{
     try{
       if(!inst.trim()){ toast.error('Institution required'); return; }
-      await api('POST', `/auth/users/${encodeURIComponent(userId)}/education`, { college_institution: inst, degree, start_date:start||null, end_date:end||null });
+      // Convert month input (YYYY-MM) to full date (YYYY-MM-01) for API
+      const startDate = start ? `${start}-01` : null;
+      const endDate = end ? `${end}-01` : null;
+      await api('POST', `/auth/users/${encodeURIComponent(userId)}/education`, { college_institution: inst, degree, start_date:startDate, end_date:endDate });
       toast.success('Added'); setShowAdd(false); setInst(''); setDegree(''); setStart(''); setEnd(''); await refetch();
     }catch(_e){ toast.error('Failed'); }
   };
   const del = async(id:string)=>{
     try{ await api('DELETE', `/auth/users/${encodeURIComponent(userId)}/education/${encodeURIComponent(id)}`); await refetch(); }catch(_e){ toast.error('Failed'); }
   };
+  const formatDateMonthYear = (dateStr: string | null | undefined) => {
+    if (!dateStr) return '';
+    try {
+      const date = new Date(dateStr);
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const year = date.getFullYear();
+      return `${year}-${month}`;
+    } catch {
+      return dateStr.slice(0, 7); // Fallback to YYYY-MM format
+    }
+  };
+
   return (
     <div>
-      <div className="border rounded-lg divide-y">
-        {isLoading? <div className="p-3 text-sm text-gray-600">Loading...</div> : (rows||[]).length? (rows||[]).map((e:any)=> (
-          <div key={e.id} className="p-3 text-sm flex items-center gap-3">
-            <div className="flex-1">
-              <div className="font-medium">{e.college_institution||'Institution'}</div>
-              <div className="text-gray-600">{e.degree||''} {e.major_specialization? `· ${e.major_specialization}`:''}</div>
-              <div className="text-gray-500 text-xs">{e.start_date? String(e.start_date).slice(0,10):''}{(e.start_date||e.end_date)? ' — ':''}{e.end_date? String(e.end_date).slice(0,10):''}</div>
+      {isLoading ? (
+        <div className="text-sm text-gray-600">Loading...</div>
+      ) : (rows||[]).length ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {(rows||[]).map((e:any)=> (
+            <div key={e.id} className="border rounded-lg p-4 text-sm">
+              <div className="font-medium text-gray-900 mb-1">{e.college_institution||'Institution'}</div>
+              <div className="text-gray-600 mb-1">{e.degree||''} {e.major_specialization? `· ${e.major_specialization}`:''}</div>
+              <div className="text-gray-500 text-xs">
+                {formatDateMonthYear(e.start_date)}{(e.start_date||e.end_date)? ' — ':''}{formatDateMonthYear(e.end_date)}
+              </div>
+              {canEdit && (
+                <div className="mt-3 pt-3 border-t">
+                  <button onClick={()=>del(e.id)} className="px-2 py-1 rounded border text-xs hover:bg-gray-50">Delete</button>
+                </div>
+              )}
             </div>
-            {canEdit && <button onClick={()=>del(e.id)} className="px-2 py-1 rounded border text-xs">Delete</button>}
-          </div>
-        )) : <div className="p-3 text-sm text-gray-600">No education records</div>}
-      </div>
+          ))}
+        </div>
+      ) : (
+        <div className="text-sm text-gray-600">No education records</div>
+      )}
       {canEdit && (
         <div className="mt-3">
           {!showAdd ? (
@@ -1323,11 +1510,11 @@ function EducationSection({ userId, canEdit }:{ userId:string, canEdit:boolean }
               </div>
               <div>
                 <div className="text-xs text-gray-600">Start date</div>
-                <input type="date" className="w-full rounded-lg border px-3 py-2" value={start} onChange={e=>setStart(e.target.value)} />
+                <input type="month" className="w-full rounded-lg border px-3 py-2" value={start} onChange={e=>setStart(e.target.value)} />
               </div>
               <div>
                 <div className="text-xs text-gray-600">End date</div>
-                <input type="date" className="w-full rounded-lg border px-3 py-2" value={end} onChange={e=>setEnd(e.target.value)} />
+                <input type="month" className="w-full rounded-lg border px-3 py-2" value={end} onChange={e=>setEnd(e.target.value)} />
               </div>
               <div className="md:col-span-2 text-right">
                 <button onClick={()=>setShowAdd(false)} className="px-3 py-2 rounded border mr-2">Cancel</button>
@@ -1341,7 +1528,7 @@ function EducationSection({ userId, canEdit }:{ userId:string, canEdit:boolean }
   );
 }
 
-function JobSection({ type, p, editable, userId, collectChanges, usersOptions, settings, canViewCompensation = false }:{ type:'employment'|'organization', p:any, editable:boolean, userId:string, collectChanges: (kv:Record<string,any>)=>void, usersOptions:any[], settings:any, canViewCompensation?: boolean }){
+function JobSection({ type, p, editable, userId, collectChanges, usersOptions, settings, canViewCompensation = false, userDivisions = [], selectedDivisions = [], onDivisionsChange }: { type:'employment'|'organization', p:any, editable:boolean, userId:string, collectChanges: (kv:Record<string,any>)=>void, usersOptions:any[], settings:any, canViewCompensation?: boolean, userDivisions?: any[], selectedDivisions?: string[], onDivisionsChange?: (divisions: string[]) => void }){
   const isEditable = !!editable;
   const [form, setForm] = useState<any>(()=>({
     hire_date: p.hire_date||'',
@@ -1355,17 +1542,29 @@ function JobSection({ type, p, editable, userId, collectChanges, usersOptions, s
     pay_type: p.pay_type||'',
     employment_type: p.employment_type||'',
   }));
+  const [departmentDropdownOpen, setDepartmentDropdownOpen] = useState(false);
   const onField = (key:string, value:any)=>{ setForm((s:any)=>({ ...s, [key]: value })); collectChanges({ [key]: value }); };
+  
+  const handleDepartmentToggle = (divisionId: string) => {
+    const newSelection = selectedDivisions.includes(divisionId)
+      ? selectedDivisions.filter(id => id !== divisionId)
+      : [...selectedDivisions, divisionId];
+    // Notify parent of changes - divisions will be saved separately via PATCH /users/{user_id}
+    if (onDivisionsChange) {
+      onDivisionsChange(newSelection);
+    }
+    collectChanges({ _divisions_changed: true, _selected_divisions: newSelection });
+  };
   if (type==='employment'){
     return (
       <div className="grid md:grid-cols-2 gap-4">
         <div>
           <div className="text-sm text-gray-600">Hire date</div>
-          {isEditable? <input type="date" className="w-full rounded-lg border px-3 py-2" value={(form.hire_date||'').slice(0,10)} onChange={e=>onField('hire_date', e.target.value)} /> : <div className="font-medium">{String(p.hire_date||'').slice(0,10)}</div>}
+          {isEditable? <input type="date" className="w-full rounded-lg border px-3 py-2" value={(form.hire_date||'').slice(0,10)} onChange={e=>onField('hire_date', e.target.value)} /> : <div className="text-gray-900 font-medium py-1">{String(p.hire_date||'').slice(0,10) || '—'}</div>}
         </div>
         <div>
           <div className="text-sm text-gray-600">Termination date</div>
-          {isEditable? <input type="date" className="w-full rounded-lg border px-3 py-2" value={(form.termination_date||'').slice(0,10)} onChange={e=>onField('termination_date', e.target.value)} /> : <div className="font-medium">{String(p.termination_date||'').slice(0,10)}</div>}
+          {isEditable? <input type="date" className="w-full rounded-lg border px-3 py-2" value={(form.termination_date||'').slice(0,10)} onChange={e=>onField('termination_date', e.target.value)} /> : <div className="text-gray-900 font-medium py-1">{String(p.termination_date||'').slice(0,10) || '—'}</div>}
         </div>
         {canViewCompensation && (
           <div>
@@ -1379,7 +1578,7 @@ function JobSection({ type, p, editable, userId, collectChanges, usersOptions, s
               ) : (
                 <input className="w-full rounded-lg border px-3 py-2" value={form.employment_type} onChange={e=>onField('employment_type', e.target.value)} />
               ))
-            ) : <div className="font-medium">{String(p.employment_type||'')}</div>}
+            ) : <div className="text-gray-900 font-medium py-1">{String(p.employment_type||'') || '—'}</div>}
           </div>
         )}
         {canViewCompensation && (
@@ -1394,18 +1593,18 @@ function JobSection({ type, p, editable, userId, collectChanges, usersOptions, s
               ) : (
                 <input className="w-full rounded-lg border px-3 py-2" value={form.pay_type} onChange={e=>onField('pay_type', e.target.value)} />
               ))
-            ) : <div className="font-medium">{String(p.pay_type||'')}</div>}
+            ) : <div className="text-gray-900 font-medium py-1">{String(p.pay_type||'') || '—'}</div>}
           </div>
         )}
         {canViewCompensation && (
           <div>
             <div className="text-sm text-gray-600">Pay rate</div>
-            {isEditable? <input className="w-full rounded-lg border px-3 py-2" value={form.pay_rate} onChange={e=>onField('pay_rate', e.target.value)} /> : <div className="font-medium">{String(p.pay_rate||'')}</div>}
+            {isEditable? <input className="w-full rounded-lg border px-3 py-2" value={form.pay_rate} onChange={e=>onField('pay_rate', e.target.value)} /> : <div className="text-gray-900 font-medium py-1">{String(p.pay_rate||'') || '—'}</div>}
           </div>
         )}
         <div>
           <div className="text-sm text-gray-600">Job title</div>
-          {isEditable? <input className="w-full rounded-lg border px-3 py-2" value={form.job_title} onChange={e=>onField('job_title', e.target.value)} /> : <div className="font-medium">{String(p.job_title||'')}</div>}
+          {isEditable? <input className="w-full rounded-lg border px-3 py-2" value={form.job_title} onChange={e=>onField('job_title', e.target.value)} /> : <div className="text-gray-900 font-medium py-1">{String(p.job_title||'') || '—'}</div>}
         </div>
       </div>
     );
@@ -1418,18 +1617,62 @@ function JobSection({ type, p, editable, userId, collectChanges, usersOptions, s
   }, [usersOptions, p?.manager_user_id]);
   return (
     <div className="grid md:grid-cols-2 gap-4">
-      <div>
-        <div className="text-sm text-gray-600">Division</div>
+      <div className="relative">
+        <div className="text-sm text-gray-600">Department</div>
         {isEditable? (
           (settings?.divisions?.length ? (
-            <select className="w-full rounded-lg border px-3 py-2" value={form.division} onChange={e=>onField('division', e.target.value)}>
-              <option value="">Select...</option>
-              {settings.divisions.map((it:any)=> <option key={it.id} value={it.label}>{it.label}</option>)}
-            </select>
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setDepartmentDropdownOpen(!departmentDropdownOpen)}
+                className="w-full rounded-lg border px-3 py-2 text-left bg-white flex items-center justify-between"
+              >
+                <span className={selectedDivisions.length === 0 ? 'text-gray-400' : ''}>
+                  {selectedDivisions.length === 0 
+                    ? 'Select departments...' 
+                    : selectedDivisions.map((id: string) => {
+                        const division = settings.divisions.find((d: any) => String(d.id) === id);
+                        return division?.label || '';
+                      }).filter(Boolean).join(', ') || 'No departments selected'}
+                </span>
+                <span className="text-gray-400">▼</span>
+              </button>
+              {departmentDropdownOpen && (
+                <>
+                  <div 
+                    className="fixed inset-0 z-10" 
+                    onClick={() => setDepartmentDropdownOpen(false)}
+                  />
+                  <div className="absolute z-20 w-full mt-1 bg-white border rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                    {settings.divisions.map((it: any) => (
+                      <label
+                        key={it.id}
+                        className="flex items-center gap-2 px-3 py-2 hover:bg-gray-50 cursor-pointer"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={selectedDivisions.includes(String(it.id))}
+                          onChange={() => handleDepartmentToggle(String(it.id))}
+                          className="rounded border-gray-300 text-brand-red focus:ring-brand-red"
+                        />
+                        <span className="text-sm">{it.label}</span>
+                      </label>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
           ) : (
             <input className="w-full rounded-lg border px-3 py-2" value={form.division} onChange={e=>onField('division', e.target.value)} />
           ))
-        ) : <div className="font-medium">{String(p.division||'')}</div>}
+        ) : (
+          <div className="text-gray-900 font-medium py-1">
+            {userDivisions && userDivisions.length > 0
+              ? userDivisions.map((d: any) => d.label).join(', ')
+              : String(p.division||'') || '—'}
+          </div>
+        )}
       </div>
       <div>
         <div className="text-sm text-gray-600">Supervisor</div>
@@ -1441,16 +1684,16 @@ function JobSection({ type, p, editable, userId, collectChanges, usersOptions, s
             ))}
           </select>
         ) : (
-          <div className="font-medium">{supervisor||'—'}</div>
+          <div className="text-gray-900 font-medium py-1">{supervisor||'—'}</div>
         )}
       </div>
       <div>
         <div className="text-sm text-gray-600">Work email</div>
-        {isEditable? <input className="w-full rounded-lg border px-3 py-2" value={form.work_email} onChange={e=>onField('work_email', e.target.value)} /> : <div className="font-medium">{String(p.work_email||'')}</div>}
+        {isEditable? <input className="w-full rounded-lg border px-3 py-2" value={form.work_email} onChange={e=>onField('work_email', e.target.value)} /> : <div className="text-gray-900 font-medium py-1">{String(p.work_email||'') || '—'}</div>}
       </div>
       <div>
         <div className="text-sm text-gray-600">Work phone</div>
-        {isEditable? <input className="w-full rounded-lg border px-3 py-2" value={form.work_phone} onChange={e=>onField('work_phone', e.target.value)} /> : <div className="font-medium">{String(p.work_phone||'')}</div>}
+        {isEditable? <input className="w-full rounded-lg border px-3 py-2" value={form.work_phone} onChange={e=>onField('work_phone', e.target.value)} /> : <div className="text-gray-900 font-medium py-1">{String(p.work_phone||'') || '—'}</div>}
       </div>
     </div>
   );
@@ -3013,6 +3256,7 @@ function EmergencyContactsSection({ userId, canEdit }:{ userId:string, canEdit:b
     queryKey:['emergency-contacts', userId], 
     queryFn: ()=> api<any[]>('GET', `/auth/users/${encodeURIComponent(userId)}/emergency-contacts`) 
   });
+  const confirm = useConfirm();
   const [editId, setEditId] = useState<string|null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [name, setName] = useState('');
@@ -3113,7 +3357,8 @@ function EmergencyContactsSection({ userId, canEdit }:{ userId:string, canEdit:b
   };
   
   const handleDelete = async (contactId: string) => {
-    if (!confirm('Delete this emergency contact?')) return;
+    const result = await confirm({ title:'Delete emergency contact', message:'Are you sure you want to delete this emergency contact? This action cannot be undone.', confirmText:'Delete', cancelText:'Cancel' });
+    if(result !== 'confirm') return;
     try {
       await api('DELETE', `/auth/users/${encodeURIComponent(userId)}/emergency-contacts/${contactId}`);
       toast.success('Emergency contact deleted');
@@ -3400,7 +3645,328 @@ function EmergencyContactsSection({ userId, canEdit }:{ userId:string, canEdit:b
   );
 }
 
-function VisaInformationSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
+// Work Eligibility Documents Section - always shows Visa Information and Immigration Status Document
+function WorkEligibilityDocumentsSection({ userId, canEdit, workEligibilityStatus }: { userId: string; canEdit: boolean; workEligibilityStatus?: string }) {
+  // Always show both sections regardless of status
+  return (
+    <div className="space-y-4">
+      <VisaInformationSection userId={userId} canEdit={canEdit} isRequired={false} showInlineForm={false} />
+      <ImmigrationStatusDocumentSection userId={userId} canEdit={canEdit} isRequired={false} />
+    </div>
+  );
+}
+
+// PR Card Upload Section (for Canadian Citizen and Permanent Resident)
+function PRCardUploadSection({ userId, canEdit }: { userId: string; canEdit: boolean }) {
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+  const queryClient = useQueryClient();
+  const { data: prCardFile, refetch } = useQuery({
+    queryKey: ['pr-card-file', userId],
+    queryFn: () => api<any>('GET', `/auth/users/${encodeURIComponent(userId)}/profile`),
+  });
+  const prCardFileId = prCardFile?.profile?.pr_card_file_id;
+
+  const handleUpload = async () => {
+    const f = fileRef.current?.files?.[0];
+    if (!f) return;
+    
+    // Validate file type
+    const isPDF = f.type === 'application/pdf';
+    const isImage = f.type.startsWith('image/');
+    if (!isPDF && !isImage) {
+      toast.error('Please upload a PDF or image file');
+      return;
+    }
+
+    setUploading(true);
+    try {
+      const up: any = await api('POST', '/files/upload', {
+        project_id: null,
+        client_id: null,
+        employee_id: userId,
+        category_id: 'pr-card',
+        original_name: f.name,
+        content_type: f.type || 'application/pdf'
+      });
+      const put = await fetch(up.upload_url, {
+        method: 'PUT',
+        headers: { 'Content-Type': f.type || 'application/pdf', 'x-ms-blob-type': 'BlockBlob' },
+        body: f
+      });
+      if (!put.ok) throw new Error('upload failed');
+      const conf: any = await api('POST', '/files/confirm', {
+        key: up.key,
+        size_bytes: f.size,
+        checksum_sha256: 'na',
+        content_type: f.type || 'application/pdf'
+      });
+      await api('PUT', `/auth/users/${encodeURIComponent(userId)}/profile`, {
+        pr_card_file_id: conf.id
+      });
+      toast.success('PR Card uploaded successfully');
+      await refetch();
+      await queryClient.invalidateQueries({ queryKey: ['userProfile', userId] });
+    } catch (e: any) {
+      toast.error(e?.message || 'Failed to upload PR Card');
+    } finally {
+      setUploading(false);
+      if (fileRef.current) fileRef.current.value = '';
+    }
+  };
+
+  return (
+    <div className="rounded-xl border bg-white p-4">
+      <div className="mb-4 flex items-center gap-2">
+        <div className="w-8 h-8 rounded bg-amber-100 flex items-center justify-center">
+          <svg className="w-5 h-5 text-amber-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V8a2 2 0 00-2-2h-5m-4 0V5a2 2 0 114 0v1m-4 0a2 2 0 104 0m-5 8a2 2 0 100-4 2 2 0 000 4zm0 0c1.306 0 2.417.835 2.83 2M9 14a3.001 3.001 0 00-2.83 2M15 11h3m-3 4h2" />
+          </svg>
+        </div>
+        <h5 className="font-semibold text-amber-900">PR Card (Optional)</h5>
+      </div>
+      {prCardFileId ? (
+        <div className="space-y-3">
+          <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
+            <div className="flex-1">
+              <div className="text-sm font-medium text-gray-900">PR Card Document</div>
+              <div className="text-xs text-gray-500">Document uploaded</div>
+            </div>
+            <a
+              href={`/files/${prCardFileId}/download`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="px-3 py-1.5 rounded border border-amber-300 text-amber-700 text-sm font-medium hover:bg-amber-50"
+            >
+              View
+            </a>
+            {canEdit && (
+              <button
+                onClick={async () => {
+                  try {
+                    await api('PUT', `/auth/users/${encodeURIComponent(userId)}/profile`, { pr_card_file_id: null });
+                    toast.success('PR Card removed');
+                    await refetch();
+                    await queryClient.invalidateQueries({ queryKey: ['userProfile', userId] });
+                  } catch (e: any) {
+                    toast.error(e?.message || 'Failed to remove PR Card');
+                  }
+                }}
+                className="px-3 py-1.5 rounded border border-red-300 text-red-700 text-sm font-medium hover:bg-red-50"
+              >
+                Remove
+              </button>
+            )}
+          </div>
+          {canEdit && (
+            <div>
+              <input ref={fileRef} type="file" accept=".pdf,image/*" className="hidden" onChange={handleUpload} />
+              <button
+                onClick={() => fileRef.current?.click()}
+                disabled={uploading}
+                className="px-3 py-1.5 rounded border border-amber-300 text-amber-700 text-sm font-medium hover:bg-amber-50 disabled:opacity-50"
+              >
+                {uploading ? 'Uploading...' : 'Replace Document'}
+              </button>
+            </div>
+          )}
+        </div>
+      ) : (
+        canEdit && (
+          <div>
+            <input ref={fileRef} type="file" accept=".pdf,image/*" className="hidden" onChange={handleUpload} />
+            <button
+              onClick={() => fileRef.current?.click()}
+              disabled={uploading}
+              className="px-3 py-1.5 rounded border border-amber-300 text-amber-700 text-sm font-medium hover:bg-amber-50 disabled:opacity-50"
+            >
+              {uploading ? 'Uploading...' : 'Upload Document'}
+            </button>
+          </div>
+        )
+      )}
+    </div>
+  );
+}
+
+// Helper function to get or create "Personal Documents" folder
+async function getOrCreatePersonalDocumentsFolder(userId: string): Promise<string> {
+  try {
+    // Get all folders
+    const folders: any[] = await api('GET', `/auth/users/${encodeURIComponent(userId)}/folders`);
+    // Find "Personal Documents" folder
+    const personalFolder = folders.find((f: any) => f.name === 'Personal Documents');
+    if (personalFolder) {
+      return personalFolder.id;
+    }
+    // Create if doesn't exist
+    const newFolder: any = await api('POST', `/auth/users/${encodeURIComponent(userId)}/folders`, {
+      name: 'Personal Documents'
+    });
+    return newFolder.id;
+  } catch (e: any) {
+    console.error('Failed to get or create Personal Documents folder:', e);
+    throw e;
+  }
+}
+
+// Immigration Status Document Upload Section (optional)
+function ImmigrationStatusDocumentSection({ userId, canEdit, isRequired }: { userId: string; canEdit: boolean; isRequired?: boolean }) {
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+  const queryClient = useQueryClient();
+  const { data: permitFile, refetch } = useQuery({
+    queryKey: ['permit-file', userId],
+    queryFn: () => api<any>('GET', `/auth/users/${encodeURIComponent(userId)}/profile`),
+  });
+  const permitFileId = permitFile?.profile?.permit_file_id;
+
+  const handleUpload = async () => {
+    const f = fileRef.current?.files?.[0];
+    if (!f) return;
+    
+    // Validate file type
+    const isPDF = f.type === 'application/pdf';
+    const isImage = f.type.startsWith('image/');
+    if (!isPDF && !isImage) {
+      toast.error('Please upload a PDF or image file');
+      return;
+    }
+
+    setUploading(true);
+    try {
+      const up: any = await api('POST', '/files/upload', {
+        project_id: null,
+        client_id: null,
+        employee_id: userId,
+        category_id: 'permit',
+        original_name: f.name,
+        content_type: f.type || 'application/pdf'
+      });
+      const put = await fetch(up.upload_url, {
+        method: 'PUT',
+        headers: { 'Content-Type': f.type || 'application/pdf', 'x-ms-blob-type': 'BlockBlob' },
+        body: f
+      });
+      if (!put.ok) throw new Error('upload failed');
+      const conf: any = await api('POST', '/files/confirm', {
+        key: up.key,
+        size_bytes: f.size,
+        checksum_sha256: 'na',
+        content_type: f.type || 'application/pdf'
+      });
+      // Save to profile
+      await api('PUT', `/auth/users/${encodeURIComponent(userId)}/profile`, {
+        permit_file_id: conf.id
+      });
+      // Also add to Personal Documents folder
+      try {
+        const personalFolderId = await getOrCreatePersonalDocumentsFolder(userId);
+        await api('POST', `/auth/users/${encodeURIComponent(userId)}/documents`, {
+          folder_id: personalFolderId,
+          title: `Immigration Status Document - ${f.name}`,
+          file_id: conf.id
+        });
+      } catch (e: any) {
+        console.error('Failed to add document to Personal Documents folder:', e);
+        // Don't fail the whole upload if folder creation fails
+      }
+      toast.success('Immigration Status Document uploaded successfully');
+      await refetch();
+      await queryClient.invalidateQueries({ queryKey: ['userProfile', userId] });
+      await queryClient.invalidateQueries({ queryKey: ['user-docs', userId] });
+      await queryClient.invalidateQueries({ queryKey: ['user-folders', userId] });
+    } catch (e: any) {
+      toast.error(e?.message || 'Failed to upload Immigration Status Document');
+    } finally {
+      setUploading(false);
+      if (fileRef.current) fileRef.current.value = '';
+    }
+  };
+
+  return (
+    <div className="rounded-xl border bg-white p-4">
+      <div className="mb-4 flex items-center gap-2">
+        <div className="w-8 h-8 rounded bg-amber-100 flex items-center justify-center">
+          <svg className="w-5 h-5 text-amber-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V8a2 2 0 00-2-2h-5m-4 0V5a2 2 0 114 0v1m-4 0a2 2 0 104 0m-5 8a2 2 0 100-4 2 2 0 000 4zm0 0c1.306 0 2.417.835 2.83 2M9 14a3.001 3.001 0 00-2.83 2M15 11h3m-3 4h2" />
+          </svg>
+        </div>
+        <h5 className="font-semibold text-amber-900">Immigration Status Document {isRequired && <span className="text-red-600">*</span>}</h5>
+      </div>
+      <div className="text-xs text-gray-500 mb-3">Examples: Work Permit, Study Permit, PGWP, PR Card...</div>
+      {permitFileId ? (
+        <div className="space-y-3">
+          <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
+            <div className="flex-1">
+              <div className="text-sm font-medium text-gray-900">Immigration Status Document</div>
+              <div className="text-xs text-gray-500">Document uploaded</div>
+            </div>
+            <a
+              href={`/files/${permitFileId}/download`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="px-3 py-1.5 rounded border border-amber-300 text-amber-700 text-sm font-medium hover:bg-amber-50"
+            >
+              View
+            </a>
+            {canEdit && (
+              <button
+                onClick={async () => {
+                  try {
+                    await api('PUT', `/auth/users/${encodeURIComponent(userId)}/profile`, { permit_file_id: null });
+                    toast.success('Immigration Status Document removed');
+                    await refetch();
+                    await queryClient.invalidateQueries({ queryKey: ['userProfile', userId] });
+                  } catch (e: any) {
+                    toast.error(e?.message || 'Failed to remove Immigration Status Document');
+                  }
+                }}
+                className="px-3 py-1.5 rounded border border-red-300 text-red-700 text-sm font-medium hover:bg-red-50"
+              >
+                Remove
+              </button>
+            )}
+          </div>
+          {canEdit && (
+            <div>
+              <input ref={fileRef} type="file" accept=".pdf,image/*" className="hidden" onChange={handleUpload} />
+              <button
+                onClick={() => fileRef.current?.click()}
+                disabled={uploading}
+                className="px-3 py-1.5 rounded border border-amber-300 text-amber-700 text-sm font-medium hover:bg-amber-50 disabled:opacity-50"
+              >
+                {uploading ? 'Uploading...' : 'Replace Document'}
+              </button>
+            </div>
+          )}
+        </div>
+      ) : (
+        <div>
+          {canEdit ? (
+            <>
+              <input ref={fileRef} type="file" accept=".pdf,image/*" className="hidden" onChange={handleUpload} />
+              <button
+                onClick={() => fileRef.current?.click()}
+                disabled={uploading}
+                className="px-3 py-1.5 rounded border border-amber-300 text-amber-700 text-sm font-medium hover:bg-amber-50 disabled:opacity-50"
+              >
+                {uploading ? 'Uploading...' : 'Upload Document'}
+              </button>
+              {isRequired && !permitFileId && (
+                <div className="text-xs text-red-600 mt-1">Immigration Status Document is required</div>
+              )}
+            </>
+          ) : (
+            <div className="text-sm text-gray-600">No permit document uploaded</div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function VisaInformationSection({ userId, canEdit, isRequired = false, showInlineForm = false }:{ userId:string, canEdit:boolean, isRequired?: boolean, showInlineForm?: boolean }){
   const { data, refetch } = useQuery({ 
     queryKey:['employee-visas', userId], 
     queryFn: ()=> api<any[]>('GET', `/auth/users/${encodeURIComponent(userId)}/visas`) 
@@ -3490,7 +4056,7 @@ function VisaInformationSection({ userId, canEdit }:{ userId:string, canEdit:boo
       setStatus('Active');
       setNotes('');
       setCreateOpen(false);
-      refetch();
+      await refetch();
     } catch (error: any) {
       toast.error(error?.message || 'Failed to create visa entry');
     }
@@ -3550,9 +4116,9 @@ function VisaInformationSection({ userId, canEdit }:{ userId:string, canEdit:boo
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V8a2 2 0 00-2-2h-5m-4 0V5a2 2 0 114 0v1m-4 0a2 2 0 104 0m-5 8a2 2 0 100-4 2 2 0 000 4zm0 0c1.306 0 2.417.835 2.83 2M9 14a3.001 3.001 0 00-2.83 2M15 11h3m-3 4h2" />
             </svg>
           </div>
-          <h5 className="font-semibold text-amber-900">Visa Information</h5>
+          <h5 className="font-semibold text-amber-900">Visa Information {isRequired && <span className="text-red-600">*</span>}</h5>
         </div>
-        {canEdit && (
+        {canEdit && !showInlineForm && (
           <button 
             onClick={() => setCreateOpen(true)} 
             className="px-3 py-1.5 rounded border border-amber-300 text-amber-700 text-sm font-medium hover:bg-amber-50"
@@ -3684,7 +4250,7 @@ function VisaInformationSection({ userId, canEdit }:{ userId:string, canEdit:boo
         </div>
       ) : (
         <div className="text-sm text-gray-600 py-8 text-center">
-          No visa information. {canEdit && 'Click "Add Entry" to add one.'}
+          {isRequired ? 'Visa information is required' : 'No visa information. This is optional.'}
         </div>
       )}
       

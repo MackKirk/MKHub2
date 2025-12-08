@@ -110,6 +110,7 @@ class Invite(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     accepted_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    division_ids: Mapped[Optional[list]] = mapped_column(JSON)  # Array of division UUIDs as strings
 
 
 class RefreshToken(Base):

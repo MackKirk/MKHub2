@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
 
@@ -56,12 +56,113 @@ export default function ImagePicker({
     }
   }, [isOpen]);
 
+  // Handle paste from clipboard - works when button is clicked
+  const handlePaste = async () => {
+    try {
+      // Try Clipboard API first (requires HTTPS or localhost)
+      if (navigator.clipboard && navigator.clipboard.read) {
+        try {
+          const clipboardItems = await navigator.clipboard.read();
+          
+          for (const item of clipboardItems) {
+            // Check if clipboard contains image
+            const imageTypes = item.types.filter(type => type.startsWith('image/'));
+            if (imageTypes.length > 0) {
+              const blob = await item.getType(imageTypes[0]);
+              
+              // Create a File object from the blob
+              const file = new File([blob], `pasted-image-${Date.now()}.png`, { 
+                type: blob.type || 'image/png' 
+              });
+              
+              await loadFromFile(file);
+              toast.success('Image pasted from clipboard');
+              return;
+            }
+          }
+          toast.error('No image found in clipboard. Please copy an image first.');
+          return;
+        } catch (clipboardError: any) {
+          if (clipboardError.name === 'NotAllowedError' || clipboardError.name === 'SecurityError') {
+            toast.error('Please allow clipboard access or press Ctrl+V to paste');
+            return;
+          }
+          console.log('Clipboard API failed, user should use Ctrl+V instead:', clipboardError);
+        }
+      }
+      
+      // If Clipboard API is not available or failed, show helpful message
+      toast.error('Please press Ctrl+V (or Cmd+V on Mac) while the picker is open to paste an image from your clipboard.');
+    } catch (error: any) {
+      console.error('Paste failed:', error);
+      toast.error('Failed to paste image. Please try pressing Ctrl+V while the picker is open, or use the file upload button.');
+    }
+  };
+
   useEffect(() => {
     if (!isOpen) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    
+    const onKey = (e: KeyboardEvent) => { 
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+    
+    // Handle paste event (works with Ctrl+V, Cmd+V, or right-click paste)
+    const onPaste = async (e: ClipboardEvent) => {
+      e.preventDefault();
+      const items = e.clipboardData?.items;
+      if (!items) {
+        // Try Clipboard API as fallback
+        try {
+          if (navigator.clipboard && navigator.clipboard.read) {
+            const clipboardItems = await navigator.clipboard.read();
+            for (const item of clipboardItems) {
+              const imageTypes = item.types.filter(type => type.startsWith('image/'));
+              if (imageTypes.length > 0) {
+                const blob = await item.getType(imageTypes[0]);
+                const file = new File([blob], `pasted-image-${Date.now()}.png`, { 
+                  type: blob.type || 'image/png' 
+                });
+                await loadFromFile(file);
+                toast.success('Image pasted from clipboard');
+                return;
+              }
+            }
+          }
+        } catch (err) {
+          console.error('Clipboard API fallback failed:', err);
+        }
+        toast.error('No clipboard data available');
+        return;
+      }
+      
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i];
+        if (item.type.startsWith('image/')) {
+          const blob = item.getAsFile();
+          if (blob) {
+            const file = new File([blob], `pasted-image-${Date.now()}.png`, { 
+              type: blob.type || 'image/png' 
+            });
+            await loadFromFile(file);
+            toast.success('Image pasted from clipboard');
+            return;
+          }
+        }
+      }
+      toast.error('No image found in clipboard. Please copy an image first.');
+    };
+    
     window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [isOpen, onClose]);
+    window.addEventListener('paste', onPaste);
+    
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('paste', onPaste);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, onClose]); // loadFromFile is stable, no need to include
 
   // On-demand gallery loader with pagination
   const PAGE_SIZE = 60;
@@ -454,6 +555,16 @@ export default function ImagePicker({
             <div className="p-3 border-t">
               <div className="mb-2 text-sm font-semibold">Upload</div>
               <input ref={inputRef} type="file" accept="image/*,.heic,.heif,image/heic,image/heif" onChange={(e)=>{ const f=e.target.files?.[0]; if(f) loadFromFile(f); }} />
+              <div className="mt-3">
+                <button 
+                  type="button"
+                  onClick={handlePaste}
+                  className="w-full px-3 py-2 rounded bg-gray-100 hover:bg-gray-200 text-sm flex items-center justify-center gap-2"
+                  title="Paste image from clipboard (Ctrl+V)"
+                >
+                  📋 Paste Image
+                </button>
+              </div>
             </div>
           </div>
           <div className="col-span-2">

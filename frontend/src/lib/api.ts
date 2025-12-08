@@ -24,7 +24,11 @@ export async function api<T=any>(method: HttpMethod, path: string, body?: any, h
   }
   
   const r = await fetch(path, { method, headers: h, body: bodyData });
-  if (r.status === 401) { localStorage.removeItem('user_token'); location.href = '/login'; throw new Error('Unauthorized'); }
+  if (r.status === 401) { 
+    localStorage.removeItem('user_token'); 
+    window.location.replace('/login'); 
+    throw new Error('Unauthorized'); 
+  }
   if (!r.ok) { 
     // FastAPI returns errors in {detail: "message"} format
     // Try to get the error message from the response

@@ -1,11 +1,17 @@
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from 'react-hot-toast';
+import { lazy, Suspense } from 'react';
 import { queryClient } from './lib/queryClient';
 import ConfirmProvider from './components/ConfirmProvider';
+import UnsavedChangesProvider from './components/UnsavedChangesProvider';
 import AppShell from './AppShell';
 import Login from './pages/Login';
+import Register from './pages/Register';
+import PasswordReset from './pages/PasswordReset';
 import Protected from './lib/protected';
+
+const OnboardingWizard = lazy(() => import('./pages/OnboardingWizard'));
 import Profile from './pages/Profile';
 import HomePage from './pages/Home';
 import Customers from './pages/Customers';
@@ -68,12 +74,16 @@ export default function App(){
   const state = location.state as { backgroundLocation?: Location } | undefined;
   return (
     <QueryClientProvider client={queryClient}>
+      <UnsavedChangesProvider>
       <ConfirmProvider>
       <Routes location={state?.backgroundLocation || location}>
         <Route path="/" element={<Home/>} />
         <Route path="/index.html" element={<Home/>} />
         <Route path="/login" element={<Login/>} />
+        <Route path="/register" element={<Register/>} />
+        <Route path="/password-reset" element={<PasswordReset/>} />
         <Route element={<Protected/>}>
+          <Route path="/onboarding" element={<Suspense fallback={<div className="min-h-screen flex items-center justify-center"><div>Loading...</div></div>}><OnboardingWizard/></Suspense>} />
           <Route path="/home" element={<AppShell><HomePage/></AppShell>} />
           <Route path="/profile" element={<AppShell><Profile/></AppShell>} />
           <Route path="/schedule" element={<AppShell><Schedule/></AppShell>} />
@@ -142,6 +152,7 @@ export default function App(){
       )}
       <Toaster position="top-right" />
       </ConfirmProvider>
+      </UnsavedChangesProvider>
     </QueryClientProvider>
   );
 }

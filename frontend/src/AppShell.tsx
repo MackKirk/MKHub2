@@ -1,8 +1,10 @@
-import { PropsWithChildren, useState, useMemo } from 'react';
-import { Link, NavLink, useLocation } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { PropsWithChildren, useState, useMemo, useEffect, useRef } from 'react';
+import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import NotificationBell from '@/components/NotificationBell';
+import { useUnsavedChanges } from '@/components/UnsavedChangesProvider';
+import { useConfirm } from '@/components/ConfirmProvider';
 
 type MenuItem = {
   id: string;
@@ -132,15 +134,112 @@ const IconHumanResources = () => (
 
 export default function AppShell({ children }: PropsWithChildren){
   const location = useLocation();
-  const { data:meProfile } = useQuery({ queryKey:['me-profile'], queryFn: ()=>api<any>('GET','/auth/me/profile') });
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const { data:meProfile, isLoading: meProfileLoading } = useQuery({ queryKey:['me-profile'], queryFn: ()=>api<any>('GET','/auth/me/profile') });
   const { data:me } = useQuery({ queryKey:['me'], queryFn: ()=>api<any>('GET','/auth/me') });
+  const userId = me?.id ? String(me.id) : '';
+  
+  // Check emergency contacts
+  const { data: emergencyContactsData, isLoading: emergencyContactsLoading } = useQuery({ 
+    queryKey:['emergency-contacts', userId], 
+    queryFn: ()=> api<any[]>('GET', `/auth/users/${encodeURIComponent(userId)}/emergency-contacts`),
+    enabled: !!userId
+  });
+  
+  // Check if profile is complete (all required fields filled)
+  const isProfileComplete = useMemo(() => {
+    // If we're still loading, don't consider it complete yet (but also don't redirect until we know)
+    if (!meProfile?.profile) return false;
+    const p = meProfile.profile;
+    const reqPersonal = ['gender','date_of_birth','marital_status','nationality','phone','address_line1','city','province','postal_code','country','sin_number','work_eligibility_status'];
+    const missingPersonal = reqPersonal.filter(k => !String((p as any)[k]||'').trim());
+    // Only check emergency contacts if userId exists (query enabled) and query has finished loading
+    const hasEmergencyContact = userId ? (emergencyContactsData !== undefined && emergencyContactsData.length > 0) : true;
+    const missingPersonalWithContact = [...missingPersonal];
+    // Only require emergency contact if we have a userId (meaning the query was enabled)
+    if (!hasEmergencyContact && userId && !emergencyContactsLoading) {
+      missingPersonalWithContact.push('emergency_contact');
+    }
+    return missingPersonalWithContact.length === 0;
+  }, [meProfile, emergencyContactsData, userId, emergencyContactsLoading]);
+  
+  // Redirect to onboarding if incomplete and trying to access other routes
+  // Only redirect if queries have finished loading and profile is confirmed incomplete
+  // IMPORTANT: Add debounce to prevent rapid redirects during form updates
+  const redirectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  useEffect(() => {
+    // Clear any pending redirect
+    if (redirectTimeoutRef.current) {
+      clearTimeout(redirectTimeoutRef.current);
+      redirectTimeoutRef.current = null;
+    }
+    
+    // Don't redirect if we're still loading data
+    if (meProfileLoading || (userId && emergencyContactsLoading)) {
+      return;
+    }
+    
+    // Only redirect if profile data exists, is incomplete, and we're not already on onboarding/profile pages
+    if (meProfile && !isProfileComplete && location.pathname !== '/profile' && location.pathname !== '/onboarding') {
+      // Add a small delay to prevent rapid redirects during form updates
+      redirectTimeoutRef.current = setTimeout(() => {
+        // Double-check conditions before redirecting
+        if (meProfile && !isProfileComplete && location.pathname !== '/profile' && location.pathname !== '/onboarding') {
+          navigate('/onboarding', { replace: true });
+        }
+        redirectTimeoutRef.current = null;
+      }, 1000); // 1 second delay to allow form updates to settle
+    }
+    
+    return () => {
+      if (redirectTimeoutRef.current) {
+        clearTimeout(redirectTimeoutRef.current);
+        redirectTimeoutRef.current = null;
+      }
+    };
+  }, [meProfile, isProfileComplete, location.pathname, navigate, meProfileLoading, emergencyContactsLoading, userId]);
+  
   const displayName = (meProfile?.profile?.preferred_name) || ([meProfile?.profile?.first_name, meProfile?.profile?.last_name].filter(Boolean).join(' ') || meProfile?.user?.username || 'User');
   const avatarId = meProfile?.profile?.profile_photo_file_id;
   const avatarUrl = avatarId ? `/files/${avatarId}/thumbnail?w=96` : '/ui/assets/login/logo-light.svg';
   const [open, setOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   
-  const menuCategories: MenuCategory[] = useMemo(() => [
+  const { hasUnsavedChanges } = useUnsavedChanges();
+  const confirm = useConfirm();
+  
+  const handleLogout = async () => {
+    if (hasUnsavedChanges) {
+      const result = await confirm({
+        title: 'Unsaved Changes',
+        message: 'You have unsaved changes. What would you like to do?',
+        confirmText: 'Save and Logout',
+        cancelText: 'Cancel',
+        showDiscard: true,
+        discardText: 'Discard Changes'
+      });
+      
+      if (result === 'cancel') {
+        return; // Don't logout
+      }
+      // For 'confirm' and 'discard', proceed with logout
+      // Note: We can't save from here, so we just proceed
+    }
+    
+    localStorage.removeItem('user_token');
+    queryClient.clear(); // Clear all React Query cache
+    navigate('/login', { replace: true });
+  };
+  
+  const menuCategories: MenuCategory[] = useMemo(() => {
+    // If profile is incomplete, don't show menu (user must complete onboarding)
+    if (!isProfileComplete) {
+      return [];
+    }
+    
+    // If profile is complete, show all categories
+    return [
     {
       id: 'personal',
       label: 'Personal',
@@ -231,7 +330,8 @@ export default function AppShell({ children }: PropsWithChildren){
         { id: 'system-settings', label: 'System Settings', path: '/settings', icon: <IconSettings />, requiredPermission: 'settings:access' },
       ]
     },
-  ], [me]);
+  ];
+  }, [me, isProfileComplete]);
 
   // Check if current route is a project that is an opportunity
   const projectIdMatch = location.pathname.match(/^\/projects\/([^\/]+)$/);
@@ -460,7 +560,7 @@ export default function AppShell({ children }: PropsWithChildren){
                 <div className="absolute right-0 mt-2 w-56 rounded-lg border bg-white text-black shadow-lg z-50">
                   <Link to="/profile" onClick={()=>setOpen(false)} className="block px-3 py-2 hover:bg-gray-50">My Information</Link>
                   <Link to="/reviews/my" onClick={()=>setOpen(false)} className="block px-3 py-2 hover:bg-gray-50">My Reviews</Link>
-                  <button onClick={()=>{ localStorage.removeItem('user_token'); location.href='/login'; }} className="w-full text-left px-3 py-2 hover:bg-gray-50">Logout</button>
+                  <button onClick={handleLogout} className="w-full text-left px-3 py-2 hover:bg-gray-50">Logout</button>
                 </div>
               )}
             </div>
