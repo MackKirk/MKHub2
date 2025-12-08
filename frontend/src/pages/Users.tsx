@@ -98,7 +98,6 @@ export default function Users(){
           <div className="text-2xl font-extrabold">Users</div>
           <div className="text-sm opacity-90">Manage employees, roles, and access. {total > 0 && `(${total} total)`}</div>
         </div>
-<<<<<<< HEAD
         <div className="flex items-center gap-2">
           {/* TEMPORARY: Sync from BambooHR button */}
           <button
@@ -109,20 +108,15 @@ export default function Users(){
           >
             {isSyncing ? 'Sincronizando...' : '🔄 Sync BambooHR'}
           </button>
-=======
-        {canInviteUser && (
->>>>>>> 141113a0934bdd1b7c863cdc0f605fb38576d26e
-          <button
-            onClick={() => setShowInviteModal(true)}
-            className="px-4 py-2 bg-white text-[#d11616] rounded-lg font-semibold hover:bg-gray-100 transition-colors"
-          >
-            + Invite User
-          </button>
-<<<<<<< HEAD
+          {canInviteUser && (
+            <button
+              onClick={() => setShowInviteModal(true)}
+              className="px-4 py-2 bg-white text-[#d11616] rounded-lg font-semibold hover:bg-gray-100 transition-colors"
+            >
+              + Invite User
+            </button>
+          )}
         </div>
-=======
-        )}
->>>>>>> 141113a0934bdd1b7c863cdc0f605fb38576d26e
       </div>
       
       {/* Search Bar */}
