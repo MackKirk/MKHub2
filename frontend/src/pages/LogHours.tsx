@@ -64,6 +64,17 @@ export default function LogHours(){
               if(!projectId){ toast.error('Select a project'); return; }
               if(!workDate || !start || !end){ toast.error('Date, start and end required'); return; }
               if(!notes.trim()){ toast.error('Notes required'); return; }
+              
+              // Validate that end time is not before start time
+              const [sh, sm] = start.split(':').map(Number);
+              const [eh, em] = end.split(':').map(Number);
+              const startMinutes = sh * 60 + sm;
+              const endMinutes = eh * 60 + em;
+              if (endMinutes <= startMinutes) {
+                toast.error('End time cannot be before or equal to start time. Please select a valid time.');
+                return;
+              }
+              
               const payload:any = { work_date: workDate, start_time: start, end_time: end, minutes: mins, notes };
               await api('POST', `/projects/${encodeURIComponent(projectId)}/timesheet`, payload);
               toast.success('Logged');

@@ -29,7 +29,7 @@ router = APIRouter(prefix="/employees", tags=["employee-management"])
 def get_user_divisions(
     user_id: str,
     db: Session = Depends(get_db),
-    _=Depends(require_permissions("users:read"))
+    _=Depends(require_permissions("users:read", "hr:users:read", "hr:users:view:general"))
 ):
     """Get all divisions for a user"""
     user = db.query(User).filter(User.id == user_id).first()
@@ -76,7 +76,7 @@ def update_user_divisions(
 def get_salary_history(
     user_id: str,
     db: Session = Depends(get_db),
-    _=Depends(require_permissions("users:read"))
+    _=Depends(require_permissions("users:read", "hr:users:read", "hr:users:view:general"))
 ):
     """Get salary history for a user"""
     user = db.query(User).filter(User.id == user_id).first()
@@ -178,7 +178,7 @@ def get_user_loans(
     user_id: str,
     status: Optional[str] = Query(None),
     db: Session = Depends(get_db),
-    _=Depends(require_permissions("users:read"))
+    _=Depends(require_permissions("users:read", "hr:users:read", "hr:users:view:general"))
 ):
     """Get all loans for a user"""
     user = db.query(User).filter(User.id == user_id).first()
@@ -220,7 +220,7 @@ def get_loan_details(
     user_id: str,
     loan_id: str,
     db: Session = Depends(get_db),
-    _=Depends(require_permissions("users:read"))
+    _=Depends(require_permissions("users:read", "hr:users:read", "hr:users:view:general"))
 ):
     """Get loan details with payments"""
     loan = db.query(EmployeeLoan).filter(
@@ -370,7 +370,7 @@ def get_user_notices(
     user_id: str,
     notice_type: Optional[str] = Query(None),
     db: Session = Depends(get_db),
-    _=Depends(require_permissions("users:read"))
+    _=Depends(require_permissions("users:read", "hr:users:read", "hr:users:view:general"))
 ):
     """Get all notices for a user"""
     user = db.query(User).filter(User.id == user_id).first()
@@ -484,7 +484,7 @@ def get_user_fines_tickets(
     status: Optional[str] = Query(None),
     type: Optional[str] = Query(None),
     db: Session = Depends(get_db),
-    _=Depends(require_permissions("users:read"))
+    _=Depends(require_permissions("users:read", "hr:users:read", "hr:users:view:general"))
 ):
     """Get all fines and tickets for a user"""
     user = db.query(User).filter(User.id == user_id).first()
@@ -619,7 +619,7 @@ def get_user_equipment(
     status: Optional[str] = Query(None),
     equipment_type: Optional[str] = Query(None),
     db: Session = Depends(get_db),
-    _=Depends(require_permissions("users:read"))
+    _=Depends(require_permissions("users:read", "hr:users:read", "hr:users:view:general"))
 ):
     """Get all equipment for a user"""
     user = db.query(User).filter(User.id == user_id).first()
@@ -951,7 +951,7 @@ def get_time_off_balance(
     year: Optional[int] = Query(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
-    _=Depends(require_permissions("users:read"))
+    _=Depends(require_permissions("users:read", "hr:users:read", "hr:users:view:general"))
 ):
     """Get time off balance for a user"""
     user = db.query(User).filter(User.id == user_id).first()
@@ -1121,7 +1121,7 @@ def get_time_off_requests(
     status: Optional[str] = Query(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
-    _=Depends(require_permissions("users:read"))
+    _=Depends(require_permissions("users:read", "hr:users:read", "hr:users:view:general"))
 ):
     """Get time off requests for a user"""
     user = db.query(User).filter(User.id == user_id).first()
@@ -1298,7 +1298,7 @@ def get_time_off_history(
     year: Optional[int] = Query(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
-    _=Depends(require_permissions("users:read"))
+    _=Depends(require_permissions("users:read", "hr:users:read", "hr:users:view:general"))
 ):
     """Get time off history/transactions for a user"""
     user = db.query(User).filter(User.id == user_id).first()

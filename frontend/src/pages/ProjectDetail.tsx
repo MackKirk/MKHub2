@@ -25,6 +25,15 @@ function formatTime12h(timeStr: string | null | undefined): string {
   return `${hours12}:${minutes} ${period}`;
 }
 
+// Helper to format date as "day, month dd"
+function formatDate(dateStr: string): string {
+  const date = new Date(dateStr + 'T00:00:00');
+  const months = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+  const month = months[date.getMonth()];
+  const day = date.getDate();
+  return `${month} ${day}`;
+}
+
 
 // Helper function to format hours and minutes in a readable format (e.g., "8h30min")
 function formatHoursMinutes(totalMinutes: number): string {
@@ -1865,6 +1874,12 @@ function TimesheetTab({ projectId }:{ projectId:string }){
   const [editStartTime, setEditStartTime] = useState<string>('');
   const [editEndTime, setEditEndTime] = useState<string>('');
   
+  // Fetch project details for confirmation messages
+  const { data: projectData } = useQuery({ 
+    queryKey: ['project', projectId], 
+    queryFn: () => api<Project>('GET', `/projects/${projectId}`) 
+  });
+  
   const handleBackToOverview = () => {
     nav(location.pathname, { replace: true });
   };
@@ -2243,6 +2258,132 @@ function TimesheetTab({ projectId }:{ projectId:string }){
         toast.error('Clock-in/out cannot be more than 4 minutes in the future. Please select a valid time.');
         return;
       }
+    }
+
+    // Validate: If clocking out, check that clock-out time is not before or equal to clock-in time
+    if (clockType === 'out' && selectedShift) {
+      // Find the most recent open clock-in for this shift (one with clock_in_time but no clock_out_time)
+      const openClockIn = attendances?.find(
+        (a: any) => a.shift_id === selectedShift.id && a.clock_in_time && !a.clock_out_time
+      );
+      
+      if (openClockIn && openClockIn.clock_in_time) {
+        const [year, month, day] = shiftDate.split('-').map(Number);
+        const selectedDateTime = new Date(year, month - 1, day, hours, minutes, 0);
+        const clockInDate = new Date(openClockIn.clock_in_time);
+        
+        // Compare dates in the same timezone (both are local)
+        if (selectedDateTime <= clockInDate) {
+          toast.error('Clock-out time must be after clock-in time. Please select a valid time.');
+          return;
+        }
+        
+        // Validate break time: break cannot be greater than or equal to total time
+        if (insertBreakTime) {
+          const breakTotalMinutes = parseInt(breakHours) * 60 + parseInt(breakMinutes);
+          const totalMinutes = Math.floor((selectedDateTime.getTime() - clockInDate.getTime()) / (1000 * 60));
+          
+          if (breakTotalMinutes >= totalMinutes) {
+            toast.error('Break time cannot be greater than or equal to the total attendance time. Please adjust the break or clock-out time.');
+            return;
+          }
+        }
+      }
+    }
+
+    // Prepare confirmation message
+    const time12h = formatTime12h(timeStr);
+    const dateFormatted = formatDate(shiftDate);
+    const projectName = projectData?.name || projectData?.code || 'Unknown Project';
+    
+    // Get worker name if supervisor is doing for another worker
+    let workerName = '';
+    if (isSupervisorDoingForOther && selectedShift?.worker_id) {
+      const worker = employees?.find((e: any) => String(e.id) === String(selectedShift.worker_id));
+      workerName = worker?.display_name || worker?.name || 'Unknown Worker';
+    }
+    
+    // Build confirmation message
+    let confirmationMessage = '';
+    if (clockType === 'out' && selectedShift) {
+      // Find the open clock-in for detailed confirmation
+      const openClockIn = attendances?.find(
+        (a: any) => a.shift_id === selectedShift.id && a.clock_in_time && !a.clock_out_time
+      );
+      
+      if (openClockIn && openClockIn.clock_in_time) {
+        // Detailed confirmation for clock-out
+        const clockInTime = new Date(openClockIn.clock_in_time);
+        // Format clock-in time in local timezone
+        const clockInHour = clockInTime.getHours();
+        const clockInMin = clockInTime.getMinutes();
+        const clockInTime12h = formatTime12h(
+          `${String(clockInHour).padStart(2, '0')}:${String(clockInMin).padStart(2, '0')}`
+        );
+        
+        // Calculate break information first
+        let breakTotalMinutes = 0;
+        let breakInfo = '';
+        if (insertBreakTime) {
+          breakTotalMinutes = parseInt(breakHours) * 60 + parseInt(breakMinutes);
+          if (breakTotalMinutes > 0) {
+            const breakH = Math.floor(breakTotalMinutes / 60);
+            const breakM = breakTotalMinutes % 60;
+            breakInfo = breakM > 0 ? `Break: ${breakH}h ${breakM}min` : `Break: ${breakH}h`;
+          }
+        }
+        
+        // Calculate hours worked
+        const [year, month, day] = shiftDate.split('-').map(Number);
+        const clockOutDateTime = new Date(year, month - 1, day, hours, minutes, 0);
+        const clockInDateTime = new Date(clockInTime);
+        const diffMs = clockOutDateTime.getTime() - clockInDateTime.getTime();
+        const totalMinutes = Math.floor(diffMs / (1000 * 60));
+        
+        // Subtract break from total minutes to get net hours worked
+        const netMinutes = Math.max(0, totalMinutes - breakTotalMinutes);
+        const workedHours = Math.floor(netMinutes / 60);
+        const workedMinutes = netMinutes % 60;
+        const hoursWorkedStr = workedMinutes > 0 ? `${workedHours}h ${workedMinutes}min` : `${workedHours}h`;
+        
+        // Build message with worker name if supervisor
+        const workerInfo = isSupervisorDoingForOther && workerName ? `Worker: ${workerName}\n` : '';
+        
+        confirmationMessage = `You are about to clock out with the following details:\n\n` +
+          `${workerInfo}Date: ${dateFormatted}\n` +
+          `Clock In: ${clockInTime12h}\n` +
+          `Clock Out: ${time12h}${breakInfo ? `\n${breakInfo}` : ''}\n` +
+          `Hours Worked: ${hoursWorkedStr}\n` +
+          `Project: ${projectName}\n\n` +
+          `Do you want to confirm?`;
+      } else {
+        // Fallback if no open clock-in found
+        if (isSupervisorDoingForOther && workerName) {
+          confirmationMessage = `You are about to clock out for ${workerName} on ${dateFormatted} at ${time12h} for project ${projectName}.\n\nDo you want to confirm?`;
+        } else {
+          confirmationMessage = `You are about to clock out on ${dateFormatted} at ${time12h} for project ${projectName}.\n\nDo you want to confirm?`;
+        }
+      }
+    } else {
+      // Simple confirmation for clock-in
+      if (isSupervisorDoingForOther && workerName) {
+        confirmationMessage = `You are about to clock in for ${workerName} on ${dateFormatted} at ${time12h} for project ${projectName}.\n\nDo you want to confirm?`;
+      } else {
+        confirmationMessage = `You are about to clock in on ${dateFormatted} at ${time12h} for project ${projectName}.\n\nDo you want to confirm?`;
+      }
+    }
+    
+    // Show confirmation dialog
+    const confirmationResult = await confirm({
+      title: `Confirm Clock-${clockType === 'in' ? 'In' : 'Out'}`,
+      message: confirmationMessage,
+      confirmText: 'Confirm',
+      cancelText: 'Cancel'
+    });
+    
+    if (confirmationResult !== 'confirm') {
+      setSubmitting(false);
+      return;
     }
 
     setSubmitting(true);

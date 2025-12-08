@@ -2,11 +2,10 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { Link } from 'react-router-dom';
 import { useState, useMemo } from 'react';
-import { getCurrentMonthLocal } from '@/lib/dateUtils';
 import InviteUserModal from '@/components/InviteUserModal';
 import toast from 'react-hot-toast';
 
-type User = { id:string, username:string, email?:string, name?:string, roles?:string[], is_active?:boolean, profile_photo_file_id?:string };
+type User = { id:string, username:string, email?:string, name?:string, roles?:string[], is_active?:boolean, profile_photo_file_id?:string, job_title?:string, phone?:string, mobile_phone?:string };
 type UsersResponse = { items: User[], total: number, page: number, limit: number, total_pages: number };
 
 export default function Users(){
@@ -33,14 +32,29 @@ export default function Users(){
   });
   
   const [showInviteModal, setShowInviteModal] = useState(false);
-  const month = getCurrentMonthLocal();
-  const { data:summary } = useQuery({ 
-    queryKey:['timesheetSummary', month], 
-    queryFn: ()=> api<any[]>('GET', `/projects/timesheet/summary?month=${encodeURIComponent(month)}`) 
-  });
   
-  const minsByUser: Record<string, number> = {};
-  (summary||[]).forEach((r:any)=>{ minsByUser[String(r.user_id)]=Number(r.minutes||0); });
+  const { data:me } = useQuery({ queryKey:['me'], queryFn: ()=> api<any>('GET','/auth/me') });
+  
+  // Check if user has permission to invite users
+  const canInviteUser = useMemo(() => {
+    if (!me) return false;
+    const isAdmin = (me?.roles || []).some((r: string) => String(r || '').toLowerCase() === 'admin');
+    if (isAdmin) return true;
+    const perms = me?.permissions || [];
+    return perms.includes('hr:users:write') || perms.includes('users:write'); // Legacy permission
+  }, [me]);
+  
+  // Check if user has any view permissions to open user details
+  const canViewUserDetails = useMemo(() => {
+    if (!me) return false;
+    const isAdmin = (me?.roles || []).some((r: string) => String(r || '').toLowerCase() === 'admin');
+    if (isAdmin) return true;
+    const perms = me?.permissions || [];
+    return perms.includes('hr:users:view:general') || 
+           perms.includes('hr:users:view:timesheet') || 
+           perms.includes('hr:users:view:permissions') ||
+           perms.includes('users:read'); // Legacy permission
+  }, [me]);
   
   const users = data?.items || [];
   const totalPages = data?.total_pages || 0;
@@ -84,6 +98,7 @@ export default function Users(){
           <div className="text-2xl font-extrabold">Users</div>
           <div className="text-sm opacity-90">Manage employees, roles, and access. {total > 0 && `(${total} total)`}</div>
         </div>
+<<<<<<< HEAD
         <div className="flex items-center gap-2">
           {/* TEMPORARY: Sync from BambooHR button */}
           <button
@@ -94,13 +109,20 @@ export default function Users(){
           >
             {isSyncing ? 'Sincronizando...' : '🔄 Sync BambooHR'}
           </button>
+=======
+        {canInviteUser && (
+>>>>>>> 141113a0934bdd1b7c863cdc0f605fb38576d26e
           <button
             onClick={() => setShowInviteModal(true)}
             className="px-4 py-2 bg-white text-[#d11616] rounded-lg font-semibold hover:bg-gray-100 transition-colors"
           >
             + Invite User
           </button>
+<<<<<<< HEAD
         </div>
+=======
+        )}
+>>>>>>> 141113a0934bdd1b7c863cdc0f605fb38576d26e
       </div>
       
       {/* Search Bar */}
@@ -130,8 +152,8 @@ export default function Users(){
           <div className="grid md:grid-cols-4 gap-4">
             {users.map(u=> {
               const isAdmin = (u.roles || []).some((r: string) => String(r || '').toLowerCase() === 'admin');
-              return (
-                <Link key={u.id} to={`/users/${encodeURIComponent(u.id)}`} className="rounded-xl border bg-white p-4 flex items-center gap-3 hover:shadow-md transition-shadow relative">
+              const cardContent = (
+                <>
                   {u.profile_photo_file_id? (
                     <img src={`/files/${u.profile_photo_file_id}/thumbnail?w=96`} className="w-12 h-12 rounded-full object-cover flex-shrink-0"/>
                   ) : (
@@ -147,11 +169,31 @@ export default function Users(){
                       )}
                     </div>
                     <div className="text-sm text-gray-600 truncate">{u.email||''}</div>
-                    <div className="text-[11px] text-gray-500 truncate">{(u.roles||[]).join(', ') || 'No roles'}</div>
-                    <div className="text-[11px] text-gray-700">This month: {((minsByUser[u.id]||0)/60).toFixed(1)}h</div>
+                    {u.job_title && (
+                      <div className="text-[11px] text-gray-700 truncate">{u.job_title}</div>
+                    )}
+                    {(u.phone || u.mobile_phone) && (
+                      <div className="text-[11px] text-gray-500 truncate">
+                        {[u.phone, u.mobile_phone].filter(Boolean).join(' / ')}
+                      </div>
+                    )}
                   </div>
-                </Link>
+                </>
               );
+              
+              if (canViewUserDetails) {
+                return (
+                  <Link key={u.id} to={`/users/${encodeURIComponent(u.id)}`} className="rounded-xl border bg-white p-4 flex items-center gap-3 hover:shadow-md transition-shadow relative">
+                    {cardContent}
+                  </Link>
+                );
+              } else {
+                return (
+                  <div key={u.id} className="rounded-xl border bg-white p-4 flex items-center gap-3 relative opacity-75">
+                    {cardContent}
+                  </div>
+                );
+              }
             })}
           </div>
           

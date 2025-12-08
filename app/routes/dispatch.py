@@ -529,14 +529,17 @@ def get_shift(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user)
 ):
-    """Get a single shift by ID."""
+    """Get a single shift by ID. All users can view shifts where they are the worker."""
     shift = db.query(Shift).filter(Shift.id == shift_id).first()
     if not shift:
         raise HTTPException(status_code=404, detail="Shift not found")
     
-    # Check permissions
-    if not (is_admin(user, db) or is_supervisor(user, db, str(shift.project_id)) or 
-            (is_worker(user, db) and str(shift.worker_id) == str(user.id))):
+    # Check permissions: allow if user is the worker, admin, or supervisor
+    is_worker_owner = str(shift.worker_id) == str(user.id)
+    is_admin_user = is_admin(user, db)
+    is_supervisor_user = is_supervisor(user, db, str(shift.project_id))
+    
+    if not (is_admin_user or is_supervisor_user or is_worker_owner):
         raise HTTPException(status_code=403, detail="Access denied")
     
     # Get project to check for default geofence location
@@ -964,24 +967,33 @@ def create_attendance(
         time_entered_utc = datetime.now(timezone.utc)
         
         # Check if user has permission to edit clock in/out time
-        # If time_selected_local is different from current time (within 4 minute margin), require unrestricted permission
+        # If user doesn't have permission and time is different, use current time automatically
         # EXCEPTION: Supervisors and on-site leads can edit time when clocking in/out for another worker in Projects > Timesheet
         from datetime import timedelta
         time_diff = abs((time_selected_utc - time_entered_utc).total_seconds() / 60)  # Difference in minutes
         
         # If time is more than 4 minutes different from current time, check unrestricted permission
-        # Skip this check if user is supervisor or on-site lead clocking in/out for another worker (Projects > Timesheet context)
-        if time_diff > 4 and not is_authorized_supervisor:
+        if time_diff > 4:
             from ..auth.security import _has_permission
             has_unrestricted = (
                 _has_permission(user, "hr:timesheet:unrestricted_clock") or
                 _has_permission(user, "timesheet:unrestricted_clock")
             )
             
-            if not has_unrestricted:
+            # If user doesn't have unrestricted permission and is doing personal clock-in/out, use current time
+            if not has_unrestricted and is_worker_owner:
+                logger.info(
+                    f"User {user.id} doesn't have unrestricted clock permission, using current time instead of {time_selected_utc}"
+                )
+                time_selected_utc = time_entered_utc
+                # Recalculate time_selected_local from the updated UTC time
+                from ..services.time_rules import utc_to_local
+                time_selected_local = utc_to_local(time_selected_utc, project_timezone)
+            elif not has_unrestricted and not is_authorized_supervisor:
+                # For non-personal clock-in/out without permission, still block
                 logger.warning(
                     f"User {user.id} attempted to set time {time_selected_utc} (current: {time_entered_utc}) "
-                    f"without unrestricted clock permission"
+                    f"without unrestricted clock permission for another worker"
                 )
                 raise HTTPException(
                     status_code=403,
@@ -1211,6 +1223,26 @@ def create_attendance(
                         status_code=400,
                         detail=conflict_error  # Message already includes "Cannot create attendance:" prefix
                     )
+                
+                # Validate that clock-out time is not before or equal to clock-in time
+                if existing_attendance.clock_in_time and time_selected_utc <= existing_attendance.clock_in_time:
+                    logger.warning(f"Clock-out time {time_selected_utc} is before or equal to clock-in time {existing_attendance.clock_in_time}")
+                    raise HTTPException(
+                        status_code=400,
+                        detail="Clock-out time must be after clock-in time. Please select a valid time."
+                    )
+                
+                # Validate break time: break cannot be greater than or equal to total time
+                if existing_attendance.clock_in_time and time_selected_utc:
+                    manual_break = payload.get("manual_break_minutes")
+                    if manual_break is not None and manual_break > 0:
+                        total_seconds = (time_selected_utc - existing_attendance.clock_in_time).total_seconds()
+                        total_minutes = int(total_seconds / 60)
+                        if manual_break >= total_minutes:
+                            raise HTTPException(
+                                status_code=400,
+                                detail="Break time cannot be greater than or equal to the total attendance time. Please adjust the break or clock-out time."
+                            )
                 
                 # Update existing attendance record with clock-out
                 existing_attendance.clock_out_time = time_selected_utc
@@ -1737,13 +1769,19 @@ def create_direct_attendance(
             from pytz import UTC
             time_selected_utc = time_selected_utc.replace(tzinfo=UTC)
         
+        # Get worker_id (default to current user)
+        worker_id = payload.get("worker_id", str(user.id))
+        if str(worker_id) != str(user.id) and not is_admin(user, db):
+            raise HTTPException(status_code=403, detail="You can only create direct attendance for yourself")
+        
         # Check if user has permission to edit clock in/out time
-        # If time_selected_local is different from current time (within 4 minute margin), require unrestricted permission
+        # If user doesn't have permission and time is different, use current time automatically
         from datetime import timezone, timedelta
         time_entered_utc = datetime.now(timezone.utc)
         time_diff = abs((time_selected_utc - time_entered_utc).total_seconds() / 60)  # Difference in minutes
         
         # If time is more than 4 minutes different from current time, check unrestricted permission
+        is_own_attendance = str(worker_id) == str(user.id)
         if time_diff > 4:
             from ..auth.security import _has_permission
             has_unrestricted = (
@@ -1751,20 +1789,25 @@ def create_direct_attendance(
                 _has_permission(user, "timesheet:unrestricted_clock")
             )
             
-            if not has_unrestricted:
+            # If user doesn't have unrestricted permission and is doing personal clock-in/out, use current time
+            if not has_unrestricted and is_own_attendance:
+                logger.info(
+                    f"User {user.id} doesn't have unrestricted clock permission, using current time instead of {time_selected_utc} (direct attendance)"
+                )
+                time_selected_utc = time_entered_utc
+                # Recalculate time_selected_local from the updated UTC time
+                from ..services.time_rules import local_to_utc, utc_to_local
+                time_selected_local = utc_to_local(time_selected_utc, settings.tz_default)
+            elif not has_unrestricted and not is_own_attendance:
+                # For non-personal clock-in/out without permission, still block
                 logger.warning(
                     f"User {user.id} attempted to set time {time_selected_utc} (current: {time_entered_utc}) "
-                    f"without unrestricted clock permission (direct attendance)"
+                    f"without unrestricted clock permission (direct attendance for another worker)"
                 )
                 raise HTTPException(
                     status_code=403,
                     detail="You do not have permission to edit clock in/out time. Contact an administrator to enable time editing."
                 )
-        
-        # Get worker_id (default to current user)
-        worker_id = payload.get("worker_id", str(user.id))
-        if str(worker_id) != str(user.id) and not is_admin(user, db):
-            raise HTTPException(status_code=403, detail="You can only create direct attendance for yourself")
         
         # Validate worker exists
         worker = db.query(User).filter(User.id == worker_id).first()
@@ -2098,19 +2141,63 @@ def get_direct_attendances_for_date(
 @router.get("/attendance/weekly-summary")
 def get_weekly_attendance_summary(
     week_start: Optional[str] = None,  # YYYY-MM-DD format, defaults to current week (Sunday)
+    worker_id: Optional[str] = None,  # Optional worker ID to filter by (requires admin/supervisor permissions)
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user)
 ):
     """
-    Get weekly attendance summary for the current user.
+    Get weekly attendance summary for the current user or specified worker.
     Returns list of daily entries with clock-in/out times, hours worked, job type, etc.
+    All users can view their own weekly summary. Viewing other workers' summaries requires permissions.
     """
     from datetime import date as date_type, timedelta
     
-    # Calculate week start (Sunday)
+    # Determine which worker(s) to query
+    from ..auth.security import _has_permission
+    
+    is_user_admin = is_admin(user, db)
+    is_user_supervisor = is_supervisor(user, db)
+    has_hr_read = _has_permission(user, "hr:attendance:read")
+    has_permission = is_user_admin or is_user_supervisor or has_hr_read
+    
+    # If worker_id is provided, use that specific worker
+    # If worker_id is not provided and user has permission, get all workers
+    # Otherwise, use current user only
+    target_worker_ids = []
+    if worker_id:
+        # Check if user has permission to view other workers' attendance
+        if not has_permission:
+            # If no permission, only allow viewing own summary
+            if str(worker_id) != str(user.id):
+                raise HTTPException(
+                    status_code=403,
+                    detail="You do not have permission to view other workers' attendance summaries"
+                )
+            target_worker_ids = [user.id]
+        else:
+            try:
+                target_worker_ids = [uuid.UUID(worker_id)]
+            except ValueError:
+                raise HTTPException(status_code=400, detail="Invalid worker_id format")
+    elif has_permission:
+        # Get all workers (users with employee profiles or all users)
+        all_workers = db.query(User.id).all()
+        target_worker_ids = [w.id for w in all_workers]
+    else:
+        # No permission, only current user (all users can view their own summary)
+        target_worker_ids = [user.id]
+    
+    # Calculate week start (Sunday) - ensure it's always a Sunday
     if week_start:
         try:
             week_start_date = datetime.fromisoformat(week_start).date()
+            # Ensure the provided date is actually a Sunday
+            # weekday() returns: Monday=0, Tuesday=1, ..., Sunday=6
+            day_of_week = week_start_date.weekday()
+            if day_of_week != 6:  # Not Sunday
+                # Calculate days to subtract to get to Sunday
+                days_to_subtract = (day_of_week + 1) % 7
+                week_start_date = week_start_date - timedelta(days=days_to_subtract)
         except:
             today = date_type.today()
             days_since_sunday = today.weekday() + 1
@@ -2124,6 +2211,7 @@ def get_weekly_attendance_summary(
             days_since_sunday = 0
         week_start_date = today - timedelta(days=days_since_sunday)
     
+    # Week end is always Saturday (6 days after Sunday = 7 days total)
     week_end_date = week_start_date + timedelta(days=6)  # Saturday
     
     # Get all attendances for this week - NEW MODEL: each record is already a complete event
@@ -2131,9 +2219,9 @@ def get_weekly_attendance_summary(
     week_start_dt = datetime.combine(week_start_date, time.min).replace(tzinfo=timezone.utc)
     week_end_dt = datetime.combine(week_end_date + timedelta(days=1), time.min).replace(tzinfo=timezone.utc)
     
-    # Query attendances where clock_in_time or clock_out_time falls within the week
+    # Query attendances where clock_in_time or clock_out_time falls within the week for all target workers
     attendances = db.query(Attendance).filter(
-        Attendance.worker_id == user.id,
+        Attendance.worker_id.in_(target_worker_ids),
         or_(
             and_(
                 Attendance.clock_in_time.isnot(None),
@@ -2148,10 +2236,29 @@ def get_weekly_attendance_summary(
             )
         )
     ).order_by(
+        Attendance.worker_id.asc(),
         func.coalesce(Attendance.clock_in_time, Attendance.clock_out_time).asc()
     ).all()
     
-    # Group attendances by date - each attendance is already a complete event
+    # Get worker names mapping for all workers
+    worker_names_map = {}
+    for worker_id in target_worker_ids:
+        worker_user = db.query(User).filter(User.id == worker_id).first()
+        worker_name = worker_user.username if worker_user else "Employee"
+        if worker_user:
+            worker_profile = db.query(EmployeeProfile).filter(EmployeeProfile.user_id == worker_id).first()
+            if worker_profile:
+                name = (worker_profile.preferred_name or "").strip()
+                if not name:
+                    first = (worker_profile.first_name or "").strip()
+                    last = (worker_profile.last_name or "").strip()
+                    if first or last:
+                        name = f"{first} {last}".strip()
+                if name:
+                    worker_name = name
+        worker_names_map[worker_id] = worker_name
+    
+    # Group attendances by date and worker - each attendance is already a complete event
     daily_entries = {}
     
     for attendance in attendances:
@@ -2223,6 +2330,9 @@ def get_weekly_attendance_summary(
         # Use calculated break_minutes if available, otherwise fall back to stored value
         final_break_minutes = break_minutes_calculated if break_minutes_calculated is not None else (attendance.break_minutes if attendance.break_minutes is not None else 0)
         
+        # Get worker name for this attendance
+        worker_name = worker_names_map.get(attendance.worker_id, "Employee")
+        
         # Add event - each attendance is already a complete event
         daily_entries[date_str]["events"].append({
             "clock_in": {
@@ -2241,6 +2351,8 @@ def get_weekly_attendance_summary(
             "project_name": project_name,
             "hours_worked": hours_worked,
             "break_minutes": final_break_minutes,
+            "worker_id": str(attendance.worker_id),
+            "worker_name": worker_name,
         })
     
     # Calculate hours worked for each day - handle multiple events per day
@@ -2339,6 +2451,8 @@ def get_weekly_attendance_summary(
                     "hours_worked_formatted": f"{net_minutes // 60}h {net_minutes % 60:02d}m",
                     "break_minutes": break_minutes,
                     "break_formatted": f"{break_minutes}m" if break_minutes > 0 else None,
+                    "worker_id": event.get("worker_id"),
+                    "worker_name": event.get("worker_name", "Employee"),
                 })
             elif clock_in_time_str:
                 # Open event (clock-in without clock-out)
@@ -2359,6 +2473,8 @@ def get_weekly_attendance_summary(
                     "hours_worked_formatted": "0h 00m",
                     "break_minutes": 0,
                     "break_formatted": None,
+                    "worker_id": event.get("worker_id"),
+                    "worker_name": event.get("worker_name", "Employee"),
                 })
         
         total_minutes += day_total_minutes  # Net total (after break)
@@ -2381,6 +2497,8 @@ def get_weekly_attendance_summary(
                     "hours_worked_formatted": event_data["hours_worked_formatted"],
                     "break_minutes": event_data.get("break_minutes", 0),
                     "break_formatted": event_data.get("break_formatted"),
+                    "worker_id": event_data.get("worker_id"),
+                    "worker_name": event_data.get("worker_name", "Employee"),  # Add worker name for display
                 })
     
     # Calculate total break minutes for the week

@@ -278,8 +278,21 @@ def calculate_break_minutes(
     return break_minutes
 
 
-@router.get("", dependencies=[Depends(require_permissions("settings:access"))])
-def get_settings_bundle(db: Session = Depends(get_db)):
+@router.get("")
+def get_settings_bundle(db: Session = Depends(get_db), user: UserType = Depends(get_current_user)):
+    from ..auth.security import _has_permission
+    
+    # Allow access if user has settings:access OR any timesheet-related permissions
+    has_access = _has_permission(user, "settings:access") or \
+                 _has_permission(user, "hr:users:edit:timesheet") or \
+                 _has_permission(user, "hr:users:view:timesheet") or \
+                 _has_permission(user, "hr:attendance:write") or \
+                 _has_permission(user, "hr:attendance:read") or \
+                 _has_permission(user, "users:write") or \
+                 _has_permission(user, "users:read")
+    
+    if not has_access:
+        raise HTTPException(status_code=403, detail="Forbidden")
     rows = db.query(SettingList).all()
     out = {}
     for lst in rows:
@@ -388,7 +401,17 @@ def list_settings(list_name: str, db: Session = Depends(get_db), _=Depends(requi
 
 
 @router.post("/{list_name}")
-def create_setting_item(list_name: str, label: str, value: str = "", sort_index: Optional[int] = None, abbr: Optional[str] = None, color: Optional[str] = None, db: Session = Depends(get_db), _=Depends(require_permissions("settings:access", "users:write"))):
+def create_setting_item(list_name: str, label: str, value: str = "", sort_index: Optional[int] = None, abbr: Optional[str] = None, color: Optional[str] = None, db: Session = Depends(get_db), user: UserType = Depends(get_current_user)):
+    from ..auth.security import _has_permission
+    
+    # Check permissions: settings:access OR users:write OR (for break_eligible_employees in timesheet, also allow hr:users:edit:timesheet)
+    has_permission = _has_permission(user, "settings:access") or _has_permission(user, "users:write")
+    if not has_permission and list_name == "timesheet" and label == "break_eligible_employees":
+        has_permission = _has_permission(user, "hr:users:edit:timesheet") or _has_permission(user, "hr:attendance:write")
+    
+    if not has_permission:
+        raise HTTPException(status_code=403, detail="Forbidden")
+    
     lst = db.query(SettingList).filter(SettingList.name == list_name).first()
     if not lst:
         lst = SettingList(name=list_name)
@@ -416,10 +439,11 @@ def create_setting_item(list_name: str, label: str, value: str = "", sort_index:
 def delete_attendance(
     attendance_id: str,
     db: Session = Depends(get_db),
-    user: UserType = Depends(get_current_user),
-    _=Depends(require_permissions("users:write"))
+    user: UserType = Depends(get_current_user)
 ):
-    """Permanently delete an attendance record from the database."""
+    """Permanently delete an attendance record from the database. All users can delete their own attendances."""
+    from ..auth.security import _has_permission
+    
     try:
         attendance_uuid = uuid.UUID(attendance_id)
     except ValueError:
@@ -428,6 +452,16 @@ def delete_attendance(
     attendance = db.query(Attendance).filter(Attendance.id == attendance_uuid).first()
     if not attendance:
         raise HTTPException(status_code=404, detail="Attendance not found")
+    
+    # Check if user has permission to delete other users' attendances
+    has_permission = _has_permission(user, "users:write") or _has_permission(user, "hr:attendance:write") or _has_permission(user, "hr:users:edit:timesheet")
+    
+    # If user doesn't have permission, they can only delete their own attendances
+    if not has_permission and str(attendance.worker_id) != str(user.id):
+        raise HTTPException(
+            status_code=403,
+            detail="You can only delete your own attendance records"
+        )
     
     # Get project_id from shift if attendance has a shift
     project_id = None
@@ -522,10 +556,11 @@ def update_attendance(
     attendance_id: str,
     payload: dict,
     db: Session = Depends(get_db),
-    user: UserType = Depends(get_current_user),
-    _=Depends(require_permissions("users:write"))
+    user: UserType = Depends(get_current_user)
 ):
-    """Update an existing attendance record."""
+    """Update an existing attendance record. All users can update their own attendances."""
+    from ..auth.security import _has_permission
+    
     try:
         # Convert string ID to UUID for proper query
         attendance_uuid = uuid.UUID(attendance_id)
@@ -535,6 +570,16 @@ def update_attendance(
     attendance = db.query(Attendance).filter(Attendance.id == attendance_uuid).first()
     if not attendance:
         raise HTTPException(status_code=404, detail="Attendance not found")
+    
+    # Check if user has permission to update other users' attendances
+    has_permission = _has_permission(user, "users:write") or _has_permission(user, "hr:attendance:write") or _has_permission(user, "hr:users:edit:timesheet")
+    
+    # If user doesn't have permission, they can only update their own attendances
+    if not has_permission and str(attendance.worker_id) != str(user.id):
+        raise HTTPException(
+            status_code=403,
+            detail="You can only update your own attendance records"
+        )
     
     # Get new times before updating to check for conflicts
     new_clock_in_time = attendance.clock_in_time
@@ -558,6 +603,28 @@ def update_attendance(
             new_clock_out_time = clock_out_time
         except:
             raise HTTPException(status_code=400, detail="Invalid clock_out_time format")
+    
+    # Validate that clock_out_time is not before or equal to clock_in_time
+    if new_clock_in_time and new_clock_out_time:
+        if new_clock_out_time <= new_clock_in_time:
+            raise HTTPException(
+                status_code=400,
+                detail="Clock-out time must be after clock-in time. Please select a valid time."
+            )
+        
+        # Validate break time: break cannot be greater than or equal to total time
+        # Check manual_break from payload first, then existing break_minutes
+        manual_break = payload.get("manual_break_minutes")
+        break_to_validate = manual_break if manual_break is not None else attendance.break_minutes
+        
+        if break_to_validate is not None and break_to_validate > 0:
+            total_seconds = (new_clock_out_time - new_clock_in_time).total_seconds()
+            total_minutes = int(total_seconds / 60)
+            if break_to_validate >= total_minutes:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Break time cannot be greater than or equal to the total attendance time. Please adjust the break or clock-out time."
+                )
     
     # Check for conflicts before updating
     conflict_error = check_attendance_conflict(
@@ -630,14 +697,24 @@ def update_attendance(
     return {"id": str(attendance.id), "status": "ok"}
 
 
-@router.put("/{list_name}/{item_id}", dependencies=[Depends(require_permissions("settings:access"))])
-def update_setting_item(list_name: str, item_id: str, label: str = None, value: str = None, sort_index: int | None = None, abbr: Optional[str] = None, color: Optional[str] = None, allow_edit_proposal: Optional[str] = None, sets_start_date: Optional[str] = None, sets_end_date: Optional[str] = None, db: Session = Depends(get_db), _=Depends(require_permissions("users:write"))):
+@router.put("/{list_name}/{item_id}")
+def update_setting_item(list_name: str, item_id: str, label: str = None, value: str = None, sort_index: int | None = None, abbr: Optional[str] = None, color: Optional[str] = None, allow_edit_proposal: Optional[str] = None, sets_start_date: Optional[str] = None, sets_end_date: Optional[str] = None, db: Session = Depends(get_db), user: UserType = Depends(get_current_user)):
+    from ..auth.security import _has_permission
+    
     lst = db.query(SettingList).filter(SettingList.name == list_name).first()
     if not lst:
         return {"status": "ok"}
     it = db.query(SettingItem).filter(SettingItem.list_id == lst.id, SettingItem.id == item_id).first()
     if not it:
         return {"status": "ok"}
+    
+    # Check permissions: settings:access OR users:write OR (for break_eligible_employees in timesheet, also allow hr:users:edit:timesheet)
+    has_permission = _has_permission(user, "settings:access") or _has_permission(user, "users:write")
+    if not has_permission and list_name == "timesheet" and (it.label == "break_eligible_employees" or label == "break_eligible_employees"):
+        has_permission = _has_permission(user, "hr:users:edit:timesheet") or _has_permission(user, "hr:attendance:write")
+    
+    if not has_permission:
+        raise HTTPException(status_code=403, detail="Forbidden")
     old_label = it.label
     label_changed = label is not None and label != old_label
     if label is not None:
@@ -715,16 +792,24 @@ def list_attendances(
     type_filter: Optional[str] = None,  # "in" or "out"
     project_id: Optional[str] = None,  # Filter by project (through shift)
     db: Session = Depends(get_db),
-    user: UserType = Depends(get_current_user),
-    _=Depends(require_permissions("users:read"))
+    user: UserType = Depends(get_current_user)
 ):
-    """List all attendances with filters."""
+    """List all attendances with filters. All users can view their own attendances."""
     import logging
+    from ..auth.security import _has_permission
+    
     logger = logging.getLogger(__name__)
+    
+    # Check if user has permission to view other users' attendances
+    has_permission = _has_permission(user, "users:read") or _has_permission(user, "hr:attendance:read") or _has_permission(user, "hr:users:view:timesheet")
     
     try:
         # Query attendances directly without joins first
         query = db.query(Attendance)
+        
+        # If user doesn't have permission, restrict to their own attendances
+        if not has_permission:
+            query = query.filter(Attendance.worker_id == user.id)
         
         # Apply filters
         if worker_id:
@@ -964,7 +1049,7 @@ def get_attendance(
     attendance_id: str,
     db: Session = Depends(get_db),
     user: UserType = Depends(get_current_user),
-    _=Depends(require_permissions("users:read"))
+    _=Depends(require_permissions("users:read", "hr:users:read", "hr:users:view:timesheet", "hr:attendance:read"))
 ):
     """Get a specific attendance record."""
     attendance = db.query(Attendance).filter(Attendance.id == attendance_id).first()
@@ -1040,13 +1125,24 @@ def get_attendance(
 def create_attendance_manual(
     payload: dict,
     db: Session = Depends(get_db),
-    user: UserType = Depends(get_current_user),
-    _=Depends(require_permissions("users:write"))
+    user: UserType = Depends(get_current_user)
 ):
-    """Create a new attendance record manually."""
+    """Create a new attendance record manually. All users can create their own attendances."""
+    from ..auth.security import _has_permission
+    
     worker_id = payload.get("worker_id")
     if not worker_id:
         raise HTTPException(status_code=400, detail="worker_id is required")
+    
+    # Check if user has permission to create attendances for other users
+    has_permission = _has_permission(user, "users:write") or _has_permission(user, "hr:attendance:write") or _has_permission(user, "hr:users:edit:timesheet")
+    
+    # If user doesn't have permission, they can only create for themselves
+    if not has_permission and str(worker_id) != str(user.id):
+        raise HTTPException(
+            status_code=403,
+            detail="You can only create attendance records for yourself"
+        )
     
     # NEW MODEL: Support both clock_in_time and clock_out_time directly
     clock_in_time_str = payload.get("clock_in_time")
@@ -1095,6 +1191,25 @@ def create_attendance_manual(
     # Validate that at least one time is provided
     if not clock_in_time_utc and not clock_out_time_utc:
         raise HTTPException(status_code=400, detail="Either clock_in_time or clock_out_time must be provided")
+    
+    # Validate that clock_out_time is not before or equal to clock_in_time
+    if clock_in_time_utc and clock_out_time_utc:
+        if clock_out_time_utc <= clock_in_time_utc:
+            raise HTTPException(
+                status_code=400,
+                detail="Clock-out time must be after clock-in time. Please select a valid time."
+            )
+        
+        # Validate break time: break cannot be greater than or equal to total time
+        manual_break = payload.get("manual_break_minutes")
+        if manual_break is not None and manual_break > 0:
+            total_seconds = (clock_out_time_utc - clock_in_time_utc).total_seconds()
+            total_minutes = int(total_seconds / 60)
+            if manual_break >= total_minutes:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Break time cannot be greater than or equal to the total attendance time. Please adjust the break or clock-out time."
+                )
     
     # Check for conflicts before creating attendance
     conflict_error = check_attendance_conflict(

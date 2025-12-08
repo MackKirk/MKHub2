@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, useImperativeHandle, forwardRef, useCallback } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
@@ -6,6 +6,8 @@ import { formatDateLocal, getCurrentMonthLocal } from '@/lib/dateUtils';
 import toast from 'react-hot-toast';
 import GeoSelect from '@/components/GeoSelect';
 import { useConfirm } from '@/components/ConfirmProvider';
+import NationalitySelect from '@/components/NationalitySelect';
+import AddressAutocomplete from '@/components/AddressAutocomplete';
 
 // List of implemented permissions (permissions that are actually checked in the codebase)
 const IMPLEMENTED_PERMISSIONS = new Set([
@@ -18,8 +20,8 @@ const IMPLEMENTED_PERMISSIONS = new Set([
   // Human Resources permissions
   "hr:access",
   "hr:users:read", "hr:users:write",
-  "hr:users:view:general", "hr:users:edit:general",
-  "hr:users:view:timesheet", "hr:users:view:permissions", "hr:users:edit:permissions",
+  "hr:users:view:general", "hr:users:view:job:compensation", "hr:users:edit:general",
+  "hr:users:view:timesheet", "hr:users:edit:timesheet", "hr:users:view:permissions", "hr:users:edit:permissions",
   "hr:attendance:read", "hr:attendance:write",
   "hr:community:read", "hr:community:write",
   "hr:reviews:admin",
@@ -87,7 +89,12 @@ function SyncBambooHRButton({ userId, onSuccess }: { userId: string; onSuccess?:
   );
 }
 
-function UserPermissions({ userId }:{ userId:string }){
+export type UserPermissionsRef = {
+  hasUnsavedChanges: () => boolean;
+  save: () => Promise<void>;
+};
+
+const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirtyChange?: (dirty: boolean) => void; canEdit?: boolean }>(({ userId, onDirtyChange, canEdit = true }, ref) => {
   const queryClient = useQueryClient();
   const { data:user, refetch: refetchUser } = useQuery({ queryKey:['user', userId], queryFn: ()=> api<any>('GET', `/users/${userId}`) });
   const { data:permissionsData, refetch } = useQuery({ 
@@ -96,8 +103,10 @@ function UserPermissions({ userId }:{ userId:string }){
   });
   const { data: currentUser } = useQuery({ queryKey: ['me'], queryFn: () => api<any>('GET', '/auth/me') });
   const [permissions, setPermissions] = useState<Record<string, boolean>>({});
-  const [saving, setSaving] = useState(false);
+  const [initialPermissions, setInitialPermissions] = useState<Record<string, boolean>>({});
   const [isAdminLocal, setIsAdminLocal] = useState<boolean>(false);
+  const [initialIsAdmin, setInitialIsAdmin] = useState<boolean>(false);
+  const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
 
   // Initialize permissions from API data
   useEffect(() => {
@@ -109,6 +118,7 @@ function UserPermissions({ userId }:{ userId:string }){
         });
       });
       setPermissions(perms);
+      setInitialPermissions({ ...perms });
     }
   }, [permissionsData]);
 
@@ -117,18 +127,143 @@ function UserPermissions({ userId }:{ userId:string }){
     if (user) {
       const adminStatus = (user.roles||[]).some((r: string) => String(r || '').toLowerCase() === 'admin');
       setIsAdminLocal(adminStatus);
+      setInitialIsAdmin(adminStatus);
     }
   }, [user]);
 
+  // Check if there are unsaved changes
+  const hasUnsavedChanges = useMemo(() => {
+    // Check admin status change
+    if (isAdminLocal !== initialIsAdmin) return true;
+    
+    // Check permissions changes
+    const currentKeys = Object.keys(permissions);
+    const initialKeys = Object.keys(initialPermissions);
+    
+    if (currentKeys.length !== initialKeys.length) return true;
+    
+    for (const key of currentKeys) {
+      if (permissions[key] !== initialPermissions[key]) return true;
+    }
+    
+    for (const key of initialKeys) {
+      if (permissions[key] !== initialPermissions[key]) return true;
+    }
+    
+    return false;
+  }, [permissions, initialPermissions, isAdminLocal, initialIsAdmin]);
+
+  // Notify parent of dirty state changes
+  useEffect(() => {
+    onDirtyChange?.(hasUnsavedChanges);
+  }, [hasUnsavedChanges, onDirtyChange]);
+
   const handleToggle = (key: string) => {
-    setPermissions((prev) => ({
-      ...prev,
-      [key]: !prev[key],
-    }));
+    setPermissions((prev) => {
+      const newPerms = { ...prev };
+      const newValue = !prev[key];
+      
+      // Check dependencies for view permissions
+      if (key === 'hr:users:view:general' || key === 'hr:users:view:timesheet' || key === 'hr:users:view:permissions') {
+        // Requires hr:users:read
+        if (newValue && !prev['hr:users:read']) {
+          toast.error('This permission requires "View Users List" to be enabled first');
+          return prev;
+        }
+      }
+      // Check dependencies for job compensation view permission
+      else if (key === 'hr:users:view:job:compensation') {
+        // Requires hr:users:read and hr:users:view:general
+        if (newValue && (!prev['hr:users:read'] || !prev['hr:users:view:general'])) {
+          toast.error('This permission requires "View Users List" and "View General Tab" to be enabled first');
+          return prev;
+        }
+      }
+      // Check dependencies for invite user permission
+      else if (key === 'hr:users:write') {
+        // Requires hr:users:read
+        if (newValue && !prev['hr:users:read']) {
+          toast.error('This permission requires "View Users List" to be enabled first');
+          return prev;
+        }
+      }
+      // Check dependencies for edit permissions
+      else if (key === 'hr:users:edit:general') {
+        // Requires hr:users:read and hr:users:view:general
+        if (newValue && (!prev['hr:users:read'] || !prev['hr:users:view:general'])) {
+          toast.error('This permission requires "View Users List" and "View General Tab" to be enabled first');
+          return prev;
+        }
+      } else if (key === 'hr:users:edit:timesheet') {
+        // Requires hr:users:read and hr:users:view:timesheet
+        if (newValue && (!prev['hr:users:read'] || !prev['hr:users:view:timesheet'])) {
+          toast.error('This permission requires "View Users List" and "View Timesheet Tab" to be enabled first');
+          return prev;
+        }
+      } else if (key === 'hr:users:edit:permissions') {
+        // Requires hr:users:read and hr:users:view:permissions
+        if (newValue && (!prev['hr:users:read'] || !prev['hr:users:view:permissions'])) {
+          toast.error('This permission requires "View Users List" and "View Permissions Tab" to be enabled first');
+          return prev;
+        }
+      }
+      
+      newPerms[key] = newValue;
+      
+      // If disabling a view permission, also disable the corresponding edit permission
+      if (!newValue) {
+        if (key === 'hr:users:view:general') {
+          newPerms['hr:users:edit:general'] = false;
+        } else if (key === 'hr:users:view:timesheet') {
+          newPerms['hr:users:edit:timesheet'] = false;
+        } else if (key === 'hr:users:view:permissions') {
+          newPerms['hr:users:edit:permissions'] = false;
+        } else if (key === 'hr:users:view:general') {
+          // If disabling View General Tab, also disable job compensation view
+          newPerms['hr:users:view:job:compensation'] = false;
+        } else if (key === 'hr:users:read') {
+          // If disabling View Users List, disable all view, edit permissions and invite user
+          newPerms['hr:users:write'] = false;
+          newPerms['hr:users:view:general'] = false;
+          newPerms['hr:users:view:job:compensation'] = false;
+          newPerms['hr:users:view:timesheet'] = false;
+          newPerms['hr:users:view:permissions'] = false;
+          newPerms['hr:users:edit:general'] = false;
+          newPerms['hr:users:edit:timesheet'] = false;
+          newPerms['hr:users:edit:permissions'] = false;
+        }
+      }
+      
+      return newPerms;
+    });
+  };
+  
+  // Helper function to check if a permission can be enabled (for both view and edit permissions)
+  const canEnableEditPermission = (permKey: string, permissions: Record<string, boolean>): boolean => {
+    // View permissions require hr:users:read
+    if (permKey === 'hr:users:view:general' || permKey === 'hr:users:view:timesheet' || permKey === 'hr:users:view:permissions') {
+      return !!permissions['hr:users:read'];
+    }
+    // Job compensation view requires hr:users:read and hr:users:view:general
+    if (permKey === 'hr:users:view:job:compensation') {
+      return !!(permissions['hr:users:read'] && permissions['hr:users:view:general']);
+    }
+    // Invite user requires hr:users:read
+    if (permKey === 'hr:users:write') {
+      return !!permissions['hr:users:read'];
+    }
+    // Edit permissions require hr:users:read and the corresponding view permission
+    if (permKey === 'hr:users:edit:general') {
+      return !!(permissions['hr:users:read'] && permissions['hr:users:view:general']);
+    } else if (permKey === 'hr:users:edit:timesheet') {
+      return !!(permissions['hr:users:read'] && permissions['hr:users:view:timesheet']);
+    } else if (permKey === 'hr:users:edit:permissions') {
+      return !!(permissions['hr:users:read'] && permissions['hr:users:view:permissions']);
+    }
+    return true;
   };
 
-  const handleSave = async () => {
-    setSaving(true);
+  const handleSave = useCallback(async () => {
     try {
       // Save admin role if changed
       if (user) {
@@ -151,16 +286,26 @@ function UserPermissions({ userId }:{ userId:string }){
       toast.success('Permissions saved');
       await refetch();
       
+      // Update initial state to reflect saved state
+      setInitialPermissions({ ...permissions });
+      setInitialIsAdmin(isAdminLocal);
+      
       // If editing own permissions, invalidate /auth/me cache to refresh permissions
       if (currentUser && currentUser.id === userId) {
         await queryClient.invalidateQueries({ queryKey: ['me'] });
       }
     } catch (e: any) {
       toast.error(e?.detail || 'Failed to save permissions');
-    } finally {
-      setSaving(false);
+      throw e;
     }
-  };
+  }, [user, isAdminLocal, userId, permissions, currentUser, queryClient, refetchUser, refetch]);
+
+  // Expose methods to parent via ref
+  useImperativeHandle(ref, () => ({
+    hasUnsavedChanges: () => hasUnsavedChanges,
+    save: handleSave,
+  }), [hasUnsavedChanges, handleSave]);
+
 
   if (!permissionsData) {
     return <div className="h-24 bg-gray-100 animate-pulse rounded" />;
@@ -171,22 +316,28 @@ function UserPermissions({ userId }:{ userId:string }){
       <div className="rounded-xl border bg-white p-4">
         <div className="mb-4">
           <h3 className="text-lg font-semibold mb-1">User Permissions</h3>
-          <p className="text-sm text-gray-600">Manage granular permissions for this user. Permissions from roles are combined with these overrides. Permissions marked with [WIP] are not yet implemented in the system.</p>
+          <p className="text-sm text-gray-600">
+            {canEdit 
+              ? "Manage granular permissions for this user. Permissions from roles are combined with these overrides. Permissions marked with [WIP] are not yet implemented in the system."
+              : "View permissions assigned to this user. You have view-only access and cannot modify permissions."
+            }
+          </p>
         </div>
 
         {/* Admin Access Section */}
         <div className="mb-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-          <label className="inline-flex items-start gap-3 cursor-pointer">
-            <input 
-              id="admin-checkbox"
-              type="checkbox" 
-              checked={isAdminLocal}
-              disabled={!user}
-              onChange={e=>{ 
-                setIsAdminLocal(e.target.checked);
-              }} 
-              className="mt-1 w-4 h-4 rounded border-gray-300 text-brand-red focus:ring-brand-red disabled:opacity-50 disabled:cursor-not-allowed"
-            />
+          {canEdit ? (
+            <label className="inline-flex items-start gap-3 cursor-pointer">
+              <input 
+                id="admin-checkbox"
+                type="checkbox" 
+                checked={isAdminLocal}
+                disabled={!user}
+                onChange={e=>{ 
+                  setIsAdminLocal(e.target.checked);
+                }} 
+                className="mt-1 w-4 h-4 rounded border-gray-300 text-brand-red focus:ring-brand-red disabled:opacity-50 disabled:cursor-not-allowed"
+              />
             <div className="flex-1">
               <div className="font-semibold text-yellow-900 flex items-center gap-2">
                 Administrator Access
@@ -204,6 +355,28 @@ function UserPermissions({ userId }:{ userId:string }){
               )}
             </div>
           </label>
+          ) : (
+            <div className="inline-flex items-start gap-3">
+              <input 
+                id="admin-checkbox"
+                type="checkbox" 
+                checked={isAdminLocal}
+                disabled
+                className="mt-1 w-4 h-4 rounded border-gray-300 text-brand-red opacity-50"
+              />
+              <div className="flex-1">
+                <div className="font-semibold text-yellow-900 flex items-center gap-2">
+                  Administrator Access
+                  <span className="text-xs px-1.5 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300">
+                    System Role
+                  </span>
+                </div>
+                <div className="text-xs text-yellow-800 mt-1">
+                  Status: {isAdminLocal ? 'Enabled' : 'Disabled'}
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="space-y-6">
@@ -212,34 +385,49 @@ function UserPermissions({ userId }:{ userId:string }){
             const areaAccessPerm = cat.permissions.find((p: any) => p.key.endsWith(':access'));
             const subPermissions = cat.permissions.filter((p: any) => !p.key.endsWith(':access'));
             const hasAreaAccess = areaAccessPerm && permissions[areaAccessPerm.key];
+            const categoryId = cat.category.id;
+            const isExpanded = expandedCategories.has(categoryId);
+            
+            const toggleExpand = () => {
+              setExpandedCategories(prev => {
+                const next = new Set(prev);
+                if (next.has(categoryId)) {
+                  next.delete(categoryId);
+                } else {
+                  next.add(categoryId);
+                }
+                return next;
+              });
+            };
             
             return (
-              <div key={cat.category.id} className="border rounded-lg p-4">
-                {/* Category Header with Access Checkbox */}
-                <div className="mb-3">
-                  <label className="flex items-center gap-3 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={hasAreaAccess || false}
-                      onChange={() => {
-                        if (areaAccessPerm) {
-                          handleToggle(areaAccessPerm.key);
-                        }
-                      }}
-                      className="w-4 h-4 rounded border-gray-300 text-brand-red focus:ring-brand-red"
-                    />
-                    <div className="flex-1">
-                      <h4 className="font-semibold text-base">{cat.category.label}</h4>
-                      {cat.category.description && (
-                        <p className="text-xs text-gray-500 mt-1">{cat.category.description}</p>
-                      )}
-                    </div>
-                  </label>
+              <div key={cat.category.id} className="border rounded-lg overflow-hidden">
+                {/* Category Header with Arrow */}
+                <div 
+                  className="p-4 cursor-pointer hover:bg-gray-50 transition-colors flex items-center gap-3"
+                  onClick={toggleExpand}
+                >
+                  <div className="flex-shrink-0 w-5 h-5 flex items-center justify-center">
+                    <svg 
+                      className={`w-4 h-4 text-gray-600 transition-transform ${isExpanded ? 'rotate-90' : ''}`}
+                      fill="none" 
+                      stroke="currentColor" 
+                      viewBox="0 0 24 24"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
+                  </div>
+                  <div className="flex-1">
+                    <h4 className="font-semibold text-base">{cat.category.label}</h4>
+                    {cat.category.description && (
+                      <p className="text-xs text-gray-500 mt-1">{cat.category.description}</p>
+                    )}
+                  </div>
                 </div>
                 
-                {/* Sub-permissions (only shown if area access is granted) */}
-                {hasAreaAccess && subPermissions.length > 0 && (
-                  <div className="ml-7 mt-3 border-l-2 border-gray-200 pl-4">
+                {/* Sub-permissions (shown when expanded) */}
+                {isExpanded && subPermissions.length > 0 && (
+                  <div className="px-4 pb-4 border-t border-gray-200 pt-3 mt-0">
                     {/* Special handling for HR category - group by area (users, attendance, community, etc.) */}
                     {cat.category.name === 'human_resources' ? (
                       <div className="space-y-4">
@@ -266,16 +454,21 @@ function UserPermissions({ userId }:{ userId:string }){
                                 {viewPerms.length > 0 && (
                                   <div className="space-y-2">
                                     <div className="text-xs font-semibold text-gray-600 mb-2 uppercase tracking-wide">View</div>
-                                    {viewPerms.map((perm: any) => (
+                                    {viewPerms.map((perm: any) => {
+                                      const isViewPermission = perm.key.startsWith('hr:users:view:');
+                                      const canEnable = canEdit && (!isViewPermission || canEnableEditPermission(perm.key, permissions));
+                                      const isSubPermission = perm.key === 'hr:users:view:job:compensation';
+                                      return (
                                       <label
                                         key={perm.id}
-                                        className="flex items-start gap-2 p-2 rounded bg-white hover:bg-gray-50 cursor-pointer"
+                                        className={`flex items-start gap-2 p-2 rounded bg-white ${canEnable ? 'hover:bg-gray-50 cursor-pointer' : 'cursor-default'} ${isSubPermission ? 'ml-6' : ''}`}
                                       >
                                         <input
                                           type="checkbox"
                                           checked={permissions[perm.key] || false}
-                                          onChange={() => handleToggle(perm.key)}
-                                          className="mt-1 w-4 h-4 rounded border-gray-300 text-brand-red focus:ring-brand-red flex-shrink-0"
+                                          onChange={() => canEnable && handleToggle(perm.key)}
+                                          disabled={!canEnable}
+                                          className="mt-1 w-4 h-4 rounded border-gray-300 text-brand-red focus:ring-brand-red flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
                                         />
                                         <div className="flex-1 min-w-0">
                                           <div className="font-medium text-sm flex items-center gap-2">
@@ -291,39 +484,45 @@ function UserPermissions({ userId }:{ userId:string }){
                                           )}
                                         </div>
                                       </label>
-                                    ))}
+                                      );
+                                    })}
                                   </div>
                                 )}
                                 {/* Edit Permissions Column */}
                                 {editPerms.length > 0 && (
                                   <div className="space-y-2">
                                     <div className="text-xs font-semibold text-gray-600 mb-2 uppercase tracking-wide">Edit</div>
-                                    {editPerms.map((perm: any) => (
-                                      <label
-                                        key={perm.id}
-                                        className="flex items-start gap-2 p-2 rounded bg-white hover:bg-gray-50 cursor-pointer"
-                                      >
-                                        <input
-                                          type="checkbox"
-                                          checked={permissions[perm.key] || false}
-                                          onChange={() => handleToggle(perm.key)}
-                                          className="mt-1 w-4 h-4 rounded border-gray-300 text-brand-red focus:ring-brand-red flex-shrink-0"
-                                        />
-                                        <div className="flex-1 min-w-0">
-                                          <div className="font-medium text-sm flex items-center gap-2">
-                                            <span className="truncate">{perm.label}</span>
-                                            {!IMPLEMENTED_PERMISSIONS.has(perm.key) && (
-                                              <span className="text-xs px-1.5 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300 flex-shrink-0">
-                                                [WIP]
-                                              </span>
+                                    {editPerms.map((perm: any) => {
+                                      const isEditPermission = perm.key.startsWith('hr:users:edit:') || perm.key === 'hr:users:write';
+                                      const canEnable = canEdit && (!isEditPermission || canEnableEditPermission(perm.key, permissions));
+                                      return (
+                                        <label
+                                          key={perm.id}
+                                          className={`flex items-start gap-2 p-2 rounded bg-white ${canEnable ? 'hover:bg-gray-50 cursor-pointer' : 'cursor-default'}`}
+                                        >
+                                          <input
+                                            type="checkbox"
+                                            checked={permissions[perm.key] || false}
+                                            onChange={() => canEnable && handleToggle(perm.key)}
+                                            disabled={!canEnable}
+                                            className="mt-1 w-4 h-4 rounded border-gray-300 text-brand-red focus:ring-brand-red flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                                          />
+                                          <div className="flex-1 min-w-0">
+                                            <div className="font-medium text-sm flex items-center gap-2">
+                                              <span className="truncate">{perm.label}</span>
+                                              {!IMPLEMENTED_PERMISSIONS.has(perm.key) && (
+                                                <span className="text-xs px-1.5 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300 flex-shrink-0">
+                                                  [WIP]
+                                                </span>
+                                              )}
+                                            </div>
+                                            {perm.description && (
+                                              <div className="text-xs text-gray-500 mt-0.5 line-clamp-1">{perm.description}</div>
                                             )}
                                           </div>
-                                          {perm.description && (
-                                            <div className="text-xs text-gray-500 mt-0.5 line-clamp-1">{perm.description}</div>
-                                          )}
-                                        </div>
-                                      </label>
-                                    ))}
+                                        </label>
+                                      );
+                                    })}
                                   </div>
                                 )}
                               </div>
@@ -334,16 +533,20 @@ function UserPermissions({ userId }:{ userId:string }){
                     ) : (
                       /* Default layout for other categories */
                       <div className="space-y-2">
-                        {subPermissions.map((perm: any) => (
+                        {subPermissions.map((perm: any) => {
+                          const isEditPermission = perm.key.startsWith('hr:users:edit:') || perm.key === 'hr:users:write';
+                          const canEnable = canEdit && (!isEditPermission || canEnableEditPermission(perm.key, permissions));
+                          return (
                           <label
                             key={perm.id}
-                            className="flex items-start gap-3 p-2 rounded hover:bg-gray-50 cursor-pointer"
+                            className={`flex items-start gap-3 p-2 rounded ${canEnable ? 'hover:bg-gray-50 cursor-pointer' : 'cursor-default'}`}
                           >
                             <input
                               type="checkbox"
                               checked={permissions[perm.key] || false}
-                              onChange={() => handleToggle(perm.key)}
-                              className="mt-1 w-4 h-4 rounded border-gray-300 text-brand-red focus:ring-brand-red"
+                              onChange={() => canEnable && handleToggle(perm.key)}
+                              disabled={!canEnable}
+                              className="mt-1 w-4 h-4 rounded border-gray-300 text-brand-red focus:ring-brand-red disabled:opacity-50 disabled:cursor-not-allowed"
                             />
                             <div className="flex-1">
                               <div className="font-medium text-sm flex items-center gap-2">
@@ -359,7 +562,8 @@ function UserPermissions({ userId }:{ userId:string }){
                               )}
                             </div>
                           </label>
-                        ))}
+                          );
+                        })}
                       </div>
                     )}
                   </div>
@@ -368,20 +572,16 @@ function UserPermissions({ userId }:{ userId:string }){
             );
           })}
         </div>
-
-        <div className="mt-6 flex justify-end">
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            className="px-4 py-2 rounded bg-brand-red text-white disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {saving ? 'Saving...' : 'Save Permissions'}
-          </button>
-        </div>
+        
+        {!canEdit && (
+          <div className="mt-6 p-4 bg-gray-50 border border-gray-200 rounded-lg text-center text-sm text-gray-600">
+            You have view-only access. You need edit permissions to modify user permissions.
+          </div>
+        )}
       </div>
     </div>
   );
-}
+});
 
 // Helper function to convert 24h time (HH:MM:SS or HH:MM) to 12h format (h:mm AM/PM)
 function formatTime12h(timeStr: string | null | undefined): string {
@@ -423,6 +623,8 @@ export default function UserInfo(){
   const [sp] = useSearchParams();
   const tabParam = sp.get('tab') as ('personal'|'job'|'emergency'|'docs'|'timesheet'|'permissions') | null;
   const [tab, setTab] = useState<typeof tabParam | 'personal'>(tabParam || 'personal');
+  const confirm = useConfirm();
+  const queryClient = useQueryClient();
 
   const { data, isLoading } = useQuery({ queryKey:['userProfile', userId], queryFn: ()=> api<any>('GET', `/auth/users/${userId}/profile`) });
   const { data:me } = useQuery({ queryKey:['me'], queryFn: ()=> api<any>('GET','/auth/me') });
@@ -432,11 +634,74 @@ export default function UserInfo(){
     (me?.permissions || []).includes('users:write')
   );
   const canSelfEdit = me && userId && String(me.id) === String(userId);
-  const canEditPermissions = canEdit; // Same permission check
+  
+  // Check edit permissions for general tab (Personal, Job, Emergency, Docs)
+  const canEditGeneral = useMemo(() => {
+    if (!me) return false;
+    const isAdmin = (me?.roles || []).some((r: string) => String(r || '').toLowerCase() === 'admin');
+    if (isAdmin) return true;
+    const perms = me?.permissions || [];
+    return perms.includes('hr:users:edit:general') || perms.includes('users:write'); // Legacy
+  }, [me]);
+  
+  // Check view permission for job compensation fields (Employment Type, Pay Type, Pay Rate)
+  const canViewJobCompensation = useMemo(() => {
+    if (!me) return false;
+    const isAdmin = (me?.roles || []).some((r: string) => String(r || '').toLowerCase() === 'admin');
+    if (isAdmin) return true;
+    const perms = me?.permissions || [];
+    // Only check for the specific permission - admins can always see it, but regular users need the specific permission
+    return perms.includes('hr:users:view:job:compensation');
+  }, [me]);
+  
+  // Check edit permissions for permissions tab
+  const canEditPermissions = useMemo(() => {
+    if (!me) return false;
+    const isAdmin = (me?.roles || []).some((r: string) => String(r || '').toLowerCase() === 'admin');
+    if (isAdmin) return true;
+    const perms = me?.permissions || [];
+    return perms.includes('hr:users:edit:permissions') || perms.includes('users:write'); // Legacy
+  }, [me]);
+  
+  // Check edit permissions for timesheet tab
+  const canEditTimesheet = useMemo(() => {
+    if (!me) return false;
+    const isAdmin = (me?.roles || []).some((r: string) => String(r || '').toLowerCase() === 'admin');
+    if (isAdmin) return true;
+    const perms = me?.permissions || [];
+    return perms.includes('hr:users:edit:timesheet') || perms.includes('hr:attendance:write') || perms.includes('users:write'); // Legacy
+  }, [me]);
+  
+  // Check view permissions for each tab
+  const canViewGeneral = useMemo(() => {
+    if (!me) return false;
+    const isAdmin = (me?.roles || []).some((r: string) => String(r || '').toLowerCase() === 'admin');
+    if (isAdmin) return true;
+    const perms = me?.permissions || [];
+    return perms.includes('hr:users:view:general') || perms.includes('users:read'); // Legacy
+  }, [me]);
+  
+  const canViewTimesheet = useMemo(() => {
+    if (!me) return false;
+    const isAdmin = (me?.roles || []).some((r: string) => String(r || '').toLowerCase() === 'admin');
+    if (isAdmin) return true;
+    const perms = me?.permissions || [];
+    return perms.includes('hr:users:view:timesheet') || perms.includes('users:read'); // Legacy
+  }, [me]);
+  
+  const canViewPermissions = useMemo(() => {
+    if (!me) return false;
+    const isAdmin = (me?.roles || []).some((r: string) => String(r || '').toLowerCase() === 'admin');
+    if (isAdmin) return true;
+    const perms = me?.permissions || [];
+    return perms.includes('hr:users:view:permissions') || perms.includes('users:read'); // Legacy
+  }, [me]);
   const p = data?.profile || {};
   const u = data?.user || {};
   const [pending, setPending] = useState<any>({});
   const [dirty, setDirty] = useState<boolean>(false);
+  const [permissionsDirty, setPermissionsDirty] = useState<boolean>(false);
+  const permissionsRef = useRef<UserPermissionsRef>(null);
   const { data:usersOptions } = useQuery({ queryKey:['users-options'], queryFn: ()=> api<any[]>('GET','/auth/users/options') });
   const { data: supervisorProfile } = useQuery({
     queryKey: ['supervisor-profile', p?.manager_user_id],
@@ -486,9 +751,73 @@ export default function UserInfo(){
     try{ const s=new Date(from); const now=new Date(); let months=(now.getFullYear()-s.getFullYear())*12+(now.getMonth()-s.getMonth()); if(now.getDate()<s.getDate()) months--; const y=Math.floor(months/12); const m=months%12; return y>0? `${y}y ${m}m` : `${m}m`; }catch{ return ''; }
   }
 
-  useEffect(()=>{ setPending({}); setDirty(false); }, [userId, data?.profile]);
+  useEffect(()=>{ setPending({}); setDirty(false); setPermissionsDirty(false); }, [userId, data?.profile]);
 
-  
+  // Prevent navigation away from page if there are unsaved changes
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (dirty || permissionsDirty) {
+        e.preventDefault();
+        e.returnValue = ''; // Chrome requires returnValue to be set
+        return '';
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, [dirty, permissionsDirty]);
+
+  const handleTabChange = async (newTab: typeof tabParam | 'personal') => {
+    // Check if user has permission to view this tab
+    const isGeneralTab = ['personal', 'job', 'emergency', 'docs'].includes(newTab);
+    const isTimesheetTab = newTab === 'timesheet';
+    const isPermissionsTab = newTab === 'permissions';
+    
+    if (isGeneralTab && !canViewGeneral) {
+      toast.error('You do not have permission to view this tab');
+      return;
+    }
+    if (isTimesheetTab && !canViewTimesheet) {
+      toast.error('You do not have permission to view this tab');
+      return;
+    }
+    if (isPermissionsTab && !canViewPermissions) {
+      toast.error('You do not have permission to view this tab');
+      return;
+    }
+    
+    // Check if there are unsaved changes before switching tabs
+    const hasUnsaved = dirty || permissionsDirty;
+    
+    if (hasUnsaved && tab !== newTab) {
+      const result = await confirm({
+        title: 'Unsaved Changes',
+        message: 'You have unsaved changes. What would you like to do?',
+        confirmText: 'Save and Continue',
+        cancelText: 'Cancel',
+        showDiscard: true,
+        discardText: 'Discard Changes'
+      });
+      
+      if (result === 'confirm') {
+        // Save before leaving
+        await saveAll();
+        setTab(newTab);
+      } else if (result === 'discard') {
+        // Discard changes and leave
+        setPending({});
+        setDirty(false);
+        setPermissionsDirty(false);
+        setTab(newTab);
+      }
+      // If cancelled, do nothing (stay on current tab)
+    } else {
+      // No unsaved changes, proceed normally
+      setTab(newTab);
+    }
+  };
 
   const collectChanges = (kv: Record<string, any>) => {
     setPending((s:any)=> ({ ...s, ...kv }));
@@ -497,18 +826,58 @@ export default function UserInfo(){
 
   const saveAll = async()=>{
     try{
-      if(!dirty) return;
-      if (canEdit) {
-        await api('PUT', `/auth/users/${encodeURIComponent(String(userId||''))}/profile`, pending);
-      } else if (canSelfEdit) {
-        await api('PUT', `/auth/me/profile`, pending);
-      } else {
-        throw new Error('Not allowed');
+      // Store old manager_user_id to invalidate old supervisor query if it changed
+      const oldManagerUserId = p?.manager_user_id;
+      
+      // Save profile changes if any
+      if(dirty) {
+        if (canEdit || canEditGeneral) {
+          await api('PUT', `/auth/users/${encodeURIComponent(String(userId||''))}/profile`, pending);
+        } else if (canSelfEdit) {
+          await api('PUT', `/auth/me/profile`, pending);
+        } else {
+          throw new Error('Not allowed');
+        }
+        setDirty(false);
+        setPending({});
+        
+        // Invalidate and refetch user profile to get updated data
+        await queryClient.invalidateQueries({ queryKey: ['userProfile', userId] });
+        await queryClient.refetchQueries({ queryKey: ['userProfile', userId] });
+        
+        // If manager_user_id changed, invalidate both old and new supervisor queries
+        const newManagerUserId = pending.manager_user_id !== undefined ? pending.manager_user_id : oldManagerUserId;
+        if (oldManagerUserId !== newManagerUserId) {
+          if (oldManagerUserId) {
+            await queryClient.invalidateQueries({ queryKey: ['supervisor-profile', oldManagerUserId] });
+          }
+          if (newManagerUserId) {
+            await queryClient.invalidateQueries({ queryKey: ['supervisor-profile', newManagerUserId] });
+            await queryClient.refetchQueries({ queryKey: ['supervisor-profile', newManagerUserId] });
+          }
+        } else if (oldManagerUserId) {
+          // Even if manager didn't change, refetch supervisor profile to ensure it's up to date
+          await queryClient.invalidateQueries({ queryKey: ['supervisor-profile', oldManagerUserId] });
+          await queryClient.refetchQueries({ queryKey: ['supervisor-profile', oldManagerUserId] });
+        }
+        
+        // Invalidate users-options in case user data changed
+        await queryClient.invalidateQueries({ queryKey: ['users-options'] });
       }
-      toast.success('Saved');
-      setDirty(false);
-      setPending({});
-    }catch(_e){ toast.error('Failed to save'); }
+      
+      // Save permissions if any
+      if (permissionsDirty && permissionsRef.current) {
+        await permissionsRef.current.save();
+        setPermissionsDirty(false);
+      }
+      
+      if (dirty || permissionsDirty) {
+        toast.success('Saved');
+      }
+    }catch(e: any){ 
+      console.error('Save error:', e);
+      toast.error(e?.message || e?.detail || 'Failed to save'); 
+    }
   };
 
 
@@ -550,10 +919,14 @@ export default function UserInfo(){
               </div>
             </div>
             <div className="mt-4 flex items-center gap-2">
-              {(['personal','job','emergency','docs','timesheet', ...(canEditPermissions ? ['permissions'] : [])] as const).map((k)=> (
+              {([
+                ...(canViewGeneral || canSelfEdit ? ['personal','job','emergency','docs'] : []),
+                ...(canViewTimesheet || canSelfEdit ? ['timesheet'] : []),
+                ...(canViewPermissions ? ['permissions'] : [])
+              ] as const).map((k)=> (
                 <button
                   key={k}
-                  onClick={()=>setTab(k as any)}
+                  onClick={()=>handleTabChange(k as any)}
                   className={`px-4 py-2 rounded-lg shadow-sm ${tab===k? 'bg-black text-white' : 'bg-white text-black border'}`}
                 >
                   {String(k).replace(/^./,s=>s.toUpperCase())}
@@ -565,81 +938,87 @@ export default function UserInfo(){
         <div className="p-5">
           {isLoading? <div className="h-24 animate-pulse bg-gray-100 rounded"/> : (
             <>
-              {tab==='personal' && (
+              {!canViewGeneral && !canViewTimesheet && !canViewPermissions && !canSelfEdit && (
+                <div className="text-center py-12">
+                  <div className="text-red-600 font-semibold mb-2">Access Denied</div>
+                  <div className="text-gray-600">You do not have permission to view this user's information.</div>
+                </div>
+              )}
+              {tab==='personal' && canViewGeneral && (
                 <div className="space-y-6 pb-24">
                   <div>
                     <div className="flex items-center gap-2"><h4 className="font-semibold">Basic information</h4></div>
                     <div className="text-xs text-gray-500 mt-0.5 mb-2">Core personal details.</div>
-                    <EditableGrid p={p} editable={canEdit} selfEdit={!!canSelfEdit} userId={String(userId)} collectChanges={collectChanges} inlineSave={false} fields={[['First name','first_name'],['Last name','last_name'],['Preferred name','preferred_name'],['Gender','gender'],['Marital status','marital_status'],['Date of birth','date_of_birth'],['Nationality','nationality']]} />
+                    <EditableGrid p={p} editable={canEditGeneral} selfEdit={!!canSelfEdit} userId={String(userId)} collectChanges={collectChanges} inlineSave={false} fields={[['First name','first_name'],['Last name','last_name'],['Middle name','middle_name'],['Prefered name','preferred_name'],['Gender','gender'],['Marital status','marital_status'],['Date of birth','date_of_birth'],['Nationality','nationality']]} />
                   </div>
                   <div>
                     <div className="flex items-center gap-2"><h4 className="font-semibold">Address</h4></div>
                     <div className="text-xs text-gray-500 mt-0.5 mb-2">Home address for contact and records.</div>
-                    <AddressSection p={p} editable={canEdit} selfEdit={!!canSelfEdit} userId={String(userId)} collectChanges={collectChanges} inlineSave={false} />
+                    <AddressSection p={p} editable={canEditGeneral} selfEdit={!!canSelfEdit} userId={String(userId)} collectChanges={collectChanges} inlineSave={false} />
                   </div>
                   <div>
                     <div className="flex items-center gap-2"><h4 className="font-semibold">Contact</h4></div>
                     <div className="text-xs text-gray-500 mt-0.5 mb-2">How we can reach you.</div>
-                    <EditableGrid p={p} editable={canEdit} selfEdit={!!canSelfEdit} userId={String(userId)} collectChanges={collectChanges} inlineSave={false} fields={[['Phone','phone'],['Mobile phone','mobile_phone']]} />
+                    <EditableGrid p={p} editable={canEditGeneral} selfEdit={!!canSelfEdit} userId={String(userId)} collectChanges={collectChanges} inlineSave={false} fields={[['Phone','phone'],['Mobile phone','mobile_phone']]} />
                   </div>
                   <div>
                     <div className="flex items-center gap-2"><h4 className="font-semibold">Education</h4></div>
                     <div className="text-xs text-gray-500 mt-0.5 mb-2">Academic history.</div>
-                    <EducationSection userId={String(userId)} canEdit={canEdit} />
+                    <EducationSection userId={String(userId)} canEdit={canEditGeneral} />
                   </div>
                   <div>
                     <div className="flex items-center gap-2"><h4 className="font-semibold">Visa Information</h4></div>
                     <div className="text-xs text-gray-500 mt-0.5 mb-2">Work permits and visa details.</div>
-                    <VisaInformationSection userId={String(userId)} canEdit={canEdit} />
+                    <VisaInformationSection userId={String(userId)} canEdit={canEditGeneral} />
                   </div>
                 </div>
               )}
-              {tab==='job' && (
+              {tab==='job' && canViewGeneral && (
                 <div className="space-y-6 pb-24">
                   <div>
                     <div className="flex items-center gap-2"><h4 className="font-semibold">Employment Details</h4></div>
                     <div className="text-xs text-gray-500 mt-0.5 mb-2">Dates and employment attributes.</div>
-                    <JobSection type="employment" p={p} editable={canEdit} userId={String(userId)} collectChanges={collectChanges} usersOptions={usersOptions||[]} settings={settings} />
+                    <JobSection type="employment" p={p} editable={canEditGeneral} userId={String(userId)} collectChanges={collectChanges} usersOptions={usersOptions||[]} settings={settings} canViewCompensation={canViewJobCompensation} />
                   </div>
                   <div>
                     <div className="flex items-center gap-2"><h4 className="font-semibold">Organization</h4></div>
                     <div className="text-xs text-gray-500 mt-0.5 mb-2">Reporting and work contacts.</div>
-                    <JobSection type="organization" p={p} editable={canEdit} userId={String(userId)} collectChanges={collectChanges} usersOptions={usersOptions||[]} settings={settings} />
+                    <JobSection type="organization" p={p} editable={canEditGeneral} userId={String(userId)} collectChanges={collectChanges} usersOptions={usersOptions||[]} settings={settings} />
                   </div>
                   <div>
                     <div className="flex items-center gap-2"><h4 className="font-semibold">Time Off</h4></div>
                     <div className="text-xs text-gray-500 mt-0.5 mb-2">Request time off and view your balance.</div>
-                    <TimeOffSection userId={String(userId)} canEdit={canEdit} />
+                    <TimeOffSection userId={String(userId)} canEdit={canEditGeneral} />
                   </div>
                 </div>
               )}
-              {tab==='emergency' && (
+              {tab==='emergency' && canViewGeneral && (
                 <div className="space-y-6 pb-24">
                   <div>
                     <div className="flex items-center gap-2"><h4 className="font-semibold">Emergency Contacts</h4></div>
                     <div className="text-xs text-gray-500 mt-0.5 mb-2">People to contact in case of emergency.</div>
-                    <EmergencyContactsSection userId={String(userId)} canEdit={canEdit} />
+                    <EmergencyContactsSection userId={String(userId)} canEdit={canEditGeneral} />
                   </div>
                   <div>
                     <div className="flex items-center gap-2"><h4 className="font-semibold">Legal & Documents</h4></div>
                     <div className="text-xs text-gray-500 mt-0.5 mb-2">Legal status and identification.</div>
-                    <EditableGrid p={p} editable={canEdit} selfEdit={!!canSelfEdit} userId={String(userId)} collectChanges={collectChanges} inlineSave={false} fields={[['SIN Number','sin_number'],['Work Permit Status','work_permit_status'],['Visa Status','visa_status']]} />
+                    <EditableGrid p={p} editable={canEditGeneral} selfEdit={!!canSelfEdit} userId={String(userId)} collectChanges={collectChanges} inlineSave={false} fields={[['SIN Number','sin_number'],['Work Permit Status','work_permit_status'],['Visa Status','visa_status']]} />
                   </div>
                 </div>
               )}
-              {tab==='docs' && <UserDocuments userId={String(userId)} canEdit={canEdit} />}
-              {tab==='timesheet' && <TimesheetBlock userId={String(userId)} />}
-              {tab==='permissions' && canEditPermissions && <UserPermissions userId={String(userId)} />}
+              {tab==='docs' && canViewGeneral && <UserDocuments userId={String(userId)} canEdit={canEditGeneral} />}
+              {tab==='timesheet' && canViewTimesheet && <TimesheetBlock userId={String(userId)} canEdit={canEditTimesheet} />}
+              {tab==='permissions' && canViewPermissions && <UserPermissions ref={permissionsRef} userId={String(userId)} onDirtyChange={setPermissionsDirty} canEdit={canEditPermissions} />}
             </>
           )}
         </div>
       </div>
-      {(canEdit || canSelfEdit) && (
+      {(canEditGeneral || canEditTimesheet || canEditPermissions || canSelfEdit) && (
         <div className="fixed bottom-0 left-0 right-0 z-40">
           <div className="max-w-[1200px] mx-auto px-4">
             <div className="mb-3 rounded-xl border bg-white shadow-hero p-3 flex items-center gap-3">
-              <div className={`text-sm ${dirty? 'text-amber-700':'text-green-700'}`}>{dirty? 'You have unsaved changes':'All changes saved'}</div>
-              <button onClick={saveAll} disabled={!dirty} className={`ml-auto px-4 py-2 rounded text-white ${dirty? 'bg-gradient-to-r from-brand-red to-[#ee2b2b]':'bg-gray-400 cursor-not-allowed'}`}>Save</button>
+              <div className={`text-sm ${(dirty || permissionsDirty)? 'text-amber-700':'text-green-700'}`}>{(dirty || permissionsDirty)? 'You have unsaved changes':'All changes saved'}</div>
+              <button onClick={saveAll} disabled={!dirty && !permissionsDirty} className={`ml-auto px-4 py-2 rounded text-white ${(dirty || permissionsDirty)? 'bg-gradient-to-r from-brand-red to-[#ee2b2b]':'bg-gray-400 cursor-not-allowed'}`}>Save</button>
             </div>
           </div>
         </div>
@@ -657,7 +1036,7 @@ function LabelVal({label, value}:{label:string, value:any}){
   );
 }
 
-function EditableGrid({p, fields, editable, selfEdit, userId, collectChanges, inlineSave=true}:{p:any, fields:[string,string][], editable:boolean, selfEdit:boolean, userId:string, collectChanges?: (kv:Record<string,any>)=>void, inlineSave?: boolean}){
+function EditableGrid({p, fields, editable, selfEdit, userId, collectChanges, inlineSave=true, fieldOptions}:{p:any, fields:[string,string][], editable:boolean, selfEdit:boolean, userId:string, collectChanges?: (kv:Record<string,any>)=>void, inlineSave?: boolean, fieldOptions?: Record<string, string[]>}){
   const [form, setForm] = useState<any>(()=>({ ...p }));
   const save = async()=>{
     try{
@@ -672,23 +1051,40 @@ function EditableGrid({p, fields, editable, selfEdit, userId, collectChanges, in
     }catch(_e){ toast.error('Failed to save'); }
   };
   const isEditable = !!(editable || selfEdit);
+  
+  const genderOptions = ['Male', 'Female', 'Other', 'Prefer not to say'];
+  const maritalStatusOptions = ['Single', 'Married', 'Common-law', 'Divorced', 'Widowed', 'Prefer not to say'];
+  
   return (
     <div>
       <div className="grid md:grid-cols-2 gap-4">
-        {fields.map(([label,key])=> (
-          <div key={key}>
-            <div className="text-sm text-gray-600">{label}</div>
-            {isEditable ? (
-              (key==='date_of_birth' || key==='hire_date' || key==='termination_date') ? (
-                <input type="date" value={(form[key]||'').slice(0,10)} onChange={e=> { setForm((s:any)=>({ ...s, [key]: e.target.value })); collectChanges && collectChanges({ [key]: e.target.value }); }} className="w-full rounded-lg border px-3 py-2"/>
+        {fields.map(([label,key])=> {
+          const options = fieldOptions?.[key] || (key === 'gender' ? genderOptions : key === 'marital_status' ? maritalStatusOptions : null);
+          
+          return (
+            <div key={key}>
+              <div className="text-sm text-gray-600">{label}</div>
+              {isEditable ? (
+                (key==='date_of_birth' || key==='hire_date' || key==='termination_date') ? (
+                  <input type="date" value={(form[key]||'').slice(0,10)} onChange={e=> { setForm((s:any)=>({ ...s, [key]: e.target.value })); collectChanges && collectChanges({ [key]: e.target.value }); }} className="w-full rounded-lg border px-3 py-2"/>
+                ) : key === 'nationality' ? (
+                  <NationalitySelect value={form[key]||''} onChange={v=> { setForm((s:any)=>({ ...s, [key]: v })); collectChanges && collectChanges({ [key]: v }); }} />
+                ) : options ? (
+                  <select value={form[key]||''} onChange={e=> { setForm((s:any)=>({ ...s, [key]: e.target.value })); collectChanges && collectChanges({ [key]: e.target.value }); }} className="w-full rounded-lg border px-3 py-2">
+                    <option value="">Select...</option>
+                    {options.map(opt => (
+                      <option key={opt} value={opt}>{opt}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <input value={form[key]||''} onChange={e=> { setForm((s:any)=>({ ...s, [key]: e.target.value })); collectChanges && collectChanges({ [key]: e.target.value }); }} className="w-full rounded-lg border px-3 py-2"/>
+                )
               ) : (
-                <input value={form[key]||''} onChange={e=> { setForm((s:any)=>({ ...s, [key]: e.target.value })); collectChanges && collectChanges({ [key]: e.target.value }); }} className="w-full rounded-lg border px-3 py-2"/>
-              )
-            ) : (
-              <div className="font-medium break-words">{(key==='date_of_birth' || key==='hire_date' || key==='termination_date')? String(p[key]??'').slice(0,10) : String(p[key]??'')}</div>
-            )}
-          </div>
-        ))}
+                <div className="font-medium break-words">{(key==='date_of_birth' || key==='hire_date' || key==='termination_date')? String(p[key]??'').slice(0,10) : String(p[key]??'')}</div>
+              )}
+            </div>
+          );
+        })}
       </div>
       {isEditable && inlineSave && (
         <div className="mt-4 text-right">
@@ -702,7 +1098,9 @@ function EditableGrid({p, fields, editable, selfEdit, userId, collectChanges, in
 function AddressSection({ p, editable, selfEdit, userId, collectChanges, inlineSave=true }:{ p:any, editable:boolean, selfEdit:boolean, userId:string, collectChanges?: (kv:Record<string,any>)=>void, inlineSave?: boolean }){
   const [form, setForm] = useState<any>(()=>({
     address_line1: p.address_line1||'',
+    address_line1_complement: p.address_line1_complement||'',
     address_line2: p.address_line2||'',
+    address_line2_complement: p.address_line2_complement||'',
     city: p.city||'',
     province: p.province||'',
     postal_code: p.postal_code||'',
@@ -713,13 +1111,15 @@ function AddressSection({ p, editable, selfEdit, userId, collectChanges, inlineS
   useEffect(() => {
     setForm({
       address_line1: p.address_line1||'',
+      address_line1_complement: p.address_line1_complement||'',
       address_line2: p.address_line2||'',
+      address_line2_complement: p.address_line2_complement||'',
       city: p.city||'',
       province: p.province||'',
       postal_code: p.postal_code||'',
       country: p.country||'',
     });
-  }, [p.address_line1, p.address_line2, p.city, p.province, p.postal_code, p.country]);
+  }, [p.address_line1, p.address_line1_complement, p.address_line2, p.address_line2_complement, p.city, p.province, p.postal_code, p.country]);
   const save = async()=>{
     try{
       if (editable) {
@@ -739,52 +1139,119 @@ function AddressSection({ p, editable, selfEdit, userId, collectChanges, inlineS
         <div>
           <div className="text-sm text-gray-600">Address line 1</div>
           {isEditable? (
-            <input value={form.address_line1} onChange={e=> { setForm((s:any)=>({ ...s, address_line1: e.target.value })); collectChanges && collectChanges({ address_line1: e.target.value }); }} className="w-full rounded-lg border px-3 py-2"/>
+            <AddressAutocomplete
+              value={form.address_line1 || ''}
+              onChange={(value) => {
+                setForm((s:any)=>({ ...s, address_line1: value }));
+                collectChanges && collectChanges({ address_line1: value });
+              }}
+              onAddressSelect={(address) => {
+                setForm((s:any) => ({
+                  ...s,
+                  address_line1: address.address_line1 || s.address_line1,
+                  city: address.city !== undefined ? address.city : s.city,
+                  province: address.province !== undefined ? address.province : s.province,
+                  postal_code: address.postal_code !== undefined ? address.postal_code : s.postal_code,
+                  country: address.country !== undefined ? address.country : s.country,
+                }));
+                collectChanges && collectChanges({
+                  address_line1: address.address_line1,
+                  city: address.city,
+                  province: address.province,
+                  postal_code: address.postal_code,
+                  country: address.country,
+                });
+              }}
+              placeholder="Start typing an address..."
+              className="w-full rounded-lg border px-3 py-2"
+            />
           ) : (
             <div className="font-medium break-words">{String(p.address_line1||'')}</div>
           )}
         </div>
         <div>
+          <div className="text-sm text-gray-600">Complement (e.g., Apt, Unit, Basement)</div>
+          {isEditable? (
+            <input 
+              type="text" 
+              value={form.address_line1_complement || ''} 
+              onChange={e=> { 
+                setForm((s:any)=>({ ...s, address_line1_complement: e.target.value })); 
+                collectChanges && collectChanges({ address_line1_complement: e.target.value }); 
+              }} 
+              placeholder="Apt 101, Unit 2, Basement, etc."
+              className="w-full rounded-lg border px-3 py-2"
+            />
+          ) : (
+            <div className="font-medium break-words">{String(p.address_line1_complement||'')}</div>
+          )}
+        </div>
+        <div>
           <div className="text-sm text-gray-600">Address line 2</div>
           {isEditable? (
-            <input value={form.address_line2} onChange={e=> { setForm((s:any)=>({ ...s, address_line2: e.target.value })); collectChanges && collectChanges({ address_line2: e.target.value }); }} className="w-full rounded-lg border px-3 py-2"/>
+            <AddressAutocomplete
+              value={form.address_line2 || ''}
+              onChange={(value) => {
+                setForm((s:any)=>({ ...s, address_line2: value }));
+                collectChanges && collectChanges({ address_line2: value });
+              }}
+              placeholder="Start typing an address..."
+              className="w-full rounded-lg border px-3 py-2"
+            />
           ) : (
             <div className="font-medium break-words">{String(p.address_line2||'')}</div>
           )}
         </div>
-        <div className="md:col-span-2">
-          {isEditable ? (
-            <GeoSelect
-              country={form.country}
-              state={form.province}
-              city={form.city}
-              onChange={(v)=> { setForm((s:any)=> ({...s, country: v.country??s.country, province: v.state??s.province, city: v.city??s.city })); collectChanges && collectChanges({ country: v.country, province: v.state, city: v.city }); }}
-              labels={{ country:'Country', state:'Province/State', city:'City' }}
+        <div>
+          <div className="text-sm text-gray-600">Complement (e.g., Apt, Unit, Basement)</div>
+          {isEditable? (
+            <input 
+              type="text" 
+              value={form.address_line2_complement || ''} 
+              onChange={e=> { 
+                setForm((s:any)=>({ ...s, address_line2_complement: e.target.value })); 
+                collectChanges && collectChanges({ address_line2_complement: e.target.value }); 
+              }} 
+              placeholder="Apt 101, Unit 2, Basement, etc."
+              className="w-full rounded-lg border px-3 py-2"
             />
           ) : (
-            <div className="grid md:grid-cols-3 gap-4">
-              <div>
-                <div className="text-sm text-gray-600">Country</div>
-                <div className="font-medium">{String(p.country||'')}</div>
-              </div>
-              <div>
-                <div className="text-sm text-gray-600">Province/State</div>
-                <div className="font-medium">{String(p.province||'')}</div>
-              </div>
-              <div>
-                <div className="text-sm text-gray-600">City</div>
-                <div className="font-medium">{String(p.city||'')}</div>
-              </div>
-            </div>
+            <div className="font-medium break-words">{String(p.address_line2_complement||'')}</div>
           )}
         </div>
-        <div>
-          <div className="text-sm text-gray-600">Postal code</div>
-          {isEditable? (
-            <input value={form.postal_code} onChange={e=> { setForm((s:any)=>({ ...s, postal_code: e.target.value })); collectChanges && collectChanges({ postal_code: e.target.value }); }} className="w-full rounded-lg border px-3 py-2"/>
-          ) : (
-            <div className="font-medium break-words">{String(p.postal_code||'')}</div>
-          )}
+        <div className="grid md:grid-cols-2 gap-4">
+          <div>
+            <div className="text-sm text-gray-600">City</div>
+            {isEditable ? (
+              <input value={form.city || ''} readOnly className="w-full rounded-lg border px-3 py-2 bg-gray-50 cursor-not-allowed"/>
+            ) : (
+              <div className="font-medium break-words">{String(p.city||'')}</div>
+            )}
+          </div>
+          <div>
+            <div className="text-sm text-gray-600">Province/State</div>
+            {isEditable ? (
+              <input value={form.province || ''} readOnly className="w-full rounded-lg border px-3 py-2 bg-gray-50 cursor-not-allowed"/>
+            ) : (
+              <div className="font-medium break-words">{String(p.province||'')}</div>
+            )}
+          </div>
+          <div>
+            <div className="text-sm text-gray-600">Postal code</div>
+            {isEditable ? (
+              <input value={form.postal_code || ''} readOnly className="w-full rounded-lg border px-3 py-2 bg-gray-50 cursor-not-allowed"/>
+            ) : (
+              <div className="font-medium break-words">{String(p.postal_code||'')}</div>
+            )}
+          </div>
+          <div>
+            <div className="text-sm text-gray-600">Country</div>
+            {isEditable ? (
+              <input value={form.country || ''} readOnly className="w-full rounded-lg border px-3 py-2 bg-gray-50 cursor-not-allowed"/>
+            ) : (
+              <div className="font-medium break-words">{String(p.country||'')}</div>
+            )}
+          </div>
         </div>
       </div>
       {isEditable && inlineSave && (
@@ -874,7 +1341,7 @@ function EducationSection({ userId, canEdit }:{ userId:string, canEdit:boolean }
   );
 }
 
-function JobSection({ type, p, editable, userId, collectChanges, usersOptions, settings }:{ type:'employment'|'organization', p:any, editable:boolean, userId:string, collectChanges: (kv:Record<string,any>)=>void, usersOptions:any[], settings:any }){
+function JobSection({ type, p, editable, userId, collectChanges, usersOptions, settings, canViewCompensation = false }:{ type:'employment'|'organization', p:any, editable:boolean, userId:string, collectChanges: (kv:Record<string,any>)=>void, usersOptions:any[], settings:any, canViewCompensation?: boolean }){
   const isEditable = !!editable;
   const [form, setForm] = useState<any>(()=>({
     hire_date: p.hire_date||'',
@@ -900,36 +1367,42 @@ function JobSection({ type, p, editable, userId, collectChanges, usersOptions, s
           <div className="text-sm text-gray-600">Termination date</div>
           {isEditable? <input type="date" className="w-full rounded-lg border px-3 py-2" value={(form.termination_date||'').slice(0,10)} onChange={e=>onField('termination_date', e.target.value)} /> : <div className="font-medium">{String(p.termination_date||'').slice(0,10)}</div>}
         </div>
-        <div>
-          <div className="text-sm text-gray-600">Employment type</div>
-          {isEditable? (
-            (settings?.employment_types?.length ? (
-              <select className="w-full rounded-lg border px-3 py-2" value={form.employment_type} onChange={e=>onField('employment_type', e.target.value)}>
-                <option value="">Select...</option>
-                {settings.employment_types.map((it:any)=> <option key={it.id} value={it.label}>{it.label}</option>)}
-              </select>
-            ) : (
-              <input className="w-full rounded-lg border px-3 py-2" value={form.employment_type} onChange={e=>onField('employment_type', e.target.value)} />
-            ))
-          ) : <div className="font-medium">{String(p.employment_type||'')}</div>}
-        </div>
-        <div>
-          <div className="text-sm text-gray-600">Pay type</div>
-          {isEditable? (
-            (settings?.pay_types?.length ? (
-              <select className="w-full rounded-lg border px-3 py-2" value={form.pay_type} onChange={e=>onField('pay_type', e.target.value)}>
-                <option value="">Select...</option>
-                {settings.pay_types.map((it:any)=> <option key={it.id} value={it.label}>{it.label}</option>)}
-              </select>
-            ) : (
-              <input className="w-full rounded-lg border px-3 py-2" value={form.pay_type} onChange={e=>onField('pay_type', e.target.value)} />
-            ))
-          ) : <div className="font-medium">{String(p.pay_type||'')}</div>}
-        </div>
-        <div>
-          <div className="text-sm text-gray-600">Pay rate</div>
-          {isEditable? <input className="w-full rounded-lg border px-3 py-2" value={form.pay_rate} onChange={e=>onField('pay_rate', e.target.value)} /> : <div className="font-medium">{String(p.pay_rate||'')}</div>}
-        </div>
+        {canViewCompensation && (
+          <div>
+            <div className="text-sm text-gray-600">Employment type</div>
+            {isEditable? (
+              (settings?.employment_types?.length ? (
+                <select className="w-full rounded-lg border px-3 py-2" value={form.employment_type} onChange={e=>onField('employment_type', e.target.value)}>
+                  <option value="">Select...</option>
+                  {settings.employment_types.map((it:any)=> <option key={it.id} value={it.label}>{it.label}</option>)}
+                </select>
+              ) : (
+                <input className="w-full rounded-lg border px-3 py-2" value={form.employment_type} onChange={e=>onField('employment_type', e.target.value)} />
+              ))
+            ) : <div className="font-medium">{String(p.employment_type||'')}</div>}
+          </div>
+        )}
+        {canViewCompensation && (
+          <div>
+            <div className="text-sm text-gray-600">Pay type</div>
+            {isEditable? (
+              (settings?.pay_types?.length ? (
+                <select className="w-full rounded-lg border px-3 py-2" value={form.pay_type} onChange={e=>onField('pay_type', e.target.value)}>
+                  <option value="">Select...</option>
+                  {settings.pay_types.map((it:any)=> <option key={it.id} value={it.label}>{it.label}</option>)}
+                </select>
+              ) : (
+                <input className="w-full rounded-lg border px-3 py-2" value={form.pay_type} onChange={e=>onField('pay_type', e.target.value)} />
+              ))
+            ) : <div className="font-medium">{String(p.pay_type||'')}</div>}
+          </div>
+        )}
+        {canViewCompensation && (
+          <div>
+            <div className="text-sm text-gray-600">Pay rate</div>
+            {isEditable? <input className="w-full rounded-lg border px-3 py-2" value={form.pay_rate} onChange={e=>onField('pay_rate', e.target.value)} /> : <div className="font-medium">{String(p.pay_rate||'')}</div>}
+          </div>
+        )}
         <div>
           <div className="text-sm text-gray-600">Job title</div>
           {isEditable? <input className="w-full rounded-lg border px-3 py-2" value={form.job_title} onChange={e=>onField('job_title', e.target.value)} /> : <div className="font-medium">{String(p.job_title||'')}</div>}
@@ -1135,7 +1608,7 @@ const buildEvents = (attendances: Attendance[]): AttendanceEvent[] => {
   );
 };
 
-function TimesheetBlock({ userId }:{ userId:string }){
+function TimesheetBlock({ userId, canEdit = true }:{ userId:string, canEdit?: boolean }){
   const queryClient = useQueryClient();
   const confirm = useConfirm();
   const [refreshKey, setRefreshKey] = useState(0);
@@ -1225,6 +1698,10 @@ function TimesheetBlock({ userId }:{ userId:string }){
 
   // Toggle eligible for break
   const toggleEligibleForBreak = async (checked: boolean) => {
+    if (!canEdit) {
+      toast.error('You do not have permission to edit attendance settings');
+      return;
+    }
     try {
       let updatedEmployeeIds: string[] = [];
       if (breakEmployeesItem?.value) {
@@ -1274,6 +1751,10 @@ function TimesheetBlock({ userId }:{ userId:string }){
   };
 
   const handleOpenModal = (event?: AttendanceEvent) => {
+    if (!canEdit) {
+      toast.error('You do not have permission to edit attendance records');
+      return;
+    }
     if (event) {
       setEditingEvent(event);
       const att = attendances?.find(a => a.id === event.event_id);
@@ -1350,6 +1831,10 @@ function TimesheetBlock({ userId }:{ userId:string }){
   };
 
   const handleDeleteEvent = async (event: AttendanceEvent) => {
+    if (!canEdit) {
+      toast.error('You do not have permission to delete attendance records');
+      return;
+    }
     const result = await confirm({
       title: 'Delete Attendance Event',
       message: 'Are you sure you want to delete this attendance event? This action cannot be undone.',
@@ -1383,6 +1868,7 @@ function TimesheetBlock({ userId }:{ userId:string }){
   };
 
   const handleToggleSelect = (eventId: string) => {
+    if (!canEdit) return;
     setSelectedEvents(prev => {
       const newSet = new Set(prev);
       if (newSet.has(eventId)) {
@@ -1395,6 +1881,7 @@ function TimesheetBlock({ userId }:{ userId:string }){
   };
 
   const handleSelectAll = () => {
+    if (!canEdit) return;
     if (selectedEvents.size === attendanceEvents.length) {
       setSelectedEvents(new Set());
     } else {
@@ -1403,6 +1890,10 @@ function TimesheetBlock({ userId }:{ userId:string }){
   };
 
   const handleDeleteSelected = async () => {
+    if (!canEdit) {
+      toast.error('You do not have permission to delete attendance records');
+      return;
+    }
     if (selectedEvents.size === 0) return;
     
     const result = await confirm({
@@ -1445,6 +1936,10 @@ function TimesheetBlock({ userId }:{ userId:string }){
   };
 
   const handleSubmit = async () => {
+    if (!canEdit) {
+      toast.error('You do not have permission to edit attendance records');
+      return;
+    }
     if (!formData.clock_in_time) {
       toast.error('Clock-in time is required');
       return;
@@ -1598,20 +2093,23 @@ function TimesheetBlock({ userId }:{ userId:string }){
             type="checkbox"
             id="eligible-for-break"
             checked={isEligibleForBreak}
-            onChange={(e) => toggleEligibleForBreak(e.target.checked)}
-            className="w-4 h-4 text-brand-red border-gray-300 rounded focus:ring-brand-red"
+            onChange={(e) => canEdit && toggleEligibleForBreak(e.target.checked)}
+            disabled={!canEdit}
+            className="w-4 h-4 text-brand-red border-gray-300 rounded focus:ring-brand-red disabled:opacity-50 disabled:cursor-not-allowed"
           />
-          <label htmlFor="eligible-for-break" className="text-sm text-gray-700 cursor-pointer">
+          <label htmlFor="eligible-for-break" className={`text-sm text-gray-700 ${canEdit ? 'cursor-pointer' : 'cursor-default'}`}>
             Eligible for Break
           </label>
           <span className="text-xs text-gray-500">(Break will be deducted for shifts of 5 hours or more)</span>
         </div>
-        <button
-          onClick={() => handleOpenModal()}
-          className="px-4 py-2 bg-[#d11616] text-white rounded-lg font-semibold hover:bg-[#b01414] transition-colors"
-        >
-          + New Attendance
-        </button>
+        {canEdit && (
+          <button
+            onClick={() => handleOpenModal()}
+            className="px-4 py-2 bg-[#d11616] text-white rounded-lg font-semibold hover:bg-[#b01414] transition-colors"
+          >
+            + New Attendance
+          </button>
+        )}
       </div>
 
       {/* Filters */}
@@ -1681,7 +2179,7 @@ function TimesheetBlock({ userId }:{ userId:string }){
       )}
 
       {/* Bulk Actions */}
-      {selectedEvents.size > 0 && (
+      {canEdit && selectedEvents.size > 0 && (
         <div className="mb-4 rounded-xl border bg-blue-50 p-4 flex items-center justify-between">
           <div className="text-sm font-medium text-blue-900">
             {selectedEvents.size} event(s) selected
@@ -1702,12 +2200,14 @@ function TimesheetBlock({ userId }:{ userId:string }){
           <thead className="bg-gray-50">
             <tr>
               <th className="p-3 text-left w-12">
-                <input
-                  type="checkbox"
-                  checked={attendanceEvents.length > 0 && selectedEvents.size === attendanceEvents.length}
-                  onChange={handleSelectAll}
-                  className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-                />
+                {canEdit && (
+                  <input
+                    type="checkbox"
+                    checked={attendanceEvents.length > 0 && selectedEvents.size === attendanceEvents.length}
+                    onChange={handleSelectAll}
+                    className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                  />
+                )}
               </th>
               <th className="p-3 text-left">Clock In</th>
               <th className="p-3 text-left">Clock Out</th>
@@ -1741,12 +2241,14 @@ function TimesheetBlock({ userId }:{ userId:string }){
               attendanceEvents.map((event) => (
                 <tr key={event.event_id} className="border-t hover:bg-gray-50">
                   <td className="p-3">
-                    <input
-                      type="checkbox"
-                      checked={selectedEvents.has(event.event_id)}
-                      onChange={() => handleToggleSelect(event.event_id)}
-                      className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-                    />
+                    {canEdit && (
+                      <input
+                        type="checkbox"
+                        checked={selectedEvents.has(event.event_id)}
+                        onChange={() => handleToggleSelect(event.event_id)}
+                        className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                      />
+                    )}
                   </td>
                   <td className="p-3">
                     {event.is_hours_worked ? '-' : (event.clock_in_time ? formatDateTime(event.clock_in_time) : '--')}
@@ -1785,21 +2287,25 @@ function TimesheetBlock({ userId }:{ userId:string }){
                     </span>
                   </td>
                   <td className="p-3">
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => handleOpenModal(event)}
-                        className="text-blue-600 hover:text-blue-800 text-sm"
-                      >
-                        Edit
-                      </button>
-                      <button
-                        onClick={() => handleDeleteEvent(event)}
-                        disabled={deletingId === event.event_id}
-                        className="text-red-600 hover:text-red-800 text-sm disabled:opacity-50"
-                      >
-                        {deletingId === event.event_id ? 'Deleting...' : 'Delete'}
-                      </button>
-                    </div>
+                    {canEdit ? (
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => handleOpenModal(event)}
+                          className="text-blue-600 hover:text-blue-800 text-sm"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          onClick={() => handleDeleteEvent(event)}
+                          disabled={deletingId === event.event_id}
+                          className="text-red-600 hover:text-red-800 text-sm disabled:opacity-50"
+                        >
+                          {deletingId === event.event_id ? 'Deleting...' : 'Delete'}
+                        </button>
+                      </div>
+                    ) : (
+                      <span className="text-xs text-gray-500">View only</span>
+                    )}
                   </td>
                 </tr>
               ))

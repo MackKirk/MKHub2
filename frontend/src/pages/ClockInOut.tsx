@@ -4,6 +4,7 @@ import { useSearchParams, useNavigate } from 'react-router-dom';
 import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
 import { formatDateLocal, getTodayLocal } from '@/lib/dateUtils';
+import { useConfirm } from '@/components/ConfirmProvider';
 
 // Helper function to convert 24h time (HH:MM:SS or HH:MM) to 12h format (h:mm AM/PM)
 function formatTime12h(timeStr: string | null | undefined): string {
@@ -86,6 +87,7 @@ type WeeklySummaryDay = {
   hours_worked_formatted: string;
   break_minutes?: number;
   break_formatted?: string | null;
+  worker_name?: string;  // Optional worker name for attendance summary modal
 };
 
 type WeeklySummary = {
@@ -116,6 +118,7 @@ export default function ClockInOut() {
   
   // Get query params for auto-opening modal from Schedule page
   const shiftIdFromUrl = searchParams.get('shift_id');
+  const confirm = useConfirm();
   const typeFromUrl = searchParams.get('type') as 'in' | 'out' | null;
   const dateFromUrl = searchParams.get('date');
   
@@ -388,10 +391,24 @@ export default function ClockInOut() {
     return selectedDateShift?.job_name || null;
   }, [openClockIn, selectedDateShift]);
   
-  // Can clock in ONLY if there's NO open clock-in (must close current event first)
-  // This ensures events are created sequentially: clock-in -> clock-out -> clock-in -> clock-out
+  // Check if there's already a complete attendance (clock-in + clock-out) for today
+  // In Personal > Clock in/out, only allow ONE attendance event per day
+  const hasCompleteAttendanceToday = useMemo(() => {
+    for (const att of allAttendancesForDate) {
+      // Check if this is a complete attendance (has both clock_in_time and clock_out_time)
+      // Exclude "hours worked" entries as they are handled differently
+      if (att.clock_in_time && att.clock_out_time && !isHoursWorked(att)) {
+        return true; // Found a complete attendance for today
+      }
+    }
+    return false; // No complete attendance found
+  }, [allAttendancesForDate]);
+
+  // Can clock in ONLY if:
+  // 1. There's NO open clock-in (must close current event first)
+  // 2. There's NO complete attendance for today (only 1 attendance per day allowed in Personal > Clock in/out)
   // EXCEPTION: "hours worked" entries are always complete, so they don't block clock-in
-  const canClockIn = !hasOpenClockIn;
+  const canClockIn = !hasOpenClockIn && !hasCompleteAttendanceToday;
   
   // Can clock out if there's an open clock-in (one with clock_in_time but no clock_out_time)
   // The clock-in must be approved or pending
@@ -417,10 +434,18 @@ export default function ClockInOut() {
   }, [isJobLocked, clockInJobType, hasOpenClockIn, openClockIn]);
   
 
-  // Fetch weekly summary
+  // Fetch weekly summary - always for current user only (Personal > Clock in/out)
   const { data: weeklySummary, refetch: refetchWeeklySummary } = useQuery({
     queryKey: ['weekly-attendance-summary', weekStartStr, currentUser?.id],
-    queryFn: () => api<WeeklySummary>('GET', `/dispatch/attendance/weekly-summary?week_start=${weekStartStr}`),
+    queryFn: () => {
+      const params = new URLSearchParams();
+      params.set('week_start', weekStartStr);
+      // Always pass current user's ID to ensure we only get their attendances
+      if (currentUser?.id) {
+        params.set('worker_id', currentUser.id);
+      }
+      return api<WeeklySummary>('GET', `/dispatch/attendance/weekly-summary?${params.toString()}`);
+    },
     enabled: !!currentUser?.id,
   });
 
@@ -558,19 +583,18 @@ export default function ClockInOut() {
       return;
     }
 
-    // Check permission before allowing submission
-    if (!hasUnrestrictedClock) {
-      toast.error('You do not have permission to edit clock in/out time. Contact an administrator.');
-      return;
-    }
-
-    if (!selectedTime || !selectedTime.includes(':')) {
-      toast.error('Please select a time');
-      return;
+    // If user doesn't have permission to edit time, use current time automatically
+    let timeToUse = selectedTime;
+    if (!hasUnrestrictedClock || !timeToUse || !timeToUse.includes(':')) {
+      // Use current time if no permission or no time selected
+      const now = new Date();
+      const hours = now.getHours();
+      const minutes = Math.floor(now.getMinutes() / 5) * 5; // Round to nearest 5 minutes
+      timeToUse = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
     }
 
     // Validate time format and 5-minute increments
-    const [hours, minutes] = selectedTime.split(':').map(Number);
+    const [hours, minutes] = timeToUse.split(':').map(Number);
     if (isNaN(hours) || isNaN(minutes) || hours < 0 || hours > 23 || minutes % 5 !== 0 || minutes < 0 || minutes > 59) {
       toast.error('Please select a valid time in 5-minute increments');
       return;
@@ -588,10 +612,114 @@ export default function ClockInOut() {
       return;
     }
 
+    // Validate: If clocking out, check that clock-out time is not before or equal to clock-in time
+    if (clockType === 'out') {
+      // Find the most recent open clock-in (one without clock-out)
+      const openClockIn = allAttendancesForDate.find(
+        a => a.clock_in_time && !a.clock_out_time
+      );
+      
+      if (openClockIn && openClockIn.clock_in_time) {
+        const clockInDate = new Date(openClockIn.clock_in_time);
+        if (selectedDateTime <= clockInDate) {
+          toast.error('Clock-out time must be after clock-in time. Please select a valid time.');
+          setSubmitting(false);
+          return;
+        }
+        
+        // Validate break time: break cannot be greater than or equal to total time
+        if (insertBreakTime) {
+          const breakTotalMinutes = parseInt(breakHours) * 60 + parseInt(breakMinutes);
+          const totalMinutes = Math.floor((selectedDateTime.getTime() - clockInDate.getTime()) / (1000 * 60));
+          
+          if (breakTotalMinutes >= totalMinutes) {
+            toast.error('Break time cannot be greater than or equal to the total attendance time. Please adjust the break or clock-out time.');
+            setSubmitting(false);
+            return;
+          }
+        }
+      }
+    }
+
+    // Prepare confirmation message
+    const timeStr = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+    const time12h = formatTime12h(timeStr);
+    const dateFormatted = formatDate(selectedDate);
+    
+    // Get project/job name
+    let projectJobName = '';
+    if (selectedDateShift && project) {
+      projectJobName = project.name || project.code || 'Unknown Project';
+    } else if (selectedJob) {
+      const jobOption = jobOptions.find(j => j.id === selectedJob);
+      projectJobName = jobOption?.name || selectedJob;
+    }
+    
+    // Build confirmation message
+    let confirmationMessage = '';
+    if (clockType === 'out' && openClockIn) {
+      // Detailed confirmation for clock-out
+      const clockInTime = new Date(openClockIn.clock_in_time);
+      // Format clock-in time in local timezone
+      const clockInHour = clockInTime.getHours();
+      const clockInMin = clockInTime.getMinutes();
+      const clockInTime12h = formatTime12h(
+        `${String(clockInHour).padStart(2, '0')}:${String(clockInMin).padStart(2, '0')}`
+      );
+      
+      // Calculate break information first
+      let breakTotalMinutes = 0;
+      let breakInfo = '';
+      if (insertBreakTime) {
+        breakTotalMinutes = parseInt(breakHours) * 60 + parseInt(breakMinutes);
+        if (breakTotalMinutes > 0) {
+          const breakH = Math.floor(breakTotalMinutes / 60);
+          const breakM = breakTotalMinutes % 60;
+          breakInfo = breakM > 0 ? `Break: ${breakH}h ${breakM}min` : `Break: ${breakH}h`;
+        }
+      }
+      
+      // Calculate hours worked (reuse year, month, day from validation above)
+      const [yearOut, monthOut, dayOut] = selectedDate.split('-').map(Number);
+      const clockOutDateTime = new Date(yearOut, monthOut - 1, dayOut, hours, minutes, 0);
+      const clockInDateTime = new Date(clockInTime);
+      const diffMs = clockOutDateTime.getTime() - clockInDateTime.getTime();
+      const totalMinutes = Math.floor(diffMs / (1000 * 60));
+      
+      // Subtract break from total minutes to get net hours worked
+      const netMinutes = Math.max(0, totalMinutes - breakTotalMinutes);
+      const workedHours = Math.floor(netMinutes / 60);
+      const workedMinutes = netMinutes % 60;
+      const hoursWorkedStr = workedMinutes > 0 ? `${workedHours}h ${workedMinutes}min` : `${workedHours}h`;
+      
+      // Build confirmation message with break right after clock out
+      confirmationMessage = `You are about to clock out with the following details:\n\n` +
+        `Date: ${dateFormatted}\n` +
+        `Clock In: ${clockInTime12h}\n` +
+        `Clock Out: ${time12h}${breakInfo ? `\n${breakInfo}` : ''}\n` +
+        `Hours Worked: ${hoursWorkedStr}${projectJobName ? `\nProject/Job: ${projectJobName}` : ''}\n\n` +
+        `Do you want to confirm?`;
+    } else {
+      // Simple confirmation for clock-in
+      confirmationMessage = `You are about to clock ${clockType === 'in' ? 'in' : 'out'} on ${dateFormatted} at ${time12h}${projectJobName ? ` for ${projectJobName}` : ''}.\n\nDo you want to confirm?`;
+    }
+    
+    // Show confirmation dialog
+    const confirmationResult = await confirm({
+      title: `Confirm Clock-${clockType === 'in' ? 'In' : 'Out'}`,
+      message: confirmationMessage,
+      confirmText: 'Confirm',
+      cancelText: 'Cancel'
+    });
+    
+    if (confirmationResult !== 'confirm') {
+      setSubmitting(false);
+      return;
+    }
+
     setSubmitting(true);
 
     try {
-      const timeStr = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
       const timeSelectedLocal = `${selectedDate}T${timeStr}:00`;
 
       const payload: any = {
@@ -709,23 +837,19 @@ export default function ClockInOut() {
   };
 
   // Format week range
+  // Format week range label - always use simple format: "nov 30 - dez 6"
   const weekRangeLabel = useMemo(() => {
     if (!weeklySummary) return '';
-    const start = new Date(weeklySummary.week_start);
-    const end = new Date(weeklySummary.week_end);
-    const startMonth = formatDate(weeklySummary.week_start).split(' ')[0];
-    const endMonth = formatDate(weeklySummary.week_end);
-    if (start.getMonth() === end.getMonth()) {
-      return `${start.getDate()}, ${startMonth} - ${end.getDate()}, ${endMonth}`;
-    }
-    return `${formatDate(weeklySummary.week_start)} - ${endMonth}`;
+    const startFormatted = formatDate(weeklySummary.week_start);
+    const endFormatted = formatDate(weeklySummary.week_end);
+    return `${startFormatted} - ${endFormatted}`;
   }, [weeklySummary]);
 
   return (
-    <div className="max-w-7xl">
+    <div className="w-full">
       <h1 className="text-2xl font-bold mb-3">Clock in/out</h1>
       
-      <div className="grid grid-cols-2 gap-6">
+      <div className="grid grid-cols-[2fr_3fr] gap-6">
         {/* Left column - Clock In/Out Form */}
         <div className="rounded-xl border bg-white p-6 space-y-6">
           {/* Date Selector */}
@@ -899,7 +1023,7 @@ export default function ClockInOut() {
                       ? 'bg-green-600 hover:bg-green-700 text-white'
                       : 'bg-gray-200 text-gray-400 cursor-not-allowed'
                   }`}
-                  title={hasOpenClockIn ? 'You must clock out first to close the current event before starting a new one' : ''}
+                  title={hasOpenClockIn ? 'You must clock out first to close the current event before starting a new one' : hasCompleteAttendanceToday ? 'Only one attendance event per day is allowed in Personal > Clock in/out' : ''}
                 >
                   Clock In
                 </button>
@@ -993,7 +1117,7 @@ export default function ClockInOut() {
                       ? 'bg-green-600 hover:bg-green-700 text-white'
                       : 'bg-gray-200 text-gray-400 cursor-not-allowed'
                   }`}
-                  title={hasOpenClockIn ? 'You must clock out first to close the current event before starting a new one' : !selectedJob ? 'Please select a job' : ''}
+                  title={hasOpenClockIn ? 'You must clock out first to close the current event before starting a new one' : hasCompleteAttendanceToday ? 'Only one attendance event per day is allowed in Personal > Clock in/out' : !selectedJob ? 'Please select a job' : ''}
                 >
                   Clock In
                 </button>
@@ -1206,7 +1330,7 @@ export default function ClockInOut() {
                   </button>
                   <button
                     onClick={handleClockInOut}
-                    disabled={submitting || !selectedTime}
+                    disabled={submitting}
                     className="flex-1 px-4 py-2 rounded bg-brand-red text-white hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {submitting ? 'Submitting...' : 'Submit'}
