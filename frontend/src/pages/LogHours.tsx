@@ -18,6 +18,7 @@ export default function LogHours(){
   const [start, setStart] = useState(defStart);
   const [end, setEnd] = useState('');
   const [notes, setNotes] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const qs = useMemo(()=> q? ('?q='+encodeURIComponent(q)) : '', [q]);
   const { data:projects } = useQuery({ queryKey:['projectsForLog', qs], queryFn: ()=> api<Project[]>('GET', `/projects${qs}`) });
   const mins = useMemo(()=>{
@@ -59,28 +60,41 @@ export default function LogHours(){
         </div>
         <div className="md:col-span-2 flex items-center justify-between">
           <div className="text-sm text-gray-700">Duration: {(mins/60).toFixed(2)}h</div>
-          <button onClick={async()=>{
-            try{
-              if(!projectId){ toast.error('Select a project'); return; }
-              if(!workDate || !start || !end){ toast.error('Date, start and end required'); return; }
-              if(!notes.trim()){ toast.error('Notes required'); return; }
+          <button 
+            onClick={async()=>{
+              if (isSubmitting) return; // Prevent multiple clicks
               
-              // Validate that end time is not before start time
-              const [sh, sm] = start.split(':').map(Number);
-              const [eh, em] = end.split(':').map(Number);
-              const startMinutes = sh * 60 + sm;
-              const endMinutes = eh * 60 + em;
-              if (endMinutes <= startMinutes) {
-                toast.error('End time cannot be before or equal to start time. Please select a valid time.');
-                return;
+              try{
+                setIsSubmitting(true);
+                if(!projectId){ toast.error('Select a project'); return; }
+                if(!workDate || !start || !end){ toast.error('Date, start and end required'); return; }
+                if(!notes.trim()){ toast.error('Notes required'); return; }
+                
+                // Validate that end time is not before start time
+                const [sh, sm] = start.split(':').map(Number);
+                const [eh, em] = end.split(':').map(Number);
+                const startMinutes = sh * 60 + sm;
+                const endMinutes = eh * 60 + em;
+                if (endMinutes <= startMinutes) {
+                  toast.error('End time cannot be before or equal to start time. Please select a valid time.');
+                  return;
+                }
+                
+                const payload:any = { work_date: workDate, start_time: start, end_time: end, minutes: mins, notes };
+                await api('POST', `/projects/${encodeURIComponent(projectId)}/timesheet`, payload);
+                toast.success('Logged');
+                setEnd(''); setNotes('');
+              }catch(_e){ 
+                toast.error('Failed'); 
+              } finally {
+                setIsSubmitting(false);
               }
-              
-              const payload:any = { work_date: workDate, start_time: start, end_time: end, minutes: mins, notes };
-              await api('POST', `/projects/${encodeURIComponent(projectId)}/timesheet`, payload);
-              toast.success('Logged');
-              setEnd(''); setNotes('');
-            }catch(_e){ toast.error('Failed'); }
-          }} className="px-4 py-2 rounded bg-brand-red text-white">Submit</button>
+            }} 
+            disabled={isSubmitting}
+            className="px-4 py-2 rounded bg-brand-red text-white disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {isSubmitting ? 'Submitting...' : 'Submit'}
+          </button>
         </div>
       </div>
       <div className="mt-3 text-sm text-gray-600">This page is optimized for future mobile/app use as well.</div>
