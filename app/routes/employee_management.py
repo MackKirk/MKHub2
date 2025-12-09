@@ -173,6 +173,30 @@ def create_salary_history(
 # Loans Management
 # =====================
 
+@router.get("/{user_id}/loans/summary")
+def get_loans_summary(
+    user_id: str,
+    db: Session = Depends(get_db),
+    _=Depends(require_permissions("users:read", "hr:users:read", "hr:users:view:general"))
+):
+    """Get loans summary for a user (total loaned, total paid, total outstanding)"""
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    loans = db.query(EmployeeLoan).filter(EmployeeLoan.user_id == user.id).all()
+    
+    total_loaned = sum(float(loan.loan_amount) for loan in loans)
+    total_paid = sum(float(loan.loan_amount) - float(loan.remaining_balance) for loan in loans)
+    total_outstanding = sum(float(loan.remaining_balance) for loan in loans if loan.status == "active")
+    
+    return {
+        "total_loaned": total_loaned,
+        "total_paid": total_paid,
+        "total_outstanding": total_outstanding,
+    }
+
+
 @router.get("/{user_id}/loans")
 def get_user_loans(
     user_id: str,
@@ -187,20 +211,28 @@ def get_user_loans(
     
     query = db.query(EmployeeLoan).filter(EmployeeLoan.user_id == user.id)
     if status:
-        query = query.filter(EmployeeLoan.status == status)
+        # Map frontend status to backend status
+        status_map = {"Active": "active", "Closed": "closed", "Cancelled": "cancelled"}
+        backend_status = status_map.get(status, status.lower())
+        query = query.filter(EmployeeLoan.status == backend_status)
     
     loans = query.order_by(EmployeeLoan.loan_date.desc()).all()
     
     result = []
     for loan in loans:
         created_by_user = db.query(User).filter(User.id == loan.created_by).first()
+        # Map backend status to frontend status
+        status_map = {"active": "Active", "closed": "Closed", "cancelled": "Cancelled", "paid_off": "Closed"}
+        frontend_status = status_map.get(loan.status, loan.status.capitalize())
+        
         result.append({
             "id": str(loan.id),
             "loan_amount": float(loan.loan_amount),
             "remaining_balance": float(loan.remaining_balance),
             "weekly_payment": float(loan.weekly_payment),
             "loan_date": loan.loan_date.isoformat() if loan.loan_date else None,
-            "status": loan.status,
+            "payment_method": loan.payment_method,
+            "status": frontend_status,
             "description": loan.description,
             "notes": loan.notes,
             "created_by": {
@@ -208,6 +240,7 @@ def get_user_loans(
                 "username": created_by_user.username if created_by_user else None,
             },
             "created_at": loan.created_at.isoformat() if loan.created_at else None,
+            "updated_at": loan.updated_at.isoformat() if loan.updated_at else None,
             "paid_off_at": loan.paid_off_at.isoformat() if loan.paid_off_at else None,
             "payments_count": len(loan.payments) if loan.payments else 0,
         })
@@ -232,6 +265,9 @@ def get_loan_details(
         raise HTTPException(status_code=404, detail="Loan not found")
     
     created_by_user = db.query(User).filter(User.id == loan.created_by).first()
+    updated_by_user = None
+    if loan.updated_by:
+        updated_by_user = db.query(User).filter(User.id == loan.updated_by).first()
     
     payments = []
     for payment in loan.payments:
@@ -240,6 +276,7 @@ def get_loan_details(
             "id": str(payment.id),
             "payment_amount": float(payment.payment_amount),
             "payment_date": payment.payment_date.isoformat() if payment.payment_date else None,
+            "payment_method": payment.payment_method,
             "balance_after": float(payment.balance_after),
             "notes": payment.notes,
             "created_by": {
@@ -249,13 +286,18 @@ def get_loan_details(
             "created_at": payment.created_at.isoformat() if payment.created_at else None,
         })
     
+    # Map backend status to frontend status
+    status_map = {"active": "Active", "closed": "Closed", "cancelled": "Cancelled", "paid_off": "Closed"}
+    frontend_status = status_map.get(loan.status, loan.status.capitalize())
+    
     return {
         "id": str(loan.id),
         "loan_amount": float(loan.loan_amount),
         "remaining_balance": float(loan.remaining_balance),
         "weekly_payment": float(loan.weekly_payment),
         "loan_date": loan.loan_date.isoformat() if loan.loan_date else None,
-        "status": loan.status,
+        "payment_method": loan.payment_method,
+        "status": frontend_status,
         "description": loan.description,
         "notes": loan.notes,
         "created_by": {
@@ -263,6 +305,11 @@ def get_loan_details(
             "username": created_by_user.username if created_by_user else None,
         },
         "created_at": loan.created_at.isoformat() if loan.created_at else None,
+        "updated_at": loan.updated_at.isoformat() if loan.updated_at else None,
+        "updated_by": {
+            "id": str(loan.updated_by),
+            "username": updated_by_user.username if updated_by_user else None,
+        } if loan.updated_by else None,
         "paid_off_at": loan.paid_off_at.isoformat() if loan.paid_off_at else None,
         "payments": payments,
     }
@@ -273,18 +320,23 @@ def create_loan(
     user_id: str,
     payload: dict,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_permissions("users:write"))
+    current_user: User = Depends(require_permissions("users:write", "hr:users:write"))
 ):
     """Create a new loan for a user"""
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
-    loan_date_str = payload.get("loan_date")
+    loan_date_str = payload.get("loan_date") or payload.get("agreement_date")
     if not loan_date_str:
         loan_date = datetime.now(timezone.utc)
     else:
         loan_date = datetime.fromisoformat(loan_date_str.replace('Z', '+00:00'))
+    
+    # Map frontend status to backend status
+    status_map = {"Active": "active", "Closed": "closed", "Cancelled": "cancelled"}
+    frontend_status = payload.get("status", "Active")
+    backend_status = status_map.get(frontend_status, "active")
     
     loan = EmployeeLoan(
         user_id=user.id,
@@ -292,7 +344,8 @@ def create_loan(
         remaining_balance=Decimal(str(payload.get("loan_amount", 0))),
         weekly_payment=Decimal(str(payload.get("weekly_payment", 0))),
         loan_date=loan_date,
-        status=payload.get("status", "active"),
+        payment_method=payload.get("payment_method"),
+        status=backend_status,
         description=payload.get("description"),
         notes=payload.get("notes"),
         created_by=current_user.id,
@@ -311,7 +364,7 @@ def create_loan_payment(
     loan_id: str,
     payload: dict,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_permissions("users:write"))
+    current_user: User = Depends(require_permissions("users:write", "hr:users:write"))
 ):
     """Create a payment for a loan"""
     loan = db.query(EmployeeLoan).filter(
@@ -322,15 +375,16 @@ def create_loan_payment(
     if not loan:
         raise HTTPException(status_code=404, detail="Loan not found")
     
-    if loan.status != "active":
+    if loan.status not in ["active"]:
         raise HTTPException(status_code=400, detail="Loan is not active")
     
     payment_amount = Decimal(str(payload.get("payment_amount", 0)))
     if payment_amount <= 0:
         raise HTTPException(status_code=400, detail="Payment amount must be greater than 0")
     
+    # Allow payment to exceed balance, but cap it at the remaining balance
     if payment_amount > loan.remaining_balance:
-        raise HTTPException(status_code=400, detail="Payment amount exceeds remaining balance")
+        payment_amount = loan.remaining_balance
     
     payment_date_str = payload.get("payment_date")
     if not payment_date_str:
@@ -344,21 +398,97 @@ def create_loan_payment(
         loan_id=loan.id,
         payment_amount=payment_amount,
         payment_date=payment_date,
+        payment_method=payload.get("payment_method") or payload.get("origin"),
         balance_after=new_balance,
         notes=payload.get("notes"),
         created_by=current_user.id,
     )
     
     loan.remaining_balance = new_balance
-    if new_balance <= 0:
-        loan.status = "paid_off"
-        loan.paid_off_at = datetime.now(timezone.utc)
+    loan.updated_at = datetime.now(timezone.utc)
+    loan.updated_by = current_user.id
+    
+    # Check if balance reached 0 - but don't auto-close (frontend will ask user)
+    should_close = new_balance <= 0
     
     db.add(payment)
     db.commit()
     db.refresh(payment)
     
-    return {"id": str(payment.id), "status": "ok", "remaining_balance": float(new_balance)}
+    return {
+        "id": str(payment.id),
+        "status": "ok",
+        "remaining_balance": float(new_balance),
+        "should_close": should_close,
+    }
+
+
+@router.patch("/{user_id}/loans/{loan_id}/close")
+def close_loan(
+    user_id: str,
+    loan_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permissions("users:write", "hr:users:write"))
+):
+    """Close a loan (mark as closed)"""
+    loan = db.query(EmployeeLoan).filter(
+        EmployeeLoan.id == loan_id,
+        EmployeeLoan.user_id == user_id
+    ).first()
+    
+    if not loan:
+        raise HTTPException(status_code=404, detail="Loan not found")
+    
+    loan.status = "closed"
+    loan.updated_at = datetime.now(timezone.utc)
+    loan.updated_by = current_user.id
+    if not loan.paid_off_at:
+        loan.paid_off_at = datetime.now(timezone.utc)
+    
+    db.commit()
+    
+    return {"status": "ok"}
+
+
+@router.patch("/{user_id}/loans/{loan_id}")
+def update_loan(
+    user_id: str,
+    loan_id: str,
+    payload: dict,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permissions("users:write", "hr:users:write"))
+):
+    """Update a loan (e.g., status, notes, etc.)"""
+    loan = db.query(EmployeeLoan).filter(
+        EmployeeLoan.id == loan_id,
+        EmployeeLoan.user_id == user_id
+    ).first()
+    
+    if not loan:
+        raise HTTPException(status_code=404, detail="Loan not found")
+    
+    # Map frontend status to backend status
+    if "status" in payload:
+        status_map = {"Active": "active", "Closed": "closed", "Cancelled": "cancelled"}
+        frontend_status = payload["status"]
+        backend_status = status_map.get(frontend_status, frontend_status.lower())
+        loan.status = backend_status
+        loan.updated_at = datetime.now(timezone.utc)
+        loan.updated_by = current_user.id
+        
+        # If closing, set paid_off_at if not already set
+        if backend_status == "closed" and not loan.paid_off_at:
+            loan.paid_off_at = datetime.now(timezone.utc)
+    
+    # Allow updating notes
+    if "notes" in payload:
+        loan.notes = payload.get("notes")
+        loan.updated_at = datetime.now(timezone.utc)
+        loan.updated_by = current_user.id
+    
+    db.commit()
+    
+    return {"status": "ok"}
 
 
 # =====================

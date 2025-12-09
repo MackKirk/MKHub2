@@ -870,11 +870,14 @@ class EmployeeLoan(Base):
     remaining_balance: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)  # Saldo restante
     weekly_payment: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)  # Valor do pagamento semanal
     loan_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)  # Data do empréstimo
-    status: Mapped[str] = mapped_column(String(50), default="active")  # active|paid_off|cancelled
+    payment_method: Mapped[Optional[str]] = mapped_column(String(50))  # Payroll|Manual
+    status: Mapped[str] = mapped_column(String(50), default="active")  # active|closed|cancelled
     description: Mapped[Optional[str]] = mapped_column(Text)  # Descrição do empréstimo
     notes: Mapped[Optional[str]] = mapped_column(Text)
     created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    updated_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
     paid_off_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     
     # Relationships
@@ -889,6 +892,7 @@ class LoanPayment(Base):
     loan_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("employee_loans.id", ondelete="CASCADE"), nullable=False, index=True)
     payment_amount: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)  # Valor do pagamento
     payment_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)  # Data do pagamento
+    payment_method: Mapped[Optional[str]] = mapped_column(String(50))  # Payroll|Manual
     balance_after: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)  # Saldo após o pagamento
     notes: Mapped[Optional[str]] = mapped_column(Text)
     created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=False)

@@ -9,6 +9,7 @@ import { useConfirm } from '@/components/ConfirmProvider';
 import NationalitySelect from '@/components/NationalitySelect';
 import AddressAutocomplete from '@/components/AddressAutocomplete';
 import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard';
+import UserLoans from '@/components/UserLoans';
 
 // List of implemented permissions (permissions that are actually checked in the codebase)
 const IMPLEMENTED_PERMISSIONS = new Set([
@@ -622,7 +623,7 @@ function UserLabel({ id, fallback }:{ id:string, fallback:string }){
 export default function UserInfo(){
   const { userId } = useParams();
   const [sp] = useSearchParams();
-  const tabParam = sp.get('tab') as ('personal'|'job'|'docs'|'timesheet'|'permissions') | null;
+  const tabParam = sp.get('tab') as ('personal'|'job'|'docs'|'timesheet'|'loans'|'permissions') | null;
   const [tab, setTab] = useState<typeof tabParam | 'personal'>(tabParam || 'personal');
   const confirm = useConfirm();
   const queryClient = useQueryClient();
@@ -675,6 +676,14 @@ export default function UserInfo(){
   
   // Check view permissions for each tab
   const canViewGeneral = useMemo(() => {
+    if (!me) return false;
+    const isAdmin = (me?.roles || []).some((r: string) => String(r || '').toLowerCase() === 'admin');
+    if (isAdmin) return true;
+    const perms = me?.permissions || [];
+    return perms.includes('hr:users:view:general') || perms.includes('users:read'); // Legacy
+  }, [me]);
+  
+  const canViewLoans = useMemo(() => {
     if (!me) return false;
     const isAdmin = (me?.roles || []).some((r: string) => String(r || '').toLowerCase() === 'admin');
     if (isAdmin) return true;
@@ -795,6 +804,7 @@ export default function UserInfo(){
     // Check if user has permission to view this tab
     const isGeneralTab = ['personal', 'job', 'docs'].includes(newTab);
     const isTimesheetTab = newTab === 'timesheet';
+    const isLoansTab = newTab === 'loans';
     const isPermissionsTab = newTab === 'permissions';
     
     if (isGeneralTab && !canViewGeneral) {
@@ -802,6 +812,10 @@ export default function UserInfo(){
       return;
     }
     if (isTimesheetTab && !canViewTimesheet) {
+      toast.error('You do not have permission to view this tab');
+      return;
+    }
+    if (isLoansTab && !canViewLoans) {
       toast.error('You do not have permission to view this tab');
       return;
     }
@@ -975,6 +989,7 @@ export default function UserInfo(){
               {([
                 ...(canViewGeneral || canSelfEdit ? ['personal','job','docs'] : []),
                 ...(canViewTimesheet || canSelfEdit ? ['timesheet'] : []),
+                ...(canViewLoans ? ['loans'] : []),
                 ...(canViewPermissions ? ['permissions'] : [])
               ] as const).map((k)=> (
                 <button
@@ -991,7 +1006,7 @@ export default function UserInfo(){
         <div className="p-5">
           {isLoading? <div className="h-24 animate-pulse bg-gray-100 rounded"/> : (
             <>
-              {!canViewGeneral && !canViewTimesheet && !canViewPermissions && !canSelfEdit && (
+              {!canViewGeneral && !canViewTimesheet && !canViewLoans && !canViewPermissions && !canSelfEdit && (
                 <div className="text-center py-12">
                   <div className="text-red-600 font-semibold mb-2">Access Denied</div>
                   <div className="text-gray-600">You do not have permission to view this user's information.</div>
@@ -1100,6 +1115,7 @@ export default function UserInfo(){
               )}
               {tab==='docs' && canViewGeneral && <UserDocuments userId={String(userId)} canEdit={canEditGeneral} />}
               {tab==='timesheet' && canViewTimesheet && <TimesheetBlock userId={String(userId)} canEdit={canEditTimesheet} />}
+              {tab==='loans' && canViewLoans && <UserLoans userId={String(userId)} canEdit={canEditGeneral || (me?.roles || []).some((r: string) => String(r || '').toLowerCase() === 'admin') || (me?.permissions || []).includes('hr:users:write') || (me?.permissions || []).includes('users:write')} />}
               {tab==='permissions' && canViewPermissions && <UserPermissions ref={permissionsRef} userId={String(userId)} onDirtyChange={setPermissionsDirty} canEdit={canEditPermissions} />}
             </>
           )}

@@ -8,6 +8,7 @@ import { useConfirm } from '@/components/ConfirmProvider';
 import NationalitySelect from '@/components/NationalitySelect';
 import AddressAutocomplete from '@/components/AddressAutocomplete';
 import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard';
+import UserLoans from '@/components/UserLoans';
 
 type ProfileResp = { user:{ username:string, email:string, first_name?:string, last_name?:string, divisions?: Array<{id:string, label:string}> }, profile?: any };
 
@@ -16,12 +17,20 @@ export default function Profile(){
   const p = data?.profile || {};
   const fileRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
-  const [tab, setTab] = useState<'personal'|'job'|'docs'>('personal');
+  const [tab, setTab] = useState<'personal'|'job'|'docs'|'loans'>('personal');
   const [isEditingPersonal, setIsEditingPersonal] = useState(false);
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   // Get current user ID for components
   const { data:me } = useQuery({ queryKey:['me'], queryFn: ()=> api<any>('GET','/auth/me') });
   const userId = me?.id ? String(me.id) : '';
+  
+  // Check if user has any loans to show the Loans tab
+  const { data: userLoans } = useQuery({
+    queryKey: ['loans', userId],
+    queryFn: () => api<any[]>('GET', `/employees/${userId}/loans`),
+    enabled: !!userId,
+  });
+  const hasLoans = userLoans && userLoans.length > 0;
   
   // Local form state
   const [form, setForm] = useState<any>({});
@@ -187,6 +196,9 @@ export default function Profile(){
                 </button>
                 <button onClick={()=>setTab('job')} className={`px-4 py-2 rounded-full ${tab==='job'?'bg-black text-white':'bg-white text-black'}`}>Job</button>
                 <button onClick={()=>setTab('docs')} className={`px-4 py-2 rounded-full ${tab==='docs'?'bg-black text-white':'bg-white text-black'}`}>Documents</button>
+                {hasLoans && (
+                  <button onClick={()=>setTab('loans')} className={`px-4 py-2 rounded-full ${tab==='loans'?'bg-black text-white':'bg-white text-black'}`}>Loans</button>
+                )}
               </div>
             </div>
             <div className="flex items-center">
@@ -444,6 +456,9 @@ export default function Profile(){
               )}
               {tab==='docs' && (
                 userId ? <UserDocuments userId={userId} canEdit={true} /> : <div className="text-sm text-gray-600">Loading...</div>
+              )}
+              {tab==='loans' && hasLoans && userId && (
+                <UserLoans userId={userId} canEdit={false} />
               )}
             </>
           )}
