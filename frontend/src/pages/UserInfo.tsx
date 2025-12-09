@@ -1015,17 +1015,17 @@ export default function UserInfo(){
                       )}
                     </div>
                     <div className="text-xs text-gray-500 mt-0.5 mb-2">Core personal details.</div>
-                    <EditableGrid p={p} editable={isEditingPersonal && (canEditGeneral || !!canSelfEdit)} selfEdit={!!canSelfEdit} userId={String(userId)} collectChanges={collectChanges} inlineSave={false} fields={[['First name','first_name'],['Last name','last_name'],['Middle name','middle_name'],['Prefered name','preferred_name'],['Gender','gender'],['Marital status','marital_status'],['Date of birth','date_of_birth'],['Nationality','nationality']]} />
+                    <EditableGrid p={p} editable={isEditingPersonal && (canEditGeneral || !!canSelfEdit)} selfEdit={false} userId={String(userId)} collectChanges={collectChanges} inlineSave={false} fields={[['First name','first_name'],['Last name','last_name'],['Middle name','middle_name'],['Prefered name','preferred_name'],['Gender','gender'],['Marital status','marital_status'],['Date of birth','date_of_birth'],['Nationality','nationality']]} />
                   </div>
                   <div>
                     <div className="flex items-center gap-2"><h4 className="font-semibold">Address</h4></div>
                     <div className="text-xs text-gray-500 mt-0.5 mb-2">Home address for contact and records.</div>
-                    <AddressSection p={p} editable={isEditingPersonal && (canEditGeneral || !!canSelfEdit)} selfEdit={!!canSelfEdit} userId={String(userId)} collectChanges={collectChanges} inlineSave={false} />
+                    <AddressSection p={p} editable={isEditingPersonal && (canEditGeneral || !!canSelfEdit)} selfEdit={false} userId={String(userId)} collectChanges={collectChanges} inlineSave={false} />
                   </div>
                   <div>
                     <div className="flex items-center gap-2"><h4 className="font-semibold">Contact</h4></div>
                     <div className="text-xs text-gray-500 mt-0.5 mb-2">How we can reach you.</div>
-                    <EditableGrid p={p} editable={isEditingPersonal && (canEditGeneral || !!canSelfEdit)} selfEdit={!!canSelfEdit} userId={String(userId)} collectChanges={collectChanges} inlineSave={false} fields={[['Phone 1','phone'],['Phone 2','mobile_phone']]} />
+                    <EditableGrid p={p} editable={isEditingPersonal && (canEditGeneral || !!canSelfEdit)} selfEdit={false} userId={String(userId)} collectChanges={collectChanges} inlineSave={false} fields={[['Phone 1','phone'],['Phone 2','mobile_phone']]} />
                   </div>
                   <div>
                     <div className="flex items-center gap-2"><h4 className="font-semibold">Education</h4></div>
@@ -1192,7 +1192,8 @@ function EditableGrid({p, fields, editable, selfEdit, userId, collectChanges, in
       toast.success('Saved');
     }catch(_e){ toast.error('Failed to save'); }
   };
-  const isEditable = !!(editable || selfEdit);
+  // Only make editable if explicitly set to editable (not just because selfEdit is true)
+  const isEditable = !!editable;
   
   // Phone formatting function (same as in emergency contacts)
   const formatPhone = (v:string)=>{
@@ -1301,7 +1302,8 @@ function AddressSection({ p, editable, selfEdit, userId, collectChanges, inlineS
     }catch(_e){ toast.error('Failed to save'); }
     finally{ setIsSaving(false); }
   };
-  const isEditable = !!(editable || selfEdit);
+  // Only make editable if explicitly set to editable (not just because selfEdit is true)
+  const isEditable = !!editable;
   return (
     <div>
       <div className="grid md:grid-cols-2 gap-4">

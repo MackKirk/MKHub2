@@ -4,6 +4,7 @@ import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
 import { useConfirm } from '@/components/ConfirmProvider';
 import ImagePicker from '@/components/ImagePicker';
+import AddressAutocomplete from '@/components/AddressAutocomplete';
 
 type Supplier = {
   id: string;
@@ -666,57 +667,68 @@ export default function InventorySuppliers() {
                 </div>
                 <div className="col-span-2">
                   <label className="text-xs font-semibold text-gray-700">Address Line 1</label>
-                  <input
-                    type="text"
-                    placeholder="Enter street address..."
-                    className="w-full border rounded px-3 py-2 mt-1"
+                  <AddressAutocomplete
                     value={addressLine1}
-                    onChange={(e) => setAddressLine1(e.target.value)}
+                    onChange={(value) => setAddressLine1(value)}
+                    onAddressSelect={(address) => {
+                      setAddressLine1(address.address_line1 || addressLine1);
+                      setAddressLine2(address.address_line2 !== undefined ? address.address_line2 : addressLine2);
+                      setCity(address.city !== undefined ? address.city : city);
+                      setProvince(address.province !== undefined ? address.province : province);
+                      setPostalCode(address.postal_code !== undefined ? address.postal_code : postalCode);
+                      setCountry(address.country !== undefined ? address.country : country);
+                    }}
+                    placeholder="Enter Adress"
+                    className="w-full border rounded px-3 py-2 mt-1"
                   />
                 </div>
                 <div className="col-span-2">
-                  <label className="text-xs font-semibold text-gray-700">Address Line 2</label>
-                  <input
-                    type="text"
-                    className="w-full border rounded px-3 py-2 mt-1"
+                  <label className="text-xs font-semibold text-gray-700">Address Line 2 (Optional)</label>
+                  <AddressAutocomplete
                     value={addressLine2}
-                    onChange={(e) => setAddressLine2(e.target.value)}
+                    onChange={(value) => setAddressLine2(value)}
+                    placeholder="Enter Adress"
+                    className="w-full border rounded px-3 py-2 mt-1"
                   />
                 </div>
                 <div>
                   <label className="text-xs font-semibold text-gray-700">City</label>
                   <input
                     type="text"
-                    className="w-full border rounded px-3 py-2 mt-1"
+                    className="w-full border rounded px-3 py-2 mt-1 bg-gray-50 cursor-not-allowed"
                     value={city}
-                    onChange={(e) => setCity(e.target.value)}
+                    readOnly
+                    placeholder=""
                   />
                 </div>
                 <div>
                   <label className="text-xs font-semibold text-gray-700">Province</label>
                   <input
                     type="text"
-                    className="w-full border rounded px-3 py-2 mt-1"
+                    className="w-full border rounded px-3 py-2 mt-1 bg-gray-50 cursor-not-allowed"
                     value={province}
-                    onChange={(e) => setProvince(e.target.value)}
+                    readOnly
+                    placeholder=""
                   />
                 </div>
                 <div>
                   <label className="text-xs font-semibold text-gray-700">Postal Code</label>
                   <input
                     type="text"
-                    className="w-full border rounded px-3 py-2 mt-1"
+                    className="w-full border rounded px-3 py-2 mt-1 bg-gray-50 cursor-not-allowed"
                     value={postalCode}
-                    onChange={(e) => setPostalCode(e.target.value)}
+                    readOnly
+                    placeholder=""
                   />
                 </div>
                 <div>
                   <label className="text-xs font-semibold text-gray-700">Country</label>
                   <input
                     type="text"
-                    className="w-full border rounded px-3 py-2 mt-1"
+                    className="w-full border rounded px-3 py-2 mt-1 bg-gray-50 cursor-not-allowed"
                     value={country}
-                    onChange={(e) => setCountry(e.target.value)}
+                    readOnly
+                    placeholder=""
                   />
                 </div>
                   </div>
