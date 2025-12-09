@@ -13,10 +13,33 @@ export default function Projects(){
   const divisionId = searchParams.get('division_id') || '';
   const statusId = searchParams.get('status') || '';
   const minValue = searchParams.get('min_value') || '';
-  const [q, setQ] = useState(searchParams.get('q') || '');
+  const queryParam = searchParams.get('q') || '';
+  const [q, setQ] = useState(queryParam);
   const [selectedDivision, setSelectedDivision] = useState(divisionId);
   const [selectedStatus, setSelectedStatus] = useState(statusId);
   const [minValueInput, setMinValueInput] = useState(minValue);
+  
+  // Sync URL params with state when URL changes (e.g., from dashboard navigation)
+  useEffect(() => {
+    const urlDivision = searchParams.get('division_id') || '';
+    const urlStatus = searchParams.get('status') || '';
+    const urlMinValue = searchParams.get('min_value') || '';
+    const urlQ = searchParams.get('q') || '';
+    
+    if (urlDivision !== selectedDivision) {
+      setSelectedDivision(urlDivision);
+    }
+    if (urlStatus !== selectedStatus) {
+      setSelectedStatus(urlStatus);
+    }
+    if (urlMinValue !== minValueInput) {
+      setMinValueInput(urlMinValue);
+    }
+    if (urlQ !== q) {
+      setQ(urlQ);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
   
   const qs = useMemo(()=> {
     const params = new URLSearchParams();
@@ -146,7 +169,21 @@ export default function Projects(){
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={()=>refetch()} className="px-4 py-2 rounded bg-brand-red text-white hover:bg-[#6d0d0d] transition-colors">Apply Filters</button>
+          <button 
+            onClick={()=>{
+              // Update URL params when applying filters
+              const params = new URLSearchParams();
+              if (q) params.set('q', q);
+              if (selectedDivision) params.set('division_id', selectedDivision);
+              if (selectedStatus) params.set('status', selectedStatus);
+              if (minValueInput) params.set('min_value', minValueInput);
+              setSearchParams(params);
+              refetch();
+            }} 
+            className="px-4 py-2 rounded bg-brand-red text-white hover:bg-[#6d0d0d] transition-colors"
+          >
+            Apply Filters
+          </button>
           <button 
             onClick={()=>{
               setQ('');
@@ -154,6 +191,7 @@ export default function Projects(){
               setSelectedStatus('');
               setMinValueInput('');
               setSearchParams({});
+              refetch();
             }} 
             className="px-4 py-2 rounded border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors"
           >
