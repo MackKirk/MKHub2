@@ -615,7 +615,27 @@ export default function ImagePicker({
       formData.append('category_id', 'proposal-upload');
       
       const conf: any = await api('POST', '/files/upload-proxy', formData);
-      setOriginalFileObjectId(conf.id);
+      const fileObjectId = conf.id;
+      
+      // Associate the edited image with the client library (save as copy)
+      try {
+        await api('POST', `/clients/${encodeURIComponent(String(clientId))}/files?file_object_id=${encodeURIComponent(fileObjectId)}&category=${encodeURIComponent('proposal-upload')}&original_name=${encodeURIComponent(uniqueName)}`);
+        
+        // Refresh library list silently to include the new edited image
+        try {
+          const list = await api<ClientFile[]>('GET', `/clients/${clientId}/files`);
+          setFiles((list||[]).filter(f=> {
+            const isImg = (f.is_image===true) || String(f.content_type||'').startsWith('image/');
+            const isDerived = String(f.category||'').toLowerCase().includes('derived');
+            return isImg && !isDerived;
+          }));
+        } catch (_e) {}
+      } catch (attachError) {
+        console.error('Failed to attach edited image to client library:', attachError);
+        // Continue anyway - the file is uploaded, just not in library
+      }
+      
+      setOriginalFileObjectId(fileObjectId);
       
       toast.success('Image edited and saved');
       setShowImageEditor(false);
