@@ -1167,6 +1167,7 @@ function LabelVal({label, value}:{label:string, value:any}){
 
 function EditableGrid({p, fields, editable, selfEdit, userId, collectChanges, inlineSave=true, fieldOptions}:{p:any, fields:[string,string][], editable:boolean, selfEdit:boolean, userId:string, collectChanges?: (kv:Record<string,any>)=>void, inlineSave?: boolean, fieldOptions?: Record<string, string[]>}){
   const [form, setForm] = useState<any>(()=>({ ...p }));
+  const [isSaving, setIsSaving] = useState(false);
   const prevEditableRef = useRef(editable);
   useEffect(() => {
     // When entering edit mode, initialize form with current p values
@@ -1250,7 +1251,9 @@ function EditableGrid({p, fields, editable, selfEdit, userId, collectChanges, in
       </div>
       {isEditable && inlineSave && (
         <div className="mt-4 text-right">
-          <button onClick={save} className="px-4 py-2 rounded bg-brand-red text-white">Save</button>
+          <button onClick={save} disabled={isSaving} className="px-4 py-2 rounded bg-brand-red text-white disabled:opacity-50 disabled:cursor-not-allowed">
+            {isSaving ? 'Saving...' : 'Save'}
+          </button>
         </div>
       )}
     </div>
@@ -1268,6 +1271,7 @@ function AddressSection({ p, editable, selfEdit, userId, collectChanges, inlineS
     postal_code: p.postal_code||'',
     country: p.country||'',
   }));
+  const [isSaving, setIsSaving] = useState(false);
   
   // Update form when profile data changes
   useEffect(() => {
@@ -1283,7 +1287,9 @@ function AddressSection({ p, editable, selfEdit, userId, collectChanges, inlineS
     });
   }, [p.address_line1, p.address_line1_complement, p.address_line2, p.address_line2_complement, p.city, p.province, p.postal_code, p.country]);
   const save = async()=>{
+    if (isSaving) return;
     try{
+      setIsSaving(true);
       if (editable) {
         await api('PUT', `/auth/users/${encodeURIComponent(userId)}/profile`, form);
       } else if (selfEdit) {
@@ -1293,6 +1299,7 @@ function AddressSection({ p, editable, selfEdit, userId, collectChanges, inlineS
       }
       toast.success('Saved');
     }catch(_e){ toast.error('Failed to save'); }
+    finally{ setIsSaving(false); }
   };
   const isEditable = !!(editable || selfEdit);
   return (
@@ -1418,7 +1425,9 @@ function AddressSection({ p, editable, selfEdit, userId, collectChanges, inlineS
       </div>
       {isEditable && inlineSave && (
         <div className="mt-4 text-right">
-          <button onClick={save} className="px-4 py-2 rounded bg-brand-red text-white">Save</button>
+          <button onClick={save} disabled={isSaving} className="px-4 py-2 rounded bg-brand-red text-white disabled:opacity-50 disabled:cursor-not-allowed">
+            {isSaving ? 'Saving...' : 'Save'}
+          </button>
         </div>
       )}
     </div>
@@ -1445,15 +1454,19 @@ function EducationSection({ userId, canEdit }:{ userId:string, canEdit:boolean }
   const [degree, setDegree] = useState('');
   const [start, setStart] = useState('');
   const [end, setEnd] = useState('');
+  const [isAddingEducation, setIsAddingEducation] = useState(false);
   const add = async()=>{
+    if (isAddingEducation) return;
     try{
       if(!inst.trim()){ toast.error('Institution required'); return; }
+      setIsAddingEducation(true);
       // Convert month input (YYYY-MM) to full date (YYYY-MM-01) for API
       const startDate = start ? `${start}-01` : null;
       const endDate = end ? `${end}-01` : null;
       await api('POST', `/auth/users/${encodeURIComponent(userId)}/education`, { college_institution: inst, degree, start_date:startDate, end_date:endDate });
       toast.success('Added'); setShowAdd(false); setInst(''); setDegree(''); setStart(''); setEnd(''); await refetch();
     }catch(_e){ toast.error('Failed'); }
+    finally{ setIsAddingEducation(false); }
   };
   const del = async(id:string)=>{
     try{ await api('DELETE', `/auth/users/${encodeURIComponent(userId)}/education/${encodeURIComponent(id)}`); await refetch(); }catch(_e){ toast.error('Failed'); }
@@ -1518,7 +1531,9 @@ function EducationSection({ userId, canEdit }:{ userId:string, canEdit:boolean }
               </div>
               <div className="md:col-span-2 text-right">
                 <button onClick={()=>setShowAdd(false)} className="px-3 py-2 rounded border mr-2">Cancel</button>
-                <button onClick={add} className="px-3 py-2 rounded bg-brand-red text-white">Save</button>
+                <button onClick={add} disabled={isAddingEducation} className="px-3 py-2 rounded bg-brand-red text-white disabled:opacity-50 disabled:cursor-not-allowed">
+                  {isAddingEducation ? 'Saving...' : 'Save'}
+                </button>
               </div>
             </div>
           )}

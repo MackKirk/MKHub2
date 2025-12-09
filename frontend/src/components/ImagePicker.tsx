@@ -43,6 +43,8 @@ export default function ImagePicker({
   const [showProgress, setShowProgress] = useState<boolean>(false);
   const [progressMessage, setProgressMessage] = useState<string>("");
   const [showImageEditor, setShowImageEditor] = useState<boolean>(false);
+  const [isConfirming, setIsConfirming] = useState<boolean>(false);
+  const [isSavingFromEditor, setIsSavingFromEditor] = useState<boolean>(false);
 
   // crop state
   const containerRef = useRef<HTMLDivElement>(null);
@@ -505,21 +507,45 @@ export default function ImagePicker({
   };
   const onPointerUp = (e: React.PointerEvent)=>{ dragging.current = null; };
 
-  const confirm = ()=>{
+  const confirm = async ()=>{
     if(!img){ toast.error('Select an image'); return; }
-    const canvas = document.createElement('canvas');
-    const scaleOut = Math.max(1, Number(exportScale||1));
-    canvas.width = Math.round(targetWidth * scaleOut); canvas.height = Math.round(targetHeight * scaleOut);
-    const ctx = canvas.getContext('2d')!;
-    ctx.fillStyle = '#fff'; ctx.fillRect(0,0,canvas.width,canvas.height);
-    const scale = coverScale * zoom;
-    const sx = -tx / scale;
-    const sy = -ty / scale;
-    const sw = cw / scale;
-    const sh = ch / scale;
-    // draw scaled to target canvas
-    ctx.drawImage(img, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
-    canvas.toBlob((b)=>{ if(b){ onConfirm(b, originalFileObjectId); } }, 'image/jpeg', 0.95);
+    if(isConfirming) return; // Prevent multiple clicks
+    
+    setIsConfirming(true);
+    try {
+      const canvas = document.createElement('canvas');
+      const scaleOut = Math.max(1, Number(exportScale||1));
+      canvas.width = Math.round(targetWidth * scaleOut); canvas.height = Math.round(targetHeight * scaleOut);
+      const ctx = canvas.getContext('2d')!;
+      ctx.fillStyle = '#fff'; ctx.fillRect(0,0,canvas.width,canvas.height);
+      const scale = coverScale * zoom;
+      const sx = -tx / scale;
+      const sy = -ty / scale;
+      const sw = cw / scale;
+      const sh = ch / scale;
+      // draw scaled to target canvas
+      ctx.drawImage(img, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
+      
+      await new Promise<void>((resolve, reject) => {
+        canvas.toBlob((b)=>{
+          if(b){
+            try {
+              onConfirm(b, originalFileObjectId);
+              resolve();
+            } catch (e) {
+              reject(e);
+            }
+          } else {
+            reject(new Error('Failed to create blob'));
+          }
+        }, 'image/jpeg', 0.95);
+      });
+    } catch (e: any) {
+      console.error('Failed to confirm image:', e);
+      toast.error('Failed to process image');
+    } finally {
+      setIsConfirming(false);
+    }
   };
 
   // Get current image URL for ImageEditor
@@ -539,6 +565,9 @@ export default function ImagePicker({
 
   // Handle save from ImageEditor - update image in picker and upload as copy
   const handleImageEditorSave = async (blob: Blob) => {
+    if (isSavingFromEditor) return; // Prevent multiple saves
+    
+    setIsSavingFromEditor(true);
     try {
       if (!clientId) {
         toast.error('Client ID required');
@@ -642,6 +671,8 @@ export default function ImagePicker({
     } catch (e: any) {
       console.error('Failed to save edited image:', e);
       toast.error('Failed to save edited image');
+    } finally {
+      setIsSavingFromEditor(false);
     }
   };
 
@@ -721,9 +752,11 @@ export default function ImagePicker({
                 <button type="button" disabled={!img || !allowEdit} onClick={()=>{ const { x, y } = clamp(0,0,1); setZoom(1); setTx(x); setTy(y); }} className="px-3 py-1.5 rounded bg-gray-100 disabled:opacity-50">Reset</button>
                 <div className="ml-auto" />
                 {!hideEditButton && (
-                  <button type="button" disabled={!img || isLoading} onClick={()=>setShowImageEditor(true)} className="px-4 py-2 rounded bg-gray-600 text-white disabled:opacity-50">Edit Image</button>
+                  <button type="button" disabled={!img || isLoading || isSavingFromEditor} onClick={()=>setShowImageEditor(true)} className="px-4 py-2 rounded bg-gray-600 text-white disabled:opacity-50">Edit Image</button>
                 )}
-                <button type="button" disabled={!img || isLoading} onClick={confirm} className="px-4 py-2 rounded bg-brand-red text-white disabled:opacity-50">Confirm</button>
+                <button type="button" disabled={!img || isLoading || isConfirming} onClick={confirm} className="px-4 py-2 rounded bg-brand-red text-white disabled:opacity-50">
+                  {isConfirming ? 'Processing...' : 'Confirm'}
+                </button>
               </div>
             </div>
           </div>

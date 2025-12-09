@@ -17,7 +17,11 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
 
   const [clientId] = useState<string>(String(clientIdProp || initial?.client_id || ''));
   const [siteId] = useState<string>(String(siteIdProp || initial?.site_id || ''));
-  const [projectId] = useState<string>(String(projectIdProp || initial?.project_id || ''));
+  // projectId should be preserved even if empty string, but we need to check for actual value
+  const [projectId] = useState<string>(() => {
+    const pid = projectIdProp || initial?.project_id;
+    return pid ? String(pid) : '';
+  });
 
   const { data:client } = useQuery({ queryKey:['client', clientId], queryFn: ()=> clientId? api<Client>('GET', `/clients/${clientId}`): Promise.resolve(null) });
   const { data:sites } = useQuery({ queryKey:['sites', clientId], queryFn: ()=> clientId? api<Site[]>('GET', `/clients/${clientId}/sites`): Promise.resolve([]) });
@@ -49,6 +53,7 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
   const [page2Preview, setPage2Preview] = useState<string>('');
   const newImageId = ()=> 'img_'+Math.random().toString(36).slice(2);
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
+  const [isSaving, setIsSaving] = useState<boolean>(false);
   const [downloadUrl, setDownloadUrl] = useState<string>('');
   const [lastSavedHash, setLastSavedHash] = useState<string>('');
   const [lastGeneratedHash, setLastGeneratedHash] = useState<string>('');
@@ -402,14 +407,40 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
       }, [isReady, lastSavedHash, coverTitle, orderNumber, date, createdFor, primary, typeOfProject, otherNotes, projectDescription, additionalNotes, pricingItems, optionalServices, showTotalInPdf, terms, sections, coverFoId, page2FoId, clientId, siteId, projectId, computeFingerprint]);
 
   const handleSave = useCallback(async()=>{
-    if (disabled) {
-      toast.error('Editing is restricted for this project status');
+    if (disabled || isSaving) {
+      if (disabled) toast.error('Editing is restricted for this project status');
       return;
     }
     try{
+      setIsSaving(true);
+      // When in project context, ALWAYS check if proposal already exists for this project
+      // This ensures we update the existing proposal instead of creating duplicates
+      let proposalId = mode==='edit'? initial?.id : undefined;
+      
+      // Always check for existing proposal when we have a projectId (even if mode is 'edit', 
+      // we want to ensure we're using the correct proposal for this project)
+      if (projectId && projectId.trim() !== '') {
+        try {
+          const existingProposals = await api<any[]>('GET', `/proposals?project_id=${encodeURIComponent(String(projectId))}`);
+          if (Array.isArray(existingProposals) && existingProposals.length > 0) {
+            // Use the first (and only) proposal for this project
+            proposalId = existingProposals[0]?.id;
+            console.log('Found existing proposal for project:', projectId, 'proposal ID:', proposalId);
+          } else {
+            console.log('No existing proposal found for project:', projectId, 'will create new');
+          }
+        } catch (e) {
+          // If check fails, continue without ID (will create new)
+          console.warn('Failed to check for existing proposal:', e);
+        }
+      }
+      
+      // Ensure project_id is properly set when we have a projectId
+      const finalProjectId = (projectId && projectId.trim() !== '') ? projectId : null;
+      
       const payload:any = {
-        id: mode==='edit'? initial?.id : undefined,
-        project_id: projectId||null,
+        id: proposalId,
+        project_id: finalProjectId,
         client_id: clientId||null,
         site_id: siteId||null,
         cover_title: coverTitle,
@@ -433,7 +464,9 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
         cover_file_object_id: coverFoId||null,
         page2_file_object_id: page2FoId||null,
       };
+      console.log('Saving proposal with payload:', { id: proposalId, project_id: projectId, client_id: clientId });
       const r:any = await api('POST','/proposals', payload);
+      console.log('Proposal saved, response:', r);
       toast.success('Saved');
       // Stay on page after save; update saved fingerprint so warnings clear
       setLastSavedHash(computeFingerprint());
@@ -443,8 +476,9 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
         proposalIdRef.current = r.id;
       }
       
-      // Invalidate queries to refresh data
+      // Invalidate queries to refresh data - especially important for project proposals
       queryClient.invalidateQueries({ queryKey: ['proposals'] });
+      queryClient.invalidateQueries({ queryKey: ['projectProposals', projectId] });
       queryClient.invalidateQueries({ queryKey: ['projectProposals'] });
       queryClient.invalidateQueries({ queryKey: ['proposal', r?.id] });
       
@@ -462,12 +496,59 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
       }
       lastAutoSaveRef.current = Date.now();
     }catch(e){ toast.error('Save failed'); }
-  }, [disabled, mode, initial?.id, projectId, clientId, siteId, coverTitle, orderNumber, date, createdFor, primary, typeOfProject, otherNotes, projectDescription, additionalNotes, total, showTotalInPdf, terms, pricingItems, optionalServices, sections, coverFoId, page2FoId, nav, queryClient, onSave, computeFingerprint, sanitizeSections, parseAccounting]);
+    finally{ setIsSaving(false); }
+  }, [disabled, isSaving, mode, initial?.id, projectId, clientId, siteId, coverTitle, orderNumber, date, createdFor, primary, typeOfProject, otherNotes, projectDescription, additionalNotes, total, showTotalInPdf, terms, pricingItems, optionalServices, sections, coverFoId, page2FoId, nav, queryClient, onSave, computeFingerprint, sanitizeSections, parseAccounting]);
 
   // Update ref when handleSave changes
   useEffect(() => {
     handleSaveRef.current = handleSave;
   }, [handleSave]);
+
+  // Clear proposal function - clears all fields except orderNumber, companyName, and companyAddress
+  const handleClearProposal = useCallback(async () => {
+    if (disabled) {
+      toast.error('Editing is restricted for this project status');
+      return;
+    }
+    
+    const result = await confirm({
+      title: 'Clear Proposal',
+      message: 'Are you sure you want to clear all proposal data? All fields will be reset. This action cannot be undone.',
+      confirmText: 'Clear All Data',
+      cancelText: 'Cancel'
+    });
+    
+    if (result !== 'confirm') return;
+    
+    try {
+      // Preserve orderNumber, companyName, and companyAddress (these are derived/readonly anyway)
+      // Clear all other fields
+      setCoverTitle('Proposal');
+      // orderNumber is preserved
+      setDate(getTodayLocal());
+      setCreatedFor('');
+      setPrimary({});
+      setTypeOfProject('');
+      setOtherNotes('');
+      setProjectDescription('');
+      setAdditionalNotes('');
+      setPricingItems([]);
+      setOptionalServices([]);
+      setShowTotalInPdf(true);
+      setTerms('');
+      setSections([]);
+      setCoverBlob(null);
+      setCoverFoId(undefined);
+      setPage2Blob(null);
+      setPage2FoId(undefined);
+      setDownloadUrl('');
+      setLastGeneratedHash('');
+      
+      toast.success('Proposal cleared');
+    } catch (e) {
+      toast.error('Failed to clear proposal');
+    }
+  }, [disabled, confirm]);
 
   // Auto-save function (silent save without toast)
   const autoSave = useCallback(async () => {
@@ -920,7 +1001,17 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
         )}
         {projectId && !window.location.pathname.includes('/proposals/') && <div />}
         <div className="space-x-2">
-          {mode === 'edit' && (
+          {/* Show Clear Proposal button when in project context, Delete Proposal when in standalone /proposals route */}
+          {projectId && !window.location.pathname.includes('/proposals/') && (
+            <button 
+              className="px-3 py-2 rounded bg-red-600 text-white hover:bg-red-700 disabled:opacity-50" 
+              onClick={handleClearProposal}
+              disabled={disabled}
+            >
+              Clear Proposal
+            </button>
+          )}
+          {mode === 'edit' && (!projectId || window.location.pathname.includes('/proposals/')) && (
             <button 
               className="px-3 py-2 rounded bg-red-600 text-white hover:bg-red-700" 
               onClick={async () => {
@@ -949,7 +1040,9 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
               Delete Proposal
             </button>
           )}
-          <button className="px-3 py-2 rounded bg-gray-100" onClick={handleSave} disabled={disabled}>Save Proposal</button>
+          <button className="px-3 py-2 rounded bg-gray-100" onClick={handleSave} disabled={disabled || isSaving}>
+            {isSaving ? 'Saving...' : 'Save Proposal'}
+          </button>
           <button className="px-3 py-2 rounded bg-brand-red text-white disabled:opacity-60" disabled={isGenerating || disabled} onClick={handleGenerate}>{isGenerating? 'Generating…' : 'Generate Proposal'}</button>
           {downloadUrl && (
             (renderFingerprint===lastGeneratedHash) ? (

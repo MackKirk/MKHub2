@@ -18,6 +18,7 @@ export default function Profile(){
   const [uploading, setUploading] = useState(false);
   const [tab, setTab] = useState<'personal'|'job'|'docs'>('personal');
   const [isEditingPersonal, setIsEditingPersonal] = useState(false);
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
   // Get current user ID for components
   const { data:me } = useQuery({ queryKey:['me'], queryFn: ()=> api<any>('GET','/auth/me') });
   const userId = me?.id ? String(me.id) : '';
@@ -90,12 +91,13 @@ export default function Profile(){
 
   // Save function for unsaved changes guard
   const handleSave = async () => {
-    if (!isEditingPersonal) return;
+    if (!isEditingPersonal || isSavingProfile) return;
     if (totalMissing > 0) {
       toast.error('Please complete required fields');
       return;
     }
     try {
+      setIsSavingProfile(true);
       console.log('Saving form with work_eligibility_status:', form.work_eligibility_status);
       await api('PUT', '/auth/me/profile', form);
       setInitialForm({ ...form });
@@ -110,6 +112,8 @@ export default function Profile(){
     } catch (e: any) {
       console.error('Failed to save profile:', e);
       toast.error('Failed to save');
+    } finally {
+      setIsSavingProfile(false);
     }
   };
 
@@ -519,15 +523,19 @@ function EducationSection({ userId, canEdit }:{ userId:string, canEdit:boolean }
   const [degree, setDegree] = useState('');
   const [start, setStart] = useState('');
   const [end, setEnd] = useState('');
+  const [isAddingEducation, setIsAddingEducation] = useState(false);
   const add = async()=>{
+    if (isAddingEducation) return;
     try{
       if(!inst.trim()){ toast.error('Institution required'); return; }
+      setIsAddingEducation(true);
       // Convert month input (YYYY-MM) to full date (YYYY-MM-01) for API
       const startDate = start ? `${start}-01` : null;
       const endDate = end ? `${end}-01` : null;
       await api('POST', `/auth/users/${encodeURIComponent(userId)}/education`, { college_institution: inst, degree, start_date:startDate, end_date:endDate });
       toast.success('Added'); setShowAdd(false); setInst(''); setDegree(''); setStart(''); setEnd(''); await refetch();
     }catch(_e){ toast.error('Failed'); }
+    finally{ setIsAddingEducation(false); }
   };
   const del = async(id:string)=>{
     try{ await api('DELETE', `/auth/users/${encodeURIComponent(userId)}/education/${encodeURIComponent(id)}`); await refetch(); }catch(_e){ toast.error('Failed'); }
@@ -592,7 +600,9 @@ function EducationSection({ userId, canEdit }:{ userId:string, canEdit:boolean }
               </div>
               <div className="md:col-span-2 text-right">
                 <button onClick={()=>setShowAdd(false)} className="px-3 py-2 rounded border mr-2">Cancel</button>
-                <button onClick={add} className="px-3 py-2 rounded bg-brand-red text-white">Save</button>
+                <button onClick={add} disabled={isAddingEducation} className="px-3 py-2 rounded bg-brand-red text-white disabled:opacity-50 disabled:cursor-not-allowed">
+                  {isAddingEducation ? 'Saving...' : 'Save'}
+                </button>
               </div>
             </div>
           )}

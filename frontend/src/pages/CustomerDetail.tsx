@@ -95,13 +95,14 @@ export default function CustomerDetail(){
   const clientAvatarLarge = clientLogoRec? `/files/${clientLogoRec.file_object_id}/thumbnail?w=800` : '/ui/assets/login/logo-light.svg';
   const [form, setForm] = useState<any>({});
   const [dirty, setDirty] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [sitePicker, setSitePicker] = useState<{ open:boolean, siteId?:string }|null>(null);
   const [projectPicker, setProjectPicker] = useState<{ open:boolean, projectId?:string }|null>(null);
   
   // Save function for unsaved changes guard
   const handleSave = async () => {
-    if (!dirty || !id) return;
+    if (!dirty || !id || isSaving) return;
     const toList = (s:string)=> (String(s||'').split(',').map(x=>x.trim()).filter(Boolean));
     const payload:any = {
       display_name: form.display_name||null,
@@ -139,6 +140,7 @@ export default function CustomerDetail(){
     const reqOk = String(form.display_name||'').trim().length>0 && String(form.legal_name||'').trim().length>0;
     if(!reqOk){ toast.error('Display name and Legal name are required'); return; }
     try{ 
+      setIsSaving(true);
       await api('PATCH', `/clients/${id}`, payload); 
       setDirty(false); 
     }catch(e: any){ 
@@ -148,6 +150,8 @@ export default function CustomerDetail(){
       } else {
         setDirty(false);
       }
+    } finally {
+      setIsSaving(false);
     }
   };
   
@@ -390,7 +394,8 @@ export default function CustomerDetail(){
                         <div className={dirty? 'text-[12px] text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5' : 'text-[12px] text-green-700 bg-green-50 border border-green-200 rounded-full px-2 py-0.5'}>
                           {dirty? 'Unsaved changes' : 'All changes saved'}
                         </div>
-                        <button disabled={!dirty} onClick={async()=>{
+                        <button disabled={!dirty || isSaving} onClick={async()=>{
+                          if (isSaving) return;
                       const toList = (s:string)=> (String(s||'').split(',').map(x=>x.trim()).filter(Boolean));
                       const payload:any = {
                         // identity
@@ -432,6 +437,7 @@ export default function CustomerDetail(){
                         const reqOk = String(form.display_name||'').trim().length>0 && String(form.legal_name||'').trim().length>0;
                         if(!reqOk){ toast.error('Display name and Legal name are required'); return; }
                       try{ 
+                        setIsSaving(true);
                         await api('PATCH', `/clients/${id}`, payload); 
                         toast.success('Saved'); 
                         setDirty(false); 
@@ -446,8 +452,12 @@ export default function CustomerDetail(){
                           toast.success('Saved'); 
                           setDirty(false);
                         }
+                      } finally {
+                        setIsSaving(false);
                       }
-                        }} className="px-5 py-2 rounded-xl bg-gradient-to-r from-brand-red to-[#ee2b2b] text-white font-semibold disabled:opacity-50">Save</button>
+                        }} className="px-5 py-2 rounded-xl bg-gradient-to-r from-brand-red to-[#ee2b2b] text-white font-semibold disabled:opacity-50 disabled:cursor-not-allowed">
+                          {isSaving ? 'Saving...' : 'Save'}
+                        </button>
                       </div>
                     </div>
                   </div>
@@ -1052,6 +1062,7 @@ function ContactsCard({ id }:{ id:string }){
   const [pickerForContact, setPickerForContact] = useState<string|null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [createPhotoBlob, setCreatePhotoBlob] = useState<Blob|null>(null);
+  const [isCreatingContact, setIsCreatingContact] = useState(false);
 
   useEffect(() => {
     if (!createOpen) return;
@@ -1217,11 +1228,20 @@ function ContactsCard({ id }:{ id:string }){
                 </div>
                 <div className="col-span-2 text-right">
                   <button onClick={async()=>{
-                    const payload:any = { name, email, phone, role_title: role, department: dept, is_primary: primary==='true' };
-                    const created:any = await api('POST', `/clients/${id}/contacts`, payload);
-                    // If photo selected through picker callback, it will be uploaded below via picker confirmation
-                    setName(''); setEmail(''); setPhone(''); setRole(''); setDept(''); setPrimary('false'); setCreateOpen(false); refetch();
-                  }} className="px-4 py-2 rounded-xl bg-gradient-to-r from-brand-red to-[#ee2b2b] text-white font-semibold">Create</button>
+                    if (isCreatingContact) return;
+                    try {
+                      setIsCreatingContact(true);
+                      const payload:any = { name, email, phone, role_title: role, department: dept, is_primary: primary==='true' };
+                      const created:any = await api('POST', `/clients/${id}/contacts`, payload);
+                      // If photo selected through picker callback, it will be uploaded below via picker confirmation
+                      setName(''); setEmail(''); setPhone(''); setRole(''); setDept(''); setPrimary('false'); setCreateOpen(false); refetch();
+                    } catch (e) {
+                      toast.error('Failed to create contact');
+                      setIsCreatingContact(false);
+                    }
+                  }} disabled={isCreatingContact} className="px-4 py-2 rounded-xl bg-gradient-to-r from-brand-red to-[#ee2b2b] text-white font-semibold disabled:opacity-50 disabled:cursor-not-allowed">
+                    {isCreatingContact ? 'Creating...' : 'Create'}
+                  </button>
                 </div>
               </div>
             </div>

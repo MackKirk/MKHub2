@@ -37,6 +37,7 @@ export default function ProjectNew(){
   const [clientSearch, setClientSearch] = useState<string>('');
   const [clientModalOpen, setClientModalOpen] = useState<boolean>(false);
   const [showClientDropdown, setShowClientDropdown] = useState<boolean>(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const nameValid = useMemo(()=> String(name||'').trim().length>0, [name]);
   const clientValid = useMemo(()=> String(clientId||'').trim().length>0, [clientId]);
   const siteValid = useMemo(()=>{
@@ -91,6 +92,14 @@ export default function ProjectNew(){
   }, [clientId, selectedClient]);
   useEffect(()=>{ if(!clientId){ setSiteId(''); setCreateSite(false); } }, [clientId]);
 
+  // Prevent body scroll when modal is open
+  useEffect(() => {
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, []);
+
   // ESC to close
   useEffect(()=>{
     const onKey = (e: KeyboardEvent)=>{ if (e.key==='Escape'){ nav(-1); } };
@@ -106,8 +115,9 @@ export default function ProjectNew(){
   }, [name, clientId, siteId, createSite, siteForm]);
 
   const submit = async()=>{
-    if(!canSubmit) return;
+    if(!canSubmit || isSubmitting) return;
     try{
+      setIsSubmitting(true);
       let newSiteId = siteId;
       if(createSite){
         const created:any = await api('POST', `/clients/${encodeURIComponent(clientId)}/sites`, siteForm);
@@ -143,12 +153,17 @@ export default function ProjectNew(){
       } else {
         nav(`/projects/${encodeURIComponent(String(proj?.id||''))}`);
       }
-    }catch(_e){ toast.error('Failed to create project'); }
+      // Don't reset isSubmitting here - let the component unmount handle it
+      return; // Exit early to prevent finally from resetting state
+    }catch(_e){ 
+      toast.error('Failed to create project'); 
+      setIsSubmitting(false); // Only reset on error
+    }
   };
 
   return (
     <>
-    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center">
+    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center overflow-y-auto">
       <div className="w-[900px] max-w-[95vw] max-h-[90vh] bg-white rounded-xl overflow-hidden flex flex-col">
         <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] p-6 relative">
           <button onClick={()=> nav(-1)} className="absolute top-4 right-4 text-white/80 hover:text-white text-2xl font-bold w-8 h-8 flex items-center justify-center rounded hover:bg-white/10" title="Close">×</button>
@@ -485,8 +500,10 @@ export default function ProjectNew(){
               <button disabled={!canSubmit} onClick={()=> setStep(2)} className="px-4 py-2 rounded bg-brand-red text-white disabled:opacity-50">Next</button>
             ) : (
               <>
-                <button onClick={()=> setStep(1)} className="px-4 py-2 rounded bg-gray-100">Back</button>
-                <button onClick={submit} className="px-4 py-2 rounded bg-brand-red text-white">Create</button>
+                <button onClick={()=> setStep(1)} disabled={isSubmitting} className="px-4 py-2 rounded bg-gray-100 disabled:opacity-50">Back</button>
+                <button onClick={submit} disabled={!canSubmit || isSubmitting} className="px-4 py-2 rounded bg-brand-red text-white disabled:opacity-50 disabled:cursor-not-allowed">
+                  {isSubmitting ? 'Creating...' : 'Create'}
+                </button>
               </>
             )}
           </div>

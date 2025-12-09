@@ -1694,6 +1694,8 @@ function ProjectFilesTabEnhanced({ projectId, files, onRefresh }:{ projectId:str
 }
 
 function ProjectProposalTab({ projectId, clientId, siteId, proposals, statusLabel, settings }:{ projectId:string, clientId:string, siteId?:string, proposals: Proposal[], statusLabel:string, settings:any }){
+  const queryClient = useQueryClient();
+  
   // Get the first (and only) proposal for this project
   const proposal = (proposals||[])[0];
   
@@ -1711,15 +1713,12 @@ function ProjectProposalTab({ projectId, clientId, siteId, proposals, statusLabe
   });
   
   // Check if editing is allowed based on status
+  // Only allow editing if status is "prospecting"
   const canEdit = useMemo(()=>{
     if (!statusLabel) return true; // Default to allow if no status
-    const statusConfig = ((settings?.project_statuses||[]) as any[]).find((s:any)=> s.label === statusLabel);
-    // Allow editing if status is "estimating" or if allow_edit_proposal is true in meta
-    if (statusLabel.toLowerCase() === 'estimating') return true;
-    // Check both boolean true and string "true" for compatibility
-    const allowEdit = statusConfig?.meta?.allow_edit_proposal;
-    return allowEdit === true || allowEdit === 'true' || allowEdit === 1;
-  }, [statusLabel, settings]);
+    // Only allow editing if status is "prospecting"
+    return statusLabel.toLowerCase() === 'prospecting';
+  }, [statusLabel]);
   
   const location = useLocation();
   const nav = useNavigate();
@@ -1763,12 +1762,24 @@ function ProjectProposalTab({ projectId, clientId, siteId, proposals, statusLabe
           clientId={clientId} 
           siteId={siteId} 
           projectId={projectId} 
-          initial={proposalData?.proposal || null}
+          initial={proposalData || null}
           disabled={!canEdit}
-          onSave={()=>{
-            // Refetch proposal data and proposals list after save
-            if (proposal?.id) refetchProposal();
-            refetchProposals();
+          onSave={async ()=>{
+            // Always refetch proposals list after save to get the updated/created proposal
+            await refetchProposals();
+            // Force refetch of project proposals to ensure UI updates
+            queryClient.invalidateQueries({ queryKey: ['projectProposals', projectId] });
+            // If we now have a proposal, refetch its full data
+            const updatedProposals = await api<Proposal[]>('GET', `/proposals?project_id=${encodeURIComponent(String(projectId))}`);
+            if (Array.isArray(updatedProposals) && updatedProposals.length > 0) {
+              const updatedProposal = updatedProposals[0];
+              // Invalidate the proposal query to trigger refetch
+              queryClient.invalidateQueries({ queryKey: ['proposal', updatedProposal.id] });
+              // Force a refetch of the proposal data
+              queryClient.refetchQueries({ queryKey: ['proposal', updatedProposal.id] });
+            }
+            // Also refetch the proposals list query
+            queryClient.refetchQueries({ queryKey: ['projectProposals', projectId] });
           }}
         />
       )}

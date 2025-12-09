@@ -6,7 +6,6 @@ import toast from 'react-hot-toast';
 import ImagePicker from '@/components/ImagePicker';
 import { useConfirm } from '@/components/ConfirmProvider';
 import AddressAutocomplete from '@/components/AddressAutocomplete';
-import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard';
 
 type Site = {
   id:string,
@@ -46,35 +45,6 @@ export default function SiteDetail(){
     } 
   }, [s && (s as any).id]);
 
-  // Check if form has unsaved changes
-  const hasUnsavedChanges = useMemo(() => {
-    return JSON.stringify(form) !== JSON.stringify(initialForm);
-  }, [form, initialForm]);
-
-  // Save function for unsaved changes guard
-  const handleSave = async () => {
-    if (!hasUnsavedChanges) return;
-    try{
-      if(isNew){
-        await api('POST', `/clients/${encodeURIComponent(String(customerId||''))}/sites`, form);
-      } else {
-        await api('PATCH', `/clients/${encodeURIComponent(String(customerId||''))}/sites/${encodeURIComponent(String(siteId||''))}`, form);
-      }
-      setInitialForm({ ...form });
-      try{ await qc.invalidateQueries({ queryKey:['clientSites', customerId] }); }catch(_e){}
-    }catch(_e){ 
-      toast.error('Save failed'); 
-    }
-  };
-
-  // Discard function to reset form to initial state
-  const handleDiscard = () => {
-    setForm({ ...initialForm });
-  };
-
-  // Use unsaved changes guard
-  useUnsavedChangesGuard(hasUnsavedChanges, handleSave, handleDiscard);
-
   // ESC to close
   useEffect(()=>{
     const onKey = (e: KeyboardEvent)=>{ if (e.key==='Escape'){ nav(-1); } };
@@ -90,14 +60,25 @@ export default function SiteDetail(){
   }, [files, siteId]);
 
   const [coverPickerOpen, setCoverPickerOpen] = useState(false);
+  const [isCreating, setIsCreating] = useState(false);
+
+  // Prevent body scroll when modal is open
+  useEffect(() => {
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, []);
 
   return (
     <>
-    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center">
+    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center overflow-y-auto">
       <div className="w-[900px] max-w-[95vw] max-h-[90vh] bg-white rounded-xl overflow-hidden flex flex-col">
         <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] p-6 flex items-center gap-6 relative">
           <button
             onClick={async ()=>{
+              // Prompt only if there are unsaved changes
+              const hasUnsavedChanges = JSON.stringify(form) !== JSON.stringify(initialForm);
               if (hasUnsavedChanges) {
                 const result = await confirm({
                   title: 'Unsaved Changes',
@@ -107,10 +88,20 @@ export default function SiteDetail(){
                   showDiscard: true,
                   discardText: 'Discard Changes'
                 });
-                
+
                 if (result === 'confirm') {
-                  await handleSave();
-                  nav(-1);
+                  try {
+                    if (isNew) {
+                      await api('POST', `/clients/${encodeURIComponent(String(customerId||''))}/sites`, form);
+                    } else {
+                      await api('PATCH', `/clients/${encodeURIComponent(String(customerId||''))}/sites/${encodeURIComponent(String(siteId||''))}`, form);
+                    }
+                    setInitialForm({ ...form });
+                    try{ await qc.invalidateQueries({ queryKey:['clientSites', customerId] }); }catch(_e){}
+                    nav(-1);
+                  } catch(_e) {
+                    toast.error('Save failed');
+                  }
                 } else if (result === 'discard') {
                   setForm({ ...initialForm });
                   nav(-1);
@@ -243,6 +234,7 @@ export default function SiteDetail(){
           </div>
           <div className="flex items-center gap-2">
             <button onClick={async ()=>{
+              const hasUnsavedChanges = JSON.stringify(form) !== JSON.stringify(initialForm);
               if (hasUnsavedChanges) {
                 const result = await confirm({
                   title: 'Unsaved Changes',
@@ -252,10 +244,20 @@ export default function SiteDetail(){
                   showDiscard: true,
                   discardText: 'Discard Changes'
                 });
-                
+
                 if (result === 'confirm') {
-                  await handleSave();
-                  nav(-1);
+                  try {
+                    if (isNew) {
+                      await api('POST', `/clients/${encodeURIComponent(String(customerId||''))}/sites`, form);
+                    } else {
+                      await api('PATCH', `/clients/${encodeURIComponent(String(customerId||''))}/sites/${encodeURIComponent(String(siteId||''))}`, form);
+                    }
+                    setInitialForm({ ...form });
+                    try{ await qc.invalidateQueries({ queryKey:['clientSites', customerId] }); }catch(_e){}
+                    nav(-1);
+                  } catch(_e) {
+                    toast.error('Save failed');
+                  }
                 } else if (result === 'discard') {
                   setForm({ ...initialForm });
                   nav(-1);
@@ -264,20 +266,37 @@ export default function SiteDetail(){
                 nav(-1);
               }
             }} className="px-4 py-2 rounded bg-gray-200 hover:bg-gray-300">Close</button>
-            <button onClick={async()=>{
-              try{
-                if(isNew){
-                  await api('POST', `/clients/${encodeURIComponent(String(customerId||''))}/sites`, form);
-                  toast.success('Created');
-                } else {
-                  await api('PATCH', `/clients/${encodeURIComponent(String(customerId||''))}/sites/${encodeURIComponent(String(siteId||''))}`, form);
-                  toast.success('Saved');
+            <button 
+              onClick={async()=>{
+                // Prevent multiple clicks
+                if (isCreating) return;
+                
+                try{
+                  setIsCreating(true);
+                  if(isNew){
+                    await api('POST', `/clients/${encodeURIComponent(String(customerId||''))}/sites`, form);
+                    toast.success('Created');
+                    setInitialForm({ ...form });
+                    try{ await qc.invalidateQueries({ queryKey:['clientSites', customerId] }); }catch(_e){}
+                    nav(-1);
+                  } else {
+                    await api('PATCH', `/clients/${encodeURIComponent(String(customerId||''))}/sites/${encodeURIComponent(String(siteId||''))}`, form);
+                    toast.success('Saved');
+                    setInitialForm({ ...form });
+                    try{ await qc.invalidateQueries({ queryKey:['clientSites', customerId] }); }catch(_e){}
+                    nav(-1);
+                  }
+                }catch(_e){ 
+                  toast.error('Save failed'); 
+                } finally {
+                  setIsCreating(false);
                 }
-                setInitialForm({ ...form });
-                try{ await qc.invalidateQueries({ queryKey:['clientSites', customerId] }); }catch(_e){}
-                nav(-1);
-              }catch(_e){ toast.error('Save failed'); }
-            }} className="px-4 py-2 rounded bg-brand-red text-white">{isNew? 'Create':'Save'}</button>
+              }} 
+              disabled={isCreating}
+              className="px-4 py-2 rounded bg-brand-red text-white disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isCreating ? (isNew ? 'Creating...' : 'Saving...') : (isNew ? 'Create' : 'Save')}
+            </button>
           </div>
         </div>
       </div>

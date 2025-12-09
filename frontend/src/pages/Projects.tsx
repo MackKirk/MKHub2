@@ -50,9 +50,15 @@ export default function Projects(){
   const [newOpen, setNewOpen] = useState(false);
   const [name, setName] = useState('');
   const [clientId, setClientId] = useState('');
+  const [isCreatingProject, setIsCreatingProject] = useState(false);
 
   useEffect(() => {
-    if (!newOpen) return;
+    if (!newOpen) {
+      document.body.style.overflow = '';
+      return;
+    }
+    // Prevent body scroll when modal is open
+    document.body.style.overflow = 'hidden';
     const onKey = (e: KeyboardEvent) => { 
       if (e.key === 'Escape') {
         setNewOpen(false);
@@ -61,15 +67,19 @@ export default function Projects(){
       }
     };
     window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    return () => {
+      document.body.style.overflow = '';
+      window.removeEventListener('keydown', onKey);
+    };
   }, [newOpen]);
 
   const handleCreateProject = async () => {
-    if (!name.trim() || !clientId.trim()) {
-      toast.error('Name and client ID are required');
+    if (!name.trim() || !clientId.trim() || isCreatingProject) {
+      if (!isCreatingProject) toast.error('Name and client ID are required');
       return;
     }
     try {
+      setIsCreatingProject(true);
       const created: any = await api('POST', '/projects', { name: name.trim(), client_id: clientId.trim() });
       toast.success('Project created');
       setNewOpen(false);
@@ -77,10 +87,13 @@ export default function Projects(){
       setClientId('');
       if (created?.id) {
         window.location.href = `/projects/${encodeURIComponent(String(created.id))}`;
+        // Don't reset isCreatingProject here - navigation will handle it
+        return; // Exit early to prevent finally from resetting state
       }
     } catch (e: any) {
       console.error('Failed to create project:', e);
       toast.error(e?.response?.data?.detail || 'Failed to create project');
+      setIsCreatingProject(false); // Only reset on error
     }
   };
 
@@ -187,7 +200,7 @@ export default function Projects(){
         }} />
       )}
       {newOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 overflow-y-auto">
           <div className="w-[480px] max-w-[95vw] bg-white rounded-lg shadow-lg overflow-hidden">
             <div className="px-4 py-3 border-b font-semibold">New Project</div>
             <div className="p-4">
@@ -230,7 +243,9 @@ export default function Projects(){
             </div>
             <div className="p-3 flex items-center justify-end gap-2 border-t">
               <button className="px-3 py-2 rounded bg-gray-100" onClick={()=>{ setNewOpen(false); setName(''); setClientId(''); }}>Cancel</button>
-              <button className="px-3 py-2 rounded bg-brand-red text-white" onClick={handleCreateProject}>Create</button>
+              <button className="px-3 py-2 rounded bg-brand-red text-white disabled:opacity-50 disabled:cursor-not-allowed" onClick={handleCreateProject} disabled={isCreatingProject}>
+                {isCreatingProject ? 'Creating...' : 'Create'}
+              </button>
             </div>
           </div>
         </div>

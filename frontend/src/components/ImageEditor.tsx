@@ -54,6 +54,7 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
   const [img, setImg] = useState<HTMLImageElement | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
   const [angle, setAngle] = useState(0);
   const [scale, setScale] = useState(1);
   const [offsetX, setOffsetX] = useState(0);
@@ -1763,9 +1764,13 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
 
   // Save
   const handleSave = async () => {
+    if (isSaving) return; // Prevent multiple saves
+    
     const canvas = canvasRef.current;
     const overlay = overlayRef.current;
     if (!canvas || !overlay || !img) return;
+    
+    setIsSaving(true);
     
     // Create final canvas with same size as the editing canvas to match what user sees
     const finalCanvas = document.createElement('canvas');
@@ -1919,12 +1924,28 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
     }
     
     // Convert to blob and save
-    finalCanvas.toBlob(async (blob) => {
-      if (blob) {
-        await onSave(blob);
-        onClose();
-      }
-    }, 'image/png');
+    try {
+      await new Promise<void>((resolve, reject) => {
+        finalCanvas.toBlob(async (blob) => {
+          if (blob) {
+            try {
+              await onSave(blob);
+              onClose();
+              resolve();
+            } catch (e) {
+              reject(e);
+            }
+          } else {
+            reject(new Error('Failed to create blob'));
+          }
+        }, 'image/png');
+      });
+    } catch (e: any) {
+      console.error('Failed to save image:', e);
+      // Error handling is done by onSave callback
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   if (!isOpen) return null;
@@ -2171,9 +2192,9 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
                 <button onClick={handleReset} className="w-full px-3 py-2 rounded bg-gray-100 mb-2">
                   Reset
                 </button>
-                <button onClick={handleSave} className="w-full px-3 py-2 rounded bg-brand-red text-white flex items-center justify-center gap-2">
+                <button onClick={handleSave} disabled={isSaving} className="w-full px-3 py-2 rounded bg-brand-red text-white flex items-center justify-center gap-2 disabled:opacity-50">
                   <img src={saveIcon} alt="Save" className="w-5 h-5" />
-                  Save Image
+                  {isSaving ? 'Saving...' : 'Save Image'}
                 </button>
               </div>
               

@@ -23,7 +23,10 @@ export default function CustomerNew(){
     payment_terms_id:'', po_required:false, tax_number:'', lead_source:'', estimator_id:'', description:''
   });
   useEffect(()=>{ setForm((s:any)=> ({ ...s, name: s.display_name })); }, [form.display_name]);
-  const canSubmit = useMemo(()=> String(form.display_name||'').trim().length>1, [form.display_name]);
+  // Validate both required fields: display_name and legal_name
+  const canSubmit = useMemo(()=> {
+    return String(form.display_name||'').trim().length>1 && String(form.legal_name||'').trim().length>0;
+  }, [form.display_name, form.legal_name]);
   const [contacts, setContacts] = useState<any[]>([]);
   const [contactModalOpen, setContactModalOpen] = useState(false);
   const [cName, setCName] = useState('');
@@ -36,7 +39,19 @@ export default function CustomerNew(){
   const [cPhotoPreview, setCPhotoPreview] = useState<string>('');
   const [cPickerOpen, setCPickerOpen] = useState(false);
   const [step, setStep] = useState<number>(1);
-  const next = ()=> setStep(s=> Math.min(2, s+1));
+  const [isCreating, setIsCreating] = useState(false);
+  const next = ()=> {
+    // Validate required fields before allowing to proceed
+    if (!String(form.display_name||'').trim()) {
+      toast.error('Display name is required');
+      return;
+    }
+    if (!String(form.legal_name||'').trim()) {
+      toast.error('Legal name is required');
+      return;
+    }
+    setStep(s=> Math.min(2, s+1));
+  };
   const prev = ()=> setStep(s=> Math.max(1, s-1));
   
   // Geo data for address fields
@@ -485,16 +500,18 @@ export default function CustomerNew(){
             {step===1 && <button className="px-4 py-2 rounded bg-brand-red text-white disabled:opacity-50" disabled={!canSubmit} onClick={next}>Next</button>}
             {step===2 && (
               <button onClick={async()=>{
-                if(!canSubmit){ toast.error('Missing required fields'); return; }
+                if(!canSubmit || isCreating){ toast.error('Missing required fields'); return; }
                 if (!contacts.length){
                   const ok = await confirm({ title: 'No contacts added', message: 'It is recommended to add at least one contact. Continue without contacts?' });
                   if (!ok) return;
                 }
                 try{
+                  setIsCreating(true);
                   // Ensure name is always a non-empty string
                   const nameValue = (form.display_name || form.name || '').trim();
                   if (!nameValue) {
                     toast.error('Display name is required');
+                    setIsCreating(false);
                     return;
                   }
                   const payload:any = { 
@@ -523,7 +540,7 @@ export default function CustomerNew(){
                     }
                   });
                   const created:any = await api('POST','/clients', payload);
-                  if (!created?.id){ toast.error('Create failed'); return; }
+                  if (!created?.id){ toast.error('Create failed'); setIsCreating(false); return; }
                   if (contacts.length){
                     for (const c of contacts){
                       try{ 
@@ -543,12 +560,17 @@ export default function CustomerNew(){
                   }
                   toast.success('Customer created');
                   nav(`/customers/${encodeURIComponent(String(created.id))}`);
+                  // Don't reset isCreating here - let the component unmount handle it
+                  return; // Exit early to prevent finally from resetting state
                 }catch(_e: any){ 
                   const errorMsg = _e?.message || _e?.detail || 'Failed to create customer';
                   toast.error(errorMsg);
                   console.error('Create customer error:', _e);
+                  setIsCreating(false); // Only reset on error
                 }
-              }} className="px-4 py-2 rounded bg-brand-red text-white">Create</button>
+              }} disabled={isCreating} className="px-4 py-2 rounded bg-brand-red text-white disabled:opacity-50 disabled:cursor-not-allowed">
+                {isCreating ? 'Creating...' : 'Create'}
+              </button>
             )}
         </div>
       </div>

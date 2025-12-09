@@ -80,6 +80,7 @@ export default function InventoryProducts(){
   const [covM2, setCovM2] = useState<string>('');
   const [imageDataUrl, setImageDataUrl] = useState<string>('');
   const [imagePickerOpen, setImagePickerOpen] = useState(false);
+  const [isSavingProduct, setIsSavingProduct] = useState(false);
 
   const [viewRelated, setViewRelated] = useState<number|null>(null);
   const [relatedList, setRelatedList] = useState<any[]>([]);
@@ -552,8 +553,9 @@ export default function InventoryProducts(){
                     }
                   }} className="px-4 py-2 rounded bg-gray-200 hover:bg-gray-300">Cancel</button>
                   <button onClick={async()=>{
-                    if(!name.trim()){ toast.error('Name required'); return; }
+                    if(!name.trim() || isSavingProduct){ if (!isSavingProduct) toast.error('Name required'); return; }
                     try{
+                      setIsSavingProduct(true);
                       const payload = {
                         name,
                         supplier_name: newSupplier||null,
@@ -573,7 +575,10 @@ export default function InventoryProducts(){
                       resetModal();
                       await refetch();
                     }catch(_e){ toast.error('Failed'); }
-                  }} className="px-4 py-2 rounded bg-brand-red text-white">{editing? 'Update' : 'Create'}</button>
+                    finally{ setIsSavingProduct(false); }
+                  }} disabled={isSavingProduct} className="px-4 py-2 rounded bg-brand-red text-white disabled:opacity-50 disabled:cursor-not-allowed">
+                    {isSavingProduct ? (editing ? 'Updating...' : 'Creating...') : (editing ? 'Update' : 'Create')}
+                  </button>
                 </>
               )}
             </div>
