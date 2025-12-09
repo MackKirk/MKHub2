@@ -235,20 +235,28 @@ function QuickReportModal({ onClose, onSuccess }: { onClose: () => void, onSucce
 
   const reportCategories = (settings?.report_categories || []) as any[];
   
-  // Categorias de produção (apenas para projetos, não para oportunidades)
-  // Palavras-chave específicas para identificar categorias de produção
-  const productionCategoryKeywords = ['daily update', 'site event', 'accident'];
+  // Production categories (only for projects, not for opportunities)
+  // Keywords to identify production/execution categories
+  const productionCategoryKeywords = [
+    'daily update',
+    'site event',
+    'accident', 'safety incident',
+    'positive event',
+    'deficiency found',
+    'work completed',
+    'weather impact'
+  ];
   const isProductionCategory = (catLabel: string): boolean => {
     const labelLower = catLabel.toLowerCase().trim();
-    // Verificar se a categoria corresponde exatamente ou contém as palavras-chave principais
+    // Check if category matches or contains production keywords
     return productionCategoryKeywords.some(keyword => {
       const keywordLower = keyword.toLowerCase();
-      // Verificar correspondência exata ou se contém a frase completa
+      // Exact match or contains the keyword
       return labelLower === keywordLower || labelLower.includes(keywordLower);
     });
   };
   
-  // Separar categorias em comercial e produção
+  // Separate categories into commercial and production
   const commercialCategories = useMemo(() => {
     return reportCategories.filter(cat => !isProductionCategory(cat.label || ''));
   }, [reportCategories]);
@@ -365,14 +373,14 @@ function QuickReportModal({ onClose, onSuccess }: { onClose: () => void, onSucce
               >
                 <option value="">Select category...</option>
                 {commercialCategories.length > 0 && (
-                  <optgroup label="Comercial">
+                  <optgroup label="Commercial">
                     {commercialCategories.map(cat => (
                       <option key={cat.id || cat.value || cat.label} value={cat.value || cat.label}>{cat.label}</option>
                     ))}
                   </optgroup>
                 )}
                 {productionCategories.length > 0 && (
-                  <optgroup label="Produção / Execução">
+                  <optgroup label="Production / Execution">
                     {productionCategories.map(cat => (
                       <option key={cat.id || cat.value || cat.label} value={cat.value || cat.label}>{cat.label}</option>
                     ))}

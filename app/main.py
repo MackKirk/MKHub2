@@ -37,6 +37,7 @@ from .routes.employee_management import router as employee_management_router
 from .routes.permissions import router as permissions_router
 from .routes.fleet import router as fleet_router
 from .routes.training import router as training_router
+from .routes.bug_report import router as bug_report_router
 
 
 def create_app() -> FastAPI:
@@ -83,6 +84,7 @@ def create_app() -> FastAPI:
     app.include_router(permissions_router)
     app.include_router(fleet_router)
     app.include_router(training_router)
+    app.include_router(bug_report_router)
     from .routes import dispatch
     app.include_router(dispatch.router)
     # Legacy UI redirects to new React routes (exact paths)

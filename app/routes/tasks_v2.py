@@ -4,25 +4,61 @@ from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import and_, or_
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from ..auth.security import get_current_user
 from ..db import get_db
-from ..models.models import EmployeeProfile, TaskItem, User
+from ..models.models import EmployeeProfile, SettingItem, TaskItem, User
 from ..services.task_service import get_user_display
 
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
 
 
+def _get_viewer_divisions(db: Session, user_id: uuid.UUID) -> list[str]:
+    """
+    Get user's division labels (supports multiple divisions).
+    Checks both user.divisions (many-to-many with SettingItem) and EmployeeProfile.division (legacy).
+    Returns a list of division labels.
+    """
+    divisions = []
+    
+    # Load user with divisions relationship
+    user = db.query(User).options(joinedload(User.divisions)).filter(User.id == user_id).first()
+    if not user:
+        return divisions
+    
+    # First check user.divisions (new system - many-to-many with SettingItem)
+    if hasattr(user, 'divisions') and user.divisions:
+        for division in user.divisions:
+            if hasattr(division, 'label') and division.label:
+                divisions.append(division.label)
+    
+    # Fallback to EmployeeProfile.division (legacy system) - only if no divisions found
+    if not divisions:
+        profile = db.query(EmployeeProfile).filter(EmployeeProfile.user_id == user_id).first()
+        if profile and profile.division:
+            divisions.append(profile.division)
+    
+    return divisions
+
+
 def _get_viewer_division(db: Session, user_id: uuid.UUID) -> Optional[str]:
-    profile = db.query(EmployeeProfile).filter(EmployeeProfile.user_id == user_id).first()
-    return profile.division if profile else None
+    """
+    Get user's first division label (for backward compatibility).
+    """
+    divisions = _get_viewer_divisions(db, user_id)
+    return divisions[0] if divisions else None
 
 
-def _serialize_task(task: TaskItem, viewer_id: uuid.UUID, viewer_division: Optional[str]) -> Dict[str, Any]:
+def _serialize_task(task: TaskItem, viewer_id: uuid.UUID, viewer_division: Optional[str], viewer_divisions: Optional[list[str]] = None) -> Dict[str, Any]:
     is_owner = task.assigned_to_id == viewer_id
-    is_division_member = task.assigned_division_label and viewer_division == task.assigned_division_label
+    # Check if user is member of the task's division (supports multiple divisions)
+    if viewer_divisions:
+        is_division_member = task.assigned_division_label and task.assigned_division_label in viewer_divisions
+    else:
+        # Fallback to single division check for backward compatibility
+        is_division_member = task.assigned_division_label and viewer_division == task.assigned_division_label
     return {
         "id": str(task.id),
         "title": task.title,
@@ -72,12 +108,26 @@ def _serialize_task(task: TaskItem, viewer_id: uuid.UUID, viewer_division: Optio
     }
 
 
-def _tasks_for_user(db: Session, me: User, viewer_division: Optional[str]):
+def _tasks_for_user(db: Session, me: User, viewer_divisions: list[str]):
+    """
+    Get tasks for user:
+    - Tasks assigned directly to the user
+    - Tasks assigned to any of the user's divisions (when not assigned to specific user)
+    """
     filters = [TaskItem.assigned_to_id == me.id]
-    if viewer_division:
-        filters.append(
-            and_(TaskItem.assigned_to_id.is_(None), TaskItem.assigned_division_label == viewer_division)
-        )
+    
+    if viewer_divisions:
+        # Tasks assigned to any of the user's divisions (when not assigned to specific user)
+        division_filters = [
+            and_(
+                TaskItem.assigned_to_id.is_(None),
+                TaskItem.assigned_division_label == div_label
+            )
+            for div_label in viewer_divisions
+        ]
+        if division_filters:
+            filters.append(or_(*division_filters))
+    
     return (
         db.query(TaskItem)
         .filter(or_(*filters))
@@ -88,11 +138,12 @@ def _tasks_for_user(db: Session, me: User, viewer_division: Optional[str]):
 
 @router.get("")
 def list_tasks(db: Session = Depends(get_db), me: User = Depends(get_current_user)):
-    viewer_division = _get_viewer_division(db, me.id)
-    tasks = _tasks_for_user(db, me, viewer_division)
+    viewer_divisions = _get_viewer_divisions(db, me.id)
+    viewer_division = viewer_divisions[0] if viewer_divisions else None  # For backward compatibility in serialization
+    tasks = _tasks_for_user(db, me, viewer_divisions)
     grouped: Dict[str, list] = {"accepted": [], "in_progress": [], "done": []}
     for task in tasks:
-        payload = _serialize_task(task, viewer_id=me.id, viewer_division=viewer_division)
+        payload = _serialize_task(task, viewer_id=me.id, viewer_division=viewer_division, viewer_divisions=viewer_divisions)
         grouped.setdefault(task.status, []).append(payload)
     return grouped
 
@@ -108,27 +159,30 @@ def _get_task(task_id: str, db: Session) -> TaskItem:
     return task
 
 
-def _ensure_view_permission(task: TaskItem, me: User, viewer_division: Optional[str]) -> None:
+def _ensure_view_permission(task: TaskItem, me: User, viewer_divisions: list[str]) -> None:
     if task.assigned_to_id == me.id:
         return
-    if task.assigned_to_id is None and task.assigned_division_label and viewer_division == task.assigned_division_label:
-        return
+    if task.assigned_to_id is None and task.assigned_division_label:
+        if task.assigned_division_label in viewer_divisions:
+            return
     raise HTTPException(status_code=403, detail="You do not have access to this task")
 
 
 @router.get("/{task_id}")
 def get_task(task_id: str, db: Session = Depends(get_db), me: User = Depends(get_current_user)):
-    viewer_division = _get_viewer_division(db, me.id)
+    viewer_divisions = _get_viewer_divisions(db, me.id)
+    viewer_division = viewer_divisions[0] if viewer_divisions else None  # For backward compatibility
     task = _get_task(task_id, db)
-    _ensure_view_permission(task, me, viewer_division)
-    return _serialize_task(task, viewer_id=me.id, viewer_division=viewer_division)
+    _ensure_view_permission(task, me, viewer_divisions)
+    return _serialize_task(task, viewer_id=me.id, viewer_division=viewer_division, viewer_divisions=viewer_divisions)
 
 
 @router.post("/{task_id}/start")
 def start_task(task_id: str, db: Session = Depends(get_db), me: User = Depends(get_current_user)):
-    viewer_division = _get_viewer_division(db, me.id)
+    viewer_divisions = _get_viewer_divisions(db, me.id)
+    viewer_division = viewer_divisions[0] if viewer_divisions else None  # For backward compatibility
     task = _get_task(task_id, db)
-    _ensure_view_permission(task, me, viewer_division)
+    _ensure_view_permission(task, me, viewer_divisions)
     if task.status != "accepted":
         raise HTTPException(status_code=400, detail="Task is not in Accepted status")
 
@@ -136,8 +190,8 @@ def start_task(task_id: str, db: Session = Depends(get_db), me: User = Depends(g
         raise HTTPException(status_code=403, detail="Task is assigned to another user")
 
     if not task.assigned_to_id:
-        if not viewer_division or task.assigned_division_label != viewer_division:
-            raise HTTPException(status_code=403, detail="Task is not assigned to your division")
+        if not viewer_divisions or task.assigned_division_label not in viewer_divisions:
+            raise HTTPException(status_code=403, detail="Task is not assigned to any of your divisions")
         task.assigned_to_id = me.id
         task.assigned_to_name = get_user_display(db, me.id)
 
@@ -150,14 +204,15 @@ def start_task(task_id: str, db: Session = Depends(get_db), me: User = Depends(g
 
     db.commit()
     db.refresh(task)
-    return _serialize_task(task, viewer_id=me.id, viewer_division=viewer_division)
+    return _serialize_task(task, viewer_id=me.id, viewer_division=viewer_division, viewer_divisions=viewer_divisions)
 
 
 @router.post("/{task_id}/conclude")
 def conclude_task(task_id: str, db: Session = Depends(get_db), me: User = Depends(get_current_user)):
-    viewer_division = _get_viewer_division(db, me.id)
+    viewer_divisions = _get_viewer_divisions(db, me.id)
+    viewer_division = viewer_divisions[0] if viewer_divisions else None  # For backward compatibility
     task = _get_task(task_id, db)
-    _ensure_view_permission(task, me, viewer_division)
+    _ensure_view_permission(task, me, viewer_divisions)
     if task.status != "in_progress":
         raise HTTPException(status_code=400, detail="Task is not In Progress")
 
@@ -173,5 +228,5 @@ def conclude_task(task_id: str, db: Session = Depends(get_db), me: User = Depend
 
     db.commit()
     db.refresh(task)
-    return _serialize_task(task, viewer_id=me.id, viewer_division=viewer_division)
+    return _serialize_task(task, viewer_id=me.id, viewer_division=viewer_division, viewer_divisions=viewer_divisions)
 
