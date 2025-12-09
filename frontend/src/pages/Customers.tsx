@@ -4,7 +4,7 @@ import { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useConfirm } from '@/components/ConfirmProvider';
 
-type Client = { id:string, name?:string, display_name?:string, city?:string, province?:string, client_status?:string, client_type?:string, address_line1?:string, created_at?:string };
+type Client = { id:string, name?:string, display_name?:string, code?:string, city?:string, province?:string, client_status?:string, client_type?:string, address_line1?:string, created_at?:string };
 type ClientFile = { id:string, file_object_id:string, is_image?:boolean, content_type?:string, site_id?:string, category?:string, original_name?:string, uploaded_at?:string };
 
 export default function Customers(){
@@ -101,6 +101,7 @@ function ClientRow({ c, statusColorMap, onOpen, onDeleted }:{ c: Client, statusC
         <img src={avatarUrl} className="w-12 h-12 rounded-lg border object-cover"/>
         <div className="min-w-0">
           <div className="font-medium truncate">{c.display_name||c.name||c.id}</div>
+          {c.code && <div className="text-xs text-gray-600">Code: {c.code}</div>}
           {c.address_line1 && <div className="text-xs text-gray-700 truncate">{String(c.address_line1)}</div>}
           <div className="text-xs text-gray-600 truncate">{[c.city, c.province].filter(Boolean).join(', ')}</div>
         </div>

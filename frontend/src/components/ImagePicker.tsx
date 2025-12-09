@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
+import ImageEditor from '@/components/ImageEditor';
 
 type ClientFile = { id:string, file_object_id:string, is_image?:boolean, content_type?:string, category?:string };
 
@@ -12,7 +13,10 @@ export default function ImagePicker({
   targetHeight,
   allowEdit = true,
   clientId,
-  exportScale = 2
+  exportScale = 2,
+  fileObjectId,
+  editorScaleFactor = 2.5,
+  hideEditButton = false
 }:{
   isOpen:boolean,
   onClose:()=>void,
@@ -21,7 +25,10 @@ export default function ImagePicker({
   targetHeight:number,
   allowEdit?:boolean,
   clientId?:string,
-  exportScale?: number
+  exportScale?: number,
+  fileObjectId?:string,
+  editorScaleFactor?: number,
+  hideEditButton?: boolean
 }){
   const [tab, setTab] = useState<'upload'|'library'>('upload');
   const [files, setFiles] = useState<ClientFile[]>([]);
@@ -35,6 +42,7 @@ export default function ImagePicker({
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [showProgress, setShowProgress] = useState<boolean>(false);
   const [progressMessage, setProgressMessage] = useState<string>("");
+  const [showImageEditor, setShowImageEditor] = useState<boolean>(false);
 
   // crop state
   const containerRef = useRef<HTMLDivElement>(null);
@@ -431,6 +439,13 @@ export default function ImagePicker({
     }catch(e){ toast.error('Failed to open image'); }
   };
 
+  // Load image when picker opens with a fileObjectId
+  useEffect(() => {
+    if (isOpen && fileObjectId && !img) {
+      loadFromFileObject(fileObjectId);
+    }
+  }, [isOpen, fileObjectId]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Use refs to access current values in event handler
   const zoomRef = useRef(zoom);
   const txRef = useRef(tx);
@@ -505,6 +520,109 @@ export default function ImagePicker({
     // draw scaled to target canvas
     ctx.drawImage(img, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
     canvas.toBlob((b)=>{ if(b){ onConfirm(b, originalFileObjectId); } }, 'image/jpeg', 0.95);
+  };
+
+  // Get current image URL for ImageEditor
+  const getCurrentImageUrl = (): string => {
+    if (!img) return '';
+    // If image is from a blob URL, return it directly
+    if (img.src.startsWith('blob:')) {
+      return img.src;
+    }
+    // If image is from a file object, use the thumbnail endpoint
+    if (originalFileObjectId) {
+      return `/files/${originalFileObjectId}/thumbnail?w=1200&cb=${Date.now()}`;
+    }
+    // Fallback to image src
+    return img.src;
+  };
+
+  // Handle save from ImageEditor - update image in picker and upload as copy
+  const handleImageEditorSave = async (blob: Blob) => {
+    try {
+      if (!clientId) {
+        toast.error('Client ID required');
+        return;
+      }
+
+      // Convert PNG blob to JPG if needed (ImageEditor saves as PNG)
+      let imageBlob = blob;
+      if (blob.type === 'image/png') {
+        // Convert PNG to JPG
+        const image = new Image();
+        const imageUrl = URL.createObjectURL(blob);
+        await new Promise<void>((resolve, reject) => {
+          image.onload = () => {
+            const canvas = document.createElement('canvas');
+            canvas.width = image.naturalWidth;
+            canvas.height = image.naturalHeight;
+            const ctx = canvas.getContext('2d');
+            if (!ctx) {
+              reject(new Error('Failed to get canvas context'));
+              return;
+            }
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.drawImage(image, 0, 0);
+            canvas.toBlob((jpgBlob) => {
+              if (jpgBlob) {
+                imageBlob = jpgBlob;
+                URL.revokeObjectURL(imageUrl);
+                resolve();
+              } else {
+                reject(new Error('Failed to convert to JPG'));
+              }
+            }, 'image/jpeg', 0.95);
+          };
+          image.onerror = () => {
+            URL.revokeObjectURL(imageUrl);
+            reject(new Error('Failed to load image'));
+          };
+          image.src = imageUrl;
+        });
+      }
+
+      // Create a new image from the blob
+      const imageUrl = URL.createObjectURL(imageBlob);
+      const image = new Image();
+      
+      await new Promise<void>((resolve, reject) => {
+        image.onload = () => {
+          // Revoke previous blob URL if exists
+          if (blobUrlRef.current) {
+            URL.revokeObjectURL(blobUrlRef.current);
+          }
+          blobUrlRef.current = imageUrl;
+          setImg(image);
+          setZoom(1);
+          setTx(0);
+          setTy(0);
+          resolve();
+        };
+        image.onerror = reject;
+        image.src = imageUrl;
+      });
+
+      // Upload as copy (maintaining original)
+      const uniqueName = `edited_${Date.now()}_${Math.random().toString(36).slice(2)}.jpg`;
+      const formData = new FormData();
+      formData.append('file', imageBlob, uniqueName);
+      formData.append('original_name', uniqueName);
+      formData.append('content_type', 'image/jpeg');
+      formData.append('project_id', '');
+      formData.append('client_id', clientId);
+      formData.append('employee_id', '');
+      formData.append('category_id', 'proposal-upload');
+      
+      const conf: any = await api('POST', '/files/upload-proxy', formData);
+      setOriginalFileObjectId(conf.id);
+      
+      toast.success('Image edited and saved');
+      setShowImageEditor(false);
+    } catch (e: any) {
+      console.error('Failed to save edited image:', e);
+      toast.error('Failed to save edited image');
+    }
   };
 
   if(!isOpen) return null;
@@ -582,6 +700,9 @@ export default function ImagePicker({
                 <input type="range" min={1} max={6} step={0.01} disabled={!img || !allowEdit} value={zoom} onChange={(e)=>{ const nz = Math.min(6, Math.max(1, parseFloat(e.target.value||'1'))); const { x, y } = clamp(tx, ty, nz); setZoom(nz); setTx(x); setTy(y); }} />
                 <button type="button" disabled={!img || !allowEdit} onClick={()=>{ const { x, y } = clamp(0,0,1); setZoom(1); setTx(x); setTy(y); }} className="px-3 py-1.5 rounded bg-gray-100 disabled:opacity-50">Reset</button>
                 <div className="ml-auto" />
+                {!hideEditButton && (
+                  <button type="button" disabled={!img || isLoading} onClick={()=>setShowImageEditor(true)} className="px-4 py-2 rounded bg-gray-600 text-white disabled:opacity-50">Edit Image</button>
+                )}
                 <button type="button" disabled={!img || isLoading} onClick={confirm} className="px-4 py-2 rounded bg-brand-red text-white disabled:opacity-50">Confirm</button>
               </div>
             </div>
@@ -595,6 +716,19 @@ export default function ImagePicker({
             <div className="text-sm text-gray-600">{progressMessage || 'Processing...'}</div>
           </div>
         </div>
+      )}
+      {showImageEditor && img && (
+        <ImageEditor
+          isOpen={showImageEditor}
+          onClose={() => setShowImageEditor(false)}
+          imageUrl={getCurrentImageUrl()}
+          imageName={originalFileObjectId || 'image'}
+          fileObjectId={originalFileObjectId}
+          targetWidth={targetWidth}
+          targetHeight={targetHeight}
+          editorScaleFactor={editorScaleFactor}
+          onSave={handleImageEditorSave}
+        />
       )}
     </div>
   );

@@ -44,9 +44,12 @@ type ImageEditorProps = {
   imageName?: string;
   fileObjectId?: string;
   onSave: (blob: Blob) => Promise<void>;
+  targetWidth?: number;
+  targetHeight?: number;
+  editorScaleFactor?: number;
 };
 
-export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'image', fileObjectId, onSave }: ImageEditorProps) {
+export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'image', fileObjectId, onSave, targetWidth, targetHeight, editorScaleFactor = 2.5 }: ImageEditorProps) {
   const [mode, setMode] = useState<'pan' | 'rect' | 'arrow' | 'text' | 'circle' | 'draw' | 'select' | 'delete'>('pan');
   const [img, setImg] = useState<HTMLImageElement | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -219,40 +222,65 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
   }, [isOpen, fileObjectId]); // Only depend on isOpen and fileObjectId to prevent infinite loops
 
   // Set canvas size to match image dimensions (scaled to fit viewport if needed)
+  // Or use targetWidth/targetHeight if provided (for ImagePicker integration)
   useEffect(() => {
     if (!canvasRef.current || !overlayRef.current || !img) return;
-    
-    const container = containerRef.current;
-    if (!container) return;
-    
-    // Get available space in container (accounting for sidebar width ~280px and padding)
-    const availableWidth = Math.max(300, container.clientWidth - 300);
-    const availableHeight = Math.max(300, window.innerHeight * 0.75);
-    
-    const imgWidth = img.naturalWidth;
-    const imgHeight = img.naturalHeight;
-    const imgAspect = imgWidth / imgHeight;
-    const containerAspect = availableWidth / availableHeight;
     
     let canvasWidth: number;
     let canvasHeight: number;
     
-    // Scale image to fit available space while maintaining aspect ratio
-    if (imgAspect > containerAspect) {
-      // Image is wider - fit to width
-      canvasWidth = Math.min(imgWidth, availableWidth);
-      canvasHeight = canvasWidth / imgAspect;
+    // If targetWidth and targetHeight are provided, scale them up for better editing
+    // This maintains the same aspect ratio but makes the canvas larger
+    if (targetWidth && targetHeight) {
+      const scaleFactor = editorScaleFactor || 2.5; // Default 2.5x, but can be customized
+      canvasWidth = targetWidth * scaleFactor;
+      canvasHeight = targetHeight * scaleFactor;
     } else {
-      // Image is taller - fit to height
-      canvasHeight = Math.min(imgHeight, availableHeight);
-      canvasWidth = canvasHeight * imgAspect;
+      // Otherwise, calculate based on available space
+      const container = containerRef.current;
+      if (!container) return;
+      
+      // Get available space in container (accounting for sidebar width ~280px and padding)
+      const availableWidth = Math.max(300, container.clientWidth - 300);
+      const availableHeight = Math.max(300, window.innerHeight * 0.75);
+      
+      const imgWidth = img.naturalWidth;
+      const imgHeight = img.naturalHeight;
+      const imgAspect = imgWidth / imgHeight;
+      const containerAspect = availableWidth / availableHeight;
+      
+      // Scale image to fit available space while maintaining aspect ratio
+      if (imgAspect > containerAspect) {
+        // Image is wider - fit to width
+        canvasWidth = Math.min(imgWidth, availableWidth);
+        canvasHeight = canvasWidth / imgAspect;
+      } else {
+        // Image is taller - fit to height
+        canvasHeight = Math.min(imgHeight, availableHeight);
+        canvasWidth = canvasHeight * imgAspect;
+      }
     }
     
     canvasRef.current.width = Math.round(canvasWidth);
     canvasRef.current.height = Math.round(canvasHeight);
     overlayRef.current.width = canvasRef.current.width;
     overlayRef.current.height = canvasRef.current.height;
-  }, [img, isOpen]);
+    
+    // When targetWidth/targetHeight are provided, calculate initial scale to fill canvas
+    if (targetWidth && targetHeight && img) {
+      const imgWidth = img.naturalWidth;
+      const imgHeight = img.naturalHeight;
+      
+      // Calculate scale to fill canvas (cover scale - same logic as ImagePicker)
+      // The canvas is now 2.5x larger, so we need to scale the image accordingly
+      const coverScale = Math.max(canvasWidth / imgWidth, canvasHeight / imgHeight);
+      
+      // Set initial scale and reset offsets
+      setScale(coverScale);
+      setOffsetX(0);
+      setOffsetY(0);
+    }
+  }, [img, isOpen, targetWidth, targetHeight, editorScaleFactor]);
 
   // Clamp translation to prevent white margins - image must always fill canvas
   const clampOffset = useCallback((x: number, y: number): { x: number; y: number } => {
@@ -642,15 +670,8 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
           ctx.strokeRect(bb.x, bb.y, bb.w, bb.h);
           
           // Draw resize handles (8 handles: corners and midpoints)
-          // For paths, only show corner handles
           const handleSize = 12; // slightly larger for easier interaction
-          const isPath = it.type === 'path';
-          const handles = isPath ? [
-            { x: bb.x, y: bb.y, name: 'nw' }, // top-left
-            { x: bb.x + bb.w, y: bb.y, name: 'ne' }, // top-right
-            { x: bb.x + bb.w, y: bb.y + bb.h, name: 'se' }, // bottom-right
-            { x: bb.x, y: bb.y + bb.h, name: 'sw' }, // bottom-left
-          ] : [
+          const handles = [
             { x: bb.x, y: bb.y, name: 'nw' }, // top-left
             { x: bb.x + bb.w / 2, y: bb.y, name: 'n' }, // top
             { x: bb.x + bb.w, y: bb.y, name: 'ne' }, // top-right
@@ -718,11 +739,13 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
     const padding = 4;
     const textContent = item.text || '';
     
-    // Calculate which line was clicked
+    // Calculate which line was clicked.
+    // Use the *top* of the text area as origin, so vertical line index
+    // matches what the user sees (first line, second line, etc.).
     const lineHeight = itemFontSize * 1.2;
-    const startY = item.y + padding + itemFontSize;
-    const relativeY = clickY - startY;
-    const lineIndex = Math.max(0, Math.floor(relativeY / lineHeight));
+    const topY = item.y + padding; // top of first line box
+    const relativeY = Math.max(0, clickY - topY);
+    const lineIndex = Math.floor(relativeY / lineHeight);
     
     // Word wrap the text to get lines
     const maxWidth = (item.w || 200) - padding * 2;

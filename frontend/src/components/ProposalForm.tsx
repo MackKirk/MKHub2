@@ -44,7 +44,7 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
   const [page2Blob, setPage2Blob] = useState<Blob|null>(null);
   const [page2FoId, setPage2FoId] = useState<string|undefined>(undefined);
   const [pickerFor, setPickerFor] = useState<null|'cover'|'page2'>(null);
-  const [sectionPicker, setSectionPicker] = useState<{ secId:string, index?: number }|null>(null);
+  const [sectionPicker, setSectionPicker] = useState<{ secId:string, index?: number, fileObjectId?: string }|null>(null);
   const [coverPreview, setCoverPreview] = useState<string>('');
   const [page2Preview, setPage2Preview] = useState<string>('');
   const newImageId = ()=> 'img_'+Math.random().toString(36).slice(2);
@@ -798,7 +798,7 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
                               </svg>
                             </span>
                             <div className="ml-auto flex items-center gap-2">
-                              <button className="px-2 py-1 rounded bg-gray-100 text-xs" title="Replace image" onClick={()=> setSectionPicker({ secId: s.id||String(idx), index: j })}>Replace</button>
+                              <button className="px-2 py-1 rounded bg-gray-100 text-xs" title="Edit image" onClick={()=> setSectionPicker({ secId: s.id||String(idx), index: j, fileObjectId: img.file_object_id })}>Edit</button>
                               <button className="px-2 py-1 rounded bg-gray-100 text-xs" title="Duplicate image" onClick={()=>{
                                 setSections(arr=> arr.map((x,i)=>{
                                   if (i!==idx) return x;
@@ -962,7 +962,7 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
       </div>
 
       {pickerFor && (
-        <ImagePicker isOpen={true} onClose={()=>setPickerFor(null)} clientId={clientId||undefined} targetWidth={pickerFor==='cover'? 566: 540} targetHeight={pickerFor==='cover'? 537: 340} allowEdit={true} exportScale={2} onConfirm={async(blob)=>{ 
+        <ImagePicker isOpen={true} onClose={()=>setPickerFor(null)} clientId={clientId||undefined} targetWidth={pickerFor==='cover'? 566: 540} targetHeight={pickerFor==='cover'? 537: 340} allowEdit={true} exportScale={2} fileObjectId={pickerFor==='cover'? coverFoId: page2FoId} editorScaleFactor={pickerFor==='cover'? undefined: 1} hideEditButton={pickerFor==='cover'} onConfirm={async(blob)=>{ 
           try{
             if (!blob){ toast.error('No image'); setPickerFor(null); return; }
             const cat = pickerFor==='cover'? 'proposal-cover-derived' : 'proposal-page2-derived';
@@ -984,7 +984,7 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
         }} />
       )}
       {sectionPicker && (
-        <ImagePicker isOpen={true} onClose={()=>setSectionPicker(null)} clientId={clientId||undefined} targetWidth={260} targetHeight={150} allowEdit={true} exportScale={2} onConfirm={async(blob)=>{ 
+        <ImagePicker isOpen={true} onClose={()=>setSectionPicker(null)} clientId={clientId||undefined} targetWidth={260} targetHeight={150} allowEdit={true} exportScale={2} fileObjectId={sectionPicker.fileObjectId} editorScaleFactor={3} onConfirm={async(blob)=>{ 
           try{
             if (!blob){ toast.error('No image'); return; }
             const uniqueName = `section_${Date.now()}_${Math.random().toString(36).slice(2)}.jpg`;

@@ -8,7 +8,7 @@ import ImageEditor from '@/components/ImageEditor';
 import { useConfirm } from '@/components/ConfirmProvider';
 import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard';
 
-type Client = { id:string, name?:string, display_name?:string, city?:string, province?:string, postal_code?:string, country?:string, address_line1?:string, address_line2?:string, created_at?:string };
+type Client = { id:string, name?:string, display_name?:string, code?:string, city?:string, province?:string, postal_code?:string, country?:string, address_line1?:string, address_line2?:string, created_at?:string };
 type Site = { id:string, site_name?:string, site_address_line1?:string, site_city?:string, site_province?:string, site_country?:string };
 type ClientFile = { id:string, file_object_id:string, is_image?:boolean, content_type?:string, site_id?:string, category?:string, original_name?:string, uploaded_at?:string };
 type Project = { id:string, code?:string, name?:string, slug?:string, created_at?:string, date_start?:string, date_end?:string };
@@ -198,7 +198,7 @@ export default function CustomerDetail(){
             <div className="flex-1 flex flex-col justify-start">
               <div className="text-3xl font-extrabold">{c.display_name||c.name||id}</div>
               <div className="text-sm opacity-90 mt-1">
-                {c.address_line1||''}{(c.address_line1 && (c.city||c.province||c.country))? ' · ':''}{[c.city, c.province, c.country].filter(Boolean).join(', ')}
+                {c.address_line1||''}{(c.address_line1 && (c.city||c.province||c.country))? ' · ':''}{[c.city, c.province, c.country].filter(Boolean).join(', ')}{c.code ? ` · Code: ${c.code}` : ''}
               </div>
               <div className="mt-2 flex items-center gap-2 text-xs">
                 {((c as any).client_type) && (
