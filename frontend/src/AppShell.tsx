@@ -5,6 +5,7 @@ import { api } from '@/lib/api';
 import NotificationBell from '@/components/NotificationBell';
 import { useUnsavedChanges } from '@/components/UnsavedChangesProvider';
 import { useConfirm } from '@/components/ConfirmProvider';
+import FixedBugReportButton from '@/components/FixedBugReportButton';
 
 type MenuItem = {
   id: string;
@@ -407,6 +408,7 @@ export default function AppShell({ children }: PropsWithChildren){
     return menuCategories.find(cat => isCategoryActive(cat));
   }, [location.pathname, menuCategories, currentProject, isViewingOpportunity]);
 
+
   return (
     <div className="min-h-screen flex">
       <aside className={`${sidebarCollapsed ? 'w-16' : 'w-64'} text-white bg-gradient-to-b from-gray-800 via-gray-700 to-gray-600 transition-all duration-300 flex flex-col`}>
@@ -549,13 +551,14 @@ export default function AppShell({ children }: PropsWithChildren){
       <main className="flex-1 min-w-0">
         <div className="h-14 border-b text-white flex items-center justify-between px-4 bg-gradient-to-r from-gray-800 via-gray-700 to-gray-600">
           <input placeholder="Search" className="w-80 rounded-full px-3 py-1 text-sm bg-[#0c0e11] border border-[#1f242b]"/>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3">
             <NotificationBell />
-            <div className="relative">
+            <div className="relative flex items-center gap-2">
               <button onClick={()=>setOpen(v=>!v)} className="flex items-center gap-3">
                 <span className="text-base font-medium max-w-[220px] truncate">{displayName}</span>
                 <img src={avatarUrl} className="w-10 h-10 rounded-full border-2 border-brand-red object-cover"/>
               </button>
+              <FixedBugReportButton />
               {open && (
                 <div className="absolute right-0 mt-2 w-56 rounded-lg border bg-white text-black shadow-lg z-50">
                   <Link to="/profile" onClick={()=>setOpen(false)} className="block px-3 py-2 hover:bg-gray-50">My Information</Link>
