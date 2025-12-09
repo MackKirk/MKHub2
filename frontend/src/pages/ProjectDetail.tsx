@@ -99,6 +99,8 @@ export default function ProjectDetail(){
   const [overlayResolved, setOverlayResolved] = useState<string>('');
   const [showAuditLogModal, setShowAuditLogModal] = useState(false);
   const [auditLogSection, setAuditLogSection] = useState<'timesheet' | 'reports' | 'schedule' | 'files' | 'proposal' | 'estimate'>('timesheet');
+  const [editStatusModal, setEditStatusModal] = useState(false);
+  const [editProgressModal, setEditProgressModal] = useState(false);
   useEffect(()=>{
     (async()=>{
       try{
@@ -255,11 +257,33 @@ export default function ProjectDetail(){
                 {/* Progress and Status moved here */}
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="text-xs text-gray-600 block mb-2">Status</label>
+                    <div className="flex items-center justify-between mb-2">
+                      <label className="text-xs text-gray-600 block">Status</label>
+                      <button
+                        onClick={() => setEditStatusModal(true)}
+                        className="text-gray-400 hover:text-[#7f1010] transition-colors"
+                        title="Edit Status"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                        </svg>
+                      </button>
+                    </div>
                     <span className="px-3 py-1.5 rounded text-sm font-medium inline-block" style={{ backgroundColor: statusColor, color: '#000' }}>{statusLabel||'—'}</span>
                   </div>
                   <div>
-                    <label className="text-xs text-gray-600 block mb-2">Progress</label>
+                    <div className="flex items-center justify-between mb-2">
+                      <label className="text-xs text-gray-600 block">Progress</label>
+                      <button
+                        onClick={() => setEditProgressModal(true)}
+                        className="text-gray-400 hover:text-[#7f1010] transition-colors"
+                        title="Edit Progress"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                        </svg>
+                      </button>
+                    </div>
                     <div className="flex items-center gap-3">
                       <div className="flex-1 h-3 bg-gray-200 rounded-full overflow-hidden">
                         <div className="h-full bg-brand-red rounded-full transition-all" style={{ width: `${Math.max(0,Math.min(100,Number(proj?.progress||0)))}%` }} />
@@ -628,6 +652,34 @@ export default function ProjectDetail(){
           </div>
         </div>
       )}
+
+      {/* Edit Status Modal */}
+      {editStatusModal && (
+        <EditStatusModal
+          projectId={String(id)}
+          currentStatus={proj?.status_id || ''}
+          currentStatusLabel={statusLabel}
+          settings={settings}
+          onClose={() => setEditStatusModal(false)}
+          onSave={async () => {
+            await queryClient.invalidateQueries({ queryKey: ['project', id] });
+            setEditStatusModal(false);
+          }}
+        />
+      )}
+
+      {/* Edit Progress Modal */}
+      {editProgressModal && (
+        <EditProgressModal
+          projectId={String(id)}
+          currentProgress={Number(proj?.progress || 0)}
+          onClose={() => setEditProgressModal(false)}
+          onSave={async () => {
+            await queryClient.invalidateQueries({ queryKey: ['project', id] });
+            setEditProgressModal(false);
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -981,6 +1033,31 @@ function CreateReportModal({ projectId, reportCategories, onClose, onSuccess }: 
   const [desc, setDesc] = useState('');
   const [file, setFile] = useState<File|null>(null);
   const { data:project } = useQuery({ queryKey:['project', projectId], queryFn: ()=>api<any>('GET', `/projects/${projectId}`) });
+  
+  // Categorias de produção (apenas para projetos, não para oportunidades)
+  // Palavras-chave específicas para identificar categorias de produção
+  const productionCategoryKeywords = ['daily update', 'site event', 'accident'];
+  const isProductionCategory = (catLabel: string): boolean => {
+    const labelLower = catLabel.toLowerCase().trim();
+    // Verificar se a categoria corresponde exatamente ou contém as palavras-chave principais
+    return productionCategoryKeywords.some(keyword => {
+      const keywordLower = keyword.toLowerCase();
+      // Verificar correspondência exata ou se contém a frase completa
+      return labelLower === keywordLower || labelLower.includes(keywordLower);
+    });
+  };
+  
+  // Separar categorias em comercial e produção
+  const commercialCategories = useMemo(() => {
+    return reportCategories.filter(cat => !isProductionCategory(cat.label || ''));
+  }, [reportCategories]);
+  
+  const productionCategories = useMemo(() => {
+    return reportCategories.filter(cat => isProductionCategory(cat.label || ''));
+  }, [reportCategories]);
+  
+  // Se for oportunidade (is_bidding), mostrar apenas categorias comerciais
+  const isBidding = project?.is_bidding === true;
 
   const handleCreate = async () => {
     if (!title.trim()) {
@@ -1070,9 +1147,27 @@ function CreateReportModal({ projectId, reportCategories, onClose, onSuccess }: 
                 onChange={e => setCategory(e.target.value)}
               >
                 <option value="">Select category...</option>
-                {reportCategories.map(cat => (
-                  <option key={cat.id || cat.value || cat.label} value={cat.value || cat.label}>{cat.label}</option>
-                ))}
+                {!isBidding && commercialCategories.length > 0 && (
+                  <optgroup label="Comercial">
+                    {commercialCategories.map(cat => (
+                      <option key={cat.id || cat.value || cat.label} value={cat.value || cat.label}>{cat.label}</option>
+                    ))}
+                  </optgroup>
+                )}
+                {!isBidding && productionCategories.length > 0 && (
+                  <optgroup label="Produção / Execução">
+                    {productionCategories.map(cat => (
+                      <option key={cat.id || cat.value || cat.label} value={cat.value || cat.label}>{cat.label}</option>
+                    ))}
+                  </optgroup>
+                )}
+                {isBidding && commercialCategories.length > 0 && (
+                  <>
+                    {commercialCategories.map(cat => (
+                      <option key={cat.id || cat.value || cat.label} value={cat.value || cat.label}>{cat.label}</option>
+                    ))}
+                  </>
+                )}
               </select>
             </div>
             <div>
@@ -3919,16 +4014,162 @@ const getDivisionIcon = (label: string): string => {
   return iconMap[label] || '📦';
 };
 
+// Edit Status Modal Component
+function EditStatusModal({ projectId, currentStatus, currentStatusLabel, settings, onClose, onSave }: {
+  projectId: string;
+  currentStatus: string;
+  currentStatusLabel: string;
+  settings: any;
+  onClose: () => void;
+  onSave: () => Promise<void>;
+}) {
+  const [selectedStatusId, setSelectedStatusId] = useState(currentStatus);
+  const [saving, setSaving] = useState(false);
+  const projectStatuses = (settings?.project_statuses || []) as any[];
+
+  const handleSave = async () => {
+    try {
+      setSaving(true);
+      const selectedStatus = projectStatuses.find((s: any) => String(s.id) === String(selectedStatusId));
+      await api('PATCH', `/projects/${projectId}`, {
+        status_id: selectedStatusId || null,
+        status_label: selectedStatus?.label || null
+      });
+      toast.success('Status updated');
+      await onSave();
+    } catch (e: any) {
+      toast.error(e?.response?.data?.detail || 'Failed to update status');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-xl w-full max-w-md shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="p-4 border-b flex items-center justify-between">
+          <h3 className="text-lg font-semibold">Edit Status</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+        <div className="p-4">
+          <label className="text-sm font-medium text-gray-700 mb-2 block">Status</label>
+          <select
+            value={selectedStatusId}
+            onChange={(e) => setSelectedStatusId(e.target.value)}
+            className="w-full border rounded px-3 py-2 mb-4"
+          >
+            <option value="">No Status</option>
+            {projectStatuses.map((status: any) => (
+              <option key={status.id} value={status.id}>
+                {status.label}
+              </option>
+            ))}
+          </select>
+          <div className="flex gap-2">
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className="flex-1 px-4 py-2 rounded bg-[#7f1010] text-white disabled:opacity-60 font-medium"
+            >
+              {saving ? 'Saving...' : 'Save'}
+            </button>
+            <button
+              onClick={onClose}
+              className="px-4 py-2 rounded border bg-white hover:bg-gray-50 text-gray-700 font-medium"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Edit Progress Modal Component
+function EditProgressModal({ projectId, currentProgress, onClose, onSave }: {
+  projectId: string;
+  currentProgress: number;
+  onClose: () => void;
+  onSave: () => Promise<void>;
+}) {
+  const [progress, setProgress] = useState(currentProgress);
+  const [saving, setSaving] = useState(false);
+
+  const handleSave = async () => {
+    try {
+      setSaving(true);
+      const progressValue = Math.max(0, Math.min(100, Number(progress)));
+      await api('PATCH', `/projects/${projectId}`, {
+        progress: progressValue
+      });
+      toast.success('Progress updated');
+      await onSave();
+    } catch (e: any) {
+      toast.error(e?.response?.data?.detail || 'Failed to update progress');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-xl w-full max-w-md shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="p-4 border-b flex items-center justify-between">
+          <h3 className="text-lg font-semibold">Edit Progress</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+        <div className="p-4">
+          <label className="text-sm font-medium text-gray-700 mb-2 block">Progress (%)</label>
+          <input
+            type="number"
+            min="0"
+            max="100"
+            value={progress}
+            onChange={(e) => setProgress(Number(e.target.value))}
+            className="w-full border rounded px-3 py-2 mb-2"
+          />
+          <div className="mb-4">
+            <div className="flex items-center gap-3">
+              <div className="flex-1 h-3 bg-gray-200 rounded-full overflow-hidden">
+                <div className="h-full bg-brand-red rounded-full transition-all" style={{ width: `${Math.max(0, Math.min(100, progress))}%` }} />
+              </div>
+              <span className="text-sm font-semibold text-gray-700 w-12 text-right">{Math.max(0, Math.min(100, progress))}%</span>
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className="flex-1 px-4 py-2 rounded bg-[#7f1010] text-white disabled:opacity-60 font-medium"
+            >
+              {saving ? 'Saving...' : 'Save'}
+            </button>
+            <button
+              onClick={onClose}
+              className="px-4 py-2 rounded border bg-white hover:bg-gray-50 text-gray-700 font-medium"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ProjectDivisionsHeroSection({ projectId, proj }:{ projectId:string, proj:any }){
   const queryClient = useQueryClient();
-  const [editingDivisions, setEditingDivisions] = useState(false);
-  const [projectDivs, setProjectDivs] = useState<string[]>(Array.isArray(proj?.project_division_ids) ? proj.project_division_ids : []);
-  const [saving, setSaving] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
   const { data:projectDivisions } = useQuery({ queryKey:['project-divisions'], queryFn: ()=>api<any[]>('GET','/settings/project-divisions'), staleTime: 300_000 });
-
-  useEffect(()=>{
-    setProjectDivs(Array.isArray(proj?.project_division_ids) ? proj.project_division_ids : []);
-  }, [proj?.project_division_ids]);
 
   const projectDivIds = Array.isArray(proj?.project_division_ids) ? proj.project_division_ids : [];
 
@@ -3954,102 +4195,21 @@ function ProjectDivisionsHeroSection({ projectId, proj }:{ projectId:string, pro
     return icons;
   }, [projectDivIds, projectDivisions]);
 
-  const handleSave = useCallback(async()=>{
-    try{
-      setSaving(true);
-      await api('PATCH', `/projects/${projectId}`, { 
-        project_division_ids: projectDivs.length > 0 ? projectDivs : null
-      });
-      toast.success('Divisions saved');
-      queryClient.invalidateQueries({ queryKey: ['project', projectId] });
-      setEditingDivisions(false);
-    }catch(_e){
-      toast.error('Failed to save divisions');
-    }finally{
-      setSaving(false);
-    }
-  }, [projectId, projectDivs, queryClient]);
-
   return (
-    <div className="mb-6">
-      <div className="flex items-center justify-between mb-2">
-        <label className="text-xs text-gray-600 block">Project Divisions</label>
-        <button
-          onClick={() => setEditingDivisions(!editingDivisions)}
-          className="text-xs text-[#7f1010] hover:text-[#a31414] font-medium"
-        >
-          {editingDivisions ? 'Cancel' : projectDivIds.length > 0 ? 'Edit' : 'Add'}
-        </button>
-      </div>
-      
-      {editingDivisions ? (
-        <div className="space-y-3">
-          <div className="space-y-2 max-h-64 overflow-y-auto border rounded p-3 bg-gray-50">
-            {(projectDivisions||[]).map((div:any)=>{
-              const divId = String(div.id);
-              const divSelected = projectDivs.includes(divId);
-              const subdivisions = div.subdivisions || [];
-              
-              return (
-                <div key={divId} className="border rounded p-2 bg-white">
-                  <button
-                    type="button"
-                    onClick={()=> setProjectDivs(prev=> prev.includes(divId)? prev.filter(x=>x!==divId) : [...prev, divId])}
-                    className={`w-full text-left px-2 py-1 rounded text-sm font-medium flex items-center gap-2 ${
-                      divSelected? 'bg-[#7f1010] text-white': 'bg-gray-50 hover:bg-gray-100'
-                    }`}
-                  >
-                    <span className="text-lg">{getDivisionIcon(div.label)}</span>
-                    <span>{div.label}</span>
-                  </button>
-                  {subdivisions.length > 0 && (
-                    <div className="mt-1 pl-6 space-y-1">
-                      {subdivisions.map((sub:any)=>{
-                        const subId = String(sub.id);
-                        const subSelected = projectDivs.includes(subId);
-                        return (
-                          <button
-                            key={subId}
-                            type="button"
-                            onClick={()=> setProjectDivs(prev=> prev.includes(subId)? prev.filter(x=>x!==subId) : [...prev, subId])}
-                            className={`w-full text-left px-2 py-1 rounded text-xs flex items-center gap-2 ${
-                              subSelected? 'bg-[#a31414] text-white': 'bg-gray-50 hover:bg-gray-100'
-                            }`}
-                          >
-                            <span className="text-base">{getDivisionIcon(div.label)}</span>
-                            <span>• {sub.label}</span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-            {(!projectDivisions || projectDivisions.length === 0) && (
-              <div className="text-xs text-gray-500 text-center py-4">No project divisions available.</div>
-            )}
-          </div>
-          <div className="flex gap-2">
-            <button
-              onClick={handleSave}
-              disabled={saving}
-              className="flex-1 px-3 py-2 rounded bg-[#7f1010] text-white disabled:opacity-60 text-sm font-medium"
-            >
-              {saving ? 'Saving...' : 'Save'}
-            </button>
-            <button
-              onClick={() => {
-                setEditingDivisions(false);
-                setProjectDivs(Array.isArray(proj?.project_division_ids) ? proj.project_division_ids : []);
-              }}
-              className="px-3 py-2 rounded border bg-white hover:bg-gray-50 text-sm font-medium text-gray-700"
-            >
-              Cancel
-            </button>
-          </div>
+    <>
+      <div className="mb-6">
+        <div className="flex items-center justify-between mb-2">
+          <label className="text-xs text-gray-600 block">Project Divisions</label>
+          <button
+            onClick={() => setShowEditModal(true)}
+            className="text-gray-400 hover:text-[#7f1010] transition-colors"
+            title="Edit Divisions"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+            </svg>
+          </button>
         </div>
-      ) : (
         <div>
           {divisionIcons.length > 0 ? (
             <div className="flex items-center gap-2 flex-wrap">
@@ -4074,7 +4234,130 @@ function ProjectDivisionsHeroSection({ projectId, proj }:{ projectId:string, pro
             <div className="text-xs text-gray-400 italic">No divisions assigned</div>
           )}
         </div>
+      </div>
+
+      {/* Edit Divisions Modal */}
+      {showEditModal && (
+        <EditDivisionsModal
+          projectId={projectId}
+          currentDivisions={projectDivIds}
+          projectDivisions={projectDivisions || []}
+          onClose={() => setShowEditModal(false)}
+          onSave={async () => {
+            await queryClient.invalidateQueries({ queryKey: ['project', projectId] });
+            setShowEditModal(false);
+          }}
+        />
       )}
+    </>
+  );
+}
+
+// Edit Divisions Modal Component
+function EditDivisionsModal({ projectId, currentDivisions, projectDivisions, onClose, onSave }: {
+  projectId: string;
+  currentDivisions: string[];
+  projectDivisions: any[];
+  onClose: () => void;
+  onSave: () => Promise<void>;
+}) {
+  const [projectDivs, setProjectDivs] = useState<string[]>(currentDivisions);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    setProjectDivs(currentDivisions);
+  }, [currentDivisions]);
+
+  const handleSave = async () => {
+    try {
+      setSaving(true);
+      await api('PATCH', `/projects/${projectId}`, { 
+        project_division_ids: projectDivs.length > 0 ? projectDivs : null
+      });
+      toast.success('Divisions saved');
+      await onSave();
+    } catch (_e) {
+      toast.error('Failed to save divisions');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="p-4 border-b flex items-center justify-between">
+          <h3 className="text-lg font-semibold">Edit Project Divisions</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+        <div className="flex-1 overflow-y-auto p-4">
+          <div className="space-y-2">
+            {projectDivisions.map((div: any) => {
+              const divId = String(div.id);
+              const divSelected = projectDivs.includes(divId);
+              const subdivisions = div.subdivisions || [];
+              
+              return (
+                <div key={divId} className="border rounded p-2 bg-white">
+                  <button
+                    type="button"
+                    onClick={() => setProjectDivs(prev => prev.includes(divId) ? prev.filter(x => x !== divId) : [...prev, divId])}
+                    className={`w-full text-left px-2 py-1 rounded text-sm font-medium flex items-center gap-2 ${
+                      divSelected ? 'bg-[#7f1010] text-white' : 'bg-gray-50 hover:bg-gray-100'
+                    }`}
+                  >
+                    <span className="text-lg">{getDivisionIcon(div.label)}</span>
+                    <span>{div.label}</span>
+                  </button>
+                  {subdivisions.length > 0 && (
+                    <div className="mt-1 pl-6 space-y-1">
+                      {subdivisions.map((sub: any) => {
+                        const subId = String(sub.id);
+                        const subSelected = projectDivs.includes(subId);
+                        return (
+                          <button
+                            key={subId}
+                            type="button"
+                            onClick={() => setProjectDivs(prev => prev.includes(subId) ? prev.filter(x => x !== subId) : [...prev, subId])}
+                            className={`w-full text-left px-2 py-1 rounded text-xs flex items-center gap-2 ${
+                              subSelected ? 'bg-[#a31414] text-white' : 'bg-gray-50 hover:bg-gray-100'
+                            }`}
+                          >
+                            <span className="text-base">{getDivisionIcon(div.label)}</span>
+                            <span>• {sub.label}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+            {projectDivisions.length === 0 && (
+              <div className="text-xs text-gray-500 text-center py-4">No project divisions available.</div>
+            )}
+          </div>
+        </div>
+        <div className="p-4 border-t flex gap-2">
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="flex-1 px-4 py-2 rounded bg-[#7f1010] text-white disabled:opacity-60 font-medium"
+          >
+            {saving ? 'Saving...' : 'Save'}
+          </button>
+          <button
+            onClick={onClose}
+            className="px-4 py-2 rounded border bg-white hover:bg-gray-50 text-gray-700 font-medium"
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

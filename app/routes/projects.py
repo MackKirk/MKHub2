@@ -1659,12 +1659,17 @@ def business_projects(
         except ValueError:
             pass
     elif division_id:
+        # Filter by main division (includes all its subdivisions) - same logic as dashboard
         try:
             div_uuid = uuid.UUID(division_id)
             # Get all subdivision IDs for this division
             from ..models.models import SettingList, SettingItem
             divisions_list = db.query(SettingList).filter(SettingList.name == "project_divisions").first()
+            
+            all_conditions = []
+            
             if divisions_list:
+                # Get division and all its subdivisions
                 division_items = db.query(SettingItem).filter(
                     SettingItem.list_id == divisions_list.id,
                     or_(
@@ -1673,18 +1678,26 @@ def business_projects(
                     )
                 ).all()
                 division_ids_list = [str(item.id) for item in division_items]
+                
+                # Build filter condition for any of these IDs
                 conditions = []
                 for div_id_str in division_ids_list:
                     conditions.append(cast(Project.project_division_ids, String).like(f'%{div_id_str}%'))
+                
                 if conditions:
-                    query = query.filter(or_(*conditions))
-            # Legacy support
-            query = query.filter(
+                    all_conditions.append(or_(*conditions))
+            
+            # Legacy support - combine with OR so it works with both old and new format
+            all_conditions.append(
                 or_(
                     Project.division_id == div_uuid,
                     cast(Project.division_ids, String).like(f'%{division_id}%')
                 )
             )
+            
+            # Apply all conditions with OR (project matches if it has division in any format)
+            if all_conditions:
+                query = query.filter(or_(*all_conditions))
         except ValueError:
             pass
     
