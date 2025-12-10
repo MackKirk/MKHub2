@@ -2,14 +2,39 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>MKHub</title>
+    
+    <!-- PWA Manifest -->
+    <link rel="manifest" href="/manifest.json" />
+    
+    <!-- Theme Color -->
+    <meta name="theme-color" content="#0B1739" />
+    
+    <!-- iOS PWA Support -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="MK Hub" />
+    <!-- Use existing PNG assets for now; replace with final MK Hub icons later -->
+    <link rel="apple-touch-icon" href="/ui/assets/icons/rec.png" />
+    <link rel="apple-touch-icon" sizes="192x192" href="/ui/assets/icons/rec.png" />
+    <link rel="apple-touch-icon" sizes="512x512" href="/ui/assets/icons/pencil2.png" />
+    
+    <!-- Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;600;700;800;900&display=swap" rel="stylesheet">
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <!-- Fallback content while React loads -->
+      <div style="display: flex; align-items: center; justify-content: center; min-height: 100vh; background: linear-gradient(135deg, #0B1739 0%, #1a2d5a 100%); color: white; font-family: 'Montserrat', sans-serif;">
+        <div style="text-align: center;">
+          <div style="font-size: 2rem; margin-bottom: 1rem;">Loading MK Hub...</div>
+          <div style="opacity: 0.8;">Please wait</div>
+        </div>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
     <script src="/ui/assets/chat-widget.js" defer></script>
   </body>

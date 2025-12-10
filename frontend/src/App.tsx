@@ -65,6 +65,7 @@ import TrainingAdmin from './pages/TrainingAdmin';
 import TrainingCourseEdit from './pages/TrainingCourseEdit';
 import Attendance from './pages/Attendance';
 import Notifications from './pages/Notifications';
+import Install from './pages/Install';
 
 import { getToken } from './lib/api';
 function Home(){ return <Navigate to={getToken()? '/home':'/login'} replace />; }
@@ -82,6 +83,7 @@ export default function App(){
         <Route path="/login" element={<Login/>} />
         <Route path="/register" element={<Register/>} />
         <Route path="/password-reset" element={<PasswordReset/>} />
+        <Route path="/install" element={<Install/>} />
         <Route element={<Protected/>}>
           <Route path="/onboarding" element={<Suspense fallback={<div className="min-h-screen flex items-center justify-center"><div>Loading...</div></div>}><OnboardingWizard/></Suspense>} />
           <Route path="/home" element={<AppShell><HomePage/></AppShell>} />

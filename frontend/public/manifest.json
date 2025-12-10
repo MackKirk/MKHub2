@@ -1,0 +1,45 @@
+{
+  "_comment": "NOTE: Icon paths currently point to existing legacy UI PNG assets under /ui. Replace these with final MK Hub brand icons later (keep sizes 192x192 and 512x512).",
+  "name": "MK Hub",
+  "short_name": "MK Hub",
+  "description": "Mack Kirk Operations Hub — customers, proposals, inventory, and projects in one secure place.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#0B1739",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/ui/assets/icons/rec.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/ui/assets/icons/pencil2.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "screenshots": [],
+  "categories": ["business", "productivity"],
+  "shortcuts": [
+    {
+      "name": "Home",
+      "short_name": "Home",
+      "description": "Go to home dashboard",
+      "url": "/home",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Projects",
+      "short_name": "Projects",
+      "description": "View projects",
+      "url": "/projects",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
+    }
+  ]
+}
+
