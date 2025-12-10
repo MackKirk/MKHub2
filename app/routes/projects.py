@@ -1637,12 +1637,40 @@ def business_projects(
     status: Optional[str] = None,
     q: Optional[str] = None,
     min_value: Optional[float] = None,
+    client_id: Optional[str] = None,
+    date_start: Optional[str] = None,
+    date_end: Optional[str] = None,
     limit: int = 100,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user)
 ):
     """Get projects filtered by project division/subdivision"""
     query = db.query(Project).filter(Project.is_bidding == False)
+    
+    # Filter by client
+    if client_id:
+        try:
+            client_uuid = uuid.UUID(client_id)
+            query = query.filter(Project.client_id == client_uuid)
+        except ValueError:
+            pass
+    
+    # Filter by date range
+    if date_start:
+        try:
+            from datetime import datetime
+            start_date = datetime.fromisoformat(date_start.replace('Z', '+00:00'))
+            query = query.filter(Project.date_start >= start_date.date())
+        except (ValueError, AttributeError):
+            pass
+    
+    if date_end:
+        try:
+            from datetime import datetime
+            end_date = datetime.fromisoformat(date_end.replace('Z', '+00:00'))
+            query = query.filter(Project.date_end <= end_date.date())
+        except (ValueError, AttributeError):
+            pass
     
     # Filter by project division/subdivision
     if subdivision_id:
@@ -1705,9 +1733,37 @@ def business_projects(
     if status:
         query = query.filter(Project.status_id == status)
     
-    # Search
+    # Search (by name, code, or client name)
     if q:
-        query = query.filter(Project.name.ilike(f"%{q}%"))
+        # First, find client IDs that match the search query
+        # Note: Client is imported at the top, but there's a conditional import later that causes UnboundLocalError
+        # So we use the global Client directly by ensuring it's not shadowed
+        matching_client_ids = db.query(Client.id).filter(
+            or_(
+                Client.name.ilike(f"%{q}%"),
+                Client.display_name.ilike(f"%{q}%")
+            )
+        )
+        
+        # Get list of matching client IDs
+        matching_ids = [str(cid[0]) for cid in matching_client_ids.all()]
+        
+        # Then filter projects by name, code, or client_id in matching clients
+        search_conditions = [
+            Project.name.ilike(f"%{q}%"),
+            Project.code.ilike(f"%{q}%")
+        ]
+        
+        # Add client_id filter if we have matching clients
+        if matching_ids:
+            try:
+                # Convert to UUIDs for comparison
+                matching_uuids = [uuid.UUID(cid) for cid in matching_ids]
+                search_conditions.append(Project.client_id.in_(matching_uuids))
+            except ValueError:
+                pass
+        
+        query = query.filter(or_(*search_conditions))
     
     # Get projects first (before value filtering if needed)
     projects = query.order_by(Project.created_at.desc()).limit(limit * 2 if min_value else limit).all()
@@ -1781,8 +1837,68 @@ def business_projects(
         except (ValueError, TypeError):
             pass
     
-    return [
-        {
+    # Get all project IDs and client IDs for efficient batch loading
+    project_ids = [p.id for p in projects[:limit]]
+    client_ids = list(set([p.client_id for p in projects[:limit] if getattr(p, 'client_id', None)]))
+    
+    # Fetch project cover images in one query
+    cover_images = {}
+    if project_ids and client_ids:
+        from ..models.models import ClientFile, FileObject
+        # Find all client files for these clients
+        cover_files = db.query(ClientFile).filter(
+            ClientFile.client_id.in_(client_ids)
+        ).all()
+        
+        # Get file objects for these files to check project_id
+        file_object_ids = [cf.file_object_id for cf in cover_files]
+        file_objects = {}
+        if file_object_ids:
+            fos = db.query(FileObject).filter(FileObject.id.in_(file_object_ids)).all()
+            for fo in fos:
+                file_objects[str(fo.id)] = fo
+        
+        # Build map: project_id -> cover file
+        for cf in cover_files:
+            fo = file_objects.get(str(cf.file_object_id))
+            if not fo or not getattr(fo, 'project_id', None):
+                continue
+            
+            project_id_str = str(fo.project_id)
+            if project_id_str not in [str(pid) for pid in project_ids]:
+                continue
+            
+            # Prefer project-cover-derived, otherwise any image
+            category_lower = (cf.category or '').lower()
+            is_image = False
+            ct = getattr(fo, 'content_type', None) or ''
+            if ct.startswith('image/'):
+                is_image = True
+            
+            if project_id_str not in cover_images:
+                if category_lower == 'project-cover-derived':
+                    cover_images[project_id_str] = (cf, fo)
+                elif is_image:
+                    cover_images[project_id_str] = (cf, fo)
+            elif category_lower == 'project-cover-derived':
+                cover_images[project_id_str] = (cf, fo)
+    
+    # Fetch client information in one query
+    clients_map = {}
+    if client_ids:
+        # Client is already imported at the top of the file
+        clients = db.query(Client).filter(Client.id.in_(client_ids)).all()
+        for client in clients:
+            clients_map[str(client.id)] = {
+                "id": str(client.id),
+                "name": client.name,
+                "display_name": client.display_name,
+            }
+    
+    # Build response with cover images and client info
+    result = []
+    for p in projects[:limit]:
+        project_dict = {
             "id": str(p.id),
             "code": p.code,
             "name": p.name,
@@ -1798,9 +1914,31 @@ def business_projects(
             "cost_actual": getattr(p, 'cost_actual', None),
             "service_value": getattr(p, 'service_value', None),
             "is_bidding": False,
+            "cover_image_url": None,
+            "client_name": None,
+            "client_display_name": None,
+            "estimator_id": getattr(p, 'estimator_id', None),
+            "onsite_lead_id": getattr(p, 'onsite_lead_id', None),
         }
-        for p in projects[:limit]
-    ]
+        
+        # Add cover image URL if found
+        project_id_str = str(p.id)
+        if project_id_str in cover_images:
+            cover_file, file_object = cover_images[project_id_str]
+            timestamp = cover_file.uploaded_at.isoformat() if cover_file.uploaded_at else None
+            timestamp_param = f"&t={timestamp}" if timestamp else ""
+            project_dict["cover_image_url"] = f"/files/{cover_file.file_object_id}/thumbnail?w=400{timestamp_param}"
+        
+        # Add client information if found
+        client_id_str = str(p.client_id) if getattr(p, 'client_id', None) else None
+        if client_id_str and client_id_str in clients_map:
+            client_info = clients_map[client_id_str]
+            project_dict["client_name"] = client_info.get("name")
+            project_dict["client_display_name"] = client_info.get("display_name")
+        
+        result.append(project_dict)
+    
+    return result
 
 
 @router.get("/business/divisions-stats")

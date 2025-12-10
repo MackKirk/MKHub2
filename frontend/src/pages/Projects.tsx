@@ -3,21 +3,50 @@ import { api } from '@/lib/api';
 import { useMemo, useState, useEffect } from 'react';
 import ImagePicker from '@/components/ImagePicker';
 import toast from 'react-hot-toast';
-import { Link, useSearchParams, useNavigate } from 'react-router-dom';
+import { Link, useSearchParams, useNavigate, useLocation } from 'react-router-dom';
+import LoadingOverlay from '@/components/LoadingOverlay';
 
-type Project = { id:string, code?:string, name?:string, slug?:string, client_id?:string, created_at?:string, date_start?:string, date_end?:string, project_division_ids?:string[] };
+type Project = { 
+  id:string, 
+  code?:string, 
+  name?:string, 
+  slug?:string, 
+  client_id?:string, 
+  created_at?:string, 
+  date_start?:string, 
+  date_end?:string, 
+  project_division_ids?:string[],
+  cover_image_url?:string,
+  client_name?:string,
+  client_display_name?:string,
+  progress?:number,
+  status_label?:string,
+  estimator_id?:string,
+  onsite_lead_id?:string,
+  cost_actual?:number,
+  service_value?:number,
+};
 type ClientFile = { id:string, file_object_id:string, is_image?:boolean, content_type?:string };
 
 export default function Projects(){
+  const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
   const divisionId = searchParams.get('division_id') || '';
   const statusId = searchParams.get('status') || '';
   const minValue = searchParams.get('min_value') || '';
   const queryParam = searchParams.get('q') || '';
+  const clientIdParam = searchParams.get('client_id') || '';
+  const dateStartParam = searchParams.get('date_start') || '';
+  const dateEndParam = searchParams.get('date_end') || '';
+  
   const [q, setQ] = useState(queryParam);
   const [selectedDivision, setSelectedDivision] = useState(divisionId);
   const [selectedStatus, setSelectedStatus] = useState(statusId);
   const [minValueInput, setMinValueInput] = useState(minValue);
+  const [selectedClient, setSelectedClient] = useState(clientIdParam);
+  const [dateStart, setDateStart] = useState(dateStartParam);
+  const [dateEnd, setDateEnd] = useState(dateEndParam);
+  const [showAdvanced, setShowAdvanced] = useState(false);
   
   // Sync URL params with state when URL changes (e.g., from dashboard navigation)
   useEffect(() => {
@@ -25,19 +54,17 @@ export default function Projects(){
     const urlStatus = searchParams.get('status') || '';
     const urlMinValue = searchParams.get('min_value') || '';
     const urlQ = searchParams.get('q') || '';
+    const urlClient = searchParams.get('client_id') || '';
+    const urlDateStart = searchParams.get('date_start') || '';
+    const urlDateEnd = searchParams.get('date_end') || '';
     
-    if (urlDivision !== selectedDivision) {
-      setSelectedDivision(urlDivision);
-    }
-    if (urlStatus !== selectedStatus) {
-      setSelectedStatus(urlStatus);
-    }
-    if (urlMinValue !== minValueInput) {
-      setMinValueInput(urlMinValue);
-    }
-    if (urlQ !== q) {
-      setQ(urlQ);
-    }
+    if (urlDivision !== selectedDivision) setSelectedDivision(urlDivision);
+    if (urlStatus !== selectedStatus) setSelectedStatus(urlStatus);
+    if (urlMinValue !== minValueInput) setMinValueInput(urlMinValue);
+    if (urlQ !== q) setQ(urlQ);
+    if (urlClient !== selectedClient) setSelectedClient(urlClient);
+    if (urlDateStart !== dateStart) setDateStart(urlDateStart);
+    if (urlDateEnd !== dateEnd) setDateEnd(urlDateEnd);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
   
@@ -47,19 +74,26 @@ export default function Projects(){
     if (selectedDivision) params.set('division_id', selectedDivision);
     if (selectedStatus) params.set('status', selectedStatus);
     if (minValueInput) params.set('min_value', minValueInput);
+    if (selectedClient) params.set('client_id', selectedClient);
+    if (dateStart) params.set('date_start', dateStart);
+    if (dateEnd) params.set('date_end', dateEnd);
     return params.toString() ? '?' + params.toString() : '';
-  }, [q, selectedDivision, selectedStatus, minValueInput]);
+  }, [q, selectedDivision, selectedStatus, minValueInput, selectedClient, dateStart, dateEnd]);
   
   const { data, isLoading, refetch } = useQuery({ 
     queryKey:['projects', qs], 
     queryFn: ()=> api<Project[]>('GET', `/projects/business/projects${qs}`)
   });
   
-  const { data: projectDivisions } = useQuery({ 
+  // Load project divisions in parallel (shared across all cards, no individual loading)
+  const { data: projectDivisions, isLoading: divisionsLoading } = useQuery({ 
     queryKey:['project-divisions'], 
     queryFn: ()=> api<any[]>('GET','/settings/project-divisions'), 
     staleTime: 300_000
   });
+  
+  // Show loading until both projects and divisions are loaded
+  const isInitialLoading = (isLoading && !data) || (divisionsLoading && !projectDivisions);
   
   const { data: settings } = useQuery({ 
     queryKey:['settings'], 
@@ -67,58 +101,17 @@ export default function Projects(){
     staleTime: 300_000
   });
   
+  // Get clients for filter
+  const { data: clientsData } = useQuery({ 
+    queryKey:['clients-for-filter'], 
+    queryFn: ()=> api<any>('GET','/clients?limit=500'), 
+    staleTime: 300_000
+  });
+  
   const projectStatuses = settings?.project_statuses || [];
+  const clients = clientsData?.items || clientsData || [];
   const arr = data||[];
   const [pickerOpen, setPickerOpen] = useState<{ open:boolean, clientId?:string, projectId?:string }|null>(null);
-  const [newOpen, setNewOpen] = useState(false);
-  const [name, setName] = useState('');
-  const [clientId, setClientId] = useState('');
-  const [isCreatingProject, setIsCreatingProject] = useState(false);
-
-  useEffect(() => {
-    if (!newOpen) {
-      document.body.style.overflow = '';
-      return;
-    }
-    // Prevent body scroll when modal is open
-    document.body.style.overflow = 'hidden';
-    const onKey = (e: KeyboardEvent) => { 
-      if (e.key === 'Escape') {
-        setNewOpen(false);
-        setName('');
-        setClientId('');
-      }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => {
-      document.body.style.overflow = '';
-      window.removeEventListener('keydown', onKey);
-    };
-  }, [newOpen]);
-
-  const handleCreateProject = async () => {
-    if (!name.trim() || !clientId.trim() || isCreatingProject) {
-      if (!isCreatingProject) toast.error('Name and client ID are required');
-      return;
-    }
-    try {
-      setIsCreatingProject(true);
-      const created: any = await api('POST', '/projects', { name: name.trim(), client_id: clientId.trim() });
-      toast.success('Project created');
-      setNewOpen(false);
-      setName('');
-      setClientId('');
-      if (created?.id) {
-        window.location.href = `/projects/${encodeURIComponent(String(created.id))}`;
-        // Don't reset isCreatingProject here - navigation will handle it
-        return; // Exit early to prevent finally from resetting state
-      }
-    } catch (e: any) {
-      console.error('Failed to create project:', e);
-      toast.error(e?.response?.data?.detail || 'Failed to create project');
-      setIsCreatingProject(false); // Only reset on error
-    }
-  };
 
   return (
     <div>
@@ -126,104 +119,198 @@ export default function Projects(){
         <div className="text-2xl font-extrabold">Projects</div>
         <div className="text-sm opacity-90">List, search and manage projects.</div>
       </div>
-      <div className="mb-3 rounded-xl border bg-white p-3">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3 mb-3">
-          <div className="lg:col-span-2">
-            <label className="text-xs text-gray-600">Search</label>
-            <input 
-              className="w-full border rounded px-3 py-2" 
-              placeholder="code/name" 
-              value={q} 
-              onChange={e=>setQ(e.target.value)} 
-              onKeyDown={e=>{ if(e.key==='Enter') refetch(); }} 
-            />
+      {/* Advanced Search Panel */}
+      <div className="mb-3 rounded-xl border bg-white shadow-sm overflow-hidden">
+        {/* Main Search Bar */}
+        <div className="p-4 bg-gradient-to-r from-gray-50 to-white border-b">
+          <div className="flex items-center gap-3">
+            <div className="flex-1">
+              <label className="block text-xs font-medium text-gray-700 mb-1.5">Search Projects</label>
+              <div className="relative">
+                <input 
+                  className="w-full border border-gray-300 rounded-lg px-4 py-2.5 pl-10 focus:outline-none focus:ring-2 focus:ring-brand-red focus:border-transparent text-gray-900" 
+                  placeholder="Search by project name, code, or client name..." 
+                  value={q} 
+                  onChange={e=>setQ(e.target.value)} 
+                  onKeyDown={e=>{ if(e.key==='Enter') refetch(); }} 
+                />
+                <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+              </div>
+            </div>
+            <div className="flex items-end gap-2 pt-6">
+              <button 
+                onClick={()=>setShowAdvanced(!showAdvanced)}
+                className="px-4 py-2.5 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors flex items-center gap-2 text-sm font-medium"
+              >
+                <svg className={`w-4 h-4 transition-transform ${showAdvanced ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+                Advanced Filters
+              </button>
+              <Link to="/projects/new?is_bidding=true&create_as_project=true" state={{ backgroundLocation: location }} className="px-4 py-2.5 rounded-lg bg-brand-red text-white hover:bg-[#6d0d0d] transition-colors font-medium inline-block">
+                + New Project
+              </Link>
+            </div>
           </div>
-          <div>
-            <label className="text-xs text-gray-600">Division</label>
-            <select 
-              className="w-full border rounded px-3 py-2"
-              value={selectedDivision}
-              onChange={e=>setSelectedDivision(e.target.value)}
-            >
-              <option value="">All Divisions</option>
-              {projectDivisions?.map((div: any) => (
-                <optgroup key={div.id} label={div.label}>
-                  <option value={div.id}>{div.label}</option>
-                  {div.subdivisions?.map((sub: any) => (
-                    <option key={sub.id} value={sub.id}>{sub.label}</option>
+        </div>
+
+        {/* Quick Filters Row */}
+        <div className="p-4 border-b bg-gray-50/50">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1.5">Division</label>
+              <select 
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-red focus:border-transparent bg-white"
+                value={selectedDivision}
+                onChange={e=>setSelectedDivision(e.target.value)}
+              >
+                <option value="">All Divisions</option>
+                {projectDivisions?.map((div: any) => (
+                  <optgroup key={div.id} label={div.label}>
+                    <option value={div.id}>{div.label}</option>
+                    {div.subdivisions?.map((sub: any) => (
+                      <option key={sub.id} value={sub.id}>{sub.label}</option>
+                    ))}
+                  </optgroup>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1.5">Status</label>
+              <select 
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-red focus:border-transparent bg-white"
+                value={selectedStatus}
+                onChange={e=>setSelectedStatus(e.target.value)}
+              >
+                <option value="">All Statuses</option>
+                {projectStatuses.map((status: any) => (
+                  <option key={status.id} value={status.id}>{status.label}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+        </div>
+
+        {/* Advanced Filters (Collapsible) */}
+        {showAdvanced && (
+          <div className="p-4 bg-gray-50 border-t animate-in slide-in-from-top duration-200">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1.5">Client</label>
+                <select 
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-red focus:border-transparent bg-white"
+                  value={selectedClient}
+                  onChange={e=>setSelectedClient(e.target.value)}
+                >
+                  <option value="">All Clients</option>
+                  {clients.map((client: any) => (
+                    <option key={client.id} value={client.id}>
+                      {client.display_name || client.name || client.code || client.id}
+                    </option>
                   ))}
-                </optgroup>
-              ))}
-            </select>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1.5">Min Value ($)</label>
+                <input 
+                  type="number"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-red focus:border-transparent bg-white" 
+                  placeholder="0.00" 
+                  value={minValueInput} 
+                  onChange={e=>setMinValueInput(e.target.value)} 
+                  onKeyDown={e=>{ if(e.key==='Enter') refetch(); }} 
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1.5">Start Date (From)</label>
+                <input 
+                  type="date"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-red focus:border-transparent bg-white" 
+                  value={dateStart} 
+                  onChange={e=>setDateStart(e.target.value)} 
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1.5">End Date (To)</label>
+                <input 
+                  type="date"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-red focus:border-transparent bg-white" 
+                  value={dateEnd} 
+                  onChange={e=>setDateEnd(e.target.value)} 
+                />
+              </div>
+            </div>
           </div>
-          <div>
-            <label className="text-xs text-gray-600">Status</label>
-            <select 
-              className="w-full border rounded px-3 py-2"
-              value={selectedStatus}
-              onChange={e=>setSelectedStatus(e.target.value)}
+        )}
+
+        {/* Action Buttons */}
+        <div className="p-4 bg-white border-t flex items-center justify-between">
+          <div className="text-sm text-gray-600">
+            {arr.length > 0 && (
+              <span>Found {arr.length} project{arr.length !== 1 ? 's' : ''}</span>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            <button 
+              onClick={()=>{
+                const params = new URLSearchParams();
+                if (q) params.set('q', q);
+                if (selectedDivision) params.set('division_id', selectedDivision);
+                if (selectedStatus) params.set('status', selectedStatus);
+                if (minValueInput) params.set('min_value', minValueInput);
+                if (selectedClient) params.set('client_id', selectedClient);
+                if (dateStart) params.set('date_start', dateStart);
+                if (dateEnd) params.set('date_end', dateEnd);
+                setSearchParams(params);
+                refetch();
+              }} 
+              className="px-4 py-2 rounded-lg bg-brand-red text-white hover:bg-[#6d0d0d] transition-colors font-medium flex items-center gap-2"
             >
-              <option value="">All Statuses</option>
-              {projectStatuses.map((status: any) => (
-                <option key={status.id} value={status.id}>{status.label}</option>
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+              Apply Filters
+            </button>
+            <button 
+              onClick={()=>{
+                setQ('');
+                setSelectedDivision('');
+                setSelectedStatus('');
+                setMinValueInput('');
+                setSelectedClient('');
+                setDateStart('');
+                setDateEnd('');
+                setSearchParams({});
+                refetch();
+              }} 
+              className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors font-medium"
+            >
+              Clear All
+            </button>
+          </div>
+        </div>
+      </div>
+      <LoadingOverlay isLoading={isInitialLoading} text="Loading projects...">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {isLoading && !arr.length ? (
+            <>
+              {[1, 2, 3, 4, 5, 6].map(i => (
+                <div key={i} className="h-64 bg-gray-100 animate-pulse rounded-xl" />
               ))}
-            </select>
-          </div>
-          <div>
-            <label className="text-xs text-gray-600">Min Value ($)</label>
-            <input 
-              type="number"
-              className="w-full border rounded px-3 py-2" 
-              placeholder="0.00" 
-              value={minValueInput} 
-              onChange={e=>setMinValueInput(e.target.value)} 
-              onKeyDown={e=>{ if(e.key==='Enter') refetch(); }} 
-            />
-          </div>
+            </>
+          ) : arr.length > 0 ? (
+            arr.map(p => (
+              <ProjectListCard key={p.id} project={p} projectDivisions={projectDivisions} />
+            ))
+          ) : (
+            <div className="col-span-2 p-8 text-center text-gray-500 rounded-xl border bg-white">
+              No projects found matching your criteria.
+            </div>
+          )}
         </div>
-        <div className="flex items-center gap-2">
-          <button 
-            onClick={()=>{
-              // Update URL params when applying filters
-              const params = new URLSearchParams();
-              if (q) params.set('q', q);
-              if (selectedDivision) params.set('division_id', selectedDivision);
-              if (selectedStatus) params.set('status', selectedStatus);
-              if (minValueInput) params.set('min_value', minValueInput);
-              setSearchParams(params);
-              refetch();
-            }} 
-            className="px-4 py-2 rounded bg-brand-red text-white hover:bg-[#6d0d0d] transition-colors"
-          >
-            Apply Filters
-          </button>
-          <button 
-            onClick={()=>{
-              setQ('');
-              setSelectedDivision('');
-              setSelectedStatus('');
-              setMinValueInput('');
-              setSearchParams({});
-              refetch();
-            }} 
-            className="px-4 py-2 rounded border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors"
-          >
-            Clear All
-          </button>
-          <button onClick={()=>setNewOpen(true)} className="px-4 py-2 rounded bg-black text-white hover:bg-gray-800 transition-colors">New Project</button>
-        </div>
-      </div>
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {isLoading? (
-          <>
-            {[1, 2, 3, 4, 5, 6].map(i => (
-              <div key={i} className="h-64 bg-gray-100 animate-pulse rounded-xl" />
-            ))}
-          </>
-        ) : arr.map(p => (
-          <ProjectListCard key={p.id} project={p} />
-        ))}
-      </div>
+      </LoadingOverlay>
       {pickerOpen?.open && (
         <ImagePicker isOpen={true} onClose={()=>setPickerOpen(null)} clientId={String(pickerOpen?.clientId||'')} targetWidth={800} targetHeight={300} allowEdit={true} onConfirm={async(blob)=>{
           try{
@@ -236,57 +323,6 @@ export default function Projects(){
             setPickerOpen(null);
           }catch(e){ toast.error('Failed to update cover'); setPickerOpen(null); }
         }} />
-      )}
-      {newOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 overflow-y-auto">
-          <div className="w-[480px] max-w-[95vw] bg-white rounded-lg shadow-lg overflow-hidden">
-            <div className="px-4 py-3 border-b font-semibold">New Project</div>
-            <div className="p-4">
-              <div className="mb-3">
-                <label className="block text-sm text-gray-700 mb-1">Project Name</label>
-                <input 
-                  type="text" 
-                  className="w-full border rounded px-3 py-2" 
-                  value={name} 
-                  onChange={e=>setName(e.target.value)}
-                  onKeyDown={(e)=>{
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-                      handleCreateProject();
-                    } else if (e.key === 'Escape') {
-                      setNewOpen(false);
-                      setName('');
-                      setClientId('');
-                    }
-                  }}
-                  autoFocus
-                />
-              </div>
-              <div className="mb-3">
-                <label className="block text-sm text-gray-700 mb-1">Client ID</label>
-                <input 
-                  type="text" 
-                  className="w-full border rounded px-3 py-2" 
-                  value={clientId} 
-                  onChange={e=>setClientId(e.target.value)} 
-                  placeholder="client uuid"
-                  onKeyDown={(e)=>{
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-                      handleCreateProject();
-                    }
-                  }}
-                />
-              </div>
-            </div>
-            <div className="p-3 flex items-center justify-end gap-2 border-t">
-              <button className="px-3 py-2 rounded bg-gray-100" onClick={()=>{ setNewOpen(false); setName(''); setClientId(''); }}>Cancel</button>
-              <button className="px-3 py-2 rounded bg-brand-red text-white disabled:opacity-50 disabled:cursor-not-allowed" onClick={handleCreateProject} disabled={isCreatingProject}>
-                {isCreatingProject ? 'Creating...' : 'Create'}
-              </button>
-            </div>
-          </div>
-        </div>
       )}
     </div>
   );
@@ -311,217 +347,29 @@ const getDivisionIcon = (label: string): string => {
   return iconMap[label] || '📦';
 };
 
-function ProjectListCard({ project }:{ project: Project }){
+function ProjectListCard({ project, projectDivisions }:{ project: Project, projectDivisions?: any[] }){
   const navigate = useNavigate();
-  const { data:files } = useQuery({ queryKey:['client-files-for-proj-card', project.client_id], queryFn: ()=> project.client_id? api<any[]>('GET', `/clients/${encodeURIComponent(String(project.client_id))}/files`) : Promise.resolve([]), enabled: !!project.client_id, staleTime: 60_000 });
-  const pfiles = useMemo(()=> (files||[]).filter((f:any)=> String((f as any).project_id||'')===String(project.id)), [files, project?.id]);
-  const cover = pfiles.find((f:any)=> String(f.category||'')==='project-cover-derived') || pfiles.find((f:any)=> (f.is_image===true) || String(f.content_type||'').startsWith('image/'));
-  const src = cover? `/files/${cover.file_object_id}/thumbnail?w=400` : '/ui/assets/login/logo-light.svg';
-  const { data:details } = useQuery({ queryKey:['project-detail-card', project.id], queryFn: ()=> api<any>('GET', `/projects/${encodeURIComponent(String(project.id))}`), staleTime: 60_000 });
-  const { data:reports } = useQuery({ queryKey:['project-reports-count-card', project.id], queryFn: async()=> { const r = await api<any[]>('GET', `/projects/${encodeURIComponent(String(project.id))}/reports`); return r?.length||0; }, staleTime: 60_000 });
-  const { data:client } = useQuery({ queryKey:['proj-client', project.client_id], queryFn: ()=> project.client_id? api<any>('GET', `/clients/${encodeURIComponent(String(project.client_id||''))}`): Promise.resolve(null), enabled: !!project.client_id, staleTime: 300_000 });
-  const { data:projectDivisions } = useQuery({ queryKey:['project-divisions'], queryFn: ()=> api<any[]>('GET','/settings/project-divisions'), staleTime: 300_000 });
-  const { data:projectEstimates } = useQuery({ queryKey:['project-estimates-card', project.id], queryFn: ()=> api<any[]>('GET', `/estimate/estimates?project_id=${encodeURIComponent(String(project.id))}`), enabled: !!project.id, staleTime: 60_000 });
-  const { data:estimateData } = useQuery({ 
-    queryKey: ['estimate-card', projectEstimates?.[0]?.id], 
-    queryFn: () => projectEstimates?.[0]?.id ? api<any>('GET', `/estimate/estimates/${projectEstimates[0].id}`) : Promise.resolve(null),
-    enabled: !!projectEstimates?.[0]?.id,
-    staleTime: 60_000
-  });
-  const status = (project as any).status_label || details?.status_label || '';
-  const progress = Math.max(0, Math.min(100, Number((project as any).progress ?? details?.progress ?? 0)));
-  const start = (project.date_start || details?.date_start || project.created_at || '').slice(0,10);
-  const eta = (details?.date_eta || project.date_end || '').slice(0,10);
-  const est = details?.estimator_id || '';
-  const lead = details?.onsite_lead_id || '';
-  const actualValue = details?.cost_actual || (project as any).cost_actual || 0;
-  const estimatedValue = details?.service_value || details?.cost_estimated || (project as any).service_value || (project as any).cost_estimated || 0;
-  const clientName = client?.display_name || client?.name || '';
-  const projectDivIds = (project as any).project_division_ids || details?.project_division_ids || [];
   
-  // Calculate Grand Total from estimate (same logic as ProjectCostsSummary)
-  const grandTotal = useMemo(() => {
-    if (!estimateData || !projectEstimates?.length) return 0;
-    const items = estimateData?.items || [];
-    const markup = estimateData?.estimate?.markup || estimateData?.markup || 0;
-    const pstRate = estimateData?.pst_rate ?? 0;
-    const gstRate = estimateData?.gst_rate ?? 0;
-    const profitRate = estimateData?.profit_rate ?? 20;
-    const sectionOrder = estimateData?.section_order || [];
-    
-    // Parse UI state for item extras
-    const itemExtrasMap: Record<string, any> = {};
-    try {
-      const notes = estimateData?.estimate?.notes || estimateData?.notes;
-      if (notes) {
-        const uiState = JSON.parse(notes);
-        Object.assign(itemExtrasMap, uiState.item_extras || {});
-      }
-    } catch {}
-    
-    // Calculate total with markup for all items
-    const totalWithMarkupAll = items.reduce((acc: number, it: any) => {
-      const m = itemExtrasMap[`item_${it.id}`]?.markup !== undefined && itemExtrasMap[`item_${it.id}`].markup !== null ? itemExtrasMap[`item_${it.id}`].markup : markup;
-      let itemTotal = 0;
-      const section = it.section || 'Miscellaneous';
-      const isLabourSection = ['Labour', 'Sub-Contractors', 'Shop', 'Miscellaneous'].includes(section) ||
-                            section.startsWith('Labour Section') ||
-                            section.startsWith('Sub-Contractor Section') ||
-                            section.startsWith('Shop Section') ||
-                            section.startsWith('Miscellaneous Section');
-      
-      if (!isLabourSection) {
-        itemTotal = (it.quantity || 0) * (it.unit_price || 0);
-      } else {
-        if (it.item_type === 'labour' && itemExtrasMap[`item_${it.id}`]?.labour_journey_type) {
-          const extras = itemExtrasMap[`item_${it.id}`];
-          if (extras.labour_journey_type === 'contract') {
-            itemTotal = (extras.labour_journey || 0) * (it.unit_price || 0);
-          } else {
-            itemTotal = (extras.labour_journey || 0) * (extras.labour_men || 0) * (it.unit_price || 0);
-          }
-        } else {
-          itemTotal = (it.quantity || 0) * (it.unit_price || 0);
-        }
-      }
-      return acc + (itemTotal * (1 + (m/100)));
-    }, 0);
-    
-    // Calculate total without markup
-    const totalWithoutMarkup = items.reduce((acc: number, it: any) => {
-      let itemTotal = 0;
-      const section = it.section || 'Miscellaneous';
-      const isLabourSection = ['Labour', 'Sub-Contractors', 'Shop', 'Miscellaneous'].includes(section) ||
-                            section.startsWith('Labour Section') ||
-                            section.startsWith('Sub-Contractor Section') ||
-                            section.startsWith('Shop Section') ||
-                            section.startsWith('Miscellaneous Section');
-      
-      if (!isLabourSection) {
-        itemTotal = (it.quantity || 0) * (it.unit_price || 0);
-      } else {
-        if (it.item_type === 'labour' && itemExtrasMap[`item_${it.id}`]?.labour_journey_type) {
-          const extras = itemExtrasMap[`item_${it.id}`];
-          if (extras.labour_journey_type === 'contract') {
-            itemTotal = (extras.labour_journey || 0) * (it.unit_price || 0);
-          } else {
-            itemTotal = (extras.labour_journey || 0) * (extras.labour_men || 0) * (it.unit_price || 0);
-          }
-        } else {
-          itemTotal = (it.quantity || 0) * (it.unit_price || 0);
-        }
-      }
-      return acc + itemTotal;
-    }, 0);
-    
-    const sectionsMarkup = totalWithMarkupAll - totalWithoutMarkup;
-    
-    // Group items by section
-    const groupedItems: Record<string, any[]> = {};
-    items.forEach((it: any) => {
-      const section = it.section || 'Miscellaneous';
-      if(!groupedItems[section]) groupedItems[section] = [];
-      groupedItems[section].push(it);
-    });
-    
-    // Calculate section subtotals
-    const calculateSectionSubtotal = (sectionName: string): number => {
-      const sectionItems = groupedItems[sectionName] || [];
-      const isLabourSection = ['Labour', 'Sub-Contractors', 'Shop', 'Miscellaneous'].includes(sectionName) || 
-                            sectionName.startsWith('Labour Section') || 
-                            sectionName.startsWith('Sub-Contractor Section') || 
-                            sectionName.startsWith('Shop Section') || 
-                            sectionName.startsWith('Miscellaneous Section');
-      return sectionItems.reduce((sum, it) => {
-        const m = itemExtrasMap[`item_${it.id}`]?.markup !== undefined && itemExtrasMap[`item_${it.id}`].markup !== null ? itemExtrasMap[`item_${it.id}`].markup : markup;
-        let itemTotal = 0;
-        if (!isLabourSection) {
-          itemTotal = (it.quantity || 0) * (it.unit_price || 0);
-        } else {
-          if (it.item_type === 'labour' && itemExtrasMap[`item_${it.id}`]?.labour_journey_type) {
-            const extras = itemExtrasMap[`item_${it.id}`];
-            if (extras.labour_journey_type === 'contract') {
-              itemTotal = (extras.labour_journey || 0) * (it.unit_price || 0);
-            } else {
-              itemTotal = (extras.labour_journey || 0) * (extras.labour_men || 0) * (it.unit_price || 0);
-            }
-          } else {
-            itemTotal = (it.quantity || 0) * (it.unit_price || 0);
-          }
-        }
-        return sum + (itemTotal * (1 + (m/100)));
-      }, 0);
-    };
-    
-    const totalProductsCosts = sectionOrder
-      .filter(section => !['Labour', 'Sub-Contractors', 'Shop', 'Miscellaneous'].includes(section) && 
-                    !section.startsWith('Labour Section') && 
-                    !section.startsWith('Sub-Contractor Section') && 
-                    !section.startsWith('Shop Section') && 
-                    !section.startsWith('Miscellaneous Section'))
-      .reduce((sum, section) => sum + calculateSectionSubtotal(section), 0);
-    
-    const totalLabourCosts = calculateSectionSubtotal('Labour') + 
-             sectionOrder
-               .filter(s => s.startsWith('Labour Section'))
-               .reduce((sum, section) => sum + calculateSectionSubtotal(section), 0);
-    
-    const totalSubContractorsCosts = calculateSectionSubtotal('Sub-Contractors') + 
-             sectionOrder
-               .filter(s => s.startsWith('Sub-Contractor Section'))
-               .reduce((sum, section) => sum + calculateSectionSubtotal(section), 0);
-    
-    const totalShopCosts = calculateSectionSubtotal('Shop') + 
-             sectionOrder
-               .filter(s => s.startsWith('Shop Section'))
-               .reduce((sum, section) => sum + calculateSectionSubtotal(section), 0);
-    
-    const totalMiscellaneousCosts = calculateSectionSubtotal('Miscellaneous') + 
-             sectionOrder
-               .filter(s => s.startsWith('Miscellaneous Section'))
-               .reduce((sum, section) => sum + calculateSectionSubtotal(section), 0);
-    
-    const totalDirectProjectCosts = totalProductsCosts + totalLabourCosts + totalSubContractorsCosts + totalShopCosts + totalMiscellaneousCosts;
-    
-    // Calculate taxable total (only taxable items) with markup
-    const taxableTotal = items.reduce((acc: number, it: any) => {
-      const extras = itemExtrasMap[`item_${it.id}`];
-      if (extras?.taxable === false) return acc;
-      const m = extras?.markup !== undefined && extras.markup !== null ? extras.markup : markup;
-      let itemTotal = 0;
-      const section = it.section || 'Miscellaneous';
-      const isLabourSection = ['Labour', 'Sub-Contractors', 'Shop', 'Miscellaneous'].includes(section) ||
-                            section.startsWith('Labour Section') ||
-                            section.startsWith('Sub-Contractor Section') ||
-                            section.startsWith('Shop Section') ||
-                            section.startsWith('Miscellaneous Section');
-      
-      if (!isLabourSection) {
-        itemTotal = (it.quantity || 0) * (it.unit_price || 0);
-      } else {
-        if (it.item_type === 'labour' && itemExtrasMap[`item_${it.id}`]?.labour_journey_type) {
-          const extras = itemExtrasMap[`item_${it.id}`];
-          if (extras.labour_journey_type === 'contract') {
-            itemTotal = (extras.labour_journey || 0) * (it.unit_price || 0);
-          } else {
-            itemTotal = (extras.labour_journey || 0) * (extras.labour_men || 0) * (it.unit_price || 0);
-          }
-        } else {
-          itemTotal = (it.quantity || 0) * (it.unit_price || 0);
-        }
-      }
-      return acc + (itemTotal * (1 + (m/100)));
-    }, 0);
-    
-    const pst = taxableTotal * (pstRate / 100);
-    const subtotal = totalDirectProjectCosts + pst;
-    const profitValue = subtotal * (profitRate / 100);
-    const finalTotal = subtotal + profitValue;
-    const gst = finalTotal * (gstRate / 100);
-    return finalTotal + gst;
-  }, [estimateData, projectEstimates]);
+  // Use cover image URL from project data (loaded together with project list)
+  const src = project.cover_image_url || '/ui/assets/login/logo-light.svg';
   
-  // Get division icons and labels
+  // Use client name from project data
+  const clientName = project.client_display_name || project.client_name || '';
+  
+  // Use project divisions from parent (passed as prop, no individual loading)
+  // This prevents "popping" updates after initial render
+  // Use only data from backend - no additional queries to prevent "popping"
+  const status = project.status_label || '';
+  const progress = Math.max(0, Math.min(100, Number(project.progress ?? 0)));
+  const start = (project.date_start || project.created_at || '').slice(0,10);
+  const eta = (project.date_end || '').slice(0,10);
+  const est = project.estimator_id || '';
+  const lead = project.onsite_lead_id || '';
+  const actualValue = project.cost_actual || 0;
+  const estimatedValue = project.service_value || 0;
+  const projectDivIds = project.project_division_ids || [];
+  
+  // Get division icons and labels (only if projectDivisions is already loaded)
   const divisionIcons = useMemo(() => {
     if (!Array.isArray(projectDivIds) || projectDivIds.length === 0 || !projectDivisions) return [];
     const icons: Array<{ icon: string; label: string }> = [];
@@ -639,7 +487,7 @@ function ProjectListCard({ project }:{ project: Project }){
           <div>
             <div className="text-xs text-gray-500">Estimated Value</div>
             <div className="font-medium text-gray-900">
-              {grandTotal > 0 ? `$${grandTotal.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}` : estimatedValue > 0 ? `$${estimatedValue.toLocaleString()}` : '—'}
+              {estimatedValue > 0 ? `$${estimatedValue.toLocaleString()}` : '—'}
             </div>
           </div>
         </div>
@@ -690,11 +538,9 @@ function ProjectListCard({ project }:{ project: Project }){
 }
 
 function UserInline({ id }:{ id:string }){
-  const { data } = useQuery({ queryKey:['user-inline', id], queryFn: ()=> api<any>('GET', `/auth/users/${encodeURIComponent(String(id))}/profile`), enabled: !!id, staleTime: 300_000 });
-  const fn = data?.profile?.preferred_name || data?.profile?.first_name || '';
-  const ln = data?.profile?.last_name || '';
-  const label = `${fn} ${ln}`.trim() || '';
-  return <span className="font-medium">{label||'—'}</span>;
+  // Disable query to prevent "popping" - show ID or placeholder instead
+  // Can be enabled later if needed, or fetch user names in backend batch
+  return <span className="font-medium">—</span>;
 }
 
 

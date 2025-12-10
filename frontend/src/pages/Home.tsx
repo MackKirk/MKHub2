@@ -235,34 +235,23 @@ function QuickReportModal({ onClose, onSuccess }: { onClose: () => void, onSucce
 
   const reportCategories = (settings?.report_categories || []) as any[];
   
-  // Production categories (only for projects, not for opportunities)
-  // Keywords to identify production/execution categories
-  const productionCategoryKeywords = [
-    'daily update',
-    'site event',
-    'accident', 'safety incident',
-    'positive event',
-    'deficiency found',
-    'work completed',
-    'weather impact'
-  ];
-  const isProductionCategory = (catLabel: string): boolean => {
-    const labelLower = catLabel.toLowerCase().trim();
-    // Check if category matches or contains production keywords
-    return productionCategoryKeywords.some(keyword => {
-      const keywordLower = keyword.toLowerCase();
-      // Exact match or contains the keyword
-      return labelLower === keywordLower || labelLower.includes(keywordLower);
-    });
-  };
-  
-  // Separate categories into commercial and production
+  // Separate categories into commercial and production based on meta.group
   const commercialCategories = useMemo(() => {
-    return reportCategories.filter(cat => !isProductionCategory(cat.label || ''));
+    return reportCategories
+      .filter(cat => {
+        const meta = cat.meta || {};
+        return meta.group === 'commercial';
+      })
+      .sort((a, b) => (a.sort_index || 0) - (b.sort_index || 0));
   }, [reportCategories]);
   
   const productionCategories = useMemo(() => {
-    return reportCategories.filter(cat => isProductionCategory(cat.label || ''));
+    return reportCategories
+      .filter(cat => {
+        const meta = cat.meta || {};
+        return meta.group === 'production';
+      })
+      .sort((a, b) => (a.sort_index || 0) - (b.sort_index || 0));
   }, [reportCategories]);
 
   const handleCreate = async () => {

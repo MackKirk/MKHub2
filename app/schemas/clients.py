@@ -63,6 +63,7 @@ class ClientCreate(ClientBase):
 
 class ClientResponse(ClientBase):
     id: uuid.UUID
+    logo_url: Optional[str] = None  # URL to the client logo thumbnail
 
     class Config:
         from_attributes = True
