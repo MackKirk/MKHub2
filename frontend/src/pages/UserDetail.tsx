@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
 import { formatDateLocal, getCurrentMonthLocal } from '@/lib/dateUtils';
+import UserLoans from '@/components/UserLoans';
 
 // Helper function to convert 24h time (HH:MM:SS or HH:MM) to 12h format (h:mm AM/PM)
 function formatTime12h(timeStr: string | null | undefined): string {
@@ -24,7 +25,7 @@ export default function UserDetail(){
   const { data:roles } = useQuery({ queryKey:['rolesAll'], queryFn: ()=> api<any[]>('GET', '/users/roles/all') });
   const { data:me } = useQuery({ queryKey:['me'], queryFn: ()=> api<any>('GET','/auth/me') });
   const [sel, setSel] = useState<string>('');
-  const [tab, setTab] = useState<'general'|'timesheet'|'permissions'>('general');
+  const [tab, setTab] = useState<'general'|'timesheet'|'loans'|'permissions'>('general');
   
   // Check permissions for each tab
   // Note: hr:users:read alone is NOT enough - need specific view permissions
@@ -47,6 +48,18 @@ export default function UserDetail(){
     (me?.permissions || []).includes('users:read') // Legacy
   );
   
+  const canViewLoans = !!(
+    (me?.roles || []).some((r: string) => String(r || '').toLowerCase() === 'admin') || 
+    (me?.permissions || []).includes('hr:users:view:general') ||
+    (me?.permissions || []).includes('users:read') // Legacy
+  );
+  
+  const canEditLoans = !!(
+    (me?.roles || []).some((r: string) => String(r || '').toLowerCase() === 'admin') || 
+    (me?.permissions || []).includes('hr:users:write') ||
+    (me?.permissions || []).includes('users:write')
+  );
+  
   const canViewPermissions = !!(
     (me?.roles || []).some((r: string) => String(r || '').toLowerCase() === 'admin') || 
     (me?.permissions || []).includes('hr:users:view:permissions') ||
@@ -63,7 +76,7 @@ export default function UserDetail(){
   if(!user) return <div className="h-24 bg-gray-100 animate-pulse rounded"/>;
   
   // If user doesn't have permission to view anything, show error
-  if (!canViewGeneral && !canViewTimesheet && !canViewPermissions) {
+  if (!canViewGeneral && !canViewTimesheet && !canViewLoans && !canViewPermissions) {
     return (
       <div className="max-w-5xl">
         <div className="rounded-xl border bg-white p-8 text-center">
@@ -84,6 +97,7 @@ export default function UserDetail(){
           {([
             ...(canViewGeneral ? ['general'] : []),
             ...(canViewTimesheet ? ['timesheet'] : []),
+            ...(canViewLoans ? ['loans'] : []),
             ...(canViewPermissions ? ['permissions'] : [])
           ] as const).map(k=> (<button key={k} onClick={()=>setTab(k)} className={`px-3 py-1.5 rounded-full text-sm ${tab===k?'bg-black text-white':'bg-white border'}`}>{k[0].toUpperCase()+k.slice(1)}</button>))}
         </div>
@@ -163,6 +177,10 @@ export default function UserDetail(){
 
       {tab==='timesheet' && canViewTimesheet && (
         <UserTimesheet userId={String(id)} />
+      )}
+
+      {tab==='loans' && canViewLoans && (
+        <UserLoans userId={String(id)} canEdit={canEditLoans} />
       )}
 
       {tab==='permissions' && canViewPermissions && (
