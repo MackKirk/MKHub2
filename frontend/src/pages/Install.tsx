@@ -9,6 +9,7 @@ export default function Install() {
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [qrCodeDataUrl, setQrCodeDataUrl] = useState<string>('');
   const [isLoading, setIsLoading] = useState(true);
+  const [showIOSModal, setShowIOSModal] = useState(false);
   const qrCanvasRef = useRef<HTMLCanvasElement>(null);
   const navigate = useNavigate();
 
