@@ -268,7 +268,7 @@ export default function ProjectDetail(){
                   </div>
                   <div className="col-span-2">
                     <div className="flex items-center gap-1.5 mb-1">
-                      <label className="text-xs text-gray-600 block">Address</label>
+                      <label className="text-xs text-gray-600 block">Site</label>
                       <button
                         onClick={() => setEditSiteModal(true)}
                         className="text-gray-400 hover:text-[#7f1010] transition-colors"
@@ -282,21 +282,47 @@ export default function ProjectDetail(){
                     <div className="text-sm font-medium">
                       {(() => {
                         const siteName = proj?.site_name;
+                        const addressLine1 = proj?.site_address_line1 || proj?.address;
+                        const addressLine2 = proj?.site_address_line2;
                         const city = proj?.address_city||proj?.site_city;
                         const province = proj?.address_province||proj?.site_province;
                         const postal = proj?.address_postal_code||proj?.site_postal_code;
                         const country = proj?.address_country||proj?.site_country;
-                        const addressParts = [city, province, postal, country].filter(Boolean);
-                        const addressStr = addressParts.length > 0 ? addressParts.join(', ') : null;
                         
-                        if (siteName && addressStr) {
-                          return `${siteName} (${addressStr})`;
-                        } else if (siteName) {
-                          return siteName;
-                        } else if (addressStr) {
-                          return addressStr;
+                        // Build full address for tooltip
+                        const addressParts = [];
+                        if (addressLine1) addressParts.push(addressLine1);
+                        if (addressLine2) addressParts.push(addressLine2);
+                        if (city) addressParts.push(city);
+                        if (province) addressParts.push(province);
+                        if (postal) addressParts.push(postal);
+                        if (country) addressParts.push(country);
+                        const fullAddress = addressParts.length > 0 ? addressParts.join(', ') : null;
+                        
+                        // Display name (just site name or fallback)
+                        const displayName = siteName || (city && province ? `${city}, ${province}` : city || province || '—');
+                        
+                        // If we have a full address, show tooltip on hover
+                        if (fullAddress && displayName !== '—') {
+                          return (
+                            <div className="relative group inline-block">
+                              <span className="cursor-help underline decoration-dotted decoration-gray-400 hover:decoration-gray-600 transition-colors">
+                                {displayName}
+                              </span>
+                              {/* Tooltip overlay */}
+                              <div className="absolute left-0 bottom-full mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg shadow-xl whitespace-normal max-w-xs opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 pointer-events-none z-50">
+                                {siteName && (
+                                  <div className="font-semibold mb-1.5 text-white">{siteName}</div>
+                                )}
+                                <div className="text-gray-200 leading-relaxed">{fullAddress}</div>
+                                {/* Arrow */}
+                                <div className="absolute -bottom-1 left-4 w-2 h-2 bg-gray-900 rotate-45"></div>
+                              </div>
+                            </div>
+                          );
                         }
-                        return '—';
+                        
+                        return displayName;
                       })()}
                     </div>
                   </div>
