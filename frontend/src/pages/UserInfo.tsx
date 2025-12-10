@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, useImperativeHandle, forwardRef, useCallback } from 'react';
-import { useParams, useSearchParams } from 'react-router-dom';
+import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { formatDateLocal, getCurrentMonthLocal } from '@/lib/dateUtils';
@@ -960,25 +960,36 @@ export default function UserInfo(){
   // Use unsaved changes guard
   const hasUnsaved = dirty || permissionsDirty || divisionsDirty;
   useUnsavedChangesGuard(hasUnsaved, saveAll);
+  
+  const navigate = useNavigate();
 
   return (
     <div>
-      <div className="mb-3 rounded-xl border bg-gradient-to-br from-[#7f1010] to-[#a31414] text-white p-4 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <img className="w-10 h-10 rounded-full border-2 border-brand-red object-cover" src={p.profile_photo_file_id? `/files/${p.profile_photo_file_id}/thumbnail?w=64`:'/ui/assets/login/logo-light.svg'} />
-          <div>
-            <div className="text-2xl font-extrabold">User Information</div>
-            <div className="text-sm opacity-90">Personal details, employment, and documents.</div>
-          </div>
-        </div>
+      <div className="mb-3 rounded-xl border bg-gradient-to-br from-[#7f1010] to-[#a31414] text-white p-4">
+        <div className="text-2xl font-extrabold">User Information</div>
+        <div className="text-sm opacity-90">Personal details, employment, and documents.</div>
+      </div>
+      <div className="mb-3">
+        <button
+          onClick={() => navigate('/users')}
+          className="p-2 rounded-lg border hover:bg-gray-50 transition-colors flex items-center gap-2"
+          title="Back to Users"
+        >
+          <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+          </svg>
+          <span className="text-sm text-gray-700 font-medium">Back to Users</span>
+        </button>
       </div>
       <div className="rounded-xl border shadow-hero bg-white">
         <div className="rounded-t-xl p-5 text-white relative overflow-hidden" style={{ backgroundImage: `url(${heroResolvedUrl||'/ui/assets/login/background.jpg'})`, backgroundSize: 'cover', backgroundPosition: 'center' }}>
           <div className="absolute inset-0 bg-gradient-to-br from-gray-500/50 to-gray-800/60" />
           <div className="relative z-10">
-            <div className="flex gap-4 items-center">
-              <img className="w-[120px] h-[120px] object-cover rounded-xl border-2 border-brand-red" src={p.profile_photo_file_id? `/files/${p.profile_photo_file_id}/thumbnail?w=240`:'/ui/assets/login/logo-light.svg'} />
-              <div className="flex-1">
+            <div className="flex gap-4 items-stretch min-h-[210px]">
+              <div className="w-[220px]">
+                <img className="w-full h-full object-cover rounded-xl border-2 border-brand-red" src={p.profile_photo_file_id? `/files/${p.profile_photo_file_id}/thumbnail?w=240`:'/ui/assets/login/logo-light.svg'} />
+              </div>
+              <div className="flex-1 flex flex-col justify-start">
                 <div className="text-3xl font-extrabold">{p.first_name||u?.username} {p.last_name||''}</div>
                 <div className="text-sm opacity-90 mt-1">{p.job_title||u?.email||''}{u?.divisions && u.divisions.length > 0 ? ` — ${u.divisions.map((d: any) => d.label).join(', ')}` : (p.division ? ` — ${p.division}` : '')}</div>
                 <div className="grid md:grid-cols-3 gap-2 text-xs mt-3">
@@ -991,29 +1002,29 @@ export default function UserInfo(){
                   <div><span className="opacity-80">Supervisor:</span> <span className="font-semibold">{supervisorName||'—'}</span></div>
                   <div><span className="opacity-80">Age:</span> <span className="font-semibold">{calcAge(p.date_of_birth)||'—'}</span></div>
                 </div>
+                <div className="mt-auto flex gap-2">
+                  {([
+                    ...(canViewGeneral || canSelfEdit ? ['personal','job','docs'] : []),
+                    ...(canViewTimesheet || canSelfEdit ? ['timesheet'] : []),
+                    ...(canViewLoans ? ['loans'] : []),
+                    ...(canViewReports ? ['reports'] : []),
+                    ...(canViewPermissions ? ['permissions'] : [])
+                  ] as const).map((k)=> (
+                    <button
+                      key={k}
+                      onClick={()=>handleTabChange(k as any)}
+                      className={`px-4 py-2 rounded-lg border ${tab===k? 'bg-black/30 border-white/30 text-white' : 'bg-white text-black'}`}
+                    >
+                      {String(k).replace(/^./,s=>s.toUpperCase())}
+                    </button>
+                  ))}
+                </div>
               </div>
               <div className="flex gap-2">
                 {canEdit && (
                   <SyncBambooHRButton userId={String(userId)} onSuccess={() => { window.location.reload(); }} />
                 )}
               </div>
-            </div>
-            <div className="mt-4 flex items-center gap-2">
-              {([
-                ...(canViewGeneral || canSelfEdit ? ['personal','job','docs'] : []),
-                ...(canViewTimesheet || canSelfEdit ? ['timesheet'] : []),
-                ...(canViewLoans ? ['loans'] : []),
-                ...(canViewReports ? ['reports'] : []),
-                ...(canViewPermissions ? ['permissions'] : [])
-              ] as const).map((k)=> (
-                <button
-                  key={k}
-                  onClick={()=>handleTabChange(k as any)}
-                  className={`px-4 py-2 rounded-lg shadow-sm ${tab===k? 'bg-black text-white' : 'bg-white text-black border'}`}
-                >
-                  {String(k).replace(/^./,s=>s.toUpperCase())}
-                </button>
-              ))}
             </div>
           </div>
         </div>

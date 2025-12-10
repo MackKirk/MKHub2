@@ -288,11 +288,9 @@ export default function TasksPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-extrabold">Tasks</h1>
-          <p className="text-gray-600">Track everything that has been accepted and needs action.</p>
-        </div>
+      <div className="mb-3 rounded-xl border bg-gradient-to-br from-[#7f1010] to-[#a31414] text-white p-4">
+        <div className="text-2xl font-extrabold">Tasks</div>
+        <div className="text-sm opacity-90">Track everything that has been accepted and needs action.</div>
       </div>
 
       <div className="flex flex-col lg:flex-row gap-4">

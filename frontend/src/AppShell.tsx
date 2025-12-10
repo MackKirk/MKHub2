@@ -41,6 +41,12 @@ const IconCalendar = () => (
   </svg>
 );
 
+const IconClock = () => (
+  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+  </svg>
+);
+
 const IconClipboard = () => (
   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
@@ -249,7 +255,7 @@ export default function AppShell({ children }: PropsWithChildren){
         { id: 'home', label: 'Home', path: '/home', icon: <IconHome /> },
         { id: 'profile', label: 'My Information', path: '/profile', icon: <IconUser /> },
         { id: 'schedule', label: 'Schedule', path: '/schedule', icon: <IconCalendar /> },
-        { id: 'clock-in-out', label: 'Clock in/out', path: '/clock-in-out', icon: <IconCalendar /> },
+        { id: 'clock-in-out', label: 'Clock in/out', path: '/clock-in-out', icon: <IconClock /> },
         { id: 'task-requests', label: 'Task Request', path: '/task-requests', icon: <IconClipboard /> },
         { id: 'tasks', label: 'Tasks', path: '/tasks', icon: <IconClipboard /> },
       ]

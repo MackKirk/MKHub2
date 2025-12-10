@@ -127,39 +127,37 @@ export default function Calendar() {
   };
 
   return (
-    <div className="rounded-xl border bg-white p-4">
-      <div className="mb-4 flex items-center justify-between">
-        <h3 className="text-lg font-semibold">Calendar</h3>
-        <div className="flex items-center gap-2">
+    <div>
+      <div className="mb-3 flex items-center justify-between">
+        <div className="text-sm font-semibold text-gray-800">
+          {monthNames[currentMonth.getMonth()]} {currentMonth.getFullYear()}
+        </div>
+        <div className="flex items-center gap-1">
           <button
             onClick={goToPreviousMonth}
-            className="px-3 py-1 rounded border hover:bg-gray-50 text-sm"
+            className="px-2 py-1 rounded border hover:bg-gray-50 text-xs"
           >
             ←
           </button>
           <button
             onClick={goToToday}
-            className="px-3 py-1 rounded border hover:bg-gray-50 text-sm"
+            className="px-2 py-1 rounded border hover:bg-gray-50 text-xs"
           >
             Today
           </button>
           <button
             onClick={goToNextMonth}
-            className="px-3 py-1 rounded border hover:bg-gray-50 text-sm"
+            className="px-2 py-1 rounded border hover:bg-gray-50 text-xs"
           >
             →
           </button>
         </div>
       </div>
 
-      <div className="mb-2 text-center font-semibold text-gray-800">
-        {monthNames[currentMonth.getMonth()]} {currentMonth.getFullYear()}
-      </div>
-
-      <div className="grid grid-cols-7 gap-1">
+      <div className="grid grid-cols-7 gap-0.5">
         {/* Day headers */}
         {dayNames.map((day) => (
-          <div key={day} className="text-center text-xs font-medium text-gray-600 py-2">
+          <div key={day} className="text-center text-[10px] font-medium text-gray-600 py-1">
             {day}
           </div>
         ))}
@@ -177,7 +175,7 @@ export default function Calendar() {
             <div
               key={date.toISOString()}
               className={`
-                aspect-square border rounded flex items-center justify-center text-sm
+                aspect-square border rounded flex items-center justify-center text-xs
                 ${dayIsToday ? 'border-2 border-blue-500 font-semibold' : 'border-gray-200'}
                 ${dayHasShift ? 'bg-blue-100 hover:bg-blue-200' : 'hover:bg-gray-50'}
                 ${dayIsToday && dayHasShift ? 'bg-blue-200' : ''}
@@ -192,13 +190,13 @@ export default function Calendar() {
       </div>
 
       {/* Legend */}
-      <div className="mt-4 flex items-center gap-4 text-xs text-gray-600">
-        <div className="flex items-center gap-2">
-          <div className="w-4 h-4 rounded border border-gray-200 bg-blue-100"></div>
-          <span>Days with shifts</span>
+      <div className="mt-3 flex items-center gap-3 text-[10px] text-gray-600">
+        <div className="flex items-center gap-1">
+          <div className="w-3 h-3 rounded border border-gray-200 bg-blue-100"></div>
+          <span>Shifts</span>
         </div>
-        <div className="flex items-center gap-2">
-          <div className="w-4 h-4 rounded border-2 border-blue-500"></div>
+        <div className="flex items-center gap-1">
+          <div className="w-3 h-3 rounded border-2 border-blue-500"></div>
           <span>Today</span>
         </div>
       </div>

@@ -170,6 +170,18 @@ export default function ProjectDetail(){
         <div className="text-2xl font-extrabold">{proj?.is_bidding ? 'Opportunity Information' : 'Project Information'}</div>
         <div className="text-sm opacity-90">{proj?.is_bidding ? 'Overview, files, proposal and estimate.' : 'Overview, files, schedule and contacts.'}</div>
       </div>
+      <div className="mb-3">
+        <button
+          onClick={() => nav(proj?.is_bidding ? '/opportunities' : '/projects')}
+          className="p-2 rounded-lg border hover:bg-gray-50 transition-colors flex items-center gap-2"
+          title={proj?.is_bidding ? 'Back to Opportunities' : 'Back to Projects'}
+        >
+          <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+          </svg>
+          <span className="text-sm text-gray-700 font-medium">{proj?.is_bidding ? 'Back to Opportunities' : 'Back to Projects'}</span>
+        </button>
+      </div>
 
       {/* Hero Section - Based on Mockup */}
       {isHeroCollapsed ? (

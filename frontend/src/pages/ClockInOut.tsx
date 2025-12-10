@@ -847,7 +847,10 @@ export default function ClockInOut() {
 
   return (
     <div className="w-full">
-      <h1 className="text-2xl font-bold mb-3">Clock in/out</h1>
+      <div className="mb-3 rounded-xl border bg-gradient-to-br from-[#7f1010] to-[#a31414] text-white p-4">
+        <div className="text-2xl font-extrabold">Clock in/out</div>
+        <div className="text-sm opacity-90">Record your attendance and track your work hours.</div>
+      </div>
       
       <div className="grid grid-cols-[2fr_3fr] gap-6">
         {/* Left column - Clock In/Out Form */}

@@ -48,14 +48,28 @@ export default function ProjectNew(){
     return !!String(siteId||'').trim();
   }, [clientValid, createSite, siteForm, siteId]);
 
-  const { data:clients } = useQuery({ queryKey:['clients-mini'], queryFn: ()=> api<Client[]>('GET','/clients'), staleTime: 60_000 });
+  const { data:clients } = useQuery({
+    queryKey:['clients-mini'],
+    queryFn: async () => {
+      const result = await api<any>('GET','/clients');
+      if (Array.isArray(result)) return result as Client[];
+      if (result && Array.isArray(result.items)) return result.items as Client[];
+      if (result && Array.isArray(result.data)) return result.data as Client[];
+      return [] as Client[];
+    },
+    staleTime: 60_000
+  });
   const { data:clientSearchResults } = useQuery({ 
     queryKey:['clients-search', clientSearch], 
     queryFn: async()=>{
       if (!clientSearch.trim()) return [];
       const params = new URLSearchParams();
       params.set('q', clientSearch);
-      return await api<Client[]>('GET', `/clients?${params.toString()}`);
+      const result = await api<any>('GET', `/clients?${params.toString()}`);
+      if (Array.isArray(result)) return result as Client[];
+      if (result && Array.isArray(result.items)) return result.items as Client[];
+      if (result && Array.isArray(result.data)) return result.data as Client[];
+      return [] as Client[];
     },
     enabled: !!clientSearch.trim() && !initialClientId
   });
@@ -66,8 +80,8 @@ export default function ProjectNew(){
   const { data:contacts } = useQuery({ queryKey:['clientContacts-mini', clientId], queryFn: ()=> clientId? api<any[]>('GET', `/clients/${encodeURIComponent(clientId)}/contacts`) : Promise.resolve([]), enabled: !!clientId });
   
   const selectedClient = useMemo(() => {
-    if (!clientId) return null;
-    return (clients||[]).find(c => c.id === clientId);
+    if (!clientId || !Array.isArray(clients)) return null;
+    return clients.find(c => c.id === clientId) || null;
   }, [clientId, clients]);
   
   const filteredClients = useMemo(() => {
@@ -77,9 +91,9 @@ export default function ProjectNew(){
   }, [clientSearch, clientSearchResults, initialClientId]);
 
   useEffect(()=>{ 
-    if(initialClientId) {
+    if(initialClientId && Array.isArray(clients)) {
       setClientId(initialClientId);
-      const client = (clients||[]).find(c => c.id === initialClientId);
+      const client = clients.find(c => c.id === initialClientId);
       if (client) {
         setClientSearch(client.display_name||client.name||client.id);
       }
@@ -542,7 +556,11 @@ function ClientSelectModal({ open, onClose, onSelect }: { open: boolean, onClose
       if (q.trim()) {
         params.set('q', q);
       }
-      return await api<Client[]>('GET', `/clients?${params.toString()}`);
+      const result = await api<any>('GET', `/clients?${params.toString()}`);
+      if (Array.isArray(result)) return result as Client[];
+      if (result && Array.isArray(result.items)) return result.items as Client[];
+      if (result && Array.isArray(result.data)) return result.data as Client[];
+      return [] as Client[];
     },
     enabled: open,
     staleTime: 30_000
