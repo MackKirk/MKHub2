@@ -1,5 +1,5 @@
 {
-  "_comment": "NOTE: Placeholder icon files (icon-192.png, icon-256.png, icon-512.png) need to be created in /public directory. These will be replaced with final MK Hub brand assets later.",
+  "_comment": "NOTE: Icon paths currently point to existing legacy UI PNG assets under /ui. Replace these with final MK Hub brand icons later (keep sizes 192x192 and 512x512).",
   "name": "MK Hub",
   "short_name": "MK Hub",
   "description": "Mack Kirk Operations Hub — customers, proposals, inventory, and projects in one secure place.",
@@ -11,19 +11,13 @@
   "orientation": "portrait-primary",
   "icons": [
     {
-      "src": "/icon-192.png",
+      "src": "/ui/assets/icons/rec.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any maskable"
     },
     {
-      "src": "/icon-256.png",
-      "sizes": "256x256",
-      "type": "image/png",
-      "purpose": "any maskable"
-    },
-    {
-      "src": "/icon-512.png",
+      "src": "/ui/assets/icons/pencil2.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"
