@@ -14,6 +14,8 @@ export default function ProjectNew(){
   const [sp] = useSearchParams();
   const initialClientId = sp.get('client_id')||'';
   const initialIsBidding = sp.get('is_bidding') === 'true';
+  // If coming from projects page, default to creating as active project (checkbox checked)
+  const defaultCreateAsProject = sp.get('create_as_project') === 'true';
 
   const [clientId, setClientId] = useState<string>(initialClientId);
   const [name, setName] = useState<string>('');
@@ -33,7 +35,7 @@ export default function ProjectNew(){
   const [coverPreview, setCoverPreview] = useState<string>('');
   const [hiddenPickerOpen, setHiddenPickerOpen] = useState<boolean>(false);
   const [isBidding, setIsBidding] = useState<boolean>(initialIsBidding);
-  const [createAsProject, setCreateAsProject] = useState<boolean>(false);
+  const [createAsProject, setCreateAsProject] = useState<boolean>(defaultCreateAsProject);
   const [clientSearch, setClientSearch] = useState<string>('');
   const [clientModalOpen, setClientModalOpen] = useState<boolean>(false);
   const [showClientDropdown, setShowClientDropdown] = useState<boolean>(false);
@@ -180,7 +182,7 @@ export default function ProjectNew(){
               </div>
             </div>
             {step===1 ? ( <>
-            {isBidding && (
+            {(isBidding || defaultCreateAsProject) && (
               <div className="md:col-span-2">
                 <label className="text-xs text-gray-600 flex items-center gap-2">
                   <input type="checkbox" checked={createAsProject} onChange={e=>setCreateAsProject(e.target.checked)} />

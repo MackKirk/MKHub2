@@ -3,6 +3,7 @@ import { api } from '@/lib/api';
 import { useState, useMemo, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
+import LoadingOverlay from '@/components/LoadingOverlay';
 
 type ProjectDivision = {
   id: string;
@@ -102,7 +103,10 @@ export default function BusinessDashboard() {
 
   const divisions = Array.isArray(divisionsData) ? divisionsData : [];
   const statsByDivision = Array.isArray(divisionsStats) ? divisionsStats : [];
-
+  
+  // Check if we're still loading critical initial data (not refetching)
+  // Only show overlay on first load, not on background refetches
+  const isInitialLoading = (divisionsLoading && !divisionsData) || (statsLoading && !divisionsStats) || (overallStatsLoading && !stats);
 
   const handleViewOpportunities = (divisionId?: string) => {
     const params = divisionId ? `?division_id=${encodeURIComponent(divisionId)}` : '';
@@ -115,9 +119,10 @@ export default function BusinessDashboard() {
   };
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="mb-3 rounded-xl border bg-gradient-to-br from-[#7f1010] to-[#a31414] text-white p-4">
+    <LoadingOverlay isLoading={isInitialLoading} text="Loading dashboard data...">
+      <div className="space-y-6">
+        {/* Header */}
+        <div className="mb-3 rounded-xl border bg-gradient-to-br from-[#7f1010] to-[#a31414] text-white p-4">
         <div className="flex items-center justify-between">
           <div>
             <div className="text-2xl font-extrabold">Business Dashboard</div>
@@ -137,13 +142,7 @@ export default function BusinessDashboard() {
       </div>
 
       {/* Division Cards Grid - Similar to FleetDashboard */}
-      {divisionsLoading ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-          {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((i) => (
-            <div key={i} className="h-32 bg-gray-100 animate-pulse rounded-xl" />
-          ))}
-        </div>
-      ) : divisionsError ? (
+      {divisionsError ? (
         <div className="rounded-xl border bg-red-50 p-6 text-center">
           <div className="text-red-700 font-semibold mb-2">Erro ao carregar divisões</div>
           <div className="text-sm text-red-600">{String(divisionsError)}</div>
@@ -232,13 +231,7 @@ export default function BusinessDashboard() {
       )}
 
       {/* Overall Statistics Cards */}
-      {overallStatsLoading ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          {[1, 2, 3, 4].map((i) => (
-            <div key={i} className="h-32 bg-gray-100 animate-pulse rounded-xl" />
-          ))}
-        </div>
-      ) : stats ? (
+      {stats ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           {/* Total Opportunities */}
           <div className="rounded-xl border bg-white p-6 shadow-sm">
@@ -324,6 +317,7 @@ export default function BusinessDashboard() {
           </div>
         </Link>
       </div>
-    </div>
+      </div>
+    </LoadingOverlay>
   );
 }

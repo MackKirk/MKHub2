@@ -1,54 +1,93 @@
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import ImagePicker from '@/components/ImagePicker';
 import toast from 'react-hot-toast';
 import { Link, useLocation, useSearchParams, useNavigate } from 'react-router-dom';
+import LoadingOverlay from '@/components/LoadingOverlay';
 
 type Opportunity = { id:string, code?:string, name?:string, slug?:string, client_id?:string, created_at?:string, date_start?:string, date_end?:string, is_bidding?:boolean, project_division_ids?:string[] };
 type ClientFile = { id:string, file_object_id:string, is_image?:boolean, content_type?:string };
 
 export default function Opportunities(){
   const location = useLocation();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const divisionId = searchParams.get('division_id') || '';
-  const [q, setQ] = useState('');
+  const statusId = searchParams.get('status') || '';
+  const queryParam = searchParams.get('q') || '';
+  const clientIdParam = searchParams.get('client_id') || '';
+  const dateStartParam = searchParams.get('date_start') || '';
+  const dateEndParam = searchParams.get('date_end') || '';
+  
+  const [q, setQ] = useState(queryParam);
+  const [selectedDivision, setSelectedDivision] = useState(divisionId);
+  const [selectedStatus, setSelectedStatus] = useState(statusId);
+  const [selectedClient, setSelectedClient] = useState(clientIdParam);
+  const [dateStart, setDateStart] = useState(dateStartParam);
+  const [dateEnd, setDateEnd] = useState(dateEndParam);
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  
+  // Sync URL params with state when URL changes (e.g., from dashboard navigation)
+  useEffect(() => {
+    const urlDivision = searchParams.get('division_id') || '';
+    const urlStatus = searchParams.get('status') || '';
+    const urlQ = searchParams.get('q') || '';
+    const urlClient = searchParams.get('client_id') || '';
+    const urlDateStart = searchParams.get('date_start') || '';
+    const urlDateEnd = searchParams.get('date_end') || '';
+    
+    if (urlDivision !== selectedDivision) setSelectedDivision(urlDivision);
+    if (urlStatus !== selectedStatus) setSelectedStatus(urlStatus);
+    if (urlQ !== q) setQ(urlQ);
+    if (urlClient !== selectedClient) setSelectedClient(urlClient);
+    if (urlDateStart !== dateStart) setDateStart(urlDateStart);
+    if (urlDateEnd !== dateEnd) setDateEnd(urlDateEnd);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
+  
   const qs = useMemo(()=> {
     const params = new URLSearchParams();
     if (q) params.set('q', q);
-    if (divisionId) params.set('division_id', divisionId);
+    if (selectedDivision) params.set('division_id', selectedDivision);
+    if (selectedStatus) params.set('status', selectedStatus);
+    if (selectedClient) params.set('client_id', selectedClient);
+    if (dateStart) params.set('date_start', dateStart);
+    if (dateEnd) params.set('date_end', dateEnd);
     return params.toString() ? '?' + params.toString() : '';
-  }, [q, divisionId]);
+  }, [q, selectedDivision, selectedStatus, selectedClient, dateStart, dateEnd]);
+  
   const { data, isLoading, refetch } = useQuery({ 
     queryKey:['opportunities', qs], 
-    queryFn: ()=>divisionId 
-      ? api<Opportunity[]>('GET', `/projects/business/opportunities${qs}`)
-      : api<Opportunity[]>('GET', `/projects?is_bidding=true${qs}`)
+    queryFn: ()=> api<Opportunity[]>('GET', `/projects/business/opportunities${qs}`)
   });
-  const { data: projectDivisions } = useQuery({ 
+  
+  // Load project divisions in parallel
+  const { data: projectDivisions, isLoading: divisionsLoading } = useQuery({ 
     queryKey:['project-divisions'], 
     queryFn: ()=> api<any[]>('GET','/settings/project-divisions'), 
-    staleTime: 300_000,
-    enabled: !!divisionId
+    staleTime: 300_000
   });
+  
+  // Show loading until both opportunities and divisions are loaded
+  const isInitialLoading = (isLoading && !data) || (divisionsLoading && !projectDivisions);
+  
+  const { data: settings } = useQuery({ 
+    queryKey:['settings'], 
+    queryFn: ()=> api<any>('GET','/settings'), 
+    staleTime: 300_000
+  });
+  
+  // Get clients for filter
+  const { data: clientsData } = useQuery({ 
+    queryKey:['clients-for-filter'], 
+    queryFn: ()=> api<any>('GET','/clients?limit=500'), 
+    staleTime: 300_000
+  });
+  
+  const projectStatuses = settings?.project_statuses || [];
+  const clients = clientsData?.items || clientsData || [];
   const arr = data||[];
   const [pickerOpen, setPickerOpen] = useState<{ open:boolean, clientId?:string, projectId?:string }|null>(null);
-  
-  // Get division name from ID
-  const divisionName = useMemo(() => {
-    if (!divisionId || !projectDivisions) return divisionId;
-    for (const div of (projectDivisions || [])) {
-      if (String(div.id) === String(divisionId)) {
-        return div.label;
-      }
-      for (const sub of (div.subdivisions || [])) {
-        if (String(sub.id) === String(divisionId)) {
-          return `${div.label} - ${sub.label}`;
-        }
-      }
-    }
-    return divisionId;
-  }, [divisionId, projectDivisions]);
 
   return (
     <div>
@@ -56,47 +95,161 @@ export default function Opportunities(){
         <div className="text-2xl font-extrabold">Opportunities</div>
         <div className="text-sm opacity-90">Create, edit and track bids and quotes.</div>
       </div>
-      <div className="mb-3 rounded-xl border bg-white p-3">
-        <div className="flex items-end gap-2 mb-2">
-          <div className="flex-1 max-w-[420px]">
-            <label className="text-xs text-gray-600">Search</label>
-            <input 
-              className="w-full border rounded px-3 py-2" 
-              placeholder="code/name" 
-              value={q} 
-              onChange={e=>setQ(e.target.value)} 
-              onKeyDown={e=>{ if(e.key==='Enter') refetch(); }} 
-            />
+      {/* Advanced Search Panel */}
+      <div className="mb-3 rounded-xl border bg-white shadow-sm overflow-hidden">
+        {/* Main Search Bar */}
+        <div className="p-4 bg-gradient-to-r from-gray-50 to-white border-b">
+          <div className="flex items-center gap-3">
+            <div className="flex-1">
+              <label className="block text-xs font-medium text-gray-700 mb-1.5">Search Opportunities</label>
+              <div className="relative">
+                <input 
+                  className="w-full border border-gray-300 rounded-lg px-4 py-2.5 pl-10 focus:outline-none focus:ring-2 focus:ring-brand-red focus:border-transparent text-gray-900" 
+                  placeholder="Search by opportunity name, code, or client name..." 
+                  value={q} 
+                  onChange={e=>setQ(e.target.value)} 
+                  onKeyDown={e=>{ if(e.key==='Enter') refetch(); }} 
+                />
+                <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+              </div>
+            </div>
+            <div className="flex items-end gap-2 pt-6">
+              <button 
+                onClick={()=>setShowAdvanced(!showAdvanced)}
+                className="px-4 py-2.5 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors flex items-center gap-2 text-sm font-medium"
+              >
+                <svg className={`w-4 h-4 transition-transform ${showAdvanced ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+                Advanced Filters
+              </button>
+              <Link to="/projects/new?is_bidding=true" state={{ backgroundLocation: location }} className="px-4 py-2.5 rounded-lg bg-brand-red text-white hover:bg-[#6d0d0d] transition-colors font-medium inline-block">
+                + New Opportunity
+              </Link>
+            </div>
           </div>
-          <button onClick={()=>refetch()} className="px-3 py-2 rounded bg-brand-red text-white">Apply</button>
-          <Link to="/projects/new?is_bidding=true" state={{ backgroundLocation: location }} className="px-3 py-2 rounded bg-black text-white">New Opportunity</Link>
         </div>
-        {divisionId && (
-          <div className="flex items-center gap-2 text-sm">
-            <span className="text-gray-600">Filtered by division:</span>
-            <span className="px-2 py-1 bg-[#7f1010]/10 text-[#7f1010] rounded border border-[#7f1010]/20 font-medium">
-              {divisionName}
-            </span>
-            <Link 
-              to="/opportunities" 
-              className="text-xs text-gray-500 hover:text-gray-700 underline"
-            >
-              Clear filter
-            </Link>
+
+        {/* Quick Filters Row */}
+        <div className="p-4 border-b bg-gray-50/50">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1.5">Division</label>
+              <select 
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-red focus:border-transparent bg-white"
+                value={selectedDivision}
+                onChange={e=>setSelectedDivision(e.target.value)}
+              >
+                <option value="">All Divisions</option>
+                {projectDivisions?.map((div: any) => (
+                  <optgroup key={div.id} label={div.label}>
+                    <option value={div.id}>{div.label}</option>
+                    {div.subdivisions?.map((sub: any) => (
+                      <option key={sub.id} value={sub.id}>{sub.label}</option>
+                    ))}
+                  </optgroup>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1.5">Status</label>
+              <select 
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-red focus:border-transparent bg-white"
+                value={selectedStatus}
+                onChange={e=>setSelectedStatus(e.target.value)}
+              >
+                <option value="">All Statuses</option>
+                {projectStatuses.map((status: any) => (
+                  <option key={status.id} value={status.id}>{status.label}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+        </div>
+
+        {/* Advanced Filters (Collapsible) */}
+        {showAdvanced && (
+          <div className="p-4 bg-gray-50 border-t animate-in slide-in-from-top duration-200">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1.5">Client</label>
+                <select 
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-red focus:border-transparent bg-white"
+                  value={selectedClient}
+                  onChange={e=>setSelectedClient(e.target.value)}
+                >
+                  <option value="">All Clients</option>
+                  {clients.map((client: any) => (
+                    <option key={client.id} value={client.id}>
+                      {client.display_name || client.name || client.code || client.id}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1.5">Start Date (From)</label>
+                <input 
+                  type="date"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-red focus:border-transparent bg-white" 
+                  value={dateStart} 
+                  onChange={e=>setDateStart(e.target.value)} 
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1.5">End Date (To)</label>
+                <input 
+                  type="date"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-red focus:border-transparent bg-white" 
+                  value={dateEnd} 
+                  onChange={e=>setDateEnd(e.target.value)} 
+                />
+              </div>
+            </div>
           </div>
         )}
+
+        {/* Action Buttons */}
+        <div className="p-4 bg-white border-t flex items-center justify-between">
+          <div className="text-sm text-gray-600">
+            {arr.length > 0 && (
+              <span>Found {arr.length} opportunit{arr.length !== 1 ? 'ies' : 'y'}</span>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            <button 
+              onClick={()=>{
+                const params = new URLSearchParams();
+                if (q) params.set('q', q);
+                if (selectedDivision) params.set('division_id', selectedDivision);
+                if (selectedStatus) params.set('status', selectedStatus);
+                if (selectedClient) params.set('client_id', selectedClient);
+                if (dateStart) params.set('date_start', dateStart);
+                if (dateEnd) params.set('date_end', dateEnd);
+                setSearchParams(params);
+                refetch();
+              }} 
+              className="px-4 py-2 rounded-lg bg-brand-red text-white hover:bg-[#6d0d0d] transition-colors font-medium flex items-center gap-2"
+            >
+              Apply Filters
+            </button>
+          </div>
+        </div>
       </div>
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {isLoading? (
-          <>
-            {[1, 2, 3, 4, 5, 6].map(i => (
-              <div key={i} className="h-64 bg-gray-100 animate-pulse rounded-xl" />
-            ))}
-          </>
-        ) : arr.map(p => (
-          <OpportunityListCard key={p.id} opportunity={p} />
-        ))}
-      </div>
+      
+      <LoadingOverlay isLoading={isInitialLoading} text="Loading opportunities...">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {arr.map(p => (
+            <OpportunityListCard key={p.id} opportunity={p} />
+          ))}
+        </div>
+        {!isInitialLoading && arr.length === 0 && (
+          <div className="p-8 text-center text-gray-500 rounded-xl border bg-white">
+            No opportunities found matching your criteria.
+          </div>
+        )}
+      </LoadingOverlay>
       {pickerOpen?.open && (
         <ImagePicker isOpen={true} onClose={()=>setPickerOpen(null)} clientId={String(pickerOpen?.clientId||'')} targetWidth={800} targetHeight={300} allowEdit={true} onConfirm={async(blob)=>{
           try{

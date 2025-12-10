@@ -101,6 +101,9 @@ export default function ProjectDetail(){
   const [auditLogSection, setAuditLogSection] = useState<'timesheet' | 'reports' | 'schedule' | 'files' | 'proposal' | 'estimate'>('timesheet');
   const [editStatusModal, setEditStatusModal] = useState(false);
   const [editProgressModal, setEditProgressModal] = useState(false);
+  const [editProjectNameModal, setEditProjectNameModal] = useState(false);
+  const [editSiteModal, setEditSiteModal] = useState(false);
+  const [editEstimatorModal, setEditEstimatorModal] = useState(false);
   useEffect(()=>{
     (async()=>{
       try{
@@ -229,10 +232,34 @@ export default function ProjectDetail(){
               
               {/* Middle Section - General Information */}
               <div className="flex-1 min-w-0">
-                <h3 className="font-semibold text-lg mb-4">General Information</h3>
+                <div className="mb-4">
+                  <h3 className="font-semibold text-lg mb-2">General Information</h3>
+                  {proj?.client_id && (
+                    <div className="text-sm">
+                      <span className="text-gray-600">Customer: </span>
+                      <Link 
+                        to={`/customers/${encodeURIComponent(String(proj.client_id))}`}
+                        className="text-[#7f1010] hover:text-[#a31414] hover:underline font-medium"
+                      >
+                        {proj?.client_display_name || proj?.client_name || 'View Customer'}
+                      </Link>
+                    </div>
+                  )}
+                </div>
                 <div className="grid grid-cols-2 gap-4 mb-4">
                   <div>
-                    <label className="text-xs text-gray-600 block mb-1">Project Name</label>
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <label className="text-xs text-gray-600 block">Project Name</label>
+                      <button
+                        onClick={() => setEditProjectNameModal(true)}
+                        className="text-gray-400 hover:text-[#7f1010] transition-colors"
+                        title="Edit Project Name"
+                      >
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                        </svg>
+                      </button>
+                    </div>
                     <div className="text-sm font-medium break-words">{proj?.name||'—'}</div>
                   </div>
                   <div>
@@ -240,15 +267,62 @@ export default function ProjectDetail(){
                     <div className="text-sm font-medium">{proj?.code||'—'}</div>
                   </div>
                   <div className="col-span-2">
-                    <label className="text-xs text-gray-600 block mb-1">Address</label>
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <label className="text-xs text-gray-600 block">Site</label>
+                      <button
+                        onClick={() => setEditSiteModal(true)}
+                        className="text-gray-400 hover:text-[#7f1010] transition-colors"
+                        title="Edit Site"
+                      >
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                        </svg>
+                      </button>
+                    </div>
                     <div className="text-sm font-medium">
                       {(() => {
+                        const siteName = proj?.site_name;
+                        const addressLine1 = proj?.site_address_line1 || proj?.address;
+                        const addressLine2 = proj?.site_address_line2;
                         const city = proj?.address_city||proj?.site_city;
                         const province = proj?.address_province||proj?.site_province;
                         const postal = proj?.address_postal_code||proj?.site_postal_code;
                         const country = proj?.address_country||proj?.site_country;
-                        const parts = [city, province, postal, country].filter(Boolean);
-                        return parts.length > 0 ? parts.join(', ') : '—';
+                        
+                        // Build full address for tooltip
+                        const addressParts = [];
+                        if (addressLine1) addressParts.push(addressLine1);
+                        if (addressLine2) addressParts.push(addressLine2);
+                        if (city) addressParts.push(city);
+                        if (province) addressParts.push(province);
+                        if (postal) addressParts.push(postal);
+                        if (country) addressParts.push(country);
+                        const fullAddress = addressParts.length > 0 ? addressParts.join(', ') : null;
+                        
+                        // Display name (just site name or fallback)
+                        const displayName = siteName || (city && province ? `${city}, ${province}` : city || province || '—');
+                        
+                        // If we have a full address, show tooltip on hover
+                        if (fullAddress && displayName !== '—') {
+                          return (
+                            <div className="relative group inline-block">
+                              <span className="cursor-help underline decoration-dotted decoration-gray-400 hover:decoration-gray-600 transition-colors">
+                                {displayName}
+                              </span>
+                              {/* Tooltip overlay */}
+                              <div className="absolute left-0 bottom-full mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg shadow-xl whitespace-normal max-w-xs opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 pointer-events-none z-50">
+                                {siteName && (
+                                  <div className="font-semibold mb-1.5 text-white">{siteName}</div>
+                                )}
+                                <div className="text-gray-200 leading-relaxed">{fullAddress}</div>
+                                {/* Arrow */}
+                                <div className="absolute -bottom-1 left-4 w-2 h-2 bg-gray-900 rotate-45"></div>
+                              </div>
+                            </div>
+                          );
+                        }
+                        
+                        return displayName;
                       })()}
                     </div>
                   </div>
@@ -257,14 +331,14 @@ export default function ProjectDetail(){
                 {/* Progress and Status moved here */}
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-1.5 mb-2">
                       <label className="text-xs text-gray-600 block">Status</label>
                       <button
                         onClick={() => setEditStatusModal(true)}
                         className="text-gray-400 hover:text-[#7f1010] transition-colors"
                         title="Edit Status"
                       >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                         </svg>
                       </button>
@@ -272,14 +346,14 @@ export default function ProjectDetail(){
                     <span className="px-3 py-1.5 rounded text-sm font-medium inline-block" style={{ backgroundColor: statusColor, color: '#000' }}>{statusLabel||'—'}</span>
                   </div>
                   <div>
-                    <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-1.5 mb-2">
                       <label className="text-xs text-gray-600 block">Progress</label>
                       <button
                         onClick={() => setEditProgressModal(true)}
                         className="text-gray-400 hover:text-[#7f1010] transition-colors"
                         title="Edit Progress"
                       >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                         </svg>
                       </button>
@@ -297,7 +371,18 @@ export default function ProjectDetail(){
               {/* Right Section - Estimator, On-site Leads, ETA */}
               <div className="w-80 flex-shrink-0">
                 <div className="mb-6">
-                  <label className="text-xs text-gray-600 block mb-2">Estimator</label>
+                  <div className="flex items-center gap-1.5 mb-2">
+                    <label className="text-xs text-gray-600 block">Estimator</label>
+                    <button
+                      onClick={() => setEditEstimatorModal(true)}
+                      className="text-gray-400 hover:text-[#7f1010] transition-colors"
+                      title="Edit Estimator"
+                    >
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                      </svg>
+                    </button>
+                  </div>
                   {estimator ? (
                     <div className="flex items-center gap-3">
                       <div className="w-10 h-10 rounded-full bg-indigo-600 flex items-center justify-center text-white font-semibold">
@@ -680,6 +765,46 @@ export default function ProjectDetail(){
           }}
         />
       )}
+
+      {/* Edit Project Name Modal */}
+      {editProjectNameModal && (
+        <EditProjectNameModal
+          projectId={String(id)}
+          currentName={proj?.name || ''}
+          onClose={() => setEditProjectNameModal(false)}
+          onSave={async () => {
+            await queryClient.invalidateQueries({ queryKey: ['project', id] });
+            setEditProjectNameModal(false);
+          }}
+        />
+      )}
+
+      {/* Edit Site Modal */}
+      {editSiteModal && (
+        <EditSiteModal
+          projectId={String(id)}
+          project={proj}
+          onClose={() => setEditSiteModal(false)}
+          onSave={async () => {
+            await queryClient.invalidateQueries({ queryKey: ['project', id] });
+            setEditSiteModal(false);
+          }}
+        />
+      )}
+
+      {/* Edit Estimator Modal */}
+      {editEstimatorModal && (
+        <EditEstimatorModal
+          projectId={String(id)}
+          currentEstimatorId={proj?.estimator_id || ''}
+          employees={employees||[]}
+          onClose={() => setEditEstimatorModal(false)}
+          onSave={async () => {
+            await queryClient.invalidateQueries({ queryKey: ['project', id] });
+            setEditEstimatorModal(false);
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -714,28 +839,82 @@ function ReportsTabEnhanced({ projectId, items, onRefresh }:{ projectId:string, 
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [selectedReportId, setSelectedReportId] = useState<string | null>(null);
   const [previewAttachment, setPreviewAttachment] = useState<{file_object_id: string, original_name: string, content_type: string}|null>(null);
+  const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string>(''); // Empty string = all categories
   const { data:me } = useQuery({ queryKey:['me'], queryFn: ()=>api<any>('GET','/auth/me') });
   const { data:settings } = useQuery({ queryKey:['settings'], queryFn: ()=>api<any>('GET','/settings') });
   const { data:employees } = useQuery({ queryKey:['employees'], queryFn: ()=>api<any>('GET','/employees') });
   
   const reportCategories = (settings?.report_categories || []) as any[];
 
+  // Separate categories into commercial and production based on meta.group
+  const commercialCategories = useMemo(() => {
+    return reportCategories
+      .filter(cat => {
+        const meta = cat.meta || {};
+        return meta.group === 'commercial';
+      })
+      .sort((a, b) => (a.sort_index || 0) - (b.sort_index || 0));
+  }, [reportCategories]);
+  
+  const productionCategories = useMemo(() => {
+    return reportCategories
+      .filter(cat => {
+        const meta = cat.meta || {};
+        return meta.group === 'production';
+      })
+      .sort((a, b) => (a.sort_index || 0) - (b.sort_index || 0));
+  }, [reportCategories]);
+
+  // Calculate counts per category
+  const categoryCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    // Count "All" (total reports)
+    counts[''] = items.length;
+    // Count by category
+    items.forEach(report => {
+      const catId = report.category_id || '';
+      counts[catId] = (counts[catId] || 0) + 1;
+    });
+    return counts;
+  }, [items]);
+
+  // Filter and sort reports
   const sortedReports = useMemo(() => {
-    return [...items].sort((a, b) => {
+    let filtered = [...items];
+    
+    // Apply category filter
+    if (selectedCategoryFilter) {
+      filtered = filtered.filter(r => r.category_id === selectedCategoryFilter);
+    }
+    
+    // Sort by date (newest first)
+    return filtered.sort((a, b) => {
       const dateA = a.created_at ? new Date(a.created_at).getTime() : 0;
       const dateB = b.created_at ? new Date(b.created_at).getTime() : 0;
       return dateB - dateA;
     });
-  }, [items]);
+  }, [items, selectedCategoryFilter]);
 
   const selectedReport = useMemo(() => {
     return selectedReportId ? sortedReports.find(r => r.id === selectedReportId) : null;
   }, [selectedReportId, sortedReports]);
 
   // Auto-select first report if none selected and reports exist
+  // Also reset selection if current selected report is not in filtered list
   useEffect(() => {
-    if (!selectedReportId && sortedReports.length > 0) {
-      setSelectedReportId(sortedReports[0].id);
+    if (sortedReports.length > 0) {
+      if (!selectedReportId) {
+        setSelectedReportId(sortedReports[0].id);
+      } else {
+        // Check if selected report is still in the filtered list
+        const isSelectedReportInList = sortedReports.some(r => r.id === selectedReportId);
+        if (!isSelectedReportInList) {
+          setSelectedReportId(sortedReports[0].id);
+        }
+      }
+    } else {
+      // No reports in filtered list, clear selection
+      setSelectedReportId(null);
     }
   }, [sortedReports, selectedReportId]);
 
@@ -806,13 +985,47 @@ function ReportsTabEnhanced({ projectId, items, onRefresh }:{ projectId:string, 
               <p className="text-xs text-gray-500">Daily updates and site events</p>
             </div>
           </div>
-          <button
-            onClick={() => setShowCreateModal(true)}
-            className="px-4 py-2 rounded bg-brand-red hover:bg-red-700 text-white text-sm font-medium flex items-center gap-2"
-          >
-            <span>+</span>
-            <span>New Report</span>
-          </button>
+          <div className="flex items-center gap-2">
+            {/* Category Filter Dropdown */}
+            <select
+              value={selectedCategoryFilter}
+              onChange={(e) => setSelectedCategoryFilter(e.target.value)}
+              className="px-3 py-2 rounded border border-gray-300 bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-brand-red focus:border-transparent min-w-[200px]"
+            >
+              <option value="">All Reports ({categoryCounts[''] || 0})</option>
+              {commercialCategories.length > 0 && (
+                <optgroup label="📌 Commercial">
+                  {commercialCategories.map(cat => {
+                    const count = categoryCounts[cat.value || ''] || 0;
+                    return (
+                      <option key={cat.id || cat.value || cat.label} value={cat.value || cat.label}>
+                        {cat.label} ({count})
+                      </option>
+                    );
+                  })}
+                </optgroup>
+              )}
+              {productionCategories.length > 0 && (
+                <optgroup label="📌 Production / Execution">
+                  {productionCategories.map(cat => {
+                    const count = categoryCounts[cat.value || ''] || 0;
+                    return (
+                      <option key={cat.id || cat.value || cat.label} value={cat.value || cat.label}>
+                        {cat.label} ({count})
+                      </option>
+                    );
+                  })}
+                </optgroup>
+              )}
+            </select>
+            <button
+              onClick={() => setShowCreateModal(true)}
+              className="px-4 py-2 rounded bg-brand-red hover:bg-red-700 text-white text-sm font-medium flex items-center gap-2"
+            >
+              <span>+</span>
+              <span>New Report</span>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -1034,34 +1247,23 @@ function CreateReportModal({ projectId, reportCategories, onClose, onSuccess }: 
   const [file, setFile] = useState<File|null>(null);
   const { data:project } = useQuery({ queryKey:['project', projectId], queryFn: ()=>api<any>('GET', `/projects/${projectId}`) });
   
-  // Production categories (only for projects, not for opportunities)
-  // Keywords to identify production/execution categories
-  const productionCategoryKeywords = [
-    'daily update',
-    'site event',
-    'accident', 'safety incident',
-    'positive event',
-    'deficiency found',
-    'work completed',
-    'weather impact'
-  ];
-  const isProductionCategory = (catLabel: string): boolean => {
-    const labelLower = catLabel.toLowerCase().trim();
-    // Check if category matches or contains production keywords
-    return productionCategoryKeywords.some(keyword => {
-      const keywordLower = keyword.toLowerCase();
-      // Exact match or contains the keyword
-      return labelLower === keywordLower || labelLower.includes(keywordLower);
-    });
-  };
-  
-  // Separate categories into commercial and production
+  // Separate categories into commercial and production based on meta.group
   const commercialCategories = useMemo(() => {
-    return reportCategories.filter(cat => !isProductionCategory(cat.label || ''));
+    return reportCategories
+      .filter(cat => {
+        const meta = cat.meta || {};
+        return meta.group === 'commercial';
+      })
+      .sort((a, b) => (a.sort_index || 0) - (b.sort_index || 0));
   }, [reportCategories]);
   
   const productionCategories = useMemo(() => {
-    return reportCategories.filter(cat => isProductionCategory(cat.label || ''));
+    return reportCategories
+      .filter(cat => {
+        const meta = cat.meta || {};
+        return meta.group === 'production';
+      })
+      .sort((a, b) => (a.sort_index || 0) - (b.sort_index || 0));
   }, [reportCategories]);
   
   // If it's an opportunity (is_bidding), show only commercial categories
@@ -4098,6 +4300,415 @@ function EditStatusModal({ projectId, currentStatus, currentStatusLabel, setting
   );
 }
 
+// Edit Project Name Modal Component
+function EditProjectNameModal({ projectId, currentName, onClose, onSave }: {
+  projectId: string;
+  currentName: string;
+  onClose: () => void;
+  onSave: () => Promise<void>;
+}) {
+  const [projectName, setProjectName] = useState(currentName);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    setProjectName(currentName);
+  }, [currentName]);
+
+  const handleSave = async () => {
+    if (!projectName.trim()) {
+      toast.error('Project name cannot be empty');
+      return;
+    }
+
+    if (projectName.trim() === currentName) {
+      onClose();
+      return;
+    }
+
+    try {
+      setSaving(true);
+      await api('PATCH', `/projects/${projectId}`, {
+        name: projectName.trim()
+      });
+      toast.success('Project name updated');
+      await onSave();
+    } catch (e: any) {
+      toast.error(e?.response?.data?.detail || 'Failed to update project name');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-xl w-full max-w-md shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="p-4 border-b flex items-center justify-between">
+          <h3 className="text-lg font-semibold">Edit Project Name</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+        <div className="p-4 space-y-4">
+          <div>
+            <label className="text-sm font-medium text-gray-700 mb-2 block">Project Name</label>
+            <input
+              type="text"
+              value={projectName}
+              onChange={(e) => setProjectName(e.target.value)}
+              className="w-full border rounded px-3 py-2"
+              placeholder="Enter project name"
+              autoFocus
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  handleSave();
+                } else if (e.key === 'Escape') {
+                  onClose();
+                }
+              }}
+            />
+          </div>
+
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+            <div className="flex items-start gap-2">
+              <svg className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <div className="text-sm text-blue-800">
+                <div className="font-medium mb-1">Important Information</div>
+                <ul className="list-disc list-inside space-y-1 text-xs">
+                  <li>Changing the project name will automatically update the associated folder name in the file system.</li>
+                  <li>The project code (e.g., MK-00001/00001-2025) cannot be changed and will remain the same.</li>
+                  <li>This change will be reflected across all project views and reports.</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex gap-2 pt-2">
+            <button
+              onClick={handleSave}
+              disabled={saving || !projectName.trim()}
+              className="flex-1 px-4 py-2 rounded bg-[#7f1010] text-white disabled:opacity-60 font-medium"
+            >
+              {saving ? 'Saving...' : 'Save Changes'}
+            </button>
+            <button
+              onClick={onClose}
+              disabled={saving}
+              className="px-4 py-2 rounded border bg-white hover:bg-gray-50 text-gray-700 font-medium disabled:opacity-50"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Edit Site Modal Component
+function EditSiteModal({ projectId, project, onClose, onSave }: {
+  projectId: string;
+  project: any;
+  onClose: () => void;
+  onSave: () => Promise<void>;
+}) {
+  const [siteId, setSiteId] = useState(project?.site_id || '');
+  const [saving, setSaving] = useState(false);
+  const [sites, setSites] = useState<any[]>([]);
+  const [loadingSites, setLoadingSites] = useState(false);
+
+  useEffect(() => {
+    setSiteId(project?.site_id || '');
+  }, [project?.site_id]);
+
+  // Load sites when modal opens
+  useEffect(() => {
+    if (project?.client_id) {
+      setLoadingSites(true);
+      api<any[]>('GET', `/clients/${encodeURIComponent(String(project.client_id))}/sites`)
+        .then(data => {
+          setSites(data || []);
+        })
+        .catch(() => {
+          setSites([]);
+        })
+        .finally(() => {
+          setLoadingSites(false);
+        });
+    }
+  }, [project?.client_id]);
+
+  const selectedSite = sites.find(s => String(s.id) === String(siteId));
+  const currentSite = sites.find(s => String(s.id) === String(project?.site_id));
+
+  const handleSave = async () => {
+    if (siteId === (project?.site_id || '')) {
+      onClose();
+      return;
+    }
+
+    try {
+      setSaving(true);
+      await api('PATCH', `/projects/${projectId}`, {
+        site_id: siteId || null
+      });
+      toast.success('Project site updated');
+      await onSave();
+    } catch (e: any) {
+      toast.error(e?.response?.data?.detail || 'Failed to update project site');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-xl w-full max-w-lg shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="p-4 border-b flex items-center justify-between">
+          <h3 className="text-lg font-semibold">Edit Project Site</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+        <div className="p-4 space-y-4">
+          <div>
+            <label className="text-sm font-medium text-gray-700 mb-2 block">Select Site</label>
+            {loadingSites ? (
+              <div className="text-sm text-gray-500 py-2">Loading sites...</div>
+            ) : (
+              <select
+                value={siteId}
+                onChange={(e) => setSiteId(e.target.value)}
+                className="w-full border rounded px-3 py-2"
+              >
+                <option value="">No Site</option>
+                {sites.map((site: any) => (
+                  <option key={site.id} value={site.id}>
+                    {site.site_name || site.site_address_line1 || site.id}
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
+
+          {selectedSite && (
+            <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+              <div className="text-sm font-medium text-gray-900 mb-3">Site Information</div>
+              <div className="space-y-2 text-sm">
+                {selectedSite.site_name && (
+                  <div>
+                    <span className="text-gray-600 font-medium">Name:</span>
+                    <span className="ml-2 text-gray-900">{selectedSite.site_name}</span>
+                  </div>
+                )}
+                {selectedSite.site_address_line1 && (
+                  <div>
+                    <span className="text-gray-600 font-medium">Address:</span>
+                    <span className="ml-2 text-gray-900">{selectedSite.site_address_line1}</span>
+                    {selectedSite.site_address_line2 && (
+                      <div className="ml-20 text-gray-700">{selectedSite.site_address_line2}</div>
+                    )}
+                  </div>
+                )}
+                {(selectedSite.site_city || selectedSite.site_province || selectedSite.site_postal_code) && (
+                  <div>
+                    <span className="text-gray-600 font-medium">Location:</span>
+                    <span className="ml-2 text-gray-900">
+                      {[selectedSite.site_city, selectedSite.site_province, selectedSite.site_postal_code].filter(Boolean).join(', ')}
+                    </span>
+                  </div>
+                )}
+                {selectedSite.site_country && (
+                  <div>
+                    <span className="text-gray-600 font-medium">Country:</span>
+                    <span className="ml-2 text-gray-900">{selectedSite.site_country}</span>
+                  </div>
+                )}
+                {selectedSite.site_notes && (
+                  <div>
+                    <span className="text-gray-600 font-medium">Notes:</span>
+                    <div className="ml-2 text-gray-900 mt-1">{selectedSite.site_notes}</div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {currentSite && siteId !== (project?.site_id || '') && (
+            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+              <div className="flex items-start gap-2">
+                <svg className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+                <div className="text-sm text-yellow-800">
+                  <div className="font-medium mb-1">Changing Site</div>
+                  <div className="text-xs">You are changing from <strong>{currentSite.site_name || currentSite.site_address_line1 || 'current site'}</strong> to <strong>{selectedSite?.site_name || selectedSite?.site_address_line1 || 'new site'}</strong>. This will update the project's location information.</div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div className="flex gap-2 pt-2">
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className="flex-1 px-4 py-2 rounded bg-[#7f1010] text-white disabled:opacity-60 font-medium"
+            >
+              {saving ? 'Saving...' : 'Save Changes'}
+            </button>
+            <button
+              onClick={onClose}
+              disabled={saving}
+              className="px-4 py-2 rounded border bg-white hover:bg-gray-50 text-gray-700 font-medium disabled:opacity-50"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Edit Estimator Modal Component
+function EditEstimatorModal({ projectId, currentEstimatorId, employees, onClose, onSave }: {
+  projectId: string;
+  currentEstimatorId: string;
+  employees: any[];
+  onClose: () => void;
+  onSave: () => Promise<void>;
+}) {
+  const [estimatorId, setEstimatorId] = useState(currentEstimatorId);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    setEstimatorId(currentEstimatorId);
+  }, [currentEstimatorId]);
+
+  const selectedEstimator = employees.find((e: any) => String(e.id) === String(estimatorId));
+  const currentEstimator = employees.find((e: any) => String(e.id) === String(currentEstimatorId));
+
+  const handleSave = async () => {
+    if (estimatorId === currentEstimatorId) {
+      onClose();
+      return;
+    }
+
+    try {
+      setSaving(true);
+      await api('PATCH', `/projects/${projectId}`, {
+        estimator_id: estimatorId || null
+      });
+      toast.success('Project estimator updated');
+      await onSave();
+    } catch (e: any) {
+      toast.error(e?.response?.data?.detail || 'Failed to update project estimator');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-xl w-full max-w-md shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="p-4 border-b flex items-center justify-between">
+          <h3 className="text-lg font-semibold">Edit Project Estimator</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+        <div className="p-4 space-y-4">
+          <div>
+            <label className="text-sm font-medium text-gray-700 mb-2 block">Select Estimator</label>
+            <select
+              value={estimatorId}
+              onChange={(e) => setEstimatorId(e.target.value)}
+              className="w-full border rounded px-3 py-2"
+            >
+              <option value="">No Estimator</option>
+              {employees.map((emp: any) => (
+                <option key={emp.id} value={emp.id}>
+                  {emp.name || emp.username || emp.id}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {selectedEstimator && (
+            <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+              <div className="text-sm font-medium text-gray-900 mb-3">Estimator Information</div>
+              <div className="flex items-center gap-3 mb-3">
+                <div className="w-12 h-12 rounded-full bg-indigo-600 flex items-center justify-center text-white font-semibold text-lg">
+                  {(selectedEstimator.name||selectedEstimator.username||'E')[0].toUpperCase()}
+                </div>
+                <div>
+                  <div className="font-medium text-gray-900">{selectedEstimator.name || selectedEstimator.username || 'Unknown'}</div>
+                  {selectedEstimator.email && (
+                    <div className="text-sm text-gray-600">{selectedEstimator.email}</div>
+                  )}
+                  {selectedEstimator.phone && (
+                    <div className="text-sm text-gray-600">{selectedEstimator.phone}</div>
+                  )}
+                </div>
+              </div>
+              {selectedEstimator.roles && selectedEstimator.roles.length > 0 && (
+                <div className="mt-2">
+                  <span className="text-xs text-gray-600 font-medium">Roles:</span>
+                  <div className="flex flex-wrap gap-1 mt-1">
+                    {selectedEstimator.roles.map((role: string, idx: number) => (
+                      <span key={idx} className="px-2 py-0.5 bg-indigo-100 text-indigo-700 rounded text-xs">
+                        {role}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {currentEstimator && estimatorId !== currentEstimatorId && (
+            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+              <div className="flex items-start gap-2">
+                <svg className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+                <div className="text-sm text-yellow-800">
+                  <div className="font-medium mb-1">Changing Estimator</div>
+                  <div className="text-xs">You are changing from <strong>{currentEstimator.name || currentEstimator.username || 'current estimator'}</strong> to <strong>{selectedEstimator?.name || selectedEstimator?.username || 'new estimator'}</strong>. The new estimator will be responsible for project estimates and cost calculations.</div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div className="flex gap-2 pt-2">
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className="flex-1 px-4 py-2 rounded bg-[#7f1010] text-white disabled:opacity-60 font-medium"
+            >
+              {saving ? 'Saving...' : 'Save Changes'}
+            </button>
+            <button
+              onClick={onClose}
+              disabled={saving}
+              className="px-4 py-2 rounded border bg-white hover:bg-gray-50 text-gray-700 font-medium disabled:opacity-50"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // Edit Progress Modal Component
 function EditProgressModal({ projectId, currentProgress, onClose, onSave }: {
   projectId: string;
@@ -4373,32 +4984,41 @@ function EditDivisionsModal({ projectId, currentDivisions, projectDivisions, onC
 function ProjectGeneralInfoCard({ projectId, proj }:{ projectId:string, proj:any }){
   const queryClient = useQueryClient();
   const [description, setDescription] = useState<string>(proj?.description || '');
+  const [projectName, setProjectName] = useState<string>(proj?.name || '');
   const [saving, setSaving] = useState(false);
   const [editingDivisions, setEditingDivisions] = useState(false);
+  const [editingName, setEditingName] = useState(false);
   const [projectDivs, setProjectDivs] = useState<string[]>(Array.isArray(proj?.project_division_ids) ? proj.project_division_ids : []);
   const { data:projectDivisions } = useQuery({ queryKey:['project-divisions'], queryFn: ()=>api<any[]>('GET','/settings/project-divisions'), staleTime: 300_000 });
 
   useEffect(()=>{
     setDescription(proj?.description || '');
+    setProjectName(proj?.name || '');
     setProjectDivs(Array.isArray(proj?.project_division_ids) ? proj.project_division_ids : []);
-  }, [proj?.description, proj?.project_division_ids]);
+  }, [proj?.description, proj?.name, proj?.project_division_ids]);
 
   const handleSave = useCallback(async()=>{
     try{
       setSaving(true);
-      await api('PATCH', `/projects/${projectId}`, { 
+      const payload: any = { 
         description: description?.trim()? description : null,
         project_division_ids: projectDivs.length > 0 ? projectDivs : null
-      });
+      };
+      // Include name if it was edited
+      if (editingName && projectName.trim() !== (proj?.name || '')) {
+        payload.name = projectName.trim();
+      }
+      await api('PATCH', `/projects/${projectId}`, payload);
       toast.success('Saved');
       queryClient.invalidateQueries({ queryKey: ['project', projectId] });
       setEditingDivisions(false);
+      setEditingName(false);
     }catch(_e){
       toast.error('Failed to save');
     }finally{
       setSaving(false);
     }
-  }, [projectId, description, projectDivs, queryClient]);
+  }, [projectId, description, projectDivs, projectName, editingName, proj?.name, queryClient]);
 
   const city = proj?.address_city || proj?.site_city || '—';
   const province = proj?.address_province || proj?.site_province || proj?.site_state || '—';
@@ -4429,12 +5049,11 @@ function ProjectGeneralInfoCard({ projectId, proj }:{ projectId:string, proj:any
   }, [projectDivIds, projectDivisions]);
 
   const fields = useMemo(()=>[
-    { label: 'Project Name', value: proj?.name || proj?.site_name || '—' },
     { label: 'City', value: city },
     { label: 'Province / State', value: province },
     { label: 'Country', value: country },
     { label: 'Postal Code', value: postal },
-  ], [proj?.name, proj?.site_name, city, province, country, postal]);
+  ], [city, province, country, postal]);
 
   return (
     <div className="rounded-xl border bg-white p-4">
@@ -4463,6 +5082,57 @@ function ProjectGeneralInfoCard({ projectId, proj }:{ projectId:string, proj:any
         )}
       </div>
       <div className="space-y-4 text-sm">
+        {/* Project Name - Editable */}
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <label className="text-xs text-gray-600">Project Name</label>
+            {!editingName && (
+              <button
+                onClick={() => setEditingName(true)}
+                className="text-xs text-[#7f1010] hover:text-[#a31414] font-medium"
+              >
+                Edit
+              </button>
+            )}
+          </div>
+          {editingName ? (
+            <div className="space-y-2">
+              <input
+                type="text"
+                value={projectName}
+                onChange={e => setProjectName(e.target.value)}
+                className="w-full border rounded px-3 py-2 text-sm"
+                placeholder="Project name"
+                autoFocus
+              />
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleSave}
+                  disabled={saving || !projectName.trim()}
+                  className="px-3 py-1.5 rounded bg-brand-red text-white text-xs font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {saving ? 'Saving...' : 'Save'}
+                </button>
+                <button
+                  onClick={() => {
+                    setEditingName(false);
+                    setProjectName(proj?.name || '');
+                  }}
+                  disabled={saving}
+                  className="px-3 py-1.5 rounded bg-gray-100 text-gray-700 text-xs font-medium disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+              </div>
+              <div className="text-[11px] text-gray-500">
+                Note: Changing the project name will also update the associated folder name.
+              </div>
+            </div>
+          ) : (
+            <div className="mt-1 text-gray-800 font-medium">{proj?.name || proj?.site_name || '—'}</div>
+          )}
+        </div>
+        
         <div className="grid grid-cols-2 gap-3">
           {fields.map((item)=> (
             <div key={item.label}>

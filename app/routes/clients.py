@@ -97,37 +97,207 @@ def create_client(
         raise HTTPException(status_code=400, detail=f"Create failed: {e}")
 
 
-@router.get("", response_model=List[ClientResponse])
-def list_clients(city: Optional[str] = None, status: Optional[str] = None, type: Optional[str] = None, q: Optional[str] = None, db: Session = Depends(get_db), _=Depends(require_permissions("clients:read"))):
-    # Try normal query with is_system filter first
+@router.get("/locations")
+def get_client_locations(
+    db: Session = Depends(get_db),
+    _=Depends(require_permissions("clients:read"))
+):
+    """
+    Returns unique combinations of country, province, and city from clients.
+    Useful for building location filter dropdowns.
+    """
     try:
-        query = db.query(Client).filter(Client.is_system == False)
-        if city:
-            query = query.filter(Client.city == city)
-        if status:
-            query = query.filter(Client.status_id == status)
-        if type:
-            query = query.filter(Client.type_id == type)
-        if q:
-            query = query.filter((Client.name.ilike(f"%{q}%")) | (Client.display_name.ilike(f"%{q}%")))
-        return query.order_by(Client.created_at.desc()).limit(500).all()
+        # Query distinct country, province, city combinations
+        locations = db.query(
+            Client.country,
+            Client.province,
+            Client.city
+        ).filter(
+            Client.is_system == False,
+            Client.country.isnot(None),
+            Client.province.isnot(None),
+            Client.city.isnot(None)
+        ).distinct().order_by(
+            Client.country.asc(),
+            Client.province.asc(),
+            Client.city.asc()
+        ).all()
+        
+        # Organize by country -> province -> cities
+        result = {}
+        for country, province, city in locations:
+            if not country or not province or not city:
+                continue
+            if country not in result:
+                result[country] = {}
+            if province not in result[country]:
+                result[country][province] = []
+            if city not in result[country][province]:
+                result[country][province].append(city)
+        
+        # Sort cities within each province
+        for country in result:
+            for province in result[country]:
+                result[country][province].sort()
+        
+        return result
     except ProgrammingError as e:
-        # If is_system column doesn't exist, retry without that filter using defer
         error_msg = str(e.orig) if hasattr(e, 'orig') else str(e)
         if 'is_system' in error_msg and 'does not exist' in error_msg:
             db.rollback()
-            # Rebuild query without is_system filter, using defer to avoid loading the column
-            query = db.query(Client).options(defer(Client.is_system))
-            if city:
-                query = query.filter(Client.city == city)
-            if status:
-                query = query.filter(Client.status_id == status)
-            if type:
-                query = query.filter(Client.type_id == type)
-            if q:
-                query = query.filter((Client.name.ilike(f"%{q}%")) | (Client.display_name.ilike(f"%{q}%")))
-            return query.order_by(Client.created_at.desc()).limit(500).all()
-        raise
+            locations = db.query(
+                Client.country,
+                Client.province,
+                Client.city
+            ).options(defer(Client.is_system)).filter(
+                Client.country.isnot(None),
+                Client.province.isnot(None),
+                Client.city.isnot(None)
+            ).distinct().order_by(
+                Client.country.asc(),
+                Client.province.asc(),
+                Client.city.asc()
+            ).all()
+            
+            result = {}
+            for country, province, city in locations:
+                if not country or not province or not city:
+                    continue
+                if country not in result:
+                    result[country] = {}
+                if province not in result[country]:
+                    result[country][province] = []
+                if city not in result[country][province]:
+                    result[country][province].append(city)
+            
+            for country in result:
+                for province in result[country]:
+                    result[country][province].sort()
+            
+            return result
+        else:
+            raise
+
+
+@router.get("")
+def list_clients(
+    city: Optional[str] = None, 
+    status: Optional[str] = None, 
+    type: Optional[str] = None, 
+    q: Optional[str] = None,
+    page: int = 1,
+    limit: int = 10,
+    db: Session = Depends(get_db), 
+    _=Depends(require_permissions("clients:read"))
+):
+    # Validate pagination parameters
+    page = max(1, page)
+    limit = max(1, min(100, limit))  # Limit between 1 and 100
+    offset = (page - 1) * limit
+    
+    # Build base query
+    try:
+        base_query = db.query(Client).filter(Client.is_system == False)
+    except ProgrammingError as e:
+        error_msg = str(e.orig) if hasattr(e, 'orig') else str(e)
+        if 'is_system' in error_msg and 'does not exist' in error_msg:
+            db.rollback()
+            base_query = db.query(Client).options(defer(Client.is_system))
+        else:
+            raise
+    
+    # Apply filters
+    if city:
+        base_query = base_query.filter(Client.city == city)
+    if status:
+        base_query = base_query.filter(Client.status_id == status)
+    if type:
+        base_query = base_query.filter(Client.type_id == type)
+    if q:
+        base_query = base_query.filter((Client.name.ilike(f"%{q}%")) | (Client.display_name.ilike(f"%{q}%")))
+    
+    # Get total count
+    total = base_query.count()
+    
+    # Get paginated results
+    clients = base_query.order_by(Client.created_at.desc()).offset(offset).limit(limit).all()
+    
+    # Fetch logos for all clients in one efficient query
+    client_uuids = [c.id for c in clients]
+    logo_files = {}
+    if client_uuids:
+        # Find all client logos (category='client-logo-derived' and no site_id)
+        logo_rows = db.query(ClientFile).filter(
+            ClientFile.client_id.in_(client_uuids),
+            ClientFile.site_id.is_(None),
+            ClientFile.category.ilike('client-logo-derived')
+        ).all()
+        
+        # Build a map of client_id (UUID) -> logo file
+        for cf in logo_rows:
+            if cf.client_id not in logo_files:
+                logo_files[cf.client_id] = cf
+    
+    # Build response with logo URLs
+    items = []
+    for client in clients:
+        client_dict = {
+            "id": client.id,
+            "code": client.code,
+            "name": client.name,
+            "legal_name": client.legal_name,
+            "display_name": client.display_name,
+            "client_type": client.client_type,
+            "client_status": client.client_status,
+            "lead_source": client.lead_source,
+            "estimator_id": client.estimator_id,
+            "description": client.description,
+            "address_line1": client.address_line1,
+            "address_line2": client.address_line2,
+            "city": client.city,
+            "province": client.province,
+            "postal_code": client.postal_code,
+            "country": client.country,
+            "billing_address_line1": client.billing_address_line1,
+            "billing_address_line2": client.billing_address_line2,
+            "billing_city": client.billing_city,
+            "billing_province": client.billing_province,
+            "billing_postal_code": client.billing_postal_code,
+            "billing_country": client.billing_country,
+            "billing_same_as_address": client.billing_same_as_address,
+            "billing_email": client.billing_email,
+            "po_required": client.po_required,
+            "tax_number": client.tax_number,
+            "preferred_language": client.preferred_language,
+            "preferred_channels": client.preferred_channels,
+            "marketing_opt_in": client.marketing_opt_in,
+            "invoice_delivery_method": client.invoice_delivery_method,
+            "statement_delivery_method": client.statement_delivery_method,
+            "cc_emails_for_invoices": client.cc_emails_for_invoices,
+            "cc_emails_for_estimates": client.cc_emails_for_estimates,
+            "do_not_contact": client.do_not_contact,
+            "do_not_contact_reason": client.do_not_contact_reason,
+            "logo_url": None,
+        }
+        
+        # Add logo URL if found
+        if client.id in logo_files:
+            logo_file = logo_files[client.id]
+            timestamp = logo_file.uploaded_at.isoformat() if logo_file.uploaded_at else None
+            timestamp_param = f"&t={timestamp}" if timestamp else ""
+            client_dict["logo_url"] = f"/files/{logo_file.file_object_id}/thumbnail?w=96{timestamp_param}"
+        
+        items.append(client_dict)
+    
+    # Return paginated response
+    total_pages = (total + limit - 1) // limit if total > 0 else 1
+    return {
+        "items": items,
+        "total": total,
+        "page": page,
+        "limit": limit,
+        "total_pages": total_pages,
+    }
 
 
 # ===== File Categories (must be before /{client_id} route) =====
@@ -136,18 +306,24 @@ def list_file_categories():
     """
     Returns standard file categories that can be used for organizing files.
     These categories can be used for both client and project files.
+    Based on company standard folder structure.
     """
     return [
-        {"id": "general", "name": "General", "icon": "📁"},
-        {"id": "designs", "name": "Designs", "icon": "🎨"},
-        {"id": "prints", "name": "Prints", "icon": "🖨️"},
-        {"id": "photos", "name": "Photos", "icon": "📷"},
-        {"id": "documents", "name": "Documents", "icon": "📄"},
-        {"id": "contracts", "name": "Contracts", "icon": "📋"},
-        {"id": "invoices", "name": "Invoices", "icon": "🧾"},
-        {"id": "estimates", "name": "Estimates", "icon": "💰"},
+        {"id": "bid-documents", "name": "BidDocuments", "icon": "📁"},
+        {"id": "drawings", "name": "Drawings", "icon": "📐"},
+        {"id": "pictures", "name": "Pictures", "icon": "🖼️"},
+        {"id": "specs", "name": "Specs", "icon": "📋"},
+        {"id": "contract", "name": "Contract", "icon": "📄"},
+        {"id": "accounting", "name": "Accounting", "icon": "💰"},
+        {"id": "hse", "name": "Hse", "icon": "🛡️"},
+        {"id": "submittals", "name": "Submittals", "icon": "📤"},
+        {"id": "purchasing", "name": "Purchasing", "icon": "🛒"},
+        {"id": "changes", "name": "Changes", "icon": "🔄"},
+        {"id": "schedules", "name": "Schedules", "icon": "📅"},
         {"id": "reports", "name": "Reports", "icon": "📊"},
-        {"id": "plans", "name": "Plans", "icon": "📐"},
+        {"id": "sub-contractors", "name": "SubContractors", "icon": "👷"},
+        {"id": "closeout", "name": "Closeout", "icon": "✅"},
+        {"id": "photos", "name": "Photos", "icon": "📷"},
         {"id": "other", "name": "Other", "icon": "📦"},
     ]
 
@@ -587,18 +763,25 @@ def get_default_folder_structure():
     """
     Returns the default folder structure that can be created for projects or clients.
     Returns a list of folder names with their sort order.
+    Based on company standard folder structure.
     """
     return [
-        {"name": "Designs", "sort_index": 1},
-        {"name": "Impressões", "sort_index": 2},
-        {"name": "Fotos", "sort_index": 3},
-        {"name": "Documentos", "sort_index": 4},
-        {"name": "Contratos", "sort_index": 5},
-        {"name": "Faturas", "sort_index": 6},
-        {"name": "Orçamentos", "sort_index": 7},
-        {"name": "Relatórios", "sort_index": 8},
-        {"name": "Plantas", "sort_index": 9},
-        {"name": "Outros", "sort_index": 10},
+        {"name": "BidDocuments", "sort_index": 0},
+        {"name": "Drawings", "sort_index": 1},
+        {"name": "Pictures", "sort_index": 2},
+        {"name": "Specs", "sort_index": 3},
+        {"name": "Contract", "sort_index": 4},
+        {"name": "Accounting", "sort_index": 5},
+        {"name": "Hse", "sort_index": 6},
+        {"name": "Submittals", "sort_index": 7},
+        {"name": "Purchasing", "sort_index": 8},
+        {"name": "Changes", "sort_index": 9},
+        {"name": "Schedules", "sort_index": 10},
+        {"name": "Reports", "sort_index": 11},
+        {"name": "SubContractors", "sort_index": 12},
+        {"name": "Closeout", "sort_index": 13},
+        {"name": "Photos", "sort_index": 14},
+        {"name": "Other", "sort_index": 15},
     ]
 
 
