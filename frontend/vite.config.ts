@@ -9,6 +9,9 @@ export default defineConfig({
       '@': fileURLToPath(new URL('./src', import.meta.url))
     }
   },
+  optimizeDeps: {
+    include: ['qrcode']
+  },
   server: { 
     port: 5173, 
     host: true,
@@ -32,7 +35,12 @@ export default defineConfig({
       },
     }
   },
-  build: { outDir: 'dist' },
+  build: { 
+    outDir: 'dist',
+    commonjsOptions: {
+      include: [/qrcode/, /node_modules/]
+    }
+  },
   publicDir: 'public'
 });
 

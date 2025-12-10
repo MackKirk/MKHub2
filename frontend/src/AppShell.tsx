@@ -6,6 +6,7 @@ import NotificationBell from '@/components/NotificationBell';
 import { useUnsavedChanges } from '@/components/UnsavedChangesProvider';
 import { useConfirm } from '@/components/ConfirmProvider';
 import FixedBugReportButton from '@/components/FixedBugReportButton';
+import InstallPrompt from '@/components/InstallPrompt';
 
 type MenuItem = {
   id: string;
@@ -571,6 +572,7 @@ export default function AppShell({ children }: PropsWithChildren){
         </div>
         <div className="p-5">{children}</div>
       </main>
+      <InstallPrompt />
     </div>
   );
 }
