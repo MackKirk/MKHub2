@@ -8,6 +8,8 @@ import { useConfirm } from '@/components/ConfirmProvider';
 type Loan = {
   id: string;
   loan_amount: number;
+  base_amount?: number | null;
+  fees_percent?: number | null;
   remaining_balance: number;
   weekly_payment: number;
   loan_date: string;
@@ -424,15 +426,29 @@ export default function UserLoans({ userId, canEdit = true }: { userId: string; 
 
 function CreateLoanModal({ userId, onClose }: { userId: string; onClose: () => void }) {
   const [loanAmount, setLoanAmount] = useState('');
+  const [fees, setFees] = useState('');
   const [agreementDate, setAgreementDate] = useState(formatDateLocal(new Date()));
   const [paymentMethod, setPaymentMethod] = useState('Payroll');
   const [status, setStatus] = useState('Active');
   const [notes, setNotes] = useState('');
   const [saving, setSaving] = useState(false);
 
+  // Calculate total loan amount (base + fees)
+  const totalLoanAmount = useMemo(() => {
+    const baseAmount = parseFloat(loanAmount) || 0;
+    const feesPercent = parseFloat(fees) || 0;
+    if (baseAmount <= 0) return 0;
+    const feesAmount = (baseAmount * feesPercent) / 100;
+    return baseAmount + feesAmount;
+  }, [loanAmount, fees]);
+
   const handleSubmit = async () => {
     if (!loanAmount || parseFloat(loanAmount) <= 0) {
       toast.error('Loan amount is required and must be greater than 0');
+      return;
+    }
+    if (totalLoanAmount <= 0) {
+      toast.error('Total loan amount must be greater than 0');
       return;
     }
     if (!agreementDate) {
@@ -446,8 +462,15 @@ function CreateLoanModal({ userId, onClose }: { userId: string; onClose: () => v
 
     setSaving(true);
     try {
+      // Send the total calculated amount (base + fees) as loan_amount
+      // Also send base_amount and fees_percent for tracking
+      const baseAmountValue = parseFloat(loanAmount) || 0;
+      const feesPercentValue = parseFloat(fees) || 0;
+      
       await api('POST', `/employees/${userId}/loans`, {
-        loan_amount: parseFloat(loanAmount),
+        loan_amount: totalLoanAmount,
+        base_amount: baseAmountValue > 0 ? baseAmountValue : undefined,
+        fees_percent: feesPercentValue > 0 ? feesPercentValue : undefined,
         loan_date: agreementDate,
         agreement_date: agreementDate,
         payment_method: paymentMethod,
@@ -466,9 +489,14 @@ function CreateLoanModal({ userId, onClose }: { userId: string; onClose: () => v
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div className="w-[600px] max-w-[95vw] bg-white rounded-lg shadow-lg overflow-hidden">
-        <div className="px-4 py-3 border-b font-semibold">Create Loan</div>
-        <div className="p-4 space-y-4">
+      <div className="w-[600px] max-w-[95vw] bg-white rounded-xl shadow-lg overflow-hidden flex flex-col max-h-[90vh]">
+        <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] text-white p-6 rounded-t-xl flex items-center justify-between">
+          <div className="text-2xl font-extrabold">Create Loan</div>
+          <button onClick={onClose} className="text-white/80 hover:text-white text-2xl font-bold w-8 h-8 flex items-center justify-center rounded hover:bg-white/10">
+            ×
+          </button>
+        </div>
+        <div className="flex-1 overflow-y-auto p-6 space-y-4">
           <div>
             <label className="block text-sm font-medium mb-1">Loan Amount *</label>
             <input
@@ -481,6 +509,34 @@ function CreateLoanModal({ userId, onClose }: { userId: string; onClose: () => v
               placeholder="0.00"
             />
           </div>
+          <div>
+            <label className="block text-sm font-medium mb-1">Fees (%)</label>
+            <input
+              type="number"
+              step="0.01"
+              min="0"
+              max="100"
+              className="w-full border rounded px-3 py-2"
+              value={fees}
+              onChange={(e) => setFees(e.target.value)}
+              placeholder="0.00"
+            />
+            <div className="text-xs text-gray-500 mt-1">Interest rate percentage to be added to the loan amount</div>
+          </div>
+          {loanAmount && parseFloat(loanAmount) > 0 && (
+            <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+              <div className="text-sm text-blue-600 font-medium mb-1">Total Loan Amount</div>
+              <div className="text-2xl font-bold text-blue-900">
+                {formatCurrency(totalLoanAmount)}
+              </div>
+              <div className="text-xs text-blue-700 mt-1">
+                Base: {formatCurrency(parseFloat(loanAmount) || 0)} 
+                {fees && parseFloat(fees) > 0 && (
+                  <> + Fees ({parseFloat(fees) || 0}%): {formatCurrency((parseFloat(loanAmount) || 0) * (parseFloat(fees) || 0) / 100)}</>
+                )}
+              </div>
+            </div>
+          )}
           <div>
             <label className="block text-sm font-medium mb-1">Agreement Date *</label>
             <input
@@ -524,10 +580,10 @@ function CreateLoanModal({ userId, onClose }: { userId: string; onClose: () => v
             />
           </div>
         </div>
-        <div className="p-4 flex items-center justify-end gap-2 border-t">
+        <div className="px-6 py-4 border-t bg-gray-50 flex items-center justify-end gap-2">
           <button
             onClick={onClose}
-            className="px-4 py-2 rounded bg-gray-100 hover:bg-gray-200"
+            className="px-4 py-2 rounded bg-gray-200 hover:bg-gray-300"
             disabled={saving}
           >
             Cancel
@@ -581,12 +637,24 @@ function AddPaymentModal({
       toast.error('Payment method is required');
       return;
     }
+    
+    // Ensure loan data is loaded
+    if (!loan) {
+      toast.error('Loan information is still loading. Please try again.');
+      return;
+    }
 
     const paymentValue = parseFloat(paymentAmount);
-    const remainingBalance = loan?.remaining_balance || 0;
+    const remainingBalance = loan.remaining_balance ?? 0;
 
     // Check if payment exceeds remaining balance
-    if (paymentValue > remainingBalance && remainingBalance > 0) {
+    if (paymentValue > remainingBalance) {
+      // Don't show confirmation if balance is already 0 or negative
+      if (remainingBalance <= 0) {
+        toast.error('This loan has no remaining balance to pay');
+        return;
+      }
+      
       const adjustResult = await confirm({
         message: `The payment amount (${formatCurrency(paymentValue)}) is greater than the remaining balance (${formatCurrency(remainingBalance)}). The payment will be adjusted to ${formatCurrency(remainingBalance)}. Do you want to continue?`,
         title: 'Payment Exceeds Balance',
@@ -647,9 +715,14 @@ function AddPaymentModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div className="w-[500px] max-w-[95vw] bg-white rounded-lg shadow-lg overflow-hidden">
-        <div className="px-4 py-3 border-b font-semibold">Add Payment</div>
-        <div className="p-4 space-y-4">
+      <div className="w-[500px] max-w-[95vw] bg-white rounded-xl shadow-lg overflow-hidden flex flex-col max-h-[90vh]">
+        <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] text-white p-6 rounded-t-xl flex items-center justify-between">
+          <div className="text-2xl font-extrabold">Add Payment</div>
+          <button onClick={onClose} className="text-white/80 hover:text-white text-2xl font-bold w-8 h-8 flex items-center justify-center rounded hover:bg-white/10">
+            ×
+          </button>
+        </div>
+        <div className="flex-1 overflow-y-auto p-6 space-y-4">
           <div>
             <label className="block text-sm font-medium mb-1">Payment Date *</label>
             <input
@@ -698,10 +771,10 @@ function AddPaymentModal({
             />
           </div>
         </div>
-        <div className="p-4 flex items-center justify-end gap-2 border-t">
+        <div className="px-6 py-4 border-t bg-gray-50 flex items-center justify-end gap-2">
           <button
             onClick={onClose}
-            className="px-4 py-2 rounded bg-gray-100 hover:bg-gray-200"
+            className="px-4 py-2 rounded bg-gray-200 hover:bg-gray-300"
             disabled={saving}
           >
             Cancel
@@ -833,7 +906,14 @@ function LoanDetailView({
           <div className="grid md:grid-cols-2 gap-4">
             <div>
               <div className="text-sm text-gray-600">Loan Amount</div>
-              <div className="font-semibold text-lg">{formatCurrency(loan.loan_amount)}</div>
+              <div className="font-semibold text-lg flex items-baseline gap-2 flex-wrap">
+                <span>{formatCurrency(loan.loan_amount)}</span>
+                {loan.base_amount && loan.fees_percent && loan.fees_percent > 0 && (
+                  <span className="text-xs font-normal text-gray-500 leading-tight">
+                    ({formatCurrency(loan.base_amount)} + {formatCurrency((loan.base_amount * loan.fees_percent) / 100)} Fees ({loan.fees_percent}%))
+                  </span>
+                )}
+              </div>
             </div>
             <div>
               <div className="text-sm text-gray-600">Remaining Balance</div>

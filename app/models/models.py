@@ -867,6 +867,8 @@ class EmployeeLoan(Base):
     id: Mapped[uuid.UUID] = uuid_pk()
     user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     loan_amount: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)  # Valor total do empréstimo
+    base_amount: Mapped[Optional[float]] = mapped_column(Numeric(10, 2))  # Valor base do empréstimo (antes dos fees)
+    fees_percent: Mapped[Optional[float]] = mapped_column(Numeric(5, 2))  # Porcentagem de fees/juros
     remaining_balance: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)  # Saldo restante
     weekly_payment: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)  # Valor do pagamento semanal
     loan_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)  # Data do empréstimo
@@ -904,6 +906,94 @@ class LoanPayment(Base):
     # Indexes
     __table_args__ = (
         Index('idx_loan_payment_date', 'loan_id', 'payment_date'),
+    )
+
+
+class EmployeeReport(Base):
+    """Reports/Ocorrências oficiais relacionadas a funcionários"""
+    __tablename__ = "employee_reports"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    
+    # Basic information
+    report_type: Mapped[str] = mapped_column(String(50), nullable=False)  # Fine, Warning, Suspension, Behavior Note, Other
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text)
+    occurrence_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)  # Data da ocorrência
+    severity: Mapped[str] = mapped_column(String(20), nullable=False, default="Medium")  # Low, Medium, High
+    status: Mapped[str] = mapped_column(String(50), nullable=False, default="Open")  # Open, Under Review, Closed
+    
+    # Type-specific fields
+    # For Fine
+    vehicle: Mapped[Optional[str]] = mapped_column(String(255))
+    ticket_number: Mapped[Optional[str]] = mapped_column(String(100))
+    fine_amount: Mapped[Optional[float]] = mapped_column(Numeric(10, 2))
+    due_date: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    
+    # For Warning/Suspension
+    related_project_department: Mapped[Optional[str]] = mapped_column(String(255))
+    
+    # For Suspension
+    suspension_start_date: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    suspension_end_date: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    
+    # For Behavior Note
+    behavior_note_type: Mapped[Optional[str]] = mapped_column(String(20))  # Positive, Negative
+    
+    # Audit fields
+    reported_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=False)
+    updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    updated_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+    
+    # Relationships
+    attachments = relationship("ReportAttachment", back_populates="report", cascade="all, delete-orphan", order_by="ReportAttachment.created_at")
+    comments = relationship("ReportComment", back_populates="report", cascade="all, delete-orphan", order_by="ReportComment.created_at")
+    
+    # Indexes
+    __table_args__ = (
+        Index('idx_report_user_date', 'user_id', 'occurrence_date'),
+        Index('idx_report_status', 'status'),
+        Index('idx_report_type', 'report_type'),
+    )
+
+
+class ReportAttachment(Base):
+    """Anexos de arquivos para reports"""
+    __tablename__ = "report_attachments"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    report_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("employee_reports.id", ondelete="CASCADE"), nullable=False, index=True)
+    file_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("file_objects.id", ondelete="CASCADE"), nullable=False)
+    file_name: Mapped[Optional[str]] = mapped_column(String(255))
+    file_size: Mapped[Optional[int]] = mapped_column(Integer)
+    file_type: Mapped[Optional[str]] = mapped_column(String(100))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=False)
+    
+    # Relationships
+    report = relationship("EmployeeReport", back_populates="attachments")
+
+
+class ReportComment(Base):
+    """Comentários/Timeline para reports"""
+    __tablename__ = "report_comments"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    report_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("employee_reports.id", ondelete="CASCADE"), nullable=False, index=True)
+    comment_text: Mapped[str] = mapped_column(Text, nullable=False)
+    comment_type: Mapped[str] = mapped_column(String(50), default="comment")  # comment, status_change, system
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=False)
+    
+    # Relationships
+    report = relationship("EmployeeReport", back_populates="comments")
+    
+    # Indexes
+    __table_args__ = (
+        Index('idx_report_comment_date', 'report_id', 'created_at'),
     )
 
 

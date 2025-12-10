@@ -12,7 +12,8 @@ from ..models.models import (
     User, EmployeeProfile, SettingList, SettingItem,
     EmployeeSalaryHistory, EmployeeLoan, LoanPayment,
     EmployeeNotice, EmployeeFineTicket, EmployeeEquipment,
-    TimeOffBalance, TimeOffRequest, TimeOffHistory
+    TimeOffBalance, TimeOffRequest, TimeOffHistory,
+    EmployeeReport, ReportAttachment, ReportComment
 )
 from ..auth.security import require_permissions, get_current_user
 from ..services.bamboohr_client import BambooHRClient
@@ -228,6 +229,8 @@ def get_user_loans(
         result.append({
             "id": str(loan.id),
             "loan_amount": float(loan.loan_amount),
+            "base_amount": float(loan.base_amount) if loan.base_amount is not None else None,
+            "fees_percent": float(loan.fees_percent) if loan.fees_percent is not None else None,
             "remaining_balance": float(loan.remaining_balance),
             "weekly_payment": float(loan.weekly_payment),
             "loan_date": loan.loan_date.isoformat() if loan.loan_date else None,
@@ -293,6 +296,8 @@ def get_loan_details(
     return {
         "id": str(loan.id),
         "loan_amount": float(loan.loan_amount),
+        "base_amount": float(loan.base_amount) if loan.base_amount is not None else None,
+        "fees_percent": float(loan.fees_percent) if loan.fees_percent is not None else None,
         "remaining_balance": float(loan.remaining_balance),
         "weekly_payment": float(loan.weekly_payment),
         "loan_date": loan.loan_date.isoformat() if loan.loan_date else None,
@@ -338,10 +343,16 @@ def create_loan(
     frontend_status = payload.get("status", "Active")
     backend_status = status_map.get(frontend_status, "active")
     
+    loan_amount_total = Decimal(str(payload.get("loan_amount", 0)))
+    base_amount = payload.get("base_amount")
+    fees_percent = payload.get("fees_percent")
+    
     loan = EmployeeLoan(
         user_id=user.id,
-        loan_amount=Decimal(str(payload.get("loan_amount", 0))),
-        remaining_balance=Decimal(str(payload.get("loan_amount", 0))),
+        loan_amount=loan_amount_total,
+        base_amount=Decimal(str(base_amount)) if base_amount is not None else None,
+        fees_percent=Decimal(str(fees_percent)) if fees_percent is not None else None,
+        remaining_balance=loan_amount_total,
         weekly_payment=Decimal(str(payload.get("weekly_payment", 0))),
         loan_date=loan_date,
         payment_method=payload.get("payment_method"),
@@ -1719,4 +1730,483 @@ def sync_time_off_history(
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Error syncing time off history: {str(e)}")
+
+
+# =====================
+# Reports Management
+# =====================
+
+@router.get("/{user_id}/reports")
+def get_user_reports(
+    user_id: str,
+    report_type: Optional[str] = Query(None),
+    status: Optional[str] = Query(None),
+    severity: Optional[str] = Query(None),
+    start_date: Optional[str] = Query(None),
+    end_date: Optional[str] = Query(None),
+    q: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+    _=Depends(require_permissions("users:read", "hr:users:read", "hr:users:view:general"))
+):
+    """Get all reports for a user with optional filters"""
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    query = db.query(EmployeeReport).filter(EmployeeReport.user_id == user.id)
+    
+    if report_type:
+        query = query.filter(EmployeeReport.report_type == report_type)
+    if status:
+        query = query.filter(EmployeeReport.status == status)
+    if severity:
+        query = query.filter(EmployeeReport.severity == severity)
+    if start_date:
+        start = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
+        query = query.filter(EmployeeReport.occurrence_date >= start)
+    if end_date:
+        end = datetime.fromisoformat(end_date.replace('Z', '+00:00'))
+        query = query.filter(EmployeeReport.occurrence_date <= end)
+    if q:
+        like = f"%{q}%"
+        query = query.filter(
+            (EmployeeReport.title.ilike(like)) |
+            (EmployeeReport.description.ilike(like)) |
+            (EmployeeReport.ticket_number.ilike(like))
+        )
+    
+    reports = query.order_by(EmployeeReport.occurrence_date.desc()).all()
+    
+    result = []
+    for report in reports:
+        created_by_user = db.query(User).filter(User.id == report.created_by).first()
+        reported_by_user = db.query(User).filter(User.id == report.reported_by).first()
+        updated_by_user = None
+        if report.updated_by:
+            updated_by_user = db.query(User).filter(User.id == report.updated_by).first()
+        
+        result.append({
+            "id": str(report.id),
+            "report_type": report.report_type,
+            "title": report.title,
+            "description": report.description,
+            "occurrence_date": report.occurrence_date.isoformat() if report.occurrence_date else None,
+            "severity": report.severity,
+            "status": report.status,
+            "vehicle": report.vehicle,
+            "ticket_number": report.ticket_number,
+            "fine_amount": float(report.fine_amount) if report.fine_amount else None,
+            "due_date": report.due_date.isoformat() if report.due_date else None,
+            "related_project_department": report.related_project_department,
+            "suspension_start_date": report.suspension_start_date.isoformat() if report.suspension_start_date else None,
+            "suspension_end_date": report.suspension_end_date.isoformat() if report.suspension_end_date else None,
+            "reported_by": {
+                "id": str(report.reported_by),
+                "username": reported_by_user.username if reported_by_user else None,
+            },
+            "created_at": report.created_at.isoformat() if report.created_at else None,
+            "created_by": {
+                "id": str(report.created_by),
+                "username": created_by_user.username if created_by_user else None,
+            },
+            "updated_at": report.updated_at.isoformat() if report.updated_at else None,
+            "updated_by": {
+                "id": str(report.updated_by),
+                "username": updated_by_user.username if updated_by_user else None,
+            } if report.updated_by else None,
+            "attachments_count": len(report.attachments) if report.attachments else 0,
+            "comments_count": len(report.comments) if report.comments else 0,
+        })
+    
+    return result
+
+
+@router.get("/{user_id}/reports/{report_id}")
+def get_report_details(
+    user_id: str,
+    report_id: str,
+    db: Session = Depends(get_db),
+    _=Depends(require_permissions("users:read", "hr:users:read", "hr:users:view:general"))
+):
+    """Get detailed information about a specific report"""
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    report = db.query(EmployeeReport).filter(
+        EmployeeReport.id == report_id,
+        EmployeeReport.user_id == user.id
+    ).first()
+    
+    if not report:
+        raise HTTPException(status_code=404, detail="Report not found")
+    
+    created_by_user = db.query(User).filter(User.id == report.created_by).first()
+    reported_by_user = db.query(User).filter(User.id == report.reported_by).first()
+    updated_by_user = None
+    if report.updated_by:
+        updated_by_user = db.query(User).filter(User.id == report.updated_by).first()
+    
+    # Get attachments
+    attachments = []
+    for att in report.attachments:
+        created_by_att_user = db.query(User).filter(User.id == att.created_by).first()
+        attachments.append({
+            "id": str(att.id),
+            "file_id": str(att.file_id),
+            "file_name": att.file_name,
+            "file_size": att.file_size,
+            "file_type": att.file_type,
+            "created_at": att.created_at.isoformat() if att.created_at else None,
+            "created_by": {
+                "id": str(att.created_by),
+                "username": created_by_att_user.username if created_by_att_user else None,
+            },
+        })
+    
+    # Get comments/timeline
+    comments = []
+    for comment in report.comments:
+        created_by_comment_user = db.query(User).filter(User.id == comment.created_by).first()
+        comments.append({
+            "id": str(comment.id),
+            "comment_text": comment.comment_text,
+            "comment_type": comment.comment_type,
+            "created_at": comment.created_at.isoformat() if comment.created_at else None,
+            "created_by": {
+                "id": str(comment.created_by),
+                "username": created_by_comment_user.username if created_by_comment_user else None,
+            },
+        })
+    
+    return {
+        "id": str(report.id),
+        "report_type": report.report_type,
+        "title": report.title,
+        "description": report.description,
+        "occurrence_date": report.occurrence_date.isoformat() if report.occurrence_date else None,
+        "severity": report.severity,
+        "status": report.status,
+        "vehicle": report.vehicle,
+        "ticket_number": report.ticket_number,
+        "fine_amount": float(report.fine_amount) if report.fine_amount else None,
+        "due_date": report.due_date.isoformat() if report.due_date else None,
+        "related_project_department": report.related_project_department,
+        "suspension_start_date": report.suspension_start_date.isoformat() if report.suspension_start_date else None,
+        "suspension_end_date": report.suspension_end_date.isoformat() if report.suspension_end_date else None,
+        "reported_by": {
+            "id": str(report.reported_by),
+            "username": reported_by_user.username if reported_by_user else None,
+        },
+        "created_at": report.created_at.isoformat() if report.created_at else None,
+        "created_by": {
+            "id": str(report.created_by),
+            "username": created_by_user.username if created_by_user else None,
+        },
+        "updated_at": report.updated_at.isoformat() if report.updated_at else None,
+        "updated_by": {
+            "id": str(report.updated_by),
+            "username": updated_by_user.username if updated_by_user else None,
+        } if report.updated_by else None,
+        "attachments": attachments,
+        "comments": comments,
+    }
+
+
+@router.post("/{user_id}/reports")
+def create_report(
+    user_id: str,
+    payload: dict,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permissions("users:write", "hr:users:write"))
+):
+    """Create a new report for a user"""
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    occurrence_date_str = payload.get("occurrence_date")
+    if not occurrence_date_str:
+        occurrence_date = datetime.now(timezone.utc)
+    else:
+        occurrence_date = datetime.fromisoformat(occurrence_date_str.replace('Z', '+00:00'))
+    
+    due_date = None
+    if payload.get("due_date"):
+        due_date = datetime.fromisoformat(payload.get("due_date").replace('Z', '+00:00'))
+    
+    suspension_start_date = None
+    if payload.get("suspension_start_date"):
+        suspension_start_date = datetime.fromisoformat(payload.get("suspension_start_date").replace('Z', '+00:00'))
+    
+    suspension_end_date = None
+    if payload.get("suspension_end_date"):
+        suspension_end_date = datetime.fromisoformat(payload.get("suspension_end_date").replace('Z', '+00:00'))
+    
+    report = EmployeeReport(
+        id=uuid_lib.uuid4(),
+        user_id=user.id,
+        report_type=payload.get("report_type", "Other"),
+        title=payload.get("title", ""),
+        description=payload.get("description"),
+        occurrence_date=occurrence_date,
+        severity=payload.get("severity", "Medium"),
+        status=payload.get("status", "Open"),
+        vehicle=payload.get("vehicle"),
+        ticket_number=payload.get("ticket_number"),
+        fine_amount=Decimal(str(payload.get("fine_amount"))) if payload.get("fine_amount") else None,
+        due_date=due_date,
+        related_project_department=payload.get("related_project_department"),
+        suspension_start_date=suspension_start_date,
+        suspension_end_date=suspension_end_date,
+        behavior_note_type=payload.get("behavior_note_type"),
+        reported_by=current_user.id,
+        created_by=current_user.id,
+    )
+    
+    db.add(report)
+    db.commit()
+    db.refresh(report)
+    
+    # Create initial timeline entry
+    comment = ReportComment(
+        id=uuid_lib.uuid4(),
+        report_id=report.id,
+        comment_text=f"Report created: {report.title}",
+        comment_type="system",
+        created_by=current_user.id,
+    )
+    db.add(comment)
+    db.commit()
+    
+    return {"id": str(report.id), "status": "ok"}
+
+
+@router.patch("/{user_id}/reports/{report_id}")
+def update_report(
+    user_id: str,
+    report_id: str,
+    payload: dict,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permissions("users:write", "hr:users:write"))
+):
+    """Update a report"""
+    report = db.query(EmployeeReport).filter(
+        EmployeeReport.id == report_id,
+        EmployeeReport.user_id == user_id
+    ).first()
+    
+    if not report:
+        raise HTTPException(status_code=404, detail="Report not found")
+    
+    old_status = report.status
+    changes = []
+    
+    # Update fields
+    if "title" in payload:
+        report.title = payload["title"]
+        changes.append(f"Title updated to '{payload['title']}'")
+    
+    if "description" in payload:
+        report.description = payload.get("description")
+        changes.append("Description updated")
+    
+    if "occurrence_date" in payload:
+        report.occurrence_date = datetime.fromisoformat(payload["occurrence_date"].replace('Z', '+00:00'))
+        changes.append("Occurrence date updated")
+    
+    if "severity" in payload:
+        report.severity = payload["severity"]
+        changes.append(f"Severity changed to {payload['severity']}")
+    
+    if "status" in payload:
+        report.status = payload["status"]
+        if old_status != payload["status"]:
+            changes.append(f"Status changed from {old_status} to {payload['status']}")
+    
+    if "vehicle" in payload:
+        report.vehicle = payload.get("vehicle")
+    
+    if "ticket_number" in payload:
+        report.ticket_number = payload.get("ticket_number")
+    
+    if "fine_amount" in payload:
+        report.fine_amount = Decimal(str(payload["fine_amount"])) if payload.get("fine_amount") else None
+    
+    if "due_date" in payload:
+        report.due_date = datetime.fromisoformat(payload["due_date"].replace('Z', '+00:00')) if payload.get("due_date") else None
+    
+    if "related_project_department" in payload:
+        report.related_project_department = payload.get("related_project_department")
+    
+    if "suspension_start_date" in payload:
+        report.suspension_start_date = datetime.fromisoformat(payload["suspension_start_date"].replace('Z', '+00:00')) if payload.get("suspension_start_date") else None
+    
+    if "suspension_end_date" in payload:
+        report.suspension_end_date = datetime.fromisoformat(payload["suspension_end_date"].replace('Z', '+00:00')) if payload.get("suspension_end_date") else None
+    
+    if "behavior_note_type" in payload:
+        report.behavior_note_type = payload.get("behavior_note_type")
+    
+    report.updated_at = datetime.now(timezone.utc)
+    report.updated_by = current_user.id
+    
+    db.commit()
+    
+    # Add timeline entry for significant changes
+    if changes:
+        comment = ReportComment(
+            id=uuid_lib.uuid4(),
+            report_id=report.id,
+            comment_text="; ".join(changes),
+            comment_type="status_change" if old_status != report.status else "comment",
+            created_by=current_user.id,
+        )
+        db.add(comment)
+        db.commit()
+    
+    return {"status": "ok"}
+
+
+@router.post("/{user_id}/reports/{report_id}/comments")
+def add_report_comment(
+    user_id: str,
+    report_id: str,
+    payload: dict,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permissions("users:write", "hr:users:write"))
+):
+    """Add a comment to a report timeline"""
+    report = db.query(EmployeeReport).filter(
+        EmployeeReport.id == report_id,
+        EmployeeReport.user_id == user_id
+    ).first()
+    
+    if not report:
+        raise HTTPException(status_code=404, detail="Report not found")
+    
+    comment = ReportComment(
+        id=uuid_lib.uuid4(),
+        report_id=report.id,
+        comment_text=payload.get("comment_text", ""),
+        comment_type=payload.get("comment_type", "comment"),
+        created_by=current_user.id,
+    )
+    
+    db.add(comment)
+    
+    # Update report's updated_at
+    report.updated_at = datetime.now(timezone.utc)
+    report.updated_by = current_user.id
+    
+    db.commit()
+    db.refresh(comment)
+    
+    created_by_user = db.query(User).filter(User.id == comment.created_by).first()
+    
+    return {
+        "id": str(comment.id),
+        "comment_text": comment.comment_text,
+        "comment_type": comment.comment_type,
+        "created_at": comment.created_at.isoformat() if comment.created_at else None,
+        "created_by": {
+            "id": str(comment.created_by),
+            "username": created_by_user.username if created_by_user else None,
+        },
+    }
+
+
+@router.post("/{user_id}/reports/{report_id}/attachments")
+def add_report_attachment(
+    user_id: str,
+    report_id: str,
+    payload: dict,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permissions("users:write", "hr:users:write"))
+):
+    """Add an attachment to a report"""
+    report = db.query(EmployeeReport).filter(
+        EmployeeReport.id == report_id,
+        EmployeeReport.user_id == user_id
+    ).first()
+    
+    if not report:
+        raise HTTPException(status_code=404, detail="Report not found")
+    
+    attachment = ReportAttachment(
+        id=uuid_lib.uuid4(),
+        report_id=report.id,
+        file_id=uuid_lib.UUID(payload.get("file_id")),
+        file_name=payload.get("file_name"),
+        file_size=payload.get("file_size"),
+        file_type=payload.get("file_type"),
+        created_by=current_user.id,
+    )
+    
+    db.add(attachment)
+    
+    # Update report's updated_at
+    report.updated_at = datetime.now(timezone.utc)
+    report.updated_by = current_user.id
+    
+    # Add timeline entry
+    comment = ReportComment(
+        id=uuid_lib.uuid4(),
+        report_id=report.id,
+        comment_text=f"Attachment added: {payload.get('file_name', 'File')}",
+        comment_type="system",
+        created_by=current_user.id,
+    )
+    db.add(comment)
+    
+    db.commit()
+    
+    return {"id": str(attachment.id), "status": "ok"}
+
+
+@router.delete("/{user_id}/reports/{report_id}/attachments/{attachment_id}")
+def delete_report_attachment(
+    user_id: str,
+    report_id: str,
+    attachment_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permissions("users:write", "hr:users:write"))
+):
+    """Delete an attachment from a report"""
+    attachment = db.query(ReportAttachment).filter(
+        ReportAttachment.id == attachment_id,
+        ReportAttachment.report_id == report_id
+    ).first()
+    
+    if not attachment:
+        raise HTTPException(status_code=404, detail="Attachment not found")
+    
+    report = db.query(EmployeeReport).filter(
+        EmployeeReport.id == report_id,
+        EmployeeReport.user_id == user_id
+    ).first()
+    
+    if not report:
+        raise HTTPException(status_code=404, detail="Report not found")
+    
+    file_name = attachment.file_name or "File"
+    db.delete(attachment)
+    
+    # Update report's updated_at
+    report.updated_at = datetime.now(timezone.utc)
+    report.updated_by = current_user.id
+    
+    # Add timeline entry
+    comment = ReportComment(
+        id=uuid_lib.uuid4(),
+        report_id=report.id,
+        comment_text=f"Attachment removed: {file_name}",
+        comment_type="system",
+        created_by=current_user.id,
+    )
+    db.add(comment)
+    
+    db.commit()
+    
+    return {"status": "ok"}
 
