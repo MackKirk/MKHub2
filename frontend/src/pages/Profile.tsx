@@ -10,10 +10,14 @@ import AddressAutocomplete from '@/components/AddressAutocomplete';
 import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard';
 import UserLoans from '@/components/UserLoans';
 import UserReports from '@/components/UserReports';
+import { useNavigate, useLocation } from 'react-router-dom';
 
 type ProfileResp = { user:{ username:string, email:string, first_name?:string, last_name?:string, divisions?: Array<{id:string, label:string}> }, profile?: any };
 
 export default function Profile(){
+  const navigate = useNavigate();
+  const location = useLocation();
+  const fromHome = location.state?.fromHome === true;
   const { data, isLoading } = useQuery({ queryKey:['meProfile'], queryFn: ()=>api<ProfileResp>('GET','/auth/me/profile') });
   const p = data?.profile || {};
   const u = data?.user || {};
@@ -210,6 +214,22 @@ export default function Profile(){
         <div className="text-2xl font-extrabold">My Information</div>
         <div className="text-sm opacity-90">Personal details, employment, and documents.{totalMissing>0 && <span className="ml-2">Missing {totalMissing} required fields.</span>}</div>
       </div>
+      
+      {fromHome && (
+        <div className="mb-3 flex items-center justify-between">
+          <button
+            onClick={() => navigate('/home')}
+            className="p-2 rounded-lg border hover:bg-gray-50 transition-colors flex items-center gap-2"
+            title="Back to Home"
+          >
+            <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+            </svg>
+            <span className="text-sm text-gray-700 font-medium">Back to Home</span>
+          </button>
+        </div>
+      )}
+      
       <motion.div initial={{opacity:0, y:10}} animate={{opacity:1, y:0}} className="rounded-xl border shadow-hero bg-white pb-24">
         <div className="rounded-t-xl p-5 text-white relative overflow-hidden" style={{ backgroundImage: `url(${heroResolvedUrl||'/ui/assets/login/background.jpg'})`, backgroundSize: 'cover', backgroundPosition: 'center' }}>
           <div className="absolute inset-0 bg-gradient-to-br from-gray-500/50 to-gray-800/60" />

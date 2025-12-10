@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { api } from '@/lib/api';
+import { useNavigate, useLocation } from 'react-router-dom';
 
 type TaskBasic = {
   id: string;
@@ -221,6 +222,9 @@ function BugReportDescription({ description }: { description: string }) {
 }
 
 export default function TasksPage() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const fromHome = location.state?.fromHome === true;
   const queryClient = useQueryClient();
   const { data, isLoading } = useQuery({
     queryKey: ['tasks'],
@@ -292,6 +296,21 @@ export default function TasksPage() {
         <div className="text-2xl font-extrabold">Tasks</div>
         <div className="text-sm opacity-90">Track everything that has been accepted and needs action.</div>
       </div>
+      
+      {fromHome && (
+        <div className="mb-3 flex items-center justify-between">
+          <button
+            onClick={() => navigate('/home')}
+            className="p-2 rounded-lg border hover:bg-gray-50 transition-colors flex items-center gap-2"
+            title="Back to Home"
+          >
+            <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+            </svg>
+            <span className="text-sm text-gray-700 font-medium">Back to Home</span>
+          </button>
+        </div>
+      )}
 
       <div className="flex flex-col lg:flex-row gap-4">
         <div className={`lg:w-1/2 ${mobileDetail ? 'hidden lg:block' : 'block'}`}>

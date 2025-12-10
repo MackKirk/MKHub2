@@ -1689,6 +1689,30 @@ class CommunityPostComment(Base):
     user: Mapped["User"] = relationship("User", foreign_keys=[user_id])
 
 
+# Association table for many-to-many CommunityGroup<->User (members)
+community_group_members = Table(
+    "community_group_members",
+    Base.metadata,
+    Column("group_id", UUID(as_uuid=True), ForeignKey("community_groups.id", ondelete="CASCADE"), primary_key=True),
+    Column("user_id", UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True),
+    UniqueConstraint("group_id", "user_id", name="uq_group_user"),
+)
+
+
+class CommunityGroup(Base):
+    __tablename__ = "community_groups"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    description: Mapped[Optional[str]] = mapped_column(Text)
+    created_by_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, nullable=False, index=True)
+    updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+
+    created_by: Mapped["User"] = relationship("User", foreign_keys=[created_by_id])
+    members: Mapped[List["User"]] = relationship("User", secondary=community_group_members, backref="community_groups")
+
+
 # =====================
 # Fleet & Equipment Management domain
 # =====================

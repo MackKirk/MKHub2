@@ -68,6 +68,7 @@ export default function Home(){
       <div className="grid grid-cols-5 gap-3">
         <Link
           to="/profile"
+          state={{ fromHome: true }}
           className="rounded-lg border border-gray-200 bg-white p-3 hover:shadow-md transition-shadow cursor-pointer flex flex-col items-center text-center"
         >
           <div className="w-10 h-10 rounded-lg bg-indigo-100 flex items-center justify-center mb-2">
@@ -80,6 +81,7 @@ export default function Home(){
         
         <Link
           to="/clock-in-out"
+          state={{ fromHome: true }}
           className="rounded-lg border border-gray-200 bg-white p-3 hover:shadow-md transition-shadow cursor-pointer flex flex-col items-center text-center"
         >
           <div className="w-10 h-10 rounded-lg bg-orange-100 flex items-center justify-center mb-2">
@@ -92,6 +94,7 @@ export default function Home(){
         
         <Link
           to="/tasks"
+          state={{ fromHome: true }}
           className="rounded-lg border border-gray-200 bg-white p-3 hover:shadow-md transition-shadow cursor-pointer flex flex-col items-center text-center"
         >
           <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center mb-2">
@@ -104,6 +107,7 @@ export default function Home(){
         
         <Link
           to="/schedule"
+          state={{ fromHome: true }}
           className="rounded-lg border border-gray-200 bg-white p-3 hover:shadow-md transition-shadow cursor-pointer flex flex-col items-center text-center"
         >
           <div className="w-10 h-10 rounded-lg bg-green-100 flex items-center justify-center mb-2">

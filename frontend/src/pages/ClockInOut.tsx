@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
-import { useSearchParams, useNavigate } from 'react-router-dom';
+import { useSearchParams, useNavigate, useLocation } from 'react-router-dom';
 import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
 import { formatDateLocal, getTodayLocal } from '@/lib/dateUtils';
@@ -115,6 +115,8 @@ export default function ClockInOut() {
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
+  const location = useLocation();
+  const fromHome = location.state?.fromHome === true;
   
   // Get query params for auto-opening modal from Schedule page
   const shiftIdFromUrl = searchParams.get('shift_id');
@@ -851,6 +853,21 @@ export default function ClockInOut() {
         <div className="text-2xl font-extrabold">Clock in/out</div>
         <div className="text-sm opacity-90">Record your attendance and track your work hours.</div>
       </div>
+      
+      {fromHome && (
+        <div className="mb-3 flex items-center justify-between">
+          <button
+            onClick={() => navigate('/home')}
+            className="p-2 rounded-lg border hover:bg-gray-50 transition-colors flex items-center gap-2"
+            title="Back to Home"
+          >
+            <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+            </svg>
+            <span className="text-sm text-gray-700 font-medium">Back to Home</span>
+          </button>
+        </div>
+      )}
       
       <div className="grid grid-cols-[2fr_3fr] gap-6">
         {/* Left column - Clock In/Out Form */}

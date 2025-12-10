@@ -45,6 +45,9 @@ import Tasks from './pages/Tasks';
 import Schedule from './pages/Schedule';
 import ClockInOut from './pages/ClockInOut';
 import Community from './pages/Community';
+import CommunityGroups from './pages/CommunityGroups';
+import CommunityInsights from './pages/CommunityInsights';
+import CommunityNewPost from './pages/CommunityNewPost';
 import FleetDashboard from './pages/FleetDashboard';
 import FleetAssets from './pages/FleetAssets';
 import FleetAssetDetail from './pages/FleetAssetDetail';
@@ -116,6 +119,9 @@ export default function App(){
           <Route path="/users/:userId" element={<AppShell><UserInfo/></AppShell>} />
           <Route path="/settings/attendance" element={<AppShell><Attendance/></AppShell>} />
           <Route path="/community" element={<AppShell><Community/></AppShell>} />
+          <Route path="/community/groups" element={<AppShell><CommunityGroups/></AppShell>} />
+          <Route path="/community/insights" element={<AppShell><CommunityInsights/></AppShell>} />
+          <Route path="/community/new-post" element={<AppShell><CommunityNewPost/></AppShell>} />
           <Route path="/reviews/admin" element={<AppShell><ReviewsAdmin/></AppShell>} />
           <Route path="/reviews/compare" element={<AppShell><ReviewsCompare/></AppShell>} />
           <Route path="/reviews/my" element={<AppShell><MyReviews/></AppShell>} />

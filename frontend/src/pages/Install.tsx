@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import QRCodeLib from 'qrcode';
 
 type Platform = 'android' | 'ios' | 'desktop' | 'unknown';
 
@@ -63,17 +64,15 @@ export default function Install() {
 
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
 
-    // Generate QR code (dynamic import for browser compatibility)
+    // Generate QR code
     const generateQRCode = async () => {
       try {
         setIsLoading(true);
-        // Use browser-compatible import
-        const QRCode = (await import('qrcode/lib/browser')).default || (await import('qrcode')).default;
         // Use full URL with protocol for better mobile compatibility
         const protocol = window.location.protocol;
         const host = window.location.host;
         const installUrl = `${protocol}//${host}/install`;
-        const url = await QRCode.toDataURL(installUrl, {
+        const url = await QRCodeLib.toDataURL(installUrl, {
           width: 256,
           margin: 2,
           color: {
@@ -94,27 +93,8 @@ export default function Install() {
           }
         }
       } catch (err) {
-        console.error('Error generating QR code:', err);
-        // Fallback: try alternative import
-        try {
-          const QRCode = (await import('qrcode')).default;
-          const protocol = window.location.protocol;
-          const host = window.location.host;
-          const installUrl = `${protocol}//${host}/install`;
-          const url = await QRCode.toDataURL(installUrl, {
-            width: 256,
-            margin: 2,
-            color: {
-              dark: '#0B1739',
-              light: '#ffffff'
-            }
-          });
-          setQrCodeDataUrl(url);
-          setIsLoading(false);
-        } catch (err2) {
-          console.error('QR code generation failed:', err2);
-          setIsLoading(false);
-        }
+        console.error('QR code generation failed:', err);
+        setIsLoading(false);
       }
     };
 

@@ -88,7 +88,7 @@ export default function ProjectDetail(){
   }, [location.search]);
   
   const cover = useMemo(()=>{
-    const img = (files||[]).find(f=> String(f.category||'')==='project-cover-derived') || (files||[]).find(f=> (f.is_image===true) || String(f.content_type||'').startsWith('image/'));
+    const img = (files||[]).find(f=> String(f.category||'')==='project-cover-derived');
     return img? `/files/${img.file_object_id}/thumbnail?w=1000` : '/ui/assets/login/logo-light.svg';
   }, [files]);
   const overlayUrl = useMemo(()=>{
