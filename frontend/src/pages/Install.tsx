@@ -8,16 +8,21 @@ export default function Install() {
   const [isInstalled, setIsInstalled] = useState(false);
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [qrCodeDataUrl, setQrCodeDataUrl] = useState<string>('');
+  const [isLoading, setIsLoading] = useState(true);
   const qrCanvasRef = useRef<HTMLCanvasElement>(null);
   const navigate = useNavigate();
 
   useEffect(() => {
+    console.log('[Install] Page loaded');
+    
     // Detect platform
     const userAgent = window.navigator.userAgent.toLowerCase();
     const isAndroid = /android/.test(userAgent);
     const isIOS = /iphone|ipad|ipod/.test(userAgent);
     const isStandalone = window.matchMedia('(display-mode: standalone)').matches ||
                          (window.navigator as any).standalone === true;
+
+    console.log('[Install] Platform detected:', { isAndroid, isIOS, isStandalone });
 
     if (isStandalone) {
       setIsInstalled(true);
@@ -27,6 +32,12 @@ export default function Install() {
       setPlatform('android');
     } else if (isIOS) {
       setPlatform('ios');
+      // Auto-show iOS modal after a short delay
+      setTimeout(() => {
+        if (!isStandalone) {
+          setShowIOSModal(true);
+        }
+      }, 1500);
     } else {
       setPlatform('desktop');
     }
@@ -35,6 +46,18 @@ export default function Install() {
     const handleBeforeInstallPrompt = (e: Event) => {
       e.preventDefault();
       setDeferredPrompt(e);
+      // Auto-trigger install prompt for Android after a short delay
+      setTimeout(() => {
+        if (e && (e as any).prompt) {
+          (e as any).prompt().then((result: any) => {
+            if (result.outcome === 'accepted') {
+              setIsInstalled(true);
+            }
+          }).catch(() => {
+            // User dismissed or error - keep deferred prompt for manual trigger
+          });
+        }
+      }, 1000); // Show after 1 second
     };
 
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
@@ -42,9 +65,13 @@ export default function Install() {
     // Generate QR code (dynamic import for browser compatibility)
     const generateQRCode = async () => {
       try {
+        setIsLoading(true);
         // Use browser-compatible import
         const QRCode = (await import('qrcode/lib/browser')).default || (await import('qrcode')).default;
-        const installUrl = `${window.location.origin}/install`;
+        // Use full URL with protocol for better mobile compatibility
+        const protocol = window.location.protocol;
+        const host = window.location.host;
+        const installUrl = `${protocol}//${host}/install`;
         const url = await QRCode.toDataURL(installUrl, {
           width: 256,
           margin: 2,
@@ -54,6 +81,7 @@ export default function Install() {
           }
         });
         setQrCodeDataUrl(url);
+        setIsLoading(false);
         if (qrCanvasRef.current) {
           const ctx = qrCanvasRef.current.getContext('2d');
           if (ctx) {
@@ -69,7 +97,9 @@ export default function Install() {
         // Fallback: try alternative import
         try {
           const QRCode = (await import('qrcode')).default;
-          const installUrl = `${window.location.origin}/install`;
+          const protocol = window.location.protocol;
+          const host = window.location.host;
+          const installUrl = `${protocol}//${host}/install`;
           const url = await QRCode.toDataURL(installUrl, {
             width: 256,
             margin: 2,
@@ -79,8 +109,10 @@ export default function Install() {
             }
           });
           setQrCodeDataUrl(url);
+          setIsLoading(false);
         } catch (err2) {
           console.error('QR code generation failed:', err2);
+          setIsLoading(false);
         }
       }
     };
@@ -239,7 +271,11 @@ export default function Install() {
               Scan this QR code with your mobile device to open the install page:
             </p>
             <div className="flex justify-center">
-              {qrCodeDataUrl ? (
+              {isLoading ? (
+                <div className="w-48 h-48 bg-white/10 rounded-lg flex items-center justify-center">
+                  <div className="text-sm opacity-75">Loading QR code...</div>
+                </div>
+              ) : qrCodeDataUrl ? (
                 <img
                   src={qrCodeDataUrl}
                   alt="QR Code for MK Hub installation"
@@ -247,11 +283,25 @@ export default function Install() {
                 />
               ) : (
                 <div className="w-48 h-48 bg-white/10 rounded-lg flex items-center justify-center">
-                  <div className="text-sm opacity-75">Loading QR code...</div>
+                  <div className="text-sm opacity-75 text-center">
+                    QR code unavailable
+                    <br />
+                    <a 
+                      href={`${window.location.protocol}//${window.location.host}/install`}
+                      className="text-brand-red underline mt-2 block"
+                    >
+                      Open install page
+                    </a>
+                  </div>
                 </div>
               )}
             </div>
             <canvas ref={qrCanvasRef} className="hidden" />
+            {qrCodeDataUrl && (
+              <p className="text-xs opacity-75 mt-4 text-center break-all">
+                {`${window.location.protocol}//${window.location.host}/install`}
+              </p>
+            )}
           </div>
         </div>
 
@@ -288,6 +338,102 @@ export default function Install() {
           </button>
         </div>
       </div>
+
+      {/* iOS Installation Modal - Auto-shows on iOS */}
+      {showIOSModal && platform === 'ios' && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 animate-fade-in">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 animate-slide-up">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-2xl font-bold text-gray-900">Install MK Hub</h2>
+              <button
+                onClick={() => setShowIOSModal(false)}
+                className="text-gray-400 hover:text-gray-600 transition-colors"
+                aria-label="Close"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            
+            <div className="space-y-4">
+              <p className="text-gray-700">
+                To install MK Hub on your iPhone/iPad, follow these simple steps:
+              </p>
+              
+              <div className="space-y-3">
+                <div className="flex items-start gap-3 p-3 bg-blue-50 rounded-lg">
+                  <div className="flex-shrink-0 w-8 h-8 bg-blue-500 text-white rounded-full flex items-center justify-center font-bold">
+                    1
+                  </div>
+                  <div className="flex-1">
+                    <p className="font-semibold text-gray-900">Tap the Share button</p>
+                    <p className="text-sm text-gray-600 mt-1">Look for the share icon at the bottom of Safari</p>
+                    <div className="mt-2 text-3xl">📤</div>
+                  </div>
+                </div>
+                
+                <div className="flex items-start gap-3 p-3 bg-green-50 rounded-lg">
+                  <div className="flex-shrink-0 w-8 h-8 bg-green-500 text-white rounded-full flex items-center justify-center font-bold">
+                    2
+                  </div>
+                  <div className="flex-1">
+                    <p className="font-semibold text-gray-900">Scroll and tap "Add to Home Screen"</p>
+                    <p className="text-sm text-gray-600 mt-1">Scroll down in the share menu to find this option</p>
+                    <div className="mt-2 text-3xl">➕</div>
+                  </div>
+                </div>
+                
+                <div className="flex items-start gap-3 p-3 bg-purple-50 rounded-lg">
+                  <div className="flex-shrink-0 w-8 h-8 bg-purple-500 text-white rounded-full flex items-center justify-center font-bold">
+                    3
+                  </div>
+                  <div className="flex-1">
+                    <p className="font-semibold text-gray-900">Tap "Add" to confirm</p>
+                    <p className="text-sm text-gray-600 mt-1">The app will appear on your home screen</p>
+                    <div className="mt-2 text-3xl">✓</div>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                <p className="text-sm text-yellow-800">
+                  <strong>Important:</strong> You must use Safari browser. Chrome or other browsers won't work.
+                </p>
+              </div>
+              
+              <button
+                onClick={() => setShowIOSModal(false)}
+                className="w-full py-3 rounded-lg bg-gradient-to-r from-brand-red to-[#ee2b2b] text-white font-semibold hover:opacity-90 transition-opacity mt-4"
+              >
+                Got it!
+              </button>
+            </div>
+          </div>
+          <style>{`
+            @keyframes fade-in {
+              from { opacity: 0; }
+              to { opacity: 1; }
+            }
+            @keyframes slide-up {
+              from {
+                transform: translateY(20px);
+                opacity: 0;
+              }
+              to {
+                transform: translateY(0);
+                opacity: 1;
+              }
+            }
+            .animate-fade-in {
+              animation: fade-in 0.3s ease-out;
+            }
+            .animate-slide-up {
+              animation: slide-up 0.4s ease-out;
+            }
+          `}</style>
+        </div>
+      )}
     </div>
   );
 }

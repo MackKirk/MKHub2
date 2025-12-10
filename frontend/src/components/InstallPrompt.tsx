@@ -34,13 +34,27 @@ export default function InstallPrompt() {
       e.preventDefault();
       setDeferredPrompt(e);
       setIsVisible(true);
+      
+      // Auto-trigger install prompt after a short delay (Android)
+      setTimeout(() => {
+        if (e && (e as any).prompt) {
+          (e as any).prompt().then((result: any) => {
+            if (result.outcome === 'accepted') {
+              setIsVisible(false);
+              localStorage.removeItem('pwa-install-dismissed');
+            }
+          }).catch(() => {
+            // User dismissed - keep prompt available for manual trigger
+          });
+        }
+      }, 2000); // Auto-show after 2 seconds
     };
 
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
 
     // Also show if user has been on site for a while (even without prompt)
     const timer = setTimeout(() => {
-      if (!isDismissed && isMobile && !isStandalone) {
+      if (!isDismissed && isMobile && !isStandalone && !deferredPrompt) {
         setIsVisible(true);
       }
     }, 10000); // Show after 10 seconds
@@ -58,14 +72,20 @@ export default function InstallPrompt() {
       return;
     }
 
-    deferredPrompt.prompt();
-    const { outcome } = await deferredPrompt.userChoice;
-    
-    if (outcome === 'accepted') {
-      console.log('User accepted the install prompt');
-      setIsVisible(false);
-    } else {
-      console.log('User dismissed the install prompt');
+    try {
+      deferredPrompt.prompt();
+      const { outcome } = await deferredPrompt.userChoice;
+      
+      if (outcome === 'accepted') {
+        console.log('User accepted the install prompt');
+        setIsVisible(false);
+        // Clear dismissal so it can show again if needed
+        localStorage.removeItem('pwa-install-dismissed');
+      } else {
+        console.log('User dismissed the install prompt');
+      }
+    } catch (err) {
+      console.error('Error showing install prompt:', err);
     }
     
     setDeferredPrompt(null);

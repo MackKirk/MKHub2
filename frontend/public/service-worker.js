@@ -63,11 +63,17 @@ self.addEventListener('fetch', (event) => {
 
   // Handle navigation requests (HTML pages)
   if (request.mode === 'navigate') {
+    // Always fetch from network for install page to ensure fresh content
+    if (url.pathname === '/install') {
+      event.respondWith(fetch(request));
+      return;
+    }
+    
     event.respondWith(
       fetch(request)
         .then((response) => {
-          // Cache successful HTML responses
-          if (response.ok) {
+          // Cache successful HTML responses (except /install)
+          if (response.ok && url.pathname !== '/install') {
             const responseClone = response.clone();
             caches.open(STATIC_CACHE_NAME).then((cache) => {
               cache.put(request, responseClone);
@@ -76,7 +82,10 @@ self.addEventListener('fetch', (event) => {
           return response;
         })
         .catch(() => {
-          // Offline fallback
+          // Offline fallback (but not for /install)
+          if (url.pathname === '/install') {
+            return fetch(request);
+          }
           return caches.match(request).then((cachedResponse) => {
             if (cachedResponse) {
               return cachedResponse;

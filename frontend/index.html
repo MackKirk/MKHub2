@@ -26,7 +26,15 @@
     <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;600;700;800;900&display=swap" rel="stylesheet">
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <!-- Fallback content while React loads -->
+      <div style="display: flex; align-items: center; justify-content: center; min-height: 100vh; background: linear-gradient(135deg, #0B1739 0%, #1a2d5a 100%); color: white; font-family: 'Montserrat', sans-serif;">
+        <div style="text-align: center;">
+          <div style="font-size: 2rem; margin-bottom: 1rem;">Loading MK Hub...</div>
+          <div style="opacity: 0.8;">Please wait</div>
+        </div>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
     <script src="/ui/assets/chat-widget.js" defer></script>
   </body>
