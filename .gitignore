@@ -54,6 +54,17 @@ frontend/node_modules/
 frontend/.vite/
 frontend/package-lock.json
 
+# Mobile app files
+mobile/mk-hub-mobile/node_modules/
+mobile/mk-hub-mobile/.expo/
+mobile/mk-hub-mobile/.expo-shared/
+mobile/mk-hub-mobile/dist/
+mobile/mk-hub-mobile/web-build/
+mobile/mk-hub-mobile/.env*.local
+mobile/mk-hub-mobile/*.log
+mobile/mk-hub-mobile/.metro-health-check*
+mobile/mk-hub-mobile/package-lock.json
+
 # Python build artifacts
 *.pyc
 *.pyo
