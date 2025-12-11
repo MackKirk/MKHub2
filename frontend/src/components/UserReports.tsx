@@ -669,8 +669,8 @@ function CreateReportModal({ userId, report, onClose }: { userId: string; report
 
           {/* Fine-specific fields - moved right after Report Type */}
           {reportType === 'Fine' && (
-            <div className="space-y-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
-              <h4 className="font-medium text-blue-900">Fine Details</h4>
+            <div className="space-y-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
+              <h4 className="font-medium text-gray-900">Fine Details</h4>
               <div>
                 <label className="block text-sm font-medium mb-1">Vehicle</label>
                 <input
@@ -719,8 +719,8 @@ function CreateReportModal({ userId, report, onClose }: { userId: string; report
 
           {/* Suspension-specific fields - moved right after Report Type */}
           {reportType === 'Suspension' && (
-            <div className="space-y-4 p-4 bg-orange-50 rounded-lg border border-orange-200">
-              <h4 className="font-medium text-orange-900">Suspension Period</h4>
+            <div className="space-y-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
+              <h4 className="font-medium text-gray-900">Suspension Period</h4>
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium mb-1">Start Date</label>
@@ -746,8 +746,8 @@ function CreateReportModal({ userId, report, onClose }: { userId: string; report
 
           {/* Behavior Note-specific fields - moved right after Report Type */}
           {reportType === 'Behavior Note' && (
-            <div className="space-y-4 p-4 bg-purple-50 rounded-lg border border-purple-200">
-              <h4 className="font-medium text-purple-900">Behavior Note Type</h4>
+            <div className="space-y-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
+              <h4 className="font-medium text-gray-900">Behavior Note Type</h4>
               <div className="grid grid-cols-2 gap-4">
                 <button
                   type="button"
@@ -1091,7 +1091,7 @@ function ReportDetailView({
 
   // Initialize edit form when report loads
   useEffect(() => {
-    if (report && editing && editProjects && editSettings) {
+    if (report && editProjects && editSettings) {
       setEditTitle(report.title);
       setEditDescription(report.description || '');
       setEditSeverity(report.severity);
@@ -1130,7 +1130,7 @@ function ReportDetailView({
       setEditSuspensionEndDate(report.suspension_end_date ? report.suspension_end_date.split('T')[0] : '');
       setEditBehaviorNoteType((report as any).behavior_note_type || '');
     }
-  }, [report, editing, editProjects, editSettings]);
+  }, [report, editProjects, editSettings]);
 
   const handleAddComment = async () => {
     if (!newComment.trim()) return;
@@ -1236,6 +1236,10 @@ function ReportDetailView({
       if (report?.report_type === 'Suspension') {
         payload.suspension_start_date = editSuspensionStartDate || undefined;
         payload.suspension_end_date = editSuspensionEndDate || undefined;
+      }
+
+      if (report?.report_type === 'Behavior Note') {
+        payload.behavior_note_type = editBehaviorNoteType || undefined;
       }
 
       await api('PATCH', `/employees/${userId}/reports/${reportId}`, payload);
@@ -1355,10 +1359,6 @@ function ReportDetailView({
               <div>{report.reported_by?.username || '-'}</div>
             </div>
             <div>
-              <div className="text-sm text-gray-600">Created By</div>
-              <div>{report.created_by?.username || '-'}</div>
-            </div>
-            <div>
               <div className="text-sm text-gray-600">Last Updated</div>
               <div>{formatDate(report.updated_at || report.created_at)}</div>
             </div>
@@ -1381,8 +1381,8 @@ function ReportDetailView({
 
           {/* Type-specific fields */}
           {report.report_type === 'Fine' && (
-            <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
-              <h4 className="font-medium text-blue-900 mb-3">Fine Details</h4>
+            <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
+              <h4 className="font-medium text-gray-900 mb-3">Fine Details</h4>
               <div className="grid md:grid-cols-2 gap-4">
                 <div>
                   <div className="text-sm text-gray-600">Vehicle</div>
@@ -1572,8 +1572,8 @@ function ReportDetailView({
           </div>
 
           {report.report_type === 'Suspension' && (
-            <div className="p-4 bg-orange-50 rounded-lg border border-orange-200">
-              <h4 className="font-medium text-orange-900 mb-3">Suspension Period</h4>
+            <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
+              <h4 className="font-medium text-gray-900 mb-3">Suspension Period</h4>
               <div className="grid md:grid-cols-2 gap-4">
                 <div>
                   <div className="text-sm text-gray-600">Start Date</div>
@@ -1605,9 +1605,9 @@ function ReportDetailView({
             </div>
           )}
 
-          {report.report_type === 'Behavior Note' && (report as any).behavior_note_type && (
-            <div className="p-4 bg-purple-50 rounded-lg border border-purple-200">
-              <h4 className="font-medium text-purple-900 mb-3">Behavior Note Type</h4>
+          {report.report_type === 'Behavior Note' && (
+            <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
+              <h4 className="font-medium text-gray-900 mb-3">Behavior Note Type</h4>
               {editing ? (
                 <div className="grid grid-cols-2 gap-4">
                   <button
@@ -1646,11 +1646,13 @@ function ReportDetailView({
                       <span className="text-3xl">😊</span>
                       <span className="font-medium text-green-700">Positive</span>
                     </>
-                  ) : (
+                  ) : (report as any).behavior_note_type === 'Negative' ? (
                     <>
                       <span className="text-3xl">😞</span>
                       <span className="font-medium text-red-700">Negative</span>
                     </>
+                  ) : (
+                    <span className="text-gray-500">Not specified</span>
                   )}
                 </div>
               )}
@@ -1710,44 +1712,59 @@ function ReportDetailView({
 
           {/* Timeline/Comments */}
           <div>
-            <div className="text-sm font-medium mb-2">History / Activities</div>
-            <div className="space-y-3 max-h-64 overflow-y-auto">
-              {report.comments.map((comment) => (
-                <div key={comment.id} className="p-3 bg-gray-50 rounded border-l-4 border-gray-300">
-                  <div className="text-xs text-gray-500 mb-1">
-                    {formatDate(comment.created_at)} by {comment.created_by?.username || 'System'}
-                    {comment.comment_type !== 'comment' && (
-                      <span className="ml-2 px-2 py-0.5 bg-blue-100 text-blue-700 rounded text-xs">
-                        {comment.comment_type === 'status_change' ? 'Status Change' : 'System'}
-                      </span>
-                    )}
-                  </div>
-                  <div className="text-sm text-gray-700">{comment.comment_text}</div>
-                </div>
-              ))}
+            <div className="text-sm font-medium mb-2">
+              {canEdit ? 'History / Activities' : 'Comments'}
             </div>
-            {canEdit && (
-              <div className="mt-4 flex gap-2">
-                <input
-                  type="text"
-                  className="flex-1 border rounded px-3 py-2"
-                  placeholder="Add a comment..."
-                  value={newComment}
-                  onChange={(e) => setNewComment(e.target.value)}
-                  onKeyPress={(e) => {
-                    if (e.key === 'Enter') {
-                      handleAddComment();
-                    }
-                  }}
-                />
-                <button
-                  onClick={handleAddComment}
-                  className="px-4 py-2 rounded bg-brand-red text-white hover:bg-red-700"
-                >
-                  Add
-                </button>
-              </div>
-            )}
+            <div className="space-y-3 max-h-64 overflow-y-auto">
+              {canEdit ? (
+                // Show all comments (system, status changes, and user comments) when canEdit is true
+                report.comments.map((comment) => (
+                  <div key={comment.id} className="p-3 bg-gray-50 rounded border-l-4 border-gray-300">
+                    <div className="text-xs text-gray-500 mb-1">
+                      {formatDate(comment.created_at)} by {comment.created_by?.username || 'System'}
+                      {comment.comment_type !== 'comment' && (
+                        <span className="ml-2 px-2 py-0.5 bg-blue-100 text-blue-700 rounded text-xs">
+                          {comment.comment_type === 'status_change' ? 'Status Change' : 'System'}
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-sm text-gray-700">{comment.comment_text}</div>
+                  </div>
+                ))
+              ) : (
+                // Show only user comments (type 'comment') when canEdit is false (My Information view)
+                report.comments
+                  .filter((comment) => comment.comment_type === 'comment')
+                  .map((comment) => (
+                    <div key={comment.id} className="p-3 bg-gray-50 rounded border-l-4 border-gray-300">
+                      <div className="text-xs text-gray-500 mb-1">
+                        {formatDate(comment.created_at)} by {comment.created_by?.username || 'System'}
+                      </div>
+                      <div className="text-sm text-gray-700">{comment.comment_text}</div>
+                    </div>
+                  ))
+              )}
+            </div>
+            <div className="mt-4 flex gap-2">
+              <input
+                type="text"
+                className="flex-1 border rounded px-3 py-2"
+                placeholder="Add a comment..."
+                value={newComment}
+                onChange={(e) => setNewComment(e.target.value)}
+                onKeyPress={(e) => {
+                  if (e.key === 'Enter') {
+                    handleAddComment();
+                  }
+                }}
+              />
+              <button
+                onClick={handleAddComment}
+                className="px-4 py-2 rounded bg-brand-red text-white hover:bg-red-700"
+              >
+                Add
+              </button>
+            </div>
           </div>
         </div>
         <div className="px-6 py-4 border-t bg-gray-50 flex items-center justify-end gap-2">

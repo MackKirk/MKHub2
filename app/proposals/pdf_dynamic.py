@@ -187,7 +187,7 @@ def build_dynamic_pages(data, output_path):
     title_style = ParagraphStyle("TitleRed", parent=styles["Normal"],
         fontName="Montserrat-Bold", fontSize=11.5, textColor=colors.HexColor("#d62028"), spaceAfter=12)
     user_style = ParagraphStyle("UserGrey", parent=styles["Normal"],
-        fontName="Montserrat-Bold", fontSize=9.5, leading=14, textColor=colors.grey)
+        fontName="Montserrat-Bold", fontSize=9.5, leading=14, textColor=colors.grey, alignment=4)  # 4 = TA_JUSTIFY
     user_style_centered = ParagraphStyle("UserGreyCentered", parent=styles["Normal"],
         fontName="Montserrat-Bold", fontSize=9.5, leading=14, textColor=colors.grey, alignment=1)  # 1 = TA_CENTER
 
@@ -218,19 +218,42 @@ def build_dynamic_pages(data, output_path):
                 lines = text.split("\n")
                 paragraphs = []
                 for line in lines:
+                    # Count leading spaces/tabs BEFORE stripping
+                    leading_spaces = 0
+                    leading_tabs = 0
+                    for char in line:
+                        if char == ' ':
+                            leading_spaces += 1
+                        elif char == '\t':
+                            leading_tabs += 1
+                        else:
+                            break  # Stop at first non-space/tab character
+                    
                     stripped = line.strip()
                     if stripped:
-                        paragraphs.append(("text", stripped))
+                        # Calculate indentation: 4 spaces or 1 tab = 1 level (20 points)
+                        indent_level = (leading_spaces // 4) + leading_tabs
+                        paragraphs.append(("text", stripped, indent_level))
                     else:
                         # Empty line - mark it to add spacing later
-                        paragraphs.append(("empty", None))
+                        paragraphs.append(("empty", None, 0))
 
                 if paragraphs:
                     # Keep title with at least first paragraph to avoid orphaned titles
                     first_para = paragraphs[0]
                     if first_para[0] == "text":
                         title_para = Paragraph(title, title_style)
-                        first_para_flow = Paragraph(first_para[1], user_style)
+                        
+                        # Create paragraph with indentation if needed
+                        para_text, indent_level = first_para[1], first_para[2]
+                        if indent_level > 0:
+                            # Create style with first line indent only (20 points per level)
+                            indent_style = ParagraphStyle("UserGreyIndent", parent=user_style,
+                                firstLineIndent=indent_level * 20, alignment=4)  # 4 = TA_JUSTIFY
+                            first_para_flow = Paragraph(para_text, indent_style)
+                        else:
+                            first_para_flow = Paragraph(para_text, user_style)
+                        
                         # Compute exact height needed for title + first paragraph
                         _, th = title_para.wrap(frame_width, 0)
                         _, ph = first_para_flow.wrap(frame_width, 0)
@@ -240,12 +263,19 @@ def build_dynamic_pages(data, output_path):
                         story.append(KeepTogether(title_and_first))
 
                     # Add remaining paragraphs
-                    for para_type, para_text in paragraphs[1:]:
+                    for para_type, para_text, indent_level in paragraphs[1:]:
                         if para_type == "empty":
                             # Add a spacer for empty lines to preserve spacing
                             story.append(Spacer(1, 14))
                         else:
-                            story.append(Paragraph(para_text, user_style))
+                            # Create paragraph with indentation if needed
+                            if indent_level > 0:
+                                # Create style with first line indent only (20 points per level)
+                                indent_style = ParagraphStyle("UserGreyIndent", parent=user_style,
+                                    firstLineIndent=indent_level * 20, alignment=4)  # 4 = TA_JUSTIFY
+                                story.append(Paragraph(para_text, indent_style))
+                            else:
+                                story.append(Paragraph(para_text, user_style))
                 else:
                     # No content, just add title (but this shouldn't happen in practice)
                     story.append(Paragraph(title, title_style))

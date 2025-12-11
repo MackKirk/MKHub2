@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import cast, String
 
 from ..db import get_db
-from ..models.models import CommunityPost, CommunityPostReadConfirmation, CommunityPostView, CommunityPostLike, CommunityPostComment, User, EmployeeProfile, user_divisions
+from ..models.models import CommunityPost, CommunityPostReadConfirmation, CommunityPostView, CommunityPostLike, CommunityPostComment, CommunityGroup, community_group_members, User, EmployeeProfile, user_divisions
 from ..auth.security import get_current_user
 from sqlalchemy import or_, select
 
@@ -722,5 +722,183 @@ def create_comment(
         "created_at": comment.created_at.isoformat() if comment.created_at else None,
         "updated_at": comment.updated_at.isoformat() if comment.updated_at else None,
         "comments_count": comments_count,
+    }
+
+
+@router.get("/groups")
+def list_groups(
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    """
+    List all community groups.
+    """
+    groups = db.query(CommunityGroup).order_by(CommunityGroup.created_at.desc()).all()
+    
+    result = []
+    for group in groups:
+        # Count members
+        member_count = db.query(community_group_members).filter(
+            community_group_members.c.group_id == group.id
+        ).count()
+        
+        result.append({
+            "id": str(group.id),
+            "name": group.name,
+            "description": group.description,
+            "member_count": member_count,
+            "created_at": group.created_at.isoformat() if group.created_at else None,
+        })
+    
+    return result
+
+
+@router.post("/groups")
+def create_group(
+    payload: dict,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    """
+    Create a new community group.
+    Required fields: name
+    Optional fields: description
+    """
+    name = payload.get("name", "").strip()
+    description = payload.get("description", "").strip() or None
+    
+    if not name:
+        raise HTTPException(status_code=400, detail="Name is required")
+    
+    # Check if group with same name already exists
+    existing = db.query(CommunityGroup).filter(CommunityGroup.name == name).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="A group with this name already exists")
+    
+    group = CommunityGroup(
+        name=name,
+        description=description,
+        created_by_id=current_user.id,
+        created_at=datetime.now(timezone.utc),
+    )
+    
+    db.add(group)
+    db.commit()
+    db.refresh(group)
+    
+    # Add creator as first member
+    db.execute(
+        community_group_members.insert().values(
+            group_id=group.id,
+            user_id=current_user.id
+        )
+    )
+    db.commit()
+    
+    return {
+        "id": str(group.id),
+        "name": group.name,
+        "description": group.description,
+        "member_count": 1,
+        "created_at": group.created_at.isoformat() if group.created_at else None,
+    }
+
+
+@router.get("/groups/{group_id}")
+def get_group(
+    group_id: str,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    """
+    Get a specific group with its members.
+    """
+    try:
+        group_uuid = uuid.UUID(str(group_id))
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid group_id format")
+    
+    group = db.query(CommunityGroup).filter(CommunityGroup.id == group_uuid).first()
+    if not group:
+        raise HTTPException(status_code=404, detail="Group not found")
+    
+    # Get member IDs
+    member_ids_result = db.execute(
+        select(community_group_members.c.user_id).where(
+            community_group_members.c.group_id == group_uuid
+        )
+    ).scalars().all()
+    member_ids = [str(uid) for uid in member_ids_result]
+    
+    # Count members
+    member_count = len(member_ids)
+    
+    return {
+        "id": str(group.id),
+        "name": group.name,
+        "description": group.description,
+        "member_count": member_count,
+        "member_ids": member_ids,
+        "created_at": group.created_at.isoformat() if group.created_at else None,
+    }
+
+
+@router.put("/groups/{group_id}/members")
+def update_group_members(
+    group_id: str,
+    payload: dict,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    """
+    Update group members.
+    Payload: {"member_ids": ["uuid1", "uuid2", ...]}
+    """
+    try:
+        group_uuid = uuid.UUID(str(group_id))
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid group_id format")
+    
+    group = db.query(CommunityGroup).filter(CommunityGroup.id == group_uuid).first()
+    if not group:
+        raise HTTPException(status_code=404, detail="Group not found")
+    
+    # Only group creator can update members (or admin in the future)
+    if group.created_by_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Only group creator can update members")
+    
+    member_ids = payload.get("member_ids", [])
+    if not isinstance(member_ids, list):
+        raise HTTPException(status_code=400, detail="member_ids must be a list")
+    
+    # Convert to UUIDs
+    member_uuids = []
+    for mid in member_ids:
+        try:
+            member_uuids.append(uuid.UUID(str(mid)))
+        except Exception:
+            raise HTTPException(status_code=400, detail=f"Invalid member_id format: {mid}")
+    
+    # Remove all existing members
+    db.execute(
+        community_group_members.delete().where(
+            community_group_members.c.group_id == group_uuid
+        )
+    )
+    
+    # Add new members
+    if member_uuids:
+        db.execute(
+            community_group_members.insert().values([
+                {"group_id": group_uuid, "user_id": uid}
+                for uid in member_uuids
+            ])
+        )
+    
+    db.commit()
+    
+    return {
+        "status": "updated",
+        "member_count": len(member_uuids),
     }
 

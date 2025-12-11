@@ -579,7 +579,7 @@ export default function ScheduleCard() {
   return (
     <div className="rounded-xl border bg-white h-full flex flex-col overflow-hidden">
       <div className="border-b p-4 flex items-center justify-between bg-white">
-        <h2 className="text-xl font-semibold">Schedule</h2>
+        <h2 className="text-xl font-semibold">Weekly Schedule</h2>
       </div>
       
       <div className="flex-1 overflow-hidden flex">

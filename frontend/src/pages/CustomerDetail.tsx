@@ -1,4 +1,4 @@
-import { useParams, Link, useLocation } from 'react-router-dom';
+import { useParams, Link, useLocation, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { useEffect, useMemo, useState, ReactNode } from 'react';
@@ -16,6 +16,7 @@ type Contact = { id:string, name?:string, email?:string, phone?:string, is_prima
 
 export default function CustomerDetail(){
   const location = useLocation();
+  const navigate = useNavigate();
   const { id } = useParams();
   const [tab, setTab] = useState<'overview'|'general'|'files'|'contacts'|'sites'|'projects'|'opportunities'>('overview');
   const [newProjectOpen, setNewProjectOpen] = useState(false);
@@ -186,6 +187,18 @@ export default function CustomerDetail(){
       <div className="mb-3 rounded-xl border bg-gradient-to-br from-[#7f1010] to-[#a31414] text-white p-4">
         <div className="text-2xl font-extrabold">Customer Information</div>
         <div className="text-sm opacity-90">Profile, sites, projects, and files for this customer.</div>
+      </div>
+      <div className="mb-3">
+        <button
+          onClick={() => navigate('/customers')}
+          className="p-2 rounded-lg border hover:bg-gray-50 transition-colors flex items-center gap-2"
+          title="Back to Customers"
+        >
+          <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+          </svg>
+          <span className="text-sm text-gray-700 font-medium">Back to Customers</span>
+        </button>
       </div>
       <div className="rounded-xl border bg-white">
         <div className="relative rounded-t-xl p-5 text-white overflow-hidden" style={{ backgroundImage: 'linear-gradient(135deg, #6b7280, #1f2937)' }}>

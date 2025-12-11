@@ -9,7 +9,7 @@ import { useConfirm } from '@/components/ConfirmProvider';
 import { useUnsavedChanges } from '@/components/UnsavedChangesProvider';
 
 type Client = { id:string, name?:string, display_name?:string, address_line1?:string, city?:string, province?:string, country?:string };
-type Site = { id:string, site_name?:string, site_address_line1?:string, site_city?:string, site_province?:string, site_country?:string };
+type Site = { id:string, site_name?:string, site_address_line1?:string, site_address_line2?:string, site_city?:string, site_province?:string, site_postal_code?:string, site_country?:string };
 
 export default function ProposalForm({ mode, clientId: clientIdProp, siteId: siteIdProp, projectId: projectIdProp, initial, disabled, onSave }: { mode:'new'|'edit', clientId?:string, siteId?:string, projectId?:string, initial?: any, disabled?: boolean, onSave?: ()=>void }){
   const nav = useNavigate();
@@ -376,8 +376,52 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
   // derive company fields
   const companyName = (client?.display_name || client?.name || '').slice(0,50);
   const companyAddress = useMemo(()=>{
-    if (site) return [site.site_address_line1, site.site_city, site.site_province, site.site_country].filter(Boolean).join(', ').slice(0,50);
-    return [client?.address_line1, client?.city, client?.province, client?.country].filter(Boolean).join(', ').slice(0,50);
+    // Helper: normalize province/state to a short code when possible
+    const normalizeProvince = (prov?: string): string | undefined => {
+      if (!prov) return undefined;
+      const trimmed = prov.trim();
+      if (!trimmed) return undefined;
+      const map: Record<string, string> = {
+        'british columbia': 'BC',
+        'alberta': 'AB',
+        'saskatchewan': 'SK',
+        'manitoba': 'MB',
+        'ontario': 'ON',
+        'quebec': 'QC',
+        'new brunswick': 'NB',
+        'nova scotia': 'NS',
+        'prince edward island': 'PE',
+        'newfoundland and labrador': 'NL',
+        'yukon': 'YT',
+        'northwest territories': 'NT',
+        'nunavut': 'NU',
+      };
+      const lower = trimmed.toLowerCase();
+      if (map[lower]) return map[lower];
+      // If already looks like a short code (2-3 letters), keep as is
+      if (/^[A-Za-z]{2,3}$/.test(trimmed)) return trimmed;
+      return trimmed;
+    };
+
+    const formatAddress = (
+      fullAddressLine1: string | undefined,
+      city: string | undefined,
+      province: string | undefined
+    ): string => {
+      if (!fullAddressLine1) return '';
+
+      // Street: everything before the first comma (ignores postal code / country that Google may append)
+      const street = fullAddressLine1.split(',')[0].trim();
+      const cityPart = (city || '').trim();
+      const provPart = normalizeProvince(province);
+
+      return [street, cityPart, provPart].filter(Boolean).join(', ');
+    };
+
+    if (site) {
+      return formatAddress(site.site_address_line1, site.site_city, site.site_province);
+    }
+    return formatAddress(client?.address_line1, client?.city, client?.province);
   }, [client, site]);
 
   // init order number for new
@@ -766,7 +810,7 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
             </div>
             <div><label className="text-xs text-gray-600">Order Number</label><input className="w-full border rounded px-3 py-2" value={orderNumber} onChange={e=>setOrderNumber(e.target.value)} placeholder={nextCode?.order_number||''} /></div>
             <div><label className="text-xs text-gray-600">Company Name</label><input className="w-full border rounded px-3 py-2" value={companyName} readOnly /></div>
-            <div><label className="text-xs text-gray-600">Company Address</label><input className="w-full border rounded px-3 py-2" value={companyAddress} readOnly /></div>
+            <div><label className="text-xs text-gray-600">Company Address</label><input className="w-full border rounded px-3 py-2" value={companyAddress || ''} readOnly title={companyAddress || ''} /></div>
             <div><label className="text-xs text-gray-600">Date</label><input type="date" className="w-full border rounded px-3 py-2" value={date} onChange={e=>setDate(e.target.value)} /></div>
           </div>
         </div>
@@ -857,7 +901,32 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
                   </div>
                 </div>
                 {s.type==='text' ? (
-                  <textarea className="w-full border rounded px-3 py-2 text-sm" rows={5} placeholder="Section text" value={s.text||''} onChange={e=> setSections(arr=> arr.map((x,i)=> i===idx? { ...x, text: e.target.value }: x))} />
+                  <textarea 
+                    className="w-full border rounded px-3 py-2 text-sm" 
+                    rows={5} 
+                    placeholder="Section text" 
+                    value={s.text||''} 
+                    onChange={e=> setSections(arr=> arr.map((x,i)=> i===idx? { ...x, text: e.target.value }: x))}
+                    onKeyDown={(e)=>{
+                      // Handle Tab key to insert indentation (4 spaces)
+                      if (e.key === 'Tab') {
+                        e.preventDefault();
+                        const textarea = e.currentTarget;
+                        const start = textarea.selectionStart;
+                        const end = textarea.selectionEnd;
+                        const value = textarea.value;
+                        
+                        // Insert 4 spaces at cursor position
+                        const newValue = value.substring(0, start) + '    ' + value.substring(end);
+                        setSections(arr=> arr.map((x,i)=> i===idx? { ...x, text: newValue }: x));
+                        
+                        // Restore cursor position after the inserted spaces
+                        setTimeout(() => {
+                          textarea.selectionStart = textarea.selectionEnd = start + 4;
+                        }, 0);
+                      }
+                    }}
+                  />
                 ) : (
                   <div>
                     <div className="mb-2"><button className="px-3 py-1.5 rounded bg-gray-100" onClick={()=> setSectionPicker({ secId: s.id||String(idx) })}>+ Add Image</button></div>

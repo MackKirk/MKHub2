@@ -38,7 +38,13 @@ export default defineConfig({
   build: { 
     outDir: 'dist',
     commonjsOptions: {
-      include: [/qrcode/, /node_modules/]
+      include: [/qrcode/, /node_modules/],
+      transformMixedEsModules: true
+    },
+    rollupOptions: {
+      output: {
+        manualChunks: undefined
+      }
     }
   },
   publicDir: 'public'

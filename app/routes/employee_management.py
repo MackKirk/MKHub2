@@ -1800,6 +1800,7 @@ def get_user_reports(
             "related_project_department": report.related_project_department,
             "suspension_start_date": report.suspension_start_date.isoformat() if report.suspension_start_date else None,
             "suspension_end_date": report.suspension_end_date.isoformat() if report.suspension_end_date else None,
+            "behavior_note_type": report.behavior_note_type,
             "reported_by": {
                 "id": str(report.reported_by),
                 "username": reported_by_user.username if reported_by_user else None,
@@ -1894,6 +1895,7 @@ def get_report_details(
         "related_project_department": report.related_project_department,
         "suspension_start_date": report.suspension_start_date.isoformat() if report.suspension_start_date else None,
         "suspension_end_date": report.suspension_end_date.isoformat() if report.suspension_end_date else None,
+        "behavior_note_type": report.behavior_note_type,
         "reported_by": {
             "id": str(report.reported_by),
             "username": reported_by_user.username if reported_by_user else None,
@@ -2002,51 +2004,89 @@ def update_report(
     old_status = report.status
     changes = []
     
-    # Update fields
+    # Update fields - only add to changes if value actually changed
     if "title" in payload:
-        report.title = payload["title"]
-        changes.append(f"Title updated to '{payload['title']}'")
+        new_title = payload["title"]
+        if report.title != new_title:
+            report.title = new_title
+            changes.append(f"Title updated to '{new_title}'")
     
     if "description" in payload:
-        report.description = payload.get("description")
-        changes.append("Description updated")
+        new_description = payload.get("description")
+        old_description = report.description or ""
+        new_description_str = new_description or ""
+        if old_description != new_description_str:
+            report.description = new_description
+            changes.append("Description updated")
     
     if "occurrence_date" in payload:
-        report.occurrence_date = datetime.fromisoformat(payload["occurrence_date"].replace('Z', '+00:00'))
-        changes.append("Occurrence date updated")
+        new_occurrence_date = datetime.fromisoformat(payload["occurrence_date"].replace('Z', '+00:00'))
+        if report.occurrence_date != new_occurrence_date:
+            report.occurrence_date = new_occurrence_date
+            changes.append("Occurrence date updated")
     
     if "severity" in payload:
-        report.severity = payload["severity"]
-        changes.append(f"Severity changed to {payload['severity']}")
+        new_severity = payload["severity"]
+        if report.severity != new_severity:
+            report.severity = new_severity
+            changes.append(f"Severity changed to {new_severity}")
     
     if "status" in payload:
-        report.status = payload["status"]
-        if old_status != payload["status"]:
-            changes.append(f"Status changed from {old_status} to {payload['status']}")
+        new_status = payload["status"]
+        if old_status != new_status:
+            report.status = new_status
+            changes.append(f"Status changed from {old_status} to {new_status}")
     
     if "vehicle" in payload:
-        report.vehicle = payload.get("vehicle")
+        new_vehicle = payload.get("vehicle") or None
+        old_vehicle = report.vehicle or None
+        if old_vehicle != new_vehicle:
+            report.vehicle = new_vehicle
     
     if "ticket_number" in payload:
-        report.ticket_number = payload.get("ticket_number")
+        new_ticket = payload.get("ticket_number") or None
+        old_ticket = report.ticket_number or None
+        if old_ticket != new_ticket:
+            report.ticket_number = new_ticket
     
     if "fine_amount" in payload:
-        report.fine_amount = Decimal(str(payload["fine_amount"])) if payload.get("fine_amount") else None
+        new_fine_amount = Decimal(str(payload["fine_amount"])) if payload.get("fine_amount") else None
+        old_fine_amount = report.fine_amount
+        if old_fine_amount != new_fine_amount:
+            report.fine_amount = new_fine_amount
     
     if "due_date" in payload:
-        report.due_date = datetime.fromisoformat(payload["due_date"].replace('Z', '+00:00')) if payload.get("due_date") else None
+        new_due_date = datetime.fromisoformat(payload["due_date"].replace('Z', '+00:00')) if payload.get("due_date") else None
+        old_due_date = report.due_date
+        if old_due_date != new_due_date:
+            report.due_date = new_due_date
     
     if "related_project_department" in payload:
-        report.related_project_department = payload.get("related_project_department")
+        new_related = payload.get("related_project_department") or None
+        old_related = report.related_project_department or None
+        if old_related != new_related:
+            report.related_project_department = new_related
     
     if "suspension_start_date" in payload:
-        report.suspension_start_date = datetime.fromisoformat(payload["suspension_start_date"].replace('Z', '+00:00')) if payload.get("suspension_start_date") else None
+        new_start = datetime.fromisoformat(payload["suspension_start_date"].replace('Z', '+00:00')) if payload.get("suspension_start_date") else None
+        old_start = report.suspension_start_date
+        if old_start != new_start:
+            report.suspension_start_date = new_start
     
     if "suspension_end_date" in payload:
-        report.suspension_end_date = datetime.fromisoformat(payload["suspension_end_date"].replace('Z', '+00:00')) if payload.get("suspension_end_date") else None
+        new_end = datetime.fromisoformat(payload["suspension_end_date"].replace('Z', '+00:00')) if payload.get("suspension_end_date") else None
+        old_end = report.suspension_end_date
+        if old_end != new_end:
+            report.suspension_end_date = new_end
     
     if "behavior_note_type" in payload:
-        report.behavior_note_type = payload.get("behavior_note_type")
+        new_behavior_type = payload.get("behavior_note_type") or None
+        old_behavior_type = report.behavior_note_type or None
+        if old_behavior_type != new_behavior_type:
+            report.behavior_note_type = new_behavior_type
+            old_display = old_behavior_type if old_behavior_type else "Not specified"
+            new_display = new_behavior_type if new_behavior_type else "Not specified"
+            changes.append(f"Behavior note type changed from {old_display} to {new_display}")
     
     report.updated_at = datetime.now(timezone.utc)
     report.updated_by = current_user.id
@@ -2055,11 +2095,13 @@ def update_report(
     
     # Add timeline entry for significant changes
     if changes:
+        # Determine comment type: status_change if status changed, otherwise system
+        comment_type = "status_change" if old_status != report.status else "system"
         comment = ReportComment(
             id=uuid_lib.uuid4(),
             report_id=report.id,
             comment_text="; ".join(changes),
-            comment_type="status_change" if old_status != report.status else "comment",
+            comment_type=comment_type,
             created_by=current_user.id,
         )
         db.add(comment)

@@ -9,15 +9,44 @@ import NationalitySelect from '@/components/NationalitySelect';
 import AddressAutocomplete from '@/components/AddressAutocomplete';
 import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard';
 import UserLoans from '@/components/UserLoans';
+import UserReports from '@/components/UserReports';
+import { useNavigate, useLocation } from 'react-router-dom';
 
 type ProfileResp = { user:{ username:string, email:string, first_name?:string, last_name?:string, divisions?: Array<{id:string, label:string}> }, profile?: any };
 
 export default function Profile(){
+  const navigate = useNavigate();
+  const location = useLocation();
+  const fromHome = location.state?.fromHome === true;
   const { data, isLoading } = useQuery({ queryKey:['meProfile'], queryFn: ()=>api<ProfileResp>('GET','/auth/me/profile') });
   const p = data?.profile || {};
+  const u = data?.user || {};
   const fileRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
-  const [tab, setTab] = useState<'personal'|'job'|'docs'|'loans'>('personal');
+  const [tab, setTab] = useState<'personal'|'job'|'docs'|'loans'|'reports'>('personal');
+  
+  // Get hero background image from settings
+  const { data: settings } = useQuery({ queryKey:['settings'], queryFn: ()=> api<any>('GET','/settings') });
+  const heroUrl = useMemo(() => {
+    if (!settings) return '/ui/assets/login/background.jpg';
+    const branding = (settings?.branding || []) as any[];
+    const hero = branding.find((i: any) => ['user_hero_background_url', 'hero_background_url', 'user hero background', 'hero background'].includes(String(i.label || '').toLowerCase()));
+    return hero?.value || '/ui/assets/login/background.jpg';
+  }, [settings]);
+  const [heroResolvedUrl, setHeroResolvedUrl] = useState<string>('');
+  useEffect(() => {
+    (async () => {
+      try {
+        if (!heroUrl) { setHeroResolvedUrl(''); return; }
+        if (heroUrl.startsWith('/files/')) {
+          const r: any = await api('GET', heroUrl);
+          setHeroResolvedUrl(r.download_url || '');
+        } else {
+          setHeroResolvedUrl(heroUrl);
+        }
+      } catch { setHeroResolvedUrl(''); }
+    })();
+  }, [heroUrl]);
   const [isEditingPersonal, setIsEditingPersonal] = useState(false);
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   // Get current user ID for components
@@ -31,6 +60,14 @@ export default function Profile(){
     enabled: !!userId,
   });
   const hasLoans = userLoans && userLoans.length > 0;
+  
+  // Check if user has any reports to show the Reports tab
+  const { data: userReports } = useQuery({
+    queryKey: ['reports', userId],
+    queryFn: () => api<any[]>('GET', `/employees/${userId}/reports`),
+    enabled: !!userId,
+  });
+  const hasReports = userReports && userReports.length > 0;
   
   // Local form state
   const [form, setForm] = useState<any>({});
@@ -173,49 +210,75 @@ export default function Profile(){
   return (
     <div>
       {/* Title above hero */}
-      <div className="mb-3 flex items-center gap-3">
-        <img className="w-10 h-10 rounded-full border-2 border-brand-red object-cover" src={p.profile_photo_file_id? `/files/${p.profile_photo_file_id}/thumbnail?w=64`:'/ui/assets/login/logo-light.svg'} />
-        <h2 className="text-xl font-extrabold">My Information</h2>
-        {totalMissing>0 && <span className="text-red-700 text-sm bg-red-50 border border-red-200 rounded-full px-2 py-0.5">Missing {totalMissing}</span>}
+      <div className="mb-3 rounded-xl border bg-gradient-to-br from-[#7f1010] to-[#a31414] text-white p-4">
+        <div className="text-2xl font-extrabold">My Information</div>
+        <div className="text-sm opacity-90">Personal details, employment, and documents.{totalMissing>0 && <span className="ml-2">Missing {totalMissing} required fields.</span>}</div>
       </div>
-      <p className="text-sm text-gray-600 mb-2">Please complete your profile. Fields marked with <span className="text-red-600">*</span> are required.</p>
+      
+      {fromHome && (
+        <div className="mb-3 flex items-center justify-between">
+          <button
+            onClick={() => navigate('/home')}
+            className="p-2 rounded-lg border hover:bg-gray-50 transition-colors flex items-center gap-2"
+            title="Back to Home"
+          >
+            <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+            </svg>
+            <span className="text-sm text-gray-700 font-medium">Back to Home</span>
+          </button>
+        </div>
+      )}
+      
       <motion.div initial={{opacity:0, y:10}} animate={{opacity:1, y:0}} className="rounded-xl border shadow-hero bg-white pb-24">
-        <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] rounded-t-xl p-5 text-white">
-          <div className="flex gap-4 items-stretch min-h-[180px]">
-            <div className="w-[220px] relative group">
-              <img className="w-full h-full object-cover rounded-xl border-2 border-brand-red" src={p.profile_photo_file_id? `/files/${p.profile_photo_file_id}/thumbnail?w=240`:'/ui/assets/login/logo-light.svg'} />
-              <button onClick={()=>fileRef.current?.click()} className="absolute inset-0 rounded-xl bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white">✏️ Change</button>
-              <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={(e)=>{/* preview handled by server after save */}} />
-            </div>
-            <div className="flex-1 flex flex-col justify-start">
-              <div className="text-3xl font-extrabold">{p.first_name || data?.user?.first_name || data?.user?.username} {p.last_name || data?.user?.last_name || ''}</div>
-              <div className="text-sm opacity-90 mt-1">{p.job_title||data?.user?.email||''}</div>
-              <div className="mt-auto flex gap-3">
-                <button onClick={()=>setTab('personal')} className={`px-4 py-2 rounded-full ${tab==='personal'?'bg-black text-white':'bg-white text-black'}`}>
-                  Personal {missingPersonalWithContact.length>0 && <span className="ml-2 text-xs bg-red-50 text-red-700 border border-red-200 rounded-full px-2">{missingPersonalWithContact.length}</span>}
-                </button>
-                <button onClick={()=>setTab('job')} className={`px-4 py-2 rounded-full ${tab==='job'?'bg-black text-white':'bg-white text-black'}`}>Job</button>
-                <button onClick={()=>setTab('docs')} className={`px-4 py-2 rounded-full ${tab==='docs'?'bg-black text-white':'bg-white text-black'}`}>Documents</button>
-                {hasLoans && (
-                  <button onClick={()=>setTab('loans')} className={`px-4 py-2 rounded-full ${tab==='loans'?'bg-black text-white':'bg-white text-black'}`}>Loans</button>
-                )}
+        <div className="rounded-t-xl p-5 text-white relative overflow-hidden" style={{ backgroundImage: `url(${heroResolvedUrl||'/ui/assets/login/background.jpg'})`, backgroundSize: 'cover', backgroundPosition: 'center' }}>
+          <div className="absolute inset-0 bg-gradient-to-br from-gray-500/50 to-gray-800/60" />
+          <div className="relative z-10">
+            <div className="flex gap-4 items-stretch min-h-[210px]">
+              <div className="w-[220px] relative group">
+                <img className="w-full h-full object-cover rounded-xl border-2 border-brand-red" src={p.profile_photo_file_id? `/files/${p.profile_photo_file_id}/thumbnail?w=240`:'/ui/assets/login/logo-light.svg'} />
+                <button onClick={()=>fileRef.current?.click()} className="absolute inset-0 rounded-xl bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white transition-opacity">✏️ Change</button>
+                <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={async(e)=>{
+                  const f = e.target.files?.[0];
+                  if(!f) return;
+                  try{
+                    setUploading(true);
+                    const up:any = await api('POST','/files/upload',{ project_id:null, client_id:null, employee_id:null, category_id:'profile-photo', original_name:f.name, content_type: f.type||'image/jpeg' });
+                    const put = await fetch(up.upload_url, { method:'PUT', headers:{ 'Content-Type': f.type||'image/jpeg', 'x-ms-blob-type': 'BlockBlob' }, body: f });
+                    if(!put.ok) throw new Error('upload failed');
+                    const conf:any = await api('POST','/files/confirm',{ key: up.key, size_bytes: f.size, checksum_sha256:'na', content_type: f.type||'image/jpeg' });
+                    await api('PUT','/auth/me/profile',{ profile_photo_file_id: conf.id });
+                    await queryClient.invalidateQueries({ queryKey:['meProfile'] });
+                    toast.success('Profile photo updated');
+                  }catch(e){ console.error(e); toast.error('Failed to update photo'); }
+                  finally{ setUploading(false); if(fileRef.current) fileRef.current.value=''; }
+                }} />
               </div>
-            </div>
-            <div className="flex items-center">
-              <button disabled={uploading} onClick={async()=>{
-                const f = fileRef.current?.files?.[0]; if(!f) return;
-                try{
-                  setUploading(true);
-                  const up:any = await api('POST','/files/upload',{ project_id:null, client_id:null, employee_id:null, category_id:'profile-photo', original_name:f.name, content_type: f.type||'image/jpeg' });
-                  const put = await fetch(up.upload_url, { method:'PUT', headers:{ 'Content-Type': f.type||'image/jpeg', 'x-ms-blob-type': 'BlockBlob' }, body: f });
-                  if(!put.ok) throw new Error('upload failed');
-                  const conf:any = await api('POST','/files/confirm',{ key: up.key, size_bytes: f.size, checksum_sha256:'na', content_type: f.type||'image/jpeg' });
-                  await api('PUT','/auth/me/profile',{ profile_photo_file_id: conf.id });
-                  await queryClient.invalidateQueries({ queryKey:['meProfile'] });
-                  toast.success('Profile photo updated');
-                }catch(e){ console.error(e); }
-                finally{ setUploading(false); if(fileRef.current) fileRef.current.value=''; }
-              }} className="px-5 py-2 rounded-xl bg-gradient-to-r from-brand-red to-[#ee2b2b] font-bold disabled:opacity-60">{uploading? 'Saving...' : 'Save Photo'}</button>
+              <div className="flex-1 flex flex-col justify-start">
+                <div className="text-3xl font-extrabold">{p.first_name || u?.first_name || u?.username} {p.last_name || u?.last_name || ''}</div>
+                <div className="text-sm opacity-90 mt-1">{p.job_title || u?.email || ''}{u?.divisions && u.divisions.length > 0 ? ` — ${u.divisions.map((d: any) => d.label).join(', ')}` : (p.division ? ` — ${p.division}` : '')}</div>
+                <div className="grid md:grid-cols-3 gap-2 text-xs mt-3">
+                  <div><span className="opacity-80">Username:</span> <span className="font-semibold">{u?.username||'—'}</span></div>
+                  <div><span className="opacity-80">Phone:</span> <span className="font-semibold">{p.phone||'—'}</span></div>
+                  <div><span className="opacity-80">Personal email:</span> <span className="font-semibold">{u?.email||u?.email_personal||'—'}</span></div>
+                  <div><span className="opacity-80">Work email:</span> <span className="font-semibold">{p.work_email||'—'}</span></div>
+                  <div><span className="opacity-80">Status:</span> <span className="font-semibold">{u?.is_active? 'Active':'Terminated'}</span></div>
+                  <div><span className="opacity-80">Hire date:</span> <span className="font-semibold">{p.hire_date? String(p.hire_date).slice(0,10):'—'}</span></div>
+                </div>
+                <div className="mt-auto flex gap-2">
+                  <button onClick={()=>setTab('personal')} className={`px-4 py-2 rounded-lg border ${tab==='personal'? 'bg-black/30 border-white/30 text-white' : 'bg-white text-black'}`}>
+                    Personal {missingPersonalWithContact.length>0 && <span className="ml-2 text-xs bg-red-50 text-red-700 border border-red-200 rounded-full px-2">{missingPersonalWithContact.length}</span>}
+                  </button>
+                  <button onClick={()=>setTab('job')} className={`px-4 py-2 rounded-lg border ${tab==='job'? 'bg-black/30 border-white/30 text-white' : 'bg-white text-black'}`}>Job</button>
+                  <button onClick={()=>setTab('docs')} className={`px-4 py-2 rounded-lg border ${tab==='docs'? 'bg-black/30 border-white/30 text-white' : 'bg-white text-black'}`}>Documents</button>
+                  {hasLoans && (
+                    <button onClick={()=>setTab('loans')} className={`px-4 py-2 rounded-lg border ${tab==='loans'? 'bg-black/30 border-white/30 text-white' : 'bg-white text-black'}`}>Loans</button>
+                  )}
+                  {hasReports && (
+                    <button onClick={()=>setTab('reports')} className={`px-4 py-2 rounded-lg border ${tab==='reports'? 'bg-black/30 border-white/30 text-white' : 'bg-white text-black'}`}>Reports</button>
+                  )}
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -459,6 +522,9 @@ export default function Profile(){
               )}
               {tab==='loans' && hasLoans && userId && (
                 <UserLoans userId={userId} canEdit={false} />
+              )}
+              {tab==='reports' && hasReports && userId && (
+                <UserReports userId={userId} canEdit={false} />
               )}
             </>
           )}

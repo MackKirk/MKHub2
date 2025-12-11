@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
@@ -36,13 +36,16 @@ type Comment = {
 
 type EmployeeCommunityProps = {
   expanded?: boolean;
+  feedMode?: boolean;
 };
 
-export default function EmployeeCommunity({ expanded = false }: EmployeeCommunityProps) {
-  const [filter, setFilter] = useState<'all' | 'unread' | 'required' | 'announcements'>('all');
+export default function EmployeeCommunity({ expanded = false, feedMode = false }: EmployeeCommunityProps) {
+  const [filter, setFilter] = useState<'all' | 'unread' | 'required' | 'announcements' | 'urgent'>('all');
   const [modalPost, setModalPost] = useState<CommunityPost | null>(null);
   const [commentText, setCommentText] = useState('');
   const commentsRef = useRef<HTMLDivElement>(null);
+  const [visiblePostsCount, setVisiblePostsCount] = useState(feedMode ? 3 : Infinity);
+  const feedContainerRef = useRef<HTMLDivElement>(null);
 
   // Fetch community posts
   const { data: posts = [], refetch: refetchPosts } = useQuery({
@@ -66,12 +69,52 @@ export default function EmployeeCommunity({ expanded = false }: EmployeeCommunit
     // Ensure posts is always an array
     if (!Array.isArray(posts)) return [];
     
-    if (filter === 'all') return posts;
-    if (filter === 'unread') return posts.filter(p => p.is_unread);
-    if (filter === 'required') return posts.filter(p => p.requires_read_confirmation);
-    if (filter === 'announcements') return posts.filter(p => p.tags?.includes('Announcement'));
-    return posts;
-  }, [posts, filter]);
+    let filtered: CommunityPost[] = [];
+    if (filter === 'all') filtered = posts;
+    else if (filter === 'unread') filtered = posts.filter(p => p.is_unread);
+    else if (filter === 'required') filtered = posts.filter(p => p.requires_read_confirmation);
+    else if (filter === 'announcements') filtered = posts.filter(p => p.tags?.includes('Announcement'));
+    else if (filter === 'urgent') filtered = posts.filter(p => p.tags?.includes('Urgent'));
+    else filtered = posts;
+    
+    // In feed mode, limit visible posts
+    if (feedMode && visiblePostsCount < filtered.length) {
+      return filtered.slice(0, visiblePostsCount);
+    }
+    return filtered;
+  }, [posts, filter, feedMode, visiblePostsCount]);
+
+  // Reset visible posts count when filter changes
+  useEffect(() => {
+    if (feedMode) {
+      setVisiblePostsCount(3);
+    }
+  }, [filter, feedMode]);
+
+  // Infinite scroll handler for feed mode
+  useEffect(() => {
+    if (!feedMode || !feedContainerRef.current) return;
+
+    const container = feedContainerRef.current;
+    const handleScroll = () => {
+      const { scrollTop, scrollHeight, clientHeight } = container;
+      // Load more when user scrolls to within 100px of the bottom
+      if (scrollHeight - scrollTop - clientHeight < 100) {
+        setVisiblePostsCount(prev => {
+          const filtered = filter === 'all' ? posts : 
+            filter === 'unread' ? posts.filter((p: CommunityPost) => p.is_unread) :
+            filter === 'required' ? posts.filter((p: CommunityPost) => p.requires_read_confirmation) :
+            filter === 'announcements' ? posts.filter((p: CommunityPost) => p.tags?.includes('Announcement')) :
+            posts;
+          // Load 3 more posts at a time
+          return Math.min(prev + 3, filtered.length);
+        });
+      }
+    };
+
+    container.addEventListener('scroll', handleScroll);
+    return () => container.removeEventListener('scroll', handleScroll);
+  }, [feedMode, posts, filter]);
 
   const queryClient = useQueryClient();
 
@@ -200,31 +243,56 @@ export default function EmployeeCommunity({ expanded = false }: EmployeeCommunit
   const getTagColor = (tag: string) => {
     switch (tag) {
       case 'Announcement':
-        return 'bg-green-100 text-green-800 border-green-300';
+        return 'bg-red-50 text-red-700';
       case 'Urgent':
-        return 'bg-red-100 text-red-800 border-red-300';
+        return 'bg-red-50 text-red-700';
       case 'Required':
-        return 'bg-yellow-100 text-yellow-800 border-yellow-300';
+        return 'bg-red-50 text-red-700';
       case 'Image':
-        return 'bg-gray-100 text-gray-800 border-gray-300';
+        return 'bg-green-50 text-green-700';
       case 'Document':
-        return 'bg-gray-100 text-gray-800 border-gray-300';
+        return 'bg-green-50 text-green-700';
+      case 'Groups':
+        return 'bg-blue-50 text-blue-700';
       case 'Mack Kirk News':
-        return 'bg-blue-100 text-blue-800 border-blue-300';
+        return 'bg-blue-50 text-blue-700';
       default:
-        return 'bg-gray-100 text-gray-800 border-gray-300';
+        return 'bg-gray-50 text-gray-700';
     }
   };
 
+  const getTagPriority = (tag: string): number => {
+    switch (tag) {
+      case 'Urgent':
+        return 1;
+      case 'Required':
+        return 2;
+      case 'Announcement':
+        return 3;
+      case 'Groups':
+        return 4;
+      case 'Image':
+      case 'Document':
+        return 5;
+      default:
+        return 99;
+    }
+  };
+
+  const sortTagsByPriority = (tags: string[]): string[] => {
+    if (!Array.isArray(tags)) return [];
+    return [...tags].sort((a, b) => getTagPriority(a) - getTagPriority(b));
+  };
+
   return (
-    <div className={`rounded-xl border bg-white p-4 ${expanded ? 'h-full flex flex-col' : ''}`}>
-      <div className="mb-4 flex items-center justify-between">
+    <div className={`rounded-xl border bg-white p-4 ${expanded ? 'h-full flex flex-col' : feedMode ? 'h-full flex flex-col min-w-0' : ''}`}>
+      <div className="mb-4 flex items-center justify-between flex-shrink-0">
         <h3 className="text-lg font-semibold">Employee Community</h3>
       </div>
 
       {/* Filter tabs */}
-      <div className="flex gap-2 mb-4 overflow-x-auto">
-        {(['all', 'unread', 'required', 'announcements'] as const).map((f) => (
+      <div className="flex gap-2 mb-4 overflow-x-auto flex-shrink-0">
+        {(['all', 'unread', 'urgent', 'required', 'announcements'] as const).map((f) => (
           <button
             key={f}
             onClick={() => setFilter(f)}
@@ -243,8 +311,9 @@ export default function EmployeeCommunity({ expanded = false }: EmployeeCommunit
 
       {/* Posts feed */}
       <div 
-        className={`space-y-4 overflow-y-auto ${expanded ? 'flex-1 min-h-0' : ''}`} 
-        style={!expanded ? { maxHeight: '600px', height: '600px' } : { maxHeight: '100%' }}
+        ref={feedContainerRef}
+        className={`space-y-4 overflow-y-auto ${expanded ? 'flex-1 min-h-0' : feedMode ? 'flex-1 min-h-0' : ''}`} 
+        style={feedMode ? {} : (!expanded ? { maxHeight: '600px', height: '600px' } : { maxHeight: '100%' })}
       >
         {filteredPosts.length === 0 ? (
           <div className="text-center text-gray-500 py-8">
@@ -255,7 +324,7 @@ export default function EmployeeCommunity({ expanded = false }: EmployeeCommunit
             return (
               <div
                 key={post.id}
-                className="border rounded-lg p-4 hover:shadow-md transition-shadow cursor-pointer"
+                className="border rounded-lg p-4 hover:shadow-md transition-shadow cursor-pointer overflow-hidden"
                 onClick={(e) => {
                   e.stopPropagation();
                   handleOpenModal(post);
@@ -278,7 +347,7 @@ export default function EmployeeCommunity({ expanded = false }: EmployeeCommunit
                   </div>
 
                   {/* Content */}
-                  <div className="flex-1 min-w-0">
+                  <div className="flex-1 min-w-0 overflow-hidden">
                     <div className="flex items-center gap-2 mb-1">
                       <h4 className="font-semibold text-gray-900 truncate">{post.title}</h4>
                       {post.is_unread && (
@@ -291,12 +360,12 @@ export default function EmployeeCommunity({ expanded = false }: EmployeeCommunit
                     </div>
 
                     {/* Tags */}
-                    {post.tags && post.tags.length > 0 && (
+                    {Array.isArray(post.tags) && post.tags.length > 0 && (
                       <div className="flex flex-wrap gap-2 mb-2">
-                        {post.tags.map((tag) => (
+                        {sortTagsByPriority(post.tags).map((tag) => (
                           <span
                             key={tag}
-                            className={`px-2 py-0.5 rounded text-xs border ${getTagColor(tag)}`}
+                            className={`px-2 py-0.5 rounded text-xs ${getTagColor(tag)}`}
                           >
                             {tag}
                           </span>
@@ -304,7 +373,7 @@ export default function EmployeeCommunity({ expanded = false }: EmployeeCommunit
                       </div>
                     )}
 
-                    {/* Content preview - single line with ellipsis */}
+                    {/* Content preview - single line truncated with ellipsis */}
                     <p className="text-sm text-gray-700 truncate mb-2">
                       {post.content}
                     </p>
@@ -376,8 +445,8 @@ export default function EmployeeCommunity({ expanded = false }: EmployeeCommunit
                     </div>
                     <div className="text-sm text-gray-600 mt-0.5">
                       {modalPost.author_name || 'Unknown'} · {formatTimeAgo(modalPost.created_at)}
-                      {modalPost.tags && modalPost.tags.length > 0 && modalPost.tags.includes('Announcement') && ' in '}
-                      {modalPost.tags && modalPost.tags.length > 0 && modalPost.tags.includes('Announcement') && modalPost.tags.find(t => t !== 'Announcement' && t !== 'Image' && t !== 'Document' && t !== 'Urgent' && t !== 'Required') && (
+                      {Array.isArray(modalPost.tags) && modalPost.tags.length > 0 && modalPost.tags.includes('Announcement') && ' in '}
+                      {Array.isArray(modalPost.tags) && modalPost.tags.length > 0 && modalPost.tags.includes('Announcement') && modalPost.tags.find(t => t !== 'Announcement' && t !== 'Image' && t !== 'Document' && t !== 'Urgent' && t !== 'Required') && (
                         <span className="capitalize">{modalPost.tags.find(t => t !== 'Announcement' && t !== 'Image' && t !== 'Document' && t !== 'Urgent' && t !== 'Required')}</span>
                       )}
                     </div>

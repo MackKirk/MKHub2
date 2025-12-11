@@ -130,9 +130,9 @@ export default function TaskRequestsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="space-y-1">
-        <h1 className="text-2xl font-extrabold">Task Requests</h1>
-        <p className="text-gray-600">Send and manage requests before they become tasks.</p>
+      <div className="mb-3 rounded-xl border bg-gradient-to-br from-[#7f1010] to-[#a31414] text-white p-4">
+        <div className="text-2xl font-extrabold">Task Requests</div>
+        <div className="text-sm opacity-90">Send and manage requests before they become tasks.</div>
       </div>
 
       {/* Three Action Cards */}
