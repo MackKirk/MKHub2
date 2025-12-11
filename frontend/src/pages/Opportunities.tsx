@@ -92,6 +92,8 @@ export default function Opportunities(){
     staleTime: 300_000
   });
   
+  const reportCategories = (settings?.report_categories || []) as any[];
+  
   // Get clients for filter
   const { data: clientsData } = useQuery({ 
     queryKey:['clients-for-filter'], 
@@ -103,6 +105,7 @@ export default function Opportunities(){
   const clients = clientsData?.items || clientsData || [];
   const arr = data||[];
   const [pickerOpen, setPickerOpen] = useState<{ open:boolean, clientId?:string, projectId?:string }|null>(null);
+  const [reportModalOpen, setReportModalOpen] = useState<{ open:boolean, projectId?:string }|null>(null);
 
   return (
     <div>
@@ -283,7 +286,11 @@ export default function Opportunities(){
       <LoadingOverlay isLoading={isInitialLoading} text="Loading opportunities...">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           {arr.map(p => (
-            <OpportunityListCard key={p.id} opportunity={p} />
+            <OpportunityListCard 
+              key={p.id} 
+              opportunity={p} 
+              onOpenReportModal={(projectId) => setReportModalOpen({ open: true, projectId })} 
+            />
           ))}
         </div>
         {!isInitialLoading && arr.length === 0 && (
@@ -304,6 +311,17 @@ export default function Opportunities(){
             setPickerOpen(null);
           }catch(e){ toast.error('Failed to update cover'); setPickerOpen(null); }
         }} />
+      )}
+      {reportModalOpen?.open && reportModalOpen?.projectId && (
+        <CreateReportModal
+          projectId={reportModalOpen.projectId}
+          reportCategories={reportCategories}
+          onClose={() => setReportModalOpen(null)}
+          onSuccess={async () => {
+            setReportModalOpen(null);
+            toast.success('Report created successfully');
+          }}
+        />
       )}
     </div>
   );
@@ -328,7 +346,251 @@ const getDivisionIcon = (label: string): string => {
   return iconMap[label] || '📦';
 };
 
-function OpportunityListCard({ opportunity }:{ opportunity: Opportunity }){
+function CreateReportModal({ projectId, reportCategories, onClose, onSuccess }: {
+  projectId: string,
+  reportCategories: any[],
+  onClose: () => void,
+  onSuccess: () => Promise<void>
+}){
+  const [title, setTitle] = useState('');
+  const [category, setCategory] = useState('');
+  const [desc, setDesc] = useState('');
+  const [files, setFiles] = useState<File[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const { data:project } = useQuery({ queryKey:['project', projectId], queryFn: ()=>api<any>('GET', `/projects/${projectId}`) });
+  
+  // Separate categories into commercial and production based on meta.group
+  const commercialCategories = useMemo(() => {
+    return reportCategories
+      .filter(cat => {
+        const meta = cat.meta || {};
+        return meta.group === 'commercial';
+      })
+      .sort((a, b) => (a.sort_index || 0) - (b.sort_index || 0));
+  }, [reportCategories]);
+  
+  const productionCategories = useMemo(() => {
+    return reportCategories
+      .filter(cat => {
+        const meta = cat.meta || {};
+        return meta.group === 'production';
+      })
+      .sort((a, b) => (a.sort_index || 0) - (b.sort_index || 0));
+  }, [reportCategories]);
+  
+  // If it's an opportunity (is_bidding), show only commercial categories
+  const isBidding = project?.is_bidding === true;
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const selectedFiles = Array.from(e.target.files || []);
+    setFiles(prev => [...prev, ...selectedFiles]);
+    // Reset input to allow selecting the same file again
+    if (e.target) {
+      e.target.value = '';
+    }
+  };
+
+  const removeFile = (index: number) => {
+    setFiles(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const handleCreate = async () => {
+    if (!title.trim()) {
+      toast.error('Please enter a title');
+      return;
+    }
+    if (!desc.trim()) {
+      toast.error('Please enter a description');
+      return;
+    }
+    
+    setUploading(true);
+    try {
+      const attachments: any[] = [];
+      
+      // Upload all files
+      for (const file of files) {
+        const up: any = await api('POST', '/files/upload', {
+          project_id: projectId,
+          client_id: project?.client_id || null,
+          employee_id: null,
+          category_id: 'project-report',
+          original_name: file.name,
+          content_type: file.type || 'application/octet-stream'
+        });
+        await fetch(up.upload_url, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': file.type || 'application/octet-stream',
+            'x-ms-blob-type': 'BlockBlob'
+          },
+          body: file
+        });
+        const conf: any = await api('POST', '/files/confirm', {
+          key: up.key,
+          size_bytes: file.size,
+          checksum_sha256: 'na',
+          content_type: file.type || 'application/octet-stream'
+        });
+        attachments.push({
+          file_object_id: conf.id,
+          original_name: file.name,
+          content_type: file.type || 'application/octet-stream'
+        });
+      }
+      
+      await api('POST', `/projects/${projectId}/reports`, {
+        title: title.trim(),
+        category_id: category || null,
+        description: desc,
+        images: attachments.length > 0 ? { attachments } : undefined
+      });
+      
+      setTitle('');
+      setCategory('');
+      setDesc('');
+      setFiles([]);
+      await onSuccess();
+    } catch (_e) {
+      toast.error('Failed to create report');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
+      <div className="bg-white rounded-xl max-w-3xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+        <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] p-6 flex items-center justify-between flex-shrink-0">
+          <h2 className="text-xl font-semibold text-white">Create Project Report</h2>
+          <button
+            onClick={onClose}
+            className="text-2xl font-bold text-white hover:text-gray-200 w-8 h-8 flex items-center justify-center rounded hover:bg-white/20"
+          >
+            ×
+          </button>
+        </div>
+        <div className="p-6 overflow-y-auto flex-1">
+          <div className="space-y-4">
+            <div>
+              <label className="text-xs text-gray-600 block mb-1">Title *</label>
+              <input
+                type="text"
+                className="w-full border rounded px-3 py-2 text-sm"
+                placeholder="Enter report title..."
+                value={title}
+                onChange={e => setTitle(e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="text-xs text-gray-600 block mb-1">Category</label>
+              <select
+                className="w-full border rounded px-3 py-2 text-sm"
+                value={category}
+                onChange={e => setCategory(e.target.value)}
+              >
+                <option value="">Select category...</option>
+                {!isBidding && commercialCategories.length > 0 && (
+                  <optgroup label="Commercial">
+                    {commercialCategories.map(cat => (
+                      <option key={cat.id || cat.value || cat.label} value={cat.value || cat.label}>{cat.label}</option>
+                    ))}
+                  </optgroup>
+                )}
+                {!isBidding && productionCategories.length > 0 && (
+                  <optgroup label="Production / Execution">
+                    {productionCategories.map(cat => (
+                      <option key={cat.id || cat.value || cat.label} value={cat.value || cat.label}>{cat.label}</option>
+                    ))}
+                  </optgroup>
+                )}
+                {isBidding && commercialCategories.length > 0 && (
+                  <>
+                    {commercialCategories.map(cat => (
+                      <option key={cat.id || cat.value || cat.label} value={cat.value || cat.label}>{cat.label}</option>
+                    ))}
+                  </>
+                )}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs text-gray-600 block mb-1">Description *</label>
+              <textarea
+                className="w-full border rounded px-3 py-2 text-sm"
+                rows={6}
+                placeholder="Describe what happened, how the day went, or any events on site..."
+                value={desc}
+                onChange={e => setDesc(e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="text-xs text-gray-600 block mb-1">Images (optional - multiple allowed)</label>
+              <input
+                type="file"
+                onChange={handleFileSelect}
+                className="w-full border rounded px-3 py-2 text-sm"
+                accept="image/*"
+                multiple
+              />
+              {files.length > 0 && (
+                <div className="mt-3 grid grid-cols-2 md:grid-cols-3 gap-3">
+                  {files.map((file, index) => {
+                    const isImage = file.type.startsWith('image/');
+                    const previewUrl = isImage ? URL.createObjectURL(file) : null;
+                    return (
+                      <div key={index} className="relative border rounded-lg overflow-hidden bg-gray-50">
+                        {previewUrl ? (
+                          <img src={previewUrl} alt={file.name} className="w-full h-32 object-cover" />
+                        ) : (
+                          <div className="w-full h-32 flex items-center justify-center text-gray-400">
+                            📎 {file.name}
+                          </div>
+                        )}
+                        <div className="p-2 bg-white border-t">
+                          <div className="text-xs text-gray-600 truncate" title={file.name}>{file.name}</div>
+                          <button
+                            onClick={() => {
+                              if (previewUrl) URL.revokeObjectURL(previewUrl);
+                              removeFile(index);
+                            }}
+                            className="mt-1 text-xs text-red-600 hover:text-red-700"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+        <div className="p-4 border-t bg-gray-50 flex justify-end gap-2 flex-shrink-0">
+          <button
+            onClick={onClose}
+            disabled={uploading}
+            className="px-4 py-2 rounded border bg-white hover:bg-gray-50 text-gray-700 text-sm font-medium disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleCreate}
+            disabled={uploading}
+            className="px-4 py-2 rounded bg-brand-red hover:bg-red-700 text-white text-sm font-medium disabled:opacity-50"
+          >
+            {uploading ? 'Creating...' : 'Create Report'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function OpportunityListCard({ opportunity, onOpenReportModal }: { 
+  opportunity: Opportunity;
+  onOpenReportModal: (projectId: string) => void;
+}){
   const navigate = useNavigate();
   const { data:files } = useQuery({ queryKey:['client-files-for-opportunity-card', opportunity.client_id], queryFn: ()=> opportunity.client_id? api<any[]>('GET', `/clients/${encodeURIComponent(String(opportunity.client_id))}/files`) : Promise.resolve([]), enabled: !!opportunity.client_id, staleTime: 60_000 });
   const pfiles = useMemo(()=> (files||[]).filter((f:any)=> String((f as any).project_id||'')===String(opportunity.id)), [files, opportunity?.id]);
@@ -343,6 +605,23 @@ function OpportunityListCard({ opportunity }:{ opportunity: Opportunity }){
   const estimatedValue = details?.cost_estimated || (opportunity as any).cost_estimated || 0;
   const clientName = client?.display_name || client?.name || '';
   const projectDivIds = (opportunity as any).project_division_ids || details?.project_division_ids || [];
+  
+  // Check for pending data (mobile-created opportunities may be missing key fields)
+  const missingFields = useMemo(() => {
+    const missing: string[] = [];
+    // Use details if available, otherwise fallback to opportunity data
+    const estimatorId = details?.estimator_id;
+    const siteId = details?.site_id;
+    const hasDivisions = Array.isArray(projectDivIds) && projectDivIds.length > 0;
+    
+    if (!estimatorId) missing.push('Estimator');
+    if (!siteId) missing.push('Site');
+    if (!hasDivisions) missing.push('Division');
+    
+    return missing;
+  }, [details, projectDivIds]);
+  
+  const hasPendingData = missingFields.length > 0;
   
   // Get division icons and labels
   const divisionIcons = useMemo(() => {
@@ -366,11 +645,12 @@ function OpportunityListCard({ opportunity }:{ opportunity: Opportunity }){
     return icons;
   }, [projectDivIds, projectDivisions]);
 
-  // Tab icons and navigation (for opportunities: files, proposal, estimate)
+  // Tab icons and navigation (for opportunities: files, proposal, estimate, reports)
   const tabButtons = [
     { key: 'files', icon: '📁', label: 'Files', tab: 'files' },
     { key: 'proposal', icon: '📄', label: 'Proposal', tab: 'proposal' },
     { key: 'estimate', icon: '💰', label: 'Estimate', tab: 'estimate' },
+    { key: 'reports', icon: '📋', label: 'Report', tab: 'reports' },
   ];
 
   return (
@@ -379,7 +659,24 @@ function OpportunityListCard({ opportunity }:{ opportunity: Opportunity }){
       className="group rounded-xl border bg-white hover:shadow-lg transition-all overflow-hidden block flex flex-col h-full relative"
     >
       {/* Status badge at top right */}
-      <div className="absolute top-3 right-3 z-10">
+      <div className="absolute top-3 right-3 z-10 flex items-center gap-2">
+        {hasPendingData && (
+          <div className="relative group/pending">
+            <div className="w-8 h-8 rounded-full bg-amber-500 text-white flex items-center justify-center text-sm font-bold shadow-md hover:bg-amber-600 transition-colors cursor-help">
+              ⚠️
+            </div>
+            {/* Tooltip showing missing fields */}
+            <div className="absolute right-0 top-full mt-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg whitespace-nowrap opacity-0 group-hover/pending:opacity-100 transition-opacity pointer-events-none z-20 shadow-lg">
+              <div className="font-semibold mb-1">Pending Data:</div>
+              <div className="space-y-0.5">
+                {missingFields.map((field, idx) => (
+                  <div key={idx}>• {field}</div>
+                ))}
+              </div>
+              <div className="absolute -top-1 right-4 w-2 h-2 bg-gray-900 rotate-45"></div>
+            </div>
+          </div>
+        )}
         <span className="px-2 py-1 rounded-full text-xs font-medium border bg-white/95 backdrop-blur-sm text-gray-800 shadow-sm" title={status}>
           {status || '—'}
         </span>
@@ -411,7 +708,11 @@ function OpportunityListCard({ opportunity }:{ opportunity: Opportunity }){
                   onClick={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
-                    navigate(`/opportunities/${encodeURIComponent(String(opportunity.id))}?tab=${btn.tab}`);
+                    if (btn.key === 'reports') {
+                      onOpenReportModal(String(opportunity.id));
+                    } else {
+                      navigate(`/opportunities/${encodeURIComponent(String(opportunity.id))}?tab=${btn.tab}`);
+                    }
                   }}
                   className="relative group/btn w-7 h-7 rounded-lg bg-gray-100 hover:bg-gray-200 border border-gray-200 hover:border-gray-300 flex items-center justify-center text-sm transition-all hover:scale-110"
                   title={btn.label}
@@ -453,11 +754,15 @@ function OpportunityListCard({ opportunity }:{ opportunity: Opportunity }){
           </div>
           <div>
             <div className="text-xs text-gray-500">Estimator</div>
-            <div className="font-medium text-gray-900">—</div>
+            <div className={`font-medium ${details?.estimator_id ? 'text-gray-900' : 'text-amber-600'}`}>
+              {details?.estimator_id ? (details?.estimator_name || '—') : '⚠️ Not set'}
+            </div>
           </div>
           <div>
             <div className="text-xs text-gray-500">On-site Lead</div>
-            <div className="font-medium text-gray-900">—</div>
+            <div className={`font-medium ${details?.onsite_lead_id ? 'text-gray-900' : 'text-gray-400'}`}>
+              {details?.onsite_lead_id ? (details?.onsite_lead_name || '—') : '—'}
+            </div>
           </div>
         </div>
         {estimatedValue > 0 && (
