@@ -901,7 +901,32 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
                   </div>
                 </div>
                 {s.type==='text' ? (
-                  <textarea className="w-full border rounded px-3 py-2 text-sm" rows={5} placeholder="Section text" value={s.text||''} onChange={e=> setSections(arr=> arr.map((x,i)=> i===idx? { ...x, text: e.target.value }: x))} />
+                  <textarea 
+                    className="w-full border rounded px-3 py-2 text-sm" 
+                    rows={5} 
+                    placeholder="Section text" 
+                    value={s.text||''} 
+                    onChange={e=> setSections(arr=> arr.map((x,i)=> i===idx? { ...x, text: e.target.value }: x))}
+                    onKeyDown={(e)=>{
+                      // Handle Tab key to insert indentation (4 spaces)
+                      if (e.key === 'Tab') {
+                        e.preventDefault();
+                        const textarea = e.currentTarget;
+                        const start = textarea.selectionStart;
+                        const end = textarea.selectionEnd;
+                        const value = textarea.value;
+                        
+                        // Insert 4 spaces at cursor position
+                        const newValue = value.substring(0, start) + '    ' + value.substring(end);
+                        setSections(arr=> arr.map((x,i)=> i===idx? { ...x, text: newValue }: x));
+                        
+                        // Restore cursor position after the inserted spaces
+                        setTimeout(() => {
+                          textarea.selectionStart = textarea.selectionEnd = start + 4;
+                        }, 0);
+                      }
+                    }}
+                  />
                 ) : (
                   <div>
                     <div className="mb-2"><button className="px-3 py-1.5 rounded bg-gray-100" onClick={()=> setSectionPicker({ secId: s.id||String(idx) })}>+ Add Image</button></div>
