@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import cast, String
 
 from ..db import get_db
-from ..models.models import CommunityPost, CommunityPostReadConfirmation, CommunityPostView, CommunityPostLike, CommunityPostComment, CommunityGroup, community_group_members, User, EmployeeProfile, user_divisions
+from ..models.models import CommunityPost, CommunityPostReadConfirmation, CommunityPostView, CommunityPostLike, CommunityPostComment, CommunityGroup, community_group_members, CommunityGroupTopic, User, EmployeeProfile, user_divisions
 from ..auth.security import get_current_user
 from sqlalchemy import or_, select
 
@@ -746,6 +746,7 @@ def list_groups(
             "id": str(group.id),
             "name": group.name,
             "description": group.description,
+            "photo_file_id": str(group.photo_file_id) if group.photo_file_id else None,
             "member_count": member_count,
             "created_at": group.created_at.isoformat() if group.created_at else None,
         })
@@ -793,6 +794,14 @@ def create_group(
             user_id=current_user.id
         )
     )
+    
+    # Create default "General" topic automatically
+    general_topic = CommunityGroupTopic(
+        group_id=group.id,
+        name="General",
+        created_at=datetime.now(timezone.utc),
+    )
+    db.add(general_topic)
     db.commit()
     
     return {
@@ -837,6 +846,7 @@ def get_group(
         "id": str(group.id),
         "name": group.name,
         "description": group.description,
+        "photo_file_id": str(group.photo_file_id) if group.photo_file_id else None,
         "member_count": member_count,
         "member_ids": member_ids,
         "created_at": group.created_at.isoformat() if group.created_at else None,
@@ -901,4 +911,311 @@ def update_group_members(
         "status": "updated",
         "member_count": len(member_uuids),
     }
+
+
+@router.put("/groups/{group_id}")
+def update_group(
+    group_id: str,
+    payload: dict,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    """
+    Update group settings (name, photo, etc.).
+    """
+    try:
+        group_uuid = uuid.UUID(str(group_id))
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid group_id format")
+    
+    group = db.query(CommunityGroup).filter(CommunityGroup.id == group_uuid).first()
+    if not group:
+        raise HTTPException(status_code=404, detail="Group not found")
+    
+    # Only group creator can update settings
+    if group.created_by_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Only group creator can update settings")
+    
+    # Update name if provided
+    if "name" in payload:
+        name = payload.get("name", "").strip()
+        if not name:
+            raise HTTPException(status_code=400, detail="Name cannot be empty")
+        # Check if name is already taken by another group
+        existing = db.query(CommunityGroup).filter(
+            CommunityGroup.name == name,
+            CommunityGroup.id != group_uuid
+        ).first()
+        if existing:
+            raise HTTPException(status_code=400, detail="A group with this name already exists")
+        group.name = name
+    
+    # Update photo if provided
+    if "photo_file_id" in payload:
+        photo_file_id = payload.get("photo_file_id")
+        if photo_file_id:
+            try:
+                group.photo_file_id = uuid.UUID(str(photo_file_id))
+            except Exception:
+                raise HTTPException(status_code=400, detail="Invalid photo_file_id format")
+        else:
+            group.photo_file_id = None
+    
+    group.updated_at = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(group)
+    
+    # Count members
+    member_count = db.query(community_group_members).filter(
+        community_group_members.c.group_id == group_uuid
+    ).count()
+    
+    return {
+        "id": str(group.id),
+        "name": group.name,
+        "description": group.description,
+        "photo_file_id": str(group.photo_file_id) if group.photo_file_id else None,
+        "member_count": member_count,
+        "created_at": group.created_at.isoformat() if group.created_at else None,
+    }
+
+
+@router.get("/groups/{group_id}/topics")
+def list_group_topics(
+    group_id: str,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    """
+    List all topics for a group.
+    """
+    try:
+        group_uuid = uuid.UUID(str(group_id))
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid group_id format")
+    
+    group = db.query(CommunityGroup).filter(CommunityGroup.id == group_uuid).first()
+    if not group:
+        raise HTTPException(status_code=404, detail="Group not found")
+    
+    topics = db.query(CommunityGroupTopic).filter(
+        CommunityGroupTopic.group_id == group_uuid
+    ).order_by(CommunityGroupTopic.created_at.asc()).all()
+    
+    # Sort topics: "General" first, then others by creation date
+    topics_sorted = sorted(topics, key=lambda t: (t.name != "General", t.created_at or datetime.min.replace(tzinfo=timezone.utc)))
+    
+    result = []
+    for topic in topics_sorted:
+        # Count posts in this topic (placeholder - implement when posts are linked to topics)
+        posts_count = 0  # TODO: count posts with this topic_id
+        
+        result.append({
+            "id": str(topic.id),
+            "name": topic.name,
+            "posts_count": posts_count,
+            "created_at": topic.created_at.isoformat() if topic.created_at else None,
+        })
+    
+    return result
+
+
+@router.post("/groups/{group_id}/topics")
+def create_group_topic(
+    group_id: str,
+    payload: dict,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    """
+    Create a new topic for a group.
+    """
+    try:
+        group_uuid = uuid.UUID(str(group_id))
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid group_id format")
+    
+    group = db.query(CommunityGroup).filter(CommunityGroup.id == group_uuid).first()
+    if not group:
+        raise HTTPException(status_code=404, detail="Group not found")
+    
+    # Only group creator can create topics (or admin in the future)
+    if group.created_by_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Only group creator can create topics")
+    
+    name = payload.get("name", "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Topic name is required")
+    
+    # Check if topic with same name already exists in this group
+    existing = db.query(CommunityGroupTopic).filter(
+        CommunityGroupTopic.group_id == group_uuid,
+        CommunityGroupTopic.name == name
+    ).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="A topic with this name already exists in this group")
+    
+    topic = CommunityGroupTopic(
+        group_id=group_uuid,
+        name=name,
+        created_at=datetime.now(timezone.utc),
+    )
+    
+    db.add(topic)
+    db.commit()
+    db.refresh(topic)
+    
+    return {
+        "id": str(topic.id),
+        "name": topic.name,
+        "posts_count": 0,
+        "created_at": topic.created_at.isoformat() if topic.created_at else None,
+    }
+
+
+@router.delete("/groups/{group_id}")
+def delete_group(
+    group_id: str,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    """
+    Delete a group. Only the group creator can delete it.
+    """
+    try:
+        group_uuid = uuid.UUID(str(group_id))
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid group_id format")
+    
+    group = db.query(CommunityGroup).filter(CommunityGroup.id == group_uuid).first()
+    if not group:
+        raise HTTPException(status_code=404, detail="Group not found")
+    
+    # Only group creator can delete the group
+    if group.created_by_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Only group creator can delete the group")
+    
+    # Delete all topics (cascade should handle this, but being explicit)
+    db.query(CommunityGroupTopic).filter(CommunityGroupTopic.group_id == group_uuid).delete()
+    
+    # Delete all memberships (cascade should handle this)
+    db.execute(
+        community_group_members.delete().where(
+            community_group_members.c.group_id == group_uuid
+        )
+    )
+    
+    # Delete the group
+    db.delete(group)
+    db.commit()
+    
+    return {"status": "deleted"}
+
+
+@router.put("/groups/{group_id}/topics/{topic_id}")
+def update_group_topic(
+    group_id: str,
+    topic_id: str,
+    payload: dict,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    """
+    Update a topic in a group (rename).
+    """
+    try:
+        group_uuid = uuid.UUID(str(group_id))
+        topic_uuid = uuid.UUID(str(topic_id))
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid group_id or topic_id format")
+    
+    group = db.query(CommunityGroup).filter(CommunityGroup.id == group_uuid).first()
+    if not group:
+        raise HTTPException(status_code=404, detail="Group not found")
+    
+    # Only group creator can update topics
+    if group.created_by_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Only group creator can update topics")
+    
+    topic = db.query(CommunityGroupTopic).filter(
+        CommunityGroupTopic.id == topic_uuid,
+        CommunityGroupTopic.group_id == group_uuid
+    ).first()
+    
+    if not topic:
+        raise HTTPException(status_code=404, detail="Topic not found")
+    
+    # Prevent renaming "General" topic
+    if topic.name == "General":
+        raise HTTPException(status_code=400, detail="Cannot rename the 'General' topic (Main Topic)")
+    
+    name = payload.get("name", "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Topic name is required")
+    
+    # Check if topic with same name already exists in this group (excluding current topic)
+    existing = db.query(CommunityGroupTopic).filter(
+        CommunityGroupTopic.group_id == group_uuid,
+        CommunityGroupTopic.name == name,
+        CommunityGroupTopic.id != topic_uuid
+    ).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="A topic with this name already exists in this group")
+    
+    topic.name = name
+    topic.updated_at = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(topic)
+    
+    # Count posts in this topic (placeholder - implement when posts are linked to topics)
+    posts_count = 0  # TODO: count posts with this topic_id
+    
+    return {
+        "id": str(topic.id),
+        "name": topic.name,
+        "posts_count": posts_count,
+        "created_at": topic.created_at.isoformat() if topic.created_at else None,
+    }
+
+
+@router.delete("/groups/{group_id}/topics/{topic_id}")
+def delete_group_topic(
+    group_id: str,
+    topic_id: str,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    """
+    Delete a topic from a group.
+    """
+    try:
+        group_uuid = uuid.UUID(str(group_id))
+        topic_uuid = uuid.UUID(str(topic_id))
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid group_id or topic_id format")
+    
+    group = db.query(CommunityGroup).filter(CommunityGroup.id == group_uuid).first()
+    if not group:
+        raise HTTPException(status_code=404, detail="Group not found")
+    
+    # Only group creator can delete topics
+    if group.created_by_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Only group creator can delete topics")
+    
+    topic = db.query(CommunityGroupTopic).filter(
+        CommunityGroupTopic.id == topic_uuid,
+        CommunityGroupTopic.group_id == group_uuid
+    ).first()
+    
+    if not topic:
+        raise HTTPException(status_code=404, detail="Topic not found")
+    
+    # Prevent deletion of the "General" topic (Main Topic)
+    if topic.name == "General":
+        raise HTTPException(status_code=400, detail="Cannot delete the 'General' topic (Main Topic)")
+    
+    db.delete(topic)
+    db.commit()
+    
+    return {"status": "deleted"}
 

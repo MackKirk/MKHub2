@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { api } from '@/lib/api';
+import { useNavigate, useLocation } from 'react-router-dom';
 
 type TaskRequestMessage = {
   id: string;
@@ -73,6 +74,9 @@ const priorityOptions = [
 ];
 
 export default function TaskRequestsPage() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const fromHome = location.state?.fromHome === true;
   const queryClient = useQueryClient();
   const { data, isLoading } = useQuery({
     queryKey: ['task-requests'],
@@ -131,9 +135,24 @@ export default function TaskRequestsPage() {
   return (
     <div className="space-y-6">
       <div className="mb-3 rounded-xl border bg-gradient-to-br from-[#7f1010] to-[#a31414] text-white p-4">
-        <div className="text-2xl font-extrabold">Task Requests</div>
+        <div className="text-2xl font-extrabold">Requests</div>
         <div className="text-sm opacity-90">Send and manage requests before they become tasks.</div>
       </div>
+      
+      {fromHome && (
+        <div className="mb-3 flex items-center justify-between">
+          <button
+            onClick={() => navigate('/home')}
+            className="p-2 rounded-lg border hover:bg-gray-50 transition-colors flex items-center gap-2"
+            title="Back to Home"
+          >
+            <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+            </svg>
+            <span className="text-sm text-gray-700 font-medium">Back to Home</span>
+          </button>
+        </div>
+      )}
 
       {/* Three Action Cards */}
       <div className="grid md:grid-cols-3 gap-4">

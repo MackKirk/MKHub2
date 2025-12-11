@@ -97,6 +97,7 @@ export default function CustomerDetail(){
   const [form, setForm] = useState<any>({});
   const [dirty, setDirty] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isEditingGeneral, setIsEditingGeneral] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [sitePicker, setSitePicker] = useState<{ open:boolean, siteId?:string }|null>(null);
   const [projectPicker, setProjectPicker] = useState<{ open:boolean, projectId?:string }|null>(null);
@@ -143,7 +144,8 @@ export default function CustomerDetail(){
     try{ 
       setIsSaving(true);
       await api('PATCH', `/clients/${id}`, payload); 
-      setDirty(false); 
+      setDirty(false);
+      setIsEditingGeneral(false);
     }catch(e: any){ 
       const msg = e?.message || 'Save failed';
       if(msg.includes('HTTP 4') && !msg.includes('HTTP 40')) {
@@ -156,8 +158,8 @@ export default function CustomerDetail(){
     }
   };
   
-  // Use unsaved changes guard
-  useUnsavedChangesGuard(dirty, handleSave);
+  // Use unsaved changes guard - only when editing
+  useUnsavedChangesGuard(dirty && isEditingGeneral, handleSave);
   
   useEffect(()=>{ if(client){ setForm({
     display_name: client.display_name||'', legal_name: client.legal_name||'', code: client.id?.slice(0,8) || '',
@@ -294,50 +296,87 @@ export default function CustomerDetail(){
                 </div>
               )}
               {tab==='general' && (
-                <div className="space-y-8">
+                <div className="space-y-8 pb-24">
                   {/* Company */}
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center justify-between gap-2">
                     <h4 className="font-semibold">Company</h4>
+                    {!isEditingGeneral && (
+                      <button
+                        onClick={() => setIsEditingGeneral(true)}
+                        className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-brand-red to-[#ee2b2b] text-white text-sm font-medium hover:opacity-90 flex items-center gap-1.5"
+                      >
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                        </svg>
+                        Edit
+                      </button>
+                    )}
                   </div>
                   <div className="text-xs text-gray-500 mt-0.5 mb-2">Core company identity details.</div>
                   <div className="grid md:grid-cols-2 gap-4">
                     <Field label={<><span>Display name</span> <span className="text-red-600">*</span></>} tooltip="Public name shown across the app.">
                       <>
-                        <input className={`w-full border rounded px-3 py-2 ${!isDisplayValid? 'border-red-500' : ''}`} value={form.display_name||''} onChange={e=>set('display_name', e.target.value)} />
-                        {!isDisplayValid && <div className="text-[11px] text-red-600 mt-1">Required</div>}
+                        {isEditingGeneral ? (
+                          <input className={`w-full border rounded px-3 py-2 ${!isDisplayValid? 'border-red-500' : ''}`} value={form.display_name||''} onChange={e=>set('display_name', e.target.value)} />
+                        ) : (
+                          <div className="text-gray-900 font-medium py-1 break-words">{String(form.display_name||'') || '—'}</div>
+                        )}
+                        {!isDisplayValid && isEditingGeneral && <div className="text-[11px] text-red-600 mt-1">Required</div>}
                       </>
                     </Field>
                     <Field label={<><span>Legal name</span> <span className="text-red-600">*</span></>} tooltip="Registered legal entity name.">
                       <>
-                        <input className={`w-full border rounded px-3 py-2 ${!isLegalValid? 'border-red-500' : ''}`} value={form.legal_name||''} onChange={e=>set('legal_name', e.target.value)} />
-                        {!isLegalValid && <div className="text-[11px] text-red-600 mt-1">Required</div>}
+                        {isEditingGeneral ? (
+                          <input className={`w-full border rounded px-3 py-2 ${!isLegalValid? 'border-red-500' : ''}`} value={form.legal_name||''} onChange={e=>set('legal_name', e.target.value)} />
+                        ) : (
+                          <div className="text-gray-900 font-medium py-1 break-words">{String(form.legal_name||'') || '—'}</div>
+                        )}
+                        {!isLegalValid && isEditingGeneral && <div className="text-[11px] text-red-600 mt-1">Required</div>}
                       </>
                     </Field>
                     {/* Code hidden for users */}
                     {/* <Field label="Code"><input className="w-full border rounded px-3 py-2" value={form.code||''} readOnly /></Field> */}
                     <Field label="Type" tooltip="Customer classification.">
-                      <select className="w-full border rounded px-3 py-2" value={form.client_type||''} onChange={e=>set('client_type', e.target.value)}>
-                        <option value="">Select...</option>
-                        {(settings?.client_types||[]).map((t:any)=> <option key={t.value||t.label} value={t.label}>{t.label}</option>)}
-                      </select>
+                      {isEditingGeneral ? (
+                        <select className="w-full border rounded px-3 py-2" value={form.client_type||''} onChange={e=>set('client_type', e.target.value)}>
+                          <option value="">Select...</option>
+                          {(settings?.client_types||[]).map((t:any)=> <option key={t.value||t.label} value={t.label}>{t.label}</option>)}
+                        </select>
+                      ) : (
+                        <div className="text-gray-900 font-medium py-1 break-words">{String(form.client_type||'') || '—'}</div>
+                      )}
                     </Field>
                     <Field label="Status" tooltip="Relationship status.">
-                      <select className="w-full border rounded px-3 py-2" value={form.client_status||''} onChange={e=>set('client_status', e.target.value)}>
-                        <option value="">Select...</option>
-                        {(settings?.client_statuses||[]).map((t:any)=> <option key={t.value||t.label} value={t.label}>{t.label}</option>)}
-                      </select>
+                      {isEditingGeneral ? (
+                        <select className="w-full border rounded px-3 py-2" value={form.client_status||''} onChange={e=>set('client_status', e.target.value)}>
+                          <option value="">Select...</option>
+                          {(settings?.client_statuses||[]).map((t:any)=> <option key={t.value||t.label} value={t.label}>{t.label}</option>)}
+                        </select>
+                      ) : (
+                        <div className="text-gray-900 font-medium py-1 break-words">{String(form.client_status||'') || '—'}</div>
+                      )}
                     </Field>
                     <Field label="Lead source" tooltip="Where did this lead originate?">
-                      <select className="w-full border rounded px-3 py-2" value={form.lead_source||''} onChange={e=>set('lead_source', e.target.value)}>
-                        <option value="">Select...</option>
-                        {leadSources.map((ls:any)=>{
-                          const val = ls?.value ?? ls?.id ?? ls?.label ?? ls?.name ?? String(ls);
-                          const label = ls?.label ?? ls?.name ?? String(ls);
-                          return <option key={String(val)} value={String(val)}>{label}</option>;
-                        })}
-                      </select>
+                      {isEditingGeneral ? (
+                        <select className="w-full border rounded px-3 py-2" value={form.lead_source||''} onChange={e=>set('lead_source', e.target.value)}>
+                          <option value="">Select...</option>
+                          {leadSources.map((ls:any)=>{
+                            const val = ls?.value ?? ls?.id ?? ls?.label ?? ls?.name ?? String(ls);
+                            const label = ls?.label ?? ls?.name ?? String(ls);
+                            return <option key={String(val)} value={String(val)}>{label}</option>;
+                          })}
+                        </select>
+                      ) : (
+                        <div className="text-gray-900 font-medium py-1 break-words">{String(form.lead_source||'') || '—'}</div>
+                      )}
                     </Field>
-                    <Field label="Tax number" tooltip="Tax/VAT identifier used for invoicing."><input className="w-full border rounded px-3 py-2" value={form.tax_number||''} onChange={e=>set('tax_number', e.target.value)} /></Field>
+                    <Field label="Tax number" tooltip="Tax/VAT identifier used for invoicing.">
+                      {isEditingGeneral ? (
+                        <input className="w-full border rounded px-3 py-2" value={form.tax_number||''} onChange={e=>set('tax_number', e.target.value)} />
+                      ) : (
+                        <div className="text-gray-900 font-medium py-1 break-words">{String(form.tax_number||'') || '—'}</div>
+                      )}
+                    </Field>
                   </div>
                   {/* Address */}
                   <div className="flex items-center gap-2">
@@ -345,12 +384,48 @@ export default function CustomerDetail(){
                   </div>
                   <div className="text-xs text-gray-500 mt-0.5 mb-2">Primary mailing and location address.</div>
                   <div className="grid md:grid-cols-2 gap-4">
-                    <Field label="Address 1"><input className="w-full border rounded px-3 py-2" value={form.address_line1||''} onChange={e=>set('address_line1', e.target.value)} /></Field>
-                    <Field label="Address 2"><input className="w-full border rounded px-3 py-2" value={form.address_line2||''} onChange={e=>set('address_line2', e.target.value)} /></Field>
-                    <Field label="Country"><input className="w-full border rounded px-3 py-2" value={form.country||''} onChange={e=>set('country', e.target.value)} /></Field>
-                    <Field label="Province/State"><input className="w-full border rounded px-3 py-2" value={form.province||''} onChange={e=>set('province', e.target.value)} /></Field>
-                    <Field label="City"><input className="w-full border rounded px-3 py-2" value={form.city||''} onChange={e=>set('city', e.target.value)} /></Field>
-                    <Field label="Postal code"><input className="w-full border rounded px-3 py-2" value={form.postal_code||''} onChange={e=>set('postal_code', e.target.value)} /></Field>
+                    <Field label="Address 1">
+                      {isEditingGeneral ? (
+                        <input className="w-full border rounded px-3 py-2" value={form.address_line1||''} onChange={e=>set('address_line1', e.target.value)} />
+                      ) : (
+                        <div className="text-gray-900 font-medium py-1 break-words">{String(form.address_line1||'') || '—'}</div>
+                      )}
+                    </Field>
+                    <Field label="Address 2">
+                      {isEditingGeneral ? (
+                        <input className="w-full border rounded px-3 py-2" value={form.address_line2||''} onChange={e=>set('address_line2', e.target.value)} />
+                      ) : (
+                        <div className="text-gray-900 font-medium py-1 break-words">{String(form.address_line2||'') || '—'}</div>
+                      )}
+                    </Field>
+                    <Field label="Country">
+                      {isEditingGeneral ? (
+                        <input className="w-full border rounded px-3 py-2" value={form.country||''} onChange={e=>set('country', e.target.value)} />
+                      ) : (
+                        <div className="text-gray-900 font-medium py-1 break-words">{String(form.country||'') || '—'}</div>
+                      )}
+                    </Field>
+                    <Field label="Province/State">
+                      {isEditingGeneral ? (
+                        <input className="w-full border rounded px-3 py-2" value={form.province||''} onChange={e=>set('province', e.target.value)} />
+                      ) : (
+                        <div className="text-gray-900 font-medium py-1 break-words">{String(form.province||'') || '—'}</div>
+                      )}
+                    </Field>
+                    <Field label="City">
+                      {isEditingGeneral ? (
+                        <input className="w-full border rounded px-3 py-2" value={form.city||''} onChange={e=>set('city', e.target.value)} />
+                      ) : (
+                        <div className="text-gray-900 font-medium py-1 break-words">{String(form.city||'') || '—'}</div>
+                      )}
+                    </Field>
+                    <Field label="Postal code">
+                      {isEditingGeneral ? (
+                        <input className="w-full border rounded px-3 py-2" value={form.postal_code||''} onChange={e=>set('postal_code', e.target.value)} />
+                      ) : (
+                        <div className="text-gray-900 font-medium py-1 break-words">{String(form.postal_code||'') || '—'}</div>
+                      )}
+                    </Field>
                   </div>
                   {/* Billing */}
                   <div className="flex items-center gap-2 mt-4">
@@ -358,24 +433,75 @@ export default function CustomerDetail(){
                   </div>
                   <div className="text-xs text-gray-500 mt-0.5 mb-2">Preferences used for invoices and payments.</div>
                   <div className="grid md:grid-cols-2 gap-4">
-                    <Field label="Billing email" tooltip="Email used for invoice delivery."><input className="w-full border rounded px-3 py-2" value={form.billing_email||''} onChange={e=>set('billing_email', e.target.value)} /></Field>
+                    <Field label="Billing email" tooltip="Email used for invoice delivery.">
+                      {isEditingGeneral ? (
+                        <input className="w-full border rounded px-3 py-2" value={form.billing_email||''} onChange={e=>set('billing_email', e.target.value)} />
+                      ) : (
+                        <div className="text-gray-900 font-medium py-1 break-words">{String(form.billing_email||'') || '—'}</div>
+                      )}
+                    </Field>
                     <Field label="PO required" tooltip="Whether a purchase order is required before invoicing.">
-                      <select className="w-full border rounded px-3 py-2" value={form.po_required||'false'} onChange={e=>set('po_required', e.target.value)}><option value="false">No</option><option value="true">Yes</option></select>
+                      {isEditingGeneral ? (
+                        <select className="w-full border rounded px-3 py-2" value={form.po_required||'false'} onChange={e=>set('po_required', e.target.value)}>
+                          <option value="false">No</option>
+                          <option value="true">Yes</option>
+                        </select>
+                      ) : (
+                        <div className="text-gray-900 font-medium py-1 break-words">{form.po_required === 'true' ? 'Yes' : 'No'}</div>
+                      )}
                     </Field>
                   </div>
                   {/* Billing Address (inside Billing) */}
                   <div className="grid md:grid-cols-2 gap-4 mt-2">
                     <div className="md:col-span-2 text-sm">
-                      <label className="inline-flex items-center gap-2"><input type="checkbox" checked={!!(!form.billing_same_as_address)} onChange={e=>set('billing_same_as_address', !e.target.checked)} /> Use different address for Billing address</label>
+                      <label className={`inline-flex items-center gap-2 ${!isEditingGeneral ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                        <input type="checkbox" checked={!!(!form.billing_same_as_address)} onChange={e=>set('billing_same_as_address', !e.target.checked)} disabled={!isEditingGeneral} /> Use different address for Billing address
+                      </label>
                     </div>
                     {(!form.billing_same_as_address) && (
                       <>
-                        <Field label="Billing Address 1" tooltip="Street address for billing."><input className="w-full border rounded px-3 py-2" value={form.billing_address_line1||''} onChange={e=>set('billing_address_line1', e.target.value)} /></Field>
-                        <Field label="Billing Address 2" tooltip="Apartment, suite, unit, building, floor, etc."><input className="w-full border rounded px-3 py-2" value={form.billing_address_line2||''} onChange={e=>set('billing_address_line2', e.target.value)} /></Field>
-                        <Field label="Billing Country" tooltip="Country or region for billing."><input className="w-full border rounded px-3 py-2" value={form.billing_country||''} onChange={e=>set('billing_country', e.target.value)} /></Field>
-                        <Field label="Billing Province/State" tooltip="State, province, or region."><input className="w-full border rounded px-3 py-2" value={form.billing_province||''} onChange={e=>set('billing_province', e.target.value)} /></Field>
-                        <Field label="Billing City" tooltip="City or locality for billing."><input className="w-full border rounded px-3 py-2" value={form.billing_city||''} onChange={e=>set('billing_city', e.target.value)} /></Field>
-                        <Field label="Billing Postal code" tooltip="ZIP or postal code for billing."><input className="w-full border rounded px-3 py-2" value={form.billing_postal_code||''} onChange={e=>set('billing_postal_code', e.target.value)} /></Field>
+                        <Field label="Billing Address 1" tooltip="Street address for billing.">
+                          {isEditingGeneral ? (
+                            <input className="w-full border rounded px-3 py-2" value={form.billing_address_line1||''} onChange={e=>set('billing_address_line1', e.target.value)} />
+                          ) : (
+                            <div className="text-gray-900 font-medium py-1 break-words">{String(form.billing_address_line1||'') || '—'}</div>
+                          )}
+                        </Field>
+                        <Field label="Billing Address 2" tooltip="Apartment, suite, unit, building, floor, etc.">
+                          {isEditingGeneral ? (
+                            <input className="w-full border rounded px-3 py-2" value={form.billing_address_line2||''} onChange={e=>set('billing_address_line2', e.target.value)} />
+                          ) : (
+                            <div className="text-gray-900 font-medium py-1 break-words">{String(form.billing_address_line2||'') || '—'}</div>
+                          )}
+                        </Field>
+                        <Field label="Billing Country" tooltip="Country or region for billing.">
+                          {isEditingGeneral ? (
+                            <input className="w-full border rounded px-3 py-2" value={form.billing_country||''} onChange={e=>set('billing_country', e.target.value)} />
+                          ) : (
+                            <div className="text-gray-900 font-medium py-1 break-words">{String(form.billing_country||'') || '—'}</div>
+                          )}
+                        </Field>
+                        <Field label="Billing Province/State" tooltip="State, province, or region.">
+                          {isEditingGeneral ? (
+                            <input className="w-full border rounded px-3 py-2" value={form.billing_province||''} onChange={e=>set('billing_province', e.target.value)} />
+                          ) : (
+                            <div className="text-gray-900 font-medium py-1 break-words">{String(form.billing_province||'') || '—'}</div>
+                          )}
+                        </Field>
+                        <Field label="Billing City" tooltip="City or locality for billing.">
+                          {isEditingGeneral ? (
+                            <input className="w-full border rounded px-3 py-2" value={form.billing_city||''} onChange={e=>set('billing_city', e.target.value)} />
+                          ) : (
+                            <div className="text-gray-900 font-medium py-1 break-words">{String(form.billing_city||'') || '—'}</div>
+                          )}
+                        </Field>
+                        <Field label="Billing Postal code" tooltip="ZIP or postal code for billing.">
+                          {isEditingGeneral ? (
+                            <input className="w-full border rounded px-3 py-2" value={form.billing_postal_code||''} onChange={e=>set('billing_postal_code', e.target.value)} />
+                          ) : (
+                            <div className="text-gray-900 font-medium py-1 break-words">{String(form.billing_postal_code||'') || '—'}</div>
+                          )}
+                        </Field>
                       </>
                     )}
                   </div>
@@ -395,20 +521,55 @@ export default function CustomerDetail(){
                   <div className="mt-4">
                     <label className="text-sm text-gray-600 flex items-center gap-1">
                       <span>Description</span>
-                      <span className="text-gray-500 text-[11px] px-1 cursor-help" title="Additional notes about this customer.">?</span>
+                      <span className="relative group inline-block ml-0.5">
+                        <svg className="w-4 h-4 text-gray-400 cursor-help" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        <span className="absolute left-1/2 -translate-x-1/2 mt-2 hidden group-hover:block whitespace-nowrap bg-black text-white text-xs px-2 py-1 rounded shadow z-20">Additional notes about this customer.</span>
+                      </span>
                     </label>
-                    <textarea rows={6} className="w-full border rounded px-3 py-2 resize-y" value={form.description||''} onChange={e=>set('description', e.target.value)} />
+                    {isEditingGeneral ? (
+                      <textarea rows={6} className="w-full border rounded px-3 py-2 resize-y" value={form.description||''} onChange={e=>set('description', e.target.value)} />
+                    ) : (
+                      <div className="text-gray-900 font-medium py-1 break-words whitespace-pre-wrap">{String(form.description||'') || '—'}</div>
+                    )}
                   </div>
-
-                  <div className="h-16" />
-                  <div className="fixed left-60 right-0 bottom-0 z-40">
-                    <div className="px-4">
-                      <div className="mx-auto max-w-[1400px] rounded-t-xl border bg-white/95 backdrop-blur p-3 flex items-center justify-between shadow-[0_-6px_16px_rgba(0,0,0,0.08)]">
-                        <div className={dirty? 'text-[12px] text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5' : 'text-[12px] text-green-700 bg-green-50 border border-green-200 rounded-full px-2 py-0.5'}>
-                          {dirty? 'Unsaved changes' : 'All changes saved'}
-                        </div>
-                        <button disabled={!dirty || isSaving} onClick={async()=>{
-                          if (isSaving) return;
+                </div>
+              )}
+              {tab==='general' && isEditingGeneral && (
+                <div className="fixed bottom-0 left-0 right-0 z-40">
+                  <div className="max-w-[1400px] mx-auto px-4">
+                    <div className="mb-3 rounded-xl border bg-white shadow-hero p-3 flex items-center gap-3">
+                      <div className={`text-sm ${dirty ? 'text-amber-700' : 'text-green-700'}`}>{dirty ? 'You have unsaved changes' : 'All changes saved'}</div>
+                      <div className="flex gap-3 ml-auto">
+                        <button 
+                          onClick={() => {
+                            setIsEditingGeneral(false);
+                            // Reset form to original client data
+                            if (client) {
+                              setForm({
+                                display_name: client.display_name||'', legal_name: client.legal_name||'', code: client.id?.slice(0,8) || '',
+                                client_type: (client as any).client_type||'', client_status: (client as any).client_status||'', lead_source:(client as any).lead_source||'',
+                                billing_email:(client as any).billing_email||'', po_required: (client as any).po_required? 'true':'false', tax_number:(client as any).tax_number||'', description:(client as any).description||'',
+                                address_line1: client.address_line1||'', address_line2: client.address_line2||'', country:(client as any).country||'', province:(client as any).province||'', city:(client as any).city||'', postal_code: client.postal_code||'',
+                                billing_same_as_address: ((client as any).billing_same_as_address === false) ? false : true,
+                                billing_address_line1: (client as any).billing_address_line1||'', billing_address_line2:(client as any).billing_address_line2||'', billing_country:(client as any).billing_country||'', billing_province:(client as any).billing_province||'', billing_city:(client as any).billing_city||'', billing_postal_code:(client as any).billing_postal_code||'',
+                                preferred_language:(client as any).preferred_language||'', preferred_channels: ((client as any).preferred_channels||[]).join(', '),
+                                marketing_opt_in: (client as any).marketing_opt_in? 'true':'false', invoice_delivery_method:(client as any).invoice_delivery_method||'', statement_delivery_method:(client as any).statement_delivery_method||'',
+                                cc_emails_for_invoices: ((client as any).cc_emails_for_invoices||[]).join(', '), cc_emails_for_estimates: ((client as any).cc_emails_for_estimates||[]).join(', '),
+                                do_not_contact:(client as any).do_not_contact? 'true':'false', do_not_contact_reason:(client as any).do_not_contact_reason||'',
+                                estimator_id: (client as any).estimator_id||''
+                              });
+                              setDirty(false);
+                            }
+                          }}
+                          className="px-4 py-2 rounded border bg-white text-gray-700 hover:bg-gray-50"
+                        >
+                          Cancel
+                        </button>
+                        <button 
+                          onClick={async()=>{
+                            if (isSaving) return;
                       const toList = (s:string)=> (String(s||'').split(',').map(x=>x.trim()).filter(Boolean));
                       const payload:any = {
                         // identity
@@ -449,11 +610,12 @@ export default function CustomerDetail(){
                       };
                         const reqOk = String(form.display_name||'').trim().length>0 && String(form.legal_name||'').trim().length>0;
                         if(!reqOk){ toast.error('Display name and Legal name are required'); return; }
-                      try{ 
+                        try{ 
                         setIsSaving(true);
                         await api('PATCH', `/clients/${id}`, payload); 
                         toast.success('Saved'); 
-                        setDirty(false); 
+                        setDirty(false);
+                        setIsEditingGeneral(false);
                       }catch(e: any){ 
                         // Only show error if it's a clear client error (4xx), not if it might have saved anyway
                         const msg = e?.message || 'Save failed';
@@ -464,6 +626,7 @@ export default function CustomerDetail(){
                           // For other errors, assume it might have saved - show success
                           toast.success('Saved'); 
                           setDirty(false);
+                          setIsEditingGeneral(false);
                         }
                       } finally {
                         setIsSaving(false);
@@ -486,7 +649,7 @@ export default function CustomerDetail(){
                 <div>
                   <div className="mb-3 flex items-center justify-between">
                     <h3 className="font-semibold">Construction Sites</h3>
-                    <Link to={`/customers/${encodeURIComponent(String(id||''))}/sites/new`} state={{ backgroundLocation: location }} className="px-3 py-1.5 rounded bg-brand-red text-white">New Site</Link>
+                    <Link to={`/customers/${encodeURIComponent(String(id||''))}/sites/new`} state={{ backgroundLocation: location }} className="px-3 py-1.5 rounded bg-brand-red text-white">+ New Site</Link>
                   </div>
                   <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
                     {(sites||[]).map(s=>{
@@ -515,7 +678,7 @@ export default function CustomerDetail(){
                 <div>
                   <div className="mb-3 flex items-center justify-between">
                     <h3 className="font-semibold">Opportunities</h3>
-                    <Link to={`/projects/new?client_id=${encodeURIComponent(String(id||''))}&is_bidding=true`} state={{ backgroundLocation: location }} className="px-3 py-1.5 rounded bg-brand-red text-white">New Opportunity</Link>
+                    <Link to={`/projects/new?client_id=${encodeURIComponent(String(id||''))}&is_bidding=true`} state={{ backgroundLocation: location }} className="px-3 py-1.5 rounded bg-brand-red text-white">+ New Opportunity</Link>
                   </div>
                   <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
                     {(opportunities||[]).map(p=> {
@@ -641,8 +804,10 @@ function Field({label, tooltip, children}:{label:ReactNode, tooltip?:string, chi
       <label className="text-sm text-gray-600 flex items-center gap-1">
         <span>{label}</span>
         {tooltip && (
-          <span className="relative group inline-block">
-            <span className="w-4 h-4 rounded-full bg-gradient-to-br from-[#7f1010] to-[#a31414] text-white inline-flex items-center justify-center text-[10px]">?</span>
+          <span className="relative group inline-block ml-0.5">
+            <svg className="w-4 h-4 text-gray-400 cursor-help" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
             <span className="absolute left-1/2 -translate-x-1/2 mt-2 hidden group-hover:block whitespace-nowrap bg-black text-white text-xs px-2 py-1 rounded shadow z-20">{tooltip}</span>
           </span>
         )}
@@ -1055,6 +1220,7 @@ function CustomerDocuments({ id, files, sites, onRefresh }:{ id:string, files: C
 }
 
 function ContactsCard({ id }:{ id:string }){
+  const confirm = useConfirm();
   const { data, refetch } = useQuery({ queryKey:['clientContacts', id], queryFn: ()=>api<any[]>('GET', `/clients/${id}/contacts`) });
   const { data:files } = useQuery({ queryKey:['clientFilesForContacts', id], queryFn: ()=>api<any[]>('GET', `/clients/${id}/files`) });
   const [list, setList] = useState<any[]>([]);
@@ -1076,10 +1242,11 @@ function ContactsCard({ id }:{ id:string }){
   const [createOpen, setCreateOpen] = useState(false);
   const [createPhotoBlob, setCreatePhotoBlob] = useState<Blob|null>(null);
   const [isCreatingContact, setIsCreatingContact] = useState(false);
+  const [nameError, setNameError] = useState(false);
 
   useEffect(() => {
     if (!createOpen) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { setCreateOpen(false); setCreatePhotoBlob(null); } };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { setCreateOpen(false); setCreatePhotoBlob(null); setNameError(false); } };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [createOpen]);
@@ -1101,7 +1268,7 @@ function ContactsCard({ id }:{ id:string }){
   const [dragId, setDragId] = useState<string|null>(null);
   const onDragStart = (cid:string)=> setDragId(cid);
   const onDragOver = (e:React.DragEvent)=> { e.preventDefault(); };
-  const onDropOver = (overId:string)=>{
+  const onDropOver = async(overId:string)=>{
     if(!dragId || dragId===overId) return;
     const curr = [...list];
     const from = curr.findIndex(x=> x.id===dragId);
@@ -1110,17 +1277,21 @@ function ContactsCard({ id }:{ id:string }){
     const [moved] = curr.splice(from,1);
     curr.splice(to,0,moved);
     setList(curr);
-  };
-  const commitOrder = async()=>{
-    try{ await api('POST', `/clients/${id}/contacts/reorder`, list.map(c=> String(c.id))); toast.success('Order saved'); refetch(); }catch(e){ toast.error('Failed to save order'); }
+    // Auto-save order
+    try{ 
+      await api('POST', `/clients/${id}/contacts/reorder`, curr.map(c=> String(c.id))); 
+      toast.success('Order saved'); 
+      refetch(); 
+    }catch(e){ 
+      toast.error('Failed to save order'); 
+    }
   };
   return (
     <div>
       <div className="mb-2 flex items-center justify-between">
         <h4 className="font-semibold">Contacts</h4>
         <div className="flex items-center gap-2">
-          <button onClick={commitOrder} className="px-3 py-2 rounded bg-gray-100">Save order</button>
-          <button onClick={()=>setCreateOpen(true)} className="px-4 py-2 rounded-xl bg-gradient-to-r from-brand-red to-[#ee2b2b] text-white font-semibold">New Contact</button>
+          <button onClick={()=>setCreateOpen(true)} className="px-3 py-1.5 rounded bg-brand-red text-white">+ New Contact</button>
         </div>
       </div>
       <div className="grid md:grid-cols-2 gap-4">
@@ -1183,7 +1354,7 @@ function ContactsCard({ id }:{ id:string }){
                       {c.is_primary && <span className="text-[11px] bg-green-50 text-green-700 border border-green-200 rounded-full px-2">Primary</span>}
                       {!c.is_primary && <button onClick={async()=>{ await api('PATCH', `/clients/${id}/contacts/${c.id}`, { is_primary: true }); refetch(); }} className="px-2 py-1 rounded bg-gray-100">Set Primary</button>}
                       <button onClick={()=>beginEdit(c)} className="px-2 py-1 rounded bg-gray-100">Edit</button>
-                      <button onClick={async()=>{ if(!confirm('Delete this contact?')) return; await api('DELETE', `/clients/${id}/contacts/${c.id}`); refetch(); }} className="px-2 py-1 rounded bg-gray-100">Delete</button>
+                      <button onClick={async()=>{ const ok = await confirm({ title: 'Delete contact', message: 'Are you sure you want to delete this contact?' }); if(!ok) return; try { await api('DELETE', `/clients/${id}/contacts/${c.id}`); toast.success('Contact deleted'); refetch(); } catch(e) { toast.error('Failed to delete contact'); } }} className="px-2 py-1 rounded bg-gray-100">Delete</button>
                     </div>
                   </div>
                   <div className="text-gray-600">{c.role_title||''} {c.department? `· ${c.department}`:''}</div>
@@ -1205,7 +1376,7 @@ function ContactsCard({ id }:{ id:string }){
       {createOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
           <div className="w-[800px] max-w-[95vw] bg-white rounded-xl overflow-hidden">
-            <div className="px-4 py-3 border-b flex items-center justify-between"><div className="font-semibold">New Contact</div><button onClick={()=>{ setCreateOpen(false); setCreatePhotoBlob(null); }} className="text-gray-500 hover:text-gray-700 text-2xl font-bold w-8 h-8 flex items-center justify-center rounded hover:bg-gray-100" title="Close">×</button></div>
+            <div className="px-4 py-3 border-b flex items-center justify-between"><div className="font-semibold">New Contact</div><button onClick={()=>{ setCreateOpen(false); setCreatePhotoBlob(null); setNameError(false); }} className="text-gray-500 hover:text-gray-700 text-2xl font-bold w-8 h-8 flex items-center justify-center rounded hover:bg-gray-100" title="Close">×</button></div>
             <div className="p-4 grid md:grid-cols-5 gap-3 items-start">
               <div className="md:col-span-2">
                 <div className="text-[11px] uppercase text-gray-500 mb-1">Contact Photo</div>
@@ -1213,8 +1384,11 @@ function ContactsCard({ id }:{ id:string }){
               </div>
               <div className="md:col-span-3 grid grid-cols-2 gap-2">
                 <div className="col-span-2">
-                  <label className="text-xs text-gray-600">Name</label>
-                  <input className="border rounded px-3 py-2 w-full" value={name} onChange={e=>setName(e.target.value)} />
+                  <label className="text-xs text-gray-600">
+                    Name <span className="text-red-600">*</span>
+                  </label>
+                  <input className={`border rounded px-3 py-2 w-full ${nameError && !name.trim() ? 'border-red-500' : ''}`} value={name} onChange={e=>{setName(e.target.value); if(nameError) setNameError(false);}} />
+                  {nameError && !name.trim() && <div className="text-[11px] text-red-600 mt-1">This field is required</div>}
                 </div>
                 <div>
                   <label className="text-xs text-gray-600">Role/Title</label>
@@ -1242,12 +1416,17 @@ function ContactsCard({ id }:{ id:string }){
                 <div className="col-span-2 text-right">
                   <button onClick={async()=>{
                     if (isCreatingContact) return;
+                    if (!name.trim()) {
+                      setNameError(true);
+                      toast.error('Name is required');
+                      return;
+                    }
                     try {
                       setIsCreatingContact(true);
                       const payload:any = { name, email, phone, role_title: role, department: dept, is_primary: primary==='true' };
                       const created:any = await api('POST', `/clients/${id}/contacts`, payload);
                       // If photo selected through picker callback, it will be uploaded below via picker confirmation
-                      setName(''); setEmail(''); setPhone(''); setRole(''); setDept(''); setPrimary('false'); setCreateOpen(false); refetch();
+                      setName(''); setEmail(''); setPhone(''); setRole(''); setDept(''); setPrimary('false'); setNameError(false); setCreateOpen(false); refetch();
                     } catch (e) {
                       toast.error('Failed to create contact');
                       setIsCreatingContact(false);

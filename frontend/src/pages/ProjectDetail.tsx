@@ -625,7 +625,7 @@ export default function ProjectDetail(){
                   </div>
                   
                   <div className="rounded-xl border bg-white p-4">
-                    <EstimateBuilder ref={estimateBuilderRef} projectId={String(id)} statusLabel={proj?.status_label||''} settings={settings||{}} />
+                    <EstimateBuilder ref={estimateBuilderRef} projectId={String(id)} statusLabel={proj?.status_label||''} settings={settings||{}} isBidding={proj?.is_bidding} />
                   </div>
                 </div>
               )}

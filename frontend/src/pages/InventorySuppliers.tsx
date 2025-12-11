@@ -44,6 +44,11 @@ export default function InventorySuppliers() {
   const queryClient = useQueryClient();
   const confirm = useConfirm();
   const [q, setQ] = useState('');
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [isFiltersCollapsed, setIsFiltersCollapsed] = useState(false);
+  const [countryFilter, setCountryFilter] = useState('');
+  const [provinceFilter, setProvinceFilter] = useState('');
+  const [cityFilter, setCityFilter] = useState('');
   const [open, setOpen] = useState(false);
   const [viewing, setViewing] = useState<Supplier | null>(null);
   const [editing, setEditing] = useState<Supplier | null>(null);
@@ -52,12 +57,19 @@ export default function InventorySuppliers() {
   
   // Form fields
   const [name, setName] = useState('');
+  const [nameError, setNameError] = useState(false);
   const [legalName, setLegalName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [website, setWebsite] = useState('');
   const [addressLine1, setAddressLine1] = useState('');
+  const [addressLine1Complement, setAddressLine1Complement] = useState('');
+  const [showAddress2, setShowAddress2] = useState(false);
   const [addressLine2, setAddressLine2] = useState('');
+  const [addressLine2Complement, setAddressLine2Complement] = useState('');
+  const [showAddress3, setShowAddress3] = useState(false);
+  const [addressLine3, setAddressLine3] = useState('');
+  const [addressLine3Complement, setAddressLine3Complement] = useState('');
   const [city, setCity] = useState('');
   const [province, setProvince] = useState('');
   const [postalCode, setPostalCode] = useState('');
@@ -93,7 +105,7 @@ export default function InventorySuppliers() {
     return () => window.removeEventListener('keydown', onKey);
   }, [open, contactModalOpen]);
 
-  const { data, isLoading, isFetching } = useQuery({
+  const { data, isLoading, isFetching, refetch: refetchSuppliers } = useQuery({
     queryKey: ['suppliers', q],
     queryFn: async () => {
       const params = new URLSearchParams();
@@ -102,6 +114,12 @@ export default function InventorySuppliers() {
       return await api<Supplier[]>('GET', path);
     },
   });
+
+  // Auto-apply filters when they change
+  useEffect(() => {
+    refetchSuppliers();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [q]);
 
   const { data: contactsData, refetch: refetchContacts } = useQuery({
     queryKey: ['supplierContacts', viewing?.id],
@@ -133,12 +151,19 @@ export default function InventorySuppliers() {
       setEditing(null);
       // Reset form fields
       setName('');
+      setNameError(false);
       setLegalName('');
       setEmail('');
       setPhone('');
       setWebsite('');
       setAddressLine1('');
+      setAddressLine1Complement('');
+      setShowAddress2(false);
       setAddressLine2('');
+      setAddressLine2Complement('');
+      setShowAddress3(false);
+      setAddressLine3('');
+      setAddressLine3Complement('');
       setCity('');
       setProvince('');
       setPostalCode('');
@@ -158,12 +183,19 @@ export default function InventorySuppliers() {
 
   const resetForm = () => {
     setName('');
+    setNameError(false);
     setLegalName('');
     setEmail('');
     setPhone('');
     setWebsite('');
     setAddressLine1('');
+    setAddressLine1Complement('');
+    setShowAddress2(false);
     setAddressLine2('');
+    setAddressLine2Complement('');
+    setShowAddress3(false);
+    setAddressLine3('');
+    setAddressLine3Complement('');
     setCity('');
     setProvince('');
     setPostalCode('');
@@ -181,12 +213,19 @@ export default function InventorySuppliers() {
     if (!viewing) return;
     setEditing(viewing);
     setName(viewing.name);
+    setNameError(false);
     setLegalName(viewing.legal_name || '');
     setEmail(viewing.email || '');
     setPhone(viewing.phone || '');
     setWebsite(viewing.website || '');
     setAddressLine1((viewing as any).address_line1 || '');
+    setAddressLine1Complement((viewing as any).address_line1_complement || '');
     setAddressLine2((viewing as any).address_line2 || '');
+    setAddressLine2Complement((viewing as any).address_line2_complement || '');
+    setAddressLine3((viewing as any).address_line3 || '');
+    setAddressLine3Complement((viewing as any).address_line3_complement || '');
+    setShowAddress2(!!((viewing as any).address_line2 || (viewing as any).address_line2_complement));
+    setShowAddress3(!!((viewing as any).address_line3 || (viewing as any).address_line3_complement));
     setCity(viewing.city || '');
     setProvince(viewing.province || '');
     setPostalCode((viewing as any).postal_code || '');
@@ -222,6 +261,7 @@ export default function InventorySuppliers() {
 
   const handleSubmit = () => {
     if (!name.trim()) {
+      setNameError(true);
       toast.error('Name is required');
       return;
     }
@@ -233,7 +273,11 @@ export default function InventorySuppliers() {
       phone: phone.trim() || undefined,
       website: website.trim() || undefined,
       address_line1: addressLine1.trim() || undefined,
+      address_line1_complement: addressLine1Complement.trim() || undefined,
       address_line2: addressLine2.trim() || undefined,
+      address_line2_complement: addressLine2Complement.trim() || undefined,
+      address_line3: addressLine3.trim() || undefined,
+      address_line3_complement: addressLine3Complement.trim() || undefined,
       city: city.trim() || undefined,
       province: province.trim() || undefined,
       postal_code: postalCode.trim() || undefined,
@@ -248,9 +292,19 @@ export default function InventorySuppliers() {
     }
   };
 
-  const sortedRows = useMemo(() => {
+  const filteredRows = useMemo(() => {
     if (!data) return [];
-    const sorted = [...data];
+    return data.filter((s) => {
+      if (countryFilter && (s.country || '').toLowerCase() !== countryFilter.toLowerCase()) return false;
+      if (provinceFilter && (s.province || '').toLowerCase() !== provinceFilter.toLowerCase()) return false;
+      if (cityFilter && (s.city || '').toLowerCase() !== cityFilter.toLowerCase()) return false;
+      return true;
+    });
+  }, [data, countryFilter, provinceFilter, cityFilter]);
+
+  const sortedRows = useMemo(() => {
+    if (!filteredRows) return [];
+    const sorted = [...filteredRows];
     
     sorted.sort((a, b) => {
       let aVal: any = a[sortColumn as keyof Supplier];
@@ -287,6 +341,10 @@ export default function InventorySuppliers() {
 
   const rows = sortedRows;
 
+  const countries = useMemo(() => Array.from(new Set((data || []).map(s => (s.country || '').trim()).filter(Boolean))), [data]);
+  const provinces = useMemo(() => Array.from(new Set((data || []).map(s => (s.province || '').trim()).filter(Boolean))), [data]);
+  const cities = useMemo(() => Array.from(new Set((data || []).map(s => (s.city || '').trim()).filter(Boolean))), [data]);
+
   return (
     <div>
       <div className="mb-3 rounded-xl border bg-gradient-to-br from-[#7f1010] to-[#a31414] text-white p-4 flex items-center justify-between">
@@ -299,19 +357,136 @@ export default function InventorySuppliers() {
             resetForm();
             setOpen(true);
           }}
-          className="px-4 py-2 rounded bg-black text-white"
+          className="px-4 py-2 rounded bg-white text-brand-red font-semibold"
         >
-          New Supplier
+          + New Supplier
         </button>
       </div>
-      <div className="mb-4">
-        <input
-          type="text"
-          placeholder="Search suppliers..."
-          className="w-full max-w-md px-4 py-2 border rounded-lg"
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-        />
+      {/* Advanced Search Panel */}
+      <div className="mb-3 rounded-xl border bg-white shadow-sm overflow-hidden relative">
+        {/* Main Search Bar */}
+        {isFiltersCollapsed ? (
+          <div className="p-4 bg-gradient-to-r from-gray-50 to-white">
+            <div className="flex items-center justify-between">
+              <div className="text-lg font-semibold text-gray-700">Show Filters</div>
+            </div>
+          </div>
+        ) : (
+          <div className="p-4 bg-gradient-to-r from-gray-50 to-white border-b">
+            <div className="flex items-center gap-3">
+              <div className="flex-1">
+                <label className="block text-xs font-medium text-gray-700 mb-1.5">Search Suppliers</label>
+                <div className="relative">
+                  <input 
+                    className="w-full border border-gray-300 rounded-lg px-4 py-2.5 pl-10 focus:outline-none focus:ring-2 focus:ring-brand-red focus:border-transparent text-gray-900" 
+                    placeholder="Search by supplier name, email, or phone..." 
+                    value={q} 
+                    onChange={e=>setQ(e.target.value)} 
+                    onKeyDown={e=>{ if(e.key==='Enter') refetchSuppliers(); }} 
+                  />
+                  <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                  </svg>
+                </div>
+              </div>
+              <div className="flex items-end gap-2 pt-6">
+                <button 
+                  onClick={()=>setShowAdvanced(!showAdvanced)}
+                  className="px-4 py-2.5 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors flex items-center gap-2 text-sm font-medium"
+                >
+                  <svg className={`w-4 h-4 transition-transform ${showAdvanced ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                  Advanced Filters
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Advanced Filters */}
+        {!isFiltersCollapsed && showAdvanced && (
+          <div className="p-4 bg-gray-50 border-t animate-in slide-in-from-top duration-200">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1.5">Country</label>
+                <select
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-red focus:border-transparent bg-white"
+                  value={countryFilter}
+                  onChange={e => { setCountryFilter(e.target.value); setProvinceFilter(''); setCityFilter(''); }}
+                >
+                  <option value="">All Countries</option>
+                  {countries.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1.5">Province / State</label>
+                <select
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-red focus:border-transparent bg-white"
+                  value={provinceFilter}
+                  onChange={e => { setProvinceFilter(e.target.value); setCityFilter(''); }}
+                  disabled={countries.length === 0}
+                >
+                  <option value="">All Provinces</option>
+                  {provinces.map(p => <option key={p} value={p}>{p}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1.5">City</label>
+                <select
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-red focus:border-transparent bg-white"
+                  value={cityFilter}
+                  onChange={e => setCityFilter(e.target.value)}
+                  disabled={provinces.length === 0 && !provinceFilter}
+                >
+                  <option value="">All Cities</option>
+                  {cities.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Action Buttons */}
+        {!isFiltersCollapsed && (
+          <div className="p-4 bg-white border-t flex items-center justify-between">
+            <div className="text-sm text-gray-600">
+              {Array.isArray(rows) && rows.length > 0 && (
+                <span>Found {rows.length} supplier{rows.length !== 1 ? 's' : ''}</span>
+              )}
+            </div>
+            <div className="flex items-center gap-2 pr-10">
+              <button 
+                onClick={()=>{
+                  setQ('');
+                  setCountryFilter('');
+                  setProvinceFilter('');
+                  setCityFilter('');
+                  refetchSuppliers();
+                }} 
+                className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors font-medium"
+              >
+                Clear All
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Collapse/Expand button - bottom right corner */}
+        <button
+          onClick={() => setIsFiltersCollapsed(!isFiltersCollapsed)}
+          className="absolute bottom-0 right-0 w-8 h-8 rounded-tl-lg border-t border-l bg-white hover:bg-gray-50 transition-colors flex items-center justify-center shadow-sm"
+          title={isFiltersCollapsed ? "Expand filters" : "Collapse filters"}
+        >
+          <svg 
+            className={`w-4 h-4 text-gray-600 transition-transform ${!isFiltersCollapsed ? 'rotate-180' : ''}`}
+            fill="none" 
+            stroke="currentColor" 
+            viewBox="0 0 24 24"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
       </div>
 
       <div className="rounded-xl border bg-white">
@@ -370,10 +545,9 @@ export default function InventorySuppliers() {
       {open && (
         <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center">
           <div className="w-[900px] max-w-[95vw] max-h-[90vh] bg-white rounded-xl overflow-hidden flex flex-col">
-            <div className="overflow-y-auto">
               {viewing && !editing ? (
                 // View mode - display supplier details
-                <div className="space-y-6">
+                <>
                   {/* Profile Header */}
                   <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] p-6 flex items-center gap-6 relative">
                     <button
@@ -445,8 +619,9 @@ export default function InventorySuppliers() {
                   </div>
 
                   {/* Tab Content */}
-                  {supplierTab === 'overview' ? (
-                    <div className="px-6 pb-6 space-y-4">
+                  <div className="overflow-y-auto flex-1">
+                    {supplierTab === 'overview' ? (
+                      <div className="px-6 pb-6 space-y-4">
                       <div className="grid grid-cols-2 gap-4">
                         {/* Website Card */}
                         {viewing.website && (
@@ -594,12 +769,23 @@ export default function InventorySuppliers() {
                       </div>
                     </div>
                   )}
-                </div>
+                  </div>
+                </>
               ) : (
                 // Edit/Create mode - form inputs
-                <div className="space-y-6">
+                <>
                   {/* Edit Header */}
-                  <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] p-6">
+                  <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] p-6 relative">
+                    <button
+                      onClick={() => {
+                        setOpen(false);
+                        resetForm();
+                      }}
+                      className="absolute top-4 right-4 text-white/80 hover:text-white text-2xl font-bold w-8 h-8 flex items-center justify-center rounded hover:bg-white/10"
+                      title="Close"
+                    >
+                      ×
+                    </button>
                     <div className="flex items-center justify-between">
                       <div>
                         <h2 className="text-2xl font-extrabold text-white">
@@ -619,15 +805,22 @@ export default function InventorySuppliers() {
                     </div>
                   </div>
                   
-                  <div className="p-6 grid grid-cols-2 gap-4">
+                  <div className="overflow-y-auto flex-1">
+                    <div className="p-6 grid grid-cols-2 gap-4">
                 <div className="col-span-2">
                   <label className="text-xs font-semibold text-gray-700">Name *</label>
                   <input
                     type="text"
-                    className="w-full border rounded px-3 py-2 mt-1"
+                    className={`w-full border rounded px-3 py-2 mt-1 ${nameError && !name.trim() ? 'border-red-500' : ''}`}
                     value={name}
-                    onChange={(e) => setName(e.target.value)}
+                    onChange={(e) => {
+                      setName(e.target.value);
+                      if (nameError) setNameError(false);
+                    }}
                   />
+                  {nameError && !name.trim() && (
+                    <div className="text-[11px] text-red-600 mt-1">This field is required</div>
+                  )}
                 </div>
                 <div className="col-span-2">
                   <label className="text-xs font-semibold text-gray-700">Legal Name</label>
@@ -665,32 +858,153 @@ export default function InventorySuppliers() {
                     onChange={(e) => setWebsite(e.target.value)}
                   />
                 </div>
-                <div className="col-span-2">
-                  <label className="text-xs font-semibold text-gray-700">Address Line 1</label>
-                  <AddressAutocomplete
-                    value={addressLine1}
-                    onChange={(value) => setAddressLine1(value)}
-                    onAddressSelect={(address) => {
-                      setAddressLine1(address.address_line1 || addressLine1);
-                      setAddressLine2(address.address_line2 !== undefined ? address.address_line2 : addressLine2);
-                      setCity(address.city !== undefined ? address.city : city);
-                      setProvince(address.province !== undefined ? address.province : province);
-                      setPostalCode(address.postal_code !== undefined ? address.postal_code : postalCode);
-                      setCountry(address.country !== undefined ? address.country : country);
-                    }}
-                    placeholder="Enter Adress"
-                    className="w-full border rounded px-3 py-2 mt-1"
-                  />
+                <div className="col-span-2 grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-xs font-semibold text-gray-700">Address</label>
+                    <AddressAutocomplete
+                      value={addressLine1}
+                      onChange={(value) => setAddressLine1(value)}
+                      onAddressSelect={(address) => {
+                        setAddressLine1(address.address_line1 || addressLine1);
+                        setCity(address.city !== undefined ? address.city : city);
+                        setProvince(address.province !== undefined ? address.province : province);
+                        setPostalCode(address.postal_code !== undefined ? address.postal_code : postalCode);
+                        setCountry(address.country !== undefined ? address.country : country);
+                      }}
+                      placeholder="Enter address"
+                      className="w-full border rounded px-3 py-2 mt-1"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-gray-700">Complement</label>
+                    <input
+                      type="text"
+                      className="w-full border rounded px-3 py-2 mt-1"
+                      value={addressLine1Complement}
+                      onChange={(e) => setAddressLine1Complement(e.target.value)}
+                      placeholder="Apartment, Unit, Block, etc (Optional)"
+                    />
+                  </div>
                 </div>
-                <div className="col-span-2">
-                  <label className="text-xs font-semibold text-gray-700">Address Line 2 (Optional)</label>
-                  <AddressAutocomplete
-                    value={addressLine2}
-                    onChange={(value) => setAddressLine2(value)}
-                    placeholder="Enter Adress"
-                    className="w-full border rounded px-3 py-2 mt-1"
-                  />
-                </div>
+                {!showAddress2 && !showAddress3 && (
+                  <div className="col-span-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowAddress2(true)}
+                      className="text-sm text-brand-red hover:underline flex items-center gap-1"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                      </svg>
+                      Add another Address
+                    </button>
+                  </div>
+                )}
+                {showAddress2 && (
+                  <>
+                    <div className="col-span-2 grid grid-cols-[1fr_0.8fr_auto] gap-4 items-end">
+                      <div>
+                        <label className="text-xs font-semibold text-gray-700">Address 2</label>
+                        <AddressAutocomplete
+                          value={addressLine2}
+                          onChange={(value) => setAddressLine2(value)}
+                          onAddressSelect={(address) => {
+                            setAddressLine2(address.address_line1 || addressLine2);
+                          }}
+                          placeholder="Enter address"
+                          className="w-full border rounded px-3 py-2 mt-1"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs font-semibold text-gray-700">Complement</label>
+                        <input
+                          type="text"
+                          className="w-full border rounded px-3 py-2 mt-1"
+                          value={addressLine2Complement}
+                          onChange={(e) => setAddressLine2Complement(e.target.value)}
+                          placeholder="Apartment, Unit, Block, etc (Optional)"
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowAddress2(false);
+                          setAddressLine2('');
+                          setAddressLine2Complement('');
+                          if (showAddress3) {
+                            setAddressLine2(addressLine3);
+                            setAddressLine2Complement(addressLine3Complement);
+                            setAddressLine3('');
+                            setAddressLine3Complement('');
+                            setShowAddress3(false);
+                          }
+                        }}
+                        className="mb-[2px] px-2 py-1 text-red-600 hover:bg-red-50 rounded"
+                        title="Remove Address 2"
+                      >
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                      </button>
+                    </div>
+                    {!showAddress3 && (
+                      <div className="col-span-2">
+                        <button
+                          type="button"
+                          onClick={() => setShowAddress3(true)}
+                          className="text-sm text-brand-red hover:underline flex items-center gap-1"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                          </svg>
+                          Add another Address
+                        </button>
+                      </div>
+                    )}
+                  </>
+                )}
+                {showAddress3 && (
+                  <>
+                    <div className="col-span-2 grid grid-cols-[1fr_0.8fr_auto] gap-4 items-end">
+                      <div>
+                        <label className="text-xs font-semibold text-gray-700">Address 3</label>
+                        <AddressAutocomplete
+                          value={addressLine3}
+                          onChange={(value) => setAddressLine3(value)}
+                          onAddressSelect={(address) => {
+                            setAddressLine3(address.address_line1 || addressLine3);
+                          }}
+                          placeholder="Enter address"
+                          className="w-full border rounded px-3 py-2 mt-1"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs font-semibold text-gray-700">Complement</label>
+                        <input
+                          type="text"
+                          className="w-full border rounded px-3 py-2 mt-1"
+                          value={addressLine3Complement}
+                          onChange={(e) => setAddressLine3Complement(e.target.value)}
+                          placeholder="Apartment, Unit, Block, etc (Optional)"
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowAddress3(false);
+                          setAddressLine3('');
+                          setAddressLine3Complement('');
+                        }}
+                        className="mb-[2px] px-2 py-1 text-red-600 hover:bg-red-50 rounded"
+                        title="Remove Address 3"
+                      >
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                      </button>
+                    </div>
+                  </>
+                )}
                 <div>
                   <label className="text-xs font-semibold text-gray-700">City</label>
                   <input
@@ -731,10 +1045,10 @@ export default function InventorySuppliers() {
                     placeholder=""
                   />
                 </div>
+                    </div>
                   </div>
-              </div>
+                </>
               )}
-            </div>
             <div className="px-6 py-4 border-t bg-gray-50 flex justify-end gap-2">
               {viewing && !editing ? (
                 // View mode buttons
@@ -775,10 +1089,23 @@ export default function InventorySuppliers() {
                         setEditing(null);
                         // Reset form fields but keep viewing
                         setName('');
+                        setNameError(false);
                         setLegalName('');
                         setEmail('');
                         setPhone('');
                         setWebsite('');
+                        setAddressLine1('');
+                        setAddressLine1Complement('');
+                        setShowAddress2(false);
+                        setAddressLine2('');
+                        setAddressLine2Complement('');
+                        setShowAddress3(false);
+                        setAddressLine3('');
+                        setAddressLine3Complement('');
+                        setCity('');
+                        setProvince('');
+                        setPostalCode('');
+                        setCountry('');
                         setAddressLine1('');
                         setAddressLine2('');
                         setCity('');

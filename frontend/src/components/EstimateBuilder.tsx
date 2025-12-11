@@ -12,8 +12,8 @@ export type EstimateBuilderRef = {
   save: () => Promise<boolean>;
 };
 
-const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, estimateId?: number, statusLabel?: string, settings?: any }>(
-  function EstimateBuilder({ projectId, estimateId, statusLabel, settings }, ref) {
+const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, estimateId?: number, statusLabel?: string, settings?: any, isBidding?: boolean }>(
+  function EstimateBuilder({ projectId, estimateId, statusLabel, settings, isBidding }, ref) {
   const confirm = useConfirm();
   const queryClient = useQueryClient();
   const [items, setItems] = useState<Item[]>([]);
@@ -1705,33 +1705,37 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
                 </button>
               </div>
               
-              {/* Right: Generate Orders and Save */}
+              {/* Right: Generate Orders (only for Projects, not Opportunities) and Save */}
               <div className="flex items-center gap-2">
-                <button 
-                  onClick={async () => {
-                    if (!currentEstimateId) {
-                      toast.error('Please save the estimate first');
-                      return;
-                    }
-                    try {
-                      setIsLoading(true);
-                      const response = await api('POST', `/orders/projects/${projectId}/generate`, { estimate_id: currentEstimateId });
-                      toast.success(`Generated ${response.orders_created || 0} orders successfully`);
-                      // Invalidate orders query so they appear immediately in the orders tab
-                      queryClient.invalidateQueries({ queryKey: ['projectOrders', projectId] });
-                      // Navigate to orders tab would be handled by parent
-                    } catch (error: any) {
-                      const errorMsg = error.response?.data?.detail || error.message || 'Failed to generate orders';
-                      toast.error(errorMsg);
-                    } finally {
-                      setIsLoading(false);
-                    }
-                  }}
-                  disabled={isLoading || !currentEstimateId || items.length === 0}
-                  className="px-4 py-2 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium disabled:opacity-60 disabled:cursor-not-allowed transition-colors">
-                  {isLoading ? 'Generating...' : 'Generate Orders'}
-                </button>
-                <div className="w-px h-5 bg-gray-300"></div>
+                {!isBidding && (
+                  <>
+                    <button 
+                      onClick={async () => {
+                        if (!currentEstimateId) {
+                          toast.error('Please save the estimate first');
+                          return;
+                        }
+                        try {
+                          setIsLoading(true);
+                          const response = await api('POST', `/orders/projects/${projectId}/generate`, { estimate_id: currentEstimateId });
+                          toast.success(`Generated ${response.orders_created || 0} orders successfully`);
+                          // Invalidate orders query so they appear immediately in the orders tab
+                          queryClient.invalidateQueries({ queryKey: ['projectOrders', projectId] });
+                          // Navigate to orders tab would be handled by parent
+                        } catch (error: any) {
+                          const errorMsg = error.response?.data?.detail || error.message || 'Failed to generate orders';
+                          toast.error(errorMsg);
+                        } finally {
+                          setIsLoading(false);
+                        }
+                      }}
+                      disabled={isLoading || !currentEstimateId || items.length === 0}
+                      className="px-4 py-2 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium disabled:opacity-60 disabled:cursor-not-allowed transition-colors">
+                      {isLoading ? 'Generating...' : 'Generate Orders'}
+                    </button>
+                    <div className="w-px h-5 bg-gray-300"></div>
+                  </>
+                )}
                 <button 
                   disabled={!dirty} 
                   onClick={handleManualSave}

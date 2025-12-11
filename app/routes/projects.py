@@ -9,7 +9,7 @@ from ..db import get_db
 from ..models.models import Project, ClientFile, FileObject, ProjectUpdate, ProjectReport, ProjectEvent, ProjectTimeEntry, ProjectTimeEntryLog, User, EmployeeProfile, Client, ClientSite, ClientFolder, ClientContact, SettingList, SettingItem, Shift
 from datetime import datetime, timezone, time, timedelta
 from ..auth.security import get_current_user, require_permissions, can_approve_timesheet
-from sqlalchemy import or_, and_, cast, String
+from sqlalchemy import or_, and_, cast, String, Date
 
 
 router = APIRouter(prefix="/projects", tags=["projects"])
@@ -1547,6 +1547,9 @@ def business_opportunities(
     division_id: Optional[str] = None,
     subdivision_id: Optional[str] = None,
     status: Optional[str] = None,
+    client_id: Optional[str] = None,
+    date_start: Optional[str] = None,
+    date_end: Optional[str] = None,
     q: Optional[str] = None,
     limit: int = 100,
     db: Session = Depends(get_db),
@@ -1554,6 +1557,34 @@ def business_opportunities(
 ):
     """Get opportunities filtered by project division/subdivision"""
     query = db.query(Project).filter(Project.is_bidding == True)
+    
+    # Filter by client
+    if client_id:
+        try:
+            client_uuid = uuid.UUID(client_id)
+            query = query.filter(Project.client_id == client_uuid)
+        except ValueError:
+            pass
+    
+    # Filter by date range (Start Date shown on cards)
+    # The UI displays: (project.date_start || project.created_at).slice(0,10)
+    # So we filter by COALESCE(date_start, created_at) using DATE-only comparisons.
+    effective_start_dt = func.coalesce(Project.date_start, Project.created_at)
+    if date_start:
+        try:
+            from datetime import datetime
+            start_d = datetime.strptime(date_start, "%Y-%m-%d").date()
+            query = query.filter(cast(effective_start_dt, Date) >= start_d)
+        except Exception:
+            pass
+
+    if date_end:
+        try:
+            from datetime import datetime
+            end_d = datetime.strptime(date_end, "%Y-%m-%d").date()
+            query = query.filter(cast(effective_start_dt, Date) <= end_d)
+        except Exception:
+            pass
     
     # Filter by project division/subdivision
     if subdivision_id:
@@ -1570,12 +1601,17 @@ def business_opportunities(
         except ValueError:
             pass
     elif division_id:
+        # Filter by main division (includes all its subdivisions) - same logic as dashboard
         try:
             div_uuid = uuid.UUID(division_id)
             # Get all subdivision IDs for this division
             from ..models.models import SettingList, SettingItem
             divisions_list = db.query(SettingList).filter(SettingList.name == "project_divisions").first()
+            
+            all_conditions = []
+            
             if divisions_list:
+                # Get division and all its subdivisions
                 division_items = db.query(SettingItem).filter(
                     SettingItem.list_id == divisions_list.id,
                     or_(
@@ -1584,28 +1620,63 @@ def business_opportunities(
                     )
                 ).all()
                 division_ids_list = [str(item.id) for item in division_items]
+                
+                # Build filter condition for any of these IDs
                 conditions = []
                 for div_id_str in division_ids_list:
                     conditions.append(cast(Project.project_division_ids, String).like(f'%{div_id_str}%'))
+                
                 if conditions:
-                    query = query.filter(or_(*conditions))
-            # Legacy support
-            query = query.filter(
+                    all_conditions.append(or_(*conditions))
+            
+            # Legacy support - combine with OR so it works with both old and new format
+            all_conditions.append(
                 or_(
                     Project.division_id == div_uuid,
                     cast(Project.division_ids, String).like(f'%{division_id}%')
                 )
             )
+            
+            # Apply all conditions with OR (project matches if it has division in any format)
+            if all_conditions:
+                query = query.filter(or_(*all_conditions))
         except ValueError:
             pass
     
-    # Filter by status
+    # Filter by status - support both UUID and string label
     if status:
-        query = query.filter(Project.status_id == status)
+        try:
+            status_uuid = uuid.UUID(str(status))
+            # Get the label from SettingItem to also match by status_label
+            from ..models.models import SettingItem
+            status_item = db.query(SettingItem).filter(SettingItem.id == status_uuid).first()
+            status_label = status_item.label if status_item else None
+            
+            # Match by status_id OR (if status_id is null, match by status_label)
+            if status_label:
+                query = query.filter(or_(
+                    Project.status_id == status_uuid,
+                    (Project.status_id.is_(None)) & (Project.status_label == status_label)
+                ))
+            else:
+                # If we can't find the SettingItem, just try status_id
+                query = query.filter(Project.status_id == status_uuid)
+        except (ValueError, AttributeError):
+            # If status is not a valid UUID, try matching by status_label string
+            query = query.filter(Project.status_label == status)
     
-    # Search
+    # Search - include client name if client relation exists
     if q:
-        query = query.filter(Project.name.ilike(f"%{q}%"))
+        from ..models.models import Client
+        query = query.outerjoin(Client, Project.client_id == Client.id)
+        query = query.filter(
+            or_(
+                Project.name.ilike(f"%{q}%"),
+                Project.code.ilike(f"%{q}%"),
+                Client.display_name.ilike(f"%{q}%"),
+                Client.name.ilike(f"%{q}%")
+            )
+        )
     
     projects = query.order_by(Project.created_at.desc()).limit(limit).all()
     
@@ -1655,21 +1726,24 @@ def business_projects(
         except ValueError:
             pass
     
-    # Filter by date range
+    # Filter by date range (Start Date shown on cards)
+    # The UI displays: (project.date_start || project.created_at).slice(0,10)
+    # So we filter by COALESCE(date_start, created_at) using DATE-only comparisons.
+    effective_start_dt = func.coalesce(Project.date_start, Project.created_at)
     if date_start:
         try:
             from datetime import datetime
-            start_date = datetime.fromisoformat(date_start.replace('Z', '+00:00'))
-            query = query.filter(Project.date_start >= start_date.date())
-        except (ValueError, AttributeError):
+            start_d = datetime.strptime(date_start, "%Y-%m-%d").date()
+            query = query.filter(cast(effective_start_dt, Date) >= start_d)
+        except Exception:
             pass
-    
+
     if date_end:
         try:
             from datetime import datetime
-            end_date = datetime.fromisoformat(date_end.replace('Z', '+00:00'))
-            query = query.filter(Project.date_end <= end_date.date())
-        except (ValueError, AttributeError):
+            end_d = datetime.strptime(date_end, "%Y-%m-%d").date()
+            query = query.filter(cast(effective_start_dt, Date) <= end_d)
+        except Exception:
             pass
     
     # Filter by project division/subdivision

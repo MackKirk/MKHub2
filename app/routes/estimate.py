@@ -43,6 +43,9 @@ def search_products(
     q: str = Query(""),
     supplier: Optional[str] = Query(None),
     category: Optional[str] = Query(None),
+    price_min: Optional[float] = Query(None),
+    price_max: Optional[float] = Query(None),
+    unit_type: Optional[str] = Query(None),
     db: Session = Depends(get_db),
     _=Depends(require_permissions("inventory:read")),
 ):
@@ -54,6 +57,12 @@ def search_products(
         query = query.filter(Material.supplier_name == supplier)
     if category:
         query = query.filter(Material.category == category)
+    if price_min is not None:
+        query = query.filter(Material.price >= price_min)
+    if price_max is not None:
+        query = query.filter(Material.price <= price_max)
+    if unit_type:
+        query = query.filter(Material.unit_type == unit_type)
     return query.order_by(Material.name.asc()).limit(50).all()
 
 

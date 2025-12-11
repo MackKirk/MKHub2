@@ -7,21 +7,72 @@ import ImagePicker from '@/components/ImagePicker';
 
 type Material = { id:number, name:string, supplier_name?:string, category?:string, unit?:string, price?:number, last_updated?:string, unit_type?:string, units_per_package?:number, coverage_sqs?:number, coverage_ft2?:number, coverage_m2?:number, description?:string, image_base64?:string };
 
+// Helper functions for currency formatting (CAD)
+const formatCurrency = (value: string): string => {
+  if (!value) return '';
+  // Remove all non-numeric characters except decimal point
+  const numericValue = value.replace(/[^0-9.]/g, '');
+  if (!numericValue) return '';
+  
+  const num = parseFloat(numericValue);
+  if (isNaN(num)) return numericValue; // Return raw if can't parse
+  
+  // Format with Canadian locale
+  return new Intl.NumberFormat('en-CA', {
+    style: 'currency',
+    currency: 'CAD',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(num);
+};
+
+const parseCurrency = (value: string): string => {
+  // Remove currency symbols and keep only numbers and decimal point
+  const parsed = value.replace(/[^0-9.]/g, '');
+  // Handle multiple decimal points - keep only the first one
+  const parts = parsed.split('.');
+  if (parts.length > 2) {
+    return parts[0] + '.' + parts.slice(1).join('');
+  }
+  return parsed;
+};
+
 export default function InventoryProducts(){
   const confirm = useConfirm();
   const [q, setQ] = useState('');
   const [supplier, setSupplier] = useState('');
   const [category, setCategory] = useState('');
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [isFiltersCollapsed, setIsFiltersCollapsed] = useState(false);
+  const [priceMin, setPriceMin] = useState<string>('');
+  const [priceMinDisplay, setPriceMinDisplay] = useState<string>('');
+  const [priceMinFocused, setPriceMinFocused] = useState(false);
+  const [priceMax, setPriceMax] = useState<string>('');
+  const [priceMaxDisplay, setPriceMaxDisplay] = useState<string>('');
+  const [priceMaxFocused, setPriceMaxFocused] = useState(false);
+  const [unitTypeFilter, setUnitTypeFilter] = useState<string>('');
   const [sortColumn, setSortColumn] = useState<string>('name');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
   const { data, refetch, isLoading, isFetching } = useQuery({
-    queryKey:['estimateProducts', q, supplier, category],
+    queryKey:['estimateProducts', q, supplier, category, priceMin, priceMax, unitTypeFilter],
     queryFn: async ()=>{
-      const params = new URLSearchParams(); if(q) params.set('q', q); if(supplier) params.set('supplier', supplier); if(category) params.set('category', category);
+      const params = new URLSearchParams(); 
+      if(q) params.set('q', q); 
+      if(supplier) params.set('supplier', supplier); 
+      if(category) params.set('category', category);
+      if(priceMin) params.set('price_min', priceMin);
+      if(priceMax) params.set('price_max', priceMax);
+      if(unitTypeFilter) params.set('unit_type', unitTypeFilter);
       const path = params.toString()? `/estimate/products/search?${params.toString()}` : '/estimate/products';
       return await api<Material[]>('GET', path);
     }
   });
+
+  // Auto-apply filters when they change
+  useEffect(() => {
+    refetch();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [q, supplier, category, priceMin, priceMax, unitTypeFilter]);
   const rawRows = data||[];
   const suppliers = useMemo(()=> Array.from(new Set(rawRows.map(r=> r.supplier_name||'').filter(Boolean))), [rawRows]);
   const categories = useMemo(()=> Array.from(new Set(rawRows.map(r=> r.category||'').filter(Boolean))), [rawRows]);
@@ -68,10 +119,14 @@ export default function InventoryProducts(){
   const [viewing, setViewing] = useState<Material|null>(null);
   const [editing, setEditing] = useState<Material|null>(null);
   const [name, setName] = useState('');
+  const [nameError, setNameError] = useState(false);
   const [newSupplier, setNewSupplier] = useState('');
   const [newCategory, setNewCategory] = useState('');
   const [unit, setUnit] = useState('');
   const [price, setPrice] = useState<string>('');
+  const [priceDisplay, setPriceDisplay] = useState<string>('');
+  const [priceFocused, setPriceFocused] = useState(false);
+  const [priceError, setPriceError] = useState(false);
   const [desc, setDesc] = useState('');
   const [unitType, setUnitType] = useState<'unitary'|'multiple'|'coverage'>('unitary');
   const [unitsPerPackage, setUnitsPerPackage] = useState<string>('');
@@ -120,15 +175,15 @@ export default function InventoryProducts(){
     if(which==='sqs'){
       const ft2 = num * SQS_TO_FT2;
       const m2 = ft2 * FT2_TO_M2;
-      setCovSqs(String(num)); setCovFt2(String(Number(ft2.toFixed(3)))); setCovM2(String(Number(m2.toFixed(3))));
+      setCovSqs(String(num)); setCovFt2(String(Number(ft2.toFixed(0)))); setCovM2(String(Number(m2.toFixed(2))));
     }else if(which==='ft2'){
       const sqs = num / SQS_TO_FT2;
       const m2 = num * FT2_TO_M2;
-      setCovSqs(String(Number(sqs.toFixed(3)))); setCovFt2(String(num)); setCovM2(String(Number(m2.toFixed(3))));
+      setCovSqs(String(Number(sqs.toFixed(3)))); setCovFt2(String(num)); setCovM2(String(Number(m2.toFixed(2))));
     }else{
       const ft2 = num / FT2_TO_M2;
       const sqs = ft2 / SQS_TO_FT2;
-      setCovSqs(String(Number(sqs.toFixed(3)))); setCovFt2(String(Number(ft2.toFixed(3)))); setCovM2(String(num));
+      setCovSqs(String(Number(sqs.toFixed(3)))); setCovFt2(String(Number(ft2.toFixed(0)))); setCovM2(String(Number(num.toFixed(2))));
     }
   };
 
@@ -157,10 +212,14 @@ export default function InventoryProducts(){
     if (!viewing) return;
     setEditing(viewing);
     setName(viewing.name);
+    setNameError(false);
     setNewSupplier(viewing.supplier_name||'');
     setNewCategory(viewing.category||'');
     setUnit(viewing.unit||'');
     setPrice(viewing.price?.toString()||'');
+    setPriceDisplay(viewing.price?.toString()||'');
+    setPriceFocused(false);
+    setPriceError(false);
     setDesc(viewing.description||'');
     setUnitType((viewing.unit_type as any)||'unitary');
     setUnitsPerPackage(viewing.units_per_package?.toString()||'');
@@ -212,7 +271,7 @@ export default function InventoryProducts(){
     setEditing(null);
     setViewing(null);
     setOpen(false);
-    setName(''); setNewSupplier(''); setNewCategory(''); setUnit(''); setPrice(''); setDesc('');
+    setName(''); setNameError(false); setNewSupplier(''); setNewCategory(''); setUnit(''); setPrice(''); setPriceDisplay(''); setPriceFocused(false); setPriceError(false); setDesc('');
     setUnitsPerPackage(''); setCovSqs(''); setCovFt2(''); setCovM2(''); setUnitType('unitary');     setImageDataUrl('');
     setImagePickerOpen(false);
   };
@@ -273,21 +332,189 @@ export default function InventoryProducts(){
           <div className="text-2xl font-extrabold">Products</div>
           <div className="text-sm opacity-90">Catalog of materials and pricing.</div>
         </div>
-        <button onClick={()=>{ resetModal(); setOpen(true); }} className="px-3 py-2 rounded bg-black text-white">New Product</button>
+        <button onClick={()=>{ resetModal(); setOpen(true); }} className="px-4 py-2 rounded bg-white text-brand-red font-semibold">+ New Product</button>
       </div>
+      {/* Advanced Search Panel */}
+      <div className="mb-3 rounded-xl border bg-white shadow-sm overflow-hidden relative">
+        {/* Main Search Bar */}
+        {isFiltersCollapsed ? (
+          <div className="p-4 bg-gradient-to-r from-gray-50 to-white">
+            <div className="flex items-center justify-between">
+              <div className="text-lg font-semibold text-gray-700">Show Filters</div>
+            </div>
+          </div>
+        ) : (
+          <div className="p-4 bg-gradient-to-r from-gray-50 to-white border-b">
+            <div className="flex items-center gap-3">
+              <div className="flex-1">
+                <label className="block text-xs font-medium text-gray-700 mb-1.5">Search Products</label>
+                <div className="relative">
+                  <input 
+                    className="w-full border border-gray-300 rounded-lg px-4 py-2.5 pl-10 focus:outline-none focus:ring-2 focus:ring-brand-red focus:border-transparent text-gray-900" 
+                    placeholder="Search by product name, supplier, or category..." 
+                    value={q} 
+                    onChange={e=>setQ(e.target.value)} 
+                    onKeyDown={e=>{ if(e.key==='Enter') refetch(); }} 
+                  />
+                  <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                  </svg>
+                </div>
+              </div>
+              <div className="flex items-end gap-2 pt-6">
+                <button 
+                  onClick={()=>setShowAdvanced(!showAdvanced)}
+                  className="px-4 py-2.5 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors flex items-center gap-2 text-sm font-medium"
+                >
+                  <svg className={`w-4 h-4 transition-transform ${showAdvanced ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                  Advanced Filters
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
-      <div className="mb-3 flex flex-wrap items-center gap-2">
-        <input className="border rounded px-3 py-2" placeholder="Search products..." value={q} onChange={e=>setQ(e.target.value)} />
-        <select className="border rounded px-3 py-2" value={supplier} onChange={e=>setSupplier(e.target.value)}>
-          <option value="">All suppliers</option>
-          {suppliers.map(s=> <option key={s} value={s}>{s}</option>)}
-        </select>
-        <select className="border rounded px-3 py-2" value={category} onChange={e=>setCategory(e.target.value)}>
-          <option value="">All categories</option>
-          {categories.map(c=> <option key={c} value={c}>{c}</option>)}
-        </select>
-        <button onClick={()=>refetch()} className="px-3 py-2 rounded bg-gray-100">{isFetching? 'Searching...' : 'Search'}</button>
-        {(q||supplier||category) && <button onClick={()=>{ setQ(''); setSupplier(''); setCategory(''); refetch(); }} className="px-3 py-2 rounded bg-gray-100">Clear</button>}
+        {/* Advanced Filters */}
+        {!isFiltersCollapsed && showAdvanced && (
+          <div className="p-4 bg-gray-50 border-t animate-in slide-in-from-top duration-200">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1.5">Min Price ($)</label>
+                <input
+                  type="text"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-red focus:border-transparent bg-white"
+                  placeholder="$0.00"
+                  value={priceMinFocused ? priceMinDisplay : (priceMin ? formatCurrency(priceMin) : '')}
+                  onFocus={() => {
+                    setPriceMinFocused(true);
+                    setPriceMinDisplay(priceMin || '');
+                  }}
+                  onBlur={() => {
+                    setPriceMinFocused(false);
+                    const parsed = parseCurrency(priceMinDisplay);
+                    setPriceMin(parsed);
+                    setPriceMinDisplay(parsed);
+                  }}
+                  onChange={e => {
+                    const raw = e.target.value;
+                    setPriceMinDisplay(raw);
+                  }}
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1.5">Max Price ($)</label>
+                <input
+                  type="text"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-red focus:border-transparent bg-white"
+                  placeholder="$0.00"
+                  value={priceMaxFocused ? priceMaxDisplay : (priceMax ? formatCurrency(priceMax) : '')}
+                  onFocus={() => {
+                    setPriceMaxFocused(true);
+                    setPriceMaxDisplay(priceMax || '');
+                  }}
+                  onBlur={() => {
+                    setPriceMaxFocused(false);
+                    const parsed = parseCurrency(priceMaxDisplay);
+                    setPriceMax(parsed);
+                    setPriceMaxDisplay(parsed);
+                  }}
+                  onChange={e => {
+                    const raw = e.target.value;
+                    setPriceMaxDisplay(raw);
+                  }}
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1.5">Unit Type</label>
+                <select
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-red focus:border-transparent bg-white"
+                  value={unitTypeFilter}
+                  onChange={e => setUnitTypeFilter(e.target.value)}
+                >
+                  <option value="">All Types</option>
+                  <option value="unitary">Unitary</option>
+                  <option value="multiple">Multiple</option>
+                  <option value="coverage">Coverage</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Quick Filters Row */}
+        {!isFiltersCollapsed && (
+          <div className="p-4 border-b bg-gray-50/50">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1.5">Supplier</label>
+                <select 
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-red focus:border-transparent bg-white"
+                  value={supplier}
+                  onChange={e=>setSupplier(e.target.value)}
+                >
+                  <option value="">All Suppliers</option>
+                  {suppliers.map(s=> <option key={s} value={s}>{s}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1.5">Category</label>
+                <select 
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-red focus:border-transparent bg-white"
+                  value={category}
+                  onChange={e=>setCategory(e.target.value)}
+                >
+                  <option value="">All Categories</option>
+                  {categories.map(c=> <option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Action Buttons */}
+        {!isFiltersCollapsed && (
+          <div className="p-4 bg-white border-t flex items-center justify-between">
+            <div className="text-sm text-gray-600">
+              {Array.isArray(data) && data.length > 0 && (
+                <span>Found {data.length} product{data.length !== 1 ? 's' : ''}</span>
+              )}
+            </div>
+            <div className="flex items-center gap-2 pr-10">
+              <button 
+                onClick={()=>{
+                  setQ('');
+                  setSupplier('');
+                  setCategory('');
+                  setPriceMin('');
+                  setPriceMax('');
+                  setUnitTypeFilter('');
+                  refetch();
+                }} 
+                className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors font-medium"
+              >
+                Clear All
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Collapse/Expand button - bottom right corner */}
+        <button
+          onClick={() => setIsFiltersCollapsed(!isFiltersCollapsed)}
+          className="absolute bottom-0 right-0 w-8 h-8 rounded-tl-lg border-t border-l bg-white hover:bg-gray-50 transition-colors flex items-center justify-center shadow-sm"
+          title={isFiltersCollapsed ? "Expand filters" : "Collapse filters"}
+        >
+          <svg 
+            className={`w-4 h-4 text-gray-600 transition-transform ${!isFiltersCollapsed ? 'rotate-180' : ''}`}
+            fill="none" 
+            stroke="currentColor" 
+            viewBox="0 0 24 24"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
       </div>
 
       <div className="rounded-xl border bg-white">
@@ -469,17 +696,66 @@ export default function InventoryProducts(){
                   </div>
                   
                   <div className="p-6 grid grid-cols-2 gap-4">
-              <div className="col-span-2"><label className="text-xs font-semibold text-gray-700">Name *</label><input className="w-full border rounded px-3 py-2 mt-1" value={name} onChange={e=>setName(e.target.value)} /></div>
+              <div className="col-span-2">
+                <label className="text-xs font-semibold text-gray-700">
+                  Name <span className="text-red-600">*</span>
+                </label>
+                <input 
+                  className={`w-full border rounded px-3 py-2 mt-1 ${nameError && !name.trim() ? 'border-red-500' : ''}`}
+                  value={name} 
+                  onChange={e=>{
+                    setName(e.target.value);
+                    if (nameError) setNameError(false);
+                  }} 
+                />
+                {nameError && !name.trim() && (
+                  <div className="text-[11px] text-red-600 mt-1">This field is required</div>
+                )}
+              </div>
               <div>
                 <label className="text-xs font-semibold text-gray-700">Supplier</label>
-                <input list="supplier-list" className="w-full border rounded px-3 py-2 mt-1" value={newSupplier} onChange={e=>setNewSupplier(e.target.value)} />
-                <datalist id="supplier-list">
-                  {Array.isArray(supplierOptions) && supplierOptions.map((s:any)=> (<option key={s.id} value={s.name}></option>))}
-                </datalist>
+                <select 
+                  className="w-full border rounded px-3 py-2 mt-1"
+                  value={newSupplier} 
+                  onChange={e=>setNewSupplier(e.target.value)}
+                >
+                  <option value="">Select a supplier</option>
+                  {Array.isArray(supplierOptions) && supplierOptions.map((s:any)=> (
+                    <option key={s.id} value={s.name}>{s.name}</option>
+                  ))}
+                </select>
               </div>
               <div><label className="text-xs font-semibold text-gray-700">Category</label><input className="w-full border rounded px-3 py-2 mt-1" value={newCategory} onChange={e=>setNewCategory(e.target.value)} /></div>
               <div><label className="text-xs font-semibold text-gray-700">Sell Unit</label><input className="w-full border rounded px-3 py-2 mt-1" placeholder="e.g., Roll, Pail (20L), Box" value={unit} onChange={e=>setUnit(e.target.value)} /></div>
-              <div><label className="text-xs font-semibold text-gray-700">Price ($)</label><input type="number" step="0.01" className="w-full border rounded px-3 py-2 mt-1" value={price} onChange={e=>setPrice(e.target.value)} /></div>
+              <div>
+                <label className="text-xs font-semibold text-gray-700">
+                  Price ($) <span className="text-red-600">*</span>
+                </label>
+                <input 
+                  type="text" 
+                  className={`w-full border rounded px-3 py-2 mt-1 ${priceError && (!price || !price.trim() || Number(parseCurrency(price)) <= 0) ? 'border-red-500' : ''}`}
+                  placeholder="$0.00"
+                  value={priceFocused ? priceDisplay : (price ? formatCurrency(price) : '')}
+                  onFocus={() => {
+                    setPriceFocused(true);
+                    setPriceDisplay(price || '');
+                  }}
+                  onBlur={() => {
+                    setPriceFocused(false);
+                    const parsed = parseCurrency(priceDisplay);
+                    setPrice(parsed);
+                    setPriceDisplay(parsed);
+                    if (priceError && parsed && Number(parsed) > 0) setPriceError(false);
+                  }}
+                  onChange={e => {
+                    const raw = e.target.value;
+                    setPriceDisplay(raw);
+                  }}
+                />
+                {priceError && (!price || !price.trim() || Number(parseCurrency(price)) <= 0) && (
+                  <div className="text-[11px] text-red-600 mt-1">This field is required</div>
+                )}
+              </div>
               <div className="col-span-2">
                 <label className="text-xs font-semibold text-gray-700">Unit Type</label>
                 <div className="flex items-center gap-6 mt-1">
@@ -497,10 +773,36 @@ export default function InventoryProducts(){
               {unitType==='coverage' && (
                 <div className="col-span-2">
                   <label className="text-xs font-semibold text-gray-700">Coverage Area</label>
-                  <div className="grid grid-cols-3 gap-2 mt-1">
-                    <div><input className="w-full border rounded px-3 py-2" placeholder="SQS" value={covSqs} onChange={e=> onCoverageChange('sqs', e.target.value)} /></div>
-                    <div><input className="w-full border rounded px-3 py-2" placeholder="ft²" value={covFt2} onChange={e=> onCoverageChange('ft2', e.target.value)} /></div>
-                    <div><input className="w-full border rounded px-3 py-2" placeholder="m²" value={covM2} onChange={e=> onCoverageChange('m2', e.target.value)} /></div>
+                  <div className="flex items-center gap-2 mt-1">
+                    <div className="flex-1 flex items-center gap-1">
+                      <input 
+                        className="w-full border rounded px-3 py-2" 
+                        placeholder="0" 
+                        value={covSqs} 
+                        onChange={e=> onCoverageChange('sqs', e.target.value)} 
+                      />
+                      <span className="text-sm text-gray-600 whitespace-nowrap">SQS</span>
+                    </div>
+                    <span className="text-gray-400">=</span>
+                    <div className="flex-1 flex items-center gap-1">
+                      <input 
+                        className="w-full border rounded px-3 py-2" 
+                        placeholder="0" 
+                        value={covFt2} 
+                        onChange={e=> onCoverageChange('ft2', e.target.value)} 
+                      />
+                      <span className="text-sm text-gray-600 whitespace-nowrap">ft²</span>
+                    </div>
+                    <span className="text-gray-400">=</span>
+                    <div className="flex-1 flex items-center gap-1">
+                      <input 
+                        className="w-full border rounded px-3 py-2" 
+                        placeholder="0" 
+                        value={covM2} 
+                        onChange={e=> onCoverageChange('m2', e.target.value)} 
+                      />
+                      <span className="text-sm text-gray-600 whitespace-nowrap">m²</span>
+                    </div>
                   </div>
                 </div>
               )}
@@ -546,22 +848,38 @@ export default function InventoryProducts(){
                     if(editing){
                       setViewing(editing);
                       setEditing(null);
-                      setName(''); setNewSupplier(''); setNewCategory(''); setUnit(''); setPrice(''); setDesc('');
+                      setName(''); setNameError(false); setNewSupplier(''); setNewCategory(''); setUnit(''); setPrice(''); setPriceDisplay(''); setPriceFocused(false); setPriceError(false); setDesc('');
                       setUnitsPerPackage(''); setCovSqs(''); setCovFt2(''); setCovM2(''); setUnitType('unitary'); setImageDataUrl('');
                     }else{
                       resetModal();
                     }
                   }} className="px-4 py-2 rounded bg-gray-200 hover:bg-gray-300">Cancel</button>
                   <button onClick={async()=>{
-                    if(!name.trim() || isSavingProduct){ if (!isSavingProduct) toast.error('Name required'); return; }
+                    if(isSavingProduct) return;
+                    
+                    // Validate name
+                    if(!name.trim()){
+                      setNameError(true);
+                      toast.error('Name is required');
+                      return;
+                    }
+                    
+                    // Validate price
+                    const priceValue = parseCurrency(price);
+                    if(!priceValue || !priceValue.trim() || Number(priceValue) <= 0){
+                      setPriceError(true);
+                      toast.error('Price is required');
+                      return;
+                    }
+                    
                     try{
                       setIsSavingProduct(true);
                       const payload = {
-                        name,
+                        name: name.trim(),
                         supplier_name: newSupplier||null,
                         category: newCategory||null,
                         unit: unit||null,
-                        price: price? Number(price) : 0,
+                        price: Number(parseCurrency(price)),
                         description: desc||null,
                         unit_type: unitType,
                         units_per_package: unitType==='multiple'? (unitsPerPackage? Number(unitsPerPackage): null) : null,
