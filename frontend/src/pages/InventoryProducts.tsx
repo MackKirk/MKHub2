@@ -266,7 +266,10 @@ export default function InventoryProducts(){
       toast.success('Deleted');
       resetModal(); // Close modal after deletion
       await refetch();
-    }catch(_e){ toast.error('Failed'); }
+    }catch(e: any){ 
+      const errorMessage = e?.message || 'Failed to delete product';
+      toast.error(errorMessage);
+    }
   };
 
   const handleViewRelated = async (id: number)=>{
