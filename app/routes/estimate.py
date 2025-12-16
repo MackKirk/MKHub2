@@ -31,6 +31,7 @@ class MaterialIn(BaseModel):
     coverage_sqs: Optional[float] = None
     coverage_ft2: Optional[float] = None
     coverage_m2: Optional[float] = None
+    technical_manual_url: Optional[str] = None
 
 
 @router.get("/products")
@@ -81,6 +82,7 @@ def create_product(body: MaterialIn, db: Session = Depends(get_db), _=Depends(re
         coverage_sqs=body.coverage_sqs,
         coverage_ft2=body.coverage_ft2,
         coverage_m2=body.coverage_m2,
+        technical_manual_url=body.technical_manual_url,
         last_updated=datetime.utcnow(),
     )
     db.add(row)

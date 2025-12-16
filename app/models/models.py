@@ -1195,6 +1195,7 @@ class Material(Base):
     coverage_sqs = Column(Float)
     coverage_ft2 = Column(Float)
     coverage_m2 = Column(Float)
+    technical_manual_url = Column(String)
 
 
 class Estimate(Base):

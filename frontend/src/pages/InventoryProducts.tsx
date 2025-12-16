@@ -6,7 +6,7 @@ import { useConfirm } from '@/components/ConfirmProvider';
 import ImagePicker from '@/components/ImagePicker';
 import { useNavigate } from 'react-router-dom';
 
-type Material = { id:number, name:string, supplier_name?:string, category?:string, unit?:string, price?:number, last_updated?:string, unit_type?:string, units_per_package?:number, coverage_sqs?:number, coverage_ft2?:number, coverage_m2?:number, description?:string, image_base64?:string };
+type Material = { id:number, name:string, supplier_name?:string, category?:string, unit?:string, price?:number, last_updated?:string, unit_type?:string, units_per_package?:number, coverage_sqs?:number, coverage_ft2?:number, coverage_m2?:number, description?:string, image_base64?:string, technical_manual_url?:string };
 
 // Helper functions for currency formatting (CAD)
 const formatCurrency = (value: string): string => {
@@ -151,6 +151,7 @@ export default function InventoryProducts(){
   const [imageDataUrl, setImageDataUrl] = useState<string>('');
   const [imagePickerOpen, setImagePickerOpen] = useState(false);
   const [isSavingProduct, setIsSavingProduct] = useState(false);
+  const [technicalManualUrl, setTechnicalManualUrl] = useState<string>('');
 
   const [viewRelated, setViewRelated] = useState<number|null>(null);
   const [relatedList, setRelatedList] = useState<any[]>([]);
@@ -242,6 +243,7 @@ export default function InventoryProducts(){
     setCovFt2(viewing.coverage_ft2?.toString()||'');
     setCovM2(viewing.coverage_m2?.toString()||'');
     setImageDataUrl(viewing.image_base64||'');
+    setTechnicalManualUrl(viewing.technical_manual_url||'');
     setViewing(null);
   };
 
@@ -288,7 +290,7 @@ export default function InventoryProducts(){
     setOpen(false);
     setName(''); setNameError(false); setNewSupplier(''); setNewCategory(''); setUnit(''); setPrice(''); setPriceDisplay(''); setPriceFocused(false); setPriceError(false); setDesc('');
     setUnitsPerPackage(''); setCovSqs(''); setCovFt2(''); setCovM2(''); setUnitType('unitary');     setImageDataUrl('');
-    setImagePickerOpen(false);
+    setTechnicalManualUrl(''); setImagePickerOpen(false);
   };
 
   const searchRelatedProducts = async (txt: string)=>{
@@ -684,6 +686,35 @@ export default function InventoryProducts(){
                         <div className="text-gray-700 whitespace-pre-wrap">{viewing.description}</div>
                       </div>
                     )}
+                    {viewing.technical_manual_url && (() => {
+                      // Ensure URL is absolute (add https:// if missing protocol)
+                      const url = viewing.technical_manual_url.trim();
+                      const absoluteUrl = url.match(/^https?:\/\//i) ? url : `https://${url}`;
+                      return (
+                        <div className="bg-white border rounded-lg p-4">
+                          <div className="flex items-center justify-between">
+                            <div className="text-sm font-semibold text-gray-900">Technical Manual</div>
+                            <a
+                              href={absoluteUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              onClick={(e) => {
+                                // Prevent navigation if URL is invalid
+                                if (!absoluteUrl || absoluteUrl === 'https://') {
+                                  e.preventDefault();
+                                }
+                              }}
+                              className="px-4 py-2 rounded bg-brand-red text-white hover:bg-[#6d0d0d] transition-colors flex items-center gap-2"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                              </svg>
+                              View Manual
+                            </a>
+                          </div>
+                        </div>
+                      );
+                    })()}
                   </div>
                 </div>
               ) : (
@@ -830,6 +861,17 @@ export default function InventoryProducts(){
               )}
               <div className="col-span-2"><label className="text-xs font-semibold text-gray-700">Description / Notes</label><textarea className="w-full border rounded px-3 py-2 mt-1" rows={3} value={desc} onChange={e=>setDesc(e.target.value)} /></div>
               <div className="col-span-2">
+                <label className="text-xs font-semibold text-gray-700">Technical Manual URL</label>
+                <input 
+                  className="w-full border rounded px-3 py-2 mt-1" 
+                  type="url"
+                  placeholder="https://supplier.com/manual/product"
+                  value={technicalManualUrl} 
+                  onChange={e=>setTechnicalManualUrl(e.target.value)} 
+                />
+                <div className="text-xs text-gray-500 mt-1">Link to the technical manual on the supplier's website</div>
+              </div>
+              <div className="col-span-2">
                 <label className="text-xs font-semibold text-gray-700">Product Image</label>
                 <div className="mt-1 space-y-2">
                   <button
@@ -874,8 +916,9 @@ export default function InventoryProducts(){
                     if(editing){
                       setViewing(editing);
                       setEditing(null);
-                      setName(''); setNameError(false); setNewSupplier(''); setNewCategory(''); setUnit(''); setPrice(''); setPriceDisplay(''); setPriceFocused(false); setPriceError(false); setDesc('');
+                      setName(''); setNameError(false); setNewSupplier(''); setNewCategory(''); setUnit('');                       setPrice(''); setPriceDisplay(''); setPriceFocused(false); setPriceError(false); setDesc('');
                       setUnitsPerPackage(''); setCovSqs(''); setCovFt2(''); setCovM2(''); setUnitType('unitary'); setImageDataUrl('');
+                      setTechnicalManualUrl('');
                     }else{
                       resetModal();
                     }
@@ -913,6 +956,7 @@ export default function InventoryProducts(){
                         coverage_ft2: unitType==='coverage'? (covFt2? Number(covFt2): null) : null,
                         coverage_m2: unitType==='coverage'? (covM2? Number(covM2): null) : null,
                         image_base64: imageDataUrl || null,
+                        technical_manual_url: technicalManualUrl || null,
                       };
                       if(editing){ await api('PUT', `/estimate/products/${editing.id}`, payload); toast.success('Updated'); }
                       else{ await api('POST','/estimate/products', payload); toast.success('Created'); }
