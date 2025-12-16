@@ -1705,12 +1705,24 @@ class CommunityGroup(Base):
     id: Mapped[uuid.UUID] = uuid_pk()
     name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     description: Mapped[Optional[str]] = mapped_column(Text)
+    photo_file_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("file_objects.id", ondelete="SET NULL"), index=True)
     created_by_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=False, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, nullable=False, index=True)
     updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
 
     created_by: Mapped["User"] = relationship("User", foreign_keys=[created_by_id])
     members: Mapped[List["User"]] = relationship("User", secondary=community_group_members, backref="community_groups")
+
+
+class CommunityGroupTopic(Base):
+    __tablename__ = "community_group_topics"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    group_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("community_groups.id", ondelete="CASCADE"), nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, nullable=False, index=True)
+
+    group: Mapped["CommunityGroup"] = relationship("CommunityGroup", foreign_keys=[group_id])
 
 
 # =====================

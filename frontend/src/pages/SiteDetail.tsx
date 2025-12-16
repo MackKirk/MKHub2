@@ -1,7 +1,7 @@
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
-import { useEffect, useMemo, useState, useRef } from 'react';
+import { useEffect, useMemo, useState, useRef, ReactNode } from 'react';
 import toast from 'react-hot-toast';
 import ImagePicker from '@/components/ImagePicker';
 import { useConfirm } from '@/components/ConfirmProvider';
@@ -11,7 +11,11 @@ type Site = {
   id:string,
   site_name?:string,
   site_address_line1?:string,
+  site_address_line1_complement?:string,
   site_address_line2?:string,
+  site_address_line2_complement?:string,
+  site_address_line3?:string,
+  site_address_line3_complement?:string,
   site_city?:string,
   site_province?:string,
   site_postal_code?:string,
@@ -30,8 +34,8 @@ export default function SiteDetail(){
   const { data:sites } = useQuery({ queryKey:['clientSites', customerId], queryFn: ()=>api<Site[]>('GET', `/clients/${customerId}/sites`) });
   const { data:files } = useQuery({ queryKey:['clientFilesForSiteHeader', customerId], queryFn: ()=> api<ClientFile[]>('GET', `/clients/${customerId}/files`), enabled: !!customerId });
   const s = useMemo(()=> (sites||[]).find(x=> String(x.id)===String(siteId)) || null, [sites, siteId]);
-  const [form, setForm] = useState<any>(()=> s? { ...s } : { site_name:'', site_address_line1:'', site_address_line2:'', site_city:'', site_province:'', site_postal_code:'', site_country:'', site_lat:null, site_lng:null, site_notes:'' });
-  const [initialForm, setInitialForm] = useState<any>(()=> s? { ...s } : { site_name:'', site_address_line1:'', site_address_line2:'', site_city:'', site_province:'', site_postal_code:'', site_country:'', site_lat:null, site_lng:null, site_notes:'' });
+  const [form, setForm] = useState<any>(()=> s? { ...s } : { site_name:'', site_address_line1:'', site_address_line1_complement:'', site_address_line2:'', site_address_line2_complement:'', site_address_line3:'', site_address_line3_complement:'', site_city:'', site_province:'', site_postal_code:'', site_country:'', site_lat:null, site_lng:null, site_notes:'' });
+  const [initialForm, setInitialForm] = useState<any>(()=> s? { ...s } : { site_name:'', site_address_line1:'', site_address_line1_complement:'', site_address_line2:'', site_address_line2_complement:'', site_address_line3:'', site_address_line3_complement:'', site_city:'', site_province:'', site_postal_code:'', site_country:'', site_lat:null, site_lng:null, site_notes:'' });
   const setField = (k:string, v:any)=> setForm((prev:any)=> ({ ...prev, [k]: v }));
   const qc = useQueryClient();
   const isNew = String(siteId||'') === 'new' || !(s && (s as any).id);
@@ -42,7 +46,15 @@ export default function SiteDetail(){
       const siteData = { ...s };
       setForm(siteData);
       setInitialForm(siteData);
-    } 
+      // Show address 2 and 3 if they have data
+      setShowAddress2(!!(siteData.site_address_line2 || siteData.site_address_line2_complement));
+      setShowAddress3(!!(siteData.site_address_line3 || siteData.site_address_line3_complement));
+    } else {
+      // Reset when creating new site
+      setShowAddress2(false);
+      setShowAddress3(false);
+      setSiteNameError(false);
+    }
   }, [s && (s as any).id]);
 
   // ESC to close
@@ -61,6 +73,9 @@ export default function SiteDetail(){
 
   const [coverPickerOpen, setCoverPickerOpen] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
+  const [showAddress2, setShowAddress2] = useState(false);
+  const [showAddress3, setShowAddress3] = useState(false);
+  const [siteNameError, setSiteNameError] = useState(false);
 
   // Prevent body scroll when modal is open
   useEffect(() => {
@@ -142,9 +157,21 @@ export default function SiteDetail(){
         <div className="overflow-y-auto">
           <div className="p-6 grid md:grid-cols-2 gap-4 items-start">
             <div className="md:col-span-2">
-              <Field label="Site name"><input className="w-full border rounded px-3 py-2" value={form.site_name||''} onChange={e=>setField('site_name', e.target.value)} /></Field>
+              <Field label={<><span>Site name</span> <span className="text-red-600">*</span></>}>
+                <input 
+                  className={`w-full border rounded px-3 py-2 ${siteNameError && !form.site_name?.trim() ? 'border-red-500' : ''}`} 
+                  value={form.site_name||''} 
+                  onChange={e=>{
+                    setField('site_name', e.target.value);
+                    if(siteNameError) setSiteNameError(false);
+                  }} 
+                />
+                {siteNameError && !form.site_name?.trim() && (
+                  <div className="text-[11px] text-red-600 mt-1">This field is required</div>
+                )}
+              </Field>
             </div>
-            <Field label="Address 1">
+            <Field label="Address">
               <AddressAutocomplete
                 value={form.site_address_line1||''}
                 onChange={(value) => setField('site_address_line1', value)}
@@ -163,18 +190,148 @@ export default function SiteDetail(){
                     site_lng: address.lng !== undefined ? address.lng : prev.site_lng,
                   }));
                 }}
-                placeholder="Start typing an address..."
+                placeholder="Enter address"
                 className="w-full border rounded px-3 py-2"
               />
             </Field>
-            <Field label="Address 2">
+            <Field label="Complement">
               <input
                 className="w-full border rounded px-3 py-2"
-                value={form.site_address_line2||''}
-                onChange={e=>setField('site_address_line2', e.target.value)}
-                placeholder="Apartment, suite, unit, etc. (optional)"
+                value={form.site_address_line1_complement||''}
+                onChange={e=>setField('site_address_line1_complement', e.target.value)}
+                placeholder="Apartment, Unit, Block, etc (Optional)"
               />
             </Field>
+            {!showAddress2 && (
+              <div className="md:col-span-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowAddress2(true);
+                  }}
+                  className="text-sm text-brand-red hover:underline flex items-center gap-1"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  </svg>
+                  Add another Address
+                </button>
+              </div>
+            )}
+            {showAddress2 && (
+              <>
+                <Field label="Address 2">
+                  <AddressAutocomplete
+                    value={form.site_address_line2||''}
+                    onChange={(value) => setField('site_address_line2', value)}
+                    onAddressSelect={(address) => {
+                      setForm((prev: any) => ({
+                        ...prev,
+                        site_address_line2: address.address_line1 || prev.site_address_line2,
+                        // Note: address 2 and 3 don't affect global fields (city, province, country, postal_code)
+                      }));
+                    }}
+                    placeholder="Enter address"
+                    className="w-full border rounded px-3 py-2"
+                  />
+                </Field>
+                <div className="flex items-end gap-2">
+                  <div className="flex-1">
+                    <Field label="Complement">
+                      <input
+                        className="w-full border rounded px-3 py-2"
+                        value={form.site_address_line2_complement||''}
+                        onChange={e=>setField('site_address_line2_complement', e.target.value)}
+                        placeholder="Apartment, Unit, Block, etc (Optional)"
+                      />
+                    </Field>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowAddress2(false);
+                      setField('site_address_line2', '');
+                      setField('site_address_line2_complement', '');
+                      // If address 3 exists, move it to address 2
+                      if (showAddress3) {
+                        setField('site_address_line2', form.site_address_line3 || '');
+                        setField('site_address_line2_complement', form.site_address_line3_complement || '');
+                        setField('site_address_line3', '');
+                        setField('site_address_line3_complement', '');
+                        setShowAddress3(false);
+                      }
+                    }}
+                    className="mb-2 px-2 py-1 text-red-600 hover:bg-red-50 rounded"
+                    title="Remove Address 2"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                  </button>
+                </div>
+                {!showAddress3 && (
+                  <div className="md:col-span-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowAddress3(true);
+                      }}
+                      className="text-sm text-brand-red hover:underline flex items-center gap-1"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                      </svg>
+                      Add another Address
+                    </button>
+                  </div>
+                )}
+              </>
+            )}
+            {showAddress3 && (
+              <>
+                <Field label="Address 3">
+                  <AddressAutocomplete
+                    value={form.site_address_line3||''}
+                    onChange={(value) => setField('site_address_line3', value)}
+                    onAddressSelect={(address) => {
+                      setForm((prev: any) => ({
+                        ...prev,
+                        site_address_line3: address.address_line1 || prev.site_address_line3,
+                        // Note: address 2 and 3 don't affect global fields (city, province, country, postal_code)
+                      }));
+                    }}
+                    placeholder="Enter address"
+                    className="w-full border rounded px-3 py-2"
+                  />
+                </Field>
+                <div className="flex items-end gap-2">
+                  <div className="flex-1">
+                    <Field label="Complement">
+                      <input
+                        className="w-full border rounded px-3 py-2"
+                        value={form.site_address_line3_complement||''}
+                        onChange={e=>setField('site_address_line3_complement', e.target.value)}
+                        placeholder="Apartment, Unit, Block, etc (Optional)"
+                      />
+                    </Field>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowAddress3(false);
+                      setField('site_address_line3', '');
+                      setField('site_address_line3_complement', '');
+                    }}
+                    className="mb-2 px-2 py-1 text-red-600 hover:bg-red-50 rounded"
+                    title="Remove Address 3"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                  </button>
+                </div>
+              </>
+            )}
             <Field label="Country">
               <input 
                 className="w-full border rounded px-3 py-2 bg-gray-50 cursor-not-allowed" 
@@ -271,6 +428,13 @@ export default function SiteDetail(){
                 // Prevent multiple clicks
                 if (isCreating) return;
                 
+                // Validate site name
+                if (!form.site_name?.trim()) {
+                  setSiteNameError(true);
+                  toast.error('Site name is required');
+                  return;
+                }
+                
                 try{
                   setIsCreating(true);
                   if(isNew){
@@ -317,7 +481,7 @@ export default function SiteDetail(){
   );
 }
 
-function Field({label, children}:{label:string, children:any}){
+function Field({label, children}:{label:ReactNode, children:any}){
   return (
     <div className="space-y-2">
       <label className="text-sm text-gray-600">{label}</label>

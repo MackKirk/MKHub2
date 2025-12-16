@@ -26,6 +26,7 @@ export default function Opportunities(){
   const [dateStart, setDateStart] = useState(dateStartParam);
   const [dateEnd, setDateEnd] = useState(dateEndParam);
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [isFiltersCollapsed, setIsFiltersCollapsed] = useState(false);
   
   // Sync URL params with state when URL changes (e.g., from dashboard navigation)
   useEffect(() => {
@@ -44,6 +45,20 @@ export default function Opportunities(){
     if (urlDateEnd !== dateEnd) setDateEnd(urlDateEnd);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
+
+  // Auto-apply filters when they change
+  useEffect(() => {
+    const params = new URLSearchParams();
+    if (q) params.set('q', q);
+    if (selectedDivision) params.set('division_id', selectedDivision);
+    if (selectedStatus) params.set('status', selectedStatus);
+    if (selectedClient) params.set('client_id', selectedClient);
+    if (dateStart) params.set('date_start', dateStart);
+    if (dateEnd) params.set('date_end', dateEnd);
+    setSearchParams(params);
+    refetch();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [q, selectedDivision, selectedStatus, selectedClient, dateStart, dateEnd]);
   
   const qs = useMemo(()=> {
     const params = new URLSearchParams();
@@ -94,86 +109,96 @@ export default function Opportunities(){
 
   return (
     <div>
-      <div className="mb-3 rounded-xl border bg-gradient-to-br from-[#7f1010] to-[#a31414] text-white p-4">
-        <div className="text-2xl font-extrabold">Opportunities</div>
-        <div className="text-sm opacity-90">Create, edit and track bids and quotes.</div>
+      <div className="mb-3 rounded-xl border bg-gradient-to-br from-[#7f1010] to-[#a31414] text-white p-4 flex items-center justify-between">
+        <div>
+          <div className="text-2xl font-extrabold">Opportunities</div>
+          <div className="text-sm opacity-90">Create, edit and track bids and quotes.</div>
+        </div>
+        <Link to="/projects/new?is_bidding=true" state={{ backgroundLocation: location }} className="px-4 py-2 rounded bg-white text-brand-red font-semibold">+ New Opportunity</Link>
       </div>
       {/* Advanced Search Panel */}
-      <div className="mb-3 rounded-xl border bg-white shadow-sm overflow-hidden">
+      <div className="mb-3 rounded-xl border bg-white shadow-sm overflow-hidden relative">
         {/* Main Search Bar */}
-        <div className="p-4 bg-gradient-to-r from-gray-50 to-white border-b">
-          <div className="flex items-center gap-3">
-            <div className="flex-1">
-              <label className="block text-xs font-medium text-gray-700 mb-1.5">Search Opportunities</label>
-              <div className="relative">
-                <input 
-                  className="w-full border border-gray-300 rounded-lg px-4 py-2.5 pl-10 focus:outline-none focus:ring-2 focus:ring-brand-red focus:border-transparent text-gray-900" 
-                  placeholder="Search by opportunity name, code, or client name..." 
-                  value={q} 
-                  onChange={e=>setQ(e.target.value)} 
-                  onKeyDown={e=>{ if(e.key==='Enter') refetch(); }} 
-                />
-                <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                </svg>
+        {isFiltersCollapsed ? (
+          <div className="p-4 bg-gradient-to-r from-gray-50 to-white">
+            <div className="flex items-center justify-between">
+              <div className="text-lg font-semibold text-gray-700">Show Filters</div>
+            </div>
+          </div>
+        ) : (
+          <div className="p-4 bg-gradient-to-r from-gray-50 to-white border-b">
+            <div className="flex items-center gap-3">
+              <div className="flex-1">
+                <label className="block text-xs font-medium text-gray-700 mb-1.5">Search Opportunities</label>
+                <div className="relative">
+                  <input 
+                    className="w-full border border-gray-300 rounded-lg px-4 py-2.5 pl-10 focus:outline-none focus:ring-2 focus:ring-brand-red focus:border-transparent text-gray-900" 
+                    placeholder="Search by opportunity name, code, or client name..." 
+                    value={q} 
+                    onChange={e=>setQ(e.target.value)} 
+                    onKeyDown={e=>{ if(e.key==='Enter') refetch(); }} 
+                  />
+                  <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                  </svg>
+                </div>
+              </div>
+              <div className="flex items-end gap-2 pt-6">
+                <button 
+                  onClick={()=>setShowAdvanced(!showAdvanced)}
+                  className="px-4 py-2.5 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors flex items-center gap-2 text-sm font-medium"
+                >
+                  <svg className={`w-4 h-4 transition-transform ${showAdvanced ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                  Advanced Filters
+                </button>
               </div>
             </div>
-            <div className="flex items-end gap-2 pt-6">
-              <button 
-                onClick={()=>setShowAdvanced(!showAdvanced)}
-                className="px-4 py-2.5 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors flex items-center gap-2 text-sm font-medium"
-              >
-                <svg className={`w-4 h-4 transition-transform ${showAdvanced ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                </svg>
-                Advanced Filters
-              </button>
-              <Link to="/projects/new?is_bidding=true" state={{ backgroundLocation: location }} className="px-4 py-2.5 rounded-lg bg-brand-red text-white hover:bg-[#6d0d0d] transition-colors font-medium inline-block">
-                + New Opportunity
-              </Link>
-            </div>
           </div>
-        </div>
+        )}
 
         {/* Quick Filters Row */}
-        <div className="p-4 border-b bg-gray-50/50">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1.5">Division</label>
-              <select 
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-red focus:border-transparent bg-white"
-                value={selectedDivision}
-                onChange={e=>setSelectedDivision(e.target.value)}
-              >
-                <option value="">All Divisions</option>
-                {projectDivisions?.map((div: any) => (
-                  <optgroup key={div.id} label={div.label}>
-                    <option value={div.id}>{div.label}</option>
-                    {div.subdivisions?.map((sub: any) => (
-                      <option key={sub.id} value={sub.id}>{sub.label}</option>
-                    ))}
-                  </optgroup>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1.5">Status</label>
-              <select 
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-red focus:border-transparent bg-white"
-                value={selectedStatus}
-                onChange={e=>setSelectedStatus(e.target.value)}
-              >
-                <option value="">All Statuses</option>
-                {projectStatuses.map((status: any) => (
-                  <option key={status.id} value={status.id}>{status.label}</option>
-                ))}
-              </select>
+        {!isFiltersCollapsed && (
+          <div className="p-4 border-b bg-gray-50/50">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1.5">Division</label>
+                <select 
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-red focus:border-transparent bg-white"
+                  value={selectedDivision}
+                  onChange={e=>setSelectedDivision(e.target.value)}
+                >
+                  <option value="">All Divisions</option>
+                  {projectDivisions?.map((div: any) => (
+                    <optgroup key={div.id} label={div.label}>
+                      <option value={div.id}>{div.label}</option>
+                      {div.subdivisions?.map((sub: any) => (
+                        <option key={sub.id} value={sub.id}>{sub.label}</option>
+                      ))}
+                    </optgroup>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1.5">Status</label>
+                <select 
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-red focus:border-transparent bg-white"
+                  value={selectedStatus}
+                  onChange={e=>setSelectedStatus(e.target.value)}
+                >
+                  <option value="">All Statuses</option>
+                  {projectStatuses.map((status: any) => (
+                    <option key={status.id} value={status.id}>{status.label}</option>
+                  ))}
+                </select>
+              </div>
             </div>
           </div>
-        </div>
+        )}
 
         {/* Advanced Filters (Collapsible) */}
-        {showAdvanced && (
+        {!isFiltersCollapsed && showAdvanced && (
           <div className="p-4 bg-gray-50 border-t animate-in slide-in-from-top duration-200">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
               <div>
@@ -214,31 +239,48 @@ export default function Opportunities(){
         )}
 
         {/* Action Buttons */}
-        <div className="p-4 bg-white border-t flex items-center justify-between">
-          <div className="text-sm text-gray-600">
-            {arr.length > 0 && (
-              <span>Found {arr.length} opportunit{arr.length !== 1 ? 'ies' : 'y'}</span>
-            )}
+        {!isFiltersCollapsed && (
+          <div className="p-4 bg-white border-t flex items-center justify-between">
+            <div className="text-sm text-gray-600">
+              {arr.length > 0 && (
+                <span>Found {arr.length} opportunit{arr.length !== 1 ? 'ies' : 'y'}</span>
+              )}
+            </div>
+            <div className="flex items-center gap-2 pr-10">
+              <button 
+                onClick={()=>{
+                  setQ('');
+                  setSelectedDivision('');
+                  setSelectedStatus('');
+                  setSelectedClient('');
+                  setDateStart('');
+                  setDateEnd('');
+                  setSearchParams({});
+                  refetch();
+                }} 
+                className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors font-medium"
+              >
+                Clear All
+              </button>
+            </div>
           </div>
-          <div className="flex items-center gap-2">
-            <button 
-              onClick={()=>{
-                const params = new URLSearchParams();
-                if (q) params.set('q', q);
-                if (selectedDivision) params.set('division_id', selectedDivision);
-                if (selectedStatus) params.set('status', selectedStatus);
-                if (selectedClient) params.set('client_id', selectedClient);
-                if (dateStart) params.set('date_start', dateStart);
-                if (dateEnd) params.set('date_end', dateEnd);
-                setSearchParams(params);
-                refetch();
-              }} 
-              className="px-4 py-2 rounded-lg bg-brand-red text-white hover:bg-[#6d0d0d] transition-colors font-medium flex items-center gap-2"
-            >
-              Apply Filters
-            </button>
-          </div>
-        </div>
+        )}
+
+        {/* Collapse/Expand button - bottom right corner */}
+        <button
+          onClick={() => setIsFiltersCollapsed(!isFiltersCollapsed)}
+          className="absolute bottom-0 right-0 w-8 h-8 rounded-tl-lg border-t border-l bg-white hover:bg-gray-50 transition-colors flex items-center justify-center shadow-sm"
+          title={isFiltersCollapsed ? "Expand filters" : "Collapse filters"}
+        >
+          <svg 
+            className={`w-4 h-4 text-gray-600 transition-transform ${!isFiltersCollapsed ? 'rotate-180' : ''}`}
+            fill="none" 
+            stroke="currentColor" 
+            viewBox="0 0 24 24"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
       </div>
       
       <LoadingOverlay isLoading={isInitialLoading} text="Loading opportunities...">

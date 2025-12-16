@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Link, useLocation } from 'react-router-dom';
 import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
+import { formatDateLocal } from '@/lib/dateUtils';
 
 export default function Home(){
   const location = useLocation();
@@ -65,11 +66,11 @@ export default function Home(){
       </div>
       
       {/* Quick Links - First Row, Smaller */}
-      <div className="grid grid-cols-5 gap-3">
+      <div className="grid grid-cols-6 gap-3">
         <Link
           to="/profile"
           state={{ fromHome: true }}
-          className="rounded-lg border border-gray-200 bg-white p-3 hover:shadow-md transition-shadow cursor-pointer flex flex-col items-center text-center"
+          className="rounded-lg border border-gray-200 bg-white p-3 hover:shadow-md transition-shadow cursor-pointer flex flex-col items-center justify-center text-center min-h-[100px]"
         >
           <div className="w-10 h-10 rounded-lg bg-indigo-100 flex items-center justify-center mb-2">
             <svg className="w-5 h-5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -79,48 +80,45 @@ export default function Home(){
           <div className="text-sm font-semibold text-gray-900">My Information</div>
         </Link>
         
-        <Link
+        <QuickLinkCard
           to="/clock-in-out"
-          state={{ fromHome: true }}
-          className="rounded-lg border border-gray-200 bg-white p-3 hover:shadow-md transition-shadow cursor-pointer flex flex-col items-center text-center"
-        >
-          <div className="w-10 h-10 rounded-lg bg-orange-100 flex items-center justify-center mb-2">
-            <svg className="w-5 h-5 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-          </div>
-          <div className="text-sm font-semibold text-gray-900">Clock-in/out</div>
-        </Link>
+          iconBg="bg-orange-100"
+          iconColor="text-orange-600"
+          iconPath="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+          label="Clock-in/out"
+          summaryKey="clock"
+        />
         
-        <Link
+        <QuickLinkCard
+          to="/task-requests"
+          iconBg="bg-purple-100"
+          iconColor="text-purple-600"
+          iconPath="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+          label="Requests"
+          summaryKey="requests"
+        />
+        
+        <QuickLinkCard
           to="/tasks"
-          state={{ fromHome: true }}
-          className="rounded-lg border border-gray-200 bg-white p-3 hover:shadow-md transition-shadow cursor-pointer flex flex-col items-center text-center"
-        >
-          <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center mb-2">
-            <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-            </svg>
-          </div>
-          <div className="text-sm font-semibold text-gray-900">Tasks</div>
-        </Link>
+          iconBg="bg-blue-100"
+          iconColor="text-blue-600"
+          iconPath="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"
+          label="Tasks"
+          summaryKey="tasks"
+        />
         
-        <Link
+        <QuickLinkCard
           to="/schedule"
-          state={{ fromHome: true }}
-          className="rounded-lg border border-gray-200 bg-white p-3 hover:shadow-md transition-shadow cursor-pointer flex flex-col items-center text-center"
-        >
-          <div className="w-10 h-10 rounded-lg bg-green-100 flex items-center justify-center mb-2">
-            <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-            </svg>
-          </div>
-          <div className="text-sm font-semibold text-gray-900">Schedule</div>
-        </Link>
+          iconBg="bg-green-100"
+          iconColor="text-green-600"
+          iconPath="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
+          label="Schedule"
+          summaryKey="schedule"
+        />
 
         <button
           onClick={() => setShowReportModal(true)}
-          className="rounded-lg border border-gray-200 bg-white p-3 hover:shadow-md transition-shadow cursor-pointer flex flex-col items-center text-center"
+          className="rounded-lg border border-gray-200 bg-white p-3 hover:shadow-md transition-shadow cursor-pointer flex flex-col items-center justify-center text-center min-h-[100px]"
         >
           <div className="w-10 h-10 rounded-lg bg-red-100 flex items-center justify-center mb-2">
             <svg className="w-5 h-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -157,6 +155,136 @@ export default function Home(){
         />
       )}
     </div>
+  );
+}
+
+function QuickLinkCard({ to, iconBg, iconColor, iconPath, label, summaryKey }: { to: string; iconBg: string; iconColor: string; iconPath: string; label: string; summaryKey: 'clock' | 'tasks' | 'requests' | 'schedule' }) {
+  const today = formatDateLocal(new Date());
+  
+  // Get current user for filtering
+  const { data: currentUser } = useQuery({
+    queryKey: ['me'],
+    queryFn: () => api<any>('GET', '/auth/me'),
+  });
+  
+  // Clock-in/out summary
+  const { data: todayAttendance } = useQuery({
+    queryKey: ['attendance-today', today],
+    queryFn: () => api<any[]>('GET', `/settings/attendance/list?start_date=${today}&end_date=${today}`).catch(() => []),
+    enabled: summaryKey === 'clock',
+  });
+  
+  // Tasks summary
+  const { data: tasksData } = useQuery({
+    queryKey: ['tasks-summary'],
+    queryFn: () => api<any>('GET', '/tasks').catch(() => ({ accepted: [], in_progress: [], done: [] })),
+    enabled: summaryKey === 'tasks',
+  });
+  
+  // Requests summary
+  const { data: requestsData } = useQuery({
+    queryKey: ['task-requests-summary'],
+    queryFn: () => api<any>('GET', '/task-requests').catch(() => ({ sent: [], received: [] })),
+    enabled: summaryKey === 'requests',
+  });
+  
+  // Schedule summary
+  const { data: shiftsToday } = useQuery({
+    queryKey: ['schedule-today', today, currentUser?.id],
+    queryFn: () => {
+      if (!currentUser?.id) return Promise.resolve([]);
+      return api<any[]>('GET', `/dispatch/shifts?date_range=${today},${today}&worker_id=${currentUser.id}`).catch(() => []);
+    },
+    enabled: summaryKey === 'schedule' && !!currentUser?.id,
+  });
+  
+  const summary = useMemo(() => {
+    if (summaryKey === 'clock') {
+      // Find today's attendance for current user
+      const myAttendance = Array.isArray(todayAttendance) 
+        ? todayAttendance.find((a: any) => {
+            // Filter by worker_id
+            if (String(a.worker_id) !== String(currentUser?.id)) return false;
+            
+            // Verify the attendance is actually from today
+            const attendanceDate = a.clock_in_time 
+              ? new Date(a.clock_in_time).toISOString().split('T')[0]
+              : (a.clock_out_time ? new Date(a.clock_out_time).toISOString().split('T')[0] : null);
+            
+            return attendanceDate === today;
+          })
+        : null;
+      
+      // If no attendance found for today, user hasn't clocked in
+      if (!myAttendance || !myAttendance.clock_in_time) {
+        return "You haven't clocked in today!";
+      }
+      
+      // If has clock-in and clock-out, both are done
+      if (myAttendance.clock_in_time && myAttendance.clock_out_time) {
+        return "You've completed clock-in and out today, great job!";
+      }
+      
+      // If only has clock-in, show time and mention clock-out is pending
+      if (myAttendance.clock_in_time) {
+        const timeStr = new Date(myAttendance.clock_in_time).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+        return `Clocked in at ${timeStr} - Clock-out pending`;
+      }
+      
+      return "You haven't clocked in today!";
+    }
+    if (summaryKey === 'tasks') {
+      const accepted = Array.isArray(tasksData?.accepted) ? tasksData.accepted.length : 0;
+      const inProgress = Array.isArray(tasksData?.in_progress) ? tasksData.in_progress.length : 0;
+      const parts = [];
+      if (accepted > 0) parts.push(`${accepted} To do`);
+      if (inProgress > 0) parts.push(`${inProgress} In progress`);
+      return parts.length > 0 ? parts.join(' • ') : 'No tasks';
+    }
+    if (summaryKey === 'requests') {
+      // Count New and Pending (in process) requests separately
+      const received = Array.isArray(requestsData?.received) ? requestsData.received : [];
+      const sent = Array.isArray(requestsData?.sent) ? requestsData.sent : [];
+      
+      // New requests (status === 'new')
+      const newReceived = received.filter((r: any) => r.status === 'new').length;
+      const newSent = sent.filter((r: any) => r.status === 'new').length;
+      const totalNew = newReceived + newSent;
+      
+      // Pending requests (in process but not new - status !== 'accepted' && status !== 'refused' && status !== 'new')
+      const pendingReceived = received.filter((r: any) => r.status !== 'accepted' && r.status !== 'refused' && r.status !== 'new').length;
+      const pendingSent = sent.filter((r: any) => r.status !== 'accepted' && r.status !== 'refused' && r.status !== 'new').length;
+      const totalPending = pendingReceived + pendingSent;
+      
+      const parts = [];
+      if (totalNew > 0) parts.push(`${totalNew} New`);
+      if (totalPending > 0) parts.push(`${totalPending} Pending`);
+      
+      return parts.length > 0 ? parts.join(' • ') : 'No pending requests';
+    }
+    if (summaryKey === 'schedule') {
+      const hasShift = Array.isArray(shiftsToday) && shiftsToday.length > 0;
+      return hasShift ? `You have ${shiftsToday.length} shift${shiftsToday.length > 1 ? 's' : ''} today` : 'No shifts today';
+    }
+    return '';
+  }, [summaryKey, todayAttendance, tasksData, requestsData, shiftsToday, currentUser?.id]);
+  
+  return (
+    <Link
+      to={to}
+      state={{ fromHome: true }}
+      className="rounded-lg border border-gray-200 bg-white p-3 hover:shadow-md transition-shadow cursor-pointer flex flex-col items-center justify-center text-center min-h-[100px]"
+    >
+      <div className={`w-10 h-10 rounded-lg ${iconBg} flex items-center justify-center mb-2`}>
+        <svg className={`w-5 h-5 ${iconColor}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={iconPath} />
+        </svg>
+      </div>
+      <div className="text-sm font-semibold text-gray-900 mb-1">{label}</div>
+      {summary && (
+        <div className="text-xs text-gray-500 mt-1 line-clamp-2">{summary}</div>
+      )}
+    </Link>
   );
 }
 

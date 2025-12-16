@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Body
 import uuid
 from sqlalchemy.orm import Session, defer
 from sqlalchemy.exc import ProgrammingError
-from sqlalchemy import text
+from sqlalchemy import text, or_
 from typing import Optional, List
 
 from ..db import get_db
@@ -190,6 +190,8 @@ def list_clients(
     db: Session = Depends(get_db), 
     _=Depends(require_permissions("clients:read"))
 ):
+    from ..models.models import SettingList, SettingItem
+    
     # Validate pagination parameters
     page = max(1, page)
     limit = max(1, min(100, limit))  # Limit between 1 and 100
@@ -210,9 +212,45 @@ def list_clients(
     if city:
         base_query = base_query.filter(Client.city == city)
     if status:
-        base_query = base_query.filter(Client.status_id == status)
+        # Try to match by status_id (UUID) first
+        try:
+            status_uuid = uuid.UUID(str(status))
+            # Get the label from SettingItem to also match by client_status
+            status_item = db.query(SettingItem).filter(SettingItem.id == status_uuid).first()
+            status_label = status_item.label if status_item else None
+            
+            # Match by status_id OR (if status_id is null, match by client_status label)
+            if status_label:
+                base_query = base_query.filter(or_(
+                    Client.status_id == status_uuid,
+                    (Client.status_id.is_(None)) & (Client.client_status == status_label)
+                ))
+            else:
+                # If we can't find the SettingItem, just try status_id
+                base_query = base_query.filter(Client.status_id == status_uuid)
+        except (ValueError, AttributeError):
+            # If status is not a valid UUID, try matching by client_status string
+            base_query = base_query.filter(Client.client_status == status)
     if type:
-        base_query = base_query.filter(Client.type_id == type)
+        # Try to match by type_id (UUID) first
+        try:
+            type_uuid = uuid.UUID(str(type))
+            # Get the label from SettingItem to also match by client_type
+            type_item = db.query(SettingItem).filter(SettingItem.id == type_uuid).first()
+            type_label = type_item.label if type_item else None
+            
+            # Match by type_id OR (if type_id is null, match by client_type label)
+            if type_label:
+                base_query = base_query.filter(or_(
+                    Client.type_id == type_uuid,
+                    (Client.type_id.is_(None)) & (Client.client_type == type_label)
+                ))
+            else:
+                # If we can't find the SettingItem, just try type_id
+                base_query = base_query.filter(Client.type_id == type_uuid)
+        except (ValueError, AttributeError):
+            # If type is not a valid UUID, try matching by client_type string
+            base_query = base_query.filter(Client.client_type == type)
     if q:
         base_query = base_query.filter((Client.name.ilike(f"%{q}%")) | (Client.display_name.ilike(f"%{q}%")))
     

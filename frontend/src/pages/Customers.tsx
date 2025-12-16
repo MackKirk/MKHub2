@@ -35,6 +35,7 @@ export default function Customers(){
   const [ctype, setCtype] = useState(typeParam);
   const [page, setPage] = useState(pageParam);
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [isFiltersCollapsed, setIsFiltersCollapsed] = useState(false);
   const [selectedCountry, setSelectedCountry] = useState('Canada');
   const [selectedProvince, setSelectedProvince] = useState('BC');
   const limit = 10;
@@ -232,87 +233,99 @@ export default function Customers(){
         <Link to="/customers/new" className="px-4 py-2 rounded bg-white text-brand-red font-semibold">+ New Customer</Link>
       </div>
       {/* Advanced Search Panel */}
-      <div className="mb-3 rounded-xl border bg-white shadow-sm overflow-hidden">
+      <div className="mb-3 rounded-xl border bg-white shadow-sm overflow-hidden relative">
         {/* Main Search Bar */}
-        <div className="p-4 bg-gradient-to-r from-gray-50 to-white border-b">
-          <div className="flex items-center gap-3">
-            <div className="flex-1">
-              <label className="block text-xs font-medium text-gray-700 mb-1.5">Search Customers</label>
-              <div className="relative">
-                <input 
-                  className="w-full border border-gray-300 rounded-lg px-4 py-2.5 pl-10 focus:outline-none focus:ring-2 focus:ring-brand-red focus:border-transparent text-gray-900" 
-                  placeholder="Search by name, display name, or code..." 
-                  value={q} 
-                  onChange={e=>handleQChange(e.target.value)} 
-                  onKeyDown={e=>{ if(e.key==='Enter') refetch(); }} 
-                />
-                <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                </svg>
-              </div>
-            </div>
-            <div className="flex items-end gap-2 pt-6">
-              <button 
-                onClick={()=>{
-                  const newValue = !showAdvanced;
-                  setShowAdvanced(newValue);
-                  // Clear city filter when closing advanced filters
-                  if (!newValue && city) {
-                    setCity('');
-                    const params = new URLSearchParams(searchParams);
-                    params.delete('city');
-                    setSearchParams(params);
-                  }
-                }}
-                className="px-4 py-2.5 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors flex items-center gap-2 text-sm font-medium"
-              >
-                <svg className={`w-4 h-4 transition-transform ${showAdvanced ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                </svg>
-                Advanced Filters
-              </button>
+        {isFiltersCollapsed ? (
+          <div className="p-4 bg-gradient-to-r from-gray-50 to-white">
+            <div className="flex items-center justify-between">
+              <div className="text-lg font-semibold text-gray-700">Show Filters</div>
             </div>
           </div>
-        </div>
+        ) : (
+          <div className="p-4 bg-gradient-to-r from-gray-50 to-white border-b">
+            <div className="flex items-center gap-3">
+              <div className="flex-1">
+                <label className="block text-xs font-medium text-gray-700 mb-1.5">Search Customers</label>
+                <div className="relative">
+                  <input 
+                    className="w-full border border-gray-300 rounded-lg px-4 py-2.5 pl-10 focus:outline-none focus:ring-2 focus:ring-brand-red focus:border-transparent text-gray-900" 
+                    placeholder="Search by name, display name, or code..." 
+                    value={q} 
+                    onChange={e=>handleQChange(e.target.value)} 
+                    onKeyDown={e=>{ if(e.key==='Enter') refetch(); }} 
+                  />
+                  <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                  </svg>
+                </div>
+              </div>
+              {!isFiltersCollapsed && (
+                <div className="flex items-end gap-2 pt-6">
+                  <button 
+                    onClick={()=>{
+                      const newValue = !showAdvanced;
+                      setShowAdvanced(newValue);
+                      // Clear city filter when closing advanced filters
+                      if (!newValue && city) {
+                        setCity('');
+                        const params = new URLSearchParams(searchParams);
+                        params.delete('city');
+                        setSearchParams(params);
+                      }
+                    }}
+                    className="px-4 py-2.5 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors flex items-center gap-2 text-sm font-medium"
+                  >
+                    <svg className={`w-4 h-4 transition-transform ${showAdvanced ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                    Advanced Filters
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Quick Filters Row */}
-        <div className="p-4 border-b bg-gray-50/50">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1.5">Status</label>
-              <select 
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-red focus:border-transparent bg-white"
-                value={status}
-                onChange={e=>handleStatusChange(e.target.value)}
-              >
-                <option value="">All Statuses</option>
-                {clientStatuses.map((s: any) => (
-                  <option key={s.id || s.value || s.label} value={s.id || s.value || ''}>
-                    {s.label || s.value || s.id}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1.5">Type</label>
-              <select 
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-red focus:border-transparent bg-white"
-                value={ctype}
-                onChange={e=>handleCtypeChange(e.target.value)}
-              >
-                <option value="">All Types</option>
-                {clientTypes.map((t: any) => (
-                  <option key={t.id || t.value || t.label} value={t.id || t.value || ''}>
-                    {t.label || t.value || t.id}
-                  </option>
-                ))}
-              </select>
+        {!isFiltersCollapsed && (
+          <div className="p-4 border-b bg-gray-50/50">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1.5">Status</label>
+                <select 
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-red focus:border-transparent bg-white"
+                  value={status}
+                  onChange={e=>handleStatusChange(e.target.value)}
+                >
+                  <option value="">All Statuses</option>
+                  {clientStatuses.map((s: any) => (
+                    <option key={s.id || s.value || s.label} value={s.id || s.value || ''}>
+                      {s.label || s.value || s.id}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1.5">Type</label>
+                <select 
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-red focus:border-transparent bg-white"
+                  value={ctype}
+                  onChange={e=>handleCtypeChange(e.target.value)}
+                >
+                  <option value="">All Types</option>
+                  {clientTypes.map((t: any) => (
+                    <option key={t.id || t.value || t.label} value={t.id || t.value || ''}>
+                      {t.label || t.value || t.id}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
           </div>
-        </div>
+        )}
 
         {/* Advanced Filters (Collapsible) */}
-        {showAdvanced && (
+        {!isFiltersCollapsed && showAdvanced && (
           <div className="p-4 bg-gray-50 border-t animate-in slide-in-from-top duration-200">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
@@ -385,21 +398,54 @@ export default function Customers(){
         )}
 
         {/* Action Buttons */}
-        <div className="p-4 bg-white border-t flex items-center justify-between">
-          <div className="text-sm text-gray-600">
-            {data && data.total > 0 && (
-              <span>Found {data.total} customer{data.total !== 1 ? 's' : ''}</span>
-            )}
+        {!isFiltersCollapsed && (
+          <div className="p-4 bg-white border-t flex items-center justify-between">
+            <div className="text-sm text-gray-600">
+              {data && data.total > 0 && (
+                <span>Found {data.total} customer{data.total !== 1 ? 's' : ''}</span>
+              )}
+            </div>
+            <div className="flex items-center gap-2 pr-10">
+              {isFetching && (
+                <div className="flex items-center gap-2">
+                  <LoadingSpinner size="sm" />
+                  <span className="text-sm text-gray-600">Loading...</span>
+                </div>
+              )}
+              <button 
+                onClick={()=>{
+                  setQ('');
+                  setStatus('');
+                  setCtype('');
+                  setCity('');
+                  const params = new URLSearchParams();
+                  params.set('page', '1');
+                  setSearchParams(params);
+                  setPage(1);
+                }} 
+                className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors font-medium"
+              >
+                Clear All
+              </button>
+            </div>
           </div>
-          <div className="flex items-center gap-2">
-            {isFetching && (
-              <div className="flex items-center gap-2">
-                <LoadingSpinner size="sm" />
-                <span className="text-sm text-gray-600">Loading...</span>
-              </div>
-            )}
-          </div>
-        </div>
+        )}
+
+        {/* Collapse/Expand button - bottom right corner */}
+        <button
+          onClick={() => setIsFiltersCollapsed(!isFiltersCollapsed)}
+          className="absolute bottom-0 right-0 w-8 h-8 rounded-tl-lg border-t border-l bg-white hover:bg-gray-50 transition-colors flex items-center justify-center shadow-sm"
+          title={isFiltersCollapsed ? "Expand filters" : "Collapse filters"}
+        >
+          <svg 
+            className={`w-4 h-4 text-gray-600 transition-transform ${!isFiltersCollapsed ? 'rotate-180' : ''}`}
+            fill="none" 
+            stroke="currentColor" 
+            viewBox="0 0 24 24"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
       </div>
 
       <LoadingOverlay isLoading={isInitialLoading} text="Loading customers...">
@@ -484,8 +530,7 @@ function ClientRow({ c, statusColorMap, onOpen, onDeleted }:{ c: Client, statusC
         <span className="px-2 py-0.5 rounded-full border" style={badgeStyle}>{status || '—'}</span>
         <span className="text-gray-600">Type:</span>
         <span className="px-2 py-0.5 rounded-full border text-gray-700 bg-gray-50">{String(c.client_type||'—')}</span>
-        <Link className="ml-2 px-3 py-1.5 rounded bg-brand-red text-white" to={`/customers/${encodeURIComponent(c.id)}`}>Edit</Link>
-        <button className="ml-2 px-3 py-1.5 rounded bg-gray-100 hover:bg-red-50 text-red-700 border" title="Delete customer" onClick={async()=>{
+        <button className="ml-2 px-3 py-1.5 rounded bg-brand-red text-white hover:bg-red-700" title="Delete customer" onClick={async()=>{
           const ok = await confirm({ title: 'Delete customer', message: 'Are you sure you want to delete this customer? This action cannot be undone.' });
           if (!ok) return;
           try{ await api('DELETE', `/clients/${encodeURIComponent(c.id)}`); onDeleted(); }catch(_e){}

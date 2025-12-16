@@ -47,7 +47,7 @@ export default function EstimateEdit(){
       </div>
       <div className="rounded-xl border bg-white p-4">
         {estimateId && projectId ? (
-          <EstimateBuilder estimateId={estimateId} projectId={projectId} statusLabel={project?.status_label||''} settings={settings||{}} />
+          <EstimateBuilder estimateId={estimateId} projectId={projectId} statusLabel={project?.status_label||''} settings={settings||{}} isBidding={project?.is_bidding} />
         ) : (
           <div className="p-4 text-gray-600">Invalid estimate or project ID</div>
         )}

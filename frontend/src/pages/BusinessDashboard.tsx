@@ -123,23 +123,11 @@ export default function BusinessDashboard() {
       <div className="space-y-6">
         {/* Header */}
         <div className="mb-3 rounded-xl border bg-gradient-to-br from-[#7f1010] to-[#a31414] text-white p-4">
-        <div className="flex items-center justify-between">
           <div>
             <div className="text-2xl font-extrabold">Business Dashboard</div>
             <div className="text-sm opacity-90">Overview of opportunities and projects by division</div>
           </div>
-          <button
-            onClick={() => {
-              queryClient.invalidateQueries({ queryKey: ['project-divisions'] });
-              refetchDivisions();
-            }}
-            className="px-3 py-1.5 bg-white/20 hover:bg-white/30 rounded-lg text-sm font-medium transition-colors"
-            title="Refresh divisions"
-          >
-            🔄 Refresh
-          </button>
         </div>
-      </div>
 
       {/* Division Cards Grid - Similar to FleetDashboard */}
       {divisionsError ? (
