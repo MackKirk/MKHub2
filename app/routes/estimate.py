@@ -116,12 +116,35 @@ def delete_product(product_id: int, db: Session = Depends(get_db), _=Depends(req
         print(f"DELETE PRODUCT - Attempting to delete: {product_id}")
         
         # Check if product is being used in estimate items
-        estimate_items_count = db.query(EstimateItem).filter(EstimateItem.material_id == product_id).count()
-        if estimate_items_count > 0:
-            raise HTTPException(
-                status_code=400, 
-                detail=f"Cannot delete product: it is being used in {estimate_items_count} estimate item(s). Please remove it from all estimates first."
-            )
+        estimate_items = db.query(EstimateItem).filter(EstimateItem.material_id == product_id).all()
+        
+        if estimate_items:
+            # Check which items are orphaned (estimate doesn't exist) vs active
+            orphaned_items = []
+            active_items = []
+            
+            for item in estimate_items:
+                # Check if the estimate still exists
+                estimate_exists = db.query(Estimate).filter(Estimate.id == item.estimate_id).first() is not None
+                if not estimate_exists:
+                    orphaned_items.append(item)
+                else:
+                    active_items.append(item)
+            
+            # Delete orphaned items automatically
+            if orphaned_items:
+                print(f"Found {len(orphaned_items)} orphaned estimate items, deleting them...")
+                for item in orphaned_items:
+                    db.delete(item)
+                db.commit()
+                print(f"Deleted {len(orphaned_items)} orphaned estimate items")
+            
+            # If there are still active items, prevent deletion
+            if active_items:
+                raise HTTPException(
+                    status_code=400, 
+                    detail=f"Cannot delete product: it is being used in {len(active_items)} estimate item(s) in active estimates. Please remove it from all estimates first."
+                )
         
         # Delete all relationships before deleting the product
         relations = db.query(RelatedProduct).filter(
