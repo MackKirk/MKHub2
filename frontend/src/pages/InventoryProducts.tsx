@@ -4,6 +4,7 @@ import { useMemo, useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import { useConfirm } from '@/components/ConfirmProvider';
 import ImagePicker from '@/components/ImagePicker';
+import { useNavigate } from 'react-router-dom';
 
 type Material = { id:number, name:string, supplier_name?:string, category?:string, unit?:string, price?:number, last_updated?:string, unit_type?:string, units_per_package?:number, coverage_sqs?:number, coverage_ft2?:number, coverage_m2?:number, description?:string, image_base64?:string };
 
@@ -39,7 +40,21 @@ const parseCurrency = (value: string): string => {
 
 export default function InventoryProducts(){
   const confirm = useConfirm();
+  const navigate = useNavigate();
+  const { data: me, isLoading: meLoading } = useQuery({ queryKey: ['me'], queryFn: () => api<any>('GET', '/auth/me') });
+  const isAdmin = (me?.roles || []).includes('admin');
+  const permissions = new Set(me?.permissions || []);
+  const canViewProducts = isAdmin || permissions.has('inventory:products:read');
+  const canEditProducts = isAdmin || permissions.has('inventory:products:write');
   const [q, setQ] = useState('');
+
+  // Redirect if user doesn't have permission
+  useEffect(() => {
+    if (!meLoading && me !== undefined && !canViewProducts) {
+      toast.error('You do not have permission to view products');
+      navigate('/home');
+    }
+  }, [meLoading, me, canViewProducts, navigate]);
   const [supplier, setSupplier] = useState('');
   const [category, setCategory] = useState('');
   const [showAdvanced, setShowAdvanced] = useState(false);
@@ -325,6 +340,11 @@ export default function InventoryProducts(){
     }catch(_e){ toast.error('Failed'); }
   };
 
+  // Don't render if still loading or user doesn't have permission
+  if (meLoading || !canViewProducts) {
+    return null;
+  }
+
   return (
     <div>
       <div className="mb-3 rounded-xl border bg-gradient-to-br from-[#7f1010] to-[#a31414] text-white p-4 flex items-center justify-between">
@@ -332,7 +352,9 @@ export default function InventoryProducts(){
           <div className="text-2xl font-extrabold">Products</div>
           <div className="text-sm opacity-90">Catalog of materials and pricing.</div>
         </div>
-        <button onClick={()=>{ resetModal(); setOpen(true); }} className="px-4 py-2 rounded bg-white text-brand-red font-semibold">+ New Product</button>
+        {canEditProducts && (
+          <button onClick={()=>{ resetModal(); setOpen(true); }} className="px-4 py-2 rounded bg-white text-brand-red font-semibold">+ New Product</button>
+        )}
       </div>
       {/* Advanced Search Panel */}
       <div className="mb-3 rounded-xl border bg-white shadow-sm overflow-hidden relative">
@@ -837,9 +859,13 @@ export default function InventoryProducts(){
               {viewing && !editing ? (
                 // View mode buttons
                 <>
-                  <button onClick={()=> handleAddRelated(viewing.id)} className="px-4 py-2 rounded bg-black text-white">Add Related</button>
-                  <button onClick={openEditModal} className="px-4 py-2 rounded bg-gray-100">Edit</button>
-                  <button onClick={()=> handleDelete(viewing.id)} className="px-4 py-2 rounded bg-red-600 text-white hover:bg-red-700">Delete</button>
+                  {canEditProducts && (
+                    <>
+                      <button onClick={()=> handleAddRelated(viewing.id)} className="px-4 py-2 rounded bg-black text-white">Add Related</button>
+                      <button onClick={openEditModal} className="px-4 py-2 rounded bg-gray-100">Edit</button>
+                      <button onClick={()=> handleDelete(viewing.id)} className="px-4 py-2 rounded bg-red-600 text-white hover:bg-red-700">Delete</button>
+                    </>
+                  )}
                 </>
               ) : (
                 // Edit/Create mode buttons
@@ -919,7 +945,9 @@ export default function InventoryProducts(){
                       <div className="font-medium">{r.name}</div>
                       <div className="text-xs text-gray-500">{r.supplier_name||''} · ${Number(r.price||0).toFixed(2)}</div>
                     </div>
-                    <button onClick={()=> deleteRelation(viewRelated, r.id)} className="px-2 py-1 rounded bg-red-100 text-xs">Remove</button>
+                    {canEditProducts && (
+                      <button onClick={()=> deleteRelation(viewRelated, r.id)} className="px-2 py-1 rounded bg-red-100 text-xs">Remove</button>
+                    )}
                   </div>
                 )): <div className="p-3 text-gray-600">No related products</div>}
               </div>

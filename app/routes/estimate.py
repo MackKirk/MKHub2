@@ -34,7 +34,7 @@ class MaterialIn(BaseModel):
 
 
 @router.get("/products")
-def list_products(db: Session = Depends(get_db), _=Depends(require_permissions("inventory:read"))):
+def list_products(db: Session = Depends(get_db), _=Depends(require_permissions("inventory:products:read"))):
     return db.query(Material).all()
 
 
@@ -47,7 +47,7 @@ def search_products(
     price_max: Optional[float] = Query(None),
     unit_type: Optional[str] = Query(None),
     db: Session = Depends(get_db),
-    _=Depends(require_permissions("inventory:read")),
+    _=Depends(require_permissions("inventory:products:read")),
 ):
     query = db.query(Material)
     if q:
@@ -67,7 +67,7 @@ def search_products(
 
 
 @router.post("/products")
-def create_product(body: MaterialIn, db: Session = Depends(get_db), _=Depends(require_permissions("inventory:write"))):
+def create_product(body: MaterialIn, db: Session = Depends(get_db), _=Depends(require_permissions("inventory:products:write"))):
     row = Material(
         name=body.name,
         category=body.category,
@@ -90,7 +90,7 @@ def create_product(body: MaterialIn, db: Session = Depends(get_db), _=Depends(re
 
 
 @router.put("/products/{product_id}")
-def update_product(product_id: int, body: MaterialIn, db: Session = Depends(get_db), _=Depends(require_permissions("inventory:write"))):
+def update_product(product_id: int, body: MaterialIn, db: Session = Depends(get_db), _=Depends(require_permissions("inventory:products:write"))):
     row = db.query(Material).filter(Material.id == product_id).first()
     if not row:
         raise HTTPException(status_code=404, detail="Product not found")
@@ -104,7 +104,7 @@ def update_product(product_id: int, body: MaterialIn, db: Session = Depends(get_
 
 
 @router.delete("/products/{product_id}")
-def delete_product(product_id: int, db: Session = Depends(get_db), _=Depends(require_permissions("inventory:write"))):
+def delete_product(product_id: int, db: Session = Depends(get_db), _=Depends(require_permissions("inventory:products:write"))):
     import traceback
     try:
         row = db.query(Material).filter(Material.id == product_id).first()
@@ -152,7 +152,7 @@ class RelatedIn(BaseModel):
 
 
 @router.get("/related/count")
-def related_count(ids: str = Query(...), db: Session = Depends(get_db), _=Depends(require_permissions("inventory:read"))):
+def related_count(ids: str = Query(...), db: Session = Depends(get_db), _=Depends(require_permissions("inventory:products:read"))):
     id_list = [int(x) for x in ids.split(",") if x.strip().isdigit()]
     if not id_list:
         return {}
@@ -169,7 +169,7 @@ def related_count(ids: str = Query(...), db: Session = Depends(get_db), _=Depend
 
 
 @router.get("/related/{product_id}")
-def list_related(product_id: int, db: Session = Depends(get_db), _=Depends(require_permissions("inventory:read"))):
+def list_related(product_id: int, db: Session = Depends(get_db), _=Depends(require_permissions("inventory:products:read"))):
     links = db.query(RelatedProduct).filter(
         (RelatedProduct.product_a_id == product_id) | (RelatedProduct.product_b_id == product_id)
     ).all()
@@ -200,7 +200,7 @@ def list_related(product_id: int, db: Session = Depends(get_db), _=Depends(requi
 
 
 @router.post("/related/{product_id}")
-def add_related(product_id: int, body: RelatedIn, db: Session = Depends(get_db), _=Depends(require_permissions("inventory:write"))):
+def add_related(product_id: int, body: RelatedIn, db: Session = Depends(get_db), _=Depends(require_permissions("inventory:products:write"))):
     if product_id == body.related_id:
         raise HTTPException(status_code=400, detail="Cannot relate a product to itself")
     a, b = (product_id, body.related_id) if product_id < body.related_id else (body.related_id, product_id)
@@ -213,7 +213,7 @@ def add_related(product_id: int, body: RelatedIn, db: Session = Depends(get_db),
 
 
 @router.delete("/related/{product_a_id}/{product_b_id}")
-def delete_relation(product_a_id: int, product_b_id: int, db: Session = Depends(get_db), _=Depends(require_permissions("inventory:write"))):
+def delete_relation(product_a_id: int, product_b_id: int, db: Session = Depends(get_db), _=Depends(require_permissions("inventory:products:write"))):
     rel1 = db.query(RelatedProduct).filter(RelatedProduct.product_a_id == product_a_id, RelatedProduct.product_b_id == product_b_id).first()
     if rel1:
         db.delete(rel1)

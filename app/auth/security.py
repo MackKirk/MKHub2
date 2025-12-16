@@ -169,6 +169,11 @@ def _has_permission(user: User, perm: str) -> bool:
                 if area == 'business' and (perm.startswith('business:customers:') or perm.startswith('business:projects:')):
                     # Skip area access check for business customers/projects permissions
                     pass
+                # Special case: inventory:products:* and inventory:suppliers:* don't require inventory:access
+                # They are standalone permissions
+                elif area == 'inventory' and (perm.startswith('inventory:products:') or perm.startswith('inventory:suppliers:')):
+                    # Skip area access check for inventory products/suppliers permissions
+                    pass
                 else:
                     # Check if area access is explicitly denied (False in override)
                     if area_access_key in perm_map and not perm_map.get(area_access_key):

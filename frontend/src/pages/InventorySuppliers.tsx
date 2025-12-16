@@ -5,6 +5,7 @@ import toast from 'react-hot-toast';
 import { useConfirm } from '@/components/ConfirmProvider';
 import ImagePicker from '@/components/ImagePicker';
 import AddressAutocomplete from '@/components/AddressAutocomplete';
+import { useNavigate } from 'react-router-dom';
 
 type Supplier = {
   id: string;
@@ -43,7 +44,21 @@ const formatPhone = (phone: string | undefined): string => {
 export default function InventorySuppliers() {
   const queryClient = useQueryClient();
   const confirm = useConfirm();
+  const navigate = useNavigate();
+  const { data: me, isLoading: meLoading } = useQuery({ queryKey: ['me'], queryFn: () => api<any>('GET', '/auth/me') });
+  const isAdmin = (me?.roles || []).includes('admin');
+  const permissions = new Set(me?.permissions || []);
+  const canViewSuppliers = isAdmin || permissions.has('inventory:suppliers:read');
+  const canEditSuppliers = isAdmin || permissions.has('inventory:suppliers:write');
   const [q, setQ] = useState('');
+
+  // Redirect if user doesn't have permission
+  useEffect(() => {
+    if (!meLoading && me !== undefined && !canViewSuppliers) {
+      toast.error('You do not have permission to view suppliers');
+      navigate('/home');
+    }
+  }, [meLoading, me, canViewSuppliers, navigate]);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [isFiltersCollapsed, setIsFiltersCollapsed] = useState(false);
   const [countryFilter, setCountryFilter] = useState('');
@@ -345,6 +360,11 @@ export default function InventorySuppliers() {
   const provinces = useMemo(() => Array.from(new Set((data || []).map(s => (s.province || '').trim()).filter(Boolean))), [data]);
   const cities = useMemo(() => Array.from(new Set((data || []).map(s => (s.city || '').trim()).filter(Boolean))), [data]);
 
+  // Don't render if still loading or user doesn't have permission
+  if (meLoading || !canViewSuppliers) {
+    return null;
+  }
+
   return (
     <div>
       <div className="mb-3 rounded-xl border bg-gradient-to-br from-[#7f1010] to-[#a31414] text-white p-4 flex items-center justify-between">
@@ -352,15 +372,17 @@ export default function InventorySuppliers() {
           <div className="text-2xl font-extrabold">Suppliers</div>
           <div className="text-sm opacity-90">Manage vendors and contact information.</div>
         </div>
-        <button
-          onClick={() => {
-            resetForm();
-            setOpen(true);
-          }}
-          className="px-4 py-2 rounded bg-white text-brand-red font-semibold"
-        >
-          + New Supplier
-        </button>
+        {canEditSuppliers && (
+          <button
+            onClick={() => {
+              resetForm();
+              setOpen(true);
+            }}
+            className="px-4 py-2 rounded bg-white text-brand-red font-semibold"
+          >
+            + New Supplier
+          </button>
+        )}
       </div>
       {/* Advanced Search Panel */}
       <div className="mb-3 rounded-xl border bg-white shadow-sm overflow-hidden relative">
@@ -621,7 +643,7 @@ export default function InventorySuppliers() {
                   {/* Tab Content */}
                   <div className="overflow-y-auto flex-1">
                     {supplierTab === 'overview' ? (
-                      <div className="px-6 pb-6 space-y-4">
+                      <div className="px-6 pt-6 pb-6 space-y-4">
                       <div className="grid grid-cols-2 gap-4">
                         {/* Website Card */}
                         {viewing.website && (
@@ -658,23 +680,25 @@ export default function InventorySuppliers() {
                       )}
                     </div>
                   ) : (
-                    <div className="px-6 pb-6">
+                    <div className="px-6 pt-6 pb-6">
                       <div className="flex items-center justify-between mb-4">
                         <h3 className="text-lg font-semibold">Contacts</h3>
-                        <button
-                          onClick={() => {
-                            setContactModalOpen(true);
-                            setEditingContact(null);
-                            setContactName('');
-                            setContactEmail('');
-                            setContactPhone('');
-                            setContactTitle('');
-                            setContactNotes('');
-                          }}
-                          className="px-4 py-2 rounded-xl bg-gradient-to-r from-brand-red to-[#ee2b2b] text-white font-semibold"
-                        >
-                          + Add Contact
-                        </button>
+                        {canEditSuppliers && (
+                          <button
+                            onClick={() => {
+                              setContactModalOpen(true);
+                              setEditingContact(null);
+                              setContactName('');
+                              setContactEmail('');
+                              setContactPhone('');
+                              setContactTitle('');
+                              setContactNotes('');
+                            }}
+                            className="px-4 py-2 rounded-xl bg-gradient-to-r from-brand-red to-[#ee2b2b] text-white font-semibold"
+                          >
+                            + Add Contact
+                          </button>
+                        )}
                       </div>
                       <div className="grid md:grid-cols-2 gap-4">
                         {contactsData?.length ? (
@@ -708,44 +732,46 @@ export default function InventorySuppliers() {
                               <div className="flex-1 p-3 text-sm">
                                 <div className="flex items-center justify-between">
                                   <div className="font-semibold">{contact.name}</div>
-                                  <div className="flex items-center gap-2">
-                                    <button
-                                      onClick={() => {
-                                        setEditingContact(contact);
-                                        setContactModalOpen(true);
-                                        setContactName(contact.name || '');
-                                        setContactEmail(contact.email || '');
-                                        setContactPhone(contact.phone || '');
-                                        setContactTitle(contact.title || '');
-                                        setContactNotes(contact.notes || '');
-                                      }}
-                                      className="px-2 py-1 rounded bg-gray-100 text-xs"
-                                    >
-                                      Edit
-                                    </button>
-                                    <button
-                                      onClick={async () => {
-                                        const ok = await confirm({
-                                          title: 'Delete contact',
-                                          message: 'Are you sure you want to delete this contact?',
-                                          confirmText: 'Delete',
-                                          cancelText: 'Cancel'
-                                        });
-                                        if (ok) {
-                                          try {
-                                            await api('DELETE', `/inventory/contacts/${contact.id}`);
-                                            refetchContacts();
-                                            toast.success('Contact deleted');
-                                          } catch (error) {
-                                            toast.error('Failed to delete contact');
+                                  {canEditSuppliers && (
+                                    <div className="flex items-center gap-2">
+                                      <button
+                                        onClick={() => {
+                                          setEditingContact(contact);
+                                          setContactModalOpen(true);
+                                          setContactName(contact.name || '');
+                                          setContactEmail(contact.email || '');
+                                          setContactPhone(contact.phone || '');
+                                          setContactTitle(contact.title || '');
+                                          setContactNotes(contact.notes || '');
+                                        }}
+                                        className="px-2 py-1 rounded bg-gray-100 text-xs"
+                                      >
+                                        Edit
+                                      </button>
+                                      <button
+                                        onClick={async () => {
+                                          const ok = await confirm({
+                                            title: 'Delete contact',
+                                            message: 'Are you sure you want to delete this contact?',
+                                            confirmText: 'Delete',
+                                            cancelText: 'Cancel'
+                                          });
+                                          if (ok) {
+                                            try {
+                                              await api('DELETE', `/inventory/contacts/${contact.id}`);
+                                              refetchContacts();
+                                              toast.success('Contact deleted');
+                                            } catch (error) {
+                                              toast.error('Failed to delete contact');
+                                            }
                                           }
-                                        }
-                                      }}
-                                      className="px-2 py-1 rounded bg-gray-100 text-xs"
-                                    >
-                                      Delete
-                                    </button>
-                                  </div>
+                                        }}
+                                        className="px-2 py-1 rounded bg-gray-100 text-xs"
+                                      >
+                                        Delete
+                                      </button>
+                                    </div>
+                                  )}
                                 </div>
                                 {contact.title && (
                                   <div className="text-gray-600 text-xs">{contact.title}</div>
@@ -1053,30 +1079,34 @@ export default function InventorySuppliers() {
               {viewing && !editing ? (
                 // View mode buttons
                 <>
-                  <button
-                    onClick={openEditModal}
-                    className="px-4 py-2 rounded bg-gray-100"
-                  >
-                    Edit
-                  </button>
-                  <button
-                    onClick={async () => {
-                      const ok = await confirm({ 
-                        title: 'Delete supplier', 
-                        message: 'Are you sure you want to delete this supplier? This action cannot be undone.',
-                        confirmText: 'Delete',
-                        cancelText: 'Cancel'
-                      });
-                      if (ok) {
-                        deleteMut.mutate(viewing.id);
-                        setOpen(false);
-                        resetForm();
-                      }
-                    }}
-                    className="px-4 py-2 rounded bg-red-600 text-white hover:bg-red-700"
-                  >
-                    Delete
-                  </button>
+                  {canEditSuppliers && (
+                    <>
+                      <button
+                        onClick={openEditModal}
+                        className="px-4 py-2 rounded bg-gray-100"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        onClick={async () => {
+                          const ok = await confirm({ 
+                            title: 'Delete supplier', 
+                            message: 'Are you sure you want to delete this supplier? This action cannot be undone.',
+                            confirmText: 'Delete',
+                            cancelText: 'Cancel'
+                          });
+                          if (ok) {
+                            deleteMut.mutate(viewing.id);
+                            setOpen(false);
+                            resetForm();
+                          }
+                        }}
+                        className="px-4 py-2 rounded bg-red-600 text-white hover:bg-red-700"
+                      >
+                        Delete
+                      </button>
+                    </>
+                  )}
                 </>
               ) : (
                 // Edit/Create mode buttons

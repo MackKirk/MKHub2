@@ -284,8 +284,8 @@ export default function AppShell({ children }: PropsWithChildren){
       label: 'Inventory',
       icon: <IconBox />,
       items: [
-        { id: 'suppliers', label: 'Suppliers', path: '/inventory/suppliers', icon: <IconShoppingCart /> },
-        { id: 'products', label: 'Products', path: '/inventory/products', icon: <IconBox /> },
+        { id: 'suppliers', label: 'Suppliers', path: '/inventory/suppliers', icon: <IconShoppingCart />, requiredPermission: 'inventory:suppliers:read' },
+        { id: 'products', label: 'Products', path: '/inventory/products', icon: <IconBox />, requiredPermission: 'inventory:products:read' },
       ]
     },
     {
@@ -471,6 +471,12 @@ export default function AppShell({ children }: PropsWithChildren){
                 const hasBusinessAccess = (me?.permissions||[]).includes('business:projects:read') || (me?.permissions||[]).includes('business:customers:read');
                 if (!hasBusinessAccess) return false;
               }
+              // Special handling for Inventory category: hide entire category if user doesn't have inventory:suppliers:read OR inventory:products:read
+              if (category.id === 'inventory') {
+                if ((me?.roles||[]).includes('admin')) return true;
+                const hasInventoryAccess = (me?.permissions||[]).includes('inventory:suppliers:read') || (me?.permissions||[]).includes('inventory:products:read');
+                if (!hasInventoryAccess) return false;
+              }
               // Filter categories that have no visible items
               const visibleItems = category.items.filter(item => {
                 if (!item.requiredPermission) return true;
@@ -502,12 +508,31 @@ export default function AppShell({ children }: PropsWithChildren){
               return category.items[0]?.path || '#';
             };
 
+            // Determine the default path for Inventory category based on permissions
+            const getInventoryDefaultPath = () => {
+              if (category.id !== 'inventory') return category.items[0]?.path || '#';
+              if ((me?.roles||[]).includes('admin')) return '/inventory/suppliers';
+              const hasSuppliersAccess = (me?.permissions||[]).includes('inventory:suppliers:read');
+              const hasProductsAccess = (me?.permissions||[]).includes('inventory:products:read');
+              // If user has suppliers access, go to suppliers; otherwise go to products
+              if (hasSuppliersAccess) return '/inventory/suppliers';
+              if (hasProductsAccess) return '/inventory/products';
+              return category.items[0]?.path || '#';
+            };
+
+            // Get the default path based on category
+            const getDefaultPath = () => {
+              if (category.id === 'business') return getBusinessDefaultPath();
+              if (category.id === 'inventory') return getInventoryDefaultPath();
+              return category.items[0]?.path || '#';
+            };
+
             if (sidebarCollapsed) {
               // When collapsed, show only category icons
               return (
                 <div key={category.id} className="mb-2">
                   <NavLink
-                    to={getBusinessDefaultPath()}
+                    to={getDefaultPath()}
                     className={() => 
                       `flex items-center justify-center px-3 py-2 rounded-lg transition-colors ${
                         isActive ? 'bg-brand-red text-white' : 'text-gray-300 hover:bg-gray-600 hover:text-white'
@@ -525,7 +550,7 @@ export default function AppShell({ children }: PropsWithChildren){
             return (
               <div key={category.id} className="mb-2">
                 <NavLink
-                  to={getBusinessDefaultPath()}
+                  to={getDefaultPath()}
                   className={() => 
                     `flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${
                       isActive ? 'bg-brand-red text-white' : 'text-gray-300 hover:bg-gray-600 hover:text-white'
