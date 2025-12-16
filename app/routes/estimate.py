@@ -115,6 +115,14 @@ def delete_product(product_id: int, db: Session = Depends(get_db), _=Depends(req
         
         print(f"DELETE PRODUCT - Attempting to delete: {product_id}")
         
+        # Check if product is being used in estimate items
+        estimate_items_count = db.query(EstimateItem).filter(EstimateItem.material_id == product_id).count()
+        if estimate_items_count > 0:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Cannot delete product: it is being used in {estimate_items_count} estimate item(s). Please remove it from all estimates first."
+            )
+        
         # Delete all relationships before deleting the product
         relations = db.query(RelatedProduct).filter(
             (RelatedProduct.product_a_id == product_id) | (RelatedProduct.product_b_id == product_id)
