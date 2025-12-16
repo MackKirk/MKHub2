@@ -35,6 +35,15 @@ export default function Users(){
   
   const { data:me } = useQuery({ queryKey:['me'], queryFn: ()=> api<any>('GET','/auth/me') });
   
+  // Check if user has Administrator Access (users:write permission)
+  const hasAdministratorAccess = useMemo(() => {
+    if (!me) return false;
+    const isAdmin = (me?.roles || []).some((r: string) => String(r || '').toLowerCase() === 'admin');
+    if (isAdmin) return true;
+    const perms = me?.permissions || [];
+    return perms.includes('users:write');
+  }, [me]);
+  
   // Check if user has permission to invite users
   const canInviteUser = useMemo(() => {
     if (!me) return false;
@@ -99,15 +108,17 @@ export default function Users(){
           <div className="text-sm opacity-90">Manage employees, roles, and access. {total > 0 && `(${total} total)`}</div>
         </div>
         <div className="flex items-center gap-2">
-          {/* TEMPORARY: Sync from BambooHR button */}
-          <button
-            onClick={handleSyncBambooHR}
-            disabled={isSyncing}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            title="Sincronizar todos os contatos do BambooHR (temporário)"
-          >
-            {isSyncing ? 'Sincronizando...' : '🔄 Sync BambooHR'}
-          </button>
+          {/* TEMPORARY: Sync from BambooHR button - only for Administrator Access */}
+          {hasAdministratorAccess && (
+            <button
+              onClick={handleSyncBambooHR}
+              disabled={isSyncing}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              title="Sincronizar todos os contatos do BambooHR (temporário)"
+            >
+              {isSyncing ? 'Sincronizando...' : '🔄 Sync BambooHR'}
+            </button>
+          )}
           {canInviteUser && (
             <button
               onClick={() => setShowInviteModal(true)}
