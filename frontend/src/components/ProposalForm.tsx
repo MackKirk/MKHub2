@@ -761,7 +761,7 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
 
   const renderFingerprint = computeFingerprint();
   return (
-    <div className="rounded-xl border bg-white p-4" onKeyDown={(e)=>{
+    <div className="rounded-xl border bg-white p-4" onKeyDown={!disabled ? (e)=>{
       const tgt = e.target as HTMLElement;
       if (!e.altKey) return;
       if (e.key==='ArrowUp' || e.key==='ArrowDown'){
@@ -797,7 +797,7 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
           }
         }
       }
-    }}>
+    } : undefined}>
       <h2 className="text-xl font-bold mb-3">{mode==='edit'? 'Edit Proposal':'Create Proposal'}</h2>
       <div className="grid md:grid-cols-2 gap-4">
         <div>
@@ -805,26 +805,26 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
           <div className="space-y-2 text-sm">
             <div>
               <label className="text-xs text-gray-600">Document Type</label>
-              <input className="w-full border rounded px-3 py-2" value={coverTitle} onChange={e=>setCoverTitle(e.target.value)} maxLength={44} aria-label="Document Type" />
+              <input className={`w-full border rounded px-3 py-2 ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} value={coverTitle} onChange={e=>setCoverTitle(e.target.value)} maxLength={44} aria-label="Document Type" disabled={disabled} readOnly={disabled} />
               <div className="mt-1 text-[11px] text-gray-500">{coverTitle.length}/44 characters</div>
             </div>
-            <div><label className="text-xs text-gray-600">Order Number</label><input className="w-full border rounded px-3 py-2" value={orderNumber} onChange={e=>setOrderNumber(e.target.value)} placeholder={nextCode?.order_number||''} /></div>
+            <div><label className="text-xs text-gray-600">Order Number</label><input className={`w-full border rounded px-3 py-2 ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} value={orderNumber} onChange={e=>setOrderNumber(e.target.value)} placeholder={nextCode?.order_number||''} disabled={disabled} readOnly={disabled} /></div>
             <div><label className="text-xs text-gray-600">Company Name</label><input className="w-full border rounded px-3 py-2" value={companyName} readOnly /></div>
             <div><label className="text-xs text-gray-600">Company Address</label><input className="w-full border rounded px-3 py-2" value={companyAddress || ''} readOnly title={companyAddress || ''} /></div>
-            <div><label className="text-xs text-gray-600">Date</label><input type="date" className="w-full border rounded px-3 py-2" value={date} onChange={e=>setDate(e.target.value)} /></div>
+            <div><label className="text-xs text-gray-600">Date</label><input type="date" className={`w-full border rounded px-3 py-2 ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} value={date} onChange={e=>setDate(e.target.value)} disabled={disabled} readOnly={disabled} /></div>
           </div>
         </div>
         <div>
           <h3 className="font-semibold mb-2">Project Details</h3>
           <div className="space-y-2 text-sm">
-            <div><label className="text-xs text-gray-600">Proposal Created For</label><input className="w-full border rounded px-3 py-2" value={createdFor} onChange={e=>setCreatedFor(e.target.value)} /></div>
+            <div><label className="text-xs text-gray-600">Proposal Created For</label><input className={`w-full border rounded px-3 py-2 ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} value={createdFor} onChange={e=>setCreatedFor(e.target.value)} disabled={disabled} readOnly={disabled} /></div>
             <div className="grid grid-cols-3 gap-2">
-              <div><label className="text-xs text-gray-600">Primary Name</label><input className="w-full border rounded px-3 py-2" value={primary.name||''} onChange={e=>setPrimary(p=>({ ...p, name: e.target.value }))} /></div>
-              <div><label className="text-xs text-gray-600">Phone</label><input className="w-full border rounded px-3 py-2" value={primary.phone||''} onChange={e=>setPrimary(p=>({ ...p, phone: e.target.value }))} /></div>
-              <div><label className="text-xs text-gray-600">Email</label><input className="w-full border rounded px-3 py-2" value={primary.email||''} onChange={e=>setPrimary(p=>({ ...p, email: e.target.value }))} /></div>
+              <div><label className="text-xs text-gray-600">Primary Name</label><input className={`w-full border rounded px-3 py-2 ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} value={primary.name||''} onChange={e=>setPrimary(p=>({ ...p, name: e.target.value }))} disabled={disabled} readOnly={disabled} /></div>
+              <div><label className="text-xs text-gray-600">Phone</label><input className={`w-full border rounded px-3 py-2 ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} value={primary.phone||''} onChange={e=>setPrimary(p=>({ ...p, phone: e.target.value }))} disabled={disabled} readOnly={disabled} /></div>
+              <div><label className="text-xs text-gray-600">Email</label><input className={`w-full border rounded px-3 py-2 ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} value={primary.email||''} onChange={e=>setPrimary(p=>({ ...p, email: e.target.value }))} disabled={disabled} readOnly={disabled} /></div>
             </div>
-            <div><label className="text-xs text-gray-600">Type of Project</label><input className="w-full border rounded px-3 py-2" value={typeOfProject} onChange={e=>setTypeOfProject(e.target.value)} /></div>
-            <div><label className="text-xs text-gray-600">Other Notes</label><textarea className="w-full border rounded px-3 py-2" value={otherNotes} onChange={e=>setOtherNotes(e.target.value)} /></div>
+            <div><label className="text-xs text-gray-600">Type of Project</label><input className={`w-full border rounded px-3 py-2 ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} value={typeOfProject} onChange={e=>setTypeOfProject(e.target.value)} disabled={disabled} readOnly={disabled} /></div>
+            <div><label className="text-xs text-gray-600">Other Notes</label><textarea className={`w-full border rounded px-3 py-2 ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} value={otherNotes} onChange={e=>setOtherNotes(e.target.value)} disabled={disabled} readOnly={disabled} /></div>
           </div>
         </div>
         <div className="md:col-span-2">
@@ -832,12 +832,16 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
           <div className="flex items-center gap-3 text-sm">
             <div>
               <div className="mb-1">Cover Image</div>
-              <button className="px-3 py-1.5 rounded bg-gray-100" onClick={()=>setPickerFor('cover')}>Choose</button>
+              {!disabled && (
+                <button className="px-3 py-1.5 rounded bg-gray-100" onClick={()=>setPickerFor('cover')}>Choose</button>
+              )}
               {coverPreview && <div className="mt-2"><img src={coverPreview} className="w-48 h-36 object-cover rounded border" /></div>}
             </div>
             <div>
               <div className="mb-1">Page 2 Image</div>
-              <button className="px-3 py-1.5 rounded bg-gray-100" onClick={()=>setPickerFor('page2')}>Choose</button>
+              {!disabled && (
+                <button className="px-3 py-1.5 rounded bg-gray-100" onClick={()=>setPickerFor('page2')}>Choose</button>
+              )}
               {page2Preview && <div className="mt-2"><img src={page2Preview} className="w-48 h-36 object-cover rounded border" /></div>}
             </div>
           </div>
@@ -847,67 +851,73 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
           <div className="space-y-3">
             {sections.map((s:any, idx:number)=> (
               <div key={s.id||idx}
-                   className={`border rounded p-3 ${dragOverSection===idx? 'ring-2 ring-brand-red':''}`}
-                   onDragOver={(e)=>{ e.preventDefault(); onSectionDragOver(idx); }}
-                   onDrop={onSectionDrop}
+                   className={`border rounded p-3 ${dragOverSection===idx && !disabled? 'ring-2 ring-brand-red':''}`}
+                   onDragOver={!disabled ? (e)=>{ e.preventDefault(); onSectionDragOver(idx); } : undefined}
+                   onDrop={!disabled ? onSectionDrop : undefined}
               >
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2 w-full">
-                    <span 
-                      className="inline-flex items-center justify-center w-5 h-5 text-gray-400 hover:text-gray-600 cursor-grab active:cursor-grabbing" 
-                      title="Drag to reorder section" 
-                      aria-label="Drag section handle"
-                      draggable
-                      onDragStart={() => {
-                        onSectionDragStart(idx);
-                      }}
-                      onDragEnd={() => {
-                        if (draggingSection === idx) {
-                          setDraggingSection(null);
-                          setDragOverSection(null);
-                        }
+                    {!disabled && (
+                      <span 
+                        className="inline-flex items-center justify-center w-5 h-5 text-gray-400 hover:text-gray-600 cursor-grab active:cursor-grabbing" 
+                        title="Drag to reorder section" 
+                        aria-label="Drag section handle"
+                        draggable
+                        onDragStart={() => {
+                          onSectionDragStart(idx);
+                        }}
+                        onDragEnd={() => {
+                          if (draggingSection === idx) {
+                            setDraggingSection(null);
+                            setDragOverSection(null);
+                          }
+                        }}>
+                        <svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                          <circle cx="6" cy="6" r="1.5"></circle>
+                          <circle cx="10" cy="6" r="1.5"></circle>
+                          <circle cx="14" cy="6" r="1.5"></circle>
+                          <circle cx="6" cy="10" r="1.5"></circle>
+                          <circle cx="10" cy="10" r="1.5"></circle>
+                          <circle cx="14" cy="10" r="1.5"></circle>
+                        </svg>
+                      </span>
+                    )}
+                    <input data-role="section-title" data-sec={idx} onFocus={()=> setActiveSectionIndex(idx)} className={`flex-1 min-w-[240px] border rounded px-3 py-2 text-sm ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} placeholder="Section title" value={s.title||''} onChange={e=> setSections(arr=> arr.map((x,i)=> i===idx? { ...x, title: e.target.value }: x))} disabled={disabled} readOnly={disabled} />
+                  </div>
+                  {!disabled && (
+                    <div className="flex items-center gap-1">
+                      <button className="px-2 py-1 rounded text-gray-500 hover:text-gray-700" title="Duplicate section" onClick={()=>{
+                        setSections(arr=>{
+                          const copy = JSON.parse(JSON.stringify(arr[idx]||{}));
+                          copy.id = 'sec_'+Math.random().toString(36).slice(2);
+                          if (Array.isArray(copy.images)) copy.images = copy.images.map((im:any)=> ({ ...im, image_id: 'img_'+Math.random().toString(36).slice(2) }));
+                          const next=[...arr]; next.splice(idx+1,0,copy);
+                          setTimeout(()=> setFocusTarget({ type:'title', sectionIndex: idx+1 }), 0);
+                          return next;
+                        });
                       }}>
-                      <svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                        <circle cx="6" cy="6" r="1.5"></circle>
-                        <circle cx="10" cy="6" r="1.5"></circle>
-                        <circle cx="14" cy="6" r="1.5"></circle>
-                        <circle cx="6" cy="10" r="1.5"></circle>
-                        <circle cx="10" cy="10" r="1.5"></circle>
-                        <circle cx="14" cy="10" r="1.5"></circle>
-                      </svg>
-                    </span>
-                    <input data-role="section-title" data-sec={idx} onFocus={()=> setActiveSectionIndex(idx)} className="flex-1 min-w-[240px] border rounded px-3 py-2 text-sm" placeholder="Section title" value={s.title||''} onChange={e=> setSections(arr=> arr.map((x,i)=> i===idx? { ...x, title: e.target.value }: x))} />
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <button className="px-2 py-1 rounded text-gray-500 hover:text-gray-700" title="Duplicate section" onClick={()=>{
-                      setSections(arr=>{
-                        const copy = JSON.parse(JSON.stringify(arr[idx]||{}));
-                        copy.id = 'sec_'+Math.random().toString(36).slice(2);
-                        if (Array.isArray(copy.images)) copy.images = copy.images.map((im:any)=> ({ ...im, image_id: 'img_'+Math.random().toString(36).slice(2) }));
-                        const next=[...arr]; next.splice(idx+1,0,copy);
-                        setTimeout(()=> setFocusTarget({ type:'title', sectionIndex: idx+1 }), 0);
-                        return next;
-                      });
-                    }}>
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 7h10v10H7V7Zm-2 2v10h10v2H5a2 2 0 0 1-2-2V9h2Zm6-6h8a2 2 0 0 1 2 2v8h-2V5H11V3Z"></path></svg>
-                    </button>
-                    <button className="px-2 py-1 rounded text-gray-500 hover:text-red-600" title="Remove section" onClick={async()=>{
-                      const result = await confirm({ title:'Remove section', message:'Are you sure you want to remove this section?' });
-                      if (result !== 'confirm') return;
-                      setSections(arr=> arr.filter((_,i)=> i!==idx));
-                    }}>
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M9 3h6a1 1 0 0 1 1 1v2h4v2h-1l-1 13a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 8H4V6h4V4a1 1 0 0 1 1-1Zm1 3h4V5h-4v1Zm-2 2 1 12h8l1-12H8Z"></path></svg>
-                    </button>
-                  </div>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 7h10v10H7V7Zm-2 2v10h10v2H5a2 2 0 0 1-2-2V9h2Zm6-6h8a2 2 0 0 1 2 2v8h-2V5H11V3Z"></path></svg>
+                      </button>
+                      <button className="px-2 py-1 rounded text-gray-500 hover:text-red-600" title="Remove section" onClick={async()=>{
+                        const result = await confirm({ title:'Remove section', message:'Are you sure you want to remove this section?' });
+                        if (result !== 'confirm') return;
+                        setSections(arr=> arr.filter((_,i)=> i!==idx));
+                      }}>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M9 3h6a1 1 0 0 1 1 1v2h4v2h-1l-1 13a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 8H4V6h4V4a1 1 0 0 1 1-1Zm1 3h4V5h-4v1Zm-2 2 1 12h8l1-12H8Z"></path></svg>
+                      </button>
+                    </div>
+                  )}
                 </div>
                 {s.type==='text' ? (
                   <textarea 
-                    className="w-full border rounded px-3 py-2 text-sm" 
+                    className={`w-full border rounded px-3 py-2 text-sm ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`}
                     rows={5} 
                     placeholder="Section text" 
                     value={s.text||''} 
                     onChange={e=> setSections(arr=> arr.map((x,i)=> i===idx? { ...x, text: e.target.value }: x))}
-                    onKeyDown={(e)=>{
+                    disabled={disabled}
+                    readOnly={disabled}
+                    onKeyDown={!disabled ? (e)=>{
                       // Handle Tab key to insert indentation (4 spaces)
                       if (e.key === 'Tab') {
                         e.preventDefault();
@@ -925,48 +935,54 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
                           textarea.selectionStart = textarea.selectionEnd = start + 4;
                         }, 0);
                       }
-                    }}
+                    } : undefined}
                   />
                 ) : (
                   <div>
-                    <div className="mb-2"><button className="px-3 py-1.5 rounded bg-gray-100" onClick={()=> setSectionPicker({ secId: s.id||String(idx) })}>+ Add Image</button></div>
+                    {!disabled && (
+                      <div className="mb-2"><button className="px-3 py-1.5 rounded bg-gray-100" onClick={()=> setSectionPicker({ secId: s.id||String(idx) })}>+ Add Image</button></div>
+                    )}
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                       {(s.images||[]).map((img:any, j:number)=> (
                         <div key={`${img.image_id||img.file_object_id||''}-${j}`} className="border rounded p-2 flex flex-col items-center"
-                             onDragOver={onImageDragOver}
-                             onDrop={()=> onImageDrop(idx, j)}
+                             onDragOver={!disabled ? onImageDragOver : undefined}
+                             onDrop={!disabled ? ()=> onImageDrop(idx, j) : undefined}
                         >
                           <div className="flex items-center justify-between mb-1">
-                            <span className="inline-flex items-center justify-center w-5 h-5 text-gray-400 hover:text-gray-600 cursor-grab active:cursor-grabbing" title="Drag to reorder image" aria-label="Drag image handle" draggable onDragStart={()=> onImageDragStart(idx, j)}>
-                              <svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                                <circle cx="6" cy="6" r="1.5"></circle>
-                                <circle cx="10" cy="6" r="1.5"></circle>
-                                <circle cx="14" cy="6" r="1.5"></circle>
-                                <circle cx="6" cy="10" r="1.5"></circle>
-                                <circle cx="10" cy="10" r="1.5"></circle>
-                                <circle cx="14" cy="10" r="1.5"></circle>
-                              </svg>
-                            </span>
-                            <div className="ml-auto flex items-center gap-2">
-                              <button className="px-2 py-1 rounded bg-gray-100 text-xs" title="Edit image" onClick={()=> setSectionPicker({ secId: s.id||String(idx), index: j, fileObjectId: img.file_object_id })}>Edit</button>
-                              <button className="px-2 py-1 rounded bg-gray-100 text-xs" title="Duplicate image" onClick={()=>{
-                                setSections(arr=> arr.map((x,i)=>{
-                                  if (i!==idx) return x;
-                                  const imgs = Array.isArray(x.images)? [...x.images]:[];
-                                  const clone = { ...(imgs[j]||{}), image_id: 'img_'+Math.random().toString(36).slice(2) };
-                                  imgs.splice(j+1,0,clone);
-                                  setTimeout(()=> setFocusTarget({ type:'caption', sectionIndex: idx, imageIndex: j+1 }), 0);
-                                  return { ...x, images: imgs };
-                                }));
-                              }}>Duplicate</button>
-                              <button className="px-2 py-1 rounded text-gray-500 hover:text-red-600" title="Remove image" onClick={async()=>{
-                                const result = await confirm({ title:'Remove image', message:'Are you sure you want to remove this image?' });
-                                if (result !== 'confirm') return;
-                                setSections(arr=> arr.map((x,i)=> i===idx? { ...x, images: (x.images||[]).filter((_:any,k:number)=> k!==j) }: x));
-                              }}>
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M9 3h6a1 1 0 0 1 1 1v2h4v2h-1l-1 13a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 8H4V6h4V4a1 1 0 0 1 1-1Zm1 3h4V5h-4v1Zm-2 2 1 12h8l1-12H8Z"></path></svg>
-                              </button>
-                            </div>
+                            {!disabled && (
+                              <span className="inline-flex items-center justify-center w-5 h-5 text-gray-400 hover:text-gray-600 cursor-grab active:cursor-grabbing" title="Drag to reorder image" aria-label="Drag image handle" draggable onDragStart={()=> onImageDragStart(idx, j)}>
+                                <svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                                  <circle cx="6" cy="6" r="1.5"></circle>
+                                  <circle cx="10" cy="6" r="1.5"></circle>
+                                  <circle cx="14" cy="6" r="1.5"></circle>
+                                  <circle cx="6" cy="10" r="1.5"></circle>
+                                  <circle cx="10" cy="10" r="1.5"></circle>
+                                  <circle cx="14" cy="10" r="1.5"></circle>
+                                </svg>
+                              </span>
+                            )}
+                            {!disabled && (
+                              <div className="ml-auto flex items-center gap-2">
+                                <button className="px-2 py-1 rounded bg-gray-100 text-xs" title="Edit image" onClick={()=> setSectionPicker({ secId: s.id||String(idx), index: j, fileObjectId: img.file_object_id })}>Edit</button>
+                                <button className="px-2 py-1 rounded bg-gray-100 text-xs" title="Duplicate image" onClick={()=>{
+                                  setSections(arr=> arr.map((x,i)=>{
+                                    if (i!==idx) return x;
+                                    const imgs = Array.isArray(x.images)? [...x.images]:[];
+                                    const clone = { ...(imgs[j]||{}), image_id: 'img_'+Math.random().toString(36).slice(2) };
+                                    imgs.splice(j+1,0,clone);
+                                    setTimeout(()=> setFocusTarget({ type:'caption', sectionIndex: idx, imageIndex: j+1 }), 0);
+                                    return { ...x, images: imgs };
+                                  }));
+                                }}>Duplicate</button>
+                                <button className="px-2 py-1 rounded text-gray-500 hover:text-red-600" title="Remove image" onClick={async()=>{
+                                  const result = await confirm({ title:'Remove image', message:'Are you sure you want to remove this image?' });
+                                  if (result !== 'confirm') return;
+                                  setSections(arr=> arr.map((x,i)=> i===idx? { ...x, images: (x.images||[]).filter((_:any,k:number)=> k!==j) }: x));
+                                }}>
+                                  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M9 3h6a1 1 0 0 1 1 1v2h4v2h-1l-1 13a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 8H4V6h4V4a1 1 0 0 1 1-1Zm1 3h4V5h-4v1Zm-2 2 1 12h8l1-12H8Z"></path></svg>
+                                </button>
+                              </div>
+                            )}
                           </div>
                           {img.file_object_id? (
                             <img
@@ -974,7 +990,7 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
                               className="w-[260px] h-[150px] object-cover rounded"
                             />
                           ) : null}
-                          <input data-role="img-caption" data-sec={idx} data-img={j} className="mt-2 w-full border rounded px-2 py-1 text-sm" placeholder="Caption" value={img.caption||''} onChange={e=> setSections(arr=> arr.map((x,i)=> i===idx? { ...x, images: (x.images||[]).map((it:any,k:number)=> k===j? { ...it, caption: e.target.value }: it) }: x))} />
+                          <input data-role="img-caption" data-sec={idx} data-img={j} className={`mt-2 w-full border rounded px-2 py-1 text-sm ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} placeholder="Caption" value={img.caption||''} onChange={e=> setSections(arr=> arr.map((x,i)=> i===idx? { ...x, images: (x.images||[]).map((it:any,k:number)=> k===j? { ...it, caption: e.target.value }: it) }: x))} disabled={disabled} readOnly={disabled} />
                         </div>
                       ))}
                       {!(s.images||[]).length && <div className="text-sm text-gray-600">No images</div>}
@@ -983,10 +999,12 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
                 )}
               </div>
             ))}
-            <div className="flex items-center gap-2">
-              <button className="px-3 py-1.5 rounded bg-gray-100" onClick={()=> setSections(arr=> [...arr, { id: 'sec_'+Math.random().toString(36).slice(2), type:'text', title:'', text:'' }])}>+ Text Section</button>
-              <button className="px-3 py-1.5 rounded bg-gray-100" onClick={()=> setSections(arr=> [...arr, { id: 'sec_'+Math.random().toString(36).slice(2), type:'images', title:'', images: [] }])}>+ Images Section</button>
-            </div>
+            {!disabled && (
+              <div className="flex items-center gap-2">
+                <button className="px-3 py-1.5 rounded bg-gray-100" onClick={()=> setSections(arr=> [...arr, { id: 'sec_'+Math.random().toString(36).slice(2), type:'text', title:'', text:'' }])}>+ Text Section</button>
+                <button className="px-3 py-1.5 rounded bg-gray-100" onClick={()=> setSections(arr=> [...arr, { id: 'sec_'+Math.random().toString(36).slice(2), type:'images', title:'', images: [] }])}>+ Images Section</button>
+              </div>
+            )}
           </div>
         </div>
         <div className="md:col-span-2">
@@ -995,22 +1013,27 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
           <div className="space-y-2">
             {pricingItems.map((c, i)=> (
               <div key={i} className="grid grid-cols-5 gap-2">
-                <input className="col-span-3 border rounded px-3 py-2" placeholder="Name" value={c.name} onChange={e=>{ const v=e.target.value; setPricingItems(arr=> arr.map((x,j)=> j===i? { ...x, name:v }: x)); }} />
-                <input type="text" className="col-span-1 border rounded px-3 py-2" placeholder="Price" value={c.price} onChange={e=>{ const v = parseAccounting(e.target.value); setPricingItems(arr=> arr.map((x,j)=> j===i? { ...x, price:v }: x)); }} onBlur={()=> setPricingItems(arr=> arr.map((x,j)=> j===i? { ...x, price: formatAccounting(x.price) }: x))} />
-                <button className="col-span-1 px-2 py-2 rounded bg-gray-100" onClick={()=> setPricingItems(arr=> arr.filter((_,j)=> j!==i))}>Remove</button>
+                <input className={`col-span-3 border rounded px-3 py-2 ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} placeholder="Name" value={c.name} onChange={e=>{ const v=e.target.value; setPricingItems(arr=> arr.map((x,j)=> j===i? { ...x, name:v }: x)); }} disabled={disabled} readOnly={disabled} />
+                <input type="text" className={`col-span-1 border rounded px-3 py-2 ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} placeholder="Price" value={c.price} onChange={e=>{ const v = parseAccounting(e.target.value); setPricingItems(arr=> arr.map((x,j)=> j===i? { ...x, price:v }: x)); }} onBlur={!disabled ? ()=> setPricingItems(arr=> arr.map((x,j)=> j===i? { ...x, price: formatAccounting(x.price) }: x)) : undefined} disabled={disabled} readOnly={disabled} />
+                {!disabled && (
+                  <button className="col-span-1 px-2 py-2 rounded bg-gray-100" onClick={()=> setPricingItems(arr=> arr.filter((_,j)=> j!==i))}>Remove</button>
+                )}
               </div>
             ))}
-            <button className="px-3 py-1.5 rounded bg-gray-100" onClick={()=> setPricingItems(arr=> [...arr, { name:'', price:'' }])}>+ Add Cost</button>
+            {!disabled && (
+              <button className="px-3 py-1.5 rounded bg-gray-100" onClick={()=> setPricingItems(arr=> [...arr, { name:'', price:'' }])}>+ Add Cost</button>
+            )}
           </div>
           <div className="mt-3">
             <div className="flex items-center gap-2">
               <div className="text-sm font-semibold">Total: <span className="text-gray-600">${total}</span></div>
-              <label className="flex items-center gap-1 text-sm text-gray-600 cursor-pointer">
+              <label className={`flex items-center gap-1 text-sm text-gray-600 ${disabled ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
                 <input 
                   type="checkbox" 
                   checked={showTotalInPdf} 
                   onChange={e=> setShowTotalInPdf(e.target.checked)}
-                  className="cursor-pointer"
+                  className={disabled ? 'cursor-not-allowed' : 'cursor-pointer'}
+                  disabled={disabled}
                 />
                 <span>Show Total in PDF</span>
               </label>
@@ -1022,18 +1045,22 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
             <div className="space-y-2">
               {optionalServices.map((s, i)=> (
                 <div key={i} className="grid grid-cols-5 gap-2">
-                  <input className="col-span-3 border rounded px-3 py-2" placeholder="Service" value={s.service} onChange={e=>{ const v=e.target.value; setOptionalServices(arr=> arr.map((x,j)=> j===i? { ...x, service:v }: x)); }} />
-                  <input type="text" className="col-span-1 border rounded px-3 py-2" placeholder="Price" value={s.price} onChange={e=>{ const v = parseAccounting(e.target.value); setOptionalServices(arr=> arr.map((x,j)=> j===i? { ...x, price:v }: x)); }} onBlur={()=> setOptionalServices(arr=> arr.map((x,j)=> j===i? { ...x, price: formatAccounting(x.price) }: x))} />
-                  <button className="col-span-1 px-2 py-2 rounded bg-gray-100" onClick={()=> setOptionalServices(arr=> arr.filter((_,j)=> j!==i))}>Remove</button>
+                  <input className={`col-span-3 border rounded px-3 py-2 ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} placeholder="Service" value={s.service} onChange={e=>{ const v=e.target.value; setOptionalServices(arr=> arr.map((x,j)=> j===i? { ...x, service:v }: x)); }} disabled={disabled} readOnly={disabled} />
+                  <input type="text" className={`col-span-1 border rounded px-3 py-2 ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} placeholder="Price" value={s.price} onChange={e=>{ const v = parseAccounting(e.target.value); setOptionalServices(arr=> arr.map((x,j)=> j===i? { ...x, price:v }: x)); }} onBlur={!disabled ? ()=> setOptionalServices(arr=> arr.map((x,j)=> j===i? { ...x, price: formatAccounting(x.price) }: x)) : undefined} disabled={disabled} readOnly={disabled} />
+                  {!disabled && (
+                    <button className="col-span-1 px-2 py-2 rounded bg-gray-100" onClick={()=> setOptionalServices(arr=> arr.filter((_,j)=> j!==i))}>Remove</button>
+                  )}
                 </div>
               ))}
-              <button className="px-3 py-1.5 rounded bg-gray-100" onClick={()=> setOptionalServices(arr=> [...arr, { service:'', price:'' }])}>+ Add Service</button>
+              {!disabled && (
+                <button className="px-3 py-1.5 rounded bg-gray-100" onClick={()=> setOptionalServices(arr=> [...arr, { service:'', price:'' }])}>+ Add Service</button>
+              )}
             </div>
           </div>
         </div>
         <div className="md:col-span-2">
           <h3 className="font-semibold mb-2">Terms</h3>
-          <textarea className="w-full border rounded px-3 py-2" value={terms} onChange={e=>setTerms(e.target.value)} />
+          <textarea className={`w-full border rounded px-3 py-2 ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} value={terms} onChange={e=>setTerms(e.target.value)} disabled={disabled} readOnly={disabled} />
         </div>
       </div>
       {downloadUrl && (renderFingerprint!==lastGeneratedHash) && (
@@ -1071,7 +1098,7 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
         {projectId && !window.location.pathname.includes('/proposals/') && <div />}
         <div className="space-x-2">
           {/* Show Clear Proposal button when in project context, Delete Proposal when in standalone /proposals route */}
-          {projectId && !window.location.pathname.includes('/proposals/') && (
+          {!disabled && projectId && !window.location.pathname.includes('/proposals/') && (
             <button 
               className="px-3 py-2 rounded bg-red-600 text-white hover:bg-red-700 disabled:opacity-50" 
               onClick={handleClearProposal}
@@ -1080,7 +1107,7 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
               Clear Proposal
             </button>
           )}
-          {mode === 'edit' && (!projectId || window.location.pathname.includes('/proposals/')) && (
+          {!disabled && mode === 'edit' && (!projectId || window.location.pathname.includes('/proposals/')) && (
             <button 
               className="px-3 py-2 rounded bg-red-600 text-white hover:bg-red-700" 
               onClick={async () => {
@@ -1109,10 +1136,12 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
               Delete Proposal
             </button>
           )}
-          <button className="px-3 py-2 rounded bg-gray-100" onClick={handleSave} disabled={disabled || isSaving}>
-            {isSaving ? 'Saving...' : 'Save Proposal'}
-          </button>
-          <button className="px-3 py-2 rounded bg-brand-red text-white disabled:opacity-60" disabled={isGenerating || disabled} onClick={handleGenerate}>{isGenerating? 'Generating…' : 'Generate Proposal'}</button>
+          {!disabled && (
+            <button className="px-3 py-2 rounded bg-gray-100" onClick={handleSave} disabled={disabled || isSaving}>
+              {isSaving ? 'Saving...' : 'Save Proposal'}
+            </button>
+          )}
+          <button className="px-3 py-2 rounded bg-brand-red text-white disabled:opacity-60" disabled={isGenerating} onClick={handleGenerate}>{isGenerating? 'Generating…' : 'Generate Proposal'}</button>
           {downloadUrl && (
             (renderFingerprint===lastGeneratedHash) ? (
               <a className="px-3 py-2 rounded bg-black text-white" href={downloadUrl} download="ProjectProposal.pdf">Download PDF</a>

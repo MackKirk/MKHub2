@@ -51,7 +51,7 @@ def seed_hr_permissions():
                 name="human_resources",
                 label="Human Resources",
                 description="Permissions for Human Resources area. Blocking access blocks all sub-permissions.",
-                sort_index=1,  # First category
+                sort_index=5,  # After Documents
             )
             db.add(category)
         

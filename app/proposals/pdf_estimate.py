@@ -32,23 +32,12 @@ def format_number(num):
 
 
 def format_currency(num):
-    """Format currency without trailing zeros. If integer, show no decimals."""
+    """Format currency with exactly 2 decimal places."""
     if num is None:
-        return "$0"
+        return "$0.00"
     num = float(num)
-    # If it's an integer, return without decimals
-    if num == int(num):
-        return f"${int(num):,}"
-    # Otherwise, remove trailing zeros and format with commas
-    # First format with many decimals, then remove trailing zeros
-    formatted = f"{num:.10f}".rstrip('0').rstrip('.')
-    # Split into integer and decimal parts
-    if '.' in formatted:
-        int_part_str, decimal_part_str = formatted.split('.', 1)
-        int_part = int(int_part_str) if int_part_str else 0
-        return f"${int_part:,}.{decimal_part_str}"
-    else:
-        return f"${int(formatted):,}"
+    # Always format with 2 decimal places
+    return f"${num:,.2f}"
 
 
 def draw_template_page(c, doc, data):

@@ -155,6 +155,7 @@ def _has_permission(user: User, perm: str) -> bool:
     # Check hierarchical permissions: if permission belongs to an area, check area access first
     # Format: area:sub:permission (e.g., hr:users:read)
     # Area access permission format: area:access (e.g., hr:access)
+    # Exception: business:customers:* and business:projects:* don't require business:access
     if ':' in perm:
         parts = perm.split(':')
         if len(parts) >= 2:
@@ -163,13 +164,19 @@ def _has_permission(user: User, perm: str) -> bool:
             
             # If this is not the area access permission itself, check area access first
             if perm != area_access_key:
-                # Check if area access is explicitly denied (False in override)
-                if area_access_key in perm_map and not perm_map.get(area_access_key):
-                    return False
-                # Check if area access is granted
-                if area_access_key not in perm_map or not perm_map.get(area_access_key):
-                    # Area access not granted, deny all sub-permissions
-                    return False
+                # Special case: business:customers:* and business:projects:* don't require business:access
+                # They are standalone permissions
+                if area == 'business' and (perm.startswith('business:customers:') or perm.startswith('business:projects:')):
+                    # Skip area access check for business customers/projects permissions
+                    pass
+                else:
+                    # Check if area access is explicitly denied (False in override)
+                    if area_access_key in perm_map and not perm_map.get(area_access_key):
+                        return False
+                    # Check if area access is granted
+                    if area_access_key not in perm_map or not perm_map.get(area_access_key):
+                        # Area access not granted, deny all sub-permissions
+                        return False
     
     # Check the specific permission
     return bool(perm_map.get(perm))

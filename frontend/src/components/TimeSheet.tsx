@@ -256,7 +256,7 @@ export default function TimeSheet({ projectId, userId }: TimeSheetProps) {
         };
       }
 
-      // Add reason text if provided (backend will require it if outside rules)
+      // Add reason text if provided (backend will require it when clocking in/out for another user or if GPS fails)
       if (reasonText.trim()) {
         payload.reason_text = reasonText.trim();
       }
@@ -520,28 +520,43 @@ export default function TimeSheet({ projectId, userId }: TimeSheetProps) {
               )}
             </div>
 
-            {/* Reason text (required if GPS fails or outside rules) */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Reason {(!gpsLocation || gpsError) && <span className="text-red-500">*</span>}
-              </label>
-              <textarea
-                value={reasonText}
-                onChange={(e) => setReasonText(e.target.value)}
-                placeholder="Describe the reason for this attendance entry (required if location cannot be validated)..."
-                className="w-full border rounded px-3 py-2 h-24"
-                minLength={15}
-              />
-              <p className="text-xs text-gray-500 mt-1">
-                {(!gpsLocation || gpsError) ? (
-                  <span className="text-red-600 font-medium">
-                    Required (minimum 15 characters): Location cannot be validated. Please describe why you're clocking {clockType} off-site or without GPS.
-                  </span>
-                ) : (
-                  'Optional, but recommended. Required if location cannot be validated or time is outside tolerance window (±30 minutes).'
-                )}
-              </p>
-            </div>
+            {/* Reason text (required if GPS fails, outside rules, or clocking in/out for another user) */}
+            {(() => {
+              const isClockForAnotherUser = selectedShift && currentUser && selectedShift.worker_id !== currentUser.id;
+              const isReasonRequired = (!gpsLocation || gpsError) || isClockForAnotherUser;
+              
+              return (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Reason {isReasonRequired && <span className="text-red-500">*</span>}
+                  </label>
+                  <textarea
+                    value={reasonText}
+                    onChange={(e) => setReasonText(e.target.value)}
+                    placeholder={isClockForAnotherUser 
+                      ? "Reason is required when clocking in/out for another user..." 
+                      : "Describe the reason for this attendance entry (required if location cannot be validated)..."
+                    }
+                    className="w-full border rounded px-3 py-2 h-24"
+                    minLength={15}
+                    required={isReasonRequired}
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    {isClockForAnotherUser ? (
+                      <span className="text-red-600 font-medium">
+                        Required (minimum 15 characters): You must provide a reason when clocking in/out for another user.
+                      </span>
+                    ) : (!gpsLocation || gpsError) ? (
+                      <span className="text-red-600 font-medium">
+                        Required (minimum 15 characters): Location cannot be validated. Please describe why you're clocking {clockType} off-site or without GPS.
+                      </span>
+                    ) : (
+                      'Optional, but recommended. Required if location cannot be validated or time is outside tolerance window (±30 minutes).'
+                    )}
+                  </p>
+                </div>
+              );
+            })()}
 
             {/* Privacy notice */}
             <div className="p-3 bg-blue-50 border border-blue-200 rounded text-xs text-blue-800">
@@ -566,7 +581,11 @@ export default function TimeSheet({ projectId, userId }: TimeSheetProps) {
                 disabled={
                   submitting ||
                   !selectedTime ||
-                  ((!gpsLocation || gpsError) && (!reasonText.trim() || reasonText.trim().length < 15))
+                  (() => {
+                    const isClockForAnotherUser = selectedShift && currentUser && selectedShift.worker_id !== currentUser.id;
+                    const isReasonRequired = (!gpsLocation || gpsError) || isClockForAnotherUser;
+                    return isReasonRequired && (!reasonText.trim() || reasonText.trim().length < 15);
+                  })()
                 }
                 className="px-4 py-2 rounded bg-brand-red text-white hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
               >

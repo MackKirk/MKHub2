@@ -263,7 +263,7 @@ class EstimateIn(BaseModel):
 
 
 @router.get("/estimates")
-def list_estimates(project_id: Optional[uuid.UUID] = None, db: Session = Depends(get_db), _=Depends(require_permissions("inventory:read"))):
+def list_estimates(project_id: Optional[uuid.UUID] = None, db: Session = Depends(get_db), _=Depends(require_permissions("business:projects:estimate:read", "inventory:read"))):
     from ..models.models import Project, Client
     q = db.query(Estimate)
     if project_id:
@@ -590,7 +590,7 @@ def create_estimate(body: EstimateIn, db: Session = Depends(get_db), _=Depends(r
 
 
 @router.get("/estimates/{estimate_id}")
-def get_estimate(estimate_id: int, db: Session = Depends(get_db), _=Depends(require_permissions("inventory:read"))):
+def get_estimate(estimate_id: int, db: Session = Depends(get_db), _=Depends(require_permissions("business:projects:estimate:read", "inventory:read"))):
     est = db.query(Estimate).filter(Estimate.id == estimate_id).first()
     if not est:
         raise HTTPException(status_code=404, detail="Estimate not found")
@@ -699,7 +699,7 @@ def delete_estimate(estimate_id: int, db: Session = Depends(get_db), _=Depends(r
 
 
 @router.get("/estimates/{estimate_id}/generate")
-async def generate_estimate_pdf(estimate_id: int, db: Session = Depends(get_db), _=Depends(require_permissions("inventory:read"))):
+async def generate_estimate_pdf(estimate_id: int, db: Session = Depends(get_db), _=Depends(require_permissions("business:projects:estimate:read", "inventory:read"))):
     from fastapi.responses import FileResponse
     import tempfile
     import os

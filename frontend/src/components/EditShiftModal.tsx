@@ -9,6 +9,7 @@ export default function EditShiftModal({
   project,
   employees,
   shift,
+  canEdit = true,
   onClose,
   onSave,
 }: {
@@ -16,6 +17,7 @@ export default function EditShiftModal({
   project: any;
   employees: any[];
   shift: any;
+  canEdit?: boolean;
   onClose: () => void;
   onSave: () => Promise<void>;
 }) {
@@ -131,7 +133,8 @@ export default function EditShiftModal({
                 value={startTime}
                 onChange={(e) => setStartTime(e.target.value)}
                 step="900"
-                className="w-full border rounded px-3 py-2"
+                disabled={!canEdit}
+                className={`w-full border rounded px-3 py-2 ${!canEdit ? 'bg-gray-100 cursor-not-allowed' : ''}`}
               />
             </div>
             <div>
@@ -141,7 +144,8 @@ export default function EditShiftModal({
                 value={endTime}
                 onChange={(e) => setEndTime(e.target.value)}
                 step="900"
-                className="w-full border rounded px-3 py-2"
+                disabled={!canEdit}
+                className={`w-full border rounded px-3 py-2 ${!canEdit ? 'bg-gray-100 cursor-not-allowed' : ''}`}
               />
             </div>
           </div>
@@ -154,7 +158,8 @@ export default function EditShiftModal({
             <select
               value={jobType}
               onChange={(e) => setJobType(e.target.value)}
-              className="w-full border rounded px-3 py-2"
+              disabled={!canEdit}
+              className={`w-full border rounded px-3 py-2 ${!canEdit ? 'bg-gray-100 cursor-not-allowed' : ''}`}
             >
               <option value="">No job type selected</option>
               {JOB_TYPES.map((job) => (
@@ -169,13 +174,15 @@ export default function EditShiftModal({
           <button onClick={onClose} className="px-4 py-2 rounded border bg-gray-100 hover:bg-gray-200">
             Cancel
           </button>
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            className="px-4 py-2 rounded bg-brand-red text-white hover:bg-red-700 disabled:opacity-50"
-          >
-            {saving ? 'Saving...' : 'Save Changes'}
-          </button>
+          {canEdit && (
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className="px-4 py-2 rounded bg-brand-red text-white hover:bg-red-700 disabled:opacity-50"
+            >
+              {saving ? 'Saving...' : 'Save Changes'}
+            </button>
+          )}
         </div>
       </div>
     </div>

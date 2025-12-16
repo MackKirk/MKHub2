@@ -46,7 +46,7 @@ function formatHoursMinutes(totalMinutes: number): string {
   return `${hours}h${minutes}min`;
 }
 
-type Project = { id:string, code?:string, name?:string, client_id?:string, client_display_name?:string, address_city?:string, address_province?:string, address_country?:string, address_postal_code?:string, description?:string, status_id?:string, division_id?:string, division_ids?:string[], project_division_ids?:string[], estimator_id?:string, onsite_lead_id?:string, division_onsite_leads?:Record<string, string>, contact_id?:string, contact_name?:string, contact_email?:string, contact_phone?:string, date_start?:string, date_eta?:string, date_end?:string, cost_estimated?:number, cost_actual?:number, service_value?:number, progress?:number, site_id?:string, site_name?:string, site_address_line1?:string, site_city?:string, site_province?:string, site_country?:string, site_postal_code?:string, status_label?:string, is_bidding?:boolean };
+type Project = { id:string, code?:string, name?:string, client_id?:string, client_display_name?:string, client_name?:string, address?:string, address_city?:string, address_province?:string, address_country?:string, address_postal_code?:string, description?:string, status_id?:string, division_id?:string, division_ids?:string[], project_division_ids?:string[], estimator_id?:string, onsite_lead_id?:string, division_onsite_leads?:Record<string, string>, contact_id?:string, contact_name?:string, contact_email?:string, contact_phone?:string, date_start?:string, date_eta?:string, date_end?:string, cost_estimated?:number, cost_actual?:number, service_value?:number, progress?:number, site_id?:string, site_name?:string, site_address_line1?:string, site_address_line2?:string, site_city?:string, site_province?:string, site_country?:string, site_postal_code?:string, status_label?:string, is_bidding?:boolean };
 type ProjectFile = { id:string, file_object_id:string, is_image?:boolean, content_type?:string, category?:string, original_name?:string, uploaded_at?:string };
 type Update = { id:string, timestamp?:string, text?:string, images?:any };
 type Report = { id:string, title?:string, category_id?:string, division_id?:string, description?:string, images?:any, status?:string, created_at?:string, created_by?:string };
@@ -70,22 +70,58 @@ export default function ProjectDetail(){
   // Check for tab query parameter
   const searchParams = new URLSearchParams(location.search);
   const initialTab = (searchParams.get('tab') as 'overview'|'general'|'reports'|'dispatch'|'timesheet'|'files'|'photos'|'proposal'|'estimate'|'orders'|null) || null;
-  const [tab, setTab] = useState<'overview'|'general'|'reports'|'dispatch'|'timesheet'|'files'|'proposal'|'estimate'|'orders'|null>(initialTab);
+  const [tab, setTab] = useState<'overview'|'general'|'reports'|'dispatch'|'timesheet'|'files'|'photos'|'proposal'|'estimate'|'orders'|null>(initialTab);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [showOnSiteLeadsModal, setShowOnSiteLeadsModal] = useState(false);
   const [isHeroCollapsed, setIsHeroCollapsed] = useState(false);
   const estimateBuilderRef = useRef<EstimateBuilderRef>(null);
   
+  // Check user permissions (moved before useEffect that uses them)
+  const { data: me } = useQuery({ queryKey:['me'], queryFn: ()=>api<any>('GET','/auth/me') });
+  const isAdmin = (me?.roles||[]).includes('admin');
+  const permissions = new Set(me?.permissions || []);
+  const hasEditPermission = isAdmin || permissions.has('business:projects:write');
+  const canEditEstimate = isAdmin || permissions.has('business:projects:estimate:write');
+  
+  // Helper to check if user has permission for a tab
+  const hasTabPermission = useMemo(() => {
+    return (tabKey: string): boolean => {
+      if (isAdmin) return true;
+      const permissionMap: Record<string, string> = {
+        'reports': 'business:projects:reports:read',
+        'dispatch': 'business:projects:workload:read',
+        'timesheet': 'business:projects:timesheet:read',
+        'files': 'business:projects:files:read',
+        'proposal': 'business:projects:proposal:read',
+        'estimate': 'business:projects:estimate:read',
+        'orders': 'business:projects:orders:read',
+      };
+      const requiredPerm = permissionMap[tabKey];
+      return !requiredPerm || permissions.has(requiredPerm);
+    };
+  }, [isAdmin, permissions]);
+  
   // Update tab when URL search params change
   useEffect(() => {
+    // Don't check permissions if user data is still loading
+    if (me === undefined) {
+      return;
+    }
+    
     const searchParams = new URLSearchParams(location.search);
     const tabParam = searchParams.get('tab') as 'overview'|'general'|'reports'|'dispatch'|'timesheet'|'files'|'photos'|'proposal'|'estimate'|'orders'|null;
-    if (tabParam && ['overview','general','reports','dispatch','timesheet','files','proposal','estimate','orders'].includes(tabParam)) {
-      setTab(tabParam);
+    if (tabParam && ['overview','general','reports','dispatch','timesheet','files','photos','proposal','estimate','orders'].includes(tabParam)) {
+      // Check permission before setting tab
+      if (tabParam === 'overview' || hasTabPermission(tabParam)) {
+        setTab(tabParam);
+      } else {
+        setTab(null);
+        toast.error('You do not have permission to access this tab');
+      }
     } else {
       setTab(null);
     }
-  }, [location.search]);
+  }, [location.search, hasTabPermission, me]);
   
   const cover = useMemo(()=>{
     const img = (files||[]).find(f=> String(f.category||'')==='project-cover-derived');
@@ -98,7 +134,7 @@ export default function ProjectDetail(){
   }, [settings]);
   const [overlayResolved, setOverlayResolved] = useState<string>('');
   const [showAuditLogModal, setShowAuditLogModal] = useState(false);
-  const [auditLogSection, setAuditLogSection] = useState<'timesheet' | 'reports' | 'schedule' | 'files' | 'proposal' | 'estimate'>('timesheet');
+  const [auditLogSection, setAuditLogSection] = useState<'timesheet' | 'reports' | 'schedule' | 'files' | 'photos' | 'proposal' | 'estimate'>('timesheet');
   const [editStatusModal, setEditStatusModal] = useState(false);
   const [editProgressModal, setEditProgressModal] = useState(false);
   const [editProjectNameModal, setEditProjectNameModal] = useState(false);
@@ -118,11 +154,29 @@ export default function ProjectDetail(){
     })();
   }, [overlayUrl]);
 
-  const availableTabs = proj?.is_bidding 
+  // Base available tabs
+  const baseAvailableTabs = proj?.is_bidding 
     ? (['overview','files','proposal','estimate'] as const)
     : (['overview','reports','dispatch','timesheet','files','proposal','estimate','orders'] as const);
+  
+  // Filter tabs based on permissions (only when user data is loaded)
+  const availableTabs = useMemo(() => {
+    // If user data is still loading, return all base tabs to avoid permission errors
+    if (me === undefined) {
+      return baseAvailableTabs;
+    }
+    return baseAvailableTabs.filter(tab => {
+      if (tab === 'overview') return true; // Overview is always available
+      return hasTabPermission(tab);
+    });
+  }, [baseAvailableTabs, hasTabPermission, me]);
 
   const handleTabClick = async (newTab: typeof availableTabs[number]) => {
+    // Check permission for the tab being accessed
+    if (newTab !== 'overview' && !hasTabPermission(newTab)) {
+      toast.error('You do not have permission to access this tab');
+      return;
+    }
     // If leaving estimate tab and there are unsaved changes, show confirmation
     if (tab === 'estimate' && newTab !== 'estimate' && estimateBuilderRef.current?.hasUnsavedChanges()) {
       const result = await confirm({
@@ -262,15 +316,17 @@ export default function ProjectDetail(){
                   <div>
                     <div className="flex items-center gap-1.5 mb-1">
                       <label className="text-xs text-gray-600 block">Project Name</label>
-                      <button
-                        onClick={() => setEditProjectNameModal(true)}
-                        className="text-gray-400 hover:text-[#7f1010] transition-colors"
-                        title="Edit Project Name"
-                      >
-                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                        </svg>
-                      </button>
+                      {hasEditPermission && (
+                        <button
+                          onClick={() => setEditProjectNameModal(true)}
+                          className="text-gray-400 hover:text-[#7f1010] transition-colors"
+                          title="Edit Project Name"
+                        >
+                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                          </svg>
+                        </button>
+                      )}
                     </div>
                     <div className="text-sm font-medium break-words">{proj?.name||'—'}</div>
                   </div>
@@ -281,15 +337,17 @@ export default function ProjectDetail(){
                   <div className="col-span-2">
                     <div className="flex items-center gap-1.5 mb-1">
                       <label className="text-xs text-gray-600 block">Site</label>
-                      <button
-                        onClick={() => setEditSiteModal(true)}
-                        className="text-gray-400 hover:text-[#7f1010] transition-colors"
-                        title="Edit Site"
-                      >
-                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                        </svg>
-                      </button>
+                      {hasEditPermission && (
+                        <button
+                          onClick={() => setEditSiteModal(true)}
+                          className="text-gray-400 hover:text-[#7f1010] transition-colors"
+                          title="Edit Site"
+                        >
+                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                          </svg>
+                        </button>
+                      )}
                     </div>
                     <div className="text-sm font-medium">
                       {(() => {
@@ -345,30 +403,34 @@ export default function ProjectDetail(){
                   <div>
                     <div className="flex items-center gap-1.5 mb-2">
                       <label className="text-xs text-gray-600 block">Status</label>
-                      <button
-                        onClick={() => setEditStatusModal(true)}
-                        className="text-gray-400 hover:text-[#7f1010] transition-colors"
-                        title="Edit Status"
-                      >
-                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                        </svg>
-                      </button>
+                      {hasEditPermission && (
+                        <button
+                          onClick={() => setEditStatusModal(true)}
+                          className="text-gray-400 hover:text-[#7f1010] transition-colors"
+                          title="Edit Status"
+                        >
+                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                          </svg>
+                        </button>
+                      )}
                     </div>
                     <span className="px-3 py-1.5 rounded text-sm font-medium inline-block" style={{ backgroundColor: statusColor, color: '#000' }}>{statusLabel||'—'}</span>
                   </div>
                   <div>
                     <div className="flex items-center gap-1.5 mb-2">
                       <label className="text-xs text-gray-600 block">Progress</label>
-                      <button
-                        onClick={() => setEditProgressModal(true)}
-                        className="text-gray-400 hover:text-[#7f1010] transition-colors"
-                        title="Edit Progress"
-                      >
-                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                        </svg>
-                      </button>
+                      {hasEditPermission && (
+                        <button
+                          onClick={() => setEditProgressModal(true)}
+                          className="text-gray-400 hover:text-[#7f1010] transition-colors"
+                          title="Edit Progress"
+                        >
+                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                          </svg>
+                        </button>
+                      )}
                     </div>
                     <div className="flex items-center gap-3">
                       <div className="flex-1 h-3 bg-gray-200 rounded-full overflow-hidden">
@@ -385,15 +447,17 @@ export default function ProjectDetail(){
                 <div className="mb-6">
                   <div className="flex items-center gap-1.5 mb-2">
                     <label className="text-xs text-gray-600 block">Estimator</label>
-                    <button
-                      onClick={() => setEditEstimatorModal(true)}
-                      className="text-gray-400 hover:text-[#7f1010] transition-colors"
-                      title="Edit Estimator"
-                    >
-                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                      </svg>
-                    </button>
+                    {hasEditPermission && (
+                      <button
+                        onClick={() => setEditEstimatorModal(true)}
+                        className="text-gray-400 hover:text-[#7f1010] transition-colors"
+                        title="Edit Estimator"
+                      >
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                        </svg>
+                      </button>
+                    )}
                   </div>
                   {estimator ? (
                     <div className="flex items-center gap-3">
@@ -427,7 +491,7 @@ export default function ProjectDetail(){
                 )}
 
                 {/* Project Divisions */}
-                <ProjectDivisionsHeroSection projectId={String(id)} proj={proj} />
+                <ProjectDivisionsHeroSection projectId={String(id)} proj={proj} hasEditPermission={hasEditPermission} />
                 
                 {proj?.date_eta && (
                   <div>
@@ -470,7 +534,7 @@ export default function ProjectDetail(){
               <div className="mb-4 grid md:grid-cols-2 gap-4">
                 <div className="rounded-xl border bg-white p-4">
                   <h4 className="font-semibold mb-3">Workload</h4>
-                  <CalendarMock title="Project Calendar" projectId={String(id)} />
+                  <CalendarMock title="Project Calendar" projectId={String(id)} hasEditPermission={hasEditPermission} />
                 </div>
                 <div className="rounded-xl border bg-white p-4">
                   <h4 className="font-semibold mb-3">Costs Summary</h4>
@@ -526,7 +590,7 @@ export default function ProjectDetail(){
       )}
 
       {/* Danger Zone */}
-      {!tab && (
+      {!tab && hasEditPermission && (
         <div className="mt-6 rounded-xl border border-red-200 bg-red-50 p-4">
           <h3 className="text-sm font-semibold text-red-900 mb-3">Danger Zone</h3>
           <div className="flex gap-3">
@@ -577,7 +641,7 @@ export default function ProjectDetail(){
                   {!proj?.is_bidding && (
                     <div className="md:col-span-3 rounded-xl border bg-white p-4">
                       <h4 className="font-semibold mb-2">Workload</h4>
-                      <CalendarMock title="Project Calendar" projectId={String(id)} />
+                      <CalendarMock title="Project Calendar" projectId={String(id)} hasEditPermission={hasEditPermission} />
                     </div>
                   )}
                 </div>
@@ -625,7 +689,7 @@ export default function ProjectDetail(){
                   </div>
                   
                   <div className="rounded-xl border bg-white p-4">
-                    <EstimateBuilder ref={estimateBuilderRef} projectId={String(id)} statusLabel={proj?.status_label||''} settings={settings||{}} isBidding={proj?.is_bidding} />
+                    <EstimateBuilder ref={estimateBuilderRef} projectId={String(id)} statusLabel={proj?.status_label||''} settings={settings||{}} isBidding={proj?.is_bidding} canEdit={canEditEstimate} />
                   </div>
                 </div>
               )}
@@ -645,6 +709,7 @@ export default function ProjectDetail(){
           divisionLeads={proj?.division_onsite_leads || {}}
           settings={settings||{}}
           employees={employees||[]}
+          canEdit={hasEditPermission}
           onClose={() => setShowOnSiteLeadsModal(false)}
           onUpdate={async (updatedLeads, updatedDivisions) => {
             try {
@@ -848,6 +913,7 @@ function UpdatesTab({ projectId, items, onRefresh }:{ projectId:string, items: U
 }
 
 function ReportsTabEnhanced({ projectId, items, onRefresh }:{ projectId:string, items: Report[], onRefresh: ()=>any }){
+  const confirm = useConfirm();
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [selectedReportId, setSelectedReportId] = useState<string | null>(null);
   const [previewAttachment, setPreviewAttachment] = useState<{file_object_id: string, original_name: string, content_type: string}|null>(null);
@@ -855,6 +921,12 @@ function ReportsTabEnhanced({ projectId, items, onRefresh }:{ projectId:string, 
   const { data:me } = useQuery({ queryKey:['me'], queryFn: ()=>api<any>('GET','/auth/me') });
   const { data:settings } = useQuery({ queryKey:['settings'], queryFn: ()=>api<any>('GET','/settings') });
   const { data:employees } = useQuery({ queryKey:['employees'], queryFn: ()=>api<any>('GET','/employees') });
+  
+  // Check permissions for reports (using local scope variables)
+  const { data: meReports } = useQuery({ queryKey:['me'], queryFn: ()=>api<any>('GET','/auth/me') });
+  const isAdminReports = (meReports?.roles||[]).includes('admin');
+  const permissionsReports = new Set(meReports?.permissions || []);
+  const canEditReports = isAdminReports || permissionsReports.has('business:projects:reports:write');
   
   const reportCategories = (settings?.report_categories || []) as any[];
 
@@ -1030,13 +1102,15 @@ function ReportsTabEnhanced({ projectId, items, onRefresh }:{ projectId:string, 
                 </optgroup>
               )}
             </select>
-            <button
-              onClick={() => setShowCreateModal(true)}
-              className="px-4 py-2 rounded bg-brand-red hover:bg-red-700 text-white text-sm font-medium flex items-center gap-2"
-            >
-              <span>+</span>
-              <span>New Report</span>
-            </button>
+            {canEditReports && (
+              <button
+                onClick={() => setShowCreateModal(true)}
+                className="px-4 py-2 rounded bg-brand-red hover:bg-red-700 text-white text-sm font-medium flex items-center gap-2"
+              >
+                <span>+</span>
+                <span>New Report</span>
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -1101,7 +1175,9 @@ function ReportsTabEnhanced({ projectId, items, onRefresh }:{ projectId:string, 
             }) : (
               <div className="p-8 text-center text-gray-500">
                 <div className="text-sm mb-2">No reports yet</div>
-                <div className="text-xs">Click "New Report" to create your first project report</div>
+                {canEditReports && (
+                  <div className="text-xs">Click "New Report" to create your first project report</div>
+                )}
               </div>
             )}
           </div>
@@ -1148,23 +1224,31 @@ function ReportsTabEnhanced({ projectId, items, onRefresh }:{ projectId:string, 
                         )}
                       </div>
                     </div>
-                    <button
-                      onClick={async () => {
-                        if (!confirm('Delete this report?')) return;
-                        try {
-                          await api('DELETE', `/projects/${projectId}/reports/${selectedReport.id}`);
-                          await onRefresh();
-                          setSelectedReportId(null);
-                          toast.success('Report deleted');
-                        } catch (_e) {
-                          toast.error('Failed to delete report');
-                        }
-                      }}
-                      className="px-3 py-1.5 rounded text-gray-500 hover:bg-red-50 hover:text-red-600 text-sm flex-shrink-0"
-                      title="Delete report"
-                    >
-                      🗑️ Delete
-                    </button>
+                    {canEditReports && (
+                      <button
+                        onClick={async () => {
+                          const result = await confirm({
+                            title: 'Delete Report',
+                            message: `Are you sure you want to delete "${selectedReport.title || 'this report'}"? This action cannot be undone.`,
+                            confirmText: 'Delete',
+                            cancelText: 'Cancel'
+                          });
+                          if (result !== 'confirm') return;
+                          try {
+                            await api('DELETE', `/projects/${projectId}/reports/${selectedReport.id}`);
+                            await onRefresh();
+                            setSelectedReportId(null);
+                            toast.success('Report deleted');
+                          } catch (_e) {
+                            toast.error('Failed to delete report');
+                          }
+                        }}
+                        className="px-3 py-1.5 rounded text-gray-500 hover:bg-red-50 hover:text-red-600 text-sm flex-shrink-0"
+                        title="Delete report"
+                      >
+                        🗑️ Delete
+                      </button>
+                    )}
                   </div>
                 </div>
 
@@ -1526,6 +1610,12 @@ function ProjectFilesTabEnhanced({ projectId, files, onRefresh }:{ projectId:str
   const [previewImage, setPreviewImage] = useState<{ url:string, name:string }|null>(null);
   const [previewPdf, setPreviewPdf] = useState<{ url:string, name:string }|null>(null);
   
+  // Check permissions for files
+  const { data: me } = useQuery({ queryKey:['me'], queryFn: ()=>api<any>('GET','/auth/me') });
+  const isAdmin = (me?.roles||[]).includes('admin');
+  const permissions = new Set(me?.permissions || []);
+  const canEditFiles = isAdmin || permissions.has('business:projects:files:write');
+  
   const { data: categories } = useQuery({
     queryKey: ['file-categories'],
     queryFn: ()=>api<any[]>('GET', '/clients/file-categories')
@@ -1699,17 +1789,17 @@ function ProjectFilesTabEnhanced({ projectId, files, onRefresh }:{ projectId:str
                   <button
                     key={cat.id}
                     onClick={() => setSelectedCategory(cat.id)}
-                    onDragOver={(e) => {
+                    onDragOver={canEditFiles ? (e) => {
                       e.preventDefault();
                       e.stopPropagation();
                       setIsDragging(true);
-                    }}
-                    onDragLeave={(e) => {
+                    } : undefined}
+                    onDragLeave={canEditFiles ? (e) => {
                       e.preventDefault();
                       e.stopPropagation();
                       setIsDragging(false);
-                    }}
-                    onDrop={async (e) => {
+                    } : undefined}
+                    onDrop={canEditFiles ? async (e) => {
                       e.preventDefault();
                       e.stopPropagation();
                       setIsDragging(false);
@@ -1725,7 +1815,7 @@ function ProjectFilesTabEnhanced({ projectId, files, onRefresh }:{ projectId:str
                         await handleMoveFile(draggedFileId, cat.id);
                         setDraggedFileId(null);
                       }
-                    }}
+                    } : undefined}
                     className={`w-full text-left px-4 py-3 border-b hover:bg-white transition-colors ${
                       selectedCategory === cat.id ? 'bg-white border-l-4 border-l-brand-red font-semibold' : 'text-gray-700'
                     } ${isDragging ? 'bg-blue-50' : ''}`}
@@ -1757,18 +1847,18 @@ function ProjectFilesTabEnhanced({ projectId, files, onRefresh }:{ projectId:str
 
           {/* Right Content Area */}
           <div 
-            className={`flex-1 overflow-y-auto p-4 ${isDragging ? 'bg-blue-50 border-2 border-dashed border-blue-400' : ''}`}
-            onDragOver={(e) => {
+            className={`flex-1 overflow-y-auto p-4 ${isDragging && canEditFiles ? 'bg-blue-50 border-2 border-dashed border-blue-400' : ''}`}
+            onDragOver={canEditFiles ? (e) => {
               e.preventDefault();
               e.stopPropagation();
               setIsDragging(true);
-            }}
-            onDragLeave={(e) => {
+            } : undefined}
+            onDragLeave={canEditFiles ? (e) => {
               e.preventDefault();
               e.stopPropagation();
               setIsDragging(false);
-            }}
-            onDrop={async (e) => {
+            } : undefined}
+            onDrop={canEditFiles ? async (e) => {
               e.preventDefault();
               e.stopPropagation();
               setIsDragging(false);
@@ -1785,7 +1875,7 @@ function ProjectFilesTabEnhanced({ projectId, files, onRefresh }:{ projectId:str
                 await handleMoveFile(draggedFileId, selectedCategory);
                 setDraggedFileId(null);
               }
-            }}
+            } : undefined}
           >
             <div className="mb-3 flex items-center justify-between">
               <div className="text-sm font-semibold">
@@ -1794,12 +1884,14 @@ function ProjectFilesTabEnhanced({ projectId, files, onRefresh }:{ projectId:str
                  categories?.find((c: any) => c.id === selectedCategory)?.name || 'Files'}
                 <span className="ml-2 text-gray-500">({currentFiles.length})</span>
               </div>
-              <button
-                onClick={() => setShowUpload(true)}
-                className="px-3 py-1.5 rounded bg-brand-red text-white text-sm"
-              >
-                + Upload File
-              </button>
+              {canEditFiles && (
+                <button
+                  onClick={() => setShowUpload(true)}
+                  className="px-3 py-1.5 rounded bg-brand-red text-white text-sm"
+                >
+                  + Upload File
+                </button>
+              )}
             </div>
 
             <div className="rounded-lg border overflow-hidden bg-white">
@@ -1813,10 +1905,10 @@ function ProjectFilesTabEnhanced({ projectId, files, onRefresh }:{ projectId:str
                     return (
                       <div
                         key={f.id}
-                        draggable
-                        onDragStart={() => setDraggedFileId(f.id)}
+                        draggable={canEditFiles}
+                        onDragStart={() => canEditFiles && setDraggedFileId(f.id)}
                         onDragEnd={() => setDraggedFileId(null)}
-                        className="flex items-center gap-3 px-3 py-2 hover:bg-gray-50 cursor-move"
+                        className={`flex items-center gap-3 px-3 py-2 hover:bg-gray-50 ${canEditFiles ? 'cursor-move' : ''}`}
                       >
                         {isImg ? (
                           <div 
@@ -1864,25 +1956,29 @@ function ProjectFilesTabEnhanced({ projectId, files, onRefresh }:{ projectId:str
                           >
                             ⬇️
                           </button>
-                          <button
-                            onClick={() => {
-                              const newCat = prompt('Move to category (leave empty for uncategorized):');
-                              if (newCat !== null) {
-                                handleMoveFile(f.id, newCat || 'uncategorized');
-                              }
-                            }}
-                            title="Move to category"
-                            className="p-2 rounded hover:bg-gray-100"
-                          >
-                            📦
-                          </button>
-                          <button
-                            onClick={() => handleDeleteFile(f.id)}
-                            title="Delete"
-                            className="p-2 rounded hover:bg-red-50 text-red-600"
-                          >
-                            🗑️
-                          </button>
+                          {canEditFiles && (
+                            <>
+                              <button
+                                onClick={() => {
+                                  const newCat = prompt('Move to category (leave empty for uncategorized):');
+                                  if (newCat !== null) {
+                                    handleMoveFile(f.id, newCat || 'uncategorized');
+                                  }
+                                }}
+                                title="Move to category"
+                                className="p-2 rounded hover:bg-gray-100"
+                              >
+                                📦
+                              </button>
+                              <button
+                                onClick={() => handleDeleteFile(f.id)}
+                                title="Delete"
+                                className="p-2 rounded hover:bg-red-50 text-red-600"
+                              >
+                                🗑️
+                              </button>
+                            </>
+                          )}
                         </div>
                       </div>
                     );
@@ -1892,7 +1988,9 @@ function ProjectFilesTabEnhanced({ projectId, files, onRefresh }:{ projectId:str
                 <div className="px-3 py-8 text-center text-gray-500">
                   <div className="text-4xl mb-3">📁</div>
                   <div className="text-sm">No files in this category</div>
-                  <div className="text-xs mt-1">Drag and drop files here or click "Upload File"</div>
+                  {canEditFiles && (
+                    <div className="text-xs mt-1">Drag and drop files here or click "Upload File"</div>
+                  )}
                 </div>
               )}
             </div>
@@ -2013,6 +2111,12 @@ function ProjectFilesTabEnhanced({ projectId, files, onRefresh }:{ projectId:str
 function ProjectProposalTab({ projectId, clientId, siteId, proposals, statusLabel, settings }:{ projectId:string, clientId:string, siteId?:string, proposals: Proposal[], statusLabel:string, settings:any }){
   const queryClient = useQueryClient();
   
+  // Check permissions for proposals
+  const { data: me } = useQuery({ queryKey:['me'], queryFn: ()=>api<any>('GET','/auth/me') });
+  const isAdmin = (me?.roles||[]).includes('admin');
+  const permissions = new Set(me?.permissions || []);
+  const hasEditProposalPermission = isAdmin || permissions.has('business:projects:proposal:write');
+  
   // Get the first (and only) proposal for this project
   const proposal = (proposals||[])[0];
   
@@ -2029,13 +2133,14 @@ function ProjectProposalTab({ projectId, clientId, siteId, proposals, statusLabe
     queryFn: ()=>api<Proposal[]>('GET', `/proposals?project_id=${encodeURIComponent(String(projectId||''))}`) 
   });
   
-  // Check if editing is allowed based on status
-  // Only allow editing if status is "prospecting"
+  // Check if editing is allowed based on status and permissions
+  // Only allow editing if status is "prospecting" AND user has edit permission
   const canEdit = useMemo(()=>{
+    if (!hasEditProposalPermission) return false; // No permission = no edit
     if (!statusLabel) return true; // Default to allow if no status
     // Only allow editing if status is "prospecting"
     return statusLabel.toLowerCase() === 'prospecting';
-  }, [statusLabel]);
+  }, [statusLabel, hasEditProposalPermission]);
   
   const location = useLocation();
   const nav = useNavigate();
@@ -2201,6 +2306,7 @@ function TimesheetTab({ projectId }:{ projectId:string }){
   const [editingEntry, setEditingEntry] = useState<any>(null);
   const [editStartTime, setEditStartTime] = useState<string>('');
   const [editEndTime, setEditEndTime] = useState<string>('');
+  const [editBreakMinutes, setEditBreakMinutes] = useState<string>('0');
   
   // Fetch project details for confirmation messages
   const { data: projectData } = useQuery({ 
@@ -2250,6 +2356,26 @@ function TimesheetTab({ projectId }:{ projectId:string }){
     queryFn: () => api<any[]>('GET', `/dispatch/projects/${projectId}/shifts${monthRange ? `?date_range=${monthRange}` : ''}`),
     enabled: !!projectId
   });
+
+  // Timesheet audit logs (read-permitted source used as fallback for View Timesheet users)
+  const logsMonth = useMemo(() => {
+    const d = String(workDate || '').slice(0, 7);
+    if (d) return d;
+    return String(month || '').slice(0, 7) || getCurrentMonthLocal();
+  }, [workDate, month]);
+  const logsQs = useMemo(() => {
+    const p = new URLSearchParams();
+    if (logsMonth) p.set('month', logsMonth);
+    p.set('limit', '500');
+    p.set('offset', '0');
+    const s = p.toString();
+    return s ? ('?' + s) : '';
+  }, [logsMonth]);
+  const { data: timesheetLogs } = useQuery({
+    queryKey: ['timesheetLogsMini', projectId, logsQs],
+    queryFn: () => api<any[]>('GET', `/projects/${projectId}/timesheet/logs${logsQs}`),
+    enabled: !!projectId
+  });
   
   // Create a map of shifts by user_id and work_date for quick lookup
   const shiftsByUserAndDate = useMemo(() => {
@@ -2265,29 +2391,124 @@ function TimesheetTab({ projectId }:{ projectId:string }){
     }
     return map;
   }, [allShifts]);
-  
+
+  const { data:employees } = useQuery({ queryKey:['employees'], queryFn: ()=>api<any[]>('GET','/employees') });
+
+  // Find latest attendance-related log for a worker/date/type (clock-in / clock-out)
+  const findAttendanceLog = useCallback((workerId: any, dateStr: string, type: 'in'|'out') => {
+    const logs = (timesheetLogs || []) as any[];
+    if (!logs.length || !workerId || !dateStr) return null;
+    const day = String(dateStr).slice(0, 10);
+    const wantType = type === 'in' ? 'clock-in' : 'clock-out';
+    const worker = (employees || []).find((e: any) => String(e.id) === String(workerId));
+    const workerName = worker?.name || worker?.username || '';
+    const matches = logs.filter((l: any) => {
+      const ch = l?.changes || {};
+      if (!ch?.attendance_type) return false;
+      if (String(ch.attendance_type) !== wantType) return false;
+      if (ch.work_date && String(ch.work_date).slice(0, 10) !== day) return false;
+      if (ch.worker_id && String(ch.worker_id) === String(workerId)) return true;
+      if (workerName && ch.worker_name && String(ch.worker_name).toLowerCase() === String(workerName).toLowerCase()) return true;
+      return false;
+    });
+    if (!matches.length) return null;
+    matches.sort((a: any, b: any) => {
+      const aT = new Date(a?.changes?.time_entered || a?.changes?.time_selected || a?.timestamp || 0).getTime();
+      const bT = new Date(b?.changes?.time_entered || b?.changes?.time_selected || b?.timestamp || 0).getTime();
+      return bT - aT;
+    });
+    return matches[0];
+  }, [timesheetLogs, employees]);
+
+  const formatTimeFromIsoToHHMMSSLocal = (iso: string | null | undefined): string | null => {
+    if (!iso) return null;
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return null;
+    const hh = String(d.getHours()).padStart(2, '0');
+    const mm = String(d.getMinutes()).padStart(2, '0');
+    return `${hh}:${mm}:00`;
+  };
+
+  // Read-only derived entries from logs (so View Timesheet users can still see history)
+  const displayEntries = useMemo(() => {
+    if (entries && entries.length) return entries;
+    const logs = (timesheetLogs || []) as any[];
+    if (!logs.length) return entries;
+    const rows: any[] = [];
+    const seen = new Set<string>();
+
+    // Prefer shifts (project-scoped) to build per-worker/day rows
+    const keys = Object.keys(shiftsByUserAndDate || {});
+    for (const key of keys) {
+      const parts = key.split('_');
+      const workerId = parts[0];
+      const workDateStr = parts.slice(1).join('_');
+      if (!workerId || !workDateStr) continue;
+      if (month && String(workDateStr).slice(0,7) !== String(month).slice(0,7)) continue;
+      if (userFilter && String(userFilter) !== String(workerId)) continue;
+
+      const clockInLog = findAttendanceLog(workerId, workDateStr, 'in');
+      const clockOutLog = findAttendanceLog(workerId, workDateStr, 'out');
+      if (!clockInLog && !clockOutLog) continue;
+
+      const clockInIso = clockInLog?.changes?.time_selected || clockInLog?.changes?.time_entered || null;
+      const clockOutIso = clockOutLog?.changes?.time_selected || clockOutLog?.changes?.time_entered || null;
+
+      let minutes = 0;
+      if (clockInIso && clockOutIso) {
+        const a = new Date(clockInIso).getTime();
+        const b = new Date(clockOutIso).getTime();
+        if (!Number.isNaN(a) && !Number.isNaN(b) && b > a) minutes = Math.floor((b - a) / 60000);
+      }
+
+      const emp = (employees || []).find((e: any) => String(e.id) === String(workerId));
+      const rowId = `attendance-${workerId}-${String(workDateStr).slice(0,10)}`;
+      if (seen.has(rowId)) continue;
+      seen.add(rowId);
+
+      rows.push({
+        id: rowId,
+        user_id: workerId,
+        user_name: emp?.name || emp?.username || (clockInLog?.changes?.worker_name || clockOutLog?.changes?.worker_name || ''),
+        user_avatar_file_id: emp?.profile_photo_file_id || null,
+        work_date: String(workDateStr).slice(0,10),
+        start_time: formatTimeFromIsoToHHMMSSLocal(clockInIso),
+        end_time: formatTimeFromIsoToHHMMSSLocal(clockOutIso),
+        minutes,
+        break_minutes: 0,
+        is_from_attendance: true,
+        notes: 'Clock-in via attendance system'
+      });
+    }
+
+    return rows;
+  }, [entries, timesheetLogs, shiftsByUserAndDate, employees, month, userFilter, findAttendanceLog]);
+
   // Calculate total minutes with break deduction
   // Use break_minutes from backend (already calculated using same function as attendance table)
   const { minutesTotal, breakTotal } = useMemo(() => {
     let total = 0;
     let breakTotal = 0;
-    entries.forEach((e: any) => {
+    (displayEntries || []).forEach((e: any) => {
       // e.minutes is already net minutes (after break deduction) for attendance entries
       const entryMinutes = Number(e.minutes || 0);
       total += entryMinutes;
-      
-      // Use break_minutes from backend (already calculated)
       const breakMin = e.break_minutes !== undefined && e.break_minutes !== null ? e.break_minutes : 0;
       breakTotal += breakMin;
     });
     return { minutesTotal: total, breakTotal };
-  }, [entries]);
+  }, [displayEntries]);
   
   const hoursTotalMinutes = minutesTotal; // Already net (after break)
-  const { data:employees } = useQuery({ queryKey:['employees'], queryFn: ()=>api<any[]>('GET','/employees') });
   
   // Get current user info to check if supervisor/admin
   const { data: currentUser } = useQuery({ queryKey:['me'], queryFn: ()=>api<any>('GET','/auth/me') });
+  
+  // Check permissions for timesheet
+  const isAdmin = (currentUser?.roles||[]).includes('admin');
+  const permissions = new Set(currentUser?.permissions || []);
+  const canEditTimesheet = isAdmin || permissions.has('business:projects:timesheet:write');
+  const canEditAttendance = isAdmin || permissions.has('hr:attendance:write') || permissions.has('hr:users:edit:timesheet') || permissions.has('users:write');
   
   // Check if user is supervisor or admin
   const isSupervisorOrAdmin = useMemo(() => {
@@ -2296,6 +2517,35 @@ function TimesheetTab({ projectId }:{ projectId:string }){
     const permissions = currentUser.permissions || [];
     return roles.includes('admin') || roles.includes('supervisor') || permissions.includes('dispatch:write');
   }, [currentUser]);
+
+  // Check if user is on-site lead of the project
+  const isOnSiteLead = useMemo(() => {
+    if (!currentUser || !projectData) return false;
+    const userId = String(currentUser.id);
+    
+    // Check division_onsite_leads
+    if (projectData.division_onsite_leads) {
+      for (const divisionId in projectData.division_onsite_leads) {
+        const leadId = projectData.division_onsite_leads[divisionId];
+        if (String(leadId) === userId) {
+          return true;
+        }
+      }
+    }
+    
+    // Check legacy onsite_lead_id field
+    if (projectData.onsite_lead_id && String(projectData.onsite_lead_id) === userId) {
+      return true;
+    }
+    
+    return false;
+  }, [currentUser, projectData]);
+
+  // In Projects > Timesheet, clock-in/out actions are allowed for admins/supervisors/on-site leads
+  // as long as they have attendance edit permissions (or business timesheet write).
+  const canProjectClockActions = useMemo(() => {
+    return !!(canEditTimesheet || (canEditAttendance && (isSupervisorOrAdmin || isOnSiteLead)));
+  }, [canEditTimesheet, canEditAttendance, isSupervisorOrAdmin, isOnSiteLead]);
   
   // Fetch shifts for the selected date
   const dateRange = useMemo(() => {
@@ -2566,12 +2816,12 @@ function TimesheetTab({ projectId }:{ projectId:string }){
 
     // Check if user is supervisor/on-site lead doing clock-in/out for another worker
     // This check happens before the 4-minute validation to allow supervisors/on-site leads to set future times
-    // Note: On-site lead check is handled by backend, so we only check supervisor here
     const isWorkerOwner = currentUser && selectedShift?.worker_id && String(currentUser.id) === String(selectedShift.worker_id);
     const isSupervisorDoingForOther = isSupervisorOrAdmin && selectedShift && !isWorkerOwner;
-    // For frontend validation, we only check supervisor status
+    const isOnSiteLeadDoingForOther = isOnSiteLead && selectedShift && !isWorkerOwner;
+    // For frontend validation, check both supervisor and on-site lead status
     // Backend will also check on-site lead status, so supervisors and on-site leads can set future times
-    const isAuthorizedSupervisor = isSupervisorDoingForOther;
+    const isAuthorizedSupervisor = isSupervisorDoingForOther || isOnSiteLeadDoingForOther;
 
     // Validate: Allow future times with 4 minute margin
     // This restriction only applies to personal clock-in/out (not when supervisor/on-site lead is clocking in for another worker)
@@ -2739,14 +2989,16 @@ function TimesheetTab({ projectId }:{ projectId:string }){
         };
       }
 
-      // Check if supervisor is doing for another worker
+      // Check if supervisor or on-site lead is doing for another worker
       const isWorkerOwner = currentUser && selectedShift?.worker_id && String(currentUser.id) === String(selectedShift.worker_id);
       const isSupervisorDoingForOther = isSupervisorOrAdmin && selectedShift && !isWorkerOwner;
+      const isOnSiteLeadDoingForOther = isOnSiteLead && selectedShift && !isWorkerOwner;
+      const isDoingForOther = isSupervisorDoingForOther || isOnSiteLeadDoingForOther;
       
       // Add reason text if provided
-      if (isSupervisorDoingForOther) {
+      if (isDoingForOther) {
         if (!reasonText || !reasonText.trim() || reasonText.trim().length < 15) {
-          toast.error('Reason text is required (minimum 15 characters) when supervisor clocks in/out for a worker');
+          toast.error('Reason text is required (minimum 15 characters) when clocking in/out for another user');
           setSubmitting(false);
           return;
         }
@@ -2777,15 +3029,18 @@ function TimesheetTab({ projectId }:{ projectId:string }){
       setGpsError('');
       setShowClockModal(false);
 
-      // Refetch both shifts and attendances
-      await refetchShifts();
-      await refetchAttendances();
+      // Refetch both shifts and attendances immediately
+      await Promise.all([
+        refetchShifts(),
+        refetchAttendances(),
+        refetch()
+      ]);
       
-      // Refetch timesheet entries to show the new attendance
-      await refetch();
-      
-      // Invalidate timesheet logs to show new audit entry
+      // Invalidate all related queries to ensure UI updates immediately
       queryClient.invalidateQueries({ queryKey: ['timesheetLogs', projectId] });
+      queryClient.invalidateQueries({ queryKey: ['timesheetLogsMini', projectId] });
+      queryClient.invalidateQueries({ queryKey: ['attendances'] });
+      queryClient.invalidateQueries({ queryKey: ['shifts'] });
     } catch (error: any) {
       console.error('Error submitting attendance:', error);
       // Extract error message from the error object
@@ -2892,8 +3147,22 @@ function TimesheetTab({ projectId }:{ projectId:string }){
               <label className="text-xs text-gray-600 mb-2 block font-medium">Clock In/Out</label>
               <div className="space-y-2 max-h-64 overflow-y-auto" style={{ scrollbarWidth: 'thin' }}>
                 {shifts.map((shift: any) => {
-                  const clockIn = getAttendanceForShift(shift.id, 'in');
-                  const clockOut = getAttendanceForShift(shift.id, 'out');
+                  const directClockIn = getAttendanceForShift(shift.id, 'in');
+                  const directClockOut = getAttendanceForShift(shift.id, 'out');
+                  const clockInLog = !directClockIn ? findAttendanceLog(shift.worker_id, shift.date || workDate, 'in') : null;
+                  const clockOutLog = !directClockOut ? findAttendanceLog(shift.worker_id, shift.date || workDate, 'out') : null;
+                  const clockIn = directClockIn || (clockInLog ? {
+                    status: clockInLog?.changes?.status,
+                    source: clockInLog?.changes?.performed_by || clockInLog?.changes?.source || 'system',
+                    clock_in_time: clockInLog?.changes?.time_selected || clockInLog?.changes?.time_entered || null,
+                    time_selected_utc: clockInLog?.changes?.time_selected || null
+                  } : undefined);
+                  const clockOut = directClockOut || (clockOutLog ? {
+                    status: clockOutLog?.changes?.status,
+                    source: clockOutLog?.changes?.performed_by || clockOutLog?.changes?.source || 'system',
+                    clock_out_time: clockOutLog?.changes?.time_selected || clockOutLog?.changes?.time_entered || null,
+                    time_selected_utc: clockOutLog?.changes?.time_selected || null
+                  } : undefined);
                   const canClockIn = !clockIn || clockIn.status === 'rejected';
                   const canClockOut = clockIn && (clockIn.status === 'approved' || clockIn.status === 'pending') && (!clockOut || clockOut.status === 'rejected');
                   const worker = employees?.find((e: any) => e.id === shift.worker_id);
@@ -2941,30 +3210,32 @@ function TimesheetTab({ projectId }:{ projectId:string }){
                           )}
                         </div>
                       </div>
-                      <div className="flex gap-1.5">
-                        <button
-                          onClick={() => handleClockInOut(shift, 'in')}
-                          disabled={!canClockIn || submitting}
-                          className={`flex-1 px-2 py-1 rounded text-xs font-medium transition-colors ${
-                            canClockIn
-                              ? 'bg-green-600 hover:bg-green-700 text-white'
-                              : 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                          }`}
-                        >
-                          Clock In
-                        </button>
-                        <button
-                          onClick={() => handleClockInOut(shift, 'out')}
-                          disabled={!canClockOut || submitting}
-                          className={`flex-1 px-2 py-1 rounded text-xs font-medium transition-colors ${
-                            canClockOut
-                              ? 'bg-red-600 hover:bg-red-700 text-white'
-                              : 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                          }`}
-                        >
-                          Clock Out
-                        </button>
-                      </div>
+                      {canProjectClockActions && (
+                        <div className="flex gap-1.5">
+                          <button
+                            onClick={() => handleClockInOut(shift, 'in')}
+                            disabled={!canClockIn || submitting}
+                            className={`flex-1 px-2 py-1 rounded text-xs font-medium transition-colors ${
+                              canClockIn
+                                ? 'bg-green-600 hover:bg-green-700 text-white'
+                                : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                            }`}
+                          >
+                            Clock In
+                          </button>
+                          <button
+                            onClick={() => handleClockInOut(shift, 'out')}
+                            disabled={!canClockOut || submitting}
+                            className={`flex-1 px-2 py-1 rounded text-xs font-medium transition-colors ${
+                              canClockOut
+                                ? 'bg-red-600 hover:bg-red-700 text-white'
+                                : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                            }`}
+                          >
+                            Clock Out
+                          </button>
+                        </div>
+                      )}
                     </div>
                   );
                 })}
@@ -2976,9 +3247,9 @@ function TimesheetTab({ projectId }:{ projectId:string }){
             </div>
           )}
         </div>
-      </div>
-      
-      <div className="md:col-span-2 rounded-xl border bg-white">
+        </div>
+        
+        <div className="md:col-span-2 rounded-xl border bg-white">
         <div className="p-3 flex items-center justify-between gap-3">
           <div className="flex items-center gap-2"><label className="text-xs text-gray-600">Month</label><input type="month" className="border rounded px-2 py-1" value={month} onChange={e=>{ setMonth(e.target.value); }} /></div>
           <div className="flex items-center gap-2"><label className="text-xs text-gray-600">Employee</label><select className="border rounded px-2 py-1 text-sm" value={userFilter} onChange={e=>setUserFilter(e.target.value)}><option value="">All</option>{(employees||[]).map((emp:any)=> <option key={emp.id} value={emp.id}>{emp.name||emp.username}</option>)}</select></div>
@@ -3001,7 +3272,7 @@ function TimesheetTab({ projectId }:{ projectId:string }){
           </div>
         </div>
         <div className="divide-y">
-          {entries.length? entries.map((e:any)=> {
+          {displayEntries.length? displayEntries.map((e:any)=> {
             const now = new Date();
             const endDt = e.end_time? new Date(`${e.work_date}T${e.end_time}`) : new Date(`${e.work_date}T23:59:00`);
             const created = e.created_at? new Date(e.created_at) : null;
@@ -3040,51 +3311,78 @@ function TimesheetTab({ projectId }:{ projectId:string }){
                 <div className="w-16 font-medium">{breakMin > 0 ? `${breakMin}m` : '--'}</div>
                 <div className="flex-1 text-gray-600 truncate">{e.notes||''}</div>
                 {(futIcon||offIcon) && <span title={future? 'Future time': 'Logged after day end'}>{futIcon}{offIcon}</span>}
+                {e.shift_deleted && (
+                  <span 
+                    className="text-yellow-600 ml-1" 
+                    title={e.shift_deleted_by ? `The shift related to this attendance was deleted by ${e.shift_deleted_by}${e.shift_deleted_at ? ` on ${new Date(e.shift_deleted_at).toLocaleDateString()}` : ''}` : 'The shift related to this attendance was deleted'}
+                  >
+                    <svg className="w-4 h-4 inline-block" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                    </svg>
+                  </span>
+                )}
               </div>
-              <div className="flex items-center gap-2">
-                <button 
-                  onClick={() => {
-                    setEditingEntry(e);
-                    // Extract time from HH:MM:SS format to HH:MM
-                    const startTime = e.start_time ? e.start_time.slice(0, 5) : '';
-                    const endTime = e.end_time ? e.end_time.slice(0, 5) : '';
-                    setEditStartTime(startTime);
-                    setEditEndTime(endTime);
-                  }} 
-                  className="px-2 py-1 rounded bg-gray-100"
-                >
-                  Edit
-                </button>
-                <button 
-                  onClick={async() => {
-                    const result = await confirm({
-                      title: 'Delete Time Entry',
-                      message: 'Are you sure you want to delete this time entry?',
-                      confirmText: 'Delete',
-                      cancelText: 'Cancel'
-                    });
-                    if (result !== 'confirm') return;
-                    try {
-                      await api('DELETE', `/projects/${projectId}/timesheet/${e.id}`);
-                      await refetch();
-                      await refetchAttendances();
-                      await refetchShifts();
-                      queryClient.invalidateQueries({ queryKey: ['timesheetLogs', projectId] });
-                      toast.success('Time entry deleted');
-                    } catch (_e) {
-                      toast.error('Failed to delete time entry');
-                    }
-                  }} 
-                  className="px-2 py-1 rounded bg-gray-100"
-                >
-                  Delete
-                </button>
-              </div>
+              {(() => {
+                const isAttendanceRow = !!e.is_from_attendance;
+                const hasAttendanceId = !!e.attendance_id || (typeof e.id === 'string' && e.id.startsWith('attendance_'));
+                const canModify = isAttendanceRow ? (canEditAttendance && hasAttendanceId) : canEditTimesheet;
+                if (!canModify) return null;
+                return (
+                <div className="flex items-center gap-2">
+                  <button 
+                    onClick={() => {
+                      setEditingEntry(e);
+                      // Extract time from HH:MM:SS format to HH:MM
+                      const startTime = e.start_time ? e.start_time.slice(0, 5) : '';
+                      const endTime = e.end_time ? e.end_time.slice(0, 5) : '';
+                      const breakMin = e.break_minutes !== undefined && e.break_minutes !== null ? String(e.break_minutes) : '0';
+                      setEditStartTime(startTime);
+                      setEditEndTime(endTime);
+                      setEditBreakMinutes(breakMin);
+                    }} 
+                    className="px-2 py-1 rounded bg-gray-100"
+                  >
+                    Edit
+                  </button>
+                  <button 
+                    onClick={async() => {
+                      const result = await confirm({
+                        title: 'Delete Time Entry',
+                        message: 'Are you sure you want to delete this time entry?',
+                        confirmText: 'Delete',
+                        cancelText: 'Cancel'
+                      });
+                      if (result !== 'confirm') return;
+                      try {
+                        // Attendance rows come from backend with id "attendance_{uuid}".
+                        // Log-derived placeholder rows don't have a deletable id; those are hidden by canModify above.
+                        await api('DELETE', `/projects/${projectId}/timesheet/${e.id}`);
+                        await refetch();
+                        await refetchAttendances();
+                        await refetchShifts();
+                        queryClient.invalidateQueries({ queryKey: ['timesheetLogs', projectId] });
+                        toast.success('Time entry deleted');
+                      } catch (err: any) {
+                        const msg = String(err?.message || '');
+                        if (msg.toLowerCase().includes('do not have permission') || msg.includes('403')) {
+                          toast.error('You do not have permission to delete this attendance/time entry');
+                        } else {
+                          toast.error('Failed to delete time entry');
+                        }
+                      }
+                    }} 
+                    className="px-2 py-1 rounded bg-gray-100"
+                  >
+                    Delete
+                  </button>
+                </div>
+                );
+              })()}
             </div>
           );
           }) : <div className="p-3 text-sm text-gray-600">No time entries</div>}
         </div>
-      </div>
+        </div>
       </div>
       {/* Edit Time Entry Modal */}
       {editingEntry && (
@@ -3114,12 +3412,31 @@ function TimesheetTab({ projectId }:{ projectId:string }){
               />
             </div>
             
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Break (minutes)</label>
+              <input
+                type="number"
+                min="0"
+                value={editBreakMinutes}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  if (val === '' || (!isNaN(Number(val)) && Number(val) >= 0)) {
+                    setEditBreakMinutes(val);
+                  }
+                }}
+                className="w-full border rounded px-3 py-2"
+                placeholder="0"
+              />
+              <p className="text-xs text-gray-500 mt-1">Break time in minutes (will be deducted from total hours)</p>
+            </div>
+            
             <div className="flex justify-end gap-2 pt-4 border-t">
               <button
                 onClick={() => {
                   setEditingEntry(null);
                   setEditStartTime('');
                   setEditEndTime('');
+                  setEditBreakMinutes('0');
                 }}
                 className="px-4 py-2 rounded border bg-gray-100 hover:bg-gray-200"
               >
@@ -3145,19 +3462,40 @@ function TimesheetTab({ projectId }:{ projectId:string }){
                       return;
                     }
                     
-                    await api('PATCH', `/projects/${projectId}/timesheet/${editingEntry.id}`, {
+                    // Validate break: break cannot be greater than or equal to total time
+                    const breakMin = editBreakMinutes === '' ? 0 : parseInt(editBreakMinutes, 10);
+                    if (isNaN(breakMin) || breakMin < 0) {
+                      toast.error('Break minutes must be a valid non-negative number');
+                      return;
+                    }
+                    if (breakMin >= minutes) {
+                      toast.error('Break time cannot be greater than or equal to total time');
+                      return;
+                    }
+                    
+                    const payload: any = {
                       start_time: `${editStartTime}:00`,
                       end_time: `${editEndTime}:00`,
                       minutes: minutes
-                    });
+                    };
+                    
+                    // Only include break_minutes if it's a valid number (even if 0)
+                    if (!isNaN(breakMin)) {
+                      payload.break_minutes = breakMin;
+                    }
+                    
+                    await api('PATCH', `/projects/${projectId}/timesheet/${editingEntry.id}`, payload);
                     
                     await refetch();
+                    await refetchAttendances();
+                    await refetchShifts();
                     queryClient.invalidateQueries({ queryKey: ['timesheetLogs', projectId] });
                     toast.success('Time entry updated');
                     
                     setEditingEntry(null);
                     setEditStartTime('');
                     setEditEndTime('');
+                    setEditBreakMinutes('0');
                   } catch (_e) {
                     toast.error('Failed to update time entry');
                   }
@@ -3367,14 +3705,13 @@ function TimesheetTab({ projectId }:{ projectId:string }){
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Reason {
                   (() => {
-                    // Check if supervisor is doing for another worker
+                    // Check if supervisor or on-site lead is doing for another worker
                     const isWorkerOwner = currentUser && selectedShift?.worker_id && String(currentUser.id) === String(selectedShift.worker_id);
                     const isSupervisorDoingForOther = isSupervisorOrAdmin && selectedShift && !isWorkerOwner;
+                    const isOnSiteLeadDoingForOther = isOnSiteLead && selectedShift && !isWorkerOwner;
                     
-                    // Require reason ONLY if: supervisor doing for other worker
-                    // Location is captured but not mandatory
-                    // Different day will make it pending but doesn't require reason
-                    const requiresReason = isSupervisorDoingForOther;
+                    // Require reason if: supervisor or on-site lead doing for other worker
+                    const requiresReason = isSupervisorDoingForOther || isOnSiteLeadDoingForOther;
                     return requiresReason && <span className="text-red-500">*</span>;
                   })()
                 }
@@ -3388,14 +3725,16 @@ function TimesheetTab({ projectId }:{ projectId:string }){
               />
               <p className="text-xs text-gray-500 mt-1">
                 {(() => {
-                  // Check if supervisor is doing for another worker
+                  // Check if supervisor or on-site lead is doing for another worker
                   const isWorkerOwner = currentUser && selectedShift?.worker_id && String(currentUser.id) === String(selectedShift.worker_id);
                   const isSupervisorDoingForOther = isSupervisorOrAdmin && selectedShift && !isWorkerOwner;
+                  const isOnSiteLeadDoingForOther = isOnSiteLead && selectedShift && !isWorkerOwner;
+                  const isDoingForOther = isSupervisorDoingForOther || isOnSiteLeadDoingForOther;
                   
-                  if (isSupervisorDoingForOther) {
+                  if (isDoingForOther) {
                     return (
                       <span className="text-red-600 font-medium">
-                        Required (minimum 15 characters): Supervisor clock-in/out for another worker always requires a reason.
+                        Required (minimum 15 characters): You must provide a reason when clocking in/out for another user.
                       </span>
                     );
                   }
@@ -3460,6 +3799,10 @@ function TimesheetTab({ projectId }:{ projectId:string }){
                   }
                   
                   // Reason is optional for workers doing their own clock-in/out
+                  // isWorkerOwner is already defined above in the same scope
+                  if (isWorkerOwner) {
+                    return 'Optional: Reason is not required for your own clock-in/out on the same day as the shift.';
+                  }
                   return 'Optional: Reason is not required for your own clock-in/out on the same day as the shift.';
                 })()}
               </p>
@@ -3489,7 +3832,21 @@ function TimesheetTab({ projectId }:{ projectId:string }){
               </button>
               <button
                 onClick={submitAttendance}
-                disabled={submitting || !selectedTime || !selectedHour12 || !selectedMinute}
+                disabled={(() => {
+                  if (submitting || !selectedTime || !selectedHour12 || !selectedMinute) return true;
+                  
+                  // Check if reason is required
+                  const isWorkerOwner = currentUser && selectedShift?.worker_id && String(currentUser.id) === String(selectedShift.worker_id);
+                  const isSupervisorDoingForOther = isSupervisorOrAdmin && selectedShift && !isWorkerOwner;
+                  const isOnSiteLeadDoingForOther = isOnSiteLead && selectedShift && !isWorkerOwner;
+                  const isReasonRequired = isSupervisorDoingForOther || isOnSiteLeadDoingForOther;
+                  
+                  if (isReasonRequired && (!reasonText.trim() || reasonText.trim().length < 15)) {
+                    return true;
+                  }
+                  
+                  return false;
+                })()}
                 className="px-4 py-2 rounded bg-brand-red text-white hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {submitting ? 'Submitting...' : 'Submit'}
@@ -3728,19 +4085,23 @@ function TimesheetAuditSection({ projectId }:{ projectId:string }){
   );
 }
 
-function OnSiteLeadsModal({ projectId, originalDivisions, divisionLeads, settings, employees, onClose, onUpdate }: {
+function OnSiteLeadsModal({ projectId, originalDivisions, divisionLeads, settings, employees, canEdit, onClose, onUpdate }: {
   projectId: string,
   originalDivisions: string[],
   divisionLeads: Record<string, string>,
   settings: any,
   employees: any[],
+  canEdit: boolean,
   onClose: () => void,
   onUpdate: (updatedLeads: Record<string, string>, updatedDivisions: string[]) => Promise<void>
 }){
+  const confirm = useConfirm();
   const [localDivisions, setLocalDivisions] = useState<string[]>(originalDivisions);
   const [localLeads, setLocalLeads] = useState<Record<string, string>>(divisionLeads);
   const [isSaving, setIsSaving] = useState(false);
   const [showAddDropdown, setShowAddDropdown] = useState(false);
+  const [dropdownPosition, setDropdownPosition] = useState<{top: number, right: number} | null>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     setLocalDivisions(originalDivisions);
@@ -3750,12 +4111,25 @@ function OnSiteLeadsModal({ projectId, originalDivisions, divisionLeads, setting
   const allAvailableDivisions = (settings?.divisions||[]).map((d:any) => String(d.id||d.label||d.value));
   const availableToAdd = allAvailableDivisions.filter((divId: string) => !localDivisions.includes(divId));
 
+  // Calculate dropdown position when it opens
+  useEffect(() => {
+    if (showAddDropdown && buttonRef.current) {
+      const rect = buttonRef.current.getBoundingClientRect();
+      setDropdownPosition({
+        top: rect.bottom + 4,
+        right: window.innerWidth - rect.right
+      });
+    } else {
+      setDropdownPosition(null);
+    }
+  }, [showAddDropdown]);
+
   // Close dropdown when clicking outside
   useEffect(() => {
     if (!showAddDropdown) return;
     const handleClickOutside = (e: MouseEvent) => {
       const target = e.target as HTMLElement;
-      if (!target.closest('.on-site-leads-modal')) {
+      if (!target.closest('.on-site-leads-modal') && !target.closest('.add-division-dropdown')) {
         setShowAddDropdown(false);
       }
     };
@@ -3764,6 +4138,7 @@ function OnSiteLeadsModal({ projectId, originalDivisions, divisionLeads, setting
   }, [showAddDropdown]);
 
   const handleLeadChange = async (divId: string, leadId: string) => {
+    if (!canEdit) return;
     const updated = { ...localLeads, [divId]: leadId };
     setLocalLeads(updated);
     setIsSaving(true);
@@ -3775,6 +4150,7 @@ function OnSiteLeadsModal({ projectId, originalDivisions, divisionLeads, setting
   };
 
   const handleAddDivision = async (divId: string) => {
+    if (!canEdit) return;
     const updated = [...localDivisions, divId];
     setLocalDivisions(updated);
     setShowAddDropdown(false);
@@ -3787,11 +4163,22 @@ function OnSiteLeadsModal({ projectId, originalDivisions, divisionLeads, setting
   };
 
   const handleRemoveDivision = async (divId: string) => {
-    // Only allow removing divisions that were added manually (not in original)
-    if (originalDivisions.includes(divId)) {
-      toast.error('Cannot remove original project divisions');
-      return;
-    }
+    if (!canEdit) return;
+    
+    // Get division label for confirmation message
+    const div = (settings?.divisions||[]).find((d:any) => String(d.id||d.label||d.value) === divId);
+    const divLabel = div?.meta?.abbr || div?.label || divId;
+    
+    // Show confirmation dialog
+    const result = await confirm({
+      title: 'Remove Division',
+      message: `Are you sure you want to remove the "${divLabel}" division? This action cannot be undone.`,
+      confirmText: 'Remove',
+      cancelText: 'Cancel'
+    });
+    
+    if (result !== 'confirm') return;
+    
     const updated = localDivisions.filter(d => d !== divId);
     const updatedLeads = { ...localLeads };
     delete updatedLeads[divId];
@@ -3828,9 +4215,10 @@ function OnSiteLeadsModal({ projectId, originalDivisions, divisionLeads, setting
             </div>
             <div className="flex items-center gap-2">
               {isSaving && <span className="text-xs text-gray-500">Saving...</span>}
-              {availableToAdd.length > 0 && (
+              {canEdit && availableToAdd.length > 0 && (
                 <div className="relative">
                   <button
+                    ref={buttonRef}
                     onClick={() => setShowAddDropdown(!showAddDropdown)}
                     className="px-3 py-1.5 rounded bg-blue-500 hover:bg-blue-600 text-white text-sm font-medium flex items-center gap-2"
                     title="Add division"
@@ -3838,8 +4226,14 @@ function OnSiteLeadsModal({ projectId, originalDivisions, divisionLeads, setting
                     <span>+</span>
                     <span>Add Division</span>
                   </button>
-                  {showAddDropdown && (
-                    <div className="absolute top-full right-0 mt-1 bg-white border rounded-lg shadow-lg z-10 min-w-[200px] max-h-60 overflow-auto">
+                  {showAddDropdown && dropdownPosition && (
+                    <div 
+                      className="fixed bg-white border rounded-lg shadow-lg z-[100] w-[200px] max-h-60 overflow-auto add-division-dropdown"
+                      style={{
+                        top: `${dropdownPosition.top}px`,
+                        right: `${dropdownPosition.right}px`
+                      }}
+                    >
                       {availableToAdd.map((divId: string) => {
                         const div = (settings?.divisions||[]).find((d:any) => String(d.id||d.label||d.value) === divId);
                         const divLabel = div?.meta?.abbr || div?.label || divId;
@@ -3871,13 +4265,15 @@ function OnSiteLeadsModal({ projectId, originalDivisions, divisionLeads, setting
             <div key={divId} className="p-3 rounded-lg border hover:bg-gray-50 transition-colors">
               <div className="mb-2 flex items-center justify-between">
                 <span className="px-3 py-1.5 rounded text-xs border font-semibold inline-block" style={{ backgroundColor: divColor }}>{divLabel}</span>
-                {canRemove && (
+                {canEdit && (
                   <button
                     onClick={() => handleRemoveDivision(divId)}
-                    className="w-6 h-6 rounded-full bg-red-100 hover:bg-red-200 text-red-600 flex items-center justify-center text-xs transition-colors"
+                    className="px-2 py-1 rounded text-gray-500 hover:text-red-600 transition-colors"
                     title="Remove division"
                   >
-                    🗑️
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                      <path d="M9 3h6a1 1 0 0 1 1 1v2h4v2h-1l-1 13a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 8H4V6h4V4a1 1 0 0 1 1-1Zm1 3h4V5h-4v1Zm-2 2 1 12h8l1-12H8Z"></path>
+                    </svg>
                   </button>
                 )}
               </div>
@@ -3885,7 +4281,8 @@ function OnSiteLeadsModal({ projectId, originalDivisions, divisionLeads, setting
                 <select
                   value={leadId}
                   onChange={(e) => handleLeadChange(divId, e.target.value)}
-                  className="flex-1 border rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-red focus:border-transparent"
+                  disabled={!canEdit}
+                  className={`flex-1 border rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-red focus:border-transparent ${!canEdit ? 'bg-gray-100 cursor-not-allowed' : ''}`}
                 >
                   <option value="">Select lead...</option>
                   {employees.map((emp:any) => (
@@ -3903,7 +4300,7 @@ function OnSiteLeadsModal({ projectId, originalDivisions, divisionLeads, setting
         })}
           </div>
         </div>
-        <div className="p-4 border-t bg-gray-50 flex justify-end gap-2 flex-shrink-0">
+        <div className="p-4 border-t bg-gray-50 flex justify-end gap-2 flex-shrink-0 relative z-0">
           <button
             onClick={onClose}
             className="px-4 py-2 rounded border bg-white hover:bg-gray-50 text-gray-700 text-sm font-medium"
@@ -4797,7 +5194,7 @@ function EditProgressModal({ projectId, currentProgress, onClose, onSave }: {
   );
 }
 
-function ProjectDivisionsHeroSection({ projectId, proj }:{ projectId:string, proj:any }){
+function ProjectDivisionsHeroSection({ projectId, proj, hasEditPermission }: { projectId: string, proj: any, hasEditPermission?: boolean }){
   const queryClient = useQueryClient();
   const [showEditModal, setShowEditModal] = useState(false);
   const { data:projectDivisions } = useQuery({ queryKey:['project-divisions'], queryFn: ()=>api<any[]>('GET','/settings/project-divisions'), staleTime: 300_000 });
@@ -4831,15 +5228,17 @@ function ProjectDivisionsHeroSection({ projectId, proj }:{ projectId:string, pro
       <div className="mb-6">
         <div className="flex items-center justify-between mb-2">
           <label className="text-xs text-gray-600 block">Project Divisions</label>
-          <button
-            onClick={() => setShowEditModal(true)}
-            className="text-gray-400 hover:text-[#7f1010] transition-colors"
-            title="Edit Divisions"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-            </svg>
-          </button>
+          {hasEditPermission && (
+            <button
+              onClick={() => setShowEditModal(true)}
+              className="text-gray-400 hover:text-[#7f1010] transition-colors"
+              title="Edit Divisions"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+              </svg>
+            </button>
+          )}
         </div>
         <div>
           {divisionIcons.length > 0 ? (

@@ -137,6 +137,72 @@ def create_app() -> FastAPI:
         # Ensure local SQLite directory exists
         if settings.database_url.startswith("sqlite:///./"):
             os.makedirs("var", exist_ok=True)
+
+        # Lightweight schema safety checks / migrations (no Alembic in this repo).
+        # Keep these idempotent and safe to run on every boot.
+        print("[startup] Checking lightweight schema migrations...")
+        try:
+            from sqlalchemy import text
+            from .db import SessionLocal
+            db = SessionLocal()
+            try:
+                dialect = db.bind.dialect.name if getattr(db, "bind", None) is not None else ""
+                has_col = False
+                if dialect == "sqlite":
+                    rows = db.execute(text("PRAGMA table_info(project_time_entries)")).fetchall()
+                    col_names = {str(r[1]) for r in rows}  # (cid, name, type, notnull, dflt_value, pk)
+                    has_col = "source_attendance_id" in col_names
+                    if not has_col:
+                        db.execute(text("ALTER TABLE project_time_entries ADD COLUMN source_attendance_id TEXT NULL"))
+                        try:
+                            db.execute(text("CREATE INDEX IF NOT EXISTS idx_project_time_entries_source_attendance_id ON project_time_entries(source_attendance_id)"))
+                        except Exception:
+                            pass
+                        db.commit()
+                else:
+                    # PostgreSQL / other dialects
+                    rows = db.execute(
+                        text(
+                            """
+                            SELECT 1
+                            FROM information_schema.columns
+                            WHERE table_name = 'project_time_entries'
+                              AND column_name = 'source_attendance_id'
+                            LIMIT 1
+                            """
+                        )
+                    ).fetchall()
+                    has_col = bool(rows)
+                    if not has_col:
+                        db.execute(text("ALTER TABLE project_time_entries ADD COLUMN source_attendance_id UUID NULL"))
+                        try:
+                            db.execute(text("CREATE INDEX IF NOT EXISTS idx_project_time_entries_source_attendance_id ON project_time_entries(source_attendance_id)"))
+                        except Exception:
+                            pass
+                        # Best-effort FK for non-sqlite databases
+                        try:
+                            db.execute(
+                                text(
+                                    """
+                                    ALTER TABLE project_time_entries
+                                    ADD CONSTRAINT fk_project_time_entries_source_attendance
+                                    FOREIGN KEY (source_attendance_id)
+                                    REFERENCES attendance(id)
+                                    ON DELETE SET NULL
+                                    """
+                                )
+                            )
+                        except Exception:
+                            # Constraint may already exist or DB may not support it as written
+                            pass
+                        db.commit()
+                print("[startup] Schema migrations check completed")
+            except Exception as e:
+                print(f"[startup] Schema migrations check error (non-critical): {e}")
+            finally:
+                db.close()
+        except Exception as e:
+            print(f"[startup] Could not run schema migrations check (non-critical): {e}")
         
         # Seed permissions if they don't exist
         print("[startup] Checking permissions...")

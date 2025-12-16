@@ -28,6 +28,9 @@ type Attendance = {
   created_at?: string | null;
   approved_at?: string | null;
   approved_by?: string | null;
+  shift_deleted?: boolean;
+  shift_deleted_by?: string | null;
+  shift_deleted_at?: string | null;
 };
 
 type AttendanceEvent = {
@@ -49,6 +52,9 @@ type AttendanceEvent = {
   hours_worked?: number | null;
   break_minutes?: number | null;
   is_hours_worked?: boolean; // True if this is a "hours worked" entry (no specific clock-in/out times)
+  shift_deleted?: boolean;
+  shift_deleted_by?: string | null;
+  shift_deleted_at?: string | null;
 };
 
 type User = {
@@ -214,6 +220,9 @@ const buildEvents = (attendances: Attendance[]): AttendanceEvent[] => {
       hours_worked: hoursWorked,
       break_minutes: att.break_minutes || null,
       is_hours_worked: isHoursWorked,
+      shift_deleted: att.shift_deleted || false,
+      shift_deleted_by: att.shift_deleted_by || null,
+      shift_deleted_at: att.shift_deleted_at || null,
     };
   });
 
@@ -227,6 +236,11 @@ const buildEvents = (attendances: Attendance[]): AttendanceEvent[] => {
 export default function Attendance() {
   const queryClient = useQueryClient();
   const confirm = useConfirm();
+  const { data: me } = useQuery({ queryKey:['me'], queryFn: ()=> api<any>('GET','/auth/me') });
+  const isAdmin = (me?.roles || []).some((r: string) => String(r || '').toLowerCase() === 'admin');
+  const perms = new Set<string>(me?.permissions || []);
+  const canEditAttendance = isAdmin || perms.has('hr:attendance:write') || perms.has('hr:users:edit:timesheet') || perms.has('users:write');
+  const colCount = canEditAttendance ? 9 : 8;
   const [refreshKey, setRefreshKey] = useState(0);
   const [filters, setFilters] = useState({
     worker_id: '',
@@ -890,12 +904,14 @@ export default function Attendance() {
           <div className="text-2xl font-extrabold">Attendance</div>
           <div className="text-sm opacity-90">Manage all clock-in/out records</div>
         </div>
-        <button
-          onClick={() => handleOpenModal()}
-          className="px-4 py-2 bg-white text-[#d11616] rounded-lg font-semibold hover:bg-gray-100 transition-colors"
-        >
-          + New Attendance
-        </button>
+        {canEditAttendance && (
+          <button
+            onClick={() => handleOpenModal()}
+            className="px-4 py-2 bg-white text-[#d11616] rounded-lg font-semibold hover:bg-gray-100 transition-colors"
+          >
+            + New Attendance
+          </button>
+        )}
       </div>
 
       {/* Filters */}
@@ -956,7 +972,7 @@ export default function Attendance() {
       )}
 
       {/* Bulk Actions */}
-      {selectedEvents.size > 0 && (
+      {canEditAttendance && selectedEvents.size > 0 && (
         <div className="mb-4 rounded-xl border bg-blue-50 p-4 flex items-center justify-between">
           <div className="text-sm font-medium text-blue-900">
             {selectedEvents.size} event(s) selected
@@ -976,14 +992,16 @@ export default function Attendance() {
         <table className="w-full text-sm">
           <thead className="bg-gray-50">
             <tr>
-              <th className="p-3 text-left w-12">
-                <input
-                  type="checkbox"
-                  checked={attendanceEvents.length > 0 && selectedEvents.size === attendanceEvents.length}
-                  onChange={handleSelectAll}
-                  className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-                />
-              </th>
+              {canEditAttendance && (
+                <th className="p-3 text-left w-12">
+                  <input
+                    type="checkbox"
+                    checked={attendanceEvents.length > 0 && selectedEvents.size === attendanceEvents.length}
+                    onChange={handleSelectAll}
+                    className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                  />
+                </th>
+              )}
               <th className="p-3 text-left">Worker</th>
               <th className="p-3 text-left">Clock In</th>
               <th className="p-3 text-left">Clock Out</th>
@@ -997,33 +1015,35 @@ export default function Attendance() {
           <tbody>
             {isLoading ? (
               <tr>
-                <td colSpan={9} className="p-4">
+                <td colSpan={colCount} className="p-4">
                   <div className="h-6 bg-gray-100 animate-pulse rounded" />
                 </td>
               </tr>
             ) : error ? (
               <tr>
-                <td colSpan={9} className="p-4 text-center text-red-600">
+                <td colSpan={colCount} className="p-4 text-center text-red-600">
                   Error loading data. Please check console for details.
                 </td>
               </tr>
             ) : attendanceEvents.length === 0 ? (
               <tr>
-                <td colSpan={9} className="p-4 text-center text-gray-500">
+                <td colSpan={colCount} className="p-4 text-center text-gray-500">
                   No attendance records found
                 </td>
               </tr>
             ) : (
               attendanceEvents.map((event) => (
                 <tr key={event.event_id} className="border-t hover:bg-gray-50">
-                  <td className="p-3">
-                    <input
-                      type="checkbox"
-                      checked={selectedEvents.has(event.event_id)}
-                      onChange={() => handleToggleSelect(event.event_id)}
-                      className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-                    />
-                  </td>
+                  {canEditAttendance && (
+                    <td className="p-3">
+                      <input
+                        type="checkbox"
+                        checked={selectedEvents.has(event.event_id)}
+                        onChange={() => handleToggleSelect(event.event_id)}
+                        className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                      />
+                    </td>
+                  )}
                   <td className="p-3">{event.worker_name}</td>
                   <td className="p-3">
                     {event.is_hours_worked ? '-' : (event.clock_in_time ? formatDateTime(event.clock_in_time) : '--')}
@@ -1063,19 +1083,33 @@ export default function Attendance() {
                   </td>
                   <td className="p-3">
                     <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => handleOpenModal(event)}
-                        className="text-blue-600 hover:text-blue-800 text-sm"
-                      >
-                        Edit
-                      </button>
-                      <button
-                        onClick={() => handleDeleteEvent(event)}
-                        disabled={deletingId === event.event_id}
-                        className="text-red-600 hover:text-red-800 text-sm disabled:opacity-50"
-                      >
-                        {deletingId === event.event_id ? 'Deleting...' : 'Delete'}
-                      </button>
+                      {canEditAttendance && (
+                        <>
+                          <button
+                            onClick={() => handleOpenModal(event)}
+                            className="text-blue-600 hover:text-blue-800 text-sm"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            onClick={() => handleDeleteEvent(event)}
+                            disabled={deletingId === event.event_id}
+                            className="text-red-600 hover:text-red-800 text-sm disabled:opacity-50"
+                          >
+                            {deletingId === event.event_id ? 'Deleting...' : 'Delete'}
+                          </button>
+                        </>
+                      )}
+                      {event.shift_deleted && (
+                        <span 
+                          className="text-yellow-600" 
+                          title={event.shift_deleted_by ? `The shift related to this attendance was deleted by ${event.shift_deleted_by}${event.shift_deleted_at ? ` on ${new Date(event.shift_deleted_at).toLocaleDateString()}` : ''}` : 'The shift related to this attendance was deleted'}
+                        >
+                          <svg className="w-4 h-4 inline-block" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                          </svg>
+                        </span>
+                      )}
                     </div>
                   </td>
                 </tr>

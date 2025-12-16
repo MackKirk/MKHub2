@@ -89,13 +89,29 @@ def create_shift(
         raise HTTPException(status_code=400, detail="worker_id is required")
     
     # Check permissions:
-    # - Admins and supervisors can create shifts for any worker
-    # - Workers can create shifts only for themselves (for clock in/out when no shift exists)
-    is_creating_for_self = str(worker_id) == str(user.id)
-    if not (is_admin(user, db) or is_supervisor(user, db, project_id) or (is_worker(user, db) and is_creating_for_self)):
+    # - Admins can create shifts for any worker
+    # - Supervisors of the worker can create shifts for that worker
+    # - On-site leads of the project can create shifts for any worker
+    # Check if user is on-site lead of the project
+    is_onsite_lead = False
+    if project.division_onsite_leads:
+        # Check if user is listed as on-site lead for any division
+        for division_id, lead_id in project.division_onsite_leads.items():
+            if str(lead_id) == str(user.id):
+                is_onsite_lead = True
+                break
+    # Also check legacy onsite_lead_id field
+    if not is_onsite_lead and project.onsite_lead_id and str(project.onsite_lead_id) == str(user.id):
+        is_onsite_lead = True
+    
+    # Check if user is supervisor of the worker
+    worker_profile = db.query(EmployeeProfile).filter(EmployeeProfile.user_id == worker_id).first()
+    is_worker_supervisor = worker_profile and worker_profile.manager_user_id and str(worker_profile.manager_user_id) == str(user.id)
+    
+    if not (is_admin(user, db) or is_worker_supervisor or is_onsite_lead):
         raise HTTPException(
             status_code=403, 
-            detail="Only admins, supervisors, or workers creating shifts for themselves can create shifts"
+            detail="Only admins, supervisors of the worker, or on-site leads of the project can create shifts"
         )
     
     # Validate worker exists
@@ -587,7 +603,10 @@ def update_shift(
     
     # Check permissions
     if not can_modify_shift(user, shift, db):
-        raise HTTPException(status_code=403, detail="Access denied")
+        raise HTTPException(
+            status_code=403, 
+            detail="Only admins, supervisors of the worker, or on-site leads of the project can modify shifts"
+        )
     
     # Store before state for audit
     before_state = {
@@ -756,14 +775,20 @@ def delete_shift(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user)
 ):
-    """Delete a shift (hard delete)."""
+    """Delete a shift (soft delete).
+    
+    NOTE: We soft-delete to avoid database FK cascades deleting related attendance records.
+    """
     shift = db.query(Shift).filter(Shift.id == shift_id).first()
     if not shift:
         raise HTTPException(status_code=404, detail="Shift not found")
     
     # Check permissions
     if not can_modify_shift(user, shift, db):
-        raise HTTPException(status_code=403, detail="Access denied")
+        raise HTTPException(
+            status_code=403, 
+            detail="Only admins, supervisors of the worker, or on-site leads of the project can modify shifts"
+        )
     
     # NOTE: During testing phase, past date validation is disabled
     # TODO: Re-enable past date validation for production
@@ -786,8 +811,12 @@ def delete_shift(
     worker_id = str(shift.worker_id)
     project_id = str(shift.project_id)
     
-    # Delete the shift (hard delete)
-    db.delete(shift)
+    # Soft delete the shift (keep row so Attendance.shift_id FK doesn't cascade-delete)
+    from datetime import timezone
+    shift.status = "deleted"
+    shift.cancelled_at = datetime.now(timezone.utc)
+    shift.cancelled_by = user.id
+    shift.updated_at = datetime.now(timezone.utc)
     db.commit()
     
     # Create audit log
@@ -870,7 +899,17 @@ def create_attendance(
             
             # Check if user is on-site lead of the project
             project = db.query(Project).filter(Project.id == shift.project_id).first()
-            is_onsite_lead = project and project.onsite_lead_id and str(project.onsite_lead_id) == str(user.id)
+            is_onsite_lead = False
+            if project:
+                # Check division_onsite_leads
+                if project.division_onsite_leads:
+                    for division_id, lead_id in project.division_onsite_leads.items():
+                        if str(lead_id) == str(user.id):
+                            is_onsite_lead = True
+                            break
+                # Check legacy onsite_lead_id field
+                if not is_onsite_lead and project.onsite_lead_id and str(project.onsite_lead_id) == str(user.id):
+                    is_onsite_lead = True
             
             is_authorized_supervisor = is_worker_supervisor or is_onsite_lead
             
@@ -890,6 +929,10 @@ def create_attendance(
                 status_code=403, 
                 detail="You can only clock in/out for your own shifts, or if you are the worker's direct supervisor or the on-site lead of this project"
             )
+        
+        # Block clock-in/out if shift was deleted
+        if shift.status == "deleted":
+            raise HTTPException(status_code=400, detail="Shift was deleted")
         
         # Allow clock-in/out even if shift is not "scheduled" if:
         # 1. Worker is doing it for their own shift, OR
@@ -932,7 +975,17 @@ def create_attendance(
         project_timezone = project.timezone if project else settings.tz_default
         
         # Check if user is on-site lead of the project or supervisor of the worker
-        is_onsite_lead = project.onsite_lead_id and str(project.onsite_lead_id) == str(user.id)
+        is_onsite_lead = False
+        if project:
+            # Check division_onsite_leads
+            if project.division_onsite_leads:
+                for division_id, lead_id in project.division_onsite_leads.items():
+                    if str(lead_id) == str(user.id):
+                        is_onsite_lead = True
+                        break
+            # Check legacy onsite_lead_id field
+            if not is_onsite_lead and project.onsite_lead_id and str(project.onsite_lead_id) == str(user.id):
+                is_onsite_lead = True
         
         # Get worker's employee profile to check supervisor
         worker_employee_profile = db.query(EmployeeProfile).filter(
@@ -967,8 +1020,8 @@ def create_attendance(
         time_entered_utc = datetime.now(timezone.utc)
         
         # Check if user has permission to edit clock in/out time
-        # If user doesn't have permission and time is different, use current time automatically
-        # EXCEPTION: Supervisors and on-site leads can edit time when clocking in/out for another worker in Projects > Timesheet
+        # For Project > Timesheet, workers pick a time from the modal; we should respect that selection.
+        # We only block time editing when a user is clocking for ANOTHER worker without authorization.
         from datetime import timedelta
         time_diff = abs((time_selected_utc - time_entered_utc).total_seconds() / 60)  # Difference in minutes
         
@@ -980,17 +1033,8 @@ def create_attendance(
                 _has_permission(user, "timesheet:unrestricted_clock")
             )
             
-            # If user doesn't have unrestricted permission and is doing personal clock-in/out, use current time
-            if not has_unrestricted and is_worker_owner:
-                logger.info(
-                    f"User {user.id} doesn't have unrestricted clock permission, using current time instead of {time_selected_utc}"
-                )
-                time_selected_utc = time_entered_utc
-                # Recalculate time_selected_local from the updated UTC time
-                from ..services.time_rules import utc_to_local
-                time_selected_local = utc_to_local(time_selected_utc, project_timezone)
-            elif not has_unrestricted and not is_authorized_supervisor:
-                # For non-personal clock-in/out without permission, still block
+            # If user is not the worker owner AND not authorized supervisor/on-site-lead, require unrestricted permission
+            if (not has_unrestricted) and (not is_worker_owner) and (not is_authorized_supervisor):
                 logger.warning(
                     f"User {user.id} attempted to set time {time_selected_utc} (current: {time_entered_utc}) "
                     f"without unrestricted clock permission for another worker"
@@ -1472,7 +1516,17 @@ def create_attendance_supervisor(
         
         # Check if user is on-site lead of the project
         project = db.query(Project).filter(Project.id == shift.project_id).first()
-        is_onsite_lead = project and project.onsite_lead_id and str(project.onsite_lead_id) == str(user.id)
+        is_onsite_lead = False
+        if project:
+            # Check division_onsite_leads
+            if project.division_onsite_leads:
+                for division_id, lead_id in project.division_onsite_leads.items():
+                    if str(lead_id) == str(user.id):
+                        is_onsite_lead = True
+                        break
+            # Check legacy onsite_lead_id field
+            if not is_onsite_lead and project.onsite_lead_id and str(project.onsite_lead_id) == str(user.id):
+                is_onsite_lead = True
         
         logger.info(
             f"Permission check for user {user.id} clock-in/out for worker {worker_id} in project {shift.project_id}: "
@@ -2286,10 +2340,29 @@ def get_weekly_attendance_summary(
         # Extract job_type and project_name for this attendance
         job_type = None
         project_name = None
+        shift_deleted = False
+        shift_deleted_by = None
+        shift_deleted_at = None
         
         if attendance.shift_id:
             # Scheduled attendance - get from shift
             shift = db.query(Shift).filter(Shift.id == attendance.shift_id).first()
+            # Detect soft-deleted shifts (status="deleted") or missing shift
+            if (shift is None) or (getattr(shift, "status", None) == "deleted"):
+                shift_deleted = True
+                # Get information about who deleted the shift from audit log
+                delete_log = db.query(AuditLog).filter(
+                    AuditLog.entity_type == "shift",
+                    AuditLog.entity_id == attendance.shift_id,
+                    AuditLog.action == "DELETE"
+                ).order_by(AuditLog.timestamp_utc.desc()).first()
+                if delete_log:
+                    shift_deleted_at = delete_log.timestamp_utc.isoformat() if delete_log.timestamp_utc else None
+                    actor = db.query(User).filter(User.id == delete_log.actor_id).first()
+                    if actor:
+                        shift_deleted_by = actor.username or actor.email or str(delete_log.actor_id)
+                    else:
+                        shift_deleted_by = str(delete_log.actor_id)
             if shift:
                 job_type = shift.job_name
                 # Get project name if it's not a predefined job
@@ -2353,6 +2426,9 @@ def get_weekly_attendance_summary(
             "break_minutes": final_break_minutes,
             "worker_id": str(attendance.worker_id),
             "worker_name": worker_name,
+            "shift_deleted": shift_deleted,
+            "shift_deleted_by": shift_deleted_by,
+            "shift_deleted_at": shift_deleted_at,
         })
     
     # Calculate hours worked for each day - handle multiple events per day
@@ -2453,6 +2529,9 @@ def get_weekly_attendance_summary(
                     "break_formatted": f"{break_minutes}m" if break_minutes > 0 else None,
                     "worker_id": event.get("worker_id"),
                     "worker_name": event.get("worker_name", "Employee"),
+                    "shift_deleted": bool(event.get("shift_deleted", False)),
+                    "shift_deleted_by": event.get("shift_deleted_by"),
+                    "shift_deleted_at": event.get("shift_deleted_at"),
                 })
             elif clock_in_time_str:
                 # Open event (clock-in without clock-out)
@@ -2475,6 +2554,9 @@ def get_weekly_attendance_summary(
                     "break_formatted": None,
                     "worker_id": event.get("worker_id"),
                     "worker_name": event.get("worker_name", "Employee"),
+                    "shift_deleted": bool(event.get("shift_deleted", False)),
+                    "shift_deleted_by": event.get("shift_deleted_by"),
+                    "shift_deleted_at": event.get("shift_deleted_at"),
                 })
         
         total_minutes += day_total_minutes  # Net total (after break)
@@ -2499,6 +2581,9 @@ def get_weekly_attendance_summary(
                     "break_formatted": event_data.get("break_formatted"),
                     "worker_id": event_data.get("worker_id"),
                     "worker_name": event_data.get("worker_name", "Employee"),  # Add worker name for display
+                    "shift_deleted": event_data.get("shift_deleted", False),
+                    "shift_deleted_by": event_data.get("shift_deleted_by"),
+                    "shift_deleted_at": event_data.get("shift_deleted_at"),
                 })
     
     # Calculate total break minutes for the week
@@ -2878,17 +2963,49 @@ def get_shift_attendance(
 ):
     """
     Get all attendance records for a specific shift.
+    Returns attendances even if the shift was deleted, with information about who deleted it.
     """
     shift = db.query(Shift).filter(Shift.id == shift_id).first()
-    if not shift:
-        raise HTTPException(status_code=404, detail="Shift not found")
+    shift_deleted = (shift is None) or (getattr(shift, "status", None) == "deleted")
+    shift_deleted_by = None
+    shift_deleted_at = None
     
-    # Check permissions
-    # Worker can see their own shift attendance
-    # Supervisor/admin can see any shift attendance in their projects
-    if str(shift.worker_id) != str(user.id):
-        if not (is_admin(user, db) or is_supervisor(user, db, str(shift.project_id))):
-            raise HTTPException(status_code=403, detail="Access denied")
+    # If shift was deleted, check permissions based on attendance records
+    if shift_deleted:
+        # Get first attendance to check permissions
+        first_attendance = db.query(Attendance).filter(Attendance.shift_id == shift_id).first()
+        if not first_attendance:
+            raise HTTPException(status_code=404, detail="Shift not found and no attendance records")
+        
+        # Check permissions based on attendance worker_id
+        # Worker can see their own shift attendance
+        # Supervisor/admin can see any shift attendance in their projects
+        if str(first_attendance.worker_id) != str(user.id):
+            # Need to determine project_id from attendance or audit log
+            # For now, allow if user is admin/supervisor (will be checked per attendance)
+            if not (is_admin(user, db) or is_supervisor(user, db)):
+                raise HTTPException(status_code=403, detail="Access denied")
+        
+        # Get information about who deleted the shift from audit log
+        delete_log = db.query(AuditLog).filter(
+            AuditLog.entity_type == "shift",
+            AuditLog.entity_id == shift_id,
+            AuditLog.action == "DELETE"
+        ).order_by(AuditLog.timestamp_utc.desc()).first()
+        
+        if delete_log:
+            shift_deleted_by = str(delete_log.actor_id)
+            shift_deleted_at = delete_log.timestamp_utc.isoformat() if delete_log.timestamp_utc else None
+            
+            # Get actor name
+            actor = db.query(User).filter(User.id == delete_log.actor_id).first()
+            if actor:
+                shift_deleted_by = actor.username or actor.email or shift_deleted_by
+    else:
+        # Check permissions for existing (non-deleted) shift
+        if str(shift.worker_id) != str(user.id):
+            if not (is_admin(user, db) or is_supervisor(user, db, str(shift.project_id))):
+                raise HTTPException(status_code=403, detail="Access denied")
     
     # NEW MODEL: Query by shift_id, order by clock_in_time or clock_out_time
     attendances = db.query(Attendance).filter(
@@ -2911,7 +3028,7 @@ def get_shift_attendance(
         # Use clock_in_time or clock_out_time for time_selected_utc (backward compatibility)
         time_selected = a.clock_in_time if a.clock_in_time else a.clock_out_time
         
-        result.append({
+        att_dict = {
             "id": str(a.id),
             "shift_id": str(a.shift_id),
             "worker_id": str(a.worker_id),
@@ -2931,7 +3048,15 @@ def get_shift_attendance(
             "approved_at": a.approved_at.isoformat() if a.approved_at else None,
             "rejected_at": a.rejected_at.isoformat() if a.rejected_at else None,
             "rejection_reason": a.rejection_reason,
-        })
+        }
+        
+        # Add shift deleted information if applicable
+        if shift_deleted:
+            att_dict["shift_deleted"] = True
+            att_dict["shift_deleted_by"] = shift_deleted_by
+            att_dict["shift_deleted_at"] = shift_deleted_at
+        
+        result.append(att_dict)
     
     return result
 
@@ -3120,11 +3245,18 @@ def _create_or_update_timesheet_from_attendance(
     from ..services.time_rules import utc_to_local
     from datetime import time as time_type
     
-    # Get or create timesheet entry for this shift and date
+    # Get or create timesheet entry for this shift and date.
+    # IMPORTANT: do not overwrite manual entries. Prefer an entry that is already linked
+    # to an attendance event (or legacy "attendance system" note), otherwise create a new one.
+    from sqlalchemy import or_
     existing_entry = db.query(ProjectTimeEntry).filter(
         ProjectTimeEntry.project_id == shift.project_id,
         ProjectTimeEntry.user_id == attendance.worker_id,
-        ProjectTimeEntry.work_date == shift.date
+        ProjectTimeEntry.work_date == shift.date,
+        or_(
+            ProjectTimeEntry.source_attendance_id.isnot(None),
+            ProjectTimeEntry.notes.ilike("%attendance system%"),
+        ),
     ).first()
     
     # NEW MODEL: Process both clock-in and clock-out if they exist
@@ -3142,6 +3274,12 @@ def _create_or_update_timesheet_from_attendance(
             if existing_entry:
                 # Update existing entry
                 existing_entry.start_time = start_time_local
+                # Link back to attendance for precise cleanup later
+                try:
+                    if getattr(existing_entry, "source_attendance_id", None) is None:
+                        existing_entry.source_attendance_id = attendance.id
+                except Exception:
+                    pass
                 # Recalculate minutes if end_time exists
                 if existing_entry.end_time:
                     from datetime import datetime, timedelta
@@ -3207,6 +3345,7 @@ def _create_or_update_timesheet_from_attendance(
                     start_time=start_time_local,
                     minutes=0,  # Will be calculated when clock-out is approved
                     notes=f"Clock-in via attendance system",
+                    source_attendance_id=attendance.id,
                     created_by=attendance.created_by
                 )
                 db.add(entry)
@@ -3270,6 +3409,12 @@ def _create_or_update_timesheet_from_attendance(
         if should_update_end and existing_entry:
             # Clock-out: update entry with end_time and calculate minutes
             existing_entry.end_time = end_time_local
+            # Link back to attendance for precise cleanup later
+            try:
+                if getattr(existing_entry, "source_attendance_id", None) is None:
+                    existing_entry.source_attendance_id = attendance.id
+            except Exception:
+                pass
             # Calculate minutes
             from datetime import datetime, timedelta
             if existing_entry.start_time:
@@ -3362,6 +3507,7 @@ def _create_or_update_timesheet_from_attendance(
                 end_time=end_time_local,
                 minutes=minutes,
                 notes=f"Clock-out via attendance system",
+                source_attendance_id=attendance.id,
                 created_by=attendance.created_by
             )
             db.add(entry)

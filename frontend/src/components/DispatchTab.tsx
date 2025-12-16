@@ -33,16 +33,28 @@ export default function DispatchTab({ projectId }: { projectId: string }) {
   const initialView = (searchParams.get('subtab') === 'pending' ? 'pending' : 'calendar') as 'calendar' | 'pending';
   const [view, setView] = useState<'calendar' | 'pending'>(initialView);
   
+  // Check permissions for workload
+  const { data: me } = useQuery({ queryKey:['me'], queryFn: ()=>api<any>('GET','/auth/me') });
+  const isAdmin = (me?.roles||[]).includes('admin');
+  const permissions = new Set(me?.permissions || []);
+  const canEditWorkload = isAdmin || permissions.has('business:projects:workload:write');
+
   // Update view when URL search params change
   useEffect(() => {
     const searchParams = new URLSearchParams(location.search);
     const subtabParam = searchParams.get('subtab');
     if (subtabParam === 'pending') {
-      setView('pending');
+      if (canEditWorkload) {
+        setView('pending');
+      } else {
+        // Redirect to calendar if no permission
+        setView('calendar');
+        nav(location.pathname + '?tab=dispatch', { replace: true });
+      }
     } else if (subtabParam === 'calendar' || !subtabParam) {
       setView('calendar');
     }
-  }, [location.search]);
+  }, [location.search, canEditWorkload, nav, location.pathname]);
   
   // Week view: anchor date is the Sunday of the current week
   const [anchorDate, setAnchorDate] = useState<Date>(() => {
@@ -99,13 +111,13 @@ export default function DispatchTab({ projectId }: { projectId: string }) {
 
   const { data: shifts, refetch: refetchShifts } = useQuery({
     queryKey: ['dispatch-shifts', projectId, dateRange],
-    queryFn: () => api<any[]>('GET', `/dispatch/projects/${projectId}/shifts?date_range=${dateRange}`),
+    queryFn: () => api<any[]>('GET', '/dispatch/projects/' + projectId + '/shifts?date_range=' + dateRange),
     refetchInterval: 5000, // Refetch every 5 seconds for real-time updates
   });
 
   const { data: pendingAttendance, refetch: refetchPending } = useQuery({
     queryKey: ['dispatch-pending', projectId],
-    queryFn: () => api<any[]>('GET', `/dispatch/attendance/pending?project_id=${projectId}`),
+    queryFn: () => api<any[]>('GET', '/dispatch/attendance/pending?project_id=' + projectId),
     enabled: view === 'pending',
     refetchInterval: 5000, // Refetch every 5 seconds for real-time updates
   });
@@ -117,7 +129,7 @@ export default function DispatchTab({ projectId }: { projectId: string }) {
 
   const { data: project } = useQuery({
     queryKey: ['project', projectId],
-    queryFn: () => api<any>('GET', `/projects/${projectId}`),
+    queryFn: () => api<any>('GET', '/projects/' + projectId),
   });
 
   const { data: settings } = useQuery({
@@ -180,17 +192,19 @@ export default function DispatchTab({ projectId }: { projectId: string }) {
           >
             Calendar
           </button>
-          <button
-            onClick={() => setView('pending')}
-            className={`px-4 py-2 rounded ${view === 'pending' ? 'bg-brand-red text-white' : 'bg-gray-100'}`}
-          >
-            Pending Queue
-            {pendingAttendance && pendingAttendance.length > 0 && (
-              <span className="ml-2 px-2 py-0.5 rounded-full bg-red-500 text-white text-xs">
-                {pendingAttendance.length}
-              </span>
-            )}
-          </button>
+          {canEditWorkload && (
+            <button
+              onClick={() => setView('pending')}
+              className={`px-4 py-2 rounded ${view === 'pending' ? 'bg-brand-red text-white' : 'bg-gray-100'}`}
+            >
+              Pending Queue
+              {pendingAttendance && pendingAttendance.length > 0 && (
+                <span className="ml-2 px-2 py-0.5 rounded-full bg-red-500 text-white text-xs">
+                  {pendingAttendance.length}
+                </span>
+              )}
+            </button>
+          )}
         </div>
       </div>
 
@@ -250,66 +264,67 @@ export default function DispatchTab({ projectId }: { projectId: string }) {
                 Today
               </button>
             </div>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={async () => {
-                  try {
-                    // Get all shifts in the current date range
-                    const shiftsInRange = shifts || [];
-                    if (shiftsInRange.length === 0) {
-                      toast.error('No shifts to notify');
-                      return;
+            {canEditWorkload && (
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={async () => {
+                    try {
+                      // Get all shifts in the current date range
+                      const shiftsInRange = shifts || [];
+                      if (shiftsInRange.length === 0) {
+                        toast.error('No shifts to notify');
+                        return;
+                      }
+                      
+                      // Get unique worker IDs
+                      const workerIds = [...new Set(shiftsInRange.map((s: any) => s.worker_id))];
+                      
+                      // Call API to send notifications
+                      await api('POST', '/dispatch/projects/' + projectId + '/notify-shifts', {
+                        date_range: dateRange,
+                        worker_ids: workerIds,
+                      });
+                      
+                      toast.success(`Notifications sent to ${workerIds.length} worker${workerIds.length > 1 ? 's' : ''}`);
+                    } catch (e: any) {
+                      toast.error(e.response?.data?.detail || e.message || 'Failed to send notifications');
                     }
-                    
-                    // Get unique worker IDs
-                    const workerIds = [...new Set(shiftsInRange.map((s: any) => s.worker_id))];
-                    
-                    // Call API to send notifications
-                    await api('POST', `/dispatch/projects/${projectId}/notify-shifts`, {
-                      date_range: dateRange,
-                      worker_ids: workerIds,
-                    });
-                    
-                    toast.success(`Notifications sent to ${workerIds.length} worker${workerIds.length > 1 ? 's' : ''}`);
-                  } catch (e: any) {
-                    toast.error(e.response?.data?.detail || e.message || 'Failed to send notifications');
-                  }
-                }}
-                className="px-4 py-2 rounded bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-2"
-                title="Send push notifications and emails to workers with scheduled shifts"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
-                </svg>
-                Notify Workers
-              </button>
-              <button
-                onClick={() => setCreateShiftModal(true)}
-                className="px-4 py-2 rounded bg-brand-red text-white"
-                disabled={deleteMode}
-              >
-                + Create Shift
-              </button>
-              <button
-                onClick={() => {
-                  if (deleteMode) {
-                    // Cancel delete mode
-                    setDeleteMode(false);
-                    setSelectedShiftsForDelete(new Set());
-                  } else {
-                    // Enter delete mode
-                    setDeleteMode(true);
-                    setSelectedShiftsForDelete(new Set());
-                  }
-                }}
-                className={`px-4 py-2 rounded text-white ${
-                  deleteMode 
-                    ? 'bg-gray-600 hover:bg-gray-700' 
-                    : 'bg-red-600 hover:bg-red-700'
-                }`}
-              >
-                {deleteMode ? 'Cancel Delete' : 'Delete Shifts'}
-              </button>
+                  }}
+                  className="px-4 py-2 rounded bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-2"
+                  title="Send push notifications and emails to workers with scheduled shifts"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+                  </svg>
+                  Notify Workers
+                </button>
+                <button
+                  onClick={() => setCreateShiftModal(true)}
+                  className="px-4 py-2 rounded bg-brand-red text-white"
+                  disabled={deleteMode}
+                >
+                  + Create Shift
+                </button>
+                <button
+                  onClick={() => {
+                    if (deleteMode) {
+                      // Cancel delete mode
+                      setDeleteMode(false);
+                      setSelectedShiftsForDelete(new Set());
+                    } else {
+                      // Enter delete mode
+                      setDeleteMode(true);
+                      setSelectedShiftsForDelete(new Set());
+                    }
+                  }}
+                  className={`px-4 py-2 rounded text-white ${
+                    deleteMode 
+                      ? 'bg-gray-600 hover:bg-gray-700' 
+                      : 'bg-red-600 hover:bg-red-700'
+                  }`}
+                >
+                  {deleteMode ? 'Cancel Delete' : 'Delete Shifts'}
+                </button>
               {deleteMode && selectedShiftsForDelete.size > 0 && (
                 <button
                   onClick={async () => {
@@ -354,9 +369,13 @@ export default function DispatchTab({ projectId }: { projectId: string }) {
                         return;
                       }
                       
+                      let messageText = `Are you sure you want to delete ${shiftsToDelete.length} shift(s)? This action cannot be undone.`;
+                      if (pastShifts.length > 0) {
+                        messageText += '\n\nNote: ' + pastShifts.length + ' shift(s) from past dates cannot be deleted and were excluded.';
+                      }
                       const ok = await confirm({
                         title: 'Delete Shifts',
-                        message: `Are you sure you want to delete ${shiftsToDelete.length} shift(s)? This action cannot be undone.${pastShifts.length > 0 ? `\n\nNote: ${pastShifts.length} shift(s) from past dates cannot be deleted and were excluded.` : ''}`,
+                        message: messageText,
                         confirmText: 'Delete',
                         cancelText: 'Cancel',
                       });
@@ -369,7 +388,7 @@ export default function DispatchTab({ projectId }: { projectId: string }) {
                       
                       for (const shift of shiftsToDelete) {
                         try {
-                          await api('DELETE', `/dispatch/shifts/${shift.id}`);
+                          await api('DELETE', '/dispatch/shifts/' + shift.id);
                           successCount++;
                         } catch (e: any) {
                           errorCount++;
@@ -384,6 +403,25 @@ export default function DispatchTab({ projectId }: { projectId: string }) {
                       }
                       
                       await refetchShifts();
+                      
+                      // Invalidate all related queries to ensure UI updates
+                      // Note: Using partial match to invalidate all variations of these query keys
+                      await Promise.all([
+                        queryClient.invalidateQueries({ queryKey: ['attendances'] }),
+                        queryClient.invalidateQueries({ queryKey: ['shifts'] }),
+                        queryClient.invalidateQueries({ queryKey: ['timesheetLogs'] }),
+                        queryClient.invalidateQueries({ queryKey: ['timesheetLogsMini'] }),
+                        queryClient.invalidateQueries({ queryKey: ['timesheet'] }),
+                        queryClient.invalidateQueries({ queryKey: ['dispatch-shifts-all'] }),
+                      ]);
+                      
+                      // Force refetch of timesheet queries to ensure immediate update
+                      await Promise.all([
+                        queryClient.refetchQueries({ queryKey: ['timesheet'] }),
+                        queryClient.refetchQueries({ queryKey: ['timesheetLogsMini'] }),
+                        queryClient.refetchQueries({ queryKey: ['dispatch-shifts-all'] }),
+                      ]);
+                      
                       setDeleteMode(false);
                       setSelectedShiftsForDelete(new Set());
                     } catch (e: any) {
@@ -395,7 +433,8 @@ export default function DispatchTab({ projectId }: { projectId: string }) {
                   Delete {selectedShiftsForDelete.size} Selected
                 </button>
               )}
-            </div>
+              </div>
+            )}
           </div>
 
           {deleteMode && (
@@ -506,6 +545,10 @@ export default function DispatchTab({ projectId }: { projectId: string }) {
                               onClick={(e) => {
                                 e.stopPropagation();
                                 if (deleteMode) {
+                                  if (!canEditWorkload) {
+                                    toast.error('You do not have permission to delete shifts');
+                                    return;
+                                  }
                                   if (canDelete) {
                                     setSelectedShiftsForDelete((prev) => {
                                       const newSet = new Set(prev);
@@ -520,6 +563,7 @@ export default function DispatchTab({ projectId }: { projectId: string }) {
                                     toast.error('Cannot delete shifts from past dates');
                                   }
                                 } else {
+                                  // Allow opening modal for viewing even without edit permission
                                   setEditShiftModal(shift);
                                 }
                               }}
@@ -574,7 +618,7 @@ export default function DispatchTab({ projectId }: { projectId: string }) {
                                     </div>
                                   )} */}
                                 </div>
-                                {!deleteMode && (
+                                {!deleteMode && canEditWorkload && (
                                   <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
                                     <button
                                       onMouseDown={(e) => e.stopPropagation()}
@@ -613,7 +657,7 @@ export default function DispatchTab({ projectId }: { projectId: string }) {
                                         });
                                         if (!ok) return;
                                         try {
-                                          await api('DELETE', `/dispatch/shifts/${shift.id}`);
+                                          await api('DELETE', '/dispatch/shifts/' + shift.id);
                                           toast.success('Shift deleted');
                                           await refetchShifts();
                                         } catch (e: any) {
@@ -659,7 +703,7 @@ export default function DispatchTab({ projectId }: { projectId: string }) {
                   employees={employees || []}
                   onApprove={async () => {
                     try {
-                      await api('POST', `/dispatch/attendance/${attendance.id}/approve`, { note: 'Approved' });
+                      await api('POST', '/dispatch/attendance/' + attendance.id + '/approve', { note: 'Approved' });
                       toast.success('Approved');
                       await refetchPending();
                       await refetchShifts();
@@ -672,7 +716,7 @@ export default function DispatchTab({ projectId }: { projectId: string }) {
                   }}
                   onReject={async (reason: string) => {
                     try {
-                      await api('POST', `/dispatch/attendance/${attendance.id}/reject`, { reason });
+                      await api('POST', '/dispatch/attendance/' + attendance.id + '/reject', { reason });
                       toast.success('Rejected');
                       await refetchPending();
                       await refetchShifts();
@@ -713,6 +757,7 @@ export default function DispatchTab({ projectId }: { projectId: string }) {
               project={project}
               employees={employees}
               shift={editShiftModal}
+              canEdit={canEditWorkload}
               onClose={() => setEditShiftModal(null)}
               onSave={async () => {
                 await refetchShifts();
@@ -990,7 +1035,7 @@ function CreateShiftModal({
 
       for (const shiftData of shiftsToCreate) {
         try {
-          await api('POST', `/dispatch/projects/${projectId}/shifts`, shiftData);
+          await api('POST', '/dispatch/projects/' + projectId + '/shifts', shiftData);
           successCount++;
         } catch (e: any) {
           errorCount++;
@@ -1004,7 +1049,11 @@ function CreateShiftModal({
       if (errorCount > 0) {
         const errorMsg = `${successCount} shift${successCount > 1 ? 's' : ''} created, ${errorCount} failed.`;
         toast.error(errorMsg);
-        setError(`${errorMsg}\n\nFailed shifts:\n${errors.slice(0, 10).join('\n')}${errors.length > 10 ? `\n... and ${errors.length - 10} more` : ''}`);
+        let errorDetails = errorMsg + '\n\nFailed shifts:\n' + errors.slice(0, 10).join('\n');
+        if (errors.length > 10) {
+          errorDetails += '\n... and ' + (errors.length - 10) + ' more';
+        }
+        setError(errorDetails);
         // Still refresh to show created shifts
         if (successCount > 0) {
           await onSave();
@@ -1125,7 +1174,7 @@ function CreateShiftModal({
                           <div className="flex items-center gap-2 flex-1">
                             {emp.profile_photo_file_id ? (
                               <img
-                                src={`/files/${emp.profile_photo_file_id}/thumbnail?w=64`}
+                                src={'/files/' + emp.profile_photo_file_id + '/thumbnail?w=64'}
                                 className="w-6 h-6 rounded-full object-cover"
                                 alt=""
                               />

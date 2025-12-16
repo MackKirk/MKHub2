@@ -50,7 +50,7 @@ def seed_fleet_permissions():
                 name="fleet",
                 label="Fleet & Equipment",
                 description="Permissions for Fleet & Equipment area. Blocking access blocks all sub-permissions.",
-                sort_index=4,  # After Documents
+                sort_index=3,  # After Inventory
             )
             db.add(category)
         
@@ -64,6 +64,30 @@ def seed_fleet_permissions():
                 "label": "Access Fleet & Equipment",
                 "description": "Grants access to the Fleet & Equipment area. Required for all Fleet functions. If disabled, all Fleet permissions are blocked.",
                 "sort_index": 1,
+            },
+            {
+                "key": "fleet:vehicles:read",
+                "label": "View Vehicles Tab",
+                "description": "Allows viewing the Vehicles tab in the Fleet & Equipment area",
+                "sort_index": 2,
+            },
+            {
+                "key": "fleet:vehicles:write",
+                "label": "Edit Vehicles Tab",
+                "description": "Allows editing the Vehicles tab in the Fleet & Equipment area (creating, updating, and deleting vehicles)",
+                "sort_index": 3,
+            },
+            {
+                "key": "fleet:equipment:read",
+                "label": "View Equipment Tab",
+                "description": "Allows viewing the Equipment tab in the Fleet & Equipment area",
+                "sort_index": 4,
+            },
+            {
+                "key": "fleet:equipment:write",
+                "label": "Edit Equipment Tab",
+                "description": "Allows editing the Equipment tab in the Fleet & Equipment area (creating, updating, and deleting equipment)",
+                "sort_index": 5,
             },
         ]
         

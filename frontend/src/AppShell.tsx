@@ -272,10 +272,10 @@ export default function AppShell({ children }: PropsWithChildren){
       label: 'Business',
       icon: <IconBriefcase />,
       items: [
-        { id: 'business-dashboard', label: 'Dashboard', path: '/business', icon: <IconBriefcase /> },
-        { id: 'customers', label: 'Customers', path: '/customers', icon: <IconUsers /> },
-        { id: 'opportunities', label: 'Opportunities', path: '/opportunities', icon: <IconFileText /> },
-        { id: 'projects', label: 'Projects', path: '/projects', icon: <IconBriefcase /> },
+        { id: 'business-dashboard', label: 'Dashboard', path: '/business', icon: <IconBriefcase />, requiredPermission: 'business:projects:read' },
+        { id: 'customers', label: 'Customers', path: '/customers', icon: <IconUsers />, requiredPermission: 'business:customers:read' },
+        { id: 'opportunities', label: 'Opportunities', path: '/opportunities', icon: <IconFileText />, requiredPermission: 'business:projects:read' },
+        { id: 'projects', label: 'Projects', path: '/projects', icon: <IconBriefcase />, requiredPermission: 'business:projects:read' },
         { id: 'proposals', label: 'Proposals', path: '/proposals', icon: <IconFileText /> },
       ]
     },
@@ -413,6 +413,14 @@ export default function AppShell({ children }: PropsWithChildren){
           return false;
         }
       }
+      // Special handling for Fleet Dashboard: only match exactly /fleet, not sub-paths
+      if (item.id === 'fleet-dashboard' && item.path === '/fleet') {
+        return location.pathname === '/fleet';
+      }
+      // Special handling for Business Dashboard: only match exactly /business, not sub-paths
+      if (item.id === 'business-dashboard' && item.path === '/business') {
+        return location.pathname === '/business';
+      }
       return location.pathname === item.path || location.pathname.startsWith(item.path + '/');
     });
   };
@@ -457,6 +465,12 @@ export default function AppShell({ children }: PropsWithChildren){
         <nav className="flex-1 overflow-y-auto p-2">
           {menuCategories
             .filter(category => {
+              // Special handling for Business category: hide entire category if user doesn't have business:projects:read OR business:customers:read
+              if (category.id === 'business') {
+                if ((me?.roles||[]).includes('admin')) return true;
+                const hasBusinessAccess = (me?.permissions||[]).includes('business:projects:read') || (me?.permissions||[]).includes('business:customers:read');
+                if (!hasBusinessAccess) return false;
+              }
               // Filter categories that have no visible items
               const visibleItems = category.items.filter(item => {
                 if (!item.requiredPermission) return true;
@@ -476,12 +490,24 @@ export default function AppShell({ children }: PropsWithChildren){
             const isActive = isCategoryActive(category);
             const showSubItems = !sidebarCollapsed && isActive;
             
+            // Determine the default path for Business category based on permissions
+            const getBusinessDefaultPath = () => {
+              if (category.id !== 'business') return category.items[0]?.path || '#';
+              if ((me?.roles||[]).includes('admin')) return '/business';
+              const hasProjectsAccess = (me?.permissions||[]).includes('business:projects:read');
+              const hasCustomersAccess = (me?.permissions||[]).includes('business:customers:read');
+              // If user has projects access, go to dashboard; otherwise go to customers
+              if (hasProjectsAccess) return '/business';
+              if (hasCustomersAccess) return '/customers';
+              return category.items[0]?.path || '#';
+            };
+
             if (sidebarCollapsed) {
               // When collapsed, show only category icons
               return (
                 <div key={category.id} className="mb-2">
                   <NavLink
-                    to={category.items[0]?.path || '#'}
+                    to={getBusinessDefaultPath()}
                     className={() => 
                       `flex items-center justify-center px-3 py-2 rounded-lg transition-colors ${
                         isActive ? 'bg-brand-red text-white' : 'text-gray-300 hover:bg-gray-600 hover:text-white'
@@ -499,7 +525,7 @@ export default function AppShell({ children }: PropsWithChildren){
             return (
               <div key={category.id} className="mb-2">
                 <NavLink
-                  to={category.items[0]?.path || '#'}
+                  to={getBusinessDefaultPath()}
                   className={() => 
                     `flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${
                       isActive ? 'bg-brand-red text-white' : 'text-gray-300 hover:bg-gray-600 hover:text-white'
@@ -537,12 +563,25 @@ export default function AppShell({ children }: PropsWithChildren){
                           isItemActive = false;
                         } else {
                           // Normal logic when not viewing an opportunity
-                          isItemActive = location.pathname === item.path || location.pathname.startsWith(item.path + '/');
+                          // Special handling for Fleet Dashboard: only match exactly /fleet, not sub-paths
+                          if (item.id === 'fleet-dashboard' && item.path === '/fleet') {
+                            isItemActive = location.pathname === '/fleet';
+                          }
+                          // Special handling for Business Dashboard: only match exactly /business, not sub-paths
+                          else if (item.id === 'business-dashboard' && item.path === '/business') {
+                            isItemActive = location.pathname === '/business';
+                          }
+                          else {
+                            isItemActive = location.pathname === item.path || location.pathname.startsWith(item.path + '/');
+                          }
                         }
                         return (
                           <NavLink
                             key={item.id}
                             to={item.path}
+                            // Dashboards should only be active on the exact route (/fleet, /business),
+                            // otherwise they stay highlighted on sub-routes like /fleet/assets.
+                            end={item.id === 'fleet-dashboard' || item.id === 'business-dashboard'}
                             className={({isActive: navActive}) =>
                               `flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${
                                 (isItemActive || navActive) ? 'bg-brand-red/80 text-white' : 'text-gray-400 hover:bg-gray-600 hover:text-white'

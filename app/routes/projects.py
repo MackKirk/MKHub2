@@ -6,7 +6,7 @@ from typing import List, Optional
 import uuid
 
 from ..db import get_db
-from ..models.models import Project, ClientFile, FileObject, ProjectUpdate, ProjectReport, ProjectEvent, ProjectTimeEntry, ProjectTimeEntryLog, User, EmployeeProfile, Client, ClientSite, ClientFolder, ClientContact, SettingList, SettingItem, Shift
+from ..models.models import Project, ClientFile, FileObject, ProjectUpdate, ProjectReport, ProjectEvent, ProjectTimeEntry, ProjectTimeEntryLog, User, EmployeeProfile, Client, ClientSite, ClientFolder, ClientContact, SettingList, SettingItem, Shift, AuditLog
 from datetime import datetime, timezone, time, timedelta
 from ..auth.security import get_current_user, require_permissions, can_approve_timesheet
 from sqlalchemy import or_, and_, cast, String, Date
@@ -833,7 +833,7 @@ def delete_project_event(project_id: str, event_id: str, db: Session = Depends(g
 
 # ---- Timesheets ----
 @router.get("/{project_id}/timesheet")
-def list_timesheet(project_id: str, month: Optional[str] = None, user_id: Optional[str] = None, db: Session = Depends(get_db), _=Depends(require_permissions("hr:timesheet:read", "timesheet:read"))):
+def list_timesheet(project_id: str, month: Optional[str] = None, user_id: Optional[str] = None, db: Session = Depends(get_db), _=Depends(require_permissions("business:projects:timesheet:read", "hr:timesheet:read", "timesheet:read"))):
     from ..routes.settings import calculate_break_minutes
     
     # Calculate date range for month filter
@@ -962,6 +962,29 @@ def list_timesheet(project_id: str, month: Optional[str] = None, user_id: Option
         
         # Get shift for notes
         shift = shifts_dict.get(str(att.shift_id)) if att.shift_id else None
+        shift_deleted = False
+        shift_deleted_by = None
+        shift_deleted_at = None
+        
+        # Check if shift was deleted (soft-delete uses status="deleted")
+        if att.shift_id and (not shift or getattr(shift, "status", None) == "deleted"):
+            shift_deleted = True
+            # Get information about who deleted the shift from audit log
+            delete_log = db.query(AuditLog).filter(
+                AuditLog.entity_type == "shift",
+                AuditLog.entity_id == att.shift_id,
+                AuditLog.action == "DELETE"
+            ).order_by(AuditLog.timestamp_utc.desc()).first()
+            
+            if delete_log:
+                shift_deleted_at = delete_log.timestamp_utc.isoformat() if delete_log.timestamp_utc else None
+                # Get actor name
+                actor = db.query(User).filter(User.id == delete_log.actor_id).first()
+                if actor:
+                    shift_deleted_by = actor.username or actor.email or str(delete_log.actor_id)
+                else:
+                    shift_deleted_by = str(delete_log.actor_id)
+        
         notes = f"Clock-in via attendance system"
         if shift and shift.job_name:
             notes = f"Clock-in via attendance system - {shift.job_name}"
@@ -981,7 +1004,7 @@ def list_timesheet(project_id: str, month: Optional[str] = None, user_id: Option
             local_time = att.clock_out_time.astimezone(local_tz)
             end_time_str = local_time.time().isoformat()
         
-        out.append({
+        entry_dict = {
             "id": f"attendance_{att.id}",  # Prefix to distinguish from ProjectTimeEntry
             "project_id": str(project_id),
             "user_id": str(att.worker_id),
@@ -999,7 +1022,15 @@ def list_timesheet(project_id: str, month: Optional[str] = None, user_id: Option
             "approved_by": str(att.approved_by) if att.approved_by else None,
             "is_from_attendance": True,  # Flag to indicate this comes from attendance
             "attendance_id": str(att.id),  # Store attendance ID for reference
-        })
+        }
+        
+        # Add shift deleted information if applicable
+        if shift_deleted:
+            entry_dict["shift_deleted"] = True
+            entry_dict["shift_deleted_by"] = shift_deleted_by
+            entry_dict["shift_deleted_at"] = shift_deleted_at
+        
+        out.append(entry_dict)
     
     # Also include regular ProjectTimeEntry records (manual entries without attendance)
     # join with users and employee_profiles for display
@@ -1056,7 +1087,7 @@ def list_timesheet(project_id: str, month: Optional[str] = None, user_id: Option
 
 
 @router.post("/{project_id}/timesheet")
-def create_time_entry(project_id: str, payload: dict, db: Session = Depends(get_db), user=Depends(get_current_user), _=Depends(require_permissions("hr:timesheet:write", "timesheet:write"))):
+def create_time_entry(project_id: str, payload: dict, db: Session = Depends(get_db), user=Depends(get_current_user), _=Depends(require_permissions("business:projects:timesheet:write", "hr:timesheet:write", "timesheet:write"))):
     from datetime import datetime as _dt
     work_date = payload.get("work_date")
     minutes = int(payload.get("minutes") or 0)
@@ -1100,11 +1131,157 @@ def create_time_entry(project_id: str, payload: dict, db: Session = Depends(get_
 
 
 @router.patch("/{project_id}/timesheet/{entry_id}")
-def update_time_entry(project_id: str, entry_id: str, payload: dict, db: Session = Depends(get_db), user=Depends(get_current_user), _=Depends(require_permissions("hr:timesheet:write", "timesheet:write"))):
+def update_time_entry(project_id: str, entry_id: str, payload: dict, db: Session = Depends(get_db), user=Depends(get_current_user)):
+    """
+    Update a timesheet entry.
+    - For manual ProjectTimeEntry: requires timesheet write permission.
+    - For attendance-backed entries (id startswith "attendance_"): requires HR Attendance write permission.
+    """
+    from ..auth.security import _has_permission
+    from ..services.permissions import is_admin
+    from fastapi import HTTPException
+
+    # Attendance-backed entry (prefixed with "attendance_")
+    if entry_id.startswith("attendance_"):
+        if not (is_admin(user, db) or _has_permission(user, "hr:attendance:write") or _has_permission(user, "hr:users:edit:timesheet") or _has_permission(user, "users:write")):
+            raise HTTPException(status_code=403, detail="You do not have permission to edit attendance records")
+
+        attendance_id_str = entry_id.replace("attendance_", "")
+        try:
+            attendance_uuid = uuid.UUID(attendance_id_str)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid attendance ID format")
+
+        from ..models.models import Attendance, Shift, Project, ProjectTimeEntry
+        attendance = db.query(Attendance).filter(Attendance.id == attendance_uuid).first()
+        if not attendance:
+            raise HTTPException(status_code=404, detail="Attendance not found")
+
+        # Verify attendance belongs to this project through shift
+        shift = None
+        if attendance.shift_id:
+            shift = db.query(Shift).filter(Shift.id == attendance.shift_id).first()
+            if shift and str(shift.project_id) != project_id:
+                raise HTTPException(status_code=403, detail="Attendance does not belong to this project")
+        else:
+            # Direct attendances (no shift) cannot be edited from a project-scoped timesheet
+            raise HTTPException(status_code=403, detail="Attendance is not linked to a project shift")
+
+        # Parse start/end times (local HH:MM:SS)
+        start_time = payload.get("start_time")
+        end_time = payload.get("end_time")
+        if not start_time or not end_time:
+            raise HTTPException(status_code=400, detail="start_time and end_time are required")
+        try:
+            from datetime import time as _time
+            st = _time.fromisoformat(str(start_time))
+            et = _time.fromisoformat(str(end_time))
+        except Exception:
+            raise HTTPException(status_code=400, detail="Invalid time format")
+
+        # Convert local times to UTC datetimes using the same timezone used by the timesheet UI
+        base_dt = attendance.clock_in_time or attendance.clock_out_time
+        if not base_dt:
+            raise HTTPException(status_code=400, detail="Attendance has no time data to update")
+
+        from ..config import settings
+        import pytz
+        from datetime import datetime, timedelta
+
+        local_tz = pytz.timezone(settings.tz_default)
+        local_date = base_dt.astimezone(local_tz).date()
+
+        start_local = local_tz.localize(datetime.combine(local_date, st))
+        end_local = local_tz.localize(datetime.combine(local_date, et))
+        if end_local <= start_local:
+            end_local = end_local + timedelta(days=1)
+
+        start_utc = start_local.astimezone(pytz.UTC)
+        end_utc = end_local.astimezone(pytz.UTC)
+
+        # Conflict check (reuse existing helper)
+        from ..routes.settings import check_attendance_conflict, calculate_break_minutes
+        conflict_error = check_attendance_conflict(
+            db, attendance.worker_id, start_utc, end_utc, exclude_attendance_id=attendance.id, timezone_str=settings.tz_default
+        )
+        if conflict_error:
+            # Improve message to "update" context
+            raise HTTPException(status_code=400, detail=str(conflict_error).replace("Cannot create attendance:", "Cannot update attendance:"))
+
+        before = {
+            "clock_in_time": attendance.clock_in_time.isoformat() if attendance.clock_in_time else None,
+            "clock_out_time": attendance.clock_out_time.isoformat() if attendance.clock_out_time else None,
+            "break_minutes": attendance.break_minutes,
+        }
+
+        attendance.clock_in_time = start_utc
+        attendance.clock_out_time = end_utc
+        # Use break_minutes from payload if provided, otherwise preserve existing manual break
+        manual_break = None
+        if "break_minutes" in payload and payload["break_minutes"] is not None:
+            manual_break = int(payload["break_minutes"])
+        elif attendance.break_minutes is not None:
+            manual_break = attendance.break_minutes
+        attendance.break_minutes = calculate_break_minutes(db, attendance.worker_id, attendance.clock_in_time, attendance.clock_out_time, manual_break_minutes=manual_break)
+
+        # Keep ProjectTimeEntry (synced row) in sync when present
+        te = db.query(ProjectTimeEntry).filter(ProjectTimeEntry.source_attendance_id == attendance.id).first()
+        if not te:
+            try:
+                project_uuid = uuid.UUID(project_id)
+                work_date = shift.date if shift else local_date
+                te = db.query(ProjectTimeEntry).filter(
+                    ProjectTimeEntry.project_id == project_uuid,
+                    ProjectTimeEntry.user_id == attendance.worker_id,
+                    ProjectTimeEntry.work_date == work_date,
+                    ProjectTimeEntry.notes.ilike("%attendance system%")
+                ).first()
+            except Exception:
+                te = None
+
+        if te:
+            total_minutes = int((end_utc - start_utc).total_seconds() / 60)
+            break_min = attendance.break_minutes or 0
+            te.start_time = st
+            te.end_time = et
+            te.minutes = max(0, total_minutes - break_min)
+            try:
+                if getattr(te, "source_attendance_id", None) is None:
+                    te.source_attendance_id = attendance.id
+            except Exception:
+                pass
+
+        db.commit()
+
+        after = {
+            "clock_in_time": attendance.clock_in_time.isoformat() if attendance.clock_in_time else None,
+            "clock_out_time": attendance.clock_out_time.isoformat() if attendance.clock_out_time else None,
+            "break_minutes": attendance.break_minutes,
+        }
+
+        # Log update
+        try:
+            db.add(ProjectTimeEntryLog(
+                entry_id=te.id if te else None,
+                project_id=uuid.UUID(project_id),
+                user_id=user.id,
+                action="update",
+                changes={"message": "attendance updated via project > timesheet", "attendance_id": str(attendance.id), "before": before, "after": after}
+            ))
+            db.commit()
+        except Exception:
+            pass
+
+        return {"status": "ok"}
+
+    # Manual ProjectTimeEntry update
+    if not (is_admin(user, db) or _has_permission(user, "business:projects:timesheet:write") or _has_permission(user, "hr:timesheet:write") or _has_permission(user, "timesheet:write")):
+        raise HTTPException(status_code=403, detail="You do not have permission to edit time entries")
+
     row = db.query(ProjectTimeEntry).filter(ProjectTimeEntry.id == entry_id, ProjectTimeEntry.project_id == project_id).first()
     if not row:
-        from fastapi import HTTPException
         raise HTTPException(status_code=404, detail="Not found")
+
     before = {"work_date": row.work_date.isoformat(), "minutes": row.minutes, "notes": row.notes, "start_time": getattr(row,'start_time', None).isoformat() if getattr(row,'start_time', None) else None, "end_time": getattr(row,'end_time', None).isoformat() if getattr(row,'end_time', None) else None, "is_approved": bool(getattr(row,'is_approved', False))}
     work_date = payload.get("work_date")
     minutes = payload.get("minutes")
@@ -1144,9 +1321,20 @@ def update_time_entry(project_id: str, entry_id: str, payload: dict, db: Session
 
 
 @router.delete("/{project_id}/timesheet/{entry_id}")
-def delete_time_entry(project_id: str, entry_id: str, db: Session = Depends(get_db), user=Depends(get_current_user), _=Depends(require_permissions("hr:timesheet:write", "timesheet:write"))):
-    # Check if this is an attendance entry (prefixed with "attendance_")
+def delete_time_entry(project_id: str, entry_id: str, db: Session = Depends(get_db), user=Depends(get_current_user)):
+    """
+    Delete a timesheet entry.
+    - For manual ProjectTimeEntry: requires timesheet write permission.
+    - For attendance-backed entries (id startswith "attendance_"): requires HR Attendance write permission.
+    """
+    from ..auth.security import _has_permission
+    from ..services.permissions import is_admin
+    # Attendance-backed entry (prefixed with "attendance_")
     if entry_id.startswith("attendance_"):
+        if not (is_admin(user, db) or _has_permission(user, "hr:attendance:write") or _has_permission(user, "hr:users:edit:timesheet") or _has_permission(user, "users:write")):
+            from fastapi import HTTPException
+            raise HTTPException(status_code=403, detail="You do not have permission to delete attendance records")
+
         # Extract attendance ID
         attendance_id_str = entry_id.replace("attendance_", "")
         try:
@@ -1214,9 +1402,44 @@ def delete_time_entry(project_id: str, entry_id: str, db: Session = Depends(get_
         )
         db.add(log)
         
+        # If this attendance had a synced ProjectTimeEntry (created on approval), delete it too.
+        # Prefer precise linkage by source_attendance_id; fallback to legacy note pattern.
+        try:
+            from ..models.models import ProjectTimeEntry
+            from sqlalchemy import or_, and_
+            q = db.query(ProjectTimeEntry).filter(
+                ProjectTimeEntry.project_id == uuid.UUID(project_id) if isinstance(project_id, str) else project_id,
+                ProjectTimeEntry.user_id == attendance.worker_id,
+            )
+            if work_date:
+                q = q.filter(ProjectTimeEntry.work_date == work_date)
+            q = q.filter(
+                or_(
+                    ProjectTimeEntry.source_attendance_id == attendance.id,
+                    and_(
+                        ProjectTimeEntry.source_attendance_id.is_(None),
+                        ProjectTimeEntry.notes.ilike("%attendance system%"),
+                    ),
+                )
+            )
+            for te in q.all():
+                db.delete(te)
+        except Exception:
+            # Non-critical: do not block attendance deletion if cleanup fails
+            pass
+        
         # Delete the attendance record
         db.delete(attendance)
         db.commit()
+
+        # For attendance deletes, we are done (do not run the ProjectTimeEntry reset logic below)
+        return {"status": "ok"}
+
+    # Manual ProjectTimeEntry delete
+    if not (is_admin(user, db) or _has_permission(user, "business:projects:timesheet:write") or _has_permission(user, "hr:timesheet:write") or _has_permission(user, "timesheet:write")):
+        from fastapi import HTTPException
+        raise HTTPException(status_code=403, detail="You do not have permission to delete time entries")
+
     else:
         # Regular ProjectTimeEntry
         row = db.query(ProjectTimeEntry).filter(ProjectTimeEntry.id == entry_id, ProjectTimeEntry.project_id == project_id).first()
@@ -1238,7 +1461,7 @@ def delete_time_entry(project_id: str, entry_id: str, db: Session = Depends(get_
     # Find shifts for this project, user, and date
     from ..models.models import Shift, Attendance
     from ..services.audit import create_audit_log
-    from ..services.permissions import is_admin, is_supervisor
+    from ..services.permissions import is_supervisor
     
     shifts = db.query(Shift).filter(
         Shift.project_id == project_id,
@@ -1291,7 +1514,7 @@ def delete_time_entry(project_id: str, entry_id: str, db: Session = Depends(get_
 
 
 @router.get("/{project_id}/timesheet/logs")
-def list_time_logs(project_id: str, month: Optional[str] = None, user_id: Optional[str] = None, limit: int = 50, offset: int = 0, db: Session = Depends(get_db), _=Depends(require_permissions("hr:timesheet:read", "timesheet:read"))):
+def list_time_logs(project_id: str, month: Optional[str] = None, user_id: Optional[str] = None, limit: int = 50, offset: int = 0, db: Session = Depends(get_db), _=Depends(require_permissions("business:projects:timesheet:read", "hr:timesheet:read", "timesheet:read"))):
     q = db.query(ProjectTimeEntryLog, User, EmployeeProfile).outerjoin(User, User.id == ProjectTimeEntryLog.user_id).outerjoin(EmployeeProfile, EmployeeProfile.user_id == User.id).filter(ProjectTimeEntryLog.project_id == project_id)
     if month:
         try:

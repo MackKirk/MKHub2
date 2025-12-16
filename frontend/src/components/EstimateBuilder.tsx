@@ -12,8 +12,8 @@ export type EstimateBuilderRef = {
   save: () => Promise<boolean>;
 };
 
-const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, estimateId?: number, statusLabel?: string, settings?: any, isBidding?: boolean }>(
-  function EstimateBuilder({ projectId, estimateId, statusLabel, settings, isBidding }, ref) {
+const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, estimateId?: number, statusLabel?: string, settings?: any, isBidding?: boolean, canEdit?: boolean }>(
+  function EstimateBuilder({ projectId, estimateId, statusLabel, settings, isBidding, canEdit: canEditProp }, ref) {
   const confirm = useConfirm();
   const queryClient = useQueryClient();
   const [items, setItems] = useState<Item[]>([]);
@@ -37,8 +37,40 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
   const isSavingRef = useRef<boolean>(false);
   const pendingSaveRef = useRef<{ items: Item[], markup: number, pstRate: number, gstRate: number, profitRate: number, sectionOrder: string[], sectionNames: Record<string, string> } | null>(null);
   
-  // Check if editing is allowed based on status
+  // Check if editing is allowed based on status and permissions
   const canEdit = useMemo(()=>{
+    // If canEditProp is explicitly false (no permission), deny editing
+    if (canEditProp === false) return false;
+    
+    // If canEditProp is explicitly true, check status restrictions
+    if (canEditProp === true) {
+      // Always allow editing by default unless explicitly restricted
+      if (!statusLabel || !statusLabel.trim()) return true;
+      
+      const statusLabelStr = String(statusLabel).trim();
+      
+      // Always allow "estimating" status
+      if (statusLabelStr.toLowerCase() === 'estimating') return true;
+      
+      // If no settings or project_statuses, allow editing
+      if (!settings || !settings.project_statuses || !Array.isArray(settings.project_statuses)) return true;
+      
+      const statusConfig = (settings.project_statuses as any[]).find((s:any)=> s.label === statusLabelStr);
+      
+      // If status not found in config, allow editing by default
+      if (!statusConfig) return true;
+      
+      // Only restrict if explicitly set to false
+      const allowEdit = statusConfig?.meta?.allow_edit_proposal;
+      
+      // If allow_edit_proposal is explicitly false, deny editing
+      if (allowEdit === false || allowEdit === 'false' || allowEdit === 0) return false;
+      
+      // Otherwise allow editing (default behavior)
+      return true;
+    }
+    
+    // If canEditProp is undefined, use old behavior (backward compatibility)
     // Always allow editing by default unless explicitly restricted
     if (!statusLabel || !statusLabel.trim()) return true;
     
@@ -63,7 +95,7 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
     
     // Otherwise allow editing (default behavior)
     return true;
-  }, [statusLabel, settings]);
+  }, [statusLabel, settings, canEditProp]);
   
   // Show warning if editing is restricted
   useEffect(() => {
@@ -779,9 +811,10 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
           Please change the project status to allow editing.
         </div>
       )}
-      <div className="sticky top-0 z-30 bg-white/95 backdrop-blur mb-3 py-3 border-b">
-        <div className="mb-2 text-sm font-medium text-gray-700">+ Add Section for:</div>
-        <div className="flex items-center gap-2">
+      {canEdit && (
+        <div className="sticky top-0 z-30 bg-white/95 backdrop-blur mb-3 py-3 border-b">
+          <div className="mb-2 text-sm font-medium text-gray-700">+ Add Section for:</div>
+          <div className="flex items-center gap-2">
           <button 
             onClick={() => {
               if (!canEdit) return;
@@ -885,7 +918,8 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
             <label>GST (%)</label><input type="number" className="border rounded px-2 py-1 w-20" value={gstRate} min={0} step={1} onChange={e=>setGstRate(Number(e.target.value||0))} disabled={!canEdit} />
           </div>
         </div>
-      </div>
+        </div>
+      )}
 
       <SummaryModal 
         open={summaryOpen}
@@ -999,35 +1033,37 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
             const isLabourSection = ['Labour', 'Sub-Contractors', 'Shop', 'Miscellaneous'].includes(section) || isNewSection && (section.startsWith('Labour Section') || section.startsWith('Sub-Contractor Section') || section.startsWith('Shop Section') || section.startsWith('Miscellaneous Section'));
             return (
             <div key={section}
-                 className={`rounded-xl border overflow-hidden bg-white ${dragOverSection === section ? 'ring-2 ring-brand-red' : ''}`}
-                 onDragOver={(e) => onSectionDragOver(e, section)}
-                 onDrop={onSectionDrop}>
+                 className={`rounded-xl border overflow-hidden bg-white ${dragOverSection === section && canEdit ? 'ring-2 ring-brand-red' : ''}`}
+                 onDragOver={canEdit ? (e) => onSectionDragOver(e, section) : undefined}
+                 onDrop={canEdit ? onSectionDrop : undefined}>
               <div className="bg-gray-200 px-4 py-2 border-b flex items-center gap-2">
                 <div className="flex items-center gap-2 flex-1">
-                <span 
-                  className="inline-flex items-center justify-center w-5 h-5 text-gray-400 hover:text-gray-600 cursor-grab active:cursor-grabbing" 
-                  title="Drag to reorder section" 
-                  aria-label="Drag section handle"
-                  draggable
-                  onDragStart={() => {
-                    onSectionDragStart(section);
-                  }}
-                  onDragEnd={() => {
-                    if (draggingSection === section) {
-                      setDraggingSection(null);
-                      setDragOverSection(null);
-                    }
-                  }}>
-                  <svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                    <circle cx="6" cy="6" r="1.5"></circle>
-                    <circle cx="10" cy="6" r="1.5"></circle>
-                    <circle cx="14" cy="6" r="1.5"></circle>
-                    <circle cx="6" cy="10" r="1.5"></circle>
-                    <circle cx="10" cy="10" r="1.5"></circle>
-                    <circle cx="14" cy="10" r="1.5"></circle>
-                  </svg>
-                </span>
-                {editingSectionName === section ? (
+                {canEdit && (
+                  <span 
+                    className="inline-flex items-center justify-center w-5 h-5 text-gray-400 hover:text-gray-600 cursor-grab active:cursor-grabbing" 
+                    title="Drag to reorder section" 
+                    aria-label="Drag section handle"
+                    draggable
+                    onDragStart={() => {
+                      onSectionDragStart(section);
+                    }}
+                    onDragEnd={() => {
+                      if (draggingSection === section) {
+                        setDraggingSection(null);
+                        setDragOverSection(null);
+                      }
+                    }}>
+                    <svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                      <circle cx="6" cy="6" r="1.5"></circle>
+                      <circle cx="10" cy="6" r="1.5"></circle>
+                      <circle cx="14" cy="6" r="1.5"></circle>
+                      <circle cx="6" cy="10" r="1.5"></circle>
+                      <circle cx="10" cy="10" r="1.5"></circle>
+                      <circle cx="14" cy="10" r="1.5"></circle>
+                    </svg>
+                  </span>
+                )}
+                {editingSectionName === section && canEdit ? (
                   <input
                     type="text"
                     value={editingSectionNameValue}
@@ -1080,69 +1116,73 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
                        section)}
                   </h3>
                 )}
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    // Get current display name as the value to edit
-                    const currentDisplayName = sectionNames[section] || 
-                      (section.startsWith('Labour Section') ? 'Labour' :
-                       section.startsWith('Sub-Contractor Section') ? 'Sub-Contractor' :
-                       section.startsWith('Miscellaneous Section') ? 'Miscellaneous' :
-                       section.startsWith('Shop Section') ? 'Shop' :
-                       section.startsWith('Product Section') ? 'Product Section' :
-                       section);
-                    setEditingSectionName(section);
-                    setEditingSectionNameValue('');
-                    setEditingSectionNameOriginal(currentDisplayName);
-                  }}
-                  className="px-2 py-1 rounded text-gray-500 hover:text-blue-600"
-                  title="Edit section name"
-                  disabled={!canEdit}>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
-                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
-                  </svg>
-                </button>
-                </div>
-                <div className="flex items-center gap-2">
-                  {(() => {
-                    const sectionType = section.startsWith('Product Section') ? 'product' :
-                                      section.startsWith('Labour Section') ? 'labour' :
-                                      section.startsWith('Sub-Contractor Section') ? 'subcontractor' :
-                                      section.startsWith('Miscellaneous Section') ? 'miscellaneous' :
-                                      section.startsWith('Shop Section') ? 'shop' :
-                                      ['Labour', 'Sub-Contractors', 'Shop', 'Miscellaneous'].includes(section) ? 
-                                        (section === 'Labour' ? 'labour' : section === 'Sub-Contractors' ? 'subcontractor' : section === 'Shop' ? 'shop' : 'miscellaneous') :
-                                      'product';
-                    return (
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setAddingToSection({ section, type: sectionType as 'product' | 'labour' | 'subcontractor' | 'miscellaneous' | 'shop' });
-                        }}
-                        className="px-2 py-1 rounded text-white bg-gradient-to-br from-[#7f1010] to-[#a31414] hover:from-[#6d0d0d] hover:to-[#8f1111] flex items-center justify-center"
-                        title="Add item to section"
-                        disabled={!canEdit}>
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                          <line x1="12" y1="4" x2="12" y2="20"></line>
-                          <line x1="4" y1="12" x2="20" y2="12"></line>
-                        </svg>
-                      </button>
-                    );
-                  })()}
-                  <button 
+                {canEdit && (
+                  <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      handleRemoveSection(section);
-                    }} 
-                    className="px-2 py-1 rounded text-gray-500 hover:text-red-600" 
-                    title="Remove section"
+                      // Get current display name as the value to edit
+                      const currentDisplayName = sectionNames[section] || 
+                        (section.startsWith('Labour Section') ? 'Labour' :
+                         section.startsWith('Sub-Contractor Section') ? 'Sub-Contractor' :
+                         section.startsWith('Miscellaneous Section') ? 'Miscellaneous' :
+                         section.startsWith('Shop Section') ? 'Shop' :
+                         section.startsWith('Product Section') ? 'Product Section' :
+                         section);
+                      setEditingSectionName(section);
+                      setEditingSectionNameValue('');
+                      setEditingSectionNameOriginal(currentDisplayName);
+                    }}
+                    className="px-2 py-1 rounded text-gray-500 hover:text-blue-600"
+                    title="Edit section name"
                     disabled={!canEdit}>
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                      <path d="M9 3h6a1 1 0 0 1 1 1v2h4v2h-1l-1 13a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 8H4V6h4V4a1 1 0 0 1 1-1Zm1 3h4V5h-4v1Zm-2 2 1 12h8l1-12H8Z"></path>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                      <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
                     </svg>
                   </button>
+                )}
                 </div>
+                {canEdit && (
+                  <div className="flex items-center gap-2">
+                    {(() => {
+                      const sectionType = section.startsWith('Product Section') ? 'product' :
+                                        section.startsWith('Labour Section') ? 'labour' :
+                                        section.startsWith('Sub-Contractor Section') ? 'subcontractor' :
+                                        section.startsWith('Miscellaneous Section') ? 'miscellaneous' :
+                                        section.startsWith('Shop Section') ? 'shop' :
+                                        ['Labour', 'Sub-Contractors', 'Shop', 'Miscellaneous'].includes(section) ? 
+                                          (section === 'Labour' ? 'labour' : section === 'Sub-Contractors' ? 'subcontractor' : section === 'Shop' ? 'shop' : 'miscellaneous') :
+                                        'product';
+                      return (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setAddingToSection({ section, type: sectionType as 'product' | 'labour' | 'subcontractor' | 'miscellaneous' | 'shop' });
+                          }}
+                          className="px-2 py-1 rounded text-white bg-gradient-to-br from-[#7f1010] to-[#a31414] hover:from-[#6d0d0d] hover:to-[#8f1111] flex items-center justify-center"
+                          title="Add item to section"
+                          disabled={!canEdit}>
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                            <line x1="12" y1="4" x2="12" y2="20"></line>
+                            <line x1="4" y1="12" x2="20" y2="12"></line>
+                          </svg>
+                        </button>
+                      );
+                    })()}
+                    <button 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleRemoveSection(section);
+                      }} 
+                      className="px-2 py-1 rounded text-gray-500 hover:text-red-600" 
+                      title="Remove section"
+                      disabled={!canEdit}>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                        <path d="M9 3h6a1 1 0 0 1 1 1v2h4v2h-1l-1 13a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 8H4V6h4V4a1 1 0 0 1 1-1Zm1 3h4V5h-4v1Zm-2 2 1 12h8l1-12H8Z"></path>
+                      </svg>
+                    </button>
+                  </div>
+                )}
               </div>
               <table className="w-full text-sm">
                 <thead className="bg-gray-50 border-b"><tr>
@@ -1227,9 +1267,10 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
                               )}
                             </td>
                             <td className="p-2">
-                              <input type="number" className="w-20 border rounded px-2 py-1" 
+                              <input type="number" className={`w-20 border rounded px-2 py-1 ${!canEdit ? 'bg-gray-100 cursor-not-allowed' : ''}`}
                                 value={it.qty_required ?? ''} min={0} step={1}
                                 onChange={e=>{
+                                  if (!canEdit) return;
                                   const inputValue = e.target.value;
                                   if (inputValue === '') {
                                     // Allow empty field during editing
@@ -1244,23 +1285,28 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
                                   }
                                 }}
                                 onBlur={e=>{
+                                  if (!canEdit) return;
                                   // If empty on blur, set to default value
                                   if (e.target.value === '' || e.target.value === null) {
                                     const newItem = {...it, qty_required: 1};
                                     const calculatedQty = calculateQuantity(newItem);
                                     setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...newItem, quantity: calculatedQty} : item));
                                   }
-                                }} />
+                                }}
+                                disabled={!canEdit}
+                                readOnly={!canEdit} />
                             </td>
                             <td className="p-2">
-                              <select className="w-20 border rounded px-2 py-1"
+                              <select className={`w-20 border rounded px-2 py-1 ${!canEdit ? 'bg-gray-100 cursor-not-allowed' : ''}`}
                                 value={it.unit_required||''}
                                 onChange={e=>{
+                                  if (!canEdit) return;
                                   const newValue = e.target.value;
                                   const newItem = {...it, unit_required: newValue};
                                   const calculatedQty = calculateQuantity(newItem);
                                   setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...newItem, quantity: calculatedQty} : item));
-                                }}>
+                                }}
+                                disabled={!canEdit}>
                                 <option value="">—</option>
                                 {it.unit_type === 'coverage' && (
                                   <>
@@ -1275,9 +1321,10 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
                             </td>
                             <td className="p-2">${it.unit_price.toFixed(2)}</td>
                             <td className="p-2">
-                              <input type="number" className="w-20 border rounded px-2 py-1" 
+                              <input type="number" className={`w-20 border rounded px-2 py-1 ${!canEdit ? 'bg-gray-100 cursor-not-allowed' : ''}`}
                                 value={it.quantity ?? ''} min={0} step={1}
                                 onChange={e=>{
+                                  if (!canEdit) return;
                                   const inputValue = e.target.value;
                                   if (inputValue === '') {
                                     setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, quantity: 0} : item));
@@ -1289,17 +1336,21 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
                                   }
                                 }}
                                 onBlur={e=>{
+                                  if (!canEdit) return;
                                   if (e.target.value === '' || e.target.value === null) {
                                     setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, quantity: 0} : item));
                                   }
-                                }} />
+                                }}
+                                disabled={!canEdit}
+                                readOnly={!canEdit} />
                             </td>
                             <td className="p-2">{it.unit||''}</td>
                             <td className="p-2">${totalValue.toFixed(2)}</td>
                             <td className="p-2">
-                              <input type="number" className="w-16 border rounded px-2 py-1" 
+                              <input type="number" className={`w-16 border rounded px-2 py-1 ${!canEdit ? 'bg-gray-100 cursor-not-allowed' : ''}`}
                                 value={it.markup !== undefined && it.markup !== null ? it.markup : ''} min={0} step={1}
                                 onChange={e=>{
+                                  if (!canEdit) return;
                                   const inputValue = e.target.value;
                                   if (inputValue === '') {
                                     setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, markup: 0} : item));
@@ -1311,16 +1362,23 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
                                   }
                                 }}
                                 onBlur={e=>{
+                                  if (!canEdit) return;
                                   if (e.target.value === '' || e.target.value === null) {
                                     setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, markup: 0} : item));
                                   }
-                                }} />
+                                }}
+                                disabled={!canEdit}
+                                readOnly={!canEdit} />
                             </td>
                             <td className="p-2">${totalWithMarkup.toFixed(2)}</td>
                             <td className="p-2 text-center">
                               <input type="checkbox" checked={it.taxable!==false} 
-                                onChange={e=>setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, taxable: e.target.checked} : item))} 
-                                className="cursor-pointer" />
+                                onChange={e=>{
+                                  if (!canEdit) return;
+                                  setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, taxable: e.target.checked} : item));
+                                }}
+                                className={canEdit ? 'cursor-pointer' : 'cursor-not-allowed'}
+                                disabled={!canEdit} />
                             </td>
                             <td className="p-2">{it.supplier_name||''}</td>
                           </>
@@ -1331,8 +1389,9 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
                               {it.item_type === 'labour' && it.labour_journey_type ? (
                                 it.labour_journey_type === 'contract' ? (
                                   <div className="flex items-center gap-2">
-                                    <input type="number" className="w-16 border rounded px-2 py-1" value={it.labour_journey ?? ''} min={0} step={0.5} 
+                                    <input type="number" className={`w-16 border rounded px-2 py-1 ${!canEdit ? 'bg-gray-100 cursor-not-allowed' : ''}`} value={it.labour_journey ?? ''} min={0} step={0.5} 
                                       onChange={e=>{
+                                        if (!canEdit) return;
                                         const inputValue = e.target.value;
                                         if (inputValue === '') {
                                           setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, labour_journey: 0} : item));
@@ -1344,16 +1403,20 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
                                         }
                                       }}
                                       onBlur={e=>{
+                                        if (!canEdit) return;
                                         if (e.target.value === '' || e.target.value === null) {
                                           setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, labour_journey: 0} : item));
                                         }
-                                      }} />
+                                      }}
+                                      disabled={!canEdit}
+                                      readOnly={!canEdit} />
                                     <span>{it.unit || ''}</span>
                                   </div>
                                 ) : (
                                   <div className="flex items-center gap-2">
-                                    <input type="number" className="w-16 border rounded px-2 py-1" value={it.labour_journey ?? ''} min={0} step={0.5} 
+                                    <input type="number" className={`w-16 border rounded px-2 py-1 ${!canEdit ? 'bg-gray-100 cursor-not-allowed' : ''}`} value={it.labour_journey ?? ''} min={0} step={0.5} 
                                       onChange={e=>{
+                                        if (!canEdit) return;
                                         const inputValue = e.target.value;
                                         if (inputValue === '') {
                                           setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, labour_journey: 0} : item));
@@ -1365,14 +1428,18 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
                                         }
                                       }}
                                       onBlur={e=>{
+                                        if (!canEdit) return;
                                         if (e.target.value === '' || e.target.value === null) {
                                           setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, labour_journey: 0} : item));
                                         }
-                                      }} />
+                                      }}
+                                      disabled={!canEdit}
+                                      readOnly={!canEdit} />
                                     <span>{it.labour_journey_type}</span>
                                     <span>×</span>
-                                    <input type="number" className="w-14 border rounded px-2 py-1" value={it.labour_men ?? ''} min={0} step={1} 
+                                    <input type="number" className={`w-14 border rounded px-2 py-1 ${!canEdit ? 'bg-gray-100 cursor-not-allowed' : ''}`} value={it.labour_men ?? ''} min={0} step={1} 
                                       onChange={e=>{
+                                        if (!canEdit) return;
                                         const inputValue = e.target.value;
                                         if (inputValue === '') {
                                           setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, labour_men: 0} : item));
@@ -1386,18 +1453,22 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
                                         }
                                       }}
                                       onBlur={e=>{
+                                        if (!canEdit) return;
                                         if (e.target.value === '' || e.target.value === null) {
                                           const baseName = it.description?.includes(' - ') ? it.description.split(' - ')[0] : it.description || it.name;
                                           setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, labour_men: 1, description: `${baseName} - 1 men`} : item));
                                         }
-                                      }} />
+                                      }}
+                                      disabled={!canEdit}
+                                      readOnly={!canEdit} />
                                     <span>men</span>
                                   </div>
                                 )
                               ) : (
                                 <div className="flex items-center gap-2">
-                                  <input type="number" className="w-20 border rounded px-2 py-1" value={it.quantity ?? ''} min={0} step={['Sub-Contractors', 'Shop', 'Miscellaneous'].includes(section) ? 1 : 0.01} 
+                                  <input type="number" className={`w-20 border rounded px-2 py-1 ${!canEdit ? 'bg-gray-100 cursor-not-allowed' : ''}`} value={it.quantity ?? ''} min={0} step={['Sub-Contractors', 'Shop', 'Miscellaneous'].includes(section) ? 1 : 0.01} 
                                     onChange={e=>{
+                                      if (!canEdit) return;
                                       const inputValue = e.target.value;
                                       if (inputValue === '') {
                                         setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, quantity: 0} : item));
@@ -1409,10 +1480,13 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
                                       }
                                     }}
                                     onBlur={e=>{
+                                      if (!canEdit) return;
                                       if (e.target.value === '' || e.target.value === null) {
                                         setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, quantity: 0} : item));
                                       }
-                                    }} />
+                                    }}
+                                    disabled={!canEdit}
+                                    readOnly={!canEdit} />
                                   <span>{it.unit || ''}</span>
                                 </div>
                               )}
@@ -1420,9 +1494,10 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
                             <td className="p-2 text-left">
                               <div className="flex items-center gap-1">
                                 <span>$</span>
-                                <input type="number" className="w-20 border rounded px-2 py-1" 
+                                <input type="number" className={`w-20 border rounded px-2 py-1 ${!canEdit ? 'bg-gray-100 cursor-not-allowed' : ''}`}
                                   value={it.unit_price ?? ''} min={0} step={(it.item_type === 'labour' || it.item_type === 'subcontractor' || it.item_type === 'shop' || it.item_type === 'miscellaneous' || ['Sub-Contractors', 'Shop', 'Miscellaneous', 'Labour'].includes(section)) ? 1 : 0.01}
                                   onChange={e=>{
+                                    if (!canEdit) return;
                                     const inputValue = e.target.value;
                                     if (inputValue === '') {
                                       setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, unit_price: 0} : item));
@@ -1434,10 +1509,13 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
                                     }
                                   }}
                                   onBlur={e=>{
+                                    if (!canEdit) return;
                                     if (e.target.value === '' || e.target.value === null) {
                                       setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, unit_price: 0} : item));
                                     }
-                                  }} />
+                                  }}
+                                  disabled={!canEdit}
+                                  readOnly={!canEdit} />
                                 <span>
                                   {it.item_type === 'labour' && it.labour_journey_type ? (
                                     it.labour_journey_type === 'contract' 
@@ -1485,9 +1563,10 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
                             </td>
                             <td className="p-2">${totalValue.toFixed(2)}</td>
                             <td className="p-2">
-                              <input type="number" className="w-16 border rounded px-2 py-1" 
+                              <input type="number" className={`w-16 border rounded px-2 py-1 ${!canEdit ? 'bg-gray-100 cursor-not-allowed' : ''}`}
                                 value={it.markup !== undefined && it.markup !== null ? it.markup : ''} min={0} step={1}
                                 onChange={e=>{
+                                  if (!canEdit) return;
                                   const inputValue = e.target.value;
                                   if (inputValue === '') {
                                     setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, markup: 0} : item));
@@ -1499,29 +1578,38 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
                                   }
                                 }}
                                 onBlur={e=>{
+                                  if (!canEdit) return;
                                   if (e.target.value === '' || e.target.value === null) {
                                     setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, markup: 0} : item));
                                   }
-                                }} />
+                                }}
+                                disabled={!canEdit}
+                                readOnly={!canEdit} />
                             </td>
                             <td className="p-2">${totalWithMarkup.toFixed(2)}</td>
                             <td className="p-2 text-center">
                               <input type="checkbox" checked={it.taxable!==false} 
-                                onChange={e=>setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, taxable: e.target.checked} : item))} 
-                                className="cursor-pointer" />
+                                onChange={e=>{
+                                  if (!canEdit) return;
+                                  setItems(prev=>prev.map((item,i)=> i===originalIdx ? {...item, taxable: e.target.checked} : item));
+                                }}
+                                className={canEdit ? 'cursor-pointer' : 'cursor-not-allowed'}
+                                disabled={!canEdit} />
                             </td>
                           </>
                         )}
-                        <td className="p-2">
-                          <button 
-                            onClick={()=> handleRemoveItem(originalIdx, it.name || it.description || 'this item')} 
-                            className="px-2 py-1 rounded text-gray-500 hover:text-red-600" 
-                            title="Remove item">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                              <path d="M9 3h6a1 1 0 0 1 1 1v2h4v2h-1l-1 13a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 8H4V6h4V4a1 1 0 0 1 1-1Zm1 3h4V5h-4v1Zm-2 2 1 12h8l1-12H8Z"></path>
-                            </svg>
-                          </button>
-                        </td>
+                        {canEdit && (
+                          <td className="p-2">
+                            <button 
+                              onClick={()=> handleRemoveItem(originalIdx, it.name || it.description || 'this item')} 
+                              className="px-2 py-1 rounded text-gray-500 hover:text-red-600" 
+                              title="Remove item">
+                              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                                <path d="M9 3h6a1 1 0 0 1 1 1v2h4v2h-1l-1 13a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 8H4V6h4V4a1 1 0 0 1 1-1Zm1 3h4V5h-4v1Zm-2 2 1 12h8l1-12H8Z"></path>
+                              </svg>
+                            </button>
+                          </td>
+                        )}
                       </tr>
                     );
                   })
@@ -1611,17 +1699,19 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
       <div className="h-24" />
 
       {/* Fixed Unsaved Changes bar */}
-      {canEdit && (
-        <div className="fixed left-60 right-0 bottom-0 z-40">
-          <div className="px-4">
-            <div className="mx-auto max-w-[1400px] rounded-t-xl border bg-white/95 backdrop-blur p-4 flex items-center justify-between shadow-[0_-6px_16px_rgba(0,0,0,0.08)]">
-              {/* Left: Status indicator */}
+      <div className="fixed left-60 right-0 bottom-0 z-40">
+        <div className="px-4">
+          <div className="mx-auto max-w-[1400px] rounded-t-xl border bg-white/95 backdrop-blur p-4 flex items-center justify-between shadow-[0_-6px_16px_rgba(0,0,0,0.08)]">
+            {/* Left: Status indicator (only show when canEdit) */}
+            {canEdit && (
               <div className={dirty ? 'text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-3 py-1.5 font-medium' : 'text-sm text-green-700 bg-green-50 border border-green-200 rounded-full px-3 py-1.5 font-medium'}>
                 {dirty ? 'Unsaved changes' : 'All changes saved'}
               </div>
-              
-              {/* Center: Analysis and PDF */}
-              <div className="flex items-center gap-2">
+            )}
+            {!canEdit && <div className="w-0"></div>}
+            
+            {/* Center: Analysis and PDF */}
+            <div className="flex items-center gap-2">
                 <button
                   onClick={()=>setSummaryOpen(true)}
                   className="px-4 py-2 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium transition-colors">
@@ -1632,9 +1722,14 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
                   onClick={async()=>{
                     try{
                       setIsLoading(true);
-                      // First ensure estimate is saved
+                      // First ensure estimate is saved (only if canEdit)
                       let estimateIdToUse = currentEstimateId;
                       if (!estimateIdToUse) {
+                        if (!canEdit) {
+                          toast.error('Estimate not found. Please save the estimate first.');
+                          setIsLoading(false);
+                          return;
+                        }
                         const payload = { 
                           project_id: projectId, 
                           markup, 
@@ -1706,51 +1801,54 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
               </div>
               
               {/* Right: Generate Orders (only for Projects, not Opportunities) and Save */}
-              <div className="flex items-center gap-2">
-                {!isBidding && (
-                  <>
-                    <button 
-                      onClick={async () => {
-                        if (!currentEstimateId) {
-                          toast.error('Please save the estimate first');
-                          return;
-                        }
-                        try {
-                          setIsLoading(true);
-                          const response = await api('POST', `/orders/projects/${projectId}/generate`, { estimate_id: currentEstimateId });
-                          toast.success(`Generated ${response.orders_created || 0} orders successfully`);
-                          // Invalidate orders query so they appear immediately in the orders tab
-                          queryClient.invalidateQueries({ queryKey: ['projectOrders', projectId] });
-                          // Navigate to orders tab would be handled by parent
-                        } catch (error: any) {
-                          const errorMsg = error.response?.data?.detail || error.message || 'Failed to generate orders';
-                          toast.error(errorMsg);
-                        } finally {
-                          setIsLoading(false);
-                        }
-                      }}
-                      disabled={isLoading || !currentEstimateId || items.length === 0}
-                      className="px-4 py-2 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium disabled:opacity-60 disabled:cursor-not-allowed transition-colors">
-                      {isLoading ? 'Generating...' : 'Generate Orders'}
-                    </button>
-                    <div className="w-px h-5 bg-gray-300"></div>
-                  </>
-                )}
-                <button 
-                  disabled={!dirty} 
-                  onClick={handleManualSave}
-                  className={`px-5 py-2 rounded-lg text-white font-semibold disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm ${
-                    dirty 
-                      ? 'bg-gradient-to-r from-brand-red to-[#ee2b2b] hover:from-red-700 hover:to-red-800' 
-                      : 'bg-gray-400 hover:bg-gray-500'
-                  }`}>
-                  Save
-                </button>
-              </div>
+              {canEdit ? (
+                <div className="flex items-center gap-2">
+                  {!isBidding && (
+                    <>
+                      <button 
+                        onClick={async () => {
+                          if (!currentEstimateId) {
+                            toast.error('Please save the estimate first');
+                            return;
+                          }
+                          try {
+                            setIsLoading(true);
+                            const response = await api('POST', `/orders/projects/${projectId}/generate`, { estimate_id: currentEstimateId });
+                            toast.success(`Generated ${response.orders_created || 0} orders successfully`);
+                            // Invalidate orders query so they appear immediately in the orders tab
+                            queryClient.invalidateQueries({ queryKey: ['projectOrders', projectId] });
+                            // Navigate to orders tab would be handled by parent
+                          } catch (error: any) {
+                            const errorMsg = error.response?.data?.detail || error.message || 'Failed to generate orders';
+                            toast.error(errorMsg);
+                          } finally {
+                            setIsLoading(false);
+                          }
+                        }}
+                        disabled={isLoading || !currentEstimateId || items.length === 0}
+                        className="px-4 py-2 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium disabled:opacity-60 disabled:cursor-not-allowed transition-colors">
+                        {isLoading ? 'Generating...' : 'Generate Orders'}
+                      </button>
+                      <div className="w-px h-5 bg-gray-300"></div>
+                    </>
+                  )}
+                  <button 
+                    disabled={!dirty} 
+                    onClick={handleManualSave}
+                    className={`px-5 py-2 rounded-lg text-white font-semibold disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm ${
+                      dirty 
+                        ? 'bg-gradient-to-r from-brand-red to-[#ee2b2b] hover:from-red-700 hover:to-red-800' 
+                        : 'bg-gray-400 hover:bg-gray-500'
+                    }`}>
+                    Save
+                  </button>
+                </div>
+              ) : (
+                <div className="w-0"></div>
+              )}
             </div>
           </div>
         </div>
-      )}
     </div>
   );
 });

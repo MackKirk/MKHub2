@@ -22,6 +22,12 @@ export default function CustomerDetail(){
   const [newProjectOpen, setNewProjectOpen] = useState(false);
   const [newProjectName, setNewProjectName] = useState('');
   const { data:client, isLoading } = useQuery({ queryKey:['client', id], queryFn: ()=>api<Client>('GET', `/clients/${id}`) });
+  const { data: me } = useQuery({ queryKey:['me'], queryFn: ()=>api<any>('GET','/auth/me') });
+  const isAdmin = (me?.roles||[]).includes('admin');
+  const permissions = new Set(me?.permissions || []);
+  const hasCustomersRead = isAdmin || permissions.has('business:customers:read');
+  const hasProjectsRead = isAdmin || permissions.has('business:projects:read');
+  const hasEditPermission = isAdmin || permissions.has('business:customers:write');
   const { data:sites } = useQuery({ queryKey:['clientSites', id], queryFn: ()=>api<Site[]>('GET', `/clients/${id}/sites`) });
   const { data:files, refetch: refetchFiles } = useQuery({ queryKey:['clientFiles', id], queryFn: ()=>api<ClientFile[]>('GET', `/clients/${id}/files`) });
   const { data:settings } = useQuery({ queryKey:['settings'], queryFn: ()=>api<any>('GET','/settings') });
@@ -86,9 +92,34 @@ export default function CustomerDetail(){
     return () => window.removeEventListener('keydown', onKey);
   }, [newProjectOpen]);
   const leadSources = (settings?.lead_sources||[]) as any[];
-  const { data:projects } = useQuery({ queryKey:['clientProjects', id], queryFn: ()=>api<Project[]>('GET', `/projects?client=${encodeURIComponent(String(id||''))}&is_bidding=false`) });
-  const { data:opportunities } = useQuery({ queryKey:['clientOpportunities', id], queryFn: ()=>api<Project[]>('GET', `/projects?client=${encodeURIComponent(String(id||''))}&is_bidding=true`) });
+  const { data:projects } = useQuery({ queryKey:['clientProjects', id], queryFn: ()=>api<Project[]>('GET', `/projects?client=${encodeURIComponent(String(id||''))}&is_bidding=false`), enabled: hasProjectsRead });
+  const { data:opportunities } = useQuery({ queryKey:['clientOpportunities', id], queryFn: ()=>api<Project[]>('GET', `/projects?client=${encodeURIComponent(String(id||''))}&is_bidding=true`), enabled: hasProjectsRead });
   const { data:contacts } = useQuery({ queryKey:['clientContacts', id], queryFn: ()=>api<Contact[]>('GET', `/clients/${id}/contacts`) });
+  
+  // Determine available tabs based on permissions
+  const availableTabs = useMemo(() => {
+    const allTabs = ['overview','general','files','contacts','sites','opportunities','projects'] as const;
+    
+    if (!hasCustomersRead && !hasProjectsRead) {
+      return [];
+    } else if (hasCustomersRead && !hasProjectsRead) {
+      // Only customers read: show general and contacts
+      return ['general', 'contacts'];
+    } else if (hasProjectsRead) {
+      // Has projects read: show all tabs
+      return allTabs;
+    }
+    return [];
+  }, [hasCustomersRead, hasProjectsRead]);
+  
+  // Redirect to first available tab if current tab is not available
+  useEffect(() => {
+    if (tab && availableTabs.length > 0 && !availableTabs.includes(tab)) {
+      setTab(availableTabs[0] as typeof tab);
+    } else if (availableTabs.length > 0 && !tab) {
+      setTab(availableTabs[0] as typeof tab);
+    }
+  }, [tab, availableTabs]);
   const { data:employees } = useQuery({ queryKey:['employees'], queryFn: ()=> api<any[]>('GET','/employees') });
   const primaryContact = (contacts||[]).find(c=>c.is_primary) || (contacts||[])[0];
   const clientLogoRec = (files||[]).find(f=> !f.site_id && String(f.category||'').toLowerCase()==='client-logo-derived');
@@ -228,8 +259,8 @@ export default function CustomerDetail(){
                 )}
               </div>
               <div className="mt-auto flex gap-2">
-                {(['overview','general','files','contacts','sites','opportunities','projects'] as const).map(k=> (
-                  <button key={k} onClick={()=>setTab(k)} className={`px-4 py-2 rounded-lg border ${tab===k?'bg-black/30 border-white/30 text-white':'bg-white text-black'}`}>{k[0].toUpperCase()+k.slice(1)}</button>
+                {availableTabs.map(k=> (
+                  <button key={k} onClick={()=>setTab(k as typeof tab)} className={`px-4 py-2 rounded-lg border ${tab===k?'bg-black/30 border-white/30 text-white':'bg-white text-black'}`}>{k[0].toUpperCase()+k.slice(1)}</button>
                 ))}
               </div>
             </div>
@@ -258,7 +289,7 @@ export default function CustomerDetail(){
                     </div>
                   </div>
                   <div>
-                    <div className="flex items-center justify-between mb-2"><h3 className="font-semibold">Recent Projects</h3><button onClick={()=>setTab('projects')} className="text-sm px-3 py-1.5 rounded bg-brand-red text-white">View all</button></div>
+                    <div className="flex items-center justify-between mb-2"><h3 className="font-semibold">Recent Projects</h3>{hasProjectsRead && <button onClick={()=>setTab('projects')} className="text-sm px-3 py-1.5 rounded bg-brand-red text-white">View all</button>}</div>
                     <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
                       {(projects||[]).slice(0,4).map(p=> {
                         const pfiles = (files||[]).filter(f=> String((f as any).project_id||'')===String(p.id));
@@ -272,7 +303,7 @@ export default function CustomerDetail(){
                     </div>
                   </div>
                   <div>
-                    <div className="flex items-center justify-between mb-2"><h3 className="font-semibold">Recent Sites</h3><button onClick={()=>setTab('sites')} className="text-sm px-3 py-1.5 rounded bg-brand-red text-white">View all</button></div>
+                    <div className="flex items-center justify-between mb-2"><h3 className="font-semibold">Recent Sites</h3>{hasProjectsRead && <button onClick={()=>setTab('sites')} className="text-sm px-3 py-1.5 rounded bg-brand-red text-white">View all</button>}</div>
                     <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
                       {(sites||[]).slice(0,4).map(s=>{
                         const filesForSite = (fileBySite[s.id||'']||[]);
@@ -300,7 +331,7 @@ export default function CustomerDetail(){
                   {/* Company */}
                   <div className="flex items-center justify-between gap-2">
                     <h4 className="font-semibold">Company</h4>
-                    {!isEditingGeneral && (
+                    {!isEditingGeneral && hasEditPermission && (
                       <button
                         onClick={() => setIsEditingGeneral(true)}
                         className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-brand-red to-[#ee2b2b] text-white text-sm font-medium hover:opacity-90 flex items-center gap-1.5"
@@ -640,16 +671,18 @@ export default function CustomerDetail(){
                 </div>
               )}
               {tab==='files' && (
-                <CustomerDocuments id={String(id)} files={files||[]} sites={sites||[]} onRefresh={refetchFiles} />
+                <CustomerDocuments id={String(id)} files={files||[]} sites={sites||[]} onRefresh={refetchFiles} hasEditPermission={hasEditPermission} />
               )}
               {tab==='contacts' && (
-                <ContactsCard id={String(id)} />
+                <ContactsCard id={String(id)} hasEditPermission={hasEditPermission} />
               )}
               {tab==='sites' && (
                 <div>
                   <div className="mb-3 flex items-center justify-between">
                     <h3 className="font-semibold">Construction Sites</h3>
-                    <Link to={`/customers/${encodeURIComponent(String(id||''))}/sites/new`} state={{ backgroundLocation: location }} className="px-3 py-1.5 rounded bg-brand-red text-white">+ New Site</Link>
+                    {hasEditPermission && (
+                      <Link to={`/customers/${encodeURIComponent(String(id||''))}/sites/new`} state={{ backgroundLocation: location }} className="px-3 py-1.5 rounded bg-brand-red text-white">+ New Site</Link>
+                    )}
                   </div>
                   <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
                     {(sites||[]).map(s=>{
@@ -661,7 +694,9 @@ export default function CustomerDetail(){
                         <Link to={`/customers/${encodeURIComponent(String(id||''))}/sites/${encodeURIComponent(String(s.id))}`} state={{ backgroundLocation: location }} key={String(s.id)} className="group rounded-xl border overflow-hidden bg-white block">
                           <div className="aspect-square w-full bg-gray-100 relative">
                             <img className="w-full h-full object-cover" src={src} />
-                            <button onClick={(e)=>{ e.preventDefault(); e.stopPropagation(); setSitePicker({ open:true, siteId: String(s.id) }); }} className="absolute right-2 top-2 text-xs px-2 py-1 rounded bg-black/70 text-white">Change cover</button>
+                            {hasEditPermission && (
+                              <button onClick={(e)=>{ e.preventDefault(); e.stopPropagation(); setSitePicker({ open:true, siteId: String(s.id) }); }} className="absolute right-2 top-2 text-xs px-2 py-1 rounded bg-black/70 text-white">Change cover</button>
+                            )}
                           </div>
                           <div className="p-2">
                             <div className="font-semibold text-sm group-hover:underline truncate">{s.site_name||'Site'}</div>
@@ -678,7 +713,9 @@ export default function CustomerDetail(){
                 <div>
                   <div className="mb-3 flex items-center justify-between">
                     <h3 className="font-semibold">Opportunities</h3>
-                    <Link to={`/projects/new?client_id=${encodeURIComponent(String(id||''))}&is_bidding=true`} state={{ backgroundLocation: location }} className="px-3 py-1.5 rounded bg-brand-red text-white">+ New Opportunity</Link>
+                    {hasEditPermission && (
+                      <Link to={`/projects/new?client_id=${encodeURIComponent(String(id||''))}&is_bidding=true`} state={{ backgroundLocation: location }} className="px-3 py-1.5 rounded bg-brand-red text-white">+ New Opportunity</Link>
+                    )}
                   </div>
                   <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
                     {(opportunities||[]).map(p=> {
@@ -689,7 +726,9 @@ export default function CustomerDetail(){
                         <Link to={`/opportunities/${encodeURIComponent(String(p.id))}`} key={p.id} className="group rounded-xl border bg-white overflow-hidden block">
                           <div className="aspect-square bg-gray-100 relative">
                             <img className="w-full h-full object-cover" src={src} />
-                            <button onClick={(e)=>{ e.preventDefault(); e.stopPropagation(); setProjectPicker({ open:true, projectId: String(p.id) }); }} className="absolute right-2 top-2 text-xs px-2 py-1 rounded bg-black/70 text-white">Change cover</button>
+                            {hasEditPermission && (
+                              <button onClick={(e)=>{ e.preventDefault(); e.stopPropagation(); setProjectPicker({ open:true, projectId: String(p.id) }); }} className="absolute right-2 top-2 text-xs px-2 py-1 rounded bg-black/70 text-white">Change cover</button>
+                            )}
                           </div>
                           <div className="p-2 text-sm">
                             <div className="font-semibold text-sm group-hover:underline truncate">{p.name||'Opportunity'} {p.code? `· ${p.code}`:''}</div>
@@ -709,7 +748,7 @@ export default function CustomerDetail(){
                   </div>
                   <div className="rounded-xl border bg-white divide-y">
                     {(projects||[]).map(p=> (
-                      <ProjectRow key={p.id} project={p} files={files||[]} onCoverClick={(projectId)=>{ setProjectPicker({ open:true, projectId }); }} />
+                      <ProjectRow key={p.id} project={p} files={files||[]} onCoverClick={(projectId)=>{ setProjectPicker({ open:true, projectId }); }} hasEditPermission={hasEditPermission} />
                     ))}
                     {(!projects||!projects.length) && <div className="p-4 text-sm text-gray-600">No projects</div>}
                   </div>
@@ -761,7 +800,7 @@ export default function CustomerDetail(){
   );
 }
 
-function ProjectRow({ project, files, onCoverClick }:{ project: Project, files: ClientFile[], onCoverClick: (projectId: string)=>void }){
+function ProjectRow({ project, files, onCoverClick, hasEditPermission }: { project: Project, files: ClientFile[], onCoverClick: (projectId: string)=>void, hasEditPermission?: boolean }){
   const { data:details } = useQuery({ queryKey:['project-detail-row', project.id], queryFn: ()=> api<any>('GET', `/projects/${encodeURIComponent(String(project.id))}`), staleTime: 60_000 });
   const pfiles = (files||[]).filter(f=> String((f as any).project_id||'')===String(project.id));
   const cover = pfiles.find(f=> String(f.category||'')==='project-cover-derived') || pfiles.find(f=> (f.is_image===true) || String(f.content_type||'').startsWith('image/'));
@@ -792,7 +831,9 @@ function ProjectRow({ project, files, onCoverClick }:{ project: Project, files: 
           </div>
           <span className="text-xs text-gray-600">{progress}%</span>
         </div>
-        <button onClick={(e)=>{ e.preventDefault(); e.stopPropagation(); onCoverClick(String(project.id)); }} className="ml-2 px-3 py-1.5 rounded bg-gray-100 hover:bg-gray-200 text-sm" title="Change cover">Cover</button>
+        {hasEditPermission && (
+          <button onClick={(e)=>{ e.preventDefault(); e.stopPropagation(); onCoverClick(String(project.id)); }} className="ml-2 px-3 py-1.5 rounded bg-gray-100 hover:bg-gray-200 text-sm" title="Change cover">Cover</button>
+        )}
       </div>
     </Link>
   );
@@ -863,7 +904,7 @@ function UserInline({ id }:{ id:string }){
   return <span className="font-medium">{label||'—'}</span>;
 }
 
-function CustomerDocuments({ id, files, sites, onRefresh }:{ id:string, files: ClientFile[], sites: Site[], onRefresh: ()=>any }){
+function CustomerDocuments({ id, files, sites, onRefresh, hasEditPermission }: { id: string, files: ClientFile[], sites: Site[], onRefresh: ()=>any, hasEditPermission?: boolean }){
   const confirm = useConfirm();
   const [which, setWhich] = useState<'all'|'client'|'site'>('all');
   const [siteId, setSiteId] = useState<string>('');
@@ -936,7 +977,9 @@ function CustomerDocuments({ id, files, sites, onRefresh }:{ id:string, files: C
                 <div className="text-4xl">📁</div>
                 <div className="mt-1 text-sm font-medium truncate text-center w-full" title={f.name}>{f.name}</div>
                 <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 folder-actions">
-                  <button onClick={(e)=>{ e.stopPropagation(); removeFolder(f.id, f.name); }} className="p-1 rounded bg-red-600 hover:bg-red-700 text-white text-[10px]" title="Delete folder">🗑️</button>
+                  {hasEditPermission && (
+                    <button onClick={(e)=>{ e.stopPropagation(); removeFolder(f.id, f.name); }} className="p-1 rounded bg-red-600 hover:bg-red-700 text-white text-[10px]" title="Delete folder">🗑️</button>
+                  )}
                 </div>
               </div>
             ))}
@@ -971,7 +1014,9 @@ function CustomerDocuments({ id, files, sites, onRefresh }:{ id:string, files: C
                         <div className="text-4xl">📁</div>
                         <div className="mt-1 text-sm font-medium truncate text-center w-full" title={f.name}>{f.name}</div>
                         <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 folder-actions">
-                          <button onClick={(e)=>{ e.stopPropagation(); removeFolder(f.id, f.name); }} className="p-1 rounded bg-red-600 hover:bg-red-700 text-white text-[10px]" title="Delete folder">🗑️</button>
+                          {hasEditPermission && (
+                            <button onClick={(e)=>{ e.stopPropagation(); removeFolder(f.id, f.name); }} className="p-1 rounded bg-red-600 hover:bg-red-700 text-white text-[10px]" title="Delete folder">🗑️</button>
+                          )}
                         </div>
                       </div>
                     ))}
@@ -1018,7 +1063,9 @@ function CustomerDocuments({ id, files, sites, onRefresh }:{ id:string, files: C
                     </div>
                     <div className="ml-auto flex items-center gap-1">
                       <a title="Download" className="p-2 rounded hover:bg-gray-100" href={`/files/${encodeURIComponent(d.file_id)}/download`} target="_blank">⬇️</a>
-                      <button onClick={(e)=>{ e.stopPropagation(); removeDoc(d.id); }} title="Delete" className="p-2 rounded hover:bg-red-50 text-red-600">🗑️</button>
+                      {hasEditPermission && (
+                        <button onClick={(e)=>{ e.stopPropagation(); removeDoc(d.id); }} title="Delete" className="p-2 rounded hover:bg-red-50 text-red-600">🗑️</button>
+                      )}
                     </div>
                   </div>
                 ); })}
@@ -1037,7 +1084,9 @@ function CustomerDocuments({ id, files, sites, onRefresh }:{ id:string, files: C
             <div className="absolute right-2 top-2 hidden group-hover:flex gap-1">
               <button onClick={async(e)=>{ e.stopPropagation(); const url = await fetchDownloadUrl(String(f.file_object_id)); if(url) window.open(url,'_blank'); }} className="bg-black/70 hover:bg-black/80 text-white text-[11px] px-2 py-1 rounded" title="Zoom">🔍</button>
               <button onClick={(e)=>{ e.stopPropagation(); setEditingImage({ fileObjectId: f.file_object_id, name: f.original_name || 'image' }); }} className="bg-blue-600 hover:bg-blue-700 text-white text-[11px] px-2 py-1 rounded" title="Edit">✏️</button>
-              <button onClick={(e)=>{ e.stopPropagation(); removePic(f.id); }} className="bg-red-600 hover:bg-red-700 text-white text-[11px] px-2 py-1 rounded" title="Delete">🗑️</button>
+              {hasEditPermission && (
+                <button onClick={(e)=>{ e.stopPropagation(); removePic(f.id); }} className="bg-red-600 hover:bg-red-700 text-white text-[11px] px-2 py-1 rounded" title="Delete">🗑️</button>
+              )}
             </div>
             <div className={`absolute left-2 top-2 text-[10px] font-bold rounded-full w-6 h-6 grid place-items-center ${isSite? 'bg-blue-500 text-white':'bg-green-500 text-white'}`} title={isSite? 'Site image':'Client image'}>
               {isSite? String((f.site_id||'') as string).slice(0,2).toUpperCase() : 'C'}
@@ -1219,7 +1268,7 @@ function CustomerDocuments({ id, files, sites, onRefresh }:{ id:string, files: C
   );
 }
 
-function ContactsCard({ id }:{ id:string }){
+function ContactsCard({ id, hasEditPermission }: { id: string, hasEditPermission?: boolean }){
   const confirm = useConfirm();
   const { data, refetch } = useQuery({ queryKey:['clientContacts', id], queryFn: ()=>api<any[]>('GET', `/clients/${id}/contacts`) });
   const { data:files } = useQuery({ queryKey:['clientFilesForContacts', id], queryFn: ()=>api<any[]>('GET', `/clients/${id}/files`) });
@@ -1291,7 +1340,9 @@ function ContactsCard({ id }:{ id:string }){
       <div className="mb-2 flex items-center justify-between">
         <h4 className="font-semibold">Contacts</h4>
         <div className="flex items-center gap-2">
-          <button onClick={()=>setCreateOpen(true)} className="px-3 py-1.5 rounded bg-brand-red text-white">+ New Contact</button>
+          {hasEditPermission && (
+            <button onClick={()=>setCreateOpen(true)} className="px-3 py-1.5 rounded bg-brand-red text-white">+ New Contact</button>
+          )}
         </div>
       </div>
       <div className="grid md:grid-cols-2 gap-4">
@@ -1352,9 +1403,13 @@ function ContactsCard({ id }:{ id:string }){
                     <div className="font-semibold">{c.name}</div>
                     <div className="flex items-center gap-2">
                       {c.is_primary && <span className="text-[11px] bg-green-50 text-green-700 border border-green-200 rounded-full px-2">Primary</span>}
-                      {!c.is_primary && <button onClick={async()=>{ await api('PATCH', `/clients/${id}/contacts/${c.id}`, { is_primary: true }); refetch(); }} className="px-2 py-1 rounded bg-gray-100">Set Primary</button>}
-                      <button onClick={()=>beginEdit(c)} className="px-2 py-1 rounded bg-gray-100">Edit</button>
-                      <button onClick={async()=>{ const ok = await confirm({ title: 'Delete contact', message: 'Are you sure you want to delete this contact?' }); if(!ok) return; try { await api('DELETE', `/clients/${id}/contacts/${c.id}`); toast.success('Contact deleted'); refetch(); } catch(e) { toast.error('Failed to delete contact'); } }} className="px-2 py-1 rounded bg-gray-100">Delete</button>
+                      {hasEditPermission && (
+                        <>
+                          {!c.is_primary && <button onClick={async()=>{ await api('PATCH', `/clients/${id}/contacts/${c.id}`, { is_primary: true }); refetch(); }} className="px-2 py-1 rounded bg-gray-100">Set Primary</button>}
+                          <button onClick={()=>beginEdit(c)} className="px-2 py-1 rounded bg-gray-100">Edit</button>
+                          <button onClick={async()=>{ const ok = await confirm({ title: 'Delete contact', message: 'Are you sure you want to delete this contact?' }); if(!ok) return; try { await api('DELETE', `/clients/${id}/contacts/${c.id}`); toast.success('Contact deleted'); refetch(); } catch(e) { toast.error('Failed to delete contact'); } }} className="px-2 py-1 rounded bg-gray-100">Delete</button>
+                        </>
+                      )}
                     </div>
                   </div>
                   <div className="text-gray-600">{c.role_title||''} {c.department? `· ${c.department}`:''}</div>

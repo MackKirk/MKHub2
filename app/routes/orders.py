@@ -36,7 +36,7 @@ def generate_order_code(db: Session, project_id: uuid.UUID, order_type: str, ord
 def list_project_orders(
     project_id: uuid.UUID,
     db: Session = Depends(get_db),
-    _=Depends(require_permissions("inventory:read"))
+    _=Depends(require_permissions("business:projects:orders:read", "inventory:read"))
 ):
     """List all orders for a project"""
     orders = db.query(ProjectOrder).filter(
@@ -119,7 +119,7 @@ def list_project_orders(
 def get_order(
     order_id: uuid.UUID,
     db: Session = Depends(get_db),
-    _=Depends(require_permissions("inventory:read"))
+    _=Depends(require_permissions("business:projects:orders:read", "inventory:read"))
 ):
     """Get a single order by ID"""
     order = db.query(ProjectOrder).filter(ProjectOrder.id == order_id).first()
@@ -210,7 +210,7 @@ def generate_orders_from_estimate(
     body: GenerateOrdersRequest,
     db: Session = Depends(get_db),
     user=Depends(get_current_user),
-    _=Depends(require_permissions("inventory:write"))
+    _=Depends(require_permissions("business:projects:orders:write", "inventory:write"))
 ):
     """Generate orders from an estimate, grouping by supplier/type"""
     # Get estimate
@@ -482,7 +482,7 @@ def update_order(
     body: ProjectOrderUpdate,
     db: Session = Depends(get_db),
     user=Depends(get_current_user),
-    _=Depends(require_permissions("inventory:write"))
+    _=Depends(require_permissions("business:projects:orders:write", "inventory:write"))
 ):
     """Update an order"""
     order = db.query(ProjectOrder).filter(ProjectOrder.id == order_id).first()
@@ -551,7 +551,7 @@ def create_extra_order(
     body: CreateExtraOrderRequest,
     db: Session = Depends(get_db),
     user=Depends(get_current_user),
-    _=Depends(require_permissions("inventory:write"))
+    _=Depends(require_permissions("business:projects:orders:write", "inventory:write"))
 ):
     """Create an extra order manually (not from estimate)"""
     # Validate project exists
@@ -664,7 +664,7 @@ def create_extra_order(
 def delete_all_project_orders(
     project_id: uuid.UUID,
     db: Session = Depends(get_db),
-    _=Depends(require_permissions("inventory:write"))
+    _=Depends(require_permissions("business:projects:orders:write", "inventory:write"))
 ):
     """Delete all orders for a project (for testing purposes)"""
     # Get all orders for the project
@@ -688,7 +688,7 @@ def delete_all_project_orders(
 def delete_order(
     order_id: uuid.UUID,
     db: Session = Depends(get_db),
-    _=Depends(require_permissions("inventory:write"))
+    _=Depends(require_permissions("business:projects:orders:write", "inventory:write"))
 ):
     """Delete an order"""
     order = db.query(ProjectOrder).filter(ProjectOrder.id == order_id).first()

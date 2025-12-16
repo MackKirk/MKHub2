@@ -625,12 +625,18 @@ function UserTimesheet({ userId }:{ userId:string }){
   const [end, setEnd] = useState<string>('');
   const [notes, setNotes] = useState<string>('');
 
+  const { data: me } = useQuery({ queryKey:['me'], queryFn: ()=> api<any>('GET','/auth/me') });
+  const isAdmin = (me?.roles || []).some((r: string) => String(r || '').toLowerCase() === 'admin');
+  const perms = new Set<string>(me?.permissions || []);
+  const canEditAttendance = isAdmin || perms.has('hr:attendance:write') || perms.has('hr:users:edit:timesheet') || perms.has('users:write');
+
   const { data:projects } = useQuery({ queryKey:['projects-list'], queryFn: ()=> api<any[]>('GET','/projects') });
   const qs = useMemo(()=>{ const p = new URLSearchParams(); if(month) p.set('month', month); if(userId) p.set('user_id', userId); const s=p.toString(); return s? ('?'+s): ''; }, [month, userId]);
   const { data:entries, refetch } = useQuery({ queryKey:['user-timesheet', projectId, qs], queryFn: ()=> projectId? api<any[]>('GET', `/projects/${projectId}/timesheet${qs}`) : Promise.resolve([]) });
 
   const submit = async()=>{
     try{
+      if(!canEditAttendance){ toast.error('You do not have permission to edit attendance records'); return; }
       if(!projectId){ toast.error('Select a project'); return; }
       if(!workDate || !start || !end){ toast.error('Date, start and end required'); return; }
       if(!notes.trim()){ toast.error('Notes required'); return; }
@@ -653,21 +659,25 @@ function UserTimesheet({ userId }:{ userId:string }){
             {(projects||[]).map((p:any)=> <option key={p.id} value={p.id}>{p.code? `${p.code} — `:''}{p.name||'Project'}</option>)}
           </select>
         </div>
-        <div>
-          <label className="text-xs text-gray-600">Date</label>
-          <input type="date" className="w-full border rounded px-3 py-2" value={workDate} onChange={e=>setWorkDate(e.target.value)} />
-        </div>
-        <div className="grid grid-cols-2 gap-2">
-          <div><label className="text-xs text-gray-600">Start</label><input type="time" className="w-full border rounded px-3 py-2" value={start} onChange={e=>setStart(e.target.value)} /></div>
-          <div><label className="text-xs text-gray-600">End</label><input type="time" className="w-full border rounded px-3 py-2" value={end} onChange={e=>setEnd(e.target.value)} /></div>
-        </div>
-        <div className="md:col-span-3">
-          <label className="text-xs text-gray-600">Notes</label>
-          <input className="w-full border rounded px-3 py-2" value={notes} onChange={e=>setNotes(e.target.value)} placeholder="Justification" />
-        </div>
-        <div className="md:col-span-3 text-right">
-          <button onClick={submit} className="px-3 py-2 rounded bg-brand-red text-white">Add Entry</button>
-        </div>
+        {canEditAttendance && (
+          <>
+            <div>
+              <label className="text-xs text-gray-600">Date</label>
+              <input type="date" className="w-full border rounded px-3 py-2" value={workDate} onChange={e=>setWorkDate(e.target.value)} />
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div><label className="text-xs text-gray-600">Start</label><input type="time" className="w-full border rounded px-3 py-2" value={start} onChange={e=>setStart(e.target.value)} /></div>
+              <div><label className="text-xs text-gray-600">End</label><input type="time" className="w-full border rounded px-3 py-2" value={end} onChange={e=>setEnd(e.target.value)} /></div>
+            </div>
+            <div className="md:col-span-3">
+              <label className="text-xs text-gray-600">Notes</label>
+              <input className="w-full border rounded px-3 py-2" value={notes} onChange={e=>setNotes(e.target.value)} placeholder="Justification" />
+            </div>
+            <div className="md:col-span-3 text-right">
+              <button onClick={submit} className="px-3 py-2 rounded bg-brand-red text-white">Add Entry</button>
+            </div>
+          </>
+        )}
       </div>
       <div className="mt-4 border-t pt-3">
         {(entries||[]).length? (entries||[]).map((e:any)=> (
@@ -675,7 +685,19 @@ function UserTimesheet({ userId }:{ userId:string }){
             <div className="w-20 text-gray-600">{String(e.work_date).slice(0,10)}</div>
             <div className="w-24 text-gray-700">{formatTime12h(e.start_time)} - {formatTime12h(e.end_time)}</div>
             <div className="w-16 font-medium">{(e.minutes/60).toFixed(2)}h</div>
-            <div className="text-gray-600">{e.notes||''}</div>
+            <div className="text-gray-600 flex items-center gap-1">
+              <span className="truncate">{e.notes||''}</span>
+              {e.shift_deleted && (
+                <span
+                  className="text-yellow-600"
+                  title={e.shift_deleted_by ? `The shift related to this attendance was deleted by ${e.shift_deleted_by}${e.shift_deleted_at ? ` on ${new Date(e.shift_deleted_at).toLocaleDateString()}` : ''}` : 'The shift related to this attendance was deleted'}
+                >
+                  <svg className="w-4 h-4 inline-block" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  </svg>
+                </span>
+              )}
+            </div>
           </div>
         )) : <div className="text-sm text-gray-600">No entries</div>}
       </div>

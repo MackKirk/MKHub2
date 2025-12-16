@@ -66,6 +66,12 @@ export default function OrdersTab({ projectId, project }: { projectId: string; p
   const nav = useNavigate();
   const [reviewingOrder, setReviewingOrder] = useState<Order | null>(null);
   
+  // Check permissions for orders
+  const { data: me } = useQuery({ queryKey:['me'], queryFn: ()=>api<any>('GET','/auth/me') });
+  const isAdmin = (me?.roles||[]).includes('admin');
+  const permissions = new Set(me?.permissions || []);
+  const canEditOrders = isAdmin || permissions.has('business:projects:orders:write');
+  
   const handleBackToOverview = () => {
     nav(location.pathname, { replace: true });
   };
@@ -241,23 +247,25 @@ export default function OrdersTab({ projectId, project }: { projectId: string; p
               <div className="text-xs text-gray-500 truncate">{order.recipient_email}</div>
             )}
           </div>
-          <div className="flex flex-col gap-2 flex-shrink-0">
-            <button
-              onClick={() => handleReviewEmail(order)}
-              disabled={order.status === 'delivered'}
-              className="px-3 py-1.5 rounded bg-gray-400 text-white text-sm hover:bg-gray-500 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap transition-colors"
-            >
-              Review & Email
-            </button>
-            {order.status === 'awaiting_delivery' && (
+          {canEditOrders && (
+            <div className="flex flex-col gap-2 flex-shrink-0">
               <button
-                onClick={() => handleMarkDelivered(order)}
-                className="px-3 py-1.5 rounded bg-green-600 text-white text-sm hover:bg-green-700 whitespace-nowrap"
+                onClick={() => handleReviewEmail(order)}
+                disabled={order.status === 'delivered'}
+                className="px-3 py-1.5 rounded bg-gray-400 text-white text-sm hover:bg-gray-500 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap transition-colors"
               >
-                Mark as Delivered
+                Review & Email
               </button>
-            )}
-          </div>
+              {order.status === 'awaiting_delivery' && (
+                <button
+                  onClick={() => handleMarkDelivered(order)}
+                  className="px-3 py-1.5 rounded bg-green-600 text-white text-sm hover:bg-green-700 whitespace-nowrap"
+                >
+                  Mark as Delivered
+                </button>
+              )}
+            </div>
+          )}
         </div>
       </div>
     );
@@ -311,28 +319,30 @@ export default function OrdersTab({ projectId, project }: { projectId: string; p
         </div>
       </div>
       
-      <div className="flex items-center justify-between">
-        <div className="flex gap-2">
-          <button
-            onClick={() => {
-              setShowAddExtraOrder(true);
-              setAddOrderStep(1);
-              setAddOrderType(null);
-            }}
-            className="px-4 py-2 rounded bg-brand-red text-white text-sm hover:bg-red-700 transition-colors"
-          >
-            + Add Extra Order
-          </button>
-          {orders.length > 0 && (
+      {canEditOrders && (
+        <div className="flex items-center justify-between">
+          <div className="flex gap-2">
             <button
-              onClick={handleClearAll}
-              className="px-4 py-2 rounded bg-red-600 text-white text-sm hover:bg-red-700 transition-colors"
+              onClick={() => {
+                setShowAddExtraOrder(true);
+                setAddOrderStep(1);
+                setAddOrderType(null);
+              }}
+              className="px-4 py-2 rounded bg-brand-red text-white text-sm hover:bg-red-700 transition-colors"
             >
-              Clear All
+              + Add Extra Order
             </button>
-          )}
+            {orders.length > 0 && (
+              <button
+                onClick={handleClearAll}
+                className="px-4 py-2 rounded bg-red-600 text-white text-sm hover:bg-red-700 transition-colors"
+              >
+                Clear All
+              </button>
+            )}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Supplier Orders Section */}
       <div className="rounded-xl border bg-white p-4">

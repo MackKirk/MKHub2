@@ -88,6 +88,9 @@ type WeeklySummaryDay = {
   break_minutes?: number;
   break_formatted?: string | null;
   worker_name?: string;  // Optional worker name for attendance summary modal
+  shift_deleted?: boolean;
+  shift_deleted_by?: string | null;
+  shift_deleted_at?: string | null;
 };
 
 type WeeklySummary = {
@@ -1455,8 +1458,22 @@ export default function ClockInOut() {
                           </div>
                         </div>
                         <div className="text-right ml-4">
-                          <div className="text-sm font-medium">
-                            {day.hours_worked_formatted || '0h 00m'}
+                          <div className="text-sm font-medium flex items-center justify-end gap-1">
+                            <span>{day.hours_worked_formatted || '0h 00m'}</span>
+                            {day.shift_deleted && (
+                              <span
+                                className="text-yellow-600"
+                                title={
+                                  day.shift_deleted_by
+                                    ? `The shift related to this attendance was deleted by ${day.shift_deleted_by}${day.shift_deleted_at ? ` on ${new Date(day.shift_deleted_at).toLocaleDateString()}` : ''}`
+                                    : 'The shift related to this attendance was deleted'
+                                }
+                              >
+                                <svg className="w-4 h-4 inline-block" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                                </svg>
+                              </span>
+                            )}
                           </div>
                           {timeRange && (
                             <div className="text-xs text-gray-600 mt-1">

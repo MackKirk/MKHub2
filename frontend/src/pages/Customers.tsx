@@ -152,6 +152,10 @@ export default function Customers(){
   const clientStatuses = (settings?.client_statuses || []) as {id?:string, label?:string, value?:string}[];
   const clientTypes = (settings?.client_types || []) as {id?:string, label?:string, value?:string}[];
   
+  // Check permissions
+  const { data: me } = useQuery({ queryKey:['me'], queryFn: ()=>api<any>('GET','/auth/me') });
+  const hasEditPermission = (me?.roles||[]).includes('admin') || (me?.permissions||[]).includes('business:customers:write');
+  
   // Organize locations data (countries, provinces, cities from actual clients only)
   const locations = locationsData || {};
   
@@ -230,7 +234,9 @@ export default function Customers(){
           <div className="text-2xl font-extrabold">Customers</div>
           <div className="text-sm opacity-90">Manage your customer list and sites</div>
         </div>
-        <Link to="/customers/new" className="px-4 py-2 rounded bg-white text-brand-red font-semibold">+ New Customer</Link>
+        {hasEditPermission && (
+          <Link to="/customers/new" className="px-4 py-2 rounded bg-white text-brand-red font-semibold">+ New Customer</Link>
+        )}
       </div>
       {/* Advanced Search Panel */}
       <div className="mb-3 rounded-xl border bg-white shadow-sm overflow-hidden relative">
@@ -452,7 +458,7 @@ export default function Customers(){
         <div className="rounded-xl border bg-white">
           <div className="divide-y">
             {(data?.items || []).map(c => (
-              <ClientRow key={c.id} c={c} statusColorMap={statusColorMap} onOpen={()=> nav(`/customers/${encodeURIComponent(c.id)}`)} onDeleted={()=> refetch()} />
+              <ClientRow key={c.id} c={c} statusColorMap={statusColorMap} hasEditPermission={hasEditPermission} onOpen={()=> nav(`/customers/${encodeURIComponent(c.id)}`)} onDeleted={()=> refetch()} />
             ))}
           </div>
           
@@ -507,7 +513,7 @@ export default function Customers(){
   );
 }
 
-function ClientRow({ c, statusColorMap, onOpen, onDeleted }:{ c: Client, statusColorMap: Record<string,string>, onOpen: ()=>void, onDeleted: ()=>void }){
+function ClientRow({ c, statusColorMap, hasEditPermission, onOpen, onDeleted }:{ c: Client, statusColorMap: Record<string,string>, hasEditPermission?: boolean, onOpen: ()=>void, onDeleted: ()=>void }){
   // Use logo_url from the client data (loaded together with the client list)
   const avatarUrl = c.logo_url || '/ui/assets/login/logo-light.svg';
   const status = String(c.client_status||'').trim();
@@ -515,7 +521,10 @@ function ClientRow({ c, statusColorMap, onOpen, onDeleted }:{ c: Client, statusC
   const badgeStyle: any = color ? { backgroundColor: color, borderColor: 'transparent', color: '#000' } : {};
   const confirm = useConfirm();
   return (
-    <div className="p-3 flex items-center justify-between hover:bg-gray-50 cursor-pointer" onClick={onOpen}>
+    <div 
+      className="p-3 flex items-center justify-between hover:bg-gray-50 cursor-pointer" 
+      onClick={onOpen}
+    >
       <div className="flex items-center gap-3 min-w-0">
         <img src={avatarUrl} className="w-12 h-12 rounded-lg border object-cover" alt={c.display_name || c.name || 'Client logo'}/>
         <div className="min-w-0">
@@ -530,11 +539,13 @@ function ClientRow({ c, statusColorMap, onOpen, onDeleted }:{ c: Client, statusC
         <span className="px-2 py-0.5 rounded-full border" style={badgeStyle}>{status || '—'}</span>
         <span className="text-gray-600">Type:</span>
         <span className="px-2 py-0.5 rounded-full border text-gray-700 bg-gray-50">{String(c.client_type||'—')}</span>
-        <button className="ml-2 px-3 py-1.5 rounded bg-brand-red text-white hover:bg-red-700" title="Delete customer" onClick={async()=>{
-          const ok = await confirm({ title: 'Delete customer', message: 'Are you sure you want to delete this customer? This action cannot be undone.' });
-          if (!ok) return;
-          try{ await api('DELETE', `/clients/${encodeURIComponent(c.id)}`); onDeleted(); }catch(_e){}
-        }}>Delete</button>
+        {hasEditPermission && (
+          <button className="ml-2 px-3 py-1.5 rounded bg-brand-red text-white hover:bg-red-700" title="Delete customer" onClick={async()=>{
+            const ok = await confirm({ title: 'Delete customer', message: 'Are you sure you want to delete this customer? This action cannot be undone.' });
+            if (!ok) return;
+            try{ await api('DELETE', `/clients/${encodeURIComponent(c.id)}`); onDeleted(); }catch(_e){}
+          }}>Delete</button>
+        )}
       </div>
     </div>
   );

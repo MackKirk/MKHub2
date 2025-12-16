@@ -50,7 +50,7 @@ def seed_settings_permissions():
                 name="settings",
                 label="Settings",
                 description="Permissions for System Settings area. Blocking access blocks all sub-permissions.",
-                sort_index=2,  # After Human Resources
+                sort_index=6,  # After Human Resources
             )
             db.add(category)
         

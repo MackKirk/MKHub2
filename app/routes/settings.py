@@ -7,7 +7,7 @@ from datetime import datetime, date, time, timedelta, timezone
 import uuid
 
 from ..db import get_db
-from ..models.models import SettingList, SettingItem, Client, Attendance, User, Shift, Project, EmployeeProfile
+from ..models.models import SettingList, SettingItem, Client, Attendance, User, Shift, Project, EmployeeProfile, AuditLog
 from ..auth.security import require_permissions, get_current_user
 from ..auth.security import User as UserType
 from ..config import settings
@@ -282,14 +282,16 @@ def calculate_break_minutes(
 def get_settings_bundle(db: Session = Depends(get_db), user: UserType = Depends(get_current_user)):
     from ..auth.security import _has_permission
     
-    # Allow access if user has settings:access OR any timesheet-related permissions
+    # Allow access if user has settings:access OR any timesheet-related permissions OR business permissions
     has_access = _has_permission(user, "settings:access") or \
                  _has_permission(user, "hr:users:edit:timesheet") or \
                  _has_permission(user, "hr:users:view:timesheet") or \
                  _has_permission(user, "hr:attendance:write") or \
                  _has_permission(user, "hr:attendance:read") or \
                  _has_permission(user, "users:write") or \
-                 _has_permission(user, "users:read")
+                 _has_permission(user, "users:read") or \
+                 _has_permission(user, "business:customers:read") or \
+                 _has_permission(user, "business:projects:read")
     
     out = {}
     
@@ -504,19 +506,25 @@ def delete_attendance(
     if attendance.clock_out_time:
         end_time_str = attendance.clock_out_time.time().isoformat()
     
-    # Delete corresponding ProjectTimeEntry if it exists
-    # This happens when attendance was approved and synced to timesheet
+    # Delete corresponding ProjectTimeEntry if it exists.
+    # Prefer precise linkage by source_attendance_id; fallback to legacy note pattern (pre-migration rows).
     if project_id and work_date:
         from ..models.models import ProjectTimeEntry
-        time_entry = db.query(ProjectTimeEntry).filter(
+        from sqlalchemy import or_, and_
+        q = db.query(ProjectTimeEntry).filter(
             ProjectTimeEntry.project_id == project_id,
             ProjectTimeEntry.user_id == attendance.worker_id,
-            ProjectTimeEntry.work_date == work_date
-        ).first()
-        
-        if time_entry:
-            # Delete the ProjectTimeEntry
-            db.delete(time_entry)
+            ProjectTimeEntry.work_date == work_date,
+            or_(
+                ProjectTimeEntry.source_attendance_id == attendance.id,
+                and_(
+                    ProjectTimeEntry.source_attendance_id.is_(None),
+                    ProjectTimeEntry.notes.ilike("%attendance system%"),
+                ),
+            ),
+        )
+        for te in q.all():
+            db.delete(te)
     
     # Delete the attendance record
     db.delete(attendance)
@@ -1005,6 +1013,31 @@ def list_attendances(
                         db, att.worker_id, att.clock_in_time, att.clock_out_time
                     )
                 
+                # Check if shift was deleted (soft-delete uses status="deleted")
+                shift_deleted = False
+                shift_deleted_by = None
+                shift_deleted_at = None
+                
+                if att.shift_id:
+                    shift = shifts_dict.get(str(att.shift_id)) if att.shift_id else None
+                    if not shift or getattr(shift, "status", None) == "deleted":
+                        shift_deleted = True
+                        # Get information about who deleted the shift from audit log
+                        delete_log = db.query(AuditLog).filter(
+                            AuditLog.entity_type == "shift",
+                            AuditLog.entity_id == att.shift_id,
+                            AuditLog.action == "DELETE"
+                        ).order_by(AuditLog.timestamp_utc.desc()).first()
+                        
+                        if delete_log:
+                            shift_deleted_at = delete_log.timestamp_utc.isoformat() if delete_log.timestamp_utc else None
+                            # Get actor name
+                            actor = db.query(User).filter(User.id == delete_log.actor_id).first()
+                            if actor:
+                                shift_deleted_by = actor.username or actor.email or str(delete_log.actor_id)
+                            else:
+                                shift_deleted_by = str(delete_log.actor_id)
+                
                 result.append({
                     "id": str(att.id),
                     "worker_id": str(att.worker_id),
@@ -1027,6 +1060,9 @@ def list_attendances(
                     "created_at": att.created_at.isoformat() if att.created_at else None,
                     "approved_at": att.approved_at.isoformat() if att.approved_at else None,
                     "approved_by": str(att.approved_by) if att.approved_by else None,
+                    "shift_deleted": shift_deleted,
+                    "shift_deleted_by": shift_deleted_by,
+                    "shift_deleted_at": shift_deleted_at,
                 })
             except Exception as e:
                 logger.error(f"Error processing attendance {att.id}: {str(e)}", exc_info=True)

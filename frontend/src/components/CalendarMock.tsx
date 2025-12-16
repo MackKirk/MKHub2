@@ -9,6 +9,7 @@ import { formatDateLocal } from '@/lib/dateUtils';
 type CalendarMockProps = {
   title?: string;
   projectId?: string;
+  hasEditPermission?: boolean;
 };
 
 type Event = {
@@ -72,7 +73,7 @@ function getEventColor(eventId: string): { bg: string; text: string; border: str
   return colors[index];
 }
 
-export default function CalendarMock({ title, projectId }: CalendarMockProps){
+export default function CalendarMock({ title, projectId, hasEditPermission }: CalendarMockProps){
   const [anchorDate, setAnchorDate] = useState<Date>(()=>{
     const d = new Date();
     d.setDate(1);
@@ -369,7 +370,7 @@ export default function CalendarMock({ title, projectId }: CalendarMockProps){
           <div className="px-2 text-sm text-gray-700 min-w-[140px] text-center">{monthLabel}</div>
           <button onClick={()=> setAnchorDate(d=> new Date(d.getFullYear(), d.getMonth()+1, 1))} className="px-2 py-1 rounded bg-gray-100">Next</button>
           <button onClick={()=> setAnchorDate(()=>{ const n=new Date(); n.setDate(1); n.setHours(0,0,0,0); return n; })} className="px-2 py-1 rounded bg-gray-100">Today</button>
-          {projectId && (
+          {projectId && hasEditPermission && (
             <button onClick={()=> setShowAddModal(true)} className="px-3 py-1 rounded bg-brand-red text-white text-sm">+ Create Event</button>
           )}
         </div>
@@ -439,6 +440,7 @@ export default function CalendarMock({ title, projectId }: CalendarMockProps){
         <EventViewModal
           event={showViewModal}
           projectId={projectId || ''}
+          hasEditPermission={hasEditPermission}
           onClose={()=> setShowViewModal(null)}
           onEdit={()=> {
             setShowEditModal(showViewModal);
@@ -494,12 +496,14 @@ export default function CalendarMock({ title, projectId }: CalendarMockProps){
 function EventViewModal({ 
   event, 
   projectId,
+  hasEditPermission,
   onClose, 
   onEdit, 
   onDelete 
 }: { 
   event: Event; 
   projectId: string;
+  hasEditPermission?: boolean;
   onClose: () => void; 
   onEdit: () => void; 
   onDelete: () => Promise<void>;
@@ -664,12 +668,16 @@ function EventViewModal({
           )}
         </div>
         <div className="sticky bottom-0 bg-white border-t p-4 flex justify-between">
-          <button
-            onClick={onDelete}
-            className="px-4 py-2 rounded border bg-red-100 text-red-700 hover:bg-red-200"
-          >
-            Delete
-          </button>
+          {hasEditPermission ? (
+            <button
+              onClick={onDelete}
+              className="px-4 py-2 rounded border bg-red-100 text-red-700 hover:bg-red-200"
+            >
+              Delete
+            </button>
+          ) : (
+            <div></div>
+          )}
           <div className="flex gap-2">
             <button
               onClick={onClose}
@@ -677,12 +685,14 @@ function EventViewModal({
             >
               Close
             </button>
-            <button
-              onClick={onEdit}
-              className="px-4 py-2 rounded bg-brand-red text-white hover:bg-red-700"
-            >
-              Edit
-            </button>
+            {hasEditPermission && (
+              <button
+                onClick={onEdit}
+                className="px-4 py-2 rounded bg-brand-red text-white hover:bg-red-700"
+              >
+                Edit
+              </button>
+            )}
           </div>
         </div>
       </div>

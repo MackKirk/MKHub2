@@ -259,6 +259,14 @@ class ProjectTimeEntry(Base):
     end_time: Mapped[Optional[Time]] = mapped_column(Time(timezone=False))
     minutes: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     notes: Mapped[Optional[str]] = mapped_column(String(1000))
+    # If this row was generated from an Attendance event, keep a stable reference to it.
+    # This prevents duplicate/ghost records in UI and allows precise cleanup on deletes.
+    source_attendance_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("attendance.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
     created_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
     # Administrative approval

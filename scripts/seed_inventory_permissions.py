@@ -1,7 +1,7 @@
 """
-Script para adicionar permissões de Documents com estrutura hierárquica.
-A primeira permissão sempre é a liberação da área (documents:access).
-Se bloquear documents:access, automaticamente bloqueia todas as sub-permissões.
+Script para adicionar permissões de Inventory com estrutura hierárquica.
+A primeira permissão sempre é a liberação da área (inventory:access).
+Se bloquear inventory:access, automaticamente bloqueia todas as sub-permissões.
 """
 import sys
 import os
@@ -34,65 +34,65 @@ except ImportError as e:
     sys.exit(1)
 
 
-def seed_documents_permissions():
-    """Seed Documents permissions with hierarchical structure"""
+def seed_inventory_permissions():
+    """Seed Inventory permissions with hierarchical structure"""
     db = SessionLocal()
     
     try:
-        # Create or get Documents category
-        category = db.query(PermissionCategory).filter(PermissionCategory.name == "documents").first()
+        # Create or get Inventory category
+        category = db.query(PermissionCategory).filter(PermissionCategory.name == "inventory").first()
         if category:
-            print(f"Category 'documents' already exists, updating...")
-            category.label = "Documents"
-            category.description = "Permissions for Documents area. Blocking access blocks all sub-permissions."
+            print(f"Category 'inventory' already exists, updating...")
+            category.label = "Inventory"
+            category.description = "Permissions for Inventory area. Blocking access blocks all sub-permissions."
             category.is_active = True
         else:
             category = PermissionCategory(
-                name="documents",
-                label="Documents",
-                description="Permissions for Documents area. Blocking access blocks all sub-permissions.",
-                sort_index=4,  # After Fleet & Equipment
+                name="inventory",
+                label="Inventory",
+                description="Permissions for Inventory area. Blocking access blocks all sub-permissions.",
+                sort_index=2,  # After Business
             )
             db.add(category)
         
         db.flush()  # To get the category ID
         
-        # Define Documents permissions with hierarchical structure
+        # Define Inventory permissions with hierarchical structure
         # First permission is always the area access
-        documents_permissions = [
+        inventory_permissions = [
             {
-                "key": "documents:access",
-                "label": "Access Documents",
-                "description": "Grants access to the Documents area. Required for all Documents functions. If disabled, all Documents permissions are blocked.",
+                "key": "inventory:access",
+                "label": "Access Inventory",
+                "description": "Grants access to the Inventory area. Required for all Inventory functions. If disabled, all Inventory permissions are blocked.",
                 "sort_index": 1,
             },
             {
-                "key": "documents:read",
-                "label": "View Documents",
-                "description": "Allows viewing and downloading documents",
+                "key": "inventory:suppliers:read",
+                "label": "View Suppliers Tab",
+                "description": "Allows viewing the Suppliers tab in the Inventory area",
                 "sort_index": 2,
             },
             {
-                "key": "documents:write",
-                "label": "Add Documents",
-                "description": "Allows uploading and creating new documents",
+                "key": "inventory:suppliers:write",
+                "label": "Edit Suppliers Tab",
+                "description": "Allows editing the Suppliers tab in the Inventory area (creating, updating, and deleting suppliers)",
                 "sort_index": 3,
             },
             {
-                "key": "documents:delete",
-                "label": "Delete Documents",
-                "description": "Allows deleting documents",
+                "key": "inventory:products:read",
+                "label": "View Products Tab",
+                "description": "Allows viewing the Products tab in the Inventory area",
                 "sort_index": 4,
             },
             {
-                "key": "documents:move",
-                "label": "Move/Edit Documents",
-                "description": "Allows moving documents between folders and editing document metadata",
+                "key": "inventory:products:write",
+                "label": "Edit Products Tab",
+                "description": "Allows editing the Products tab in the Inventory area (creating, updating, and deleting products)",
                 "sort_index": 5,
             },
         ]
         
-        for perm_data in documents_permissions:
+        for perm_data in inventory_permissions:
             # Find or create permission
             permission = db.query(PermissionDefinition).filter(PermissionDefinition.key == perm_data["key"]).first()
             if permission:
@@ -116,17 +116,17 @@ def seed_documents_permissions():
                 print(f"Created permission: {perm_data['key']}")
         
         db.commit()
-        print(f"\nSuccessfully seeded Documents permissions!")
-        print(f"Total permissions: {len(documents_permissions)}")
+        print(f"\nSuccessfully seeded Inventory permissions!")
+        print(f"Total permissions: {len(inventory_permissions)}")
         
     except Exception as e:
         db.rollback()
-        print(f"Error seeding Documents permissions: {e}")
+        print(f"Error seeding Inventory permissions: {e}")
         raise
     finally:
         db.close()
 
 
 if __name__ == "__main__":
-    seed_documents_permissions()
+    seed_inventory_permissions()
 

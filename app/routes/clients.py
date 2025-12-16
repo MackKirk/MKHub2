@@ -24,7 +24,7 @@ def create_client(
     payload: ClientCreate, 
     create_default_folders: bool = False,
     db: Session = Depends(get_db), 
-    _=Depends(require_permissions("clients:write"))
+    _=Depends(require_permissions("business:customers:write"))
 ):
     try:
         data = payload.dict(exclude_unset=True)
@@ -100,7 +100,7 @@ def create_client(
 @router.get("/locations")
 def get_client_locations(
     db: Session = Depends(get_db),
-    _=Depends(require_permissions("clients:read"))
+    _=Depends(require_permissions("business:customers:read"))
 ):
     """
     Returns unique combinations of country, province, and city from clients.
@@ -188,7 +188,7 @@ def list_clients(
     page: int = 1,
     limit: int = 10,
     db: Session = Depends(get_db), 
-    _=Depends(require_permissions("clients:read"))
+    _=Depends(require_permissions("business:customers:read"))
 ):
     from ..models.models import SettingList, SettingItem
     
@@ -367,7 +367,7 @@ def list_file_categories():
 
 
 @router.get("/{client_id}", response_model=ClientResponse)
-def get_client(client_id: str, db: Session = Depends(get_db), _=Depends(require_permissions("clients:read"))):
+def get_client(client_id: str, db: Session = Depends(get_db), _=Depends(require_permissions("business:customers:read"))):
     try:
         c = db.query(Client).filter(Client.id == client_id).first()
     except ProgrammingError as e:
@@ -478,7 +478,7 @@ def add_contact(client_id: str, payload: ClientContactCreate, db: Session = Depe
 
 
 @router.get("/{client_id}/contacts", response_model=List[ClientContactResponse])
-def list_contacts(client_id: str, db: Session = Depends(get_db), _=Depends(require_permissions("clients:read"))):
+def list_contacts(client_id: str, db: Session = Depends(get_db), _=Depends(require_permissions("business:customers:read"))):
     rows = db.query(ClientContact).filter(ClientContact.client_id == client_id).order_by(ClientContact.sort_index.asc()).all()
     return rows
 
@@ -516,7 +516,7 @@ def reorder_contacts(client_id: str, order: list[str], db: Session = Depends(get
 
 # ----- Sites -----
 @router.get("/{client_id}/sites", response_model=List[ClientSiteResponse])
-def list_sites(client_id: str, db: Session = Depends(get_db), _=Depends(require_permissions("clients:read"))):
+def list_sites(client_id: str, db: Session = Depends(get_db), _=Depends(require_permissions("business:customers:read"))):
     rows = db.query(ClientSite).filter(ClientSite.client_id == client_id).order_by(ClientSite.sort_index.asc()).all()
     return rows
 
@@ -679,7 +679,7 @@ def list_files(
     limit: Optional[int] = None,
     offset: Optional[int] = None,
     db: Session = Depends(get_db),
-    _=Depends(require_permissions("clients:read"))
+    _=Depends(require_permissions("business:customers:read"))
 ):
     q = db.query(ClientFile)
     q = q.filter(ClientFile.client_id == client_id)
@@ -874,7 +874,7 @@ def create_default_folders_for_parent(
 
 # ===== Client Folders & Documents =====
 @router.get("/{client_id}/folders")
-def list_client_folders(client_id: str, db: Session = Depends(get_db), _=Depends(require_permissions("clients:read"))):
+def list_client_folders(client_id: str, db: Session = Depends(get_db), _=Depends(require_permissions("business:customers:read"))):
     rows = db.query(ClientFolder).filter(ClientFolder.client_id == client_id).order_by(ClientFolder.sort_index.asc(), ClientFolder.name.asc()).all()
     out = []
     for f in rows:
@@ -905,7 +905,7 @@ def create_client_folder(
     parent_id: Optional[str] = Body(None),
     create_default_subfolders: bool = Body(False),
     db: Session = Depends(get_db), 
-    _=Depends(require_permissions("clients:write"))
+    _=Depends(require_permissions("business:customers:write"))
 ):
     pid = None
     try:
@@ -936,7 +936,7 @@ def initialize_default_folders(
     parent_folder_id: Optional[str] = Body(None),
     project_id: Optional[str] = Body(None),
     db: Session = Depends(get_db),
-    _=Depends(require_permissions("clients:write"))
+    _=Depends(require_permissions("business:customers:write"))
 ):
     """
     Initialize default folder structure for a client or project.
@@ -1000,7 +1000,7 @@ def delete_client_folder(client_id: str, folder_id: str, db: Session = Depends(g
 
 
 @router.get("/{client_id}/documents")
-def list_client_documents(client_id: str, folder_id: Optional[str] = None, db: Session = Depends(get_db), _=Depends(require_permissions("clients:read"))):
+def list_client_documents(client_id: str, folder_id: Optional[str] = None, db: Session = Depends(get_db), _=Depends(require_permissions("business:customers:read"))):
     q = db.query(ClientDocument).filter(ClientDocument.client_id == client_id)
     if folder_id:
         tag = f"folder:{folder_id}"

@@ -161,6 +161,10 @@ export default function Projects(){
   const arr = data||[];
   const [pickerOpen, setPickerOpen] = useState<{ open:boolean, clientId?:string, projectId?:string }|null>(null);
 
+  // Check permissions
+  const { data: me } = useQuery({ queryKey:['me'], queryFn: ()=>api<any>('GET','/auth/me') });
+  const hasEditPermission = (me?.roles||[]).includes('admin') || (me?.permissions||[]).includes('business:projects:write');
+
   return (
     <div>
       <div className="mb-3 rounded-xl border bg-gradient-to-br from-[#7f1010] to-[#a31414] text-white p-4 flex items-center justify-between">
@@ -168,7 +172,9 @@ export default function Projects(){
           <div className="text-2xl font-extrabold">Projects</div>
           <div className="text-sm opacity-90">List, search and manage projects.</div>
         </div>
-        <Link to="/projects/new?is_bidding=true&create_as_project=true" state={{ backgroundLocation: location }} className="px-4 py-2 rounded bg-white text-brand-red font-semibold">+ New Project</Link>
+        {hasEditPermission && (
+          <Link to="/projects/new?is_bidding=true&create_as_project=true" state={{ backgroundLocation: location }} className="px-4 py-2 rounded bg-white text-brand-red font-semibold">+ New Project</Link>
+        )}
       </div>
       {/* Advanced Search Panel */}
       <div className="mb-3 rounded-xl border bg-white shadow-sm overflow-hidden relative">
