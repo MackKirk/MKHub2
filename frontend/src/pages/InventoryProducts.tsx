@@ -160,6 +160,9 @@ export default function InventoryProducts(){
   const [addRelatedSearch, setAddRelatedSearch] = useState('');
   const [addRelatedResults, setAddRelatedResults] = useState<any[]>([]);
   const [relatedCounts, setRelatedCounts] = useState<Record<number, number>>({});
+  const [productTab, setProductTab] = useState<'details'|'usage'>('details');
+  const [productUsage, setProductUsage] = useState<any[]>([]);
+  const [loadingUsage, setLoadingUsage] = useState(false);
 
   const { data: supplierOptions } = useQuery({ queryKey:['invSuppliersOptions'], queryFn: ()=> api<any[]>('GET','/inventory/suppliers') });
 
@@ -222,6 +225,25 @@ export default function InventoryProducts(){
   const openViewModal = (p: Material) => {
     setViewing(p);
     setOpen(true);
+    setProductTab('details');
+    setProductUsage([]);
+    // Load usage data when opening modal
+    if (p.id) {
+      loadProductUsage(p.id);
+    }
+  };
+
+  const loadProductUsage = async (productId: number) => {
+    setLoadingUsage(true);
+    try {
+      const usage = await api<any[]>('GET', `/estimate/products/${productId}/usage`);
+      setProductUsage(usage || []);
+    } catch (e) {
+      console.error('Failed to load product usage:', e);
+      setProductUsage([]);
+    } finally {
+      setLoadingUsage(false);
+    }
   };
 
   const openEditModal = () => {
@@ -294,6 +316,8 @@ export default function InventoryProducts(){
     setName(''); setNameError(false); setNewSupplier(''); setNewCategory(''); setUnit(''); setPrice(''); setPriceDisplay(''); setPriceFocused(false); setPriceError(false); setDesc('');
     setUnitsPerPackage(''); setCovSqs(''); setCovFt2(''); setCovM2(''); setUnitType('unitary');     setImageDataUrl('');
     setTechnicalManualUrl(''); setImagePickerOpen(false);
+    setProductTab('details');
+    setProductUsage([]);
   };
 
   const searchRelatedProducts = async (txt: string)=>{
@@ -645,7 +669,34 @@ export default function InventoryProducts(){
                     </div>
                   </div>
 
-                  {/* Product Details */}
+                  {/* Tabs */}
+                  <div className="px-6 border-b">
+                    <div className="flex gap-1">
+                      <button
+                        onClick={() => setProductTab('details')}
+                        className={`px-4 py-2 font-medium text-sm transition-colors ${
+                          productTab === 'details'
+                            ? 'text-brand-red border-b-2 border-brand-red'
+                            : 'text-gray-600 hover:text-gray-900'
+                        }`}
+                      >
+                        Details
+                      </button>
+                      <button
+                        onClick={() => setProductTab('usage')}
+                        className={`px-4 py-2 font-medium text-sm transition-colors ${
+                          productTab === 'usage'
+                            ? 'text-brand-red border-b-2 border-brand-red'
+                            : 'text-gray-600 hover:text-gray-900'
+                        }`}
+                      >
+                        Usage {productUsage.length > 0 && `(${productUsage.length})`}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Product Details or Usage */}
+                  {productTab === 'details' ? (
                   <div className="px-6 pb-6 space-y-4">
                     <div className="grid grid-cols-2 gap-4">
                       {viewing.unit && (
@@ -719,6 +770,70 @@ export default function InventoryProducts(){
                       );
                     })()}
                   </div>
+                  ) : (
+                    <div className="px-6 pb-6">
+                      {loadingUsage ? (
+                        <div className="py-8 text-center text-gray-500">Loading usage data...</div>
+                      ) : productUsage.length === 0 ? (
+                        <div className="py-8 text-center text-gray-500">
+                          <div className="text-lg mb-2">📦</div>
+                          <div>This product is not being used in any estimates.</div>
+                        </div>
+                      ) : (
+                        <div className="space-y-3">
+                          <div className="text-sm text-gray-600 mb-4">
+                            This product is being used in {productUsage.length} estimate{productUsage.length !== 1 ? 's' : ''}:
+                          </div>
+                          <div className="border rounded-lg divide-y">
+                            {productUsage.map((usage, idx) => (
+                              <div key={idx} className="p-4 hover:bg-gray-50">
+                                {usage.status === 'orphaned' ? (
+                                  <div className="flex items-center justify-between">
+                                    <div>
+                                      <div className="font-medium text-gray-900">Orphaned Estimate</div>
+                                      <div className="text-sm text-gray-500">Estimate #{usage.estimate_id} (deleted)</div>
+                                    </div>
+                                    <span className="px-2 py-1 text-xs rounded bg-amber-100 text-amber-800">Orphaned</span>
+                                  </div>
+                                ) : (
+                                  <div className="flex items-center justify-between">
+                                    <div className="flex-1">
+                                      {usage.project_name ? (
+                                        <>
+                                          <div className="font-medium text-gray-900">{usage.project_name}</div>
+                                          {usage.client_name && (
+                                            <div className="text-sm text-gray-500">Client: {usage.client_name}</div>
+                                          )}
+                                          {usage.created_at && (
+                                            <div className="text-xs text-gray-400 mt-1">
+                                              Created: {new Date(usage.created_at).toLocaleDateString()}
+                                            </div>
+                                          )}
+                                        </>
+                                      ) : (
+                                        <div className="text-gray-500">No project associated</div>
+                                      )}
+                                    </div>
+                                    {usage.project_id && (
+                                      <button
+                                        onClick={() => {
+                                          navigate(`/projects/${usage.project_id}`);
+                                          resetModal();
+                                        }}
+                                        className="px-3 py-1.5 rounded bg-brand-red text-white hover:bg-[#6d0d0d] transition-colors text-sm"
+                                      >
+                                        View Project
+                                      </button>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               ) : (
                 // Edit/Create mode - form inputs

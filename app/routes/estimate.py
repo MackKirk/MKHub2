@@ -105,6 +105,70 @@ def update_product(product_id: int, body: MaterialIn, db: Session = Depends(get_
     return row
 
 
+@router.get("/products/{product_id}/usage")
+def get_product_usage(product_id: int, db: Session = Depends(get_db), _=Depends(require_permissions("inventory:products:read"))):
+    """Get list of projects/estimates where this product is being used"""
+    from ..models.models import Project, Client
+    
+    # Get all estimate items that use this product
+    estimate_items = db.query(EstimateItem).filter(EstimateItem.material_id == product_id).all()
+    
+    result = []
+    seen_estimates = set()
+    
+    for item in estimate_items:
+        # Skip if we've already processed this estimate
+        if item.estimate_id in seen_estimates:
+            continue
+        seen_estimates.add(item.estimate_id)
+        
+        # Get the estimate
+        estimate = db.query(Estimate).filter(Estimate.id == item.estimate_id).first()
+        if not estimate:
+            # Orphaned item - estimate doesn't exist
+            result.append({
+                "estimate_id": item.estimate_id,
+                "project_id": None,
+                "project_name": None,
+                "client_name": None,
+                "status": "orphaned",
+                "created_at": None
+            })
+            continue
+        
+        # Get project information
+        project_name = None
+        client_name = None
+        if estimate.project_id:
+            project = db.query(Project).filter(Project.id == estimate.project_id).first()
+            if project:
+                project_name = project.name
+                # Get client information
+                if project.client_id:
+                    try:
+                        client = db.query(Client).filter(Client.id == project.client_id).first()
+                    except ProgrammingError as e:
+                        error_msg = str(e.orig) if hasattr(e, 'orig') else str(e)
+                        if 'is_system' in error_msg and 'does not exist' in error_msg:
+                            db.rollback()
+                            client = db.query(Client).options(defer(Client.is_system)).filter(Client.id == project.client_id).first()
+                        else:
+                            raise
+                    if client:
+                        client_name = client.display_name or client.name
+        
+        result.append({
+            "estimate_id": estimate.id,
+            "project_id": str(estimate.project_id) if estimate.project_id else None,
+            "project_name": project_name,
+            "client_name": client_name,
+            "status": "active",
+            "created_at": estimate.created_at.isoformat() if estimate.created_at else None
+        })
+    
+    return result
+
+
 @router.delete("/products/{product_id}")
 def delete_product(product_id: int, db: Session = Depends(get_db), _=Depends(require_permissions("inventory:products:write"))):
     import traceback
