@@ -139,6 +139,8 @@ def get_product_usage(product_id: int, db: Session = Depends(get_db), _=Depends(
         # Get project information
         project_name = None
         client_name = None
+        project_deleted = False
+        
         if estimate.project_id:
             project = db.query(Project).filter(Project.id == estimate.project_id).first()
             if project:
@@ -156,13 +158,18 @@ def get_product_usage(product_id: int, db: Session = Depends(get_db), _=Depends(
                             raise
                     if client:
                         client_name = client.display_name or client.name
+            else:
+                # Project was deleted but estimate still exists
+                project_deleted = True
+                project_name = f"Project {str(estimate.project_id)[:8]}... (deleted)"
         
         result.append({
             "estimate_id": estimate.id,
             "project_id": str(estimate.project_id) if estimate.project_id else None,
             "project_name": project_name,
             "client_name": client_name,
-            "status": "active",
+            "status": "active" if not project_deleted else "project_deleted",
+            "project_deleted": project_deleted,
             "created_at": estimate.created_at.isoformat() if estimate.created_at else None
         })
     

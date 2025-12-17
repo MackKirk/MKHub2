@@ -795,6 +795,19 @@ export default function InventoryProducts(){
                                     </div>
                                     <span className="px-2 py-1 text-xs rounded bg-amber-100 text-amber-800">Orphaned</span>
                                   </div>
+                                ) : usage.status === 'project_deleted' || usage.project_deleted ? (
+                                  <div className="flex items-center justify-between">
+                                    <div className="flex-1">
+                                      <div className="font-medium text-gray-900">{usage.project_name || 'Project Deleted'}</div>
+                                      <div className="text-sm text-gray-500">Estimate #{usage.estimate_id} - Project was deleted</div>
+                                      {usage.created_at && (
+                                        <div className="text-xs text-gray-400 mt-1">
+                                          Created: {new Date(usage.created_at).toLocaleDateString()}
+                                        </div>
+                                      )}
+                                    </div>
+                                    <span className="px-2 py-1 text-xs rounded bg-red-100 text-red-800">Project Deleted</span>
+                                  </div>
                                 ) : (
                                   <div className="flex items-center justify-between">
                                     <div className="flex-1">
@@ -814,7 +827,7 @@ export default function InventoryProducts(){
                                         <div className="text-gray-500">No project associated</div>
                                       )}
                                     </div>
-                                    {usage.project_id && (
+                                    {usage.project_id && !usage.project_deleted && (
                                       <button
                                         onClick={() => {
                                           navigate(`/projects/${usage.project_id}`);
