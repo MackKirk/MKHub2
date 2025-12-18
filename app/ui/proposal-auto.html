@@ -126,8 +126,18 @@
             <label>Font <input type="text" id="imgEditFont" value="16px Montserrat" style="width:140px"></label>
             <label>Text <input type="text" id="imgEditText" placeholder="Your text" style="flex:1"></label>
           </div>
+          <div class="row" style="gap:6px; align-items:center; flex-direction:column; align-items:flex-start;">
+            <label style="display:flex; align-items:center; gap:4px;">
+              <input type="checkbox" id="imgEditTextBgEnabled">
+              <span>Text Background</span>
+            </label>
+            <div id="imgEditTextBgControls" style="display:none; flex-direction:column; gap:4px; width:100%;">
+              <label>Bg Color <input type="color" id="imgEditTextBgColor" value="#ffffff"></label>
+              <label>Opacity <input type="range" id="imgEditTextBgOpacity" min="0" max="1" step="0.01" value="0.8"></label>
+            </div>
+          </div>
           <div class="row" style="gap:6px; align-items:center"><button type="button" id="imgEditRotateL">Rotate ⟲</button><button type="button" id="imgEditRotateR">Rotate ⟳</button></div>
-          <label>Zoom <input type="range" id="imgEditZoom" min="0.5" max="3" value="1" step="0.01"></label>
+          <label>Zoom <input type="range" id="imgEditZoom" min="0.1" max="3" value="1" step="0.01"></label>
           <div class="muted">Tips:
             <div>- Pan mode: drag image. Rect/Arrow/Text: click or drag on canvas.</div>
             <div>- Click an annotation to select, drag to move. Del key removes.</div>
@@ -339,14 +349,118 @@ async function initPrefill(){
   const canvas = document.getElementById('imgEditCanvas');
   const overlay = document.getElementById('imgEditOverlay');
   const zoomEl = document.getElementById('imgEditZoom');
-  let editState = { img:null, angle:0, scale:1, offsetX:0, offsetY:0, aspect:1.0, fileId:'', fileName:'', mode:'pan', color:'#ff0000', stroke:3, font:'16px Montserrat', text:'', items:[], selectedId:null };
+  let editState = { img:null, angle:0, scale:1, offsetX:0, offsetY:0, aspect:1.0, fileId:'', fileName:'', mode:'pan', color:'#ff0000', stroke:3, font:'16px Montserrat', text:'', items:[], selectedId:null, textBackgroundEnabled:false, textBackgroundColor:'#ffffff', textBackgroundOpacity:0.8 };
   function targetAspect(){ const t = modal.dataset.target||''; if (t==='cover') return 566/537; if (t==='page2') return 540/340; return 260/150; }
   function resetEditor(){ editState.angle=0; editState.scale=1; editState.offsetX=0; editState.offsetY=0; zoomEl.value='1'; }
   function setCanvasSize(){ const maxW = 800; const w = Math.min(maxW, (modal.clientWidth||900)-120); const aspect = editState.aspect; canvas.width = w; canvas.height = Math.round(w/aspect); overlay.width = canvas.width; overlay.height = canvas.height; }
-  function drawBase(){ const ctx = canvas.getContext('2d'); ctx.save(); ctx.clearRect(0,0,canvas.width, canvas.height); ctx.fillStyle = '#f6f6f6'; ctx.fillRect(0,0,canvas.width, canvas.height); if (!editState.img){ ctx.restore(); return; } ctx.translate(canvas.width/2 + editState.offsetX, canvas.height/2 + editState.offsetY); ctx.rotate(editState.angle * Math.PI/180); const iw = editState.img.width; const ih = editState.img.height; const scale = editState.scale; const drawW = iw * scale; const drawH = ih * scale; ctx.drawImage(editState.img, -drawW/2, -drawH/2, drawW, drawH); ctx.restore(); }
+  function drawBase(){ 
+    const ctx = canvas.getContext('2d'); 
+    ctx.save(); 
+    ctx.clearRect(0,0,canvas.width, canvas.height); 
+    if (!editState.img){ 
+      ctx.fillStyle = '#f6f6f6'; 
+      ctx.fillRect(0,0,canvas.width, canvas.height); 
+      ctx.restore(); 
+      return; 
+    }
+    // Check if image doesn't fill canvas (needs blur background)
+    const iw = editState.img.width, ih = editState.img.height, s = editState.scale;
+    const angleRad = editState.angle * Math.PI / 180;
+    const cos = Math.abs(Math.cos(angleRad));
+    const sin = Math.abs(Math.sin(angleRad));
+    const rotatedW = iw * s * cos + ih * s * sin;
+    const rotatedH = iw * s * sin + ih * s * cos;
+    const needsBlur = rotatedW < canvas.width || rotatedH < canvas.height;
+    
+    if (needsBlur) {
+      // Draw blurred background
+      const blurCanvas = document.createElement('canvas');
+      const blurScale = 0.3;
+      blurCanvas.width = Math.round(canvas.width * blurScale);
+      blurCanvas.height = Math.round(canvas.height * blurScale);
+      const blurCtx = blurCanvas.getContext('2d');
+      if (blurCtx) {
+        const scaleX = blurCanvas.width / iw;
+        const scaleY = blurCanvas.height / ih;
+        const fillScale = Math.max(scaleX, scaleY);
+        const scaledWidth = iw * fillScale;
+        const scaledHeight = ih * fillScale;
+        const offsetX = (blurCanvas.width - scaledWidth) / 2;
+        const offsetY = (blurCanvas.height - scaledHeight) / 2;
+        
+        blurCtx.drawImage(editState.img, offsetX, offsetY, scaledWidth, scaledHeight);
+        
+        // Apply blur
+        const imageData = blurCtx.getImageData(0, 0, blurCanvas.width, blurCanvas.height);
+        const data = imageData.data;
+        const blurRadius = 8;
+        const passes = 2;
+        
+        for (let pass = 0; pass < passes; pass++) {
+          const tempData = new Uint8ClampedArray(data);
+          for (let y = 0; y < blurCanvas.height; y++) {
+            for (let x = 0; x < blurCanvas.width; x++) {
+              let r = 0, g = 0, b = 0, count = 0;
+              for (let dy = -blurRadius; dy <= blurRadius; dy++) {
+                for (let dx = -blurRadius; dx <= blurRadius; dx++) {
+                  const nx = x + dx;
+                  const ny = y + dy;
+                  if (nx >= 0 && nx < blurCanvas.width && ny >= 0 && ny < blurCanvas.height) {
+                    const idx = (ny * blurCanvas.width + nx) * 4;
+                    r += tempData[idx];
+                    g += tempData[idx + 1];
+                    b += tempData[idx + 2];
+                    count++;
+                  }
+                }
+              }
+              if (count > 0) {
+                const idx = (y * blurCanvas.width + x) * 4;
+                data[idx] = r / count;
+                data[idx + 1] = g / count;
+                data[idx + 2] = b / count;
+                data[idx + 3] = tempData[idx + 3];
+              }
+            }
+          }
+        }
+        
+        blurCtx.putImageData(imageData, 0, 0);
+        ctx.drawImage(blurCanvas, 0, 0, canvas.width, canvas.height);
+      }
+    } else {
+      ctx.fillStyle = '#f6f6f6'; 
+      ctx.fillRect(0,0,canvas.width, canvas.height);
+    }
+    ctx.translate(canvas.width/2 + editState.offsetX, canvas.height/2 + editState.offsetY); 
+    ctx.rotate(editState.angle * Math.PI/180); 
+    const drawW = iw * s; 
+    const drawH = ih * s; 
+    ctx.drawImage(editState.img, -drawW/2, -drawH/2, drawW, drawH); 
+    ctx.restore(); 
+  }
   function drawOverlay(){ const ctx = overlay.getContext('2d'); ctx.clearRect(0,0,overlay.width, overlay.height); for (const it of editState.items){ ctx.save(); ctx.strokeStyle = it.color; ctx.fillStyle = it.color; ctx.lineWidth = it.stroke; if (it.type==='rect'){ ctx.strokeRect(it.x, it.y, it.w, it.h); } else if (it.type==='arrow'){ // simple arrow from (x,y) to (x2,y2)
         const dx=it.x2-it.x, dy=it.y2-it.y; const len=Math.hypot(dx,dy)||1; const ux=dx/len, uy=dy/len; const head=10+it.stroke*2; ctx.beginPath(); ctx.moveTo(it.x, it.y); ctx.lineTo(it.x2, it.y2); ctx.stroke(); ctx.beginPath(); ctx.moveTo(it.x2, it.y2); ctx.lineTo(it.x2 - ux*head - uy*head*0.5, it.y2 - uy*head + ux*head*0.5); ctx.lineTo(it.x2 - ux*head + uy*head*0.5, it.y2 - uy*head - ux*head*0.5); ctx.closePath(); ctx.fill(); }
-      else if (it.type==='text'){ ctx.font = it.font; ctx.fillText(it.text||'', it.x, it.y); }
+      else if (it.type==='text'){ 
+        // Draw text background if enabled
+        if (it.textBackgroundEnabled) {
+          const bgColor = it.textBackgroundColor || editState.textBackgroundColor || '#ffffff';
+          const bgOpacity = it.textBackgroundOpacity !== undefined ? it.textBackgroundOpacity : editState.textBackgroundOpacity || 0.8;
+          const hex = bgColor.replace('#', '');
+          const r = parseInt(hex.substring(0, 2), 16);
+          const g = parseInt(hex.substring(2, 4), 16);
+          const b = parseInt(hex.substring(4, 6), 16);
+          ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${bgOpacity})`;
+          ctx.font = it.font;
+          const metrics = ctx.measureText(it.text || '');
+          const fontSize = parseInt(it.font, 10) || 16;
+          const padding = 4;
+          ctx.fillRect(it.x - padding, it.y - fontSize - padding, metrics.width + padding * 2, fontSize + padding * 2);
+        }
+        ctx.font = it.font;
+        ctx.fillStyle = it.color;
+        ctx.fillText(it.text||'', it.x, it.y); 
+      }
       if (editState.selectedId===it.id){ ctx.setLineDash([4,3]); ctx.strokeStyle = '#3b82f6'; const bb = itemBounds(it); if (bb){ ctx.strokeRect(bb.x, bb.y, bb.w, bb.h); } }
       ctx.restore(); }
   }
@@ -361,11 +475,61 @@ async function initPrefill(){
   document.getElementById('imgEditStroke').addEventListener('input', (e)=>{ editState.stroke=parseInt(e.target.value||'3',10)||3; });
   document.getElementById('imgEditFont').addEventListener('input', (e)=>{ editState.font=e.target.value||'16px Montserrat'; });
   document.getElementById('imgEditText').addEventListener('input', (e)=>{ editState.text=e.target.value||''; });
+  const imgEditTextBgEnabled = document.getElementById('imgEditTextBgEnabled');
+  const imgEditTextBgControls = document.getElementById('imgEditTextBgControls');
+  imgEditTextBgEnabled.addEventListener('change', (e)=>{ 
+    editState.textBackgroundEnabled=e.target.checked; 
+    imgEditTextBgControls.style.display = e.target.checked ? 'flex' : 'none';
+    if (editState.selectedId) {
+      const it = editState.items.find(x=>x.id===editState.selectedId);
+      if (it && it.type==='text') { it.textBackgroundEnabled = e.target.checked; }
+    }
+    redraw(); 
+  });
+  document.getElementById('imgEditTextBgColor').addEventListener('input', (e)=>{ 
+    editState.textBackgroundColor=e.target.value; 
+    if (editState.selectedId) {
+      const it = editState.items.find(x=>x.id===editState.selectedId);
+      if (it && it.type==='text') { it.textBackgroundColor = e.target.value; }
+    }
+    redraw(); 
+  });
+  document.getElementById('imgEditTextBgOpacity').addEventListener('input', (e)=>{ 
+    editState.textBackgroundOpacity=parseFloat(e.target.value||'0.8'); 
+    if (editState.selectedId) {
+      const it = editState.items.find(x=>x.id===editState.selectedId);
+      if (it && it.type==='text') { it.textBackgroundOpacity = parseFloat(e.target.value||'0.8'); }
+    }
+    redraw(); 
+  });
 
+  // Clamp offset to allow movement when zoom < 1
+  function clampOffset(x, y) {
+    if (!editState.img) return { x, y };
+    const iw = editState.img.width, ih = editState.img.height, s = editState.scale;
+    const angleRad = editState.angle * Math.PI / 180;
+    const cos = Math.abs(Math.cos(angleRad));
+    const sin = Math.abs(Math.sin(angleRad));
+    const rotatedW = iw * s * cos + ih * s * sin;
+    const rotatedH = iw * s * sin + ih * s * cos;
+    const cw = canvas.width, ch = canvas.height;
+    if (s < 1) {
+      const minX = (cw - rotatedW) / 2;
+      const maxX = (cw - rotatedW) / 2;
+      const minY = (ch - rotatedH) / 2;
+      const maxY = (ch - rotatedH) / 2;
+      return { x: Math.max(minX, Math.min(maxX, x)), y: Math.max(minY, Math.min(maxY, y)) };
+    }
+    const maxX = Math.max(0, (rotatedW - cw) / 2);
+    const maxY = Math.max(0, (rotatedH - ch) / 2);
+    const minX = -maxX;
+    const minY = -maxY;
+    return { x: Math.max(minX, Math.min(maxX, x)), y: Math.max(minY, Math.min(maxY, y)) };
+  }
   // Interactions
   let dragging=false, startX=0, startY=0;
   canvas.addEventListener('mousedown', (e)=>{ if (editState.mode!=='pan') return; dragging=true; startX=e.offsetX; startY=e.offsetY; });
-  canvas.addEventListener('mousemove', (e)=>{ if (!dragging || editState.mode!=='pan') return; editState.offsetX += (e.offsetX-startX); editState.offsetY += (e.offsetY-startY); startX=e.offsetX; startY=e.offsetY; redraw(); });
+  canvas.addEventListener('mousemove', (e)=>{ if (!dragging || editState.mode!=='pan') return; const newX = editState.offsetX + (e.offsetX-startX); const newY = editState.offsetY + (e.offsetY-startY); const clamped = clampOffset(newX, newY); editState.offsetX = clamped.x; editState.offsetY = clamped.y; startX=e.offsetX; startY=e.offsetY; redraw(); });
   window.addEventListener('mouseup', ()=>{ dragging=false; });
 
   let drawingItem=null; // for rect/arrow
@@ -379,7 +543,7 @@ async function initPrefill(){
       drawingItem = { id: 'it_'+Date.now(), type:'arrow', x, y, x2:x+1, y2:y+1, color: editState.color, stroke: editState.stroke };
       editState.items.push(drawingItem); editState.selectedId = drawingItem.id; redraw();
     } else if (editState.mode==='text'){
-      const it = { id:'it_'+Date.now(), type:'text', x, y, text: editState.text, font: editState.font, color: editState.color, stroke: editState.stroke };
+      const it = { id:'it_'+Date.now(), type:'text', x, y, text: editState.text, font: editState.font, color: editState.color, stroke: editState.stroke, textBackgroundEnabled: editState.textBackgroundEnabled, textBackgroundColor: editState.textBackgroundColor, textBackgroundOpacity: editState.textBackgroundOpacity };
       editState.items.push(it); editState.selectedId = it.id; redraw();
     } else {
       // selection

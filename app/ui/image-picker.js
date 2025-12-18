@@ -65,6 +65,16 @@
         h('label', {}, ['Color ', h('input',{ type:'color', id:'mkColor', value:'#ff0000' }) ]),
         h('label', {}, ['Stroke ', h('input',{ type:'number', id:'mkStroke', min:'1', max:'20', value:'3', style:'width:60px' }) ]),
         h('label', {}, ['Font ', h('input',{ type:'text', id:'mkFont', value:'16px Montserrat', style:'width:140px' }) ]),
+        h('div', { style:{ display:'flex', flexDirection:'column', gap:'4px' } }, [
+          h('label', { style:{ display:'flex', alignItems:'center', gap:'4px' } }, [
+            h('input', { type:'checkbox', id:'mkTextBgEnabled', checked:false }),
+            h('span', {}, ['Text Background'])
+          ]),
+          h('div', { id:'mkTextBgControls', style:{ display:'none', flexDirection:'column', gap:'4px' } }, [
+            h('label', {}, ['Bg Color ', h('input',{ type:'color', id:'mkTextBgColor', value:'#ffffff' }) ]),
+            h('label', {}, ['Opacity ', h('input',{ type:'range', id:'mkTextBgOpacity', min:'0', max:'1', step:'0.01', value:'0.8' }) ])
+          ])
+        ]),
       ]);
       const canvWrap = h('div', { style:{ position:'relative' } });
       const cvs = h('canvas', { id:'mkC', style:{ background:'#f6f6f6', maxWidth:'100%', border:'1px solid #eee' } });
@@ -137,7 +147,7 @@
       });
 
       // Editor state
-      let ES = { img:null, angle:0, scale:1, offsetX:0, offsetY:0, aspect:rec.w/rec.h, items:[], selectedIds:[], color:'#ff0000', stroke:3, font:'16px Montserrat', text:'', fileId:'', fileName:'', phase:'image', mode:'pan' };
+      let ES = { img:null, angle:0, scale:1, offsetX:0, offsetY:0, aspect:rec.w/rec.h, items:[], selectedIds:[], color:'#ff0000', stroke:3, font:'16px Montserrat', text:'', fileId:'', fileName:'', phase:'image', mode:'pan', textBackgroundEnabled:false, textBackgroundColor:'#ffffff', textBackgroundOpacity:0.8 };
       function setCanvasSize(){
         // Render canvas at exact target pixel resolution for optimal export
         cvs.width = rec.w;
@@ -149,12 +159,85 @@
         const ctx = cvs.getContext('2d');
         ctx.save();
         ctx.clearRect(0, 0, cvs.width, cvs.height);
-        ctx.fillStyle = '#f6f6f6';
-        ctx.fillRect(0, 0, cvs.width, cvs.height);
-        if (!ES.img) { ctx.restore(); return; }
+        if (!ES.img) { 
+          ctx.fillStyle = '#f6f6f6';
+          ctx.fillRect(0, 0, cvs.width, cvs.height);
+          ctx.restore(); 
+          return; 
+        }
+        
+        // Check if image doesn't fill canvas (needs blur background)
+        const iw = ES.img.width, ih = ES.img.height, s = ES.scale;
+        const angleRad = ES.angle * Math.PI / 180;
+        const cos = Math.abs(Math.cos(angleRad));
+        const sin = Math.abs(Math.sin(angleRad));
+        const rotatedW = iw * s * cos + ih * s * sin;
+        const rotatedH = iw * s * sin + ih * s * cos;
+        const needsBlur = rotatedW < cvs.width || rotatedH < cvs.height;
+        
+        if (needsBlur) {
+          // Draw blurred background
+          const blurCanvas = document.createElement('canvas');
+          const blurScale = 0.3;
+          blurCanvas.width = Math.round(cvs.width * blurScale);
+          blurCanvas.height = Math.round(cvs.height * blurScale);
+          const blurCtx = blurCanvas.getContext('2d');
+          if (blurCtx) {
+            const scaleX = blurCanvas.width / iw;
+            const scaleY = blurCanvas.height / ih;
+            const fillScale = Math.max(scaleX, scaleY);
+            const scaledWidth = iw * fillScale;
+            const scaledHeight = ih * fillScale;
+            const offsetX = (blurCanvas.width - scaledWidth) / 2;
+            const offsetY = (blurCanvas.height - scaledHeight) / 2;
+            
+            blurCtx.drawImage(ES.img, offsetX, offsetY, scaledWidth, scaledHeight);
+            
+            // Apply blur
+            const imageData = blurCtx.getImageData(0, 0, blurCanvas.width, blurCanvas.height);
+            const data = imageData.data;
+            const blurRadius = 8;
+            const passes = 2;
+            
+            for (let pass = 0; pass < passes; pass++) {
+              const tempData = new Uint8ClampedArray(data);
+              for (let y = 0; y < blurCanvas.height; y++) {
+                for (let x = 0; x < blurCanvas.width; x++) {
+                  let r = 0, g = 0, b = 0, count = 0;
+                  for (let dy = -blurRadius; dy <= blurRadius; dy++) {
+                    for (let dx = -blurRadius; dx <= blurRadius; dx++) {
+                      const nx = x + dx;
+                      const ny = y + dy;
+                      if (nx >= 0 && nx < blurCanvas.width && ny >= 0 && ny < blurCanvas.height) {
+                        const idx = (ny * blurCanvas.width + nx) * 4;
+                        r += tempData[idx];
+                        g += tempData[idx + 1];
+                        b += tempData[idx + 2];
+                        count++;
+                      }
+                    }
+                  }
+                  if (count > 0) {
+                    const idx = (y * blurCanvas.width + x) * 4;
+                    data[idx] = r / count;
+                    data[idx + 1] = g / count;
+                    data[idx + 2] = b / count;
+                    data[idx + 3] = tempData[idx + 3];
+                  }
+                }
+              }
+            }
+            
+            blurCtx.putImageData(imageData, 0, 0);
+            ctx.drawImage(blurCanvas, 0, 0, cvs.width, cvs.height);
+          }
+        } else {
+          ctx.fillStyle = '#f6f6f6';
+          ctx.fillRect(0, 0, cvs.width, cvs.height);
+        }
+        
         ctx.translate(cvs.width/2 + ES.offsetX, cvs.height/2 + ES.offsetY);
         ctx.rotate(ES.angle * Math.PI/180);
-        const iw = ES.img.width, ih = ES.img.height, s = ES.scale;
         const dw = iw * s, dh = ih * s;
         ctx.drawImage(ES.img, -dw/2, -dh/2, dw, dh);
         ctx.restore();
@@ -215,7 +298,23 @@
             ctx.closePath();
             ctx.fill();
           } else if (it.type === 'text'){
+            // Draw text background if enabled
+            if (it.textBackgroundEnabled) {
+              const bgColor = it.textBackgroundColor || ES.textBackgroundColor || '#ffffff';
+              const bgOpacity = it.textBackgroundOpacity !== undefined ? it.textBackgroundOpacity : ES.textBackgroundOpacity || 0.8;
+              const hex = bgColor.replace('#', '');
+              const r = parseInt(hex.substring(0, 2), 16);
+              const g = parseInt(hex.substring(2, 4), 16);
+              const b = parseInt(hex.substring(4, 6), 16);
+              ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${bgOpacity})`;
+              ctx.font = it.font;
+              const metrics = ctx.measureText(it.text || '');
+              const fontSize = parseInt(it.font, 10) || 16;
+              const padding = 4;
+              ctx.fillRect(it.x - padding, it.y - fontSize - padding, metrics.width + padding * 2, fontSize + padding * 2);
+            }
             ctx.font = it.font;
+            ctx.fillStyle = it.color;
             ctx.fillText(it.text || '', it.x, it.y);
           } else if (it.type === 'circle'){
             ctx.beginPath();
@@ -302,8 +401,69 @@
       card.querySelector('#mkColor').addEventListener('input', (e)=>{ ES.color=e.target.value; });
       card.querySelector('#mkStroke').addEventListener('input', (e)=>{ ES.stroke=parseInt(e.target.value||'3',10)||3; });
       card.querySelector('#mkFont').addEventListener('input', (e)=>{ ES.font=e.target.value||'16px Montserrat'; });
-      let dragging=false, startX=0, startY=0; cvs.addEventListener('mousedown', (e)=>{ if (ES.phase!=='image' || ES.mode!=='pan') return; dragging=true; startX=e.offsetX; startY=e.offsetY; }); cvs.addEventListener('mousemove', (e)=>{ if (!dragging||ES.phase!=='image' || ES.mode!=='pan') return; ES.offsetX+=(e.offsetX-startX); ES.offsetY+=(e.offsetY-startY); startX=e.offsetX; startY=e.offsetY; redraw(); }); window.addEventListener('mouseup', ()=>{ dragging=false; });
-      let drawing=null; overlay.style.pointerEvents='auto'; overlay.addEventListener('mousedown', (e)=>{ const x=e.offsetX, y=e.offsetY; if (ES.phase==='notes' && ES.mode==='rect'){ drawing={ id:'it_'+Date.now(), type:'rect', x, y, w:1, h:1, color:ES.color, stroke:ES.stroke }; ES.items.push(drawing); redraw(); } else if (ES.phase==='notes' && ES.mode==='arrow'){ drawing={ id:'it_'+Date.now(), type:'arrow', x, y, x2:x+1, y2:y+1, color:ES.color, stroke:ES.stroke }; ES.items.push(drawing); redraw(); } else if (ES.phase==='notes' && ES.mode==='circle'){ drawing={ id:'it_'+Date.now(), type:'circle', x, y, r:1, color:ES.color, stroke:ES.stroke }; ES.items.push(drawing); redraw(); } else if (ES.phase==='notes' && ES.mode==='draw'){ drawing={ id:'it_'+Date.now(), type:'path', points:[{x,y}], color:ES.color, stroke:ES.stroke }; ES.items.push(drawing); redraw(); } else if (ES.phase==='notes' && ES.mode==='text'){ const it={ id:'it_'+Date.now(), type:'text', x, y, text:'', font:ES.font, color:ES.color, stroke:ES.stroke, _editing:true }; ES.items.push(it); ES.selectedIds=[it.id]; redraw(); const onKey=(ev)=>{ if (!ES.selectedIds || ES.selectedIds[0]!==it.id) return; if (ev.key==='Enter'){ ev.preventDefault(); it._editing=false; ES.selectedIds=[]; window.removeEventListener('keydown', onKey); redraw(); } else if (ev.key==='Escape'){ ev.preventDefault(); ES.items=ES.items.filter(x=>x.id!==it.id); ES.selectedIds=[]; window.removeEventListener('keydown', onKey); redraw(); } else if (ev.key==='Backspace'){ ev.preventDefault(); it.text = (it.text||'').slice(0,-1); redraw(); } else if (ev.key.length===1){ it.text = (it.text||'') + ev.key; redraw(); } }; window.addEventListener('keydown', onKey); const onClickOutside=(ev)=>{ if (ev.target===overlay) return; it._editing=false; ES.selectedIds=[]; window.removeEventListener('keydown', onKey); window.removeEventListener('mousedown', onClickOutside, true); redraw(); }; window.addEventListener('mousedown', onClickOutside, true); } else if (ES.phase==='notes' && (ES.mode==='pan' || ES.mode==='select')){ const hit=itemAt(e.offsetX,e.offsetY); if (e.shiftKey && !hit){ ES._marquee = { x:e.offsetX, y:e.offsetY, x2:e.offsetX, y2:e.offsetY }; } else if (hit){ if (!ES.selectedIds || !ES.selectedIds.includes(hit.id)){ ES.selectedIds=[hit.id]; } drawing=null; moving=true; mStart={x:e.offsetX, y:e.offsetY}; } else { ES.selectedIds=[]; } redraw(); } });
+      const mkTextBgEnabled = card.querySelector('#mkTextBgEnabled');
+      const mkTextBgControls = card.querySelector('#mkTextBgControls');
+      if (mkTextBgEnabled) {
+        mkTextBgEnabled.addEventListener('change', (e)=>{ 
+          ES.textBackgroundEnabled=e.target.checked; 
+          if (mkTextBgControls) mkTextBgControls.style.display = e.target.checked ? 'flex' : 'none';
+          // Update selected text items
+          if (ES.selectedIds && ES.selectedIds.length) {
+            ES.items.forEach(it => {
+              if (ES.selectedIds.includes(it.id) && it.type === 'text') {
+                it.textBackgroundEnabled = e.target.checked;
+              }
+            });
+          }
+          redraw(); 
+        });
+      }
+      card.querySelector('#mkTextBgColor')?.addEventListener('input', (e)=>{ 
+        ES.textBackgroundColor=e.target.value; 
+        if (ES.selectedIds && ES.selectedIds.length) {
+          ES.items.forEach(it => {
+            if (ES.selectedIds.includes(it.id) && it.type === 'text') {
+              it.textBackgroundColor = e.target.value;
+            }
+          });
+        }
+        redraw(); 
+      });
+      card.querySelector('#mkTextBgOpacity')?.addEventListener('input', (e)=>{ 
+        ES.textBackgroundOpacity=parseFloat(e.target.value||'0.8'); 
+        if (ES.selectedIds && ES.selectedIds.length) {
+          ES.items.forEach(it => {
+            if (ES.selectedIds.includes(it.id) && it.type === 'text') {
+              it.textBackgroundOpacity = parseFloat(e.target.value||'0.8');
+            }
+          });
+        }
+        redraw(); 
+      });
+      function clampOffset(x, y) {
+        if (!ES.img) return { x, y };
+        const iw = ES.img.width, ih = ES.img.height, s = ES.scale;
+        const angleRad = ES.angle * Math.PI / 180;
+        const cos = Math.abs(Math.cos(angleRad));
+        const sin = Math.abs(Math.sin(angleRad));
+        const rotatedW = iw * s * cos + ih * s * sin;
+        const rotatedH = iw * s * sin + ih * s * cos;
+        const cw = cvs.width, ch = cvs.height;
+        if (s < 1) {
+          const minX = (cw - rotatedW) / 2;
+          const maxX = (cw - rotatedW) / 2;
+          const minY = (ch - rotatedH) / 2;
+          const maxY = (ch - rotatedH) / 2;
+          return { x: Math.max(minX, Math.min(maxX, x)), y: Math.max(minY, Math.min(maxY, y)) };
+        }
+        const maxX = Math.max(0, (rotatedW - cw) / 2);
+        const maxY = Math.max(0, (rotatedH - ch) / 2);
+        const minX = -maxX;
+        const minY = -maxY;
+        return { x: Math.max(minX, Math.min(maxX, x)), y: Math.max(minY, Math.min(maxY, y)) };
+      }
+      let dragging=false, startX=0, startY=0; cvs.addEventListener('mousedown', (e)=>{ if (ES.phase!=='image' || ES.mode!=='pan') return; dragging=true; startX=e.offsetX; startY=e.offsetY; }); cvs.addEventListener('mousemove', (e)=>{ if (!dragging||ES.phase!=='image' || ES.mode!=='pan') return; const newX = ES.offsetX + (e.offsetX - startX); const newY = ES.offsetY + (e.offsetY - startY); const clamped = clampOffset(newX, newY); ES.offsetX = clamped.x; ES.offsetY = clamped.y; startX=e.offsetX; startY=e.offsetY; redraw(); }); window.addEventListener('mouseup', ()=>{ dragging=false; });
+      let drawing=null; overlay.style.pointerEvents='auto'; overlay.addEventListener('mousedown', (e)=>{ const x=e.offsetX, y=e.offsetY; if (ES.phase==='notes' && ES.mode==='rect'){ drawing={ id:'it_'+Date.now(), type:'rect', x, y, w:1, h:1, color:ES.color, stroke:ES.stroke }; ES.items.push(drawing); redraw(); } else if (ES.phase==='notes' && ES.mode==='arrow'){ drawing={ id:'it_'+Date.now(), type:'arrow', x, y, x2:x+1, y2:y+1, color:ES.color, stroke:ES.stroke }; ES.items.push(drawing); redraw(); } else if (ES.phase==='notes' && ES.mode==='circle'){ drawing={ id:'it_'+Date.now(), type:'circle', x, y, r:1, color:ES.color, stroke:ES.stroke }; ES.items.push(drawing); redraw(); } else if (ES.phase==='notes' && ES.mode==='draw'){ drawing={ id:'it_'+Date.now(), type:'path', points:[{x,y}], color:ES.color, stroke:ES.stroke }; ES.items.push(drawing); redraw(); } else if (ES.phase==='notes' && ES.mode==='text'){ const it={ id:'it_'+Date.now(), type:'text', x, y, text:'', font:ES.font, color:ES.color, stroke:ES.stroke, textBackgroundEnabled:ES.textBackgroundEnabled, textBackgroundColor:ES.textBackgroundColor, textBackgroundOpacity:ES.textBackgroundOpacity, _editing:true }; ES.items.push(it); ES.selectedIds=[it.id]; redraw(); const onKey=(ev)=>{ if (!ES.selectedIds || ES.selectedIds[0]!==it.id) return; if (ev.key==='Enter'){ ev.preventDefault(); it._editing=false; ES.selectedIds=[]; window.removeEventListener('keydown', onKey); redraw(); } else if (ev.key==='Escape'){ ev.preventDefault(); ES.items=ES.items.filter(x=>x.id!==it.id); ES.selectedIds=[]; window.removeEventListener('keydown', onKey); redraw(); } else if (ev.key==='Backspace'){ ev.preventDefault(); it.text = (it.text||'').slice(0,-1); redraw(); } else if (ev.key.length===1){ it.text = (it.text||'') + ev.key; redraw(); } }; window.addEventListener('keydown', onKey); const onClickOutside=(ev)=>{ if (ev.target===overlay) return; it._editing=false; ES.selectedIds=[]; window.removeEventListener('keydown', onKey); window.removeEventListener('mousedown', onClickOutside, true); redraw(); }; window.addEventListener('mousedown', onClickOutside, true); } else if (ES.phase==='notes' && (ES.mode==='pan' || ES.mode==='select')){ const hit=itemAt(e.offsetX,e.offsetY); if (e.shiftKey && !hit){ ES._marquee = { x:e.offsetX, y:e.offsetY, x2:e.offsetX, y2:e.offsetY }; } else if (hit){ if (!ES.selectedIds || !ES.selectedIds.includes(hit.id)){ ES.selectedIds=[hit.id]; } drawing=null; moving=true; mStart={x:e.offsetX, y:e.offsetY}; } else { ES.selectedIds=[]; } redraw(); } });
       overlay.addEventListener('mousemove', (e)=>{ if (ES._marquee){ ES._marquee.x2=e.offsetX; ES._marquee.y2=e.offsetY; redraw(); return; } if (!drawing) return; if (drawing.type==='rect'){ drawing.w=(e.offsetX-drawing.x); drawing.h=(e.offsetY-drawing.y); } if (drawing.type==='arrow'){ drawing.x2=e.offsetX; drawing.y2=e.offsetY; } if (drawing.type==='circle'){ const dx=e.offsetX-drawing.x, dy=e.offsetY-drawing.y; drawing.r=Math.max(1, Math.hypot(dx,dy)); } if (drawing.type==='path'){ drawing.points.push({ x:e.offsetX, y:e.offsetY }); } redraw(); });
       window.addEventListener('mouseup', ()=>{ if (drawing){ drawing=null; redraw(); } if (ES._marquee){ const m=ES._marquee; const x=Math.min(m.x,m.x2), y=Math.min(m.y,m.y2), w=Math.abs(m.x2-m.x), h=Math.abs(m.y2-m.y); const sel=[]; for (const it of ES.items){ const b=itemBounds(it); if (!b) continue; const inside=(b.x>=x && b.y>=y && (b.x+b.w)<=x+w && (b.y+b.h)<=y+h); if (inside) sel.push(it.id); } ES.selectedIds=sel; ES._marquee=null; redraw(); } moving=false; });
       let moving=false, mStart=null; function itemAt(x,y){ for (let i=ES.items.length-1;i>=0;i--){ const it=ES.items[i]; const b=itemBounds(it); if (b && x>=b.x && y>=b.y && x<=b.x+b.w && y<=b.y+b.h) return it; } return null; }

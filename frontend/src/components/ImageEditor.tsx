@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { api } from '@/lib/api';
 
 // Icon paths - using ui/assets/icons (served by backend)
@@ -35,6 +35,9 @@ type AnnotationItem = {
   cursorPosition?: number; // Position of cursor in text (character index)
   selectionStart?: number;
   selectionEnd?: number;
+  textBackgroundEnabled?: boolean;
+  textBackgroundColor?: string;
+  textBackgroundOpacity?: number;
 };
 
 type ImageEditorProps = {
@@ -59,12 +62,22 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
   const [scale, setScale] = useState(1);
   const [offsetX, setOffsetX] = useState(0);
   const [offsetY, setOffsetY] = useState(0);
+  
+  // Sync refs with state
+  useEffect(() => {
+    offsetXRef.current = offsetX;
+    offsetYRef.current = offsetY;
+    scaleRef.current = scale;
+  }, [offsetX, offsetY, scale]);
   const [items, setItems] = useState<AnnotationItem[]>([]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [color, setColor] = useState('#ff0000');
   const [stroke, setStroke] = useState(3);
   const [fontSize, setFontSize] = useState(16);
   const [text, setText] = useState('');
+  const [textBackgroundEnabled, setTextBackgroundEnabled] = useState(false);
+  const [textBackgroundColor, setTextBackgroundColor] = useState('#ffffff');
+  const [textBackgroundOpacity, setTextBackgroundOpacity] = useState(0.8);
   const [cursorVisible, setCursorVisible] = useState(true);
   const cursorBlinkRef = useRef<ReturnType<typeof setInterval> | null>(null);
   
@@ -72,7 +85,7 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
   const overlayRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   
-  const draggingRef = useRef<{ active: boolean; startX: number; startY: number } | null>(null);
+  const draggingRef = useRef<{ x: number; y: number; offsetX: number; offsetY: number } | null>(null);
   const drawingRef = useRef<AnnotationItem | null>(null);
   const movingRef = useRef<{ item: AnnotationItem; startX: number; startY: number } | null>(null);
   const resizingRef = useRef<{ item: AnnotationItem; handle: string; startX: number; startY: number; startW?: number; startH?: number; startR?: number; startRx?: number; startRy?: number; startX2?: number; startY2?: number } | null>(null);
@@ -83,6 +96,11 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
   const textSelectingRef = useRef<boolean>(false); // mouse-drag selection flag
   const loadedFileIdRef = useRef<string | null>(null);
   const loadingRef = useRef<boolean>(false);
+  const offsetXRef = useRef<number>(0);
+  const offsetYRef = useRef<number>(0);
+  const scaleRef = useRef<number>(1);
+  const blurredBgCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const blurredBgKeyRef = useRef<string>('');
   
   // Cleanup cursor blink on unmount
   useEffect(() => {
@@ -97,13 +115,66 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
   useEffect(() => {
     if (textEditingRef.current) {
       setItems(prev => prev.map(it => {
+        if (!it || !it.id) return it;
         if (it.id === textEditingRef.current && it.type === 'text') {
           return { ...it, fontSize };
         }
         return it;
-      }));
+      }).filter(it => it && it.id));
     }
   }, [fontSize]);
+
+  // Update text background settings of selected text items when settings change
+  useEffect(() => {
+    if (selectedIds.length > 0) {
+      setItems(prev => prev.map(it => {
+        if (!it || !it.id) return it;
+        if (selectedIds.includes(it.id) && it.type === 'text') {
+          return {
+            ...it,
+            textBackgroundEnabled,
+            textBackgroundColor,
+            textBackgroundOpacity
+          };
+        }
+        return it;
+      }).filter(it => it && it.id));
+    }
+  }, [textBackgroundEnabled, textBackgroundColor, textBackgroundOpacity, selectedIds]);
+
+  // Track previous color/stroke to only update when they actually change
+  const prevColorRef = useRef<string>(color);
+  const prevStrokeRef = useRef<number>(stroke);
+
+  // Update color of selected items when color changes (not when selection changes)
+  useEffect(() => {
+    // Only update if color actually changed (not just selection)
+    if (selectedIds.length > 0 && mode === 'select' && prevColorRef.current !== color) {
+      setItems(prev => prev.map(it => {
+        if (!it || !it.id) return it;
+        if (selectedIds.includes(it.id)) {
+          return { ...it, color };
+        }
+        return it;
+      }).filter(it => it && it.id));
+    }
+    prevColorRef.current = color;
+  }, [color, selectedIds, mode]);
+
+  // Update stroke of selected items when stroke changes (not when selection changes)
+  useEffect(() => {
+    // Only update if stroke actually changed (not just selection)
+    if (selectedIds.length > 0 && mode === 'select' && prevStrokeRef.current !== stroke) {
+      setItems(prev => prev.map(it => {
+        if (!it || !it.id) return it;
+        if (selectedIds.includes(it.id)) {
+          return { ...it, stroke };
+        }
+        return it;
+      }).filter(it => it && it.id));
+    }
+    prevStrokeRef.current = stroke;
+  }, [stroke, selectedIds, mode]);
 
   // Helper to exit text editing mode (used by ESC and click-outside)
   const exitTextEditing = useCallback(() => {
@@ -116,10 +187,10 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
 
     // Turn off editing flag for the text item
     setItems(prev => prev.map(it =>
-      it.id === editingId && it.type === 'text'
+      !it || !it.id ? it : (it.id === editingId && it.type === 'text'
         ? { ...it, _editing: false, selectionStart: undefined, selectionEnd: undefined }
-        : it
-    ));
+        : it)
+    ).filter(it => it && it.id));
 
     // Keep the text selected so user can still move/resize it
     setSelectedIds(prev =>
@@ -143,6 +214,8 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
       setLoadError(null);
       loadedFileIdRef.current = null;
       loadingRef.current = false;
+      blurredBgCanvasRef.current = null;
+      blurredBgKeyRef.current = '';
       if (cursorBlinkRef.current) {
         clearInterval(cursorBlinkRef.current);
         cursorBlinkRef.current = null;
@@ -283,15 +356,15 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
     }
   }, [img, isOpen, targetWidth, targetHeight, editorScaleFactor]);
 
-  // Clamp translation to prevent white margins - image must always fill canvas
-  const clampOffset = useCallback((x: number, y: number): { x: number; y: number } => {
+  // Clamp translation - allow movement within canvas when zoom < 1, or ensure coverage when zoom >= 1
+  const clampOffset = useCallback((x: number, y: number, s?: number): { x: number; y: number } => {
     const canvas = canvasRef.current;
     if (!canvas || !img) return { x, y };
 
     // Calculate the displayed size of the image after rotation and scale
     const iw = img.naturalWidth;
     const ih = img.naturalHeight;
-    const s = scale;
+    const currentScale = s !== undefined ? s : scale;
     
     // For rotated images, we need to calculate the bounding box
     const angleRad = (angle * Math.PI) / 180;
@@ -299,21 +372,21 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
     const sin = Math.abs(Math.sin(angleRad));
     
     // Rotated bounding box dimensions
-    const rotatedW = iw * s * cos + ih * s * sin;
-    const rotatedH = iw * s * sin + ih * s * cos;
+    const rotatedW = iw * currentScale * cos + ih * currentScale * sin;
+    const rotatedH = iw * currentScale * sin + ih * currentScale * cos;
     
     const cw = canvas.width;
     const ch = canvas.height;
-    
-    // Calculate limits: image edges must touch or exceed canvas edges
-    const maxX = Math.max(0, (rotatedW - cw) / 2);
-    const maxY = Math.max(0, (rotatedH - ch) / 2);
-    const minX = -maxX;
-    const minY = -maxY;
-    
+
+    // Center-based clamp:
+    // - If rotatedW > cw: clamp to ensure edges cover canvas.
+    // - If rotatedW < cw: allow movement within empty margins (blur/white fills behind).
+    // Same formula works for both.
+    const maxOffsetX = Math.abs(rotatedW - cw) / 2;
+    const maxOffsetY = Math.abs(rotatedH - ch) / 2;
     return {
-      x: Math.max(minX, Math.min(maxX, x)),
-      y: Math.max(minY, Math.min(maxY, y))
+      x: Math.max(-maxOffsetX, Math.min(maxOffsetX, x)),
+      y: Math.max(-maxOffsetY, Math.min(maxOffsetY, y)),
     };
   }, [img, scale, angle]);
 
@@ -327,6 +400,38 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
     }
   }, [offsetX, offsetY, scale, angle, img, clampOffset]);
 
+  const ensureBlurredBackground = useCallback(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || !img) return;
+
+    // Cache key depends on the source + current canvas size.
+    const key = `${img.src}|${canvas.width}x${canvas.height}`;
+    if (blurredBgCanvasRef.current && blurredBgKeyRef.current === key) return;
+
+    const bg = document.createElement('canvas');
+    bg.width = canvas.width;
+    bg.height = canvas.height;
+    const bctx = bg.getContext('2d');
+    if (!bctx) return;
+
+    // Cover-fit, slightly overscaled to avoid edge artifacts after blur
+    const cover = Math.max(bg.width / img.naturalWidth, bg.height / img.naturalHeight) * 1.08;
+    const dw = img.naturalWidth * cover;
+    const dh = img.naturalHeight * cover;
+    const dx = (bg.width - dw) / 2;
+    const dy = (bg.height - dh) / 2;
+
+    bctx.save();
+    // Fast blur & desaturate for preview (way cheaper than pixel processing)
+    // This is only for the editor preview; exported image still includes the blur.
+    (bctx as any).filter = 'blur(24px) saturate(0.6)';
+    bctx.drawImage(img, dx, dy, dw, dh);
+    bctx.restore();
+
+    blurredBgCanvasRef.current = bg;
+    blurredBgKeyRef.current = key;
+  }, [img]);
+
   // Draw base image
   const drawBase = useCallback(() => {
     const canvas = canvasRef.current;
@@ -334,24 +439,47 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
     
-    // Use clamped offsets
-    const clamped = clampOffset(offsetX, offsetY);
+    // Use clamped offsets (read from refs so drawBase doesn't change on every drag tick)
+    const currentScale = scaleRef.current;
+    const clamped = clampOffset(offsetXRef.current, offsetYRef.current, currentScale);
     
     ctx.save();
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.fillStyle = '#f6f6f6';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    
+    // Determine if we need a blur background (fast check; uses currentScale)
+    const iw0 = img.naturalWidth;
+    const ih0 = img.naturalHeight;
+    const angleRad0 = (angle * Math.PI) / 180;
+    const cos0 = Math.abs(Math.cos(angleRad0));
+    const sin0 = Math.abs(Math.sin(angleRad0));
+    const rotatedW0 = iw0 * currentScale * cos0 + ih0 * currentScale * sin0;
+    const rotatedH0 = iw0 * currentScale * sin0 + ih0 * currentScale * cos0;
+    const needsBlur = rotatedW0 < canvas.width || rotatedH0 < canvas.height;
+
+    if (needsBlur) {
+      ensureBlurredBackground();
+      const bg = blurredBgCanvasRef.current;
+      if (bg) {
+        ctx.drawImage(bg, 0, 0, canvas.width, canvas.height);
+      } else {
+        ctx.fillStyle = '#f6f6f6';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+      }
+    } else {
+      ctx.fillStyle = '#f6f6f6';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+    }
     
     ctx.translate(canvas.width / 2 + clamped.x, canvas.height / 2 + clamped.y);
     ctx.rotate(angle * Math.PI / 180);
     const iw = img.naturalWidth;
     const ih = img.naturalHeight;
-    const s = scale;
+    const s = currentScale;
     const dw = iw * s;
     const dh = ih * s;
     ctx.drawImage(img, -dw / 2, -dh / 2, dw, dh);
     ctx.restore();
-  }, [img, angle, scale, offsetX, offsetY, clampOffset]);
+  }, [img, angle, clampOffset, ensureBlurredBackground]);
 
   // Get item bounds
   const getItemBounds = useCallback((it: AnnotationItem) => {
@@ -417,6 +545,7 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
     
     // Draw items
     for (const it of items) {
+      if (!it || !it.id) continue; // Skip null/undefined items
       ctx.save();
       ctx.strokeStyle = it.color;
       ctx.fillStyle = it.color;
@@ -449,12 +578,28 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
         // Draw text area border:
         // - while actively editing the text
         // - OR while initially drawing the text box (drawingRef)
-        if (it.w && it.h && (it._editing || (drawingRef.current && drawingRef.current.id === it.id))) {
+        if (it.w && it.h && it.w > 1 && it.h > 1 && (it._editing || (drawingRef.current && drawingRef.current.id === it.id))) {
           ctx.strokeStyle = it.color;
           ctx.lineWidth = 1;
           ctx.setLineDash([2, 2]);
           ctx.strokeRect(it.x, it.y, it.w, it.h);
           ctx.setLineDash([]);
+        }
+        
+        // Draw text background if enabled
+        const bgEnabled = it.textBackgroundEnabled !== undefined ? it.textBackgroundEnabled : textBackgroundEnabled;
+        if (bgEnabled && it.w && it.h) {
+          const bgColor = it.textBackgroundColor || textBackgroundColor;
+          const bgOpacity = it.textBackgroundOpacity !== undefined ? it.textBackgroundOpacity : textBackgroundOpacity;
+          
+          // Convert hex color to rgba
+          const hex = bgColor.replace('#', '');
+          const r = parseInt(hex.substring(0, 2), 16);
+          const g = parseInt(hex.substring(2, 4), 16);
+          const b = parseInt(hex.substring(4, 6), 16);
+          
+          ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${bgOpacity})`;
+          ctx.fillRect(it.x, it.y, it.w, it.h);
         }
         
         // Draw text within the box bounds with clipping
@@ -710,16 +855,21 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
     }
   }, [items, selectedIds, fontSize, getItemBounds, mode, cursorVisible]);
 
-  // Redraw both canvases
+  // Initial draw when opening / image loaded
   useEffect(() => {
     if (!isOpen || !img) return;
-    // Small delay to ensure canvas size is set
-    const timeout = setTimeout(() => {
+    const raf = requestAnimationFrame(() => {
       drawBase();
       drawOverlay();
-    }, 10);
-    return () => clearTimeout(timeout);
+    });
+    return () => cancelAnimationFrame(raf);
   }, [isOpen, img, drawBase, drawOverlay]);
+
+  // Redraw base only when view transform changes (pan/zoom/rotate)
+  useEffect(() => {
+    if (!isOpen || !img) return;
+    drawBase();
+  }, [isOpen, img, offsetX, offsetY, scale, angle, drawBase]);
 
   // Redraw overlay when cursor visibility changes or items change
   useEffect(() => {
@@ -838,6 +988,7 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
   const itemAt = useCallback((x: number, y: number): AnnotationItem | null => {
     for (let i = items.length - 1; i >= 0; i--) {
       const it = items[i];
+      if (!it || !it.id) continue; // Skip null/undefined items
       const b = getItemBounds(it);
       if (b && x >= b.x && y >= b.y && x <= b.x + b.w && y <= b.y + b.h) {
         return it;
@@ -873,103 +1024,75 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
     return null;
   }, [mode, getItemBounds]);
 
-  // Canvas mouse handlers
-  const handleCanvasMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
+  // Handle wheel for zoom - using native event listener like ImagePicker
+  useEffect(() => {
+    if (!isOpen || !canvasRef.current) return;
+    
+    const canvas = canvasRef.current;
+    const handleWheel = (e: WheelEvent) => {
+      // Only handle wheel when in pan mode and not editing text
+      if (textEditingRef.current || mode !== 'pan') return;
+      
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+      
+      const factor = e.deltaY < 0 ? 1.06 : 1/1.06;
+      const currentScale = scaleRef.current;
+      const currentOffsetX = offsetXRef.current;
+      const currentOffsetY = offsetYRef.current;
+      const newScale = Math.min(3, Math.max(0.1, currentScale * factor));
+      
+      // Recalculate clamp values with new scale
+      if (img) {
+        const clamped = clampOffset(currentOffsetX, currentOffsetY, newScale);
+        setScale(newScale);
+        setOffsetX(clamped.x);
+        setOffsetY(clamped.y);
+      } else {
+        setScale(newScale);
+      }
+    };
+    
+    canvas.addEventListener('wheel', handleWheel, { passive: false, capture: true });
+    return () => {
+      canvas.removeEventListener('wheel', handleWheel, { capture: true } as any);
+    };
+  }, [isOpen, mode, img, clampOffset]);
+
+  // Pointer event handlers for drag - like ImagePicker
+  const handleCanvasPointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
     // Disable pan when editing text - clicking canvas should exit edit mode
     if (textEditingRef.current) {
-      // Same behavior as pressing ESC
       exitTextEditing();
       return;
     }
-    if (mode !== 'pan') return;
+    if (mode !== 'pan' || !img) return;
+    e.preventDefault();
     const rect = (e.target as HTMLCanvasElement).getBoundingClientRect();
     draggingRef.current = {
-      active: true,
-      startX: e.clientX - rect.left,
-      startY: e.clientY - rect.top,
+      x: e.clientX - rect.left,
+      y: e.clientY - rect.top,
+      offsetX: offsetXRef.current,
+      offsetY: offsetYRef.current,
     };
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
   };
 
-  const handleCanvasMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    // This handler is mostly for cursor updates, actual dragging handled by global listener
-    if (mode !== 'pan' || !draggingRef.current?.active) return;
+  const handleCanvasPointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (mode !== 'pan' || !img || !draggingRef.current) return;
+    const rect = (e.target as HTMLCanvasElement).getBoundingClientRect();
+    const dx = e.clientX - rect.left - draggingRef.current.x;
+    const dy = e.clientY - rect.top - draggingRef.current.y;
+    const { x, y } = clampOffset(draggingRef.current.offsetX + dx, draggingRef.current.offsetY + dy);
+    setOffsetX(x);
+    setOffsetY(y);
   };
 
-  const handleCanvasMouseUp = () => {
+  const handleCanvasPointerUp = (e: React.PointerEvent<HTMLCanvasElement>) => {
     draggingRef.current = null;
+    (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
   };
-
-  const handleCanvasMouseLeave = () => {
-    // Clean up dragging when mouse leaves canvas
-    draggingRef.current = null;
-  };
-
-  // Global mouse handlers to track dragging even when mouse leaves canvas
-  useEffect(() => {
-    if (!isOpen) return;
-
-    const handleGlobalMouseMove = (e: MouseEvent) => {
-      // Disable pan when editing text
-      if (textEditingRef.current) return;
-      if (mode !== 'pan') return;
-      
-      const dragState = draggingRef.current;
-      if (!dragState || !dragState.active) return;
-
-      try {
-        const canvas = canvasRef.current;
-        if (!canvas) {
-          draggingRef.current = null;
-          return;
-        }
-
-        const rect = canvas.getBoundingClientRect();
-        const currentX = e.clientX - rect.left;
-        const currentY = e.clientY - rect.top;
-
-        // Capture all needed values before any state updates to avoid race conditions
-        const startX = dragState.startX;
-        const startY = dragState.startY;
-
-        // Verify ref still exists and is active
-        if (!draggingRef.current || !draggingRef.current.active) {
-          return;
-        }
-
-        const deltaX = currentX - startX;
-        const deltaY = currentY - startY;
-
-        // Only update if there's actual movement
-        if (Math.abs(deltaX) > 0.1 || Math.abs(deltaY) > 0.1) {
-          // Update offsets - clamp will be applied by useEffect
-          setOffsetX(prev => prev + deltaX);
-          setOffsetY(prev => prev + deltaY);
-
-          // Update the ref with new start position only if it still exists
-          if (draggingRef.current && draggingRef.current.active) {
-            draggingRef.current.startX = currentX;
-            draggingRef.current.startY = currentY;
-          }
-        }
-      } catch (error) {
-        console.error('Error in global mouse move:', error);
-        draggingRef.current = null;
-      }
-    };
-
-    const handleGlobalMouseUp = () => {
-      draggingRef.current = null;
-    };
-
-    // Always add listeners, they'll only work when dragging is active
-    window.addEventListener('mousemove', handleGlobalMouseMove);
-    window.addEventListener('mouseup', handleGlobalMouseUp);
-
-    return () => {
-      window.removeEventListener('mousemove', handleGlobalMouseMove);
-      window.removeEventListener('mouseup', handleGlobalMouseUp);
-    };
-  }, [isOpen, mode, clampOffset]);
 
   // Overlay mouse handlers
   const handleOverlayMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -1006,20 +1129,103 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
               y <= editingItem.y + boxH - innerMargin;
 
             if (insideCoreBox) {
-              // Click inside the core text area → start caret + drag-selection
-              const cursorPos = getTextCursorPosition(editingItem, x, y);
-              textCursorPositionRef.current = cursorPos;
-              textSelectionStartRef.current = cursorPos;
-              textSelectingRef.current = true;
-              setItems(prev => prev.map(it => 
-                it.id === editingItem.id ? { ...it, cursorPosition: cursorPos, selectionStart: undefined, selectionEnd: undefined } : it
-              ));
-              // Ensure overlay has focus for keyboard events (arrows, etc)
-              if (overlayRef.current) {
-                overlayRef.current.focus();
+              // Check if clicking on actual text content or empty area
+              const itemFontSize = editingItem.fontSize || fontSize;
+              const textContent = editingItem.text || '';
+              const padding = 4;
+              const maxWidth = boxW - padding * 2;
+              const lineHeight = itemFontSize * 1.2;
+              
+              let isClickOnText = false;
+              if (textContent && overlayRef.current) {
+                const ctx = overlayRef.current.getContext('2d');
+                if (ctx) {
+                  ctx.font = `${itemFontSize}px Montserrat`;
+                  const topY = editingItem.y + padding;
+                  const relativeY = Math.max(0, y - topY);
+                  const lineIndex = Math.floor(relativeY / lineHeight);
+                  
+                  // Word wrap to get lines (same logic as getTextCursorPosition)
+                  const paragraphs = textContent.split('\n');
+                  const lines: string[] = [];
+                  
+                  for (const para of paragraphs) {
+                    if (!para.trim() && lines.length > 0) {
+                      lines.push('');
+                      continue;
+                    }
+                    
+                    const words = para.split(' ');
+                    let currentLine = '';
+                    
+                    for (let i = 0; i < words.length; i++) {
+                      const word = words[i];
+                      const wordMetrics = ctx.measureText(word);
+                      if (wordMetrics.width > maxWidth) {
+                        if (currentLine) {
+                          lines.push(currentLine);
+                          currentLine = '';
+                        }
+                        let charLine = '';
+                        for (let j = 0; j < word.length; j++) {
+                          const charTest = charLine + word[j];
+                          const charMetrics = ctx.measureText(charTest);
+                          if (charMetrics.width > maxWidth && charLine) {
+                            lines.push(charLine);
+                            charLine = word[j];
+                          } else {
+                            charLine = charTest;
+                          }
+                        }
+                        if (charLine) currentLine = charLine;
+                      } else {
+                        const testLine = currentLine ? `${currentLine} ${word}` : word;
+                        const testMetrics = ctx.measureText(testLine);
+                        if (testMetrics.width > maxWidth && currentLine) {
+                          lines.push(currentLine);
+                          currentLine = word;
+                        } else {
+                          currentLine = testLine;
+                        }
+                      }
+                    }
+                    if (currentLine) lines.push(currentLine);
+                  }
+                  
+                  // Check if click is on a line with text
+                  if (lineIndex >= 0 && lineIndex < lines.length && lines[lineIndex].trim()) {
+                    const lineText = lines[lineIndex];
+                    const lineStartX = editingItem.x + padding;
+                    const lineEndX = lineStartX + ctx.measureText(lineText).width;
+                    isClickOnText = x >= lineStartX && x <= lineEndX;
+                  }
+                }
               }
-              e.stopPropagation();
-              return;
+              
+              if (isClickOnText) {
+                // Click inside the core text area on actual text → start caret + drag-selection
+                const cursorPos = getTextCursorPosition(editingItem, x, y);
+                textCursorPositionRef.current = cursorPos;
+                textSelectionStartRef.current = cursorPos;
+                textSelectingRef.current = true;
+                setItems(prev => prev.map(it =>
+                  !it || !it.id ? it : (it.id === editingItem.id ? { ...it, cursorPosition: cursorPos, selectionStart: undefined, selectionEnd: undefined } : it)
+                ).filter(it => it && it.id));
+                // Ensure overlay has focus for keyboard events (arrows, etc)
+                if (overlayRef.current) {
+                  overlayRef.current.focus();
+                }
+                e.stopPropagation();
+                return;
+              } else {
+                // Click in empty area inside text box → move whole box
+                if (!selectedIds.includes(editingItem.id)) {
+                  setSelectedIds([editingItem.id]);
+                }
+                movingRef.current = { item: { ...editingItem }, startX: x, startY: y };
+                e.stopPropagation();
+                return;
+              }
             } else {
               // Click in border zone (between core box and expanded margin) → move whole box
               if (!selectedIds.includes(editingItem.id)) {
@@ -1045,7 +1251,7 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
     if (mode === 'delete') {
       const hit = itemAt(x, y);
       if (hit) {
-        setItems(prev => prev.filter(it => it.id !== hit.id));
+        setItems(prev => prev.filter(it => it && it.id && it.id !== hit.id));
         setSelectedIds(prev => prev.filter(id => id !== hit.id));
       }
       return;
@@ -1060,7 +1266,7 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
           color,
           stroke,
         };
-        setItems(prev => [...prev, newItem]);
+        setItems(prev => [...prev.filter(it => it && it.id), newItem]);
         setSelectedIds([newItem.id]);
         drawingRef.current = newItem;
       } else if (mode === 'arrow') {
@@ -1074,7 +1280,7 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
           color,
           stroke,
         };
-        setItems(prev => [...prev, newItem]);
+        setItems(prev => [...prev.filter(it => it && it.id), newItem]);
         setSelectedIds([newItem.id]);
         drawingRef.current = newItem;
       } else if (mode === 'circle') {
@@ -1088,7 +1294,7 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
           color,
           stroke,
         };
-        setItems(prev => [...prev, newItem]);
+        setItems(prev => [...prev.filter(it => it && it.id), newItem]);
         setSelectedIds([newItem.id]);
         drawingRef.current = newItem;
       } else if (mode === 'draw') {
@@ -1101,27 +1307,29 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
           color,
           stroke,
         };
-        setItems(prev => [...prev, newItem]);
+        setItems(prev => [...prev.filter(it => it && it.id), newItem]);
         setSelectedIds([newItem.id]);
         drawingRef.current = newItem;
       } else if (mode === 'text') {
-        // Create a text area by drawing a rectangle first
+        // Create a text area by drawing a rectangle first - only store in drawingRef, don't add to items yet
         const newItem: AnnotationItem = {
           id: 'it_' + Date.now(),
           type: 'text',
           x,
           y,
-          w: 200, // default width
-          h: 30, // default height
+          w: 1, // Start with minimal size, will be resized on mouse move
+          h: 1,
           text: '', // Start with empty text
           fontSize,
           color,
           stroke,
           _editing: false,
+          textBackgroundEnabled,
+          textBackgroundColor,
+          textBackgroundOpacity,
         };
-        setItems(prev => [...prev, newItem]);
-        setSelectedIds([newItem.id]);
-        drawingRef.current = newItem; // Use drawingRef to allow resizing the text area
+        // Don't add to items yet - only add when user starts dragging
+        drawingRef.current = newItem;
       } else if (mode === 'select') {
         if (e.shiftKey) {
           marqueeRef.current = { x, y, x2: x, y2: y };
@@ -1163,15 +1371,15 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
               // Clicking inside the text box - calculate cursor position
               const cursorPos = getTextCursorPosition(hit, x, y);
               textCursorPositionRef.current = cursorPos;
-              setItems(prev => prev.map(it => 
-                it.id === hit.id ? { ...it, cursorPosition: cursorPos } : it
-              ));
+              setItems(prev => prev.map(it =>
+                !it || !it.id ? it : (it.id === hit.id ? { ...it, cursorPosition: cursorPos } : it)
+              ).filter(it => it && it.id));
               return; // Don't do anything else, just update cursor position
             }
             
             // If clicking outside the text being edited, exit edit mode and return to pan
             if (textEditingRef.current && (!hit || hit.type !== 'text' || hit.id !== textEditingRef.current)) {
-              setItems(prev => prev.map(it => ({ ...it, _editing: false })));
+              setItems(prev => prev.map(it => !it || !it.id ? it : ({ ...it, _editing: false })).filter(it => it && it.id));
               textEditingRef.current = null;
               textCursorPositionRef.current = 0;
               if (cursorBlinkRef.current) {
@@ -1189,15 +1397,95 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
             }
             
             if (hit.type === 'text') {
-              // SINGLE STATE for text:
-              // - Click inside area enters edit mode
-              // - Resize handles still work (handled above via getHandleAt)
-            const cursorPos = getTextCursorPosition(hit, x, y);
-            textCursorPositionRef.current = cursorPos;
-            textSelectionStartRef.current = null;
-            setItems(prev => prev.map(it => 
-              it.id === hit.id ? { ...it, _editing: true, cursorPosition: cursorPos, selectionStart: undefined, selectionEnd: undefined } : it
-            ));
+              // Check if clicking on actual text content or empty area
+              const itemFontSize = hit.fontSize || fontSize;
+              const padding = 4;
+              const textContent = hit.text || '';
+              const maxWidth = (hit.w || 200) - padding * 2;
+              const lineHeight = itemFontSize * 1.2;
+              
+              // Calculate text bounds to see if click is on text or empty area
+              const overlay = overlayRef.current;
+              let isClickOnText = false;
+              if (overlay && textContent) {
+                const ctx = overlay.getContext('2d');
+                if (ctx) {
+                  ctx.font = `${itemFontSize}px Montserrat`;
+                  const topY = hit.y + padding;
+                  const relativeY = Math.max(0, y - topY);
+                  const lineIndex = Math.floor(relativeY / lineHeight);
+                  
+                  // Word wrap to get lines (same logic as getTextCursorPosition)
+                  const paragraphs = textContent.split('\n');
+                  const lines: string[] = [];
+                  
+                  for (const para of paragraphs) {
+                    if (!para.trim() && lines.length > 0) {
+                      lines.push('');
+                      continue;
+                    }
+                    
+                    const words = para.split(' ');
+                    let currentLine = '';
+                    
+                    for (let i = 0; i < words.length; i++) {
+                      const word = words[i];
+                      const wordMetrics = ctx.measureText(word);
+                      if (wordMetrics.width > maxWidth) {
+                        if (currentLine) {
+                          lines.push(currentLine);
+                          currentLine = '';
+                        }
+                        let charLine = '';
+                        for (let j = 0; j < word.length; j++) {
+                          const charTest = charLine + word[j];
+                          const charMetrics = ctx.measureText(charTest);
+                          if (charMetrics.width > maxWidth && charLine) {
+                            lines.push(charLine);
+                            charLine = word[j];
+                          } else {
+                            charLine = charTest;
+                          }
+                        }
+                        if (charLine) currentLine = charLine;
+                      } else {
+                        const testLine = currentLine ? `${currentLine} ${word}` : word;
+                        const testMetrics = ctx.measureText(testLine);
+                        if (testMetrics.width > maxWidth && currentLine) {
+                          lines.push(currentLine);
+                          currentLine = word;
+                        } else {
+                          currentLine = testLine;
+                        }
+                      }
+                    }
+                    if (currentLine) lines.push(currentLine);
+                  }
+                  
+                  // Check if click is on a line with text
+                  if (lineIndex >= 0 && lineIndex < lines.length && lines[lineIndex].trim()) {
+                    const lineText = lines[lineIndex];
+                    const lineStartX = hit.x + padding;
+                    const lineEndX = lineStartX + ctx.measureText(lineText).width;
+                    isClickOnText = x >= lineStartX && x <= lineEndX;
+                  }
+                }
+              }
+              
+              // If text box is already selected and click is on empty area, allow dragging
+              if (selectedIds.includes(hit.id) && !isClickOnText && !textEditingRef.current) {
+                // Prepare to move the text box
+                movingRef.current = { item: { ...hit }, startX: x, startY: y };
+                return;
+              }
+              
+              // Otherwise, enter edit mode (click on text or first click)
+              const cursorPos = getTextCursorPosition(hit, x, y);
+              textCursorPositionRef.current = cursorPos;
+              textSelectionStartRef.current = null;
+              setItems(prev => prev.map(it =>
+                !it || !it.id ? it : (it.id === hit.id ? { ...it, _editing: true, cursorPosition: cursorPos, selectionStart: undefined, selectionEnd: undefined } : it)
+              ).filter(it => it && it.id));
               textEditingRef.current = hit.id;
               if (cursorBlinkRef.current) {
                 clearInterval(cursorBlinkRef.current);
@@ -1242,11 +1530,11 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
         textSelectionStartRef.current = anchor;
         const start = Math.max(0, Math.min(anchor, cursorPos));
         const end = Math.min(currentText.length, Math.max(anchor, cursorPos));
-        setItems(prev => prev.map(it => 
-          it.id === editingItem.id
+        setItems(prev => prev.map(it =>
+          !it || !it.id ? it : (it.id === editingItem.id
             ? { ...it, cursorPosition: cursorPos, selectionStart: start, selectionEnd: end }
-            : it
-        ));
+            : it)
+        ).filter(it => it && it.id));
       }
       return;
     }
@@ -1260,30 +1548,50 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
     
     if (drawingRef.current) {
       if (drawingRef.current.type === 'rect') {
-        setItems(prev => prev.map(it => it.id === drawingRef.current!.id ? { ...it, w: x - it.x, h: y - it.y } : it));
+        setItems(prev => prev.map(it => !it || !it.id ? it : (it.id === drawingRef.current!.id ? { ...it, w: x - it.x, h: y - it.y } : it)).filter(it => it && it.id));
       } else if (drawingRef.current.type === 'arrow') {
-        setItems(prev => prev.map(it => it.id === drawingRef.current!.id ? { ...it, x2: x, y2: y } : it));
+        setItems(prev => prev.map(it => !it || !it.id ? it : (it.id === drawingRef.current!.id ? { ...it, x2: x, y2: y } : it)).filter(it => it && it.id));
       } else if (drawingRef.current.type === 'circle') {
         const dx = Math.abs(x - drawingRef.current.x);
         const dy = Math.abs(y - drawingRef.current.y);
         // Allow independent rx and ry for oval shapes
         setItems(prev => prev.map(it => {
+          if (!it || !it.id) return it;
           if (it.id === drawingRef.current!.id) {
             return { ...it, rx: Math.max(1, dx), ry: Math.max(1, dy) };
           }
           return it;
-        }));
+        }).filter(it => it && it.id));
       } else if (drawingRef.current.type === 'text') {
-        // Allow resizing text area
-        setItems(prev => prev.map(it => it.id === drawingRef.current!.id ? { ...it, w: x - it.x, h: y - it.y } : it));
+        // For text, add to items on first move (when user starts dragging)
+        const dx = Math.abs(x - drawingRef.current.x);
+        const dy = Math.abs(y - drawingRef.current.y);
+        const minSize = 5; // Minimum movement to consider it a drag
+        
+        if (dx < minSize && dy < minSize) {
+          // Not enough movement yet, don't add to items
+          return;
+        }
+        
+        if (!drawingRef.current.w || drawingRef.current.w <= 1) {
+          // First move - add item to items array
+          const newItem = { ...drawingRef.current, w: Math.max(50, Math.abs(x - drawingRef.current.x)), h: Math.max(20, Math.abs(y - drawingRef.current.y)) };
+          setItems(prev => [...prev.filter(it => it && it.id), newItem]);
+          setSelectedIds([newItem.id]);
+          drawingRef.current = newItem;
+        } else {
+          // Continue resizing
+          setItems(prev => prev.map(it => !it || !it.id ? it : (it.id === drawingRef.current!.id ? { ...it, w: Math.max(50, Math.abs(x - it.x)), h: Math.max(20, Math.abs(y - it.y)) } : it)).filter(it => it && it.id));
+        }
       } else if (drawingRef.current.type === 'path') {
         setItems(prev => prev.map(it => {
+          if (!it || !it.id) return it;
           if (it.id === drawingRef.current!.id) {
             const pts = [...(it.points || []), { x, y }];
             return { ...it, points: pts };
           }
           return it;
-        }));
+        }).filter(it => it && it.id));
       }
       drawOverlay();
       return;
@@ -1296,6 +1604,7 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
       const item = resizeState.item;
       
       setItems(prev => prev.map(it => {
+        if (!it || !it.id) return it;
         if (it.id === item.id) {
           if (it.type === 'rect') {
             const { handle, startW, startH } = resizeState;
@@ -1456,7 +1765,7 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
           }
         }
         return it;
-      }));
+      }).filter(it => it && it.id));
       drawOverlay();
       return;
     }
@@ -1469,6 +1778,7 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
       // Only move if there's significant movement to avoid accidental moves
       if (Math.abs(dx) > 1 || Math.abs(dy) > 1) {
         setItems(prev => prev.map(it => {
+          if (!it || !it.id) return it;
           if (it.id === moveState.item.id) {
             // Use original item position from moveState, not current state
             const origX = moveState.item.x;
@@ -1517,6 +1827,7 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
       const h = Math.abs(m.y2 - m.y);
       const sel: string[] = [];
       for (const it of items) {
+        if (!it || !it.id) continue; // Skip null/undefined items
         const b = getItemBounds(it);
         if (b && b.x >= x && b.y >= y && (b.x + b.w) <= x + w && (b.y + b.h) <= y + h) {
           sel.push(it.id);
@@ -1534,23 +1845,33 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
         setMode('pan');
       } else if (drawnType === 'text') {
         // For text, enable editing after creating the area
-        setItems(prev => prev.map(it => it.id === drawnId ? { ...it, _editing: true } : it));
-        textEditingRef.current = drawnId;
-        setMode('pan');
-        // Start cursor blink
-        if (cursorBlinkRef.current) {
-          clearInterval(cursorBlinkRef.current);
-        }
-        setCursorVisible(true);
-        cursorBlinkRef.current = setInterval(() => {
-          setCursorVisible(prev => !prev);
-        }, 500);
-        // Focus canvas for text input
-        setTimeout(() => {
-          if (overlayRef.current) {
-            overlayRef.current.focus();
+        // Make sure item exists in items array before trying to edit
+        const textItem = items.find(it => it && it.id === drawnId);
+        if (textItem && textItem.w > 50 && textItem.h > 20) {
+          // Only enable editing if text box has meaningful size
+          setItems(prev => prev.map(it => !it || !it.id ? it : (it.id === drawnId ? { ...it, _editing: true } : it)).filter(it => it && it.id));
+          textEditingRef.current = drawnId;
+          setMode('pan');
+          // Start cursor blink
+          if (cursorBlinkRef.current) {
+            clearInterval(cursorBlinkRef.current);
           }
-        }, 100);
+          setCursorVisible(true);
+          cursorBlinkRef.current = setInterval(() => {
+            setCursorVisible(prev => !prev);
+          }, 500);
+          // Focus canvas for text input
+          setTimeout(() => {
+            if (overlayRef.current) {
+              overlayRef.current.focus();
+            }
+          }, 100);
+        } else {
+          // If text box is too small, just switch to pan mode without editing
+          // Also clear textEditingRef to ensure drag works
+          textEditingRef.current = null;
+          setMode('pan');
+        }
       }
     }
     
@@ -1593,9 +1914,9 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
               }
               textCursorPositionRef.current = cursorPos;
               const { start, end } = normSelection();
-              setItems(prev => prev.map(it => 
-                it.id === textEditingRef.current ? { ...it, cursorPosition: cursorPos, selectionStart: selStart === null ? undefined : start, selectionEnd: selStart === null ? undefined : end } : it
-              ));
+              setItems(prev => prev.map(it =>
+                !it || !it.id ? it : (it.id === textEditingRef.current ? { ...it, cursorPosition: cursorPos, selectionStart: selStart === null ? undefined : start, selectionEnd: selStart === null ? undefined : end } : it)
+              ).filter(it => it && it.id));
           } else if (e.key === 'ArrowRight') {
             e.preventDefault();
             if (e.shiftKey) {
@@ -1609,9 +1930,9 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
             }
             textCursorPositionRef.current = cursorPos;
             const { start, end } = normSelection();
-            setItems(prev => prev.map(it => 
-              it.id === textEditingRef.current ? { ...it, cursorPosition: cursorPos, selectionStart: selStart === null ? undefined : start, selectionEnd: selStart === null ? undefined : end } : it
-            ));
+              setItems(prev => prev.map(it =>
+                !it || !it.id ? it : (it.id === textEditingRef.current ? { ...it, cursorPosition: cursorPos, selectionStart: selStart === null ? undefined : start, selectionEnd: selStart === null ? undefined : end } : it)
+              ).filter(it => it && it.id));
           } else if (e.key === 'ArrowUp') {
             e.preventDefault();
             // Move to start of current line or previous line
@@ -1629,9 +1950,9 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
             textCursorPositionRef.current = cursorPos;
             textSelectionStartRef.current = selStart; // keep selection anchor if using Shift+Up/Down later
             const { start, end } = normSelection();
-            setItems(prev => prev.map(it => 
-              it.id === textEditingRef.current ? { ...it, cursorPosition: cursorPos, selectionStart: selStart === null ? undefined : start, selectionEnd: selStart === null ? undefined : end } : it
-            ));
+              setItems(prev => prev.map(it =>
+                !it || !it.id ? it : (it.id === textEditingRef.current ? { ...it, cursorPosition: cursorPos, selectionStart: selStart === null ? undefined : start, selectionEnd: selStart === null ? undefined : end } : it)
+              ).filter(it => it && it.id));
           } else if (e.key === 'ArrowDown') {
             e.preventDefault();
             // Move to next line
@@ -1649,9 +1970,9 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
             textCursorPositionRef.current = cursorPos;
             textSelectionStartRef.current = selStart;
             const { start, end } = normSelection();
-            setItems(prev => prev.map(it => 
-              it.id === textEditingRef.current ? { ...it, cursorPosition: cursorPos, selectionStart: selStart === null ? undefined : start, selectionEnd: selStart === null ? undefined : end } : it
-            ));
+              setItems(prev => prev.map(it =>
+                !it || !it.id ? it : (it.id === textEditingRef.current ? { ...it, cursorPosition: cursorPos, selectionStart: selStart === null ? undefined : start, selectionEnd: selStart === null ? undefined : end } : it)
+              ).filter(it => it && it.id));
           } else if (e.key === 'Backspace') {
             e.preventDefault();
             const { start, end } = hasSelection ? normSelection() : { start: cursorPos - 1, end: cursorPos };
@@ -1660,9 +1981,9 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
               cursorPos = start;
               textCursorPositionRef.current = cursorPos;
               textSelectionStartRef.current = null;
-              setItems(prev => prev.map(it => 
-                it.id === textEditingRef.current ? { ...it, text: newText, cursorPosition: cursorPos, selectionStart: undefined, selectionEnd: undefined } : it
-              ));
+              setItems(prev => prev.map(it =>
+                !it || !it.id ? it : (it.id === textEditingRef.current ? { ...it, text: newText, cursorPosition: cursorPos, selectionStart: undefined, selectionEnd: undefined } : it)
+              ).filter(it => it && it.id));
             }
           } else if (e.key === 'Enter') {
             e.preventDefault();
@@ -1672,8 +1993,8 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
             textCursorPositionRef.current = cursorPos;
             textSelectionStartRef.current = null;
             setItems(prev => prev.map(it => 
-              it.id === textEditingRef.current ? { ...it, text: newText, cursorPosition: cursorPos, selectionStart: undefined, selectionEnd: undefined } : it
-            ));
+              !it || !it.id ? it : (it.id === textEditingRef.current ? { ...it, text: newText, cursorPosition: cursorPos, selectionStart: undefined, selectionEnd: undefined } : it)
+            ).filter(it => it && it.id));
           } else if (e.key === 'Escape') {
             e.preventDefault();
             // Unified behavior for ESC while editing text
@@ -1694,14 +2015,14 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
             textSelectionStartRef.current = 0;
             cursorPos = currentText.length;
             textCursorPositionRef.current = cursorPos;
-            setItems(prev => prev.map(it => 
-              it.id === textEditingRef.current ? { 
-                ...it, 
-                cursorPosition: cursorPos, 
+            setItems(prev => prev.map(it =>
+              !it || !it.id ? it : (it.id === textEditingRef.current ? {
+                ...it,
+                cursorPosition: cursorPos,
                 selectionStart: 0, 
                 selectionEnd: currentText.length 
-              } : it
-            ));
+              } : it)
+            ).filter(it => it && it.id));
           } else if ((e.key === 'v' || e.key === 'V') && (e.ctrlKey || e.metaKey)) {
             // Paste from clipboard, replacing selection or inserting at caret
             e.preventDefault();
@@ -1713,14 +2034,14 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
               textCursorPositionRef.current = cursorPos;
               textSelectionStartRef.current = null;
               setItems(prev => prev.map(it => 
-                it.id === textEditingRef.current ? { 
+                !it || !it.id ? it : (it.id === textEditingRef.current ? { 
                   ...it, 
                   text: newText, 
-                  cursorPosition: cursorPos, 
-                  selectionStart: undefined, 
-                  selectionEnd: undefined 
-                } : it
-              ));
+                  cursorPosition: cursorPos,
+                  selectionStart: undefined,
+                  selectionEnd: undefined
+                } : it)
+              ).filter(it => it && it.id));
             };
 
             if (navigator.clipboard && navigator.clipboard.readText) {
@@ -1734,13 +2055,13 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
             textCursorPositionRef.current = cursorPos;
             textSelectionStartRef.current = null;
             setItems(prev => prev.map(it => 
-              it.id === textEditingRef.current ? { ...it, text: newText, cursorPosition: cursorPos, selectionStart: undefined, selectionEnd: undefined } : it
-            ));
+              !it || !it.id ? it : (it.id === textEditingRef.current ? { ...it, text: newText, cursorPosition: cursorPos, selectionStart: undefined, selectionEnd: undefined } : it)
+            ).filter(it => it && it.id));
           }
         }
       } else if (e.key === 'Delete' && selectedIds.length) {
         // Only delete when not editing text
-        setItems(prev => prev.filter(it => !selectedIds.includes(it.id)));
+        setItems(prev => prev.filter(it => it && it.id && !selectedIds.includes(it.id)));
         setSelectedIds([]);
       } else if (e.key === 'Escape' && mode !== 'pan') {
         // Escape key -> return to pan mode
@@ -1783,8 +2104,30 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
     ctx.save();
     const clamped = clampOffset(offsetX, offsetY);
     ctx.clearRect(0, 0, finalCanvas.width, finalCanvas.height);
-    ctx.fillStyle = '#f6f6f6';
-    ctx.fillRect(0, 0, finalCanvas.width, finalCanvas.height);
+    
+    // Draw blurred background if needed (fast path, same as preview)
+    const iw0 = img.naturalWidth;
+    const ih0 = img.naturalHeight;
+    const angleRad0 = (angle * Math.PI) / 180;
+    const cos0 = Math.abs(Math.cos(angleRad0));
+    const sin0 = Math.abs(Math.sin(angleRad0));
+    const rotatedW0 = iw0 * scale * cos0 + ih0 * scale * sin0;
+    const rotatedH0 = iw0 * scale * sin0 + ih0 * scale * cos0;
+    const needsBlur = rotatedW0 < finalCanvas.width || rotatedH0 < finalCanvas.height;
+
+    if (needsBlur) {
+      ensureBlurredBackground();
+      const bg = blurredBgCanvasRef.current;
+      if (bg) {
+        ctx.drawImage(bg, 0, 0, finalCanvas.width, finalCanvas.height);
+      } else {
+        ctx.fillStyle = '#f6f6f6';
+        ctx.fillRect(0, 0, finalCanvas.width, finalCanvas.height);
+      }
+    } else {
+      ctx.fillStyle = '#f6f6f6';
+      ctx.fillRect(0, 0, finalCanvas.width, finalCanvas.height);
+    }
     
     ctx.translate(finalCanvas.width / 2 + clamped.x, finalCanvas.height / 2 + clamped.y);
     ctx.rotate(angle * Math.PI / 180);
@@ -1798,6 +2141,7 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
     
     // Draw annotations (same as drawOverlay function, but simplified for text)
     for (const it of items) {
+      if (!it || !it.id) continue; // Skip null/undefined items
       ctx.save();
       ctx.strokeStyle = it.color;
       ctx.fillStyle = it.color;
@@ -1882,6 +2226,22 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
         
         if (lines.length === 0) {
           lines.push('');
+        }
+        
+        // Draw text background if enabled
+        const bgEnabled = it.textBackgroundEnabled !== undefined ? it.textBackgroundEnabled : textBackgroundEnabled;
+        if (bgEnabled && it.w && it.h) {
+          const bgColor = it.textBackgroundColor || textBackgroundColor;
+          const bgOpacity = it.textBackgroundOpacity !== undefined ? it.textBackgroundOpacity : textBackgroundOpacity;
+          
+          // Convert hex color to rgba
+          const hex = bgColor.replace('#', '');
+          const r = parseInt(hex.substring(0, 2), 16);
+          const g = parseInt(hex.substring(2, 4), 16);
+          const b = parseInt(hex.substring(4, 6), 16);
+          
+          ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${bgOpacity})`;
+          ctx.fillRect(it.x, it.y, it.w, it.h);
         }
         
         // Clip to text box area
@@ -1985,14 +2345,14 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
                       ref={canvasRef}
                       className="block"
                       style={{ 
-                        cursor: (mode === 'pan' && !textEditingRef.current) ? (draggingRef.current?.active ? 'grabbing' : 'grab') : 'default',
+                        cursor: (mode === 'pan' && !textEditingRef.current) ? (draggingRef.current ? 'grabbing' : 'grab') : 'default',
                         display: 'block',
-                        pointerEvents: textEditingRef.current ? 'none' : 'auto'
+                        pointerEvents: textEditingRef.current ? 'none' : 'auto',
+                        touchAction: 'none'
                       }}
-                      onMouseDown={handleCanvasMouseDown}
-                      onMouseMove={handleCanvasMouseMove}
-                      onMouseUp={handleCanvasMouseUp}
-                      onMouseLeave={handleCanvasMouseLeave}
+                      onPointerDown={handleCanvasPointerDown}
+                      onPointerMove={handleCanvasPointerMove}
+                      onPointerUp={handleCanvasPointerUp}
                     />
                     <canvas
                       ref={overlayRef}
@@ -2008,7 +2368,7 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
                               : textEditingRef.current
                                 ? 'text'
                                 : 'default',
-                        pointerEvents: (mode !== 'pan' || textEditingRef.current) ? 'auto' : 'none',
+                        pointerEvents: mode !== 'pan' ? 'auto' : (textEditingRef.current ? 'auto' : 'none'),
                         outline: 'none'
                       }}
                       onMouseMove={(e) => {
@@ -2066,7 +2426,7 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
                   <label className="block text-sm font-medium mb-2">Zoom: {scale.toFixed(2)}x</label>
                   <input
                     type="range"
-                    min="1"
+                    min="0.1"
                     max="3"
                     step="0.01"
                     value={scale}
@@ -2100,7 +2460,7 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
                   </button>
                   <button onClick={() => {
                     if (textEditingRef.current) {
-                      setItems(prev => prev.map(it => ({ ...it, _editing: false })));
+                      setItems(prev => prev.map(it => !it || !it.id ? it : ({ ...it, _editing: false })).filter(it => it && it.id));
                       textEditingRef.current = null;
                       if (cursorBlinkRef.current) {
                         clearInterval(cursorBlinkRef.current);
@@ -2114,7 +2474,7 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
                   </button>
                   <button onClick={() => {
                     if (textEditingRef.current) {
-                      setItems(prev => prev.map(it => ({ ...it, _editing: false })));
+                      setItems(prev => prev.map(it => !it || !it.id ? it : ({ ...it, _editing: false })).filter(it => it && it.id));
                       textEditingRef.current = null;
                       if (cursorBlinkRef.current) {
                         clearInterval(cursorBlinkRef.current);
@@ -2128,7 +2488,7 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
                   </button>
                   <button onClick={() => {
                     if (textEditingRef.current) {
-                      setItems(prev => prev.map(it => ({ ...it, _editing: false })));
+                      setItems(prev => prev.map(it => !it || !it.id ? it : ({ ...it, _editing: false })).filter(it => it && it.id));
                       textEditingRef.current = null;
                       if (cursorBlinkRef.current) {
                         clearInterval(cursorBlinkRef.current);
@@ -2142,7 +2502,7 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
                   </button>
                   <button onClick={() => {
                     if (textEditingRef.current) {
-                      setItems(prev => prev.map(it => ({ ...it, _editing: false })));
+                      setItems(prev => prev.map(it => !it || !it.id ? it : ({ ...it, _editing: false })).filter(it => it && it.id));
                       textEditingRef.current = null;
                       if (cursorBlinkRef.current) {
                         clearInterval(cursorBlinkRef.current);
@@ -2173,6 +2533,46 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
                     Delete
                   </button>
                 </div>
+              </div>
+              
+              <div className="pt-4 border-t">
+                <label className="block text-sm font-medium mb-2">Text Background</label>
+                <div className="mb-2">
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={textBackgroundEnabled}
+                      onChange={e => setTextBackgroundEnabled(e.target.checked)}
+                      className="w-4 h-4"
+                    />
+                    <span className="text-sm">Enable background</span>
+                  </label>
+                </div>
+                {textBackgroundEnabled && (
+                  <>
+                    <div className="mb-2">
+                      <label className="block text-sm font-medium mb-1">Background Color</label>
+                      <input
+                        type="color"
+                        value={textBackgroundColor}
+                        onChange={e => setTextBackgroundColor(e.target.value)}
+                        className="w-full h-10"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Opacity: {Math.round(textBackgroundOpacity * 100)}%</label>
+                      <input
+                        type="range"
+                        min="0"
+                        max="1"
+                        step="0.01"
+                        value={textBackgroundOpacity}
+                        onChange={e => setTextBackgroundOpacity(parseFloat(e.target.value))}
+                        className="w-full"
+                      />
+                    </div>
+                  </>
+                )}
               </div>
               
               <div>
