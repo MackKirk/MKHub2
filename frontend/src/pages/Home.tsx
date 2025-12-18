@@ -112,7 +112,7 @@ export default function Home(){
   return (
     <div className="space-y-6 min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-50/50">
       {/* Compact Header with subtle gradient */}
-      <div className="flex items-center justify-between py-4 px-1 border-b border-gray-200/60 bg-gradient-to-r from-white via-gray-50/30 to-white">
+      <div className="bg-slate-200/50 rounded-[12px] border border-slate-200 flex items-center justify-between py-4 px-6 mb-6">
         <div>
           <div className="text-xl font-bold text-gray-900 tracking-tight mb-0.5">
             {getTimeBasedGreeting()}, {displayName}
