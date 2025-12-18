@@ -7,6 +7,14 @@ import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
 import { formatDateLocal } from '@/lib/dateUtils';
 
+// Helper function to get time-based greeting
+function getTimeBasedGreeting(): string {
+  const hour = new Date().getHours();
+  if (hour < 12) return 'Good morning';
+  if (hour < 17) return 'Good afternoon';
+  return 'Good evening';
+}
+
 export default function Home(){
   const location = useLocation();
   const [showReportModal, setShowReportModal] = useState(false);
@@ -26,6 +34,49 @@ export default function Home(){
     user.username || 
     'User';
   const jobTitle = profile.job_title || '';
+  
+  // Get current date formatted
+  const currentDate = useMemo(() => {
+    return new Date().toLocaleDateString('en-US', { 
+      weekday: 'long', 
+      year: 'numeric', 
+      month: 'long', 
+      day: 'numeric' 
+    });
+  }, []);
+  
+  // Get clock status
+  const today = formatDateLocal(new Date());
+  const { data: currentUser } = useQuery({
+    queryKey: ['me'],
+    queryFn: () => api<any>('GET', '/auth/me'),
+  });
+  const { data: todayAttendance } = useQuery({
+    queryKey: ['attendance-today', today],
+    queryFn: () => api<any[]>('GET', `/settings/attendance/list?start_date=${today}&end_date=${today}`).catch(() => []),
+  });
+  
+  const clockStatus = useMemo(() => {
+    if (!currentUser?.id || !Array.isArray(todayAttendance)) return 'Not clocked in';
+    const myAttendance = todayAttendance.find((a: any) => {
+      if (String(a.worker_id) !== String(currentUser?.id)) return false;
+      const attendanceDate = a.clock_in_time 
+        ? new Date(a.clock_in_time).toISOString().split('T')[0]
+        : (a.clock_out_time ? new Date(a.clock_out_time).toISOString().split('T')[0] : null);
+      return attendanceDate === today;
+    });
+    
+    if (!myAttendance || !myAttendance.clock_in_time) {
+      return 'Not clocked in';
+    }
+    if (myAttendance.clock_in_time && myAttendance.clock_out_time) {
+      return 'Clocked out';
+    }
+    if (myAttendance.clock_in_time) {
+      return 'Clocked in';
+    }
+    return 'Not clocked in';
+  }, [todayAttendance, currentUser?.id, today]);
   
   // Overlay image from settings (same as Project hero overlay)
   const overlayUrl = useMemo(() => {
@@ -59,46 +110,45 @@ export default function Home(){
   }, [overlayUrl]);
   
   return (
-    <div className="space-y-4">
-      <div className="mb-3 rounded-xl border bg-gradient-to-br from-[#7f1010] to-[#a31414] text-white p-4">
-        <div className="text-2xl font-extrabold">Welcome Back, {displayName}!</div>
-        <div className="text-sm opacity-90">Overview, quick links and shortcuts.</div>
+    <div className="space-y-6 min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-50/50">
+      {/* Compact Header with subtle gradient */}
+      <div className="flex items-center justify-between py-4 px-1 border-b border-gray-200/60 bg-gradient-to-r from-white via-gray-50/30 to-white">
+        <div>
+          <div className="text-xl font-bold text-gray-900 tracking-tight mb-0.5">
+            {getTimeBasedGreeting()}, {displayName}
+          </div>
+          <div className="text-sm text-gray-500 font-medium">{currentDate}</div>
+        </div>
+        <div className="text-right">
+          <div className="text-xs text-gray-400 mb-1.5 font-medium uppercase tracking-wide">Clock Status</div>
+          <div className="flex items-center justify-end gap-2">
+            <svg 
+              className={`w-[18px] h-[18px] transition-opacity duration-300 ${
+                clockStatus === 'Clocked in' ? 'text-green-600' : 
+                clockStatus === 'Clocked out' ? 'text-red-500' : 
+                'text-red-500'
+              }`}
+              fill="none" 
+              stroke="currentColor" 
+              strokeWidth={2} 
+              viewBox="0 0 24 24"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <span className="text-sm font-semibold text-gray-700">
+              {clockStatus}
+            </span>
+          </div>
+        </div>
       </div>
       
-      {/* Quick Links - First Row, Smaller */}
-      <div className="grid grid-cols-6 gap-3">
-        <Link
-          to="/profile"
-          state={{ fromHome: true }}
-          className="rounded-lg border border-gray-200 bg-white p-3 hover:shadow-md transition-shadow cursor-pointer flex flex-col items-center justify-center text-center min-h-[100px]"
-        >
-          <div className="w-10 h-10 rounded-lg bg-indigo-100 flex items-center justify-center mb-2">
-            <svg className="w-5 h-5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-            </svg>
-          </div>
-          <div className="text-sm font-semibold text-gray-900">My Information</div>
-        </Link>
+      {/* Quick Actions - 2x2 Grid */}
+      <div className="grid grid-cols-2 gap-4">
+        {/* Clock In/Out Hero Card */}
+        <ClockInOutHeroCard />
         
-        <QuickLinkCard
-          to="/clock-in-out"
-          iconBg="bg-orange-100"
-          iconColor="text-orange-600"
-          iconPath="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
-          label="Clock-in/out"
-          summaryKey="clock"
-        />
-        
-        <QuickLinkCard
-          to="/task-requests"
-          iconBg="bg-purple-100"
-          iconColor="text-purple-600"
-          iconPath="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-          label="Requests"
-          summaryKey="requests"
-        />
-        
-        <QuickLinkCard
+        {/* Tasks Card */}
+        <QuickActionCard
           to="/tasks"
           iconBg="bg-blue-100"
           iconColor="text-blue-600"
@@ -107,7 +157,18 @@ export default function Home(){
           summaryKey="tasks"
         />
         
-        <QuickLinkCard
+        {/* Requests Card */}
+        <QuickActionCard
+          to="/task-requests"
+          iconBg="bg-purple-100"
+          iconColor="text-purple-600"
+          iconPath="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+          label="Requests"
+          summaryKey="requests"
+        />
+        
+        {/* Schedule Card */}
+        <QuickActionCard
           to="/schedule"
           iconBg="bg-green-100"
           iconColor="text-green-600"
@@ -115,18 +176,6 @@ export default function Home(){
           label="Schedule"
           summaryKey="schedule"
         />
-
-        <button
-          onClick={() => setShowReportModal(true)}
-          className="rounded-lg border border-gray-200 bg-white p-3 hover:shadow-md transition-shadow cursor-pointer flex flex-col items-center justify-center text-center min-h-[100px]"
-        >
-          <div className="w-10 h-10 rounded-lg bg-red-100 flex items-center justify-center mb-2">
-            <svg className="w-5 h-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-            </svg>
-          </div>
-          <div className="text-sm font-semibold text-gray-900">Project Report</div>
-        </button>
       </div>
 
       {/* Main Content - Employee Community and Calendar */}
@@ -137,8 +186,8 @@ export default function Home(){
         </div>
         
         {/* Right column - Calendar (Always Open, Smaller) */}
-        <div className="rounded-xl border bg-white p-4 flex-shrink-0">
-          <h3 className="text-lg font-semibold mb-3">Calendar</h3>
+        <div className="rounded-[12px] border border-gray-200/80 bg-white shadow-sm p-5 flex-shrink-0">
+          <h3 className="text-lg font-bold text-gray-900 mb-4 tracking-tight">Calendar</h3>
           <div className="overflow-auto" style={{ maxHeight: '600px' }}>
             <Calendar />
           </div>
@@ -158,20 +207,129 @@ export default function Home(){
   );
 }
 
-function QuickLinkCard({ to, iconBg, iconColor, iconPath, label, summaryKey }: { to: string; iconBg: string; iconColor: string; iconPath: string; label: string; summaryKey: 'clock' | 'tasks' | 'requests' | 'schedule' }) {
+// Clock In/Out Hero Card - Larger, prominent card
+function ClockInOutHeroCard() {
   const today = formatDateLocal(new Date());
+  const [currentTime, setCurrentTime] = useState(new Date());
   
-  // Get current user for filtering
   const { data: currentUser } = useQuery({
     queryKey: ['me'],
     queryFn: () => api<any>('GET', '/auth/me'),
   });
   
-  // Clock-in/out summary
   const { data: todayAttendance } = useQuery({
     queryKey: ['attendance-today', today],
     queryFn: () => api<any[]>('GET', `/settings/attendance/list?start_date=${today}&end_date=${today}`).catch(() => []),
-    enabled: summaryKey === 'clock',
+  });
+  
+  // Update time every minute for working duration
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setCurrentTime(new Date());
+    }, 60000); // Update every minute
+    return () => clearInterval(interval);
+  }, []);
+  
+  const clockStatus = useMemo(() => {
+    if (!currentUser?.id || !Array.isArray(todayAttendance)) {
+      return { status: 'not_clocked', message: "You haven't clocked in today!", time: null, workingDuration: null };
+    }
+    const myAttendance = todayAttendance.find((a: any) => {
+      if (String(a.worker_id) !== String(currentUser?.id)) return false;
+      const attendanceDate = a.clock_in_time 
+        ? new Date(a.clock_in_time).toISOString().split('T')[0]
+        : (a.clock_out_time ? new Date(a.clock_out_time).toISOString().split('T')[0] : null);
+      return attendanceDate === today;
+    });
+    
+    if (!myAttendance || !myAttendance.clock_in_time) {
+      return { status: 'not_clocked', message: "Ready to clock in", time: null, workingDuration: null };
+    }
+    if (myAttendance.clock_in_time && myAttendance.clock_out_time) {
+      const clockInTime = new Date(myAttendance.clock_in_time).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+      const clockOutTime = new Date(myAttendance.clock_out_time).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+      return { 
+        status: 'completed', 
+        message: `Clocked in at ${clockInTime}, out at ${clockOutTime}`, 
+        time: { in: clockInTime, out: clockOutTime },
+        workingDuration: null
+      };
+    }
+    if (myAttendance.clock_in_time) {
+      const timeStr = new Date(myAttendance.clock_in_time).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+      // Calculate working duration using currentTime state
+      const clockInDate = new Date(myAttendance.clock_in_time);
+      const diffMs = currentTime.getTime() - clockInDate.getTime();
+      const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+      const diffMinutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+      const workingDuration = diffHours > 0 
+        ? `${diffHours}h ${diffMinutes}m`
+        : `${diffMinutes}m`;
+      return { 
+        status: 'clocked_in', 
+        message: `Clocked in at ${timeStr}`, 
+        time: { in: timeStr },
+        workingDuration
+      };
+    }
+    return { status: 'not_clocked', message: "Ready to clock in", time: null, workingDuration: null };
+  }, [todayAttendance, currentUser?.id, today, currentTime]);
+  
+  return (
+    <Link
+      to="/clock-in-out"
+      state={{ fromHome: true }}
+      className="group rounded-[12px] border border-orange-200/60 bg-gradient-to-br from-orange-50/80 via-orange-50/50 to-white shadow-sm hover:shadow-md hover:shadow-orange-200/30 hover:-translate-y-0.5 transition-all duration-200 cursor-pointer flex flex-col p-6"
+    >
+      <div className="flex items-center gap-4 mb-4">
+        <div className="w-12 h-12 rounded-[10px] border border-orange-200/40 bg-white/60 flex items-center justify-center flex-shrink-0 shadow-sm">
+          <svg className="w-5 h-5 text-orange-600" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+        </div>
+        <div className="flex-1">
+          <div className="text-xl font-bold text-gray-900 mb-1 tracking-tight">Clock In / Out</div>
+          <div className={`text-sm font-semibold ${
+            clockStatus.status === 'clocked_in' ? 'text-green-600' :
+            clockStatus.status === 'completed' ? 'text-gray-500' :
+            'text-orange-600'
+          }`}>
+            {clockStatus.status === 'clocked_in' ? 'Clocked In' :
+             clockStatus.status === 'completed' ? 'Completed' :
+             'Not Clocked In'}
+          </div>
+          {clockStatus.status === 'clocked_in' && clockStatus.workingDuration && (
+            <div className="text-xs text-gray-500 mt-0.5 font-medium">
+              Working for {clockStatus.workingDuration}
+            </div>
+          )}
+        </div>
+      </div>
+      
+      <div className="text-sm text-gray-600 mb-5 line-clamp-2 leading-relaxed">
+        {clockStatus.message}
+      </div>
+      
+      <div className="w-full px-4 py-3 rounded-lg bg-orange-600 hover:bg-orange-700 active:bg-orange-800 text-white font-semibold text-center transition-all duration-150 shadow-sm hover:shadow-md active:scale-[0.98]">
+        {clockStatus.status === 'clocked_in' ? 'Clock Out' : 'Clock In'}
+      </div>
+    </Link>
+  );
+}
+
+// Quick Action Card - Smaller cards for Tasks, Requests, Schedule
+function QuickActionCard({ to, iconBg, iconColor, iconPath, label, summaryKey }: { 
+  to: string; 
+  iconBg: string; 
+  iconColor: string; 
+  iconPath: string; 
+  label: string; 
+  summaryKey: 'tasks' | 'requests' | 'schedule' 
+}) {
+  const today = formatDateLocal(new Date());
+  const { data: currentUser } = useQuery({
+    queryKey: ['me'],
+    queryFn: () => api<any>('GET', '/auth/me'),
   });
   
   // Tasks summary
@@ -199,91 +357,55 @@ function QuickLinkCard({ to, iconBg, iconColor, iconPath, label, summaryKey }: {
   });
   
   const summary = useMemo(() => {
-    if (summaryKey === 'clock') {
-      // Find today's attendance for current user
-      const myAttendance = Array.isArray(todayAttendance) 
-        ? todayAttendance.find((a: any) => {
-            // Filter by worker_id
-            if (String(a.worker_id) !== String(currentUser?.id)) return false;
-            
-            // Verify the attendance is actually from today
-            const attendanceDate = a.clock_in_time 
-              ? new Date(a.clock_in_time).toISOString().split('T')[0]
-              : (a.clock_out_time ? new Date(a.clock_out_time).toISOString().split('T')[0] : null);
-            
-            return attendanceDate === today;
-          })
-        : null;
-      
-      // If no attendance found for today, user hasn't clocked in
-      if (!myAttendance || !myAttendance.clock_in_time) {
-        return "You haven't clocked in today!";
-      }
-      
-      // If has clock-in and clock-out, both are done
-      if (myAttendance.clock_in_time && myAttendance.clock_out_time) {
-        return "You've completed clock-in and out today, great job!";
-      }
-      
-      // If only has clock-in, show time and mention clock-out is pending
-      if (myAttendance.clock_in_time) {
-        const timeStr = new Date(myAttendance.clock_in_time).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
-        return `Clocked in at ${timeStr} - Clock-out pending`;
-      }
-      
-      return "You haven't clocked in today!";
-    }
     if (summaryKey === 'tasks') {
       const accepted = Array.isArray(tasksData?.accepted) ? tasksData.accepted.length : 0;
       const inProgress = Array.isArray(tasksData?.in_progress) ? tasksData.in_progress.length : 0;
-      const parts = [];
-      if (accepted > 0) parts.push(`${accepted} To do`);
-      if (inProgress > 0) parts.push(`${inProgress} In progress`);
-      return parts.length > 0 ? parts.join(' • ') : 'No tasks';
+      const total = accepted + inProgress;
+      return total > 0 ? `${total} pending` : 'All caught up 🎉';
     }
     if (summaryKey === 'requests') {
-      // Count New and Pending (in process) requests separately
       const received = Array.isArray(requestsData?.received) ? requestsData.received : [];
       const sent = Array.isArray(requestsData?.sent) ? requestsData.sent : [];
-      
-      // New requests (status === 'new')
       const newReceived = received.filter((r: any) => r.status === 'new').length;
       const newSent = sent.filter((r: any) => r.status === 'new').length;
       const totalNew = newReceived + newSent;
-      
-      // Pending requests (in process but not new - status !== 'accepted' && status !== 'refused' && status !== 'new')
       const pendingReceived = received.filter((r: any) => r.status !== 'accepted' && r.status !== 'refused' && r.status !== 'new').length;
       const pendingSent = sent.filter((r: any) => r.status !== 'accepted' && r.status !== 'refused' && r.status !== 'new').length;
       const totalPending = pendingReceived + pendingSent;
-      
-      const parts = [];
-      if (totalNew > 0) parts.push(`${totalNew} New`);
-      if (totalPending > 0) parts.push(`${totalPending} Pending`);
-      
-      return parts.length > 0 ? parts.join(' • ') : 'No pending requests';
+      const total = totalNew + totalPending;
+      if (totalNew > 0 && totalPending > 0) {
+        return `${totalNew} new, ${totalPending} awaiting`;
+      } else if (totalNew > 0) {
+        return `${totalNew} new`;
+      } else if (totalPending > 0) {
+        return `${totalPending} awaiting`;
+      }
+      return 'No pending requests';
     }
     if (summaryKey === 'schedule') {
       const hasShift = Array.isArray(shiftsToday) && shiftsToday.length > 0;
-      return hasShift ? `You have ${shiftsToday.length} shift${shiftsToday.length > 1 ? 's' : ''} today` : 'No shifts today';
+      return hasShift ? `Today's shift` : 'No shifts today';
     }
     return '';
-  }, [summaryKey, todayAttendance, tasksData, requestsData, shiftsToday, currentUser?.id]);
+  }, [summaryKey, tasksData, requestsData, shiftsToday, currentUser?.id]);
   
   return (
     <Link
       to={to}
       state={{ fromHome: true }}
-      className="rounded-lg border border-gray-200 bg-white p-3 hover:shadow-md transition-shadow cursor-pointer flex flex-col items-center justify-center text-center min-h-[100px]"
+      className="group rounded-[12px] border border-gray-200/80 bg-white shadow-sm hover:shadow-md hover:-translate-y-0.5 hover:border-gray-300 transition-all duration-200 cursor-pointer flex flex-col p-5"
     >
-      <div className={`w-10 h-10 rounded-lg ${iconBg} flex items-center justify-center mb-2`}>
-        <svg className={`w-5 h-5 ${iconColor}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={iconPath} />
-        </svg>
+      <div className="flex items-center gap-3 mb-3">
+        <div className="w-10 h-10 rounded-[10px] border border-gray-200 bg-gray-50/50 flex items-center justify-center flex-shrink-0 group-hover:bg-gray-100/80 transition-colors">
+          <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" d={iconPath} />
+          </svg>
+        </div>
+        <div className="text-base font-bold text-gray-900 tracking-tight">{label}</div>
       </div>
-      <div className="text-sm font-semibold text-gray-900 mb-1">{label}</div>
-      {summary && (
-        <div className="text-xs text-gray-500 mt-1 line-clamp-2">{summary}</div>
-      )}
+      <div className="text-sm text-gray-500 font-medium leading-relaxed">
+        {summary}
+      </div>
     </Link>
   );
 }
