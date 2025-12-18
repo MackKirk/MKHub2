@@ -285,22 +285,22 @@ export default function EmployeeCommunity({ expanded = false, feedMode = false }
   };
 
   return (
-    <div className={`rounded-xl border bg-white p-4 ${expanded ? 'h-full flex flex-col' : feedMode ? 'h-full flex flex-col min-w-0' : ''}`}>
-      <div className="mb-4 flex items-center justify-between flex-shrink-0">
-        <h3 className="text-lg font-semibold">Employee Community</h3>
+    <div className={`rounded-[12px] border border-gray-200/80 bg-white shadow-sm p-5 ${expanded ? 'h-full flex flex-col' : feedMode ? 'h-full flex flex-col min-w-0' : ''}`}>
+      <div className="mb-5 flex items-center justify-between flex-shrink-0">
+        <h3 className="text-lg font-bold text-gray-900 tracking-tight">Employee Community</h3>
       </div>
 
       {/* Filter tabs */}
-      <div className="flex gap-2 mb-4 overflow-x-auto flex-shrink-0">
+      <div className="flex gap-2 mb-5 overflow-x-auto flex-shrink-0">
         {(['all', 'unread', 'urgent', 'required', 'announcements'] as const).map((f) => (
           <button
             key={f}
             onClick={() => setFilter(f)}
             className={`
-              px-4 py-2 rounded-full text-sm whitespace-nowrap transition-colors
+              px-4 py-2 rounded-lg text-sm whitespace-nowrap transition-all duration-150 font-medium
               ${filter === f
-                ? 'bg-blue-100 text-blue-800 font-medium'
-                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                ? 'bg-blue-600 text-white shadow-sm active:scale-[0.98]'
+                : 'bg-gray-100 text-gray-600 hover:bg-gray-200 active:bg-gray-300 active:scale-[0.98] border border-gray-200/60'
               }
             `}
           >
@@ -321,10 +321,18 @@ export default function EmployeeCommunity({ expanded = false, feedMode = false }
           </div>
         ) : (
           filteredPosts.map((post) => {
+            // Check if post is Urgent or Required
+            const isUrgent = post.tags?.includes('Urgent') || false;
+            const isRequired = post.requires_read_confirmation || post.tags?.includes('Required') || false;
+            
             return (
               <div
                 key={post.id}
-                className="border rounded-lg p-4 hover:shadow-md transition-shadow cursor-pointer overflow-hidden"
+                className={`group border rounded-[12px] p-4 hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 cursor-pointer overflow-hidden ${
+                  isUrgent ? 'border-red-300/60 bg-red-50/50 shadow-sm' :
+                  isRequired ? 'border-orange-300/60 bg-orange-50/50 shadow-sm' :
+                  'border-gray-200/50 bg-gray-50/30 shadow-sm'
+                }`}
                 onClick={(e) => {
                   e.stopPropagation();
                   handleOpenModal(post);
@@ -348,14 +356,30 @@ export default function EmployeeCommunity({ expanded = false, feedMode = false }
 
                   {/* Content */}
                   <div className="flex-1 min-w-0 overflow-hidden">
-                    <div className="flex items-center gap-2 mb-1">
-                      <h4 className="font-semibold text-gray-900 truncate">{post.title}</h4>
+                    <div className="flex items-center gap-2 mb-1.5">
+                      <h4 className={`font-bold text-base truncate tracking-tight ${
+                        isUrgent ? 'text-red-900' :
+                        isRequired ? 'text-orange-900' :
+                        'text-gray-700'
+                      }`}>
+                        {post.title}
+                      </h4>
                       {post.is_unread && (
                         <div className="w-2 h-2 rounded-full bg-red-500 flex-shrink-0"></div>
                       )}
+                      {(isUrgent || isRequired) && (
+                        <span className={`px-2 py-0.5 rounded text-xs font-bold flex-shrink-0 tracking-wide ${
+                          isUrgent ? 'bg-red-600 text-white' :
+                          'bg-orange-600 text-white'
+                        }`}>
+                          {isUrgent ? 'URGENT' : 'REQUIRED'}
+                        </span>
+                      )}
                     </div>
 
-                    <div className="text-sm text-gray-600 mb-2">
+                    <div className={`text-xs mb-2.5 font-medium ${
+                      isUrgent || isRequired ? 'text-gray-500' : 'text-gray-400'
+                    }`}>
                       {post.author_name || 'Unknown'} · {formatTimeAgo(post.created_at)}
                     </div>
 
@@ -373,30 +397,45 @@ export default function EmployeeCommunity({ expanded = false, feedMode = false }
                       </div>
                     )}
 
-                    {/* Content preview - single line truncated with ellipsis */}
-                    <p className="text-sm text-gray-700 truncate mb-2">
+                    {/* Content preview - 2 lines max in feed mode */}
+                    <p className={`text-sm mb-3 leading-relaxed ${feedMode ? 'line-clamp-2' : 'truncate'} ${
+                      isUrgent || isRequired ? 'text-gray-600' : 'text-gray-500'
+                    }`}>
                       {post.content}
                     </p>
 
                     {/* Engagement */}
-                    <div className="flex items-center gap-4 text-sm text-gray-500">
+                    <div className="flex items-center gap-4 text-sm">
                       <button
                         onClick={(e) => handleLike(e, post)}
-                        className={`flex items-center gap-1 hover:opacity-70 transition ${post.user_has_liked ? 'text-red-600' : 'text-gray-500'}`}
+                        className={`flex items-center gap-1.5 hover:opacity-80 active:opacity-60 transition-all ${post.user_has_liked ? 'text-red-600' : 'text-gray-500'}`}
                       >
                         {post.user_has_liked ? '❤️' : '🤍'}
-                        <span>{post.likes_count || 0}</span>
+                        <span className="font-medium">{post.likes_count || 0}</span>
                       </button>
                       <button
                         onClick={(e) => handleCommentClick(e, post)}
-                        className="flex items-center gap-1 hover:opacity-70 transition text-gray-500"
+                        className="flex items-center gap-1.5 hover:opacity-80 active:opacity-60 transition-all text-gray-500"
                       >
                         💬
-                        <span>{post.comments_count || 0}</span>
+                        <span className="font-medium">{post.comments_count || 0}</span>
                       </button>
-                      <span className="ml-auto text-xs text-gray-400">
-                        Click to view full post
-                      </span>
+                      {feedMode && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleOpenModal(post);
+                          }}
+                          className="ml-auto px-3 py-1.5 text-xs font-semibold text-blue-600 hover:text-blue-700 hover:bg-blue-50 active:bg-blue-100 rounded-lg transition-all duration-150 active:scale-[0.98]"
+                        >
+                          View post →
+                        </button>
+                      )}
+                      {!feedMode && (
+                        <span className="ml-auto text-xs text-gray-400 font-medium">
+                          Click to view full post
+                        </span>
+                      )}
                     </div>
                   </div>
                 </div>
