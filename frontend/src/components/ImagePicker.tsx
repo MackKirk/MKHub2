@@ -212,17 +212,19 @@ export default function ImagePicker({
     return Math.max(cw / img.naturalWidth, ch / img.naturalHeight);
   }, [img, cw, ch]);
 
-  // clamp translation so image covers the frame (or allows centering when zoom < 1)
+  // clamp translation so image covers the frame (or allows movement within container when zoom < 1)
   const clamp = (nx:number, ny:number, nz:number)=>{
     if(!img) return { x: nx, y: ny };
     const dw = img.naturalWidth * coverScale * nz;
     const dh = img.naturalHeight * coverScale * nz;
-    // If zoom < 1, allow centering (image smaller than container)
+    // If zoom < 1, allow movement within container (image smaller than container)
     if (nz < 1) {
-      const maxX = (cw - dw) / 2;
-      const maxY = (ch - dh) / 2;
-      const minX = (cw - dw) / 2;
-      const minY = (ch - dh) / 2;
+      // Image can move from left edge (0) to right edge (cw - dw)
+      // and from top edge (0) to bottom edge (ch - dh)
+      const minX = 0;
+      const maxX = cw - dw;
+      const minY = 0;
+      const maxY = ch - dh;
       return { x: Math.max(minX, Math.min(maxX, nx)), y: Math.max(minY, Math.min(maxY, ny)) };
     }
     // If zoom >= 1, ensure image covers the frame
@@ -556,7 +558,79 @@ export default function ImagePicker({
       const scaleOut = Math.max(1, Number(exportScale||1));
       canvas.width = Math.round(targetWidth * scaleOut); canvas.height = Math.round(targetHeight * scaleOut);
       const ctx = canvas.getContext('2d')!;
-      ctx.fillStyle = '#fff'; ctx.fillRect(0,0,canvas.width,canvas.height);
+      
+      // Check if we need blur background (image doesn't fill container)
+      const dw = img.naturalWidth * coverScale * zoom;
+      const dh = img.naturalHeight * coverScale * zoom;
+      const needsBlur = dw < cw || dh < ch;
+      
+      if (needsBlur) {
+        // Draw blurred background first
+        // Use a smaller canvas for blur to improve performance
+        const blurScale = 0.3; // Scale down for faster blur
+        const blurCanvas = document.createElement('canvas');
+        blurCanvas.width = Math.round(canvas.width * blurScale);
+        blurCanvas.height = Math.round(canvas.height * blurScale);
+        const blurCtx = blurCanvas.getContext('2d')!;
+        
+        // Calculate scale to fill the blur canvas
+        const scaleX = blurCanvas.width / img.naturalWidth;
+        const scaleY = blurCanvas.height / img.naturalHeight;
+        const fillScale = Math.max(scaleX, scaleY);
+        const scaledWidth = img.naturalWidth * fillScale;
+        const scaledHeight = img.naturalHeight * fillScale;
+        const offsetX = (blurCanvas.width - scaledWidth) / 2;
+        const offsetY = (blurCanvas.height - scaledHeight) / 2;
+        
+        // Draw image scaled to fill blur canvas
+        blurCtx.drawImage(img, offsetX, offsetY, scaledWidth, scaledHeight);
+        
+        // Apply blur using a simple box blur (faster on smaller canvas)
+        const imageData = blurCtx.getImageData(0, 0, blurCanvas.width, blurCanvas.height);
+        const data = imageData.data;
+        const blurRadius = 8; // Smaller radius for smaller canvas
+        const passes = 2;
+        
+        for (let pass = 0; pass < passes; pass++) {
+          const tempData = new Uint8ClampedArray(data);
+          for (let y = 0; y < blurCanvas.height; y++) {
+            for (let x = 0; x < blurCanvas.width; x++) {
+              let r = 0, g = 0, b = 0, count = 0;
+              for (let dy = -blurRadius; dy <= blurRadius; dy++) {
+                for (let dx = -blurRadius; dx <= blurRadius; dx++) {
+                  const nx = x + dx;
+                  const ny = y + dy;
+                  if (nx >= 0 && nx < blurCanvas.width && ny >= 0 && ny < blurCanvas.height) {
+                    const idx = (ny * blurCanvas.width + nx) * 4;
+                    r += tempData[idx];
+                    g += tempData[idx + 1];
+                    b += tempData[idx + 2];
+                    count++;
+                  }
+                }
+              }
+              if (count > 0) {
+                const idx = (y * blurCanvas.width + x) * 4;
+                data[idx] = r / count;
+                data[idx + 1] = g / count;
+                data[idx + 2] = b / count;
+                data[idx + 3] = tempData[idx + 3]; // Keep alpha
+              }
+            }
+          }
+        }
+        
+        blurCtx.putImageData(imageData, 0, 0);
+        
+        // Draw blurred background scaled up to main canvas
+        ctx.drawImage(blurCanvas, 0, 0, canvas.width, canvas.height);
+      } else {
+        // Fill with white if no blur needed
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+      }
+      
+      // Draw the main image on top
       const scale = coverScale * zoom;
       const sx = -tx / scale;
       const sy = -ty / scale;
