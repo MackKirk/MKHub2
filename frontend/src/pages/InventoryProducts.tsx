@@ -6,7 +6,7 @@ import { useConfirm } from '@/components/ConfirmProvider';
 import ImagePicker from '@/components/ImagePicker';
 import { useNavigate } from 'react-router-dom';
 
-type Material = { id:number, name:string, supplier_name?:string, category?:string, unit?:string, price?:number, last_updated?:string, unit_type?:string, units_per_package?:number, coverage_sqs?:number, coverage_ft2?:number, coverage_m2?:number, description?:string, image_base64?:string };
+type Material = { id:number, name:string, supplier_name?:string, category?:string, unit?:string, price?:number, last_updated?:string, unit_type?:string, units_per_package?:number, coverage_sqs?:number, coverage_ft2?:number, coverage_m2?:number, description?:string, image_base64?:string, technical_manual_url?:string };
 
 // Helper functions for currency formatting (CAD)
 const formatCurrency = (value: string): string => {
@@ -151,6 +151,7 @@ export default function InventoryProducts(){
   const [imageDataUrl, setImageDataUrl] = useState<string>('');
   const [imagePickerOpen, setImagePickerOpen] = useState(false);
   const [isSavingProduct, setIsSavingProduct] = useState(false);
+  const [technicalManualUrl, setTechnicalManualUrl] = useState<string>('');
 
   const [viewRelated, setViewRelated] = useState<number|null>(null);
   const [relatedList, setRelatedList] = useState<any[]>([]);
@@ -159,6 +160,9 @@ export default function InventoryProducts(){
   const [addRelatedSearch, setAddRelatedSearch] = useState('');
   const [addRelatedResults, setAddRelatedResults] = useState<any[]>([]);
   const [relatedCounts, setRelatedCounts] = useState<Record<number, number>>({});
+  const [productTab, setProductTab] = useState<'details'|'usage'>('details');
+  const [productUsage, setProductUsage] = useState<any[]>([]);
+  const [loadingUsage, setLoadingUsage] = useState(false);
 
   const { data: supplierOptions } = useQuery({ queryKey:['invSuppliersOptions'], queryFn: ()=> api<any[]>('GET','/inventory/suppliers') });
 
@@ -221,6 +225,25 @@ export default function InventoryProducts(){
   const openViewModal = (p: Material) => {
     setViewing(p);
     setOpen(true);
+    setProductTab('details');
+    setProductUsage([]);
+    // Load usage data when opening modal
+    if (p.id) {
+      loadProductUsage(p.id);
+    }
+  };
+
+  const loadProductUsage = async (productId: number) => {
+    setLoadingUsage(true);
+    try {
+      const usage = await api<any[]>('GET', `/estimate/products/${productId}/usage`);
+      setProductUsage(usage || []);
+    } catch (e) {
+      console.error('Failed to load product usage:', e);
+      setProductUsage([]);
+    } finally {
+      setLoadingUsage(false);
+    }
   };
 
   const openEditModal = () => {
@@ -242,6 +265,7 @@ export default function InventoryProducts(){
     setCovFt2(viewing.coverage_ft2?.toString()||'');
     setCovM2(viewing.coverage_m2?.toString()||'');
     setImageDataUrl(viewing.image_base64||'');
+    setTechnicalManualUrl(viewing.technical_manual_url||'');
     setViewing(null);
   };
 
@@ -264,7 +288,10 @@ export default function InventoryProducts(){
       toast.success('Deleted');
       resetModal(); // Close modal after deletion
       await refetch();
-    }catch(_e){ toast.error('Failed'); }
+    }catch(e: any){ 
+      const errorMessage = e?.message || 'Failed to delete product';
+      toast.error(errorMessage);
+    }
   };
 
   const handleViewRelated = async (id: number)=>{
@@ -288,7 +315,9 @@ export default function InventoryProducts(){
     setOpen(false);
     setName(''); setNameError(false); setNewSupplier(''); setNewCategory(''); setUnit(''); setPrice(''); setPriceDisplay(''); setPriceFocused(false); setPriceError(false); setDesc('');
     setUnitsPerPackage(''); setCovSqs(''); setCovFt2(''); setCovM2(''); setUnitType('unitary');     setImageDataUrl('');
-    setImagePickerOpen(false);
+    setTechnicalManualUrl(''); setImagePickerOpen(false);
+    setProductTab('details');
+    setProductUsage([]);
   };
 
   const searchRelatedProducts = async (txt: string)=>{
@@ -584,7 +613,30 @@ export default function InventoryProducts(){
                     </div>
                   </div>
                 </div>
-                <div className="flex items-center gap-3 text-sm" onClick={(e) => e.stopPropagation()}>
+                <div className="flex items-center gap-2 text-sm" onClick={(e) => e.stopPropagation()}>
+                  {p.technical_manual_url && (() => {
+                    const url = p.technical_manual_url.trim();
+                    const absoluteUrl = url.match(/^https?:\/\//i) ? url : `https://${url}`;
+                    return (
+                      <a
+                        href={absoluteUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (!absoluteUrl || absoluteUrl === 'https://') {
+                            e.preventDefault();
+                          }
+                        }}
+                        className="p-2 rounded hover:bg-gray-100 transition-colors"
+                        title="View Technical Manual"
+                      >
+                        <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                        </svg>
+                      </a>
+                    );
+                  })()}
                   <button
                     onClick={() => handleViewRelated(p.id)}
                     className="px-3 py-1.5 rounded bg-brand-red text-white"
@@ -640,7 +692,34 @@ export default function InventoryProducts(){
                     </div>
                   </div>
 
-                  {/* Product Details */}
+                  {/* Tabs */}
+                  <div className="px-6 border-b">
+                    <div className="flex gap-1">
+                      <button
+                        onClick={() => setProductTab('details')}
+                        className={`px-4 py-2 font-medium text-sm transition-colors ${
+                          productTab === 'details'
+                            ? 'text-brand-red border-b-2 border-brand-red'
+                            : 'text-gray-600 hover:text-gray-900'
+                        }`}
+                      >
+                        Details
+                      </button>
+                      <button
+                        onClick={() => setProductTab('usage')}
+                        className={`px-4 py-2 font-medium text-sm transition-colors ${
+                          productTab === 'usage'
+                            ? 'text-brand-red border-b-2 border-brand-red'
+                            : 'text-gray-600 hover:text-gray-900'
+                        }`}
+                      >
+                        Usage {productUsage.length > 0 && `(${productUsage.length})`}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Product Details or Usage */}
+                  {productTab === 'details' ? (
                   <div className="px-6 pb-6 space-y-4">
                     <div className="grid grid-cols-2 gap-4">
                       {viewing.unit && (
@@ -684,7 +763,113 @@ export default function InventoryProducts(){
                         <div className="text-gray-700 whitespace-pre-wrap">{viewing.description}</div>
                       </div>
                     )}
+                    {viewing.technical_manual_url && (() => {
+                      // Ensure URL is absolute (add https:// if missing protocol)
+                      const url = viewing.technical_manual_url.trim();
+                      const absoluteUrl = url.match(/^https?:\/\//i) ? url : `https://${url}`;
+                      return (
+                        <div className="bg-white border rounded-lg p-4">
+                          <div className="flex items-center justify-between">
+                            <div className="text-sm font-semibold text-gray-900">Technical Manual</div>
+                            <a
+                              href={absoluteUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              onClick={(e) => {
+                                // Prevent navigation if URL is invalid
+                                if (!absoluteUrl || absoluteUrl === 'https://') {
+                                  e.preventDefault();
+                                }
+                              }}
+                              className="px-4 py-2 rounded bg-brand-red text-white hover:bg-[#6d0d0d] transition-colors flex items-center gap-2"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                              </svg>
+                              View Manual
+                            </a>
+                          </div>
+                        </div>
+                      );
+                    })()}
                   </div>
+                  ) : (
+                    <div className="px-6 pb-6">
+                      {loadingUsage ? (
+                        <div className="py-8 text-center text-gray-500">Loading usage data...</div>
+                      ) : productUsage.length === 0 ? (
+                        <div className="py-8 text-center text-gray-500">
+                          <div className="text-lg mb-2">📦</div>
+                          <div>This product is not being used in any estimates.</div>
+                        </div>
+                      ) : (
+                        <div className="space-y-3">
+                          <div className="text-sm text-gray-600 mb-4">
+                            This product is being used in {productUsage.length} estimate{productUsage.length !== 1 ? 's' : ''}:
+                          </div>
+                          <div className="border rounded-lg divide-y">
+                            {productUsage.map((usage, idx) => (
+                              <div key={idx} className="p-4 hover:bg-gray-50">
+                                {usage.status === 'orphaned' ? (
+                                  <div className="flex items-center justify-between">
+                                    <div>
+                                      <div className="font-medium text-gray-900">Orphaned Estimate</div>
+                                      <div className="text-sm text-gray-500">Estimate #{usage.estimate_id} (deleted)</div>
+                                    </div>
+                                    <span className="px-2 py-1 text-xs rounded bg-amber-100 text-amber-800">Orphaned</span>
+                                  </div>
+                                ) : usage.status === 'project_deleted' || usage.project_deleted ? (
+                                  <div className="flex items-center justify-between">
+                                    <div className="flex-1">
+                                      <div className="font-medium text-gray-900">{usage.project_name || 'Project Deleted'}</div>
+                                      <div className="text-sm text-gray-500">Estimate #{usage.estimate_id} - Project was deleted</div>
+                                      {usage.created_at && (
+                                        <div className="text-xs text-gray-400 mt-1">
+                                          Created: {new Date(usage.created_at).toLocaleDateString()}
+                                        </div>
+                                      )}
+                                    </div>
+                                    <span className="px-2 py-1 text-xs rounded bg-red-100 text-red-800">Project Deleted</span>
+                                  </div>
+                                ) : (
+                                  <div className="flex items-center justify-between">
+                                    <div className="flex-1">
+                                      {usage.project_name ? (
+                                        <>
+                                          <div className="font-medium text-gray-900">{usage.project_name}</div>
+                                          {usage.client_name && (
+                                            <div className="text-sm text-gray-500">Client: {usage.client_name}</div>
+                                          )}
+                                          {usage.created_at && (
+                                            <div className="text-xs text-gray-400 mt-1">
+                                              Created: {new Date(usage.created_at).toLocaleDateString()}
+                                            </div>
+                                          )}
+                                        </>
+                                      ) : (
+                                        <div className="text-gray-500">No project associated</div>
+                                      )}
+                                    </div>
+                                    {usage.project_id && !usage.project_deleted && (
+                                      <button
+                                        onClick={() => {
+                                          navigate(`/projects/${usage.project_id}`);
+                                          resetModal();
+                                        }}
+                                        className="px-3 py-1.5 rounded bg-brand-red text-white hover:bg-[#6d0d0d] transition-colors text-sm"
+                                      >
+                                        View Project
+                                      </button>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               ) : (
                 // Edit/Create mode - form inputs
@@ -830,6 +1015,17 @@ export default function InventoryProducts(){
               )}
               <div className="col-span-2"><label className="text-xs font-semibold text-gray-700">Description / Notes</label><textarea className="w-full border rounded px-3 py-2 mt-1" rows={3} value={desc} onChange={e=>setDesc(e.target.value)} /></div>
               <div className="col-span-2">
+                <label className="text-xs font-semibold text-gray-700">Technical Manual URL</label>
+                <input 
+                  className="w-full border rounded px-3 py-2 mt-1" 
+                  type="url"
+                  placeholder="https://supplier.com/manual/product"
+                  value={technicalManualUrl} 
+                  onChange={e=>setTechnicalManualUrl(e.target.value)} 
+                />
+                <div className="text-xs text-gray-500 mt-1">Link to the technical manual on the supplier's website</div>
+              </div>
+              <div className="col-span-2">
                 <label className="text-xs font-semibold text-gray-700">Product Image</label>
                 <div className="mt-1 space-y-2">
                   <button
@@ -874,8 +1070,9 @@ export default function InventoryProducts(){
                     if(editing){
                       setViewing(editing);
                       setEditing(null);
-                      setName(''); setNameError(false); setNewSupplier(''); setNewCategory(''); setUnit(''); setPrice(''); setPriceDisplay(''); setPriceFocused(false); setPriceError(false); setDesc('');
+                      setName(''); setNameError(false); setNewSupplier(''); setNewCategory(''); setUnit('');                       setPrice(''); setPriceDisplay(''); setPriceFocused(false); setPriceError(false); setDesc('');
                       setUnitsPerPackage(''); setCovSqs(''); setCovFt2(''); setCovM2(''); setUnitType('unitary'); setImageDataUrl('');
+                      setTechnicalManualUrl('');
                     }else{
                       resetModal();
                     }
@@ -913,6 +1110,7 @@ export default function InventoryProducts(){
                         coverage_ft2: unitType==='coverage'? (covFt2? Number(covFt2): null) : null,
                         coverage_m2: unitType==='coverage'? (covM2? Number(covM2): null) : null,
                         image_base64: imageDataUrl || null,
+                        technical_manual_url: technicalManualUrl || null,
                       };
                       if(editing){ await api('PUT', `/estimate/products/${editing.id}`, payload); toast.success('Updated'); }
                       else{ await api('POST','/estimate/products', payload); toast.success('Created'); }

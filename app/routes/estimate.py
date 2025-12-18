@@ -31,6 +31,7 @@ class MaterialIn(BaseModel):
     coverage_sqs: Optional[float] = None
     coverage_ft2: Optional[float] = None
     coverage_m2: Optional[float] = None
+    technical_manual_url: Optional[str] = None
 
 
 @router.get("/products")
@@ -81,6 +82,7 @@ def create_product(body: MaterialIn, db: Session = Depends(get_db), _=Depends(re
         coverage_sqs=body.coverage_sqs,
         coverage_ft2=body.coverage_ft2,
         coverage_m2=body.coverage_m2,
+        technical_manual_url=body.technical_manual_url,
         last_updated=datetime.utcnow(),
     )
     db.add(row)
@@ -103,6 +105,77 @@ def update_product(product_id: int, body: MaterialIn, db: Session = Depends(get_
     return row
 
 
+@router.get("/products/{product_id}/usage")
+def get_product_usage(product_id: int, db: Session = Depends(get_db), _=Depends(require_permissions("inventory:products:read"))):
+    """Get list of projects/estimates where this product is being used"""
+    from ..models.models import Project, Client
+    
+    # Get all estimate items that use this product
+    estimate_items = db.query(EstimateItem).filter(EstimateItem.material_id == product_id).all()
+    
+    result = []
+    seen_estimates = set()
+    
+    for item in estimate_items:
+        # Skip if we've already processed this estimate
+        if item.estimate_id in seen_estimates:
+            continue
+        seen_estimates.add(item.estimate_id)
+        
+        # Get the estimate
+        estimate = db.query(Estimate).filter(Estimate.id == item.estimate_id).first()
+        if not estimate:
+            # Orphaned item - estimate doesn't exist
+            result.append({
+                "estimate_id": item.estimate_id,
+                "project_id": None,
+                "project_name": None,
+                "client_name": None,
+                "status": "orphaned",
+                "created_at": None
+            })
+            continue
+        
+        # Get project information
+        project_name = None
+        client_name = None
+        project_deleted = False
+        
+        if estimate.project_id:
+            project = db.query(Project).filter(Project.id == estimate.project_id).first()
+            if project:
+                project_name = project.name
+                # Get client information
+                if project.client_id:
+                    try:
+                        client = db.query(Client).filter(Client.id == project.client_id).first()
+                    except ProgrammingError as e:
+                        error_msg = str(e.orig) if hasattr(e, 'orig') else str(e)
+                        if 'is_system' in error_msg and 'does not exist' in error_msg:
+                            db.rollback()
+                            client = db.query(Client).options(defer(Client.is_system)).filter(Client.id == project.client_id).first()
+                        else:
+                            raise
+                    if client:
+                        client_name = client.display_name or client.name
+            else:
+                # Project was deleted but estimate still exists
+                project_deleted = True
+                project_name = f"Project {str(estimate.project_id)[:8]}... (deleted)"
+        
+        result.append({
+            "estimate_id": estimate.id,
+            "project_id": str(estimate.project_id) if estimate.project_id else None,
+            "project_name": project_name,
+            "client_name": client_name,
+            "status": "active" if not project_deleted else "project_deleted",
+            "project_deleted": project_deleted,
+            "created_at": estimate.created_at.isoformat() if estimate.created_at else None
+        })
+    
+    return result
+
+
 @router.delete("/products/{product_id}")
 def delete_product(product_id: int, db: Session = Depends(get_db), _=Depends(require_permissions("inventory:products:write"))):
     import traceback
@@ -112,6 +185,37 @@ def delete_product(product_id: int, db: Session = Depends(get_db), _=Depends(req
             raise HTTPException(status_code=404, detail="Product not found")
         
         print(f"DELETE PRODUCT - Attempting to delete: {product_id}")
+        
+        # Check if product is being used in estimate items
+        estimate_items = db.query(EstimateItem).filter(EstimateItem.material_id == product_id).all()
+        
+        if estimate_items:
+            # Check which items are orphaned (estimate doesn't exist) vs active
+            orphaned_items = []
+            active_items = []
+            
+            for item in estimate_items:
+                # Check if the estimate still exists
+                estimate_exists = db.query(Estimate).filter(Estimate.id == item.estimate_id).first() is not None
+                if not estimate_exists:
+                    orphaned_items.append(item)
+                else:
+                    active_items.append(item)
+            
+            # Delete orphaned items automatically
+            if orphaned_items:
+                print(f"Found {len(orphaned_items)} orphaned estimate items, deleting them...")
+                for item in orphaned_items:
+                    db.delete(item)
+                db.commit()
+                print(f"Deleted {len(orphaned_items)} orphaned estimate items")
+            
+            # If there are still active items, prevent deletion
+            if active_items:
+                raise HTTPException(
+                    status_code=400, 
+                    detail=f"Cannot delete product: it is being used in {len(active_items)} estimate item(s) in active estimates. Please remove it from all estimates first."
+                )
         
         # Delete all relationships before deleting the product
         relations = db.query(RelatedProduct).filter(
