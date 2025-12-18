@@ -48,7 +48,11 @@ def build_cover_page(c, data):
 
     # Draw company logo on top of the cover image (as in the original design)
     try:
-        logo_path = os.path.join(BASE_DIR, "assets", "logo.png")
+        template_style = data.get("template_style", "Mack Kirk")
+        if template_style == "Mack Kirk Metals":
+            logo_path = os.path.join(BASE_DIR, "assets", "MKM_logo.png")
+        else:
+            logo_path = os.path.join(BASE_DIR, "assets", "MK_logo.png")
         if os.path.exists(logo_path):
             logo = ImageReader(logo_path)
             c.drawImage(logo, 175, 690, width=230, height=125, mask="auto")
@@ -57,7 +61,7 @@ def build_cover_page(c, data):
 
     # Draw grey overlay bar (Asset 1) over the lower part of the hero image
     try:
-        overlay_path = os.path.join(BASE_DIR, "assets", "Asset 1@2x.png")
+        overlay_path = os.path.join(BASE_DIR, "assets", "cover_overlay.png")
         if os.path.exists(overlay_path):
             overlay = ImageReader(overlay_path)
             c.drawImage(overlay, 39, 304, width=516, height=60, mask="auto")
@@ -91,7 +95,7 @@ def build_cover_page(c, data):
     c.drawCentredString(page_width/2, 205, cover_title)
 
     order_number = data.get("order_number", "")
-    formatted_order = f"MK-{order_number}" if order_number else ""
+    formatted_order = order_number if order_number else ""
     c.setFont("Montserrat-Bold", 11.5)
     c.setFillColor(colors.black)
     c.drawRightString(580, 828, formatted_order)
@@ -129,12 +133,79 @@ def draw_wrapped_text(c, text, x, y, max_width, font="Montserrat-Bold", size=11.
     return y
 
 
+def draw_wrapped_text_right_aligned(c, text, right_x, y, max_width, font="Montserrat-Bold", size=11.5, color=colors.grey):
+    """Draw text right-aligned with line wrapping and justification. Each line is justified, except the last which is right-aligned."""
+    c.setFont(font, size)
+    c.setFillColor(color)
+
+    words = text.split()
+    if not words:
+        return y
+    
+    # Build lines with words
+    lines_words = []
+    current_line = []
+    for word in words:
+        test_words = current_line + [word]
+        test_text = " ".join(test_words)
+        if stringWidth(test_text, font, size) <= max_width:
+            current_line.append(word)
+        else:
+            if current_line:
+                lines_words.append(current_line)
+            current_line = [word]
+    if current_line:
+        lines_words.append(current_line)
+    
+    # Draw each line
+    for idx, line_words in enumerate(lines_words):
+        is_last_line = idx == len(lines_words) - 1
+        line_text = " ".join(line_words)
+        
+        if is_last_line or len(line_words) == 1:
+            # Last line or single word: right-align
+            c.drawRightString(right_x, y, line_text)
+        else:
+            # Justify the line by distributing space between words
+            # Calculate total width of words without spaces
+            word_widths = [stringWidth(word, font, size) for word in line_words]
+            words_width = sum(word_widths)
+            num_gaps = len(line_words) - 1
+            if num_gaps > 0:
+                # Total space to distribute between words
+                total_space = max_width - words_width
+                space_per_gap = total_space / num_gaps
+                
+                # Start at left edge of the text block (right_x - max_width)
+                # This ensures the block is right-aligned and fills exactly max_width
+                x = right_x - max_width
+                for word_idx, word in enumerate(line_words):
+                    c.drawString(x, y, word)
+                    x += word_widths[word_idx]
+                    # Add space after word (except for last word) to justify the line
+                    if word_idx < len(line_words) - 1:
+                        x += space_per_gap
+            else:
+                # Single word (shouldn't happen here, but just in case)
+                c.drawRightString(right_x, y, line_text)
+        
+        # Only move y down if this is not the last line
+        if idx < len(lines_words) - 1:
+            y -= size + 4
+    
+    return y
+
+
 def build_page2(c, data):
-    # Use new PNG template for page 2 (fallback to legacy name if needed)
-    template_path = os.path.join(BASE_DIR, "assets", "templates", "page_template.png")
+    # Use template based on template_style
+    template_style = data.get("template_style", "Mack Kirk")
+    if template_style == "Mack Kirk Metals":
+        template_path = os.path.join(BASE_DIR, "assets", "templates", "page_MKM_template.png")
+    else:
+        template_path = os.path.join(BASE_DIR, "assets", "templates", "page_MK_template.png")
     if not os.path.exists(template_path):
         # Backwards compatibility with old file name
-        template_path = os.path.join(BASE_DIR, "assets", "templates", "page_template.png")
+        template_path = os.path.join(BASE_DIR, "assets", "templates", "page_MK_template.png")
     if os.path.exists(template_path):
         bg = ImageReader(template_path)
         c.drawImage(bg, 0, 0, width=page_width, height=page_height)
@@ -165,7 +236,7 @@ def build_page2(c, data):
     c.drawString(40, 762, data.get("company_name", ""))
 
     order_number = data.get("order_number", "")
-    formatted_order = f"MK-{order_number}" if order_number else ""
+    formatted_order = order_number if order_number else ""
     c.setFont("Montserrat-Bold", 11.5)
     c.setFillColor(colors.black)
     c.drawRightString(580, 828, formatted_order)
@@ -182,11 +253,11 @@ def build_page2(c, data):
     y -= 30
 
     project_fields = [
-        ("Project Name / Description:", data.get("company_name", "")),
-        ("Project Address:", data.get("company_address", "")),
-        ("Proposal Created For:", data.get("proposal_created_for", "")),
-        ("Primary Contact Phone:", data.get("primary_contact_phone", "")),
+        ("Project Name / Description:", data.get("project_name", "")),
+        ("Project Address:", data.get("site_address", "")),
+        ("Proposal Created For:", data.get("client_name", "")),
         ("Primary Contact Name:", data.get("primary_contact_name", "")),
+        ("Primary Contact Phone:", data.get("primary_contact_phone", "")),
         ("Primary Contact E-mail:", data.get("primary_contact_email", "")),
     ]
     for label, value in project_fields:
@@ -205,23 +276,33 @@ def build_page2(c, data):
 
     details_fields = [
         ("Type of Project:", data.get("type_of_project", "")),
-        ("Other Notes (If Any):", data.get("other_notes", "")),
     ]
+    # Only add "Other Notes" if it has content
+    other_notes = data.get("other_notes", "").strip()
+    if other_notes:
+        details_fields.append(("Other Notes:", other_notes))
+    
     for i, (label, value) in enumerate(details_fields):
         c.setFont("Montserrat-Bold", 11.5)
         c.setFillColor(colors.black)
+        label_width = stringWidth(label, "Montserrat-Bold", 11.5)
+        label_end_x = 40 + label_width + 20  # left margin + label width + spacing
         c.drawString(40, y, label)
 
-        y = draw_wrapped_text(
-            c, value, 180, y,
-            page_width - 200,
+        # Calculate max width for wrapped text
+        # The text will be right-aligned, but must not overlap the label
+        # So available width is from label_end_x to right margin
+        available_width = (page_width - 40) - label_end_x  # from label end to right margin
+
+        y = draw_wrapped_text_right_aligned(
+            c, value, page_width - 40, y,
+            available_width,
             font="Montserrat-Bold", size=11, color=colors.grey
         )
-
-        if i == 0:
+        
+        # Add spacing between fields (only if not the last field)
+        if i < len(details_fields) - 1:
             y -= 20
-        else:
-            y -= 10
 
     page2_img = data.get("page2_image")
     if page2_img and os.path.exists(page2_img):

@@ -58,7 +58,7 @@ def draw_template_page(c, doc, data):
 
     order_number = data.get("order_number", "")
     if order_number:
-        formatted_order = f"MK-{order_number}" if not order_number.startswith("MK-") else order_number
+        formatted_order = order_number
         c.setFont("Montserrat-Bold", 11.5)
         c.setFillColor(colors.black)
         c.drawRightString(580, 828, formatted_order)
@@ -126,7 +126,7 @@ def build_estimate_fixed_pages(data, output_path):
 
     order_number = data.get("order_number", "")
     if order_number:
-        formatted_order = f"MK-{order_number}" if not order_number.startswith("MK-") else order_number
+        formatted_order = order_number
         c.setFont("Montserrat-Bold", 11.5)
         c.setFillColor(colors.black)
         c.drawRightString(580, 828, formatted_order)

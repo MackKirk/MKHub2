@@ -16,6 +16,7 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
+from reportlab.pdfbase.pdfmetrics import stringWidth
 
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -28,7 +29,11 @@ def draw_template_page3(c, doc, data):
     # Draw static background template (header, footer, globe, etc.)
     try:
         page_width, page_height = A4
-        bg_path = os.path.join(BASE_DIR, "assets", "templates", "page_template.png")
+        template_style = data.get("template_style", "Mack Kirk")
+        if template_style == "Mack Kirk Metals":
+            bg_path = os.path.join(BASE_DIR, "assets", "templates", "page_MKM_template.png")
+        else:
+            bg_path = os.path.join(BASE_DIR, "assets", "templates", "page_MK_template.png")
         if os.path.exists(bg_path):
             bg = ImageReader(bg_path)
             c.drawImage(bg, 0, 0, width=page_width, height=page_height)
@@ -49,21 +54,86 @@ def draw_template_page3(c, doc, data):
     c.drawString(40, 762, data.get("company_name", ""))
 
     order_number = data.get("order_number", "")
-    formatted_order = f"MK-{order_number}" if order_number else ""
+    formatted_order = order_number if order_number else ""
     c.setFont("Montserrat-Bold", 11.5)
     c.setFillColor(colors.black)
     c.drawRightString(580, 828, formatted_order)
+
+
+def wrap_text(text, font_name, font_size, max_width):
+    """Break text into multiple lines that fit within max_width."""
+    if not text:
+        return [""]
+    
+    words = text.split()
+    lines = []
+    current_line = []
+    
+    for word in words:
+        test_line = " ".join(current_line + [word])
+        if stringWidth(test_line, font_name, font_size) <= max_width:
+            current_line.append(word)
+        else:
+            if current_line:
+                lines.append(" ".join(current_line))
+            # If single word is too long, add it anyway (will overflow but won't break)
+            if stringWidth(word, font_name, font_size) > max_width:
+                lines.append(word)
+                current_line = []
+            else:
+                current_line = [word]
+    
+    if current_line:
+        lines.append(" ".join(current_line))
+    
+    return lines if lines else [""]
 
 
 class PricingTable(Flowable):
     def __init__(self, data):
         super().__init__()
         self.data = data
-        additional_costs = data.get("additional_costs") or []
-        show_total = data.get('show_total_in_pdf', True)
-        base_height = 70 if show_total else 50  # Reduced height if total is hidden
-        additional_height = len(additional_costs) * 18
-        self.height = base_height + additional_height
+        pricing_type = data.get('pricing_type', 'pricing')
+        
+        if pricing_type == 'estimate':
+            # For estimate: Bid Price (16) + GST (16) + TOTAL with spacing (36) + title/padding (46) = 114
+            show_total = data.get('show_total_in_pdf', True)
+            show_gst = data.get('show_gst_in_pdf', True)
+            height = 46  # Title and padding
+            height += 16  # Bid Price
+            if show_gst:
+                height += 16  # GST
+            if show_total:
+                height += 36  # TOTAL with spacing and line
+            self.height = height
+        else:
+            # For manual pricing: calculate based on additional costs, PST, GST, TOTAL
+            additional_costs = data.get("additional_costs") or []
+            show_total = data.get('show_total_in_pdf', True)
+            show_pst = data.get('show_pst_in_pdf', True)
+            show_gst = data.get('show_gst_in_pdf', True)
+            base_height = 70 if show_total else 50  # Reduced height if total is hidden
+            
+            # Calculate height considering wrapped text for each cost item
+            # Reserve space for price on right (about 100px width)
+            max_label_width = (A4[0] - 80) - 100  # Total width minus space for price
+            font_name = "Montserrat-Bold"
+            font_size = 11.5
+            additional_height = 0
+            for cost in additional_costs:
+                label = cost.get("label", "")
+                wrapped_lines = wrap_text(label, font_name, font_size, max_label_width)
+                # Each line takes 16px, with 2px spacing between lines
+                additional_height += len(wrapped_lines) * 16 + (len(wrapped_lines) - 1) * 2
+            
+            # Add height for PST and GST lines if they should be shown
+            pst_gst_height = 0
+            if show_pst:
+                pst_gst_height += 16
+            if show_gst:
+                pst_gst_height += 16
+            self.height = base_height + additional_height + pst_gst_height
+        
         self.top_padding = 10
 
     def draw(self):
@@ -79,50 +149,151 @@ class PricingTable(Flowable):
 
         y -= 30
 
-        additional_costs = self.data.get("additional_costs") or []
-        if additional_costs:
-            for cost in additional_costs:
-                c.setFont("Montserrat-Bold", 11.5)
-                c.setFillColor(colors.black)
-                label = cost.get("label", "")
-                value = f"${float(cost.get('value', 0)):,.2f}"
-                c.drawString(x_left, y, label)
-                c.setFont("Montserrat-Bold", 11.5)
-                c.setFillColor(colors.grey)
-                c.drawRightString(x_right, y, value)
-                y -= 16
-
-        # Check if total should be shown in PDF
-        show_total = self.data.get('show_total_in_pdf', True)
-        if show_total:
-            y -= 20
-            c.setStrokeColor(colors.HexColor("#d62028"))
-            c.setLineWidth(2)
-            c.line(x_right - 40, y + 20, x_right, y + 20)
-
-            # Calculate total: sum of all additional costs
-            total_calc = 0.0
-            for cost in additional_costs:
-                try:
-                    total_calc += float(cost.get('value', 0) or 0)
-                except Exception:
-                    pass
-            
-            # Use calculated total if provided total is invalid
-            total_val = self.data.get('total')
+        pricing_type = self.data.get('pricing_type', 'pricing')
+        
+        # For estimate pricing, show simplified format: Bid Price, GST, TOTAL
+        if pricing_type == 'estimate':
+            # Bid Price (Total Estimate)
+            estimate_total_estimate = self.data.get('estimate_total_estimate', 0.0)
             try:
-                total_val = float(total_val)
-                if not (total_val == total_val):  # Check for NaN
-                    total_val = total_calc
+                estimate_total_estimate = float(estimate_total_estimate)
             except Exception:
-                total_val = total_calc
-
+                estimate_total_estimate = 0.0
+            
             c.setFont("Montserrat-Bold", 11.5)
             c.setFillColor(colors.black)
-            c.drawString(x_left, y, "TOTAL:")
-
+            c.drawString(x_left, y, "Bid Price")
+            c.setFont("Montserrat-Bold", 11.5)
             c.setFillColor(colors.grey)
-            c.drawRightString(x_right, y, f"${total_val:,.2f}")
+            c.drawRightString(x_right, y, f"${estimate_total_estimate:,.2f}")
+            y -= 16
+
+            # GST
+            show_gst = self.data.get('show_gst_in_pdf', True)
+            if show_gst:
+                gst_value = self.data.get('gst_value', 0.0)
+                try:
+                    gst_value = float(gst_value)
+                except Exception:
+                    gst_value = 0.0
+                c.setFont("Montserrat-Bold", 11.5)
+                c.setFillColor(colors.black)
+                c.drawString(x_left, y, "GST")
+                c.setFont("Montserrat-Bold", 11.5)
+                c.setFillColor(colors.grey)
+                c.drawRightString(x_right, y, f"${gst_value:,.2f}")
+                y -= 16
+
+            # TOTAL
+            show_total = self.data.get('show_total_in_pdf', True)
+            if show_total:
+                y -= 20
+                c.setStrokeColor(colors.HexColor("#d62028"))
+                c.setLineWidth(2)
+                c.line(x_right - 40, y + 20, x_right, y + 20)
+
+                total_val = self.data.get('total')
+                try:
+                    total_val = float(total_val)
+                    if not (total_val == total_val):  # Check for NaN
+                        total_val = 0.0
+                except Exception:
+                    total_val = 0.0
+
+                c.setFont("Montserrat-Bold", 11.5)
+                c.setFillColor(colors.black)
+                c.drawString(x_left, y, "TOTAL")
+
+                c.setFillColor(colors.grey)
+                c.drawRightString(x_right, y, f"${total_val:,.2f}")
+        else:
+            # For manual pricing, show the full format
+            additional_costs = self.data.get("additional_costs") or []
+            if additional_costs:
+                # Reserve space for price on right (about 100px width)
+                max_label_width = width - 100
+                font_name = "Montserrat-Bold"
+                font_size = 11.5
+                
+                for cost in additional_costs:
+                    c.setFont(font_name, font_size)
+                    c.setFillColor(colors.black)
+                    label = cost.get("label", "")
+                    value = f"${float(cost.get('value', 0)):,.2f}"
+                    
+                    # Wrap text into multiple lines
+                    wrapped_lines = wrap_text(label, font_name, font_size, max_label_width)
+                    
+                    # Draw each line of the label
+                    line_y = y
+                    for i, line in enumerate(wrapped_lines):
+                        c.drawString(x_left, line_y, line)
+                        if i < len(wrapped_lines) - 1:
+                            line_y -= 16 + 2  # 16px line height + 2px spacing
+                    
+                    # Draw price aligned to the right, on the last line of the label
+                    c.setFont(font_name, font_size)
+                    c.setFillColor(colors.grey)
+                    c.drawRightString(x_right, line_y, value)
+                    
+                    # Move y down by the total height of this item (all lines)
+                    y -= len(wrapped_lines) * 16 + (len(wrapped_lines) - 1) * 2
+
+            # Show PST if enabled
+            show_pst = self.data.get('show_pst_in_pdf', True)
+            if show_pst:
+                pst_value = self.data.get('pst_value', 0.0)
+                try:
+                    pst_value = float(pst_value)
+                except Exception:
+                    pst_value = 0.0
+                c.setFont("Montserrat-Bold", 11.5)
+                c.setFillColor(colors.black)
+                c.drawString(x_left, y, "PST")
+                c.setFont("Montserrat-Bold", 11.5)
+                c.setFillColor(colors.grey)
+                c.drawRightString(x_right, y, f"${pst_value:,.2f}")
+                y -= 16
+
+            # Show GST if enabled
+            show_gst = self.data.get('show_gst_in_pdf', True)
+            if show_gst:
+                gst_value = self.data.get('gst_value', 0.0)
+                try:
+                    gst_value = float(gst_value)
+                except Exception:
+                    gst_value = 0.0
+                c.setFont("Montserrat-Bold", 11.5)
+                c.setFillColor(colors.black)
+                c.drawString(x_left, y, "GST")
+                c.setFont("Montserrat-Bold", 11.5)
+                c.setFillColor(colors.grey)
+                c.drawRightString(x_right, y, f"${gst_value:,.2f}")
+                y -= 16
+
+            # Check if total should be shown in PDF
+            show_total = self.data.get('show_total_in_pdf', True)
+            if show_total:
+                y -= 20
+                c.setStrokeColor(colors.HexColor("#d62028"))
+                c.setLineWidth(2)
+                c.line(x_right - 40, y + 20, x_right, y + 20)
+
+                # Use the provided total value (which is the Final Total with GST from the app)
+                total_val = self.data.get('total')
+                try:
+                    total_val = float(total_val)
+                    if not (total_val == total_val):  # Check for NaN
+                        total_val = 0.0
+                except Exception:
+                    total_val = 0.0
+
+                c.setFont("Montserrat-Bold", 11.5)
+                c.setFillColor(colors.black)
+                c.drawString(x_left, y, "TOTAL:")
+
+                c.setFillColor(colors.grey)
+                c.drawRightString(x_right, y, f"${total_val:,.2f}")
 
 
 class OptionalServicesTable(Flowable):
@@ -131,7 +302,19 @@ class OptionalServicesTable(Flowable):
         self.data = data
         optional_services = data.get("optional_services") or []
         base_height = 50
-        additional_height = len(optional_services) * 18
+        
+        # Calculate height considering wrapped text for each service
+        # Reserve space for price on right (about 100px width)
+        max_label_width = (A4[0] - 80) - 100  # Total width minus space for price
+        font_name = "Montserrat-Bold"
+        font_size = 11.5
+        additional_height = 0
+        for service in optional_services:
+            service_name = service.get("service", "")
+            wrapped_lines = wrap_text(service_name, font_name, font_size, max_label_width)
+            # Each line takes 16px, with 2px spacing between lines
+            additional_height += len(wrapped_lines) * 16 + (len(wrapped_lines) - 1) * 2
+        
         self.height = base_height + additional_height
         self.top_padding = 10
 
@@ -150,16 +333,34 @@ class OptionalServicesTable(Flowable):
 
         optional_services = self.data.get("optional_services") or []
         if optional_services:
+            # Reserve space for price on right (about 100px width)
+            max_label_width = width - 100
+            font_name = "Montserrat-Bold"
+            font_size = 11.5
+            
             for service in optional_services:
-                c.setFont("Montserrat-Bold", 11.5)
+                c.setFont(font_name, font_size)
                 c.setFillColor(colors.black)
                 service_name = service.get("service", "")
                 service_price = f"${float(service.get('price', 0)):,.2f}"
-                c.drawString(x_left, y, service_name)
-                c.setFont("Montserrat-Bold", 11.5)
+                
+                # Wrap text into multiple lines
+                wrapped_lines = wrap_text(service_name, font_name, font_size, max_label_width)
+                
+                # Draw each line of the service name
+                line_y = y
+                for i, line in enumerate(wrapped_lines):
+                    c.drawString(x_left, line_y, line)
+                    if i < len(wrapped_lines) - 1:
+                        line_y -= 16 + 2  # 16px line height + 2px spacing
+                
+                # Draw price aligned to the right, on the last line of the service name
+                c.setFont(font_name, font_size)
                 c.setFillColor(colors.grey)
-                c.drawRightString(x_right, y, service_price)
-                y -= 16
+                c.drawRightString(x_right, line_y, service_price)
+                
+                # Move y down by the total height of this item (all lines)
+                y -= len(wrapped_lines) * 16 + (len(wrapped_lines) - 1) * 2
 
 
 class YellowLine(Flowable):
@@ -463,7 +664,7 @@ def build_dynamic_pages(data, output_path):
 
     top_margin = 115
     # Bottom margin large enough to stay clear of the footer/globe, but still allow 3 rows of images.
-    bottom_margin = 100
+    bottom_margin = 80
 
     # Main content frame (sections, images, pricing, etc.)
     frame_main = Frame(

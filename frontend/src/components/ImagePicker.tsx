@@ -54,6 +54,7 @@ export default function ImagePicker({
   const dragging = useRef<{x:number, y:number, tx:number, ty:number}|null>(null);
   const [isPanning] = useState(true);
   const blobUrlRef = useRef<string | null>(null);
+  const [blurredImageUrl, setBlurredImageUrl] = useState<string | null>(null);
 
   useEffect(()=>{
     if(!isOpen){
@@ -63,6 +64,7 @@ export default function ImagePicker({
         URL.revokeObjectURL(blobUrlRef.current);
         blobUrlRef.current = null;
       }
+      setBlurredImageUrl(null);
     }
   }, [isOpen]);
 
@@ -210,15 +212,52 @@ export default function ImagePicker({
     return Math.max(cw / img.naturalWidth, ch / img.naturalHeight);
   }, [img, cw, ch]);
 
-  // clamp translation so image covers the frame
+  // clamp translation so image covers the frame (or allows centering when zoom < 1)
   const clamp = (nx:number, ny:number, nz:number)=>{
     if(!img) return { x: nx, y: ny };
     const dw = img.naturalWidth * coverScale * nz;
     const dh = img.naturalHeight * coverScale * nz;
+    // If zoom < 1, allow centering (image smaller than container)
+    if (nz < 1) {
+      const maxX = (cw - dw) / 2;
+      const maxY = (ch - dh) / 2;
+      const minX = (cw - dw) / 2;
+      const minY = (ch - dh) / 2;
+      return { x: Math.max(minX, Math.min(maxX, nx)), y: Math.max(minY, Math.min(maxY, ny)) };
+    }
+    // If zoom >= 1, ensure image covers the frame
     const minX = cw - dw;
     const minY = ch - dh;
     return { x: Math.min(0, Math.max(minX, nx)), y: Math.min(0, Math.max(minY, ny)) };
   };
+
+  // Check if image doesn't fill container (needs blur background)
+  const needsBlurBackground = useMemo(() => {
+    if (!img) return false;
+    const dw = img.naturalWidth * coverScale * zoom;
+    const dh = img.naturalHeight * coverScale * zoom;
+    return dw < cw || dh < ch;
+  }, [img, coverScale, zoom, cw, ch]);
+
+  // Generate blurred background image - simplified approach using the original image
+  // We'll use CSS filter blur directly in the render, which is more efficient
+  const generateBlurredImage = useCallback(async () => {
+    if (!img) return;
+    
+    // Simply use the original image URL - we'll apply CSS blur filter in the render
+    // This is much more efficient than processing pixels
+    // No need to revoke URLs here since we're using the same source as the main image
+    setBlurredImageUrl(img.src);
+  }, [img]);
+
+  // Generate blurred image when needed
+  useEffect(() => {
+    if (needsBlurBackground && img && !blurredImageUrl) {
+      generateBlurredImage();
+    } else if (!needsBlurBackground) {
+      setBlurredImageUrl(null);
+    }
+  }, [needsBlurBackground, img, blurredImageUrl, generateBlurredImage]);
 
   const loadFromFile = async (file: File)=>{
     const lower = (file.name||'').toLowerCase();
@@ -469,7 +508,7 @@ export default function ImagePicker({
       const currentZoom = zoomRef.current;
       const currentTx = txRef.current;
       const currentTy = tyRef.current;
-      const nz = Math.min(6, Math.max(1, currentZoom * factor));
+      const nz = Math.min(6, Math.max(0.1, currentZoom * factor));
       // Recalculate clamp values using current img and coverScale
       const dw = img.naturalWidth * coverScale * nz;
       const dh = img.naturalHeight * coverScale * nz;
@@ -740,15 +779,34 @@ export default function ImagePicker({
             <div className="p-4">
               <div className="mb-3 text-sm text-gray-600">Target: {targetWidth}×{targetHeight}px</div>
               <div ref={containerRef} className="relative bg-gray-100 overflow-hidden" style={{ width: cw, height: ch, userSelect:'none', cursor: (img && isPanning)? (dragging.current? 'grabbing':'grab') : 'default', touchAction:'none' as any }} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp}>
+                {blurredImageUrl && needsBlurBackground && img && (
+                  <img 
+                    src={blurredImageUrl} 
+                    draggable={false} 
+                    onDragStart={(e)=>e.preventDefault()} 
+                    style={{ 
+                      position:'absolute', 
+                      left: 0, 
+                      top: 0, 
+                      width: cw, 
+                      height: ch, 
+                      objectFit: 'cover',
+                      filter: 'blur(20px)',
+                      transform: 'scale(1.1)', // Slight scale to avoid edges
+                      userSelect:'none',
+                      zIndex: 0
+                    }} 
+                  />
+                )}
                 {img && (
-                  <img src={img.src} draggable={false} onDragStart={(e)=>e.preventDefault()} style={{ position:'absolute', left: tx, top: ty, width: img.naturalWidth*coverScale*zoom, height: img.naturalHeight*coverScale*zoom, maxWidth:'none', maxHeight:'none', userSelect:'none' }} />
+                  <img src={img.src} draggable={false} onDragStart={(e)=>e.preventDefault()} style={{ position:'absolute', left: tx, top: ty, width: img.naturalWidth*coverScale*zoom, height: img.naturalHeight*coverScale*zoom, maxWidth:'none', maxHeight:'none', userSelect:'none', zIndex: 1 }} />
                 )}
                 {!img && <div className="w-full h-full grid place-items-center text-sm text-gray-500">{isLoading? 'Loading image…' : 'Select or upload an image'}</div>}
-                <div className="absolute inset-0 ring-2 ring-black/70 pointer-events-none" />
+                <div className="absolute inset-0 ring-2 ring-black/70 pointer-events-none" style={{ zIndex: 2 }} />
               </div>
               <div className="mt-3 flex items-center gap-3">
                 <label className="text-sm text-gray-600">Zoom</label>
-                <input type="range" min={1} max={6} step={0.01} disabled={!img || !allowEdit} value={zoom} onChange={(e)=>{ const nz = Math.min(6, Math.max(1, parseFloat(e.target.value||'1'))); const { x, y } = clamp(tx, ty, nz); setZoom(nz); setTx(x); setTy(y); }} />
+                <input type="range" min={0.1} max={6} step={0.01} disabled={!img || !allowEdit} value={zoom} onChange={(e)=>{ const nz = Math.min(6, Math.max(0.1, parseFloat(e.target.value||'1'))); const { x, y } = clamp(tx, ty, nz); setZoom(nz); setTx(x); setTy(y); }} />
                 <button type="button" disabled={!img || !allowEdit} onClick={()=>{ const { x, y } = clamp(0,0,1); setZoom(1); setTx(x); setTy(y); }} className="px-3 py-1.5 rounded bg-gray-100 disabled:opacity-50">Reset</button>
                 <div className="ml-auto" />
                 {!hideEditButton && (

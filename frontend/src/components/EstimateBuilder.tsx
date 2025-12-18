@@ -10,17 +10,20 @@ type Item = { material_id?:number, name:string, unit?:string, quantity:number, u
 export type EstimateBuilderRef = {
   hasUnsavedChanges: () => boolean;
   save: () => Promise<boolean>;
+  getGrandTotal: () => number;
+  getPst: () => number;
+  getGst: () => number;
 };
 
-const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, estimateId?: number, statusLabel?: string, settings?: any, isBidding?: boolean, canEdit?: boolean }>(
-  function EstimateBuilder({ projectId, estimateId, statusLabel, settings, isBidding, canEdit: canEditProp }, ref) {
+const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, estimateId?: number, statusLabel?: string, settings?: any, isBidding?: boolean, canEdit?: boolean, hideFooter?: boolean }>(
+  function EstimateBuilder({ projectId, estimateId, statusLabel, settings, isBidding, canEdit: canEditProp, hideFooter }, ref) {
   const confirm = useConfirm();
   const queryClient = useQueryClient();
   const [items, setItems] = useState<Item[]>([]);
   const [markup, setMarkup] = useState<number>(5);
   const [pstRate, setPstRate] = useState<number>(7);
   const [gstRate, setGstRate] = useState<number>(5);
-  const [profitRate, setProfitRate] = useState<number>(20);
+  const [profitRate, setProfitRate] = useState<number>(0);
   const defaultSections = ['Roof System','Wood Blocking / Accessories','Flashing'];
   const [sectionOrder, setSectionOrder] = useState<string[]>(defaultSections);
   const [summaryOpen, setSummaryOpen] = useState(false);
@@ -174,8 +177,8 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
       if (estimateData.profit_rate !== undefined && estimateData.profit_rate !== null) {
         setProfitRate(estimateData.profit_rate);
       } else {
-        // Default to 20% if not set
-        setProfitRate(20);
+        // Default to 0% if not set
+        setProfitRate(0);
       }
       if (estimateData.section_order) setSectionOrder(estimateData.section_order);
       if (estimateData.section_names) setSectionNames(estimateData.section_names);
@@ -701,8 +704,11 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
   // Expose methods to parent component via ref
   useImperativeHandle(ref, () => ({
     hasUnsavedChanges: () => dirty && canEdit,
-    save: () => performSave(false)
-  }), [dirty, canEdit, performSave]);
+    save: () => performSave(false),
+    getGrandTotal: () => grandTotal,
+    getPst: () => pst,
+    getGst: () => gst
+  }), [dirty, canEdit, performSave, grandTotal, pst, gst]);
 
   // Sync section order with items (add new sections that appear in items)
   useEffect(()=>{
@@ -841,7 +847,7 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
               setSectionNames(prev => ({ ...prev, [newSection]: 'Product Section' }));
             }}
             disabled={!canEdit}
-            className="px-3 py-2 rounded bg-gray-100 hover:bg-gray-200 disabled:opacity-60">
+            className="px-3 py-2 rounded bg-gray-100 hover:bg-gray-200 disabled:opacity-60 text-base">
             Product
           </button>
           <button 
@@ -858,7 +864,7 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
               setSectionNames(prev => ({ ...prev, [newSection]: 'Labour' }));
             }}
             disabled={!canEdit || sectionOrder.some(s => s.startsWith('Labour Section') || s === 'Labour')}
-            className="px-3 py-2 rounded bg-gray-100 hover:bg-gray-200 disabled:opacity-60">
+            className="px-3 py-2 rounded bg-gray-100 hover:bg-gray-200 disabled:opacity-60 text-base">
             Labour
           </button>
           <button 
@@ -875,7 +881,7 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
               setSectionNames(prev => ({ ...prev, [newSection]: 'Sub-Contractor' }));
             }}
             disabled={!canEdit || sectionOrder.some(s => s.startsWith('Sub-Contractor Section') || s === 'Sub-Contractors')}
-            className="px-3 py-2 rounded bg-gray-100 hover:bg-gray-200 disabled:opacity-60">
+            className="px-3 py-2 rounded bg-gray-100 hover:bg-gray-200 disabled:opacity-60 text-base">
             Sub-Contractor
           </button>
           <button 
@@ -892,7 +898,7 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
               setSectionNames(prev => ({ ...prev, [newSection]: 'Miscellaneous' }));
             }}
             disabled={!canEdit || sectionOrder.some(s => s.startsWith('Miscellaneous Section') || s === 'Miscellaneous')}
-            className="px-3 py-2 rounded bg-gray-100 hover:bg-gray-200 disabled:opacity-60">
+            className="px-3 py-2 rounded bg-gray-100 hover:bg-gray-200 disabled:opacity-60 text-base">
             Miscellaneous
           </button>
           <button 
@@ -909,13 +915,13 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
               setSectionNames(prev => ({ ...prev, [newSection]: 'Shop' }));
             }}
             disabled={!canEdit || sectionOrder.some(s => s.startsWith('Shop Section') || s === 'Shop')}
-            className="px-3 py-2 rounded bg-gray-100 hover:bg-gray-200 disabled:opacity-60">
+            className="px-3 py-2 rounded bg-gray-100 hover:bg-gray-200 disabled:opacity-60 text-base">
             Shop
           </button>
           <div className="ml-auto flex items-center gap-3 text-sm">
-            <label>Markup (%)</label><input type="number" className="border rounded px-2 py-1 w-20" value={markup} min={0} step={1} onChange={e=>setMarkup(Number(e.target.value||0))} disabled={!canEdit} />
-            <label>PST (%)</label><input type="number" className="border rounded px-2 py-1 w-20" value={pstRate} min={0} step={1} onChange={e=>setPstRate(Number(e.target.value||0))} disabled={!canEdit} />
-            <label>GST (%)</label><input type="number" className="border rounded px-2 py-1 w-20" value={gstRate} min={0} step={1} onChange={e=>setGstRate(Number(e.target.value||0))} disabled={!canEdit} />
+            <label className="text-sm">Markup (%)</label><input type="number" className="border rounded px-2 py-1 w-20" value={markup} min={0} step={1} onChange={e=>setMarkup(Number(e.target.value||0))} disabled={!canEdit} />
+            <label className="text-sm">PST (%)</label><input type="number" className="border rounded px-2 py-1 w-20" value={pstRate} min={0} step={1} onChange={e=>setPstRate(Number(e.target.value||0))} disabled={!canEdit} />
+            <label className="text-sm">GST (%)</label><input type="number" className="border rounded px-2 py-1 w-20" value={gstRate} min={0} step={1} onChange={e=>setGstRate(Number(e.target.value||0))} disabled={!canEdit} />
           </div>
         </div>
         </div>
@@ -1650,55 +1656,60 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
       </div>
 
       {/* Summary Section */}
-      <div className="mt-6 space-y-4">
-        {/* Summary Title Card */}
-        <div className="rounded-t-xl bg-gradient-to-br from-[#7f1010] to-[#a31414] p-4 text-white font-semibold text-lg">
-          Summary
-        </div>
-        
-        {/* Two Cards Grid */}
-        <div className="grid md:grid-cols-2 gap-4">
-          {/* Left Card */}
-          <div className="rounded-xl border bg-white p-4">
-            <div className="space-y-1 text-sm">
-              <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span>Total Products Costs</span><span>${totalProductsCosts.toFixed(2)}</span></div>
-              <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span>Total Labour Costs</span><span>${totalLabourCosts.toFixed(2)}</span></div>
-              <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span>Total Sub-Contractors Costs</span><span>${totalSubContractorsCosts.toFixed(2)}</span></div>
-              <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span>Total Shop Costs</span><span>${totalShopCosts.toFixed(2)}</span></div>
-              <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span>Total Miscellaneous Costs</span><span>${totalMiscellaneousCosts.toFixed(2)}</span></div>
-              <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span className="font-bold">Total Direct Project Costs</span><span className="font-bold">${totalDirectProjectCosts.toFixed(2)}</span></div>
-              <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span>PST ({pstRate}%)</span><span>${pst.toFixed(2)}</span></div>
-              <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span className="font-bold">Sub-total</span><span className="font-bold">${subtotal.toFixed(2)}</span></div>
-            </div>
+      <div className="mt-6">
+        <div className="rounded-xl border bg-white overflow-hidden">
+          {/* Summary Header - Gray */}
+          <div className="bg-gray-500 p-3 text-white font-semibold">
+            Summary
           </div>
-          {/* Right Card */}
-          <div className="rounded-xl border bg-white p-4">
-            <div className="space-y-1 text-sm">
-              <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span>Sections Mark-up</span><span>${markupValue.toFixed(2)}</span></div>
-              <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1">
-                <span>Profit (%)</span>
-                <input 
-                  type="number" 
-                  className="border rounded px-2 py-1 w-20 text-right" 
-                  value={profitRate} 
-                  min={0} 
-                  step={1}
-                  onChange={e=>setProfitRate(Number(e.target.value||0))} 
-                />
+          
+          {/* Two Cards Grid - inside Summary card */}
+          <div className="p-4">
+            <div className="grid md:grid-cols-2 gap-4">
+              {/* Left Card */}
+              <div className="rounded-xl border bg-white p-4">
+                <div className="space-y-1 text-sm">
+                  <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span>Total Products Costs</span><span>${totalProductsCosts.toFixed(2)}</span></div>
+                  <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span>Total Labour Costs</span><span>${totalLabourCosts.toFixed(2)}</span></div>
+                  <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span>Total Sub-Contractors Costs</span><span>${totalSubContractorsCosts.toFixed(2)}</span></div>
+                  <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span>Total Shop Costs</span><span>${totalShopCosts.toFixed(2)}</span></div>
+                  <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span>Total Miscellaneous Costs</span><span>${totalMiscellaneousCosts.toFixed(2)}</span></div>
+                  <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span className="font-bold">Total Direct Costs</span><span className="font-bold">${totalDirectProjectCosts.toFixed(2)}</span></div>
+                  <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span>PST ({pstRate}%)</span><span>${pst.toFixed(2)}</span></div>
+                  <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span className="font-bold">Sub-total</span><span className="font-bold">${subtotal.toFixed(2)}</span></div>
+                </div>
               </div>
-              <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span className="font-bold">Total Profit</span><span className="font-bold">${profitValue.toFixed(2)}</span></div>
-              <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span className="font-bold">Total Estimate</span><span className="font-bold">${finalTotal.toFixed(2)}</span></div>
-              <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span>GST ({gstRate}%)</span><span>${gst.toFixed(2)}</span></div>
-              <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1 text-lg"><span className="font-bold">Final Total (with GST)</span><span className="font-bold">${grandTotal.toFixed(2)}</span></div>
+              {/* Right Card */}
+              <div className="rounded-xl border bg-white p-4">
+                <div className="space-y-1 text-sm">
+                  <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span>Sections Mark-up</span><span>${markupValue.toFixed(2)}</span></div>
+                  <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1">
+                    <span>Profit (%)</span>
+                    <input 
+                      type="number" 
+                      className="border rounded px-2 py-1 w-20 text-right" 
+                      value={profitRate} 
+                      min={0} 
+                      step={1}
+                      onChange={e=>setProfitRate(Number(e.target.value||0))} 
+                    />
+                  </div>
+                  <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span className="font-bold">Total Profit</span><span className="font-bold">${profitValue.toFixed(2)}</span></div>
+                  <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span className="font-bold">Total Estimate</span><span className="font-bold">${finalTotal.toFixed(2)}</span></div>
+                  <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span>GST ({gstRate}%)</span><span>${gst.toFixed(2)}</span></div>
+                  <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1 text-lg"><span className="font-bold">Final Total (with GST)</span><span className="font-bold">${grandTotal.toFixed(2)}</span></div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
       </div>
 
       {/* Spacer to prevent fixed bar from overlapping content */}
-      <div className="h-24" />
+      {!hideFooter && <div className="h-24" />}
 
       {/* Fixed Unsaved Changes bar */}
+      {!hideFooter && (
       <div className="fixed left-60 right-0 bottom-0 z-40">
         <div className="px-4">
           <div className="mx-auto max-w-[1400px] rounded-t-xl border bg-white/95 backdrop-blur p-4 flex items-center justify-between shadow-[0_-6px_16px_rgba(0,0,0,0.08)]">
@@ -1849,6 +1860,7 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
             </div>
           </div>
         </div>
+      )}
     </div>
   );
 });
