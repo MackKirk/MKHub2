@@ -2169,13 +2169,6 @@ function ProjectProposalTab({ projectId, clientId, siteId, proposals, statusLabe
         </div>
       </div>
       
-      <div className="rounded-xl border bg-white p-4">
-        {!canEdit && statusLabel && (
-          <div className="mb-4 p-4 bg-yellow-50 border border-yellow-200 rounded text-sm text-yellow-800">
-            <strong>Editing Restricted:</strong> This project has status "{statusLabel}" which does not allow editing proposals or estimates. 
-            Please change the project status to allow editing.
-          </div>
-        )}
       {isLoadingProposal && proposal ? (
         <div className="h-24 bg-gray-100 animate-pulse rounded"/>
       ) : (
@@ -2186,6 +2179,8 @@ function ProjectProposalTab({ projectId, clientId, siteId, proposals, statusLabe
           projectId={projectId} 
           initial={proposalData || null}
           disabled={!canEdit}
+          showRestrictionWarning={!canEdit && !!statusLabel}
+          restrictionMessage={!canEdit && statusLabel ? `This project has status "${statusLabel}" which does not allow editing proposals or estimates. Please change the project status to allow editing.` : undefined}
           onSave={async ()=>{
             // Always refetch proposals list after save to get the updated/created proposal
             await refetchProposals();
@@ -2205,7 +2200,6 @@ function ProjectProposalTab({ projectId, clientId, siteId, proposals, statusLabe
           }}
         />
       )}
-      </div>
     </div>
   );
 }

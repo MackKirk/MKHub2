@@ -118,15 +118,17 @@ export default function ProposalEdit(){
 
   return (
     <div>
-      <h1 className="text-2xl font-bold mb-3">Edit Proposal</h1>
-      {!canEdit && project?.status_label && (
-        <div className="mb-4 p-4 bg-yellow-50 border border-yellow-200 rounded text-sm text-yellow-800">
-          <strong>Editing Restricted:</strong> This project has status "{project.status_label}" which does not allow editing proposals or estimates. 
-          Please change the project status to allow editing.
-        </div>
-      )}
       {isLoading? <div className="h-24 bg-gray-100 animate-pulse rounded"/> : (
-        <ProposalForm mode="edit" clientId={String(p?.client_id||'')} siteId={String(p?.site_id||'')} projectId={String(p?.project_id||'')} initial={p} disabled={!canEdit} />
+        <ProposalForm 
+          mode="edit" 
+          clientId={String(p?.client_id||'')} 
+          siteId={String(p?.site_id||'')} 
+          projectId={String(p?.project_id||'')} 
+          initial={p} 
+          disabled={!canEdit}
+          showRestrictionWarning={!canEdit && !!project?.status_label}
+          restrictionMessage={!canEdit && project?.status_label ? `This project has status "${project.status_label}" which does not allow editing proposals or estimates. Please change the project status to allow editing.` : undefined}
+        />
       )}
       {/* Image pickers handled inside ProposalForm */}
     </div>

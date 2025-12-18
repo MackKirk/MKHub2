@@ -7,11 +7,12 @@ import toast from 'react-hot-toast';
 import ImagePicker from '@/components/ImagePicker';
 import { useConfirm } from '@/components/ConfirmProvider';
 import { useUnsavedChanges } from '@/components/UnsavedChangesProvider';
+import EstimateBuilder, { EstimateBuilderRef } from '@/components/EstimateBuilder';
 
 type Client = { id:string, name?:string, display_name?:string, address_line1?:string, city?:string, province?:string, country?:string };
 type Site = { id:string, site_name?:string, site_address_line1?:string, site_address_line2?:string, site_city?:string, site_province?:string, site_postal_code?:string, site_country?:string };
 
-export default function ProposalForm({ mode, clientId: clientIdProp, siteId: siteIdProp, projectId: projectIdProp, initial, disabled, onSave }: { mode:'new'|'edit', clientId?:string, siteId?:string, projectId?:string, initial?: any, disabled?: boolean, onSave?: ()=>void }){
+export default function ProposalForm({ mode, clientId: clientIdProp, siteId: siteIdProp, projectId: projectIdProp, initial, disabled, onSave, showRestrictionWarning, restrictionMessage }: { mode:'new'|'edit', clientId?:string, siteId?:string, projectId?:string, initial?: any, disabled?: boolean, onSave?: ()=>void, showRestrictionWarning?: boolean, restrictionMessage?: string }){
   const nav = useNavigate();
   const queryClient = useQueryClient();
 
@@ -27,8 +28,40 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
   const { data:sites } = useQuery({ queryKey:['sites', clientId], queryFn: ()=> clientId? api<Site[]>('GET', `/clients/${clientId}/sites`): Promise.resolve([]) });
   const site = (sites||[]).find(s=> String(s.id)===String(siteId));
   const { data:nextCode } = useQuery({ queryKey:['proposalCode', clientId], queryFn: ()=> (mode==='new' && clientId)? api<any>('GET', `/proposals/next-code?client_id=${encodeURIComponent(clientId)}`) : Promise.resolve(null) });
+  const { data:contacts, refetch: refetchContacts } = useQuery({ queryKey:['clientContacts', clientId], queryFn: ()=> clientId? api<any[]>('GET', `/clients/${clientId}/contacts`): Promise.resolve([]), enabled: !!clientId });
+  
+  // Fetch project and settings for EstimateBuilder when projectId is available
+  const { data:project } = useQuery({ 
+    queryKey:['project', projectId], 
+    queryFn: async ()=> {
+      if (!projectId || projectId.trim() === '') return null;
+      try {
+        return await api<any>('GET', `/projects/${projectId}`);
+      } catch (e: any) {
+        // If project not found (404), return null instead of throwing
+        // The error message from api helper includes "HTTP 404" when status is 404
+        if (e?.message?.includes('404') || e?.message?.includes('Not Found')) {
+          return null;
+        }
+        // For other errors, still throw to let React Query handle it
+        throw e;
+      }
+    }, 
+    enabled: !!(projectId && projectId.trim() !== ''),
+    retry: false,
+    staleTime: Infinity, // Don't refetch if we got a result (even if null)
+    gcTime: Infinity // Keep in cache forever to avoid refetch
+  });
+  const { data:settings } = useQuery({ queryKey:['settings'], queryFn: ()=>api<any>('GET','/settings') });
+  
+  // Check permissions for estimate editing
+  const { data:me } = useQuery({ queryKey:['me'], queryFn: ()=>api<any>('GET','/auth/me') });
+  const isAdmin = (me?.roles||[]).includes('admin');
+  const permissions = new Set(me?.permissions || []);
+  const canEditEstimate = isAdmin || permissions.has('business:projects:estimate:write');
 
   // form state
+  const [templateStyle, setTemplateStyle] = useState<string>('Mack Kirk');
   const [coverTitle, setCoverTitle] = useState<string>('Proposal');
   const [orderNumber, setOrderNumber] = useState<string>('');
   const [date, setDate] = useState<string>(getTodayLocal());
@@ -38,10 +71,82 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
   const [otherNotes, setOtherNotes] = useState<string>('');
   const [projectDescription, setProjectDescription] = useState<string>('');
   const [additionalNotes, setAdditionalNotes] = useState<string>('');
-  const [pricingItems, setPricingItems] = useState<{ name:string, price:string }[]>([]);
+  const [pricingItems, setPricingItems] = useState<{ name:string, price:string, pst?:boolean, gst?:boolean }[]>([]);
   const [optionalServices, setOptionalServices] = useState<{ service:string, price:string }[]>([]);
   const [showTotalInPdf, setShowTotalInPdf] = useState<boolean>(true);
-  const [terms, setTerms] = useState<string>('');
+  const [pricingType, setPricingType] = useState<'pricing'|'estimate'>('pricing');
+  const [markup, setMarkup] = useState<number>(0);
+  const [pstRate, setPstRate] = useState<number>(7);
+  const [gstRate, setGstRate] = useState<number>(5);
+  const [profitRate, setProfitRate] = useState<number>(0);
+  const defaultTermsText = `1. PARTIES & GENERAL INFORMATION
+This document outlines the binding agreement between Mack Kirk (hereafter referred to as "Contractor") and the Client (hereafter referred to as "Owner" or "Buyer") for commercial project services. The scope of this contract may include roof repairs, replacements, restorations, inspections, or other construction services, as outlined in the attached proposal. By proceeding with any aspect of the work or delivery of materials, the Owner agrees to all terms and conditions within this document, which supersedes any conflicting terms not expressly agreed upon in writing. Both parties affirm that they possess the authority to enter into this agreement and agree to collaborate professionally and transparently throughout the project timeline. The laws governing this agreement shall be those of the Province of British Columbia, and any disputes will be resolved within its jurisdiction.
+
+2. OWNER INFORMATION REQUIREMENTS
+For effective communication and project execution, the Owner must provide accurate information, including legal company name, primary and secondary contacts, contact emails and phone numbers, billing address and billing contact, property address, on-site project contact, and relevant details such as roof type, size, age, levels, and existing system information. Site-specific notes are also required. Failure to provide complete information may result in project delays or additional charges.
+
+3. ACCEPTANCE OF PROPOSAL
+By permitting Mack Kirk to begin work or deliver materials to the job site, the Owner accepts this proposal and these Terms and Conditions - even in the absence of a physical signature. Any alternate or conflicting terms presented by the Owner via PO systems or custom agreements shall be considered subordinate to this document unless explicitly accepted in writing by Mack Kirk.
+
+4. ENTIRE AGREEMENT
+This agreement, along with its attachments and referenced documents, constitutes the full and complete understanding between the parties. All prior discussions, written or oral, are merged into this agreement. Any amendment must be in writing and signed by both parties.
+
+5. STRUCTURAL LOADING DISCLAIMER
+The Owner acknowledges that the proposed work, especially roofing systems, may add weight to the building structure. Mack Kirk is not responsible for conducting structural evaluations and assumes no liability for related issues. It is the Owner's sole responsibility to confirm structural capacity before work begins.
+
+6. SCOPE OF WORK & SITE-SPECIFIC SAFETY PLAN
+Mack Kirk will perform all services in accordance with the outlined proposal, applicable building codes, and industry best practices. A Site-Specific Safety Plan will be developed prior to mobilization. This plan includes pre-work hazard inspections, custom safety briefings, enforcement of personal protective equipment (PPE), implementation of fall protection and roof edge safety systems, defined emergency protocols, and regular compliance audits. The Owner must ensure unobstructed access to the job site and provide staging space, port-a-john placement, and material storage if applicable.
+
+7. CHANGE ORDERS & SCOPE EXCLUSIONS
+Any change to the originally agreed-upon scope of work requires written authorization via a signed Change Order. The Owner must update any internal PO or project tracking system within 24 hours of approving a change. Mack Kirk reserves the right to pause work on the affected portion of the project until this is complete. Exclusions to the original scope of work include, but are not limited to, rotten decking replacement, decking repairs (plywood, steel, or wood), hazardous material abatement, mechanical, electrical, or plumbing repairs, interior protection or cleanup, correction of nail pops, overtime or weekend labor, and crane rental for additional work unless explicitly included.
+
+8. HVAC, ELECTRICAL, AND UTILITIES
+The Owner is responsible for all fees, coordination, and scheduling related to HVAC, satellite, and utility disconnection or reconnection. Mack Kirk will not adjust or recalibrate equipment. Notification of inactive or decommissioned systems should be provided in advance to avoid disruption.
+
+9. DRAWINGS & VISUAL REPRESENTATIONS
+All schematic drawings included in proposals are illustrative and may be modified as necessary based on site conditions or feasibility. Final installation methods are determined at Mack Kirk's discretion in accordance with manufacturer requirements and professional standards.
+
+10. PROTECTION OF WORK
+Mack Kirk is responsible for protecting the job site and roofing system during the installation phase. Prior to and after this period, all responsibility shifts to the Owner and/or other contractors on site. Damage caused by other trades or events outside Mack Kirk's control is not covered by warranty and will be invoiced to the Owner.
+
+11. MATERIALS & EQUIPMENT HANDLING
+Mack Kirk will use certified operators and insured equipment including hoists, delivery trucks, and disposal bins. Material will be staged either at-grade or on the roof, depending on site logistics and safety. The Owner agrees to provide reasonable access and staging areas to facilitate efficient material handling.
+
+12. PAYMENT SCHEDULE & FINANCIAL TERMS
+Payments are due upon receipt of invoice. A late charge of 1.5% per month (18% annually) will apply to unpaid balances after 30 days. Mack Kirk may place a lien on the property for nonpayment and pursue all legal remedies. All collection fees, attorney fees, and court costs will be the Owner's responsibility.
+
+13. WARRANTY & PERFORMANCE COMMITMENT
+All work will be completed in accordance with contract documents and manufacturer guidelines. Upon full payment, Mack Kirk will issue a warranty certificate outlining duration and coverage and provide a proposal for the future service of the roof. Warranty exclusions include damage caused by unrelated trades, vandalism, severe weather, natural disasters, deferred maintenance, or negligence.
+
+14. LIABILITY LIMITATIONS
+Mack Kirk is liable only for direct physical damage resulting from proven negligence. No liability is assumed for indirect, consequential, economic, or punitive damages including loss of rent, business disruption, or inconvenience. Owner agrees to indemnify and hold harmless Mack Kirk from claims arising from acts of third parties or unforeseen events.
+
+15. INSURANCE
+Mack Kirk maintains current general liability, vehicle, and Workers' Compensation insurance. Certificates can be furnished upon request. The Owner is responsible for property insurance covering the entire value of the structure, including the roof, until full contract payment has been made.
+
+16. ENVIRONMENTAL CONDITIONS
+Mack Kirk does not conduct environmental testing or hazardous material abatement. The Owner is responsible for pre-project identification of asbestos, mold, or other hazardous conditions. If discovered during the project, work will halt until remediation is complete at the Owner's expense.
+
+17. DRAINAGE, SPRINKLER & CONDUIT RISKS
+Roof work may affect hidden or embedded systems. Mack Kirk is not liable for unintentional damage to internal drains or plumbing, sprinkler systems, electrical conduits, or telecom cabling. Clients are encouraged to disclose known risks and arrange inspections where needed.
+
+18. PROJECT TIMELINES & DELAYS
+Estimated start and completion dates will be provided, but are subject to change due to weather, material delays, permit approvals, or force majeure. Mack Kirk commits to clear and prompt communication in the event of delays and to rescheduling in a manner that minimizes project disruption.
+
+19. COMMUNICATION & SITE ACCESS
+The Owner will identify a designated on-site contact to facilitate timely communication, authorize decisions, and coordinate site access. Mack Kirk's teams will not be responsible for delays caused by restricted access or lack of timely decisions from the Owner's side.
+
+20. MARKETING USE
+The Owner grants Mack Kirk permission to feature photographs or general project descriptions for marketing purposes, excluding pricing and identifying property details unless written permission is granted.
+
+21. TERMINATION
+Either party may terminate this agreement with written notice if the other materially breaches its obligations. The Contractor may also suspend or terminate work if payments are not made as agreed, or if hazardous conditions arise. The Owner will be responsible for all completed work, mobilization fees, and demobilization costs up to the point of termination.
+
+22. GOVERNING LAW
+This agreement shall be governed by the laws of the Province of British Columbia, Canada. Any disputes shall be settled in a court of competent jurisdiction within that province.
+By signing the accompanying proposal, the Owner agrees to these Terms and Conditions in full. For questions or clarification, please contact your Mack Kirk project representative.`;
+
+  const [terms, setTerms] = useState<string>(mode === 'new' ? defaultTermsText : '');
   const [sections, setSections] = useState<any[]>([]);
   const [coverBlob, setCoverBlob] = useState<Blob|null>(null);
   const [coverFoId, setCoverFoId] = useState<string|undefined>(undefined);
@@ -52,6 +157,13 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
   const [coverPreview, setCoverPreview] = useState<string>('');
   const [page2Preview, setPage2Preview] = useState<string>('');
   const newImageId = ()=> 'img_'+Math.random().toString(36).slice(2);
+  const formatPhone = (v:string)=>{
+    const d = String(v||'').replace(/\D+/g,'').slice(0,11);
+    if (d.length<=3) return d;
+    if (d.length<=6) return `(${d.slice(0,3)}) ${d.slice(3)}`;
+    if (d.length<=10) return `(${d.slice(0,3)}) ${d.slice(3,6)}-${d.slice(6)}`;
+    return `+${d.slice(0,1)} (${d.slice(1,4)}) ${d.slice(4,7)}-${d.slice(7,11)}`;
+  };
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [downloadUrl, setDownloadUrl] = useState<string>('');
@@ -60,6 +172,19 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
   const [isReady, setIsReady] = useState<boolean>(false);
   const [focusTarget, setFocusTarget] = useState<{ type:'title'|'caption', sectionIndex:number, imageIndex?: number }|null>(null);
   const [activeSectionIndex, setActiveSectionIndex] = useState<number>(-1);
+  const [estimateHasUnsavedChanges, setEstimateHasUnsavedChanges] = useState<boolean>(false);
+  const [selectedContactId, setSelectedContactId] = useState<string>('');
+  const [contactModalOpen, setContactModalOpen] = useState(false);
+  const [newContactName, setNewContactName] = useState('');
+  const [newContactEmail, setNewContactEmail] = useState('');
+  const [newContactPhone, setNewContactPhone] = useState('');
+  const [newContactRole, setNewContactRole] = useState('');
+  const [newContactDept, setNewContactDept] = useState('');
+  const [newContactPrimary, setNewContactPrimary] = useState('false');
+  const [isCreatingContact, setIsCreatingContact] = useState(false);
+  const [contactNameError, setContactNameError] = useState(false);
+  const [contactPhotoBlob, setContactPhotoBlob] = useState<Blob|null>(null);
+  const [pickerForContact, setPickerForContact] = useState<string|null>(null);
   const confirm = useConfirm();
   const { setHasUnsavedChanges: setGlobalUnsavedChanges } = useUnsavedChanges();
   const autoSaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -67,6 +192,7 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
   const lastAutoSaveRef = useRef<number>(0);
   const proposalIdRef = useRef<string | undefined>(mode === 'edit' ? initial?.id : undefined);
   const handleSaveRef = useRef<() => Promise<void>>();
+  const estimateBuilderRef = useRef<EstimateBuilderRef | null>(null);
 
   // --- Helpers declared early so effects can safely reference them
   const sanitizeSections = (arr:any[])=> (arr||[]).map((sec:any)=>{
@@ -77,8 +203,12 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
         images: (sec.images||[]).map((im:any)=> ({ file_object_id: String(im.file_object_id||''), caption: String(im.caption||'') }))
       };
     }
+    // Filter out estimate sections - they're now handled in pricing area
+    if (sec?.type==='estimate'){
+      return null;
+    }
     return { type:'text', title: String(sec?.title||''), text: String(sec?.text||'') };
-  });
+  }).filter((sec:any)=> sec !== null);
 
   // Format number to accounting format (1,234.56)
   const formatAccounting = (value: string | number): string => {
@@ -103,16 +233,118 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
     return cleaned;
   };
 
-  const total = useMemo(()=>{ 
-    const sum = pricingItems.reduce((a,c)=> a + Number(parseAccounting(c.price)||'0'), 0); 
-    return formatAccounting(sum); 
+  const totalNum = useMemo(()=>{ 
+    return pricingItems.reduce((a,c)=> a + Number(parseAccounting(c.price)||'0'), 0); 
   }, [pricingItems]);
+
+  // Calculate PST only on items marked for PST
+  const totalForPst = useMemo(() => {
+    return pricingItems
+      .filter(c => c.pst === true)
+      .reduce((a, c) => a + Number(parseAccounting(c.price)||'0'), 0);
+  }, [pricingItems]);
+
+  // Calculate GST only on items marked for GST
+  const totalForGst = useMemo(() => {
+    return pricingItems
+      .filter(c => c.gst === true)
+      .reduce((a, c) => a + Number(parseAccounting(c.price)||'0'), 0);
+  }, [pricingItems]);
+
+  // Calculate Summary values for manual pricing
+  const totalWithMarkup = useMemo(() => {
+    return totalNum * (1 + (markup / 100));
+  }, [totalNum, markup]);
+
+  const markupValue = useMemo(() => {
+    return totalWithMarkup - totalNum;
+  }, [totalWithMarkup, totalNum]);
+
+  const pst = useMemo(() => {
+    // PST is calculated only on items marked for PST (applied to direct costs)
+    return totalForPst * (pstRate / 100);
+  }, [totalForPst, pstRate]);
+
+  const subtotal = useMemo(() => {
+    // Sub-total = Total Direct Costs + PST
+    return totalNum + pst;
+  }, [totalNum, pst]);
+
+  const gst = useMemo(() => {
+    // GST is calculated only on items marked for GST (applied directly to direct costs, independent of PST)
+    return totalForGst * (gstRate / 100);
+  }, [totalForGst, gstRate]);
+
+  const grandTotal = useMemo(() => {
+    // Final Total = Sub-total + GST
+    return subtotal + gst;
+  }, [subtotal, gst]);
+
+  // Calculate final total to display (grandTotal for manual, or from estimate)
+  const [estimateGrandTotal, setEstimateGrandTotal] = useState<number>(0);
+  const [estimatePst, setEstimatePst] = useState<number>(0);
+  const [estimateGst, setEstimateGst] = useState<number>(0);
+  
+  // Update estimate values periodically when using estimate pricing
+  useEffect(() => {
+    if (pricingType === 'estimate' && estimateBuilderRef.current) {
+      const interval = setInterval(() => {
+        const total = estimateBuilderRef.current?.getGrandTotal() || 0;
+        const pstValue = estimateBuilderRef.current?.getPst() || 0;
+        const gstValue = estimateBuilderRef.current?.getGst() || 0;
+        setEstimateGrandTotal(total);
+        setEstimatePst(pstValue);
+        setEstimateGst(gstValue);
+      }, 100);
+      return () => clearInterval(interval);
+    } else {
+      setEstimateGrandTotal(0);
+      setEstimatePst(0);
+      setEstimateGst(0);
+    }
+  }, [pricingType]);
+
+  const displayTotal = useMemo(() => {
+    return pricingType === 'estimate' ? estimateGrandTotal : grandTotal;
+  }, [pricingType, estimateGrandTotal, grandTotal]);
+
+  const displayPst = useMemo(() => {
+    return pricingType === 'estimate' ? estimatePst : pst;
+  }, [pricingType, estimatePst, pst]);
+
+  const displayGst = useMemo(() => {
+    return pricingType === 'estimate' ? estimateGst : gst;
+  }, [pricingType, estimateGst, gst]);
+
+  // Calculate Total Estimate for estimate pricing (grandTotal - GST)
+  const estimateTotalEstimate = useMemo(() => {
+    if (pricingType === 'estimate') {
+      return estimateGrandTotal - estimateGst;
+    }
+    return 0;
+  }, [pricingType, estimateGrandTotal, estimateGst]);
+
+  // Calculate if PST/GST should be shown in PDF based on items
+  const showPstInPdf = useMemo(() => {
+    if (pricingType === 'estimate') {
+      return estimatePst > 0;
+    }
+    return pricingItems.some(item => item.pst === true);
+  }, [pricingType, pricingItems, estimatePst]);
+
+  const showGstInPdf = useMemo(() => {
+    if (pricingType === 'estimate') {
+      return estimateGst > 0;
+    }
+    return pricingItems.some(item => item.gst === true);
+  }, [pricingType, pricingItems, estimateGst]);
 
   const computeFingerprint = ()=>{
     try{
       const payload = {
         coverTitle,
-        orderNumber,
+        templateStyle,
+        orderNumber: project?.code || orderNumber,
         date,
         createdFor,
         primary,
@@ -123,6 +355,13 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
         pricingItems,
         optionalServices,
         showTotalInPdf,
+        showPstInPdf,
+        showGstInPdf,
+        pricingType,
+        markup,
+        pstRate,
+        gstRate,
+        profitRate,
         terms,
         sections: sanitizeSections(sections),
         coverFoId,
@@ -140,7 +379,13 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
     if (!initial) return;
     const d = initial?.data || {};
     setCoverTitle(String(d.cover_title || initial.title || 'Proposal'));
-    setOrderNumber(String(initial.order_number || d.order_number || ''));
+    setTemplateStyle(String(d.template_style || 'Mack Kirk'));
+    // For edit mode, use project code if available, otherwise use saved order_number
+    // This will be overridden by the project code sync effect if project is loaded
+    const savedOrderNumber = String(initial.order_number || d.order_number || '');
+    if (!project?.code) {
+      setOrderNumber(savedOrderNumber);
+    }
     setDate(String(d.date||'').slice(0,10) || getTodayLocal());
     setCreatedFor(String(d.proposal_created_for||''));
     setPrimary({ name: d.primary_contact_name, phone: d.primary_contact_phone, email: d.primary_contact_email });
@@ -151,30 +396,44 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
     // Load pricing items from bid_price and additional_costs (legacy support)
     const legacyBidPrice = d.bid_price ?? 0;
     const dc = Array.isArray(d.additional_costs)? d.additional_costs : [];
-    const loadedItems: { name:string, price:string }[] = [];
+    const loadedItems: { name:string, price:string, pst?:boolean, gst?:boolean }[] = [];
     if (legacyBidPrice && Number(legacyBidPrice) > 0) {
-      loadedItems.push({ name: 'Bid Price', price: formatAccounting(legacyBidPrice) });
+      loadedItems.push({ name: 'Bid Price', price: formatAccounting(legacyBidPrice), pst: false, gst: false });
     }
     dc.forEach((c:any)=> {
       const label = String(c.label||'');
       const value = c.value ?? c.amount ?? '';
       if (label && Number(value) > 0) {
-        loadedItems.push({ name: label, price: formatAccounting(value) });
+        loadedItems.push({ 
+          name: label, 
+          price: formatAccounting(value),
+          pst: c.pst === true || c.pst === 'true' || c.pst === 1,
+          gst: c.gst === true || c.gst === 'true' || c.gst === 1
+        });
       }
     });
     setPricingItems(loadedItems);
     const os = Array.isArray(d.optional_services)? d.optional_services : [];
     setOptionalServices(os.map((s:any)=> ({ service: String(s.service||''), price: formatAccounting(s.price ?? '') })));
     setShowTotalInPdf(d.show_total_in_pdf !== undefined ? Boolean(d.show_total_in_pdf) : true);
-    setTerms(String(d.terms_text||''));
+    setPricingType(d.pricing_type === 'estimate' ? 'estimate' : 'pricing');
+    setMarkup(d.markup !== undefined && d.markup !== null ? Number(d.markup) : 5);
+    setPstRate(d.pst_rate !== undefined && d.pst_rate !== null ? Number(d.pst_rate) : 7);
+    setGstRate(d.gst_rate !== undefined && d.gst_rate !== null ? Number(d.gst_rate) : 5);
+    setProfitRate(d.profit_rate !== undefined && d.profit_rate !== null ? Number(d.profit_rate) : 0);
+    setTerms(String(d.terms_text||defaultTermsText));
     const loaded = Array.isArray(d.sections)? JSON.parse(JSON.stringify(d.sections)) : [];
     const normalized = loaded.map((sec:any)=>{
       if (sec?.type==='images'){
         const imgs = (sec.images||[]).map((im:any)=> ({ image_id: im.image_id || newImageId(), file_object_id: String(im.file_object_id||''), caption: String(im.caption||'') }));
         return { type:'images', title: String(sec.title||''), images: imgs };
       }
+      // Remove estimate sections - they're now handled in pricing area
+      if (sec?.type==='estimate'){
+        return null;
+      }
       return { type:'text', title: String(sec.title||''), text: String(sec.text||'') };
-    });
+    }).filter((sec:any)=> sec !== null);
     setSections(normalized);
     setCoverFoId(d.cover_file_object_id||undefined);
     setPage2FoId(d.page2_file_object_id||undefined);
@@ -215,8 +474,59 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
   const hasUnsavedChanges = useMemo(() => {
     if (!isReady) return false;
     const fp = computeFingerprint();
-    return fp !== lastSavedHash;
-  }, [isReady, lastSavedHash, coverTitle, orderNumber, date, createdFor, primary, typeOfProject, otherNotes, projectDescription, additionalNotes, pricingItems, optionalServices, showTotalInPdf, terms, sections, coverFoId, page2FoId, clientId, siteId, projectId]);
+    const proposalHasChanges = fp !== lastSavedHash;
+    // Also check if estimate has unsaved changes (when using estimate pricing)
+    const estimateHasChanges = pricingType === 'estimate' && estimateHasUnsavedChanges;
+    return proposalHasChanges || estimateHasChanges;
+  }, [isReady, lastSavedHash, coverTitle, templateStyle, orderNumber, date, createdFor, primary, typeOfProject, otherNotes, projectDescription, additionalNotes, pricingItems, optionalServices, showTotalInPdf, showPstInPdf, showGstInPdf, pricingType, markup, pstRate, gstRate, profitRate, terms, sections, coverFoId, page2FoId, clientId, siteId, projectId, computeFingerprint, estimateHasUnsavedChanges]);
+  
+  // Periodically check if estimate has unsaved changes
+  useEffect(() => {
+    if (pricingType !== 'estimate' || !estimateBuilderRef.current) {
+      setEstimateHasUnsavedChanges(false);
+      return;
+    }
+    
+    const checkInterval = setInterval(() => {
+      if (estimateBuilderRef.current) {
+        const hasChanges = estimateBuilderRef.current.hasUnsavedChanges();
+        setEstimateHasUnsavedChanges(hasChanges);
+      }
+    }, 1000); // Check every second
+    
+    return () => clearInterval(checkInterval);
+  }, [pricingType]);
+  
+  // Sync selected contact when contacts are loaded or createdFor changes (only on initial load)
+  useEffect(() => {
+    if (!isReady || !contacts) return;
+    // Only sync if we don't have a selected contact yet and createdFor matches a contact
+    if (!selectedContactId && createdFor) {
+      const matchedContact = contacts.find(c => c.name === createdFor);
+      if (matchedContact) {
+        setSelectedContactId(String(matchedContact.id));
+      }
+    }
+  }, [contacts, createdFor, isReady, selectedContactId]);
+  
+  // Handle ESC key to close contact modal
+  useEffect(() => {
+    if (!contactModalOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setContactModalOpen(false);
+        setNewContactName('');
+        setNewContactEmail('');
+        setNewContactPhone('');
+        setNewContactRole('');
+        setNewContactDept('');
+        setNewContactPrimary('false');
+        setContactNameError(false);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [contactModalOpen]);
 
   // Update global unsaved changes state
   useEffect(() => {
@@ -424,8 +734,16 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
     return formatAddress(client?.address_line1, client?.city, client?.province);
   }, [client, site]);
 
-  // init order number for new
-  useEffect(()=>{ if(mode==='new' && !orderNumber && nextCode?.order_number) setOrderNumber(nextCode.order_number); }, [mode, nextCode]);
+  // Always sync orderNumber with project code when available
+  useEffect(()=>{ 
+    if (project?.code) {
+      // Always use project code when available (for both new and edit modes)
+      setOrderNumber(project.code);
+    } else if (mode==='new' && !project?.code && nextCode?.order_number && !orderNumber) {
+      // Only use nextCode as fallback for new proposals when no project code exists
+      setOrderNumber(nextCode.order_number);
+    }
+  }, [project?.code, nextCode, mode]);
 
   useEffect(()=>{
     if (coverFoId) setCoverPreview(`/files/${coverFoId}/thumbnail?w=600`);
@@ -448,7 +766,7 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
       // Update lastAutoSaveRef when proposal is loaded to prevent immediate auto-save
       lastAutoSaveRef.current = Date.now();
     }
-      }, [isReady, lastSavedHash, coverTitle, orderNumber, date, createdFor, primary, typeOfProject, otherNotes, projectDescription, additionalNotes, pricingItems, optionalServices, showTotalInPdf, terms, sections, coverFoId, page2FoId, clientId, siteId, projectId, computeFingerprint]);
+      }, [isReady, lastSavedHash, coverTitle, orderNumber, date, createdFor, primary, typeOfProject, otherNotes, projectDescription, additionalNotes, pricingItems, optionalServices, showTotalInPdf, pricingType, terms, sections, coverFoId, page2FoId, clientId, siteId, projectId, computeFingerprint]);
 
   const handleSave = useCallback(async()=>{
     if (disabled || isSaving) {
@@ -457,6 +775,26 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
     }
     try{
       setIsSaving(true);
+      
+      // Save estimate first if using estimate pricing
+      if (pricingType === 'estimate' && estimateBuilderRef.current) {
+        try {
+          const estimateSaved = await estimateBuilderRef.current.save();
+          if (!estimateSaved) {
+            toast.error('Failed to save estimate');
+            setIsSaving(false);
+            return;
+          }
+          // Update state after successful save
+          setEstimateHasUnsavedChanges(false);
+        } catch (e) {
+          console.error('Error saving estimate:', e);
+          toast.error('Failed to save estimate');
+          setIsSaving(false);
+          return;
+        }
+      }
+      
       // When in project context, ALWAYS check if proposal already exists for this project
       // This ensures we update the existing proposal instead of creating duplicates
       let proposalId = mode==='edit'? initial?.id : undefined;
@@ -488,7 +826,8 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
         client_id: clientId||null,
         site_id: siteId||null,
         cover_title: coverTitle,
-        order_number: orderNumber||null,
+        template_style: templateStyle,
+        order_number: (project?.code || orderNumber)||null,
         date,
         proposal_created_for: createdFor||null,
         primary_contact_name: primary.name||null,
@@ -499,11 +838,18 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
         project_description: projectDescription||null,
         additional_project_notes: additionalNotes||null,
         bid_price: 0, // Legacy field
-        total: Number(parseAccounting(total)||'0'),
+        total: totalNum,
         terms_text: terms||'',
         show_total_in_pdf: showTotalInPdf,
-        additional_costs: pricingItems.map(c=> ({ label: c.name, value: Number(parseAccounting(c.price)||'0') })),
+        show_pst_in_pdf: showPstInPdf,
+        show_gst_in_pdf: showGstInPdf,
+        additional_costs: pricingItems.map(c=> ({ label: c.name, value: Number(parseAccounting(c.price)||'0'), pst: c.pst === true, gst: c.gst === true })),
         optional_services: optionalServices.map(s=> ({ service: s.service, price: Number(parseAccounting(s.price)||'0') })),
+        pricing_type: pricingType,
+        markup: markup,
+        pst_rate: pstRate,
+        gst_rate: gstRate,
+        profit_rate: profitRate,
         sections: sanitizeSections(sections),
         cover_file_object_id: coverFoId||null,
         page2_file_object_id: page2FoId||null,
@@ -541,7 +887,7 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
       lastAutoSaveRef.current = Date.now();
     }catch(e){ toast.error('Save failed'); }
     finally{ setIsSaving(false); }
-  }, [disabled, isSaving, mode, initial?.id, projectId, clientId, siteId, coverTitle, orderNumber, date, createdFor, primary, typeOfProject, otherNotes, projectDescription, additionalNotes, total, showTotalInPdf, terms, pricingItems, optionalServices, sections, coverFoId, page2FoId, nav, queryClient, onSave, computeFingerprint, sanitizeSections, parseAccounting]);
+  }, [disabled, isSaving, mode, initial?.id, projectId, clientId, siteId, coverTitle, templateStyle, orderNumber, date, createdFor, primary, typeOfProject, otherNotes, projectDescription, additionalNotes, totalNum, showTotalInPdf, showPstInPdf, showGstInPdf, pricingType, markup, pstRate, gstRate, profitRate, terms, pricingItems, optionalServices, sections, coverFoId, page2FoId, nav, queryClient, onSave, computeFingerprint, sanitizeSections, parseAccounting]);
 
   // Update ref when handleSave changes
   useEffect(() => {
@@ -577,9 +923,14 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
       setProjectDescription('');
       setAdditionalNotes('');
       setPricingItems([]);
-      setOptionalServices([]);
-      setShowTotalInPdf(true);
-      setTerms('');
+    setOptionalServices([]);
+    setShowTotalInPdf(true);
+    setPricingType('pricing');
+    setMarkup(5);
+    setPstRate(7);
+    setGstRate(5);
+    setProfitRate(0);
+    setTerms('');
       setSections([]);
       setCoverBlob(null);
       setCoverFoId(undefined);
@@ -605,13 +956,29 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
 
     try {
       isAutoSavingRef.current = true;
+      
+      // Save estimate first if using estimate pricing
+      if (pricingType === 'estimate' && estimateBuilderRef.current) {
+        try {
+          const saved = await estimateBuilderRef.current.save();
+          if (saved) {
+            // Update state after successful save
+            setEstimateHasUnsavedChanges(false);
+          }
+        } catch (e) {
+          // Silent fail for auto-save
+          console.error('Error auto-saving estimate:', e);
+        }
+      }
+      
       const payload:any = {
         id: proposalIdRef.current || (mode==='edit'? initial?.id : undefined),
         project_id: projectId||null,
         client_id: clientId||null,
         site_id: siteId||null,
         cover_title: coverTitle,
-        order_number: orderNumber||null,
+        template_style: templateStyle,
+        order_number: (project?.code || orderNumber)||null,
         date,
         proposal_created_for: createdFor||null,
         primary_contact_name: primary.name||null,
@@ -622,11 +989,18 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
         project_description: projectDescription||null,
         additional_project_notes: additionalNotes||null,
         bid_price: 0, // Legacy field
-        total: Number(parseAccounting(total)||'0'),
+        total: totalNum,
         terms_text: terms||'',
         show_total_in_pdf: showTotalInPdf,
-        additional_costs: pricingItems.map(c=> ({ label: c.name, value: Number(parseAccounting(c.price)||'0') })),
+        show_pst_in_pdf: showPstInPdf,
+        show_gst_in_pdf: showGstInPdf,
+        additional_costs: pricingItems.map(c=> ({ label: c.name, value: Number(parseAccounting(c.price)||'0'), pst: c.pst === true, gst: c.gst === true })),
         optional_services: optionalServices.map(s=> ({ service: s.service, price: Number(parseAccounting(s.price)||'0') })),
+        pricing_type: pricingType,
+        markup: markup,
+        pst_rate: pstRate,
+        gst_rate: gstRate,
+        profit_rate: profitRate,
         sections: sanitizeSections(sections),
         cover_file_object_id: coverFoId||null,
         page2_file_object_id: page2FoId||null,
@@ -652,7 +1026,7 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
     } finally {
       isAutoSavingRef.current = false;
     }
-    }, [clientId, projectId, siteId, coverTitle, orderNumber, date, createdFor, primary, typeOfProject, otherNotes, projectDescription, additionalNotes, pricingItems, optionalServices, showTotalInPdf, total, terms, sections, coverFoId, page2FoId, mode, initial, queryClient, sanitizeSections, computeFingerprint, parseAccounting]);
+    }, [clientId, projectId, siteId, coverTitle, templateStyle, orderNumber, date, createdFor, primary, typeOfProject, otherNotes, projectDescription, additionalNotes, pricingItems, optionalServices, showTotalInPdf, showPstInPdf, showGstInPdf, pricingType, markup, pstRate, gstRate, profitRate, totalNum, terms, sections, coverFoId, page2FoId, mode, initial, queryClient, sanitizeSections, computeFingerprint, parseAccounting]);
 
   // Auto-save on changes (debounced)
   useEffect(() => {
@@ -674,7 +1048,7 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
         clearTimeout(autoSaveTimeoutRef.current);
       }
     };
-    }, [isReady, clientId, coverTitle, orderNumber, date, createdFor, primary, typeOfProject, otherNotes, projectDescription, additionalNotes, pricingItems, optionalServices, showTotalInPdf, terms, sections, coverFoId, page2FoId, autoSave]);
+    }, [isReady, clientId, coverTitle, templateStyle, orderNumber, date, createdFor, primary, typeOfProject, otherNotes, projectDescription, additionalNotes, pricingItems, optionalServices, showTotalInPdf, showPstInPdf, showGstInPdf, pricingType, terms, sections, coverFoId, page2FoId, autoSave]);
 
   // Periodic auto-save (every 30 seconds)
   useEffect(() => {
@@ -694,11 +1068,54 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
       try{ if (downloadUrl) { URL.revokeObjectURL(downloadUrl); setDownloadUrl(''); } }catch(_e){}
       const form = new FormData();
       form.append('cover_title', coverTitle||'Proposal');
-      form.append('order_number', orderNumber||'');
+      form.append('template_style', templateStyle||'Mack Kirk');
+      form.append('order_number', (project?.code || orderNumber)||'');
       form.append('company_name', companyName||'');
       form.append('company_address', companyAddress||'');
       form.append('date', date||'');
       form.append('project_name_description', projectDescription||'');
+      // New fields for PDF page 2
+      const projectName = project?.name || '';
+      form.append('project_name', projectName);
+      // Build site address using the same format as companyAddress
+      const normalizeProvince = (prov?: string): string | undefined => {
+        if (!prov) return undefined;
+        const trimmed = prov.trim();
+        if (!trimmed) return undefined;
+        const map: Record<string, string> = {
+          'british columbia': 'BC',
+          'alberta': 'AB',
+          'saskatchewan': 'SK',
+          'manitoba': 'MB',
+          'ontario': 'ON',
+          'quebec': 'QC',
+          'new brunswick': 'NB',
+          'nova scotia': 'NS',
+          'prince edward island': 'PE',
+          'newfoundland and labrador': 'NL',
+          'yukon': 'YT',
+          'northwest territories': 'NT',
+          'nunavut': 'NU',
+        };
+        const lower = trimmed.toLowerCase();
+        if (map[lower]) return map[lower];
+        // If already looks like a short code (2-3 letters), keep as is
+        if (/^[A-Za-z]{2,3}$/.test(trimmed)) return trimmed;
+        return trimmed;
+      };
+      const formatSiteAddress = (): string => {
+        if (!site?.site_address_line1) return '';
+        // Street: everything before the first comma (ignores postal code / country that Google may append)
+        const street = site.site_address_line1.split(',')[0].trim();
+        const cityPart = (site.site_city || '').trim();
+        const provPart = normalizeProvince(site.site_province);
+        return [street, cityPart, provPart].filter(Boolean).join(', ');
+      };
+      const siteAddress = formatSiteAddress();
+      form.append('site_address', siteAddress);
+      // Client name
+      const clientName = client?.display_name || client?.name || '';
+      form.append('client_name', clientName);
       form.append('proposal_created_for', createdFor||'');
       form.append('primary_contact_name', primary.name||'');
       form.append('primary_contact_phone', primary.phone||'');
@@ -707,9 +1124,19 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
       form.append('other_notes', otherNotes||'');
       form.append('additional_project_notes', additionalNotes||'');
       form.append('bid_price', String(0)); // Legacy field
-      form.append('total', String(Number(parseAccounting(total)||'0')));
+      form.append('total', String(displayTotal));
       form.append('show_total_in_pdf', String(showTotalInPdf));
+      form.append('show_pst_in_pdf', String(showPstInPdf));
+      form.append('show_gst_in_pdf', String(showGstInPdf));
+      form.append('pst_value', String(displayPst));
+      form.append('gst_value', String(displayGst));
+      form.append('estimate_total_estimate', String(pricingType === 'estimate' ? estimateTotalEstimate : 0));
       form.append('terms_text', terms||'');
+      form.append('pricing_type', pricingType);
+      form.append('markup', String(markup));
+      form.append('pst_rate', String(pstRate));
+      form.append('gst_rate', String(gstRate));
+      form.append('profit_rate', String(profitRate));
       form.append('additional_costs', JSON.stringify(pricingItems.map(c=> ({ label: c.name, value: Number(parseAccounting(c.price)||'0') }))));
       form.append('optional_services', JSON.stringify(optionalServices.map(s=> ({ service: s.service, price: Number(parseAccounting(s.price)||'0') }))));
       form.append('sections', JSON.stringify(sanitizeSections(sections)));
@@ -761,7 +1188,7 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
 
   const renderFingerprint = computeFingerprint();
   return (
-    <div className="rounded-xl border bg-white p-4" onKeyDown={!disabled ? (e)=>{
+    <div onKeyDown={!disabled ? (e)=>{
       const tgt = e.target as HTMLElement;
       if (!e.altKey) return;
       if (e.key==='ArrowUp' || e.key==='ArrowDown'){
@@ -798,56 +1225,135 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
         }
       }
     } : undefined}>
-      <h2 className="text-xl font-bold mb-3">{mode==='edit'? 'Edit Proposal':'Create Proposal'}</h2>
-      <div className="grid md:grid-cols-2 gap-4">
-        <div>
-          <h3 className="font-semibold mb-2">Company Info</h3>
-          <div className="space-y-2 text-sm">
-            <div>
-              <label className="text-xs text-gray-600">Document Type</label>
-              <input className={`w-full border rounded px-3 py-2 ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} value={coverTitle} onChange={e=>setCoverTitle(e.target.value)} maxLength={44} aria-label="Document Type" disabled={disabled} readOnly={disabled} />
-              <div className="mt-1 text-[11px] text-gray-500">{coverTitle.length}/44 characters</div>
-            </div>
-            <div><label className="text-xs text-gray-600">Order Number</label><input className={`w-full border rounded px-3 py-2 ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} value={orderNumber} onChange={e=>setOrderNumber(e.target.value)} placeholder={nextCode?.order_number||''} disabled={disabled} readOnly={disabled} /></div>
-            <div><label className="text-xs text-gray-600">Company Name</label><input className="w-full border rounded px-3 py-2" value={companyName} readOnly /></div>
-            <div><label className="text-xs text-gray-600">Company Address</label><input className="w-full border rounded px-3 py-2" value={companyAddress || ''} readOnly title={companyAddress || ''} /></div>
-            <div><label className="text-xs text-gray-600">Date</label><input type="date" className={`w-full border rounded px-3 py-2 ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} value={date} onChange={e=>setDate(e.target.value)} disabled={disabled} readOnly={disabled} /></div>
+      {/* Restriction Warning - appears before blocks */}
+      {showRestrictionWarning && restrictionMessage && (
+        <div className="mb-4">
+          <div className="p-4 bg-yellow-50 border border-yellow-200 rounded text-sm text-yellow-800">
+            <strong>Editing Restricted:</strong> {restrictionMessage}
           </div>
         </div>
-        <div>
-          <h3 className="font-semibold mb-2">Project Details</h3>
-          <div className="space-y-2 text-sm">
-            <div><label className="text-xs text-gray-600">Proposal Created For</label><input className={`w-full border rounded px-3 py-2 ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} value={createdFor} onChange={e=>setCreatedFor(e.target.value)} disabled={disabled} readOnly={disabled} /></div>
-            <div className="grid grid-cols-3 gap-2">
-              <div><label className="text-xs text-gray-600">Primary Name</label><input className={`w-full border rounded px-3 py-2 ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} value={primary.name||''} onChange={e=>setPrimary(p=>({ ...p, name: e.target.value }))} disabled={disabled} readOnly={disabled} /></div>
-              <div><label className="text-xs text-gray-600">Phone</label><input className={`w-full border rounded px-3 py-2 ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} value={primary.phone||''} onChange={e=>setPrimary(p=>({ ...p, phone: e.target.value }))} disabled={disabled} readOnly={disabled} /></div>
-              <div><label className="text-xs text-gray-600">Email</label><input className={`w-full border rounded px-3 py-2 ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} value={primary.email||''} onChange={e=>setPrimary(p=>({ ...p, email: e.target.value }))} disabled={disabled} readOnly={disabled} /></div>
+      )}
+      
+      <div className="space-y-6">
+        {/* General Information Block */}
+        <div className="rounded-xl border bg-white overflow-hidden">
+          <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] p-3 text-white font-semibold">
+            General Information
+          </div>
+          <div className="p-4">
+            <div className="grid md:grid-cols-2 gap-4">
+              {/* Card 1 */}
+              <div className="space-y-2 text-sm">
+                <div>
+                  <label className="text-sm text-gray-600">Template Style</label>
+                  <select 
+                    className={`w-full border rounded px-3 py-2 ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`}
+                    value={templateStyle}
+                    onChange={e=>setTemplateStyle(e.target.value)}
+                    disabled={disabled}
+                  >
+                    <option value="Mack Kirk">Mack Kirk</option>
+                    <option value="Mack Kirk Metals">Mack Kirk Metals</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-sm text-gray-600">Document Type (Shown on cover page)</label>
+                  <input className={`w-full border rounded px-3 py-2 ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} value={coverTitle} onChange={e=>setCoverTitle(e.target.value)} maxLength={44} aria-label="Document Type" disabled={disabled} readOnly={disabled} />
+                  <div className="mt-1 text-[11px] text-gray-500">{coverTitle.length}/44 characters</div>
+                </div>
+                <div>
+                  <label className="text-sm text-gray-600">Type of Project</label>
+                  <input className={`w-full border rounded px-3 py-2 ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} value={typeOfProject} onChange={e=>setTypeOfProject(e.target.value)} disabled={disabled} readOnly={disabled} />
+                </div>
+                <div>
+                  <label className="text-sm text-gray-600">Date</label>
+                  <input type="date" className={`w-full border rounded px-3 py-2 ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} value={date} onChange={e=>setDate(e.target.value)} disabled={disabled} readOnly={disabled} />
+                </div>
+              </div>
+              {/* Card 2 */}
+              <div className="space-y-2 text-sm">
+                <div className="grid grid-cols-3 gap-2">
+                  <div>
+                    <label className="text-sm text-gray-600">Primary Contact Name</label>
+                    <select 
+                      className={`w-full border rounded px-3 py-2 ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`}
+                      value={contactModalOpen ? '__new__' : selectedContactId}
+                      onChange={e=>{
+                        const contactId = e.target.value;
+                        if (contactId === '__new__') {
+                          setContactModalOpen(true);
+                        } else {
+                          setSelectedContactId(contactId);
+                          if (contactId && contacts) {
+                            const contact = contacts.find(c => String(c.id) === contactId);
+                            if (contact) {
+                              setCreatedFor(contact.name || '');
+                              setPrimary({
+                                name: contact.name || '',
+                                phone: contact.phone || '',
+                                email: contact.email || ''
+                              });
+                            }
+                          } else {
+                            setCreatedFor('');
+                            setPrimary({ name: '', phone: '', email: '' });
+                          }
+                        }
+                      }}
+                      disabled={disabled}
+                    >
+                      <option value="">-- Select Contact --</option>
+                      {(contacts||[]).map(contact => (
+                        <option key={contact.id} value={String(contact.id)}>
+                          {contact.name || 'Unnamed Contact'}
+                        </option>
+                      ))}
+                      {!disabled && (
+                        <option value="__new__">+ New Contact</option>
+                      )}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-sm text-gray-600">Primary Contact Phone</label>
+                    <input className={`w-full border rounded px-3 py-2 ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} value={primary.phone||''} onChange={e=>setPrimary(p=>({ ...p, phone: e.target.value }))} disabled={disabled} readOnly={disabled} />
+                  </div>
+                  <div>
+                    <label className="text-sm text-gray-600">Primary Contact Email</label>
+                    <input className={`w-full border rounded px-3 py-2 ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} value={primary.email||''} onChange={e=>setPrimary(p=>({ ...p, email: e.target.value }))} disabled={disabled} readOnly={disabled} />
+                  </div>
+                </div>
+                <div>
+                  <label className="text-sm text-gray-600">Other Notes</label>
+                  <textarea className={`w-full border rounded px-3 py-2 ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} value={otherNotes} onChange={e=>setOtherNotes(e.target.value)} maxLength={250} disabled={disabled} readOnly={disabled} />
+                  <div className="mt-1 text-[11px] text-gray-500">{otherNotes.length}/250 characters</div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <div className="mb-1 text-sm text-gray-600">Front Cover Image</div>
+                    {!disabled && (
+                      <button className="px-3 py-1.5 rounded bg-gray-100" onClick={()=>setPickerFor('cover')}>Choose</button>
+                    )}
+                    {coverPreview && <div className="mt-2"><img src={coverPreview} className="w-full rounded border" style={{ aspectRatio: '566/537', objectFit: 'contain' }} /></div>}
+                  </div>
+                  <div>
+                    <div className="mb-1 text-sm text-gray-600">Inside Cover Image</div>
+                    {!disabled && (
+                      <button className="px-3 py-1.5 rounded bg-gray-100" onClick={()=>setPickerFor('page2')}>Choose</button>
+                    )}
+                    {page2Preview && <div className="mt-2"><img src={page2Preview} className="w-full rounded border" style={{ aspectRatio: '540/340', objectFit: 'contain' }} /></div>}
+                  </div>
+                </div>
+              </div>
             </div>
-            <div><label className="text-xs text-gray-600">Type of Project</label><input className={`w-full border rounded px-3 py-2 ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} value={typeOfProject} onChange={e=>setTypeOfProject(e.target.value)} disabled={disabled} readOnly={disabled} /></div>
-            <div><label className="text-xs text-gray-600">Other Notes</label><textarea className={`w-full border rounded px-3 py-2 ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} value={otherNotes} onChange={e=>setOtherNotes(e.target.value)} disabled={disabled} readOnly={disabled} /></div>
           </div>
         </div>
-        <div className="md:col-span-2">
-          <h3 className="font-semibold mb-2">Images</h3>
-          <div className="flex items-center gap-3 text-sm">
-            <div>
-              <div className="mb-1">Cover Image</div>
-              {!disabled && (
-                <button className="px-3 py-1.5 rounded bg-gray-100" onClick={()=>setPickerFor('cover')}>Choose</button>
-              )}
-              {coverPreview && <div className="mt-2"><img src={coverPreview} className="w-48 h-36 object-cover rounded border" /></div>}
-            </div>
-            <div>
-              <div className="mb-1">Page 2 Image</div>
-              {!disabled && (
-                <button className="px-3 py-1.5 rounded bg-gray-100" onClick={()=>setPickerFor('page2')}>Choose</button>
-              )}
-              {page2Preview && <div className="mt-2"><img src={page2Preview} className="w-48 h-36 object-cover rounded border" /></div>}
-            </div>
+        
+        {/* Sections Block */}
+        <div className="rounded-xl border bg-white overflow-hidden">
+          <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] p-3 text-white font-semibold">
+            Sections
           </div>
-        </div>
-        <div className="md:col-span-2">
-          <h3 className="font-semibold mb-2">Sections</h3>
+          <div className="p-4">
           <div className="space-y-3">
             {sections.map((s:any, idx:number)=> (
               <div key={s.id||idx}
@@ -1001,32 +1507,189 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
             ))}
             {!disabled && (
               <div className="flex items-center gap-2">
-                <button className="px-3 py-1.5 rounded bg-gray-100" onClick={()=> setSections(arr=> [...arr, { id: 'sec_'+Math.random().toString(36).slice(2), type:'text', title:'', text:'' }])}>+ Text Section</button>
-                <button className="px-3 py-1.5 rounded bg-gray-100" onClick={()=> setSections(arr=> [...arr, { id: 'sec_'+Math.random().toString(36).slice(2), type:'images', title:'', images: [] }])}>+ Images Section</button>
+                <button className="px-3 py-1.5 rounded bg-gray-100 text-base" onClick={()=> setSections(arr=> [...arr, { id: 'sec_'+Math.random().toString(36).slice(2), type:'text', title:'', text:'' }])}>+ Text Section</button>
+                <button className="px-3 py-1.5 rounded bg-gray-100 text-base" onClick={()=> setSections(arr=> [...arr, { id: 'sec_'+Math.random().toString(36).slice(2), type:'images', title:'', images: [] }])}>+ Images Section</button>
               </div>
             )}
+          </div>
           </div>
         </div>
-        <div className="md:col-span-2">
-          <h3 className="font-semibold mb-2">Pricing</h3>
-          <div className="text-[12px] text-gray-600 mb-2">If no pricing items are added, the "Pricing Table" section will be hidden in the PDF.</div>
-          <div className="space-y-2">
-            {pricingItems.map((c, i)=> (
-              <div key={i} className="grid grid-cols-5 gap-2">
-                <input className={`col-span-3 border rounded px-3 py-2 ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} placeholder="Name" value={c.name} onChange={e=>{ const v=e.target.value; setPricingItems(arr=> arr.map((x,j)=> j===i? { ...x, name:v }: x)); }} disabled={disabled} readOnly={disabled} />
-                <input type="text" className={`col-span-1 border rounded px-3 py-2 ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} placeholder="Price" value={c.price} onChange={e=>{ const v = parseAccounting(e.target.value); setPricingItems(arr=> arr.map((x,j)=> j===i? { ...x, price:v }: x)); }} onBlur={!disabled ? ()=> setPricingItems(arr=> arr.map((x,j)=> j===i? { ...x, price: formatAccounting(x.price) }: x)) : undefined} disabled={disabled} readOnly={disabled} />
-                {!disabled && (
-                  <button className="col-span-1 px-2 py-2 rounded bg-gray-100" onClick={()=> setPricingItems(arr=> arr.filter((_,j)=> j!==i))}>Remove</button>
-                )}
-              </div>
-            ))}
-            {!disabled && (
-              <button className="px-3 py-1.5 rounded bg-gray-100" onClick={()=> setPricingItems(arr=> [...arr, { name:'', price:'' }])}>+ Add Cost</button>
-            )}
+
+        {/* Pricing Block */}
+        <div className="rounded-xl border bg-white overflow-hidden">
+          <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] p-3 text-white font-semibold">
+            Pricing
           </div>
-          <div className="mt-3">
+          <div className="p-4">
+          {!disabled && projectId && projectId.trim() !== '' && (
+            <div className="mb-3">
+              <select
+                value={pricingType}
+                onChange={(e) => setPricingType(e.target.value as 'pricing' | 'estimate')}
+                className="border rounded px-3 py-1.5 text-sm text-gray-700 cursor-pointer"
+                disabled={disabled}
+              >
+                <option value="pricing">Insert Pricing manually</option>
+                <option value="estimate">Insert Pricing via Estimate</option>
+              </select>
+            </div>
+          )}
+          <div className="text-[12px] text-gray-600 mb-2">If no pricing items are added, the "Pricing Table" section will be hidden in the PDF.</div>
+          {pricingType === 'pricing' ? (
+            <>
+              {!disabled && (
+                <div className="sticky top-0 z-30 bg-white/95 backdrop-blur mb-3 py-3 border-b">
+                  <div className="flex items-center gap-2">
+                    <button 
+                      onClick={()=> setPricingItems(arr=> [...arr, { name:'', price:'', pst: false, gst: false }])}
+                      disabled={disabled}
+                      className="px-3 py-2 rounded bg-gray-100 hover:bg-gray-200 disabled:opacity-60 text-base">
+                      + Add Pricing Item
+                    </button>
+                    <div className="ml-auto flex items-center gap-3 text-sm">
+                      <label className="text-sm">PST (%)</label>
+                      <input 
+                        type="number" 
+                        className="border rounded px-2 py-1 w-20" 
+                        value={pstRate} 
+                        min={0} 
+                        step={1} 
+                        onChange={e=>setPstRate(Number(e.target.value||0))} 
+                        disabled={disabled}
+                      />
+                      <label className="text-sm">GST (%)</label>
+                      <input 
+                        type="number" 
+                        className="border rounded px-2 py-1 w-20" 
+                        value={gstRate} 
+                        min={0} 
+                        step={1} 
+                        onChange={e=>setGstRate(Number(e.target.value||0))} 
+                        disabled={disabled}
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+              
+              {/* Pricing items list - below the gray line */}
+              <div className="space-y-2">
+                {pricingItems.map((c, i)=> (
+                  <div key={i} className="grid grid-cols-12 gap-2 items-center">
+                    <input className={`col-span-6 border rounded px-3 py-2 ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} placeholder="Name" value={c.name} onChange={e=>{ const v=e.target.value; setPricingItems(arr=> arr.map((x,j)=> j===i? { ...x, name:v }: x)); }} disabled={disabled} readOnly={disabled} />
+                    <input type="text" className={`col-span-2 border rounded px-3 py-2 ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} placeholder="Price" value={c.price} onChange={e=>{ const v = parseAccounting(e.target.value); setPricingItems(arr=> arr.map((x,j)=> j===i? { ...x, price:v }: x)); }} onBlur={!disabled ? ()=> setPricingItems(arr=> arr.map((x,j)=> j===i? { ...x, price: formatAccounting(x.price) }: x)) : undefined} disabled={disabled} readOnly={disabled} />
+                    <div className="col-span-2 flex items-center gap-3">
+                      <span className="text-sm text-gray-600 whitespace-nowrap">Apply for this item:</span>
+                      <label className={`flex items-center gap-1 text-sm ${disabled ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
+                        <input 
+                          type="checkbox" 
+                          checked={c.pst === true}
+                          onChange={e=> setPricingItems(arr=> arr.map((x,j)=> j===i? { ...x, pst: e.target.checked }: x))}
+                          className={disabled ? 'cursor-not-allowed' : 'cursor-pointer'}
+                          disabled={disabled}
+                        />
+                        <span className="text-gray-700">PST</span>
+                      </label>
+                      <label className={`flex items-center gap-1 text-sm ${disabled ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
+                        <input 
+                          type="checkbox" 
+                          checked={c.gst === true}
+                          onChange={e=> setPricingItems(arr=> arr.map((x,j)=> j===i? { ...x, gst: e.target.checked }: x))}
+                          className={disabled ? 'cursor-not-allowed' : 'cursor-pointer'}
+                          disabled={disabled}
+                        />
+                        <span className="text-gray-700">GST</span>
+                      </label>
+                    </div>
+                    {!disabled && (
+                      <button className="col-span-2 px-2 py-2 rounded bg-gray-100" onClick={()=> setPricingItems(arr=> arr.filter((_,j)=> j!==i))}>Remove</button>
+                    )}
+                  </div>
+                ))}
+              </div>
+              
+              {/* Show PST, GST fields even when disabled (read-only view) */}
+              {disabled && (
+                <div className="mt-4 flex items-center gap-4">
+                  <label className="flex items-center gap-2 text-sm">
+                    <span>PST (%)</span>
+                    <input 
+                      type="number" 
+                      className="border rounded px-2 py-1 w-20 bg-gray-100 cursor-not-allowed" 
+                      value={pstRate} 
+                      disabled={true}
+                      readOnly={true}
+                    />
+                  </label>
+                  <label className="flex items-center gap-2 text-sm">
+                    <span>GST (%)</span>
+                    <input 
+                      type="number" 
+                      className="border rounded px-2 py-1 w-20 bg-gray-100 cursor-not-allowed" 
+                      value={gstRate} 
+                      disabled={true}
+                      readOnly={true}
+                    />
+                  </label>
+                </div>
+              )}
+
+              {/* Summary Section */}
+              <div className="mt-6">
+                <div className="rounded-xl border bg-white overflow-hidden">
+                  {/* Summary Header - Gray */}
+                  <div className="bg-gray-500 p-3 text-white font-semibold">
+                    Summary
+                  </div>
+                  
+                  {/* Two Cards Grid - inside Summary card */}
+                  <div className="p-4">
+                    <div className="grid md:grid-cols-2 gap-4">
+                      {/* Left Card */}
+                      <div className="rounded-xl border bg-white p-4">
+                        <div className="space-y-1 text-sm">
+                          <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span className="font-bold">Total Direct Costs</span><span className="font-bold">${totalNum.toFixed(2)}</span></div>
+                          <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span>PST ({pstRate}%)</span><span>${pst.toFixed(2)}</span></div>
+                          <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span className="font-bold">Sub-total</span><span className="font-bold">${subtotal.toFixed(2)}</span></div>
+                        </div>
+                      </div>
+                      {/* Right Card */}
+                      <div className="rounded-xl border bg-white p-4">
+                        <div className="space-y-1 text-sm">
+                          <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span>GST ({gstRate}%)</span><span>${gst.toFixed(2)}</span></div>
+                          <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1 text-lg"><span className="font-bold">Final Total (with GST)</span><span className="font-bold">${grandTotal.toFixed(2)}</span></div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+            </>
+          ) : (
+            <div>
+              {projectId && projectId.trim() !== '' ? (
+                <EstimateBuilder 
+                  ref={estimateBuilderRef}
+                  projectId={projectId} 
+                  statusLabel={project?.status_label||''} 
+                  settings={settings||{}} 
+                  isBidding={project?.is_bidding}
+                  canEdit={canEditEstimate}
+                  hideFooter={true}
+                />
+              ) : (
+                <div className="text-sm text-gray-600 p-4 border rounded bg-gray-50">
+                  Estimate requires a project to be associated with this proposal.
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Total with Show in PDF checkbox - PST/GST shown in PDF automatically based on items marked */}
+          <div className="mt-3 space-y-2">
             <div className="flex items-center gap-2">
-              <div className="text-sm font-semibold">Total: <span className="text-gray-600">${total}</span></div>
+              <div className="text-sm font-semibold">Total: <span className="text-gray-600">${formatAccounting(displayTotal)}</span></div>
               <label className={`flex items-center gap-1 text-sm text-gray-600 ${disabled ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
                 <input 
                   type="checkbox" 
@@ -1039,9 +1702,16 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
               </label>
             </div>
           </div>
-          <div className="mt-3">
-            <div className="text-sm font-semibold mb-1">Optional Services</div>
-            <div className="text-[12px] text-gray-600 mb-2">If no services are added, the "Optional Services" section will be hidden in the PDF.</div>
+          </div>
+        </div>
+
+        {/* Optional Services Block */}
+        <div className="rounded-xl border bg-white overflow-hidden">
+          <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] p-3 text-white font-semibold">
+            Optional Services
+          </div>
+          <div className="p-4">
+          <div className="text-[12px] text-gray-600 mb-2">If no services are added, the "Optional Services" section will be hidden in the PDF.</div>
             <div className="space-y-2">
               {optionalServices.map((s, i)=> (
                 <div key={i} className="grid grid-cols-5 gap-2">
@@ -1053,104 +1723,134 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
                 </div>
               ))}
               {!disabled && (
-                <button className="px-3 py-1.5 rounded bg-gray-100" onClick={()=> setOptionalServices(arr=> [...arr, { service:'', price:'' }])}>+ Add Service</button>
+                <button className="px-3 py-1.5 rounded bg-gray-100 text-base" onClick={()=> setOptionalServices(arr=> [...arr, { service:'', price:'' }])}>+ Add Service</button>
               )}
             </div>
           </div>
         </div>
-        <div className="md:col-span-2">
-          <h3 className="font-semibold mb-2">Terms</h3>
-          <textarea className={`w-full border rounded px-3 py-2 ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} value={terms} onChange={e=>setTerms(e.target.value)} disabled={disabled} readOnly={disabled} />
+
+        {/* Terms Block */}
+        <div className="rounded-xl border bg-white overflow-hidden">
+          <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] p-3 text-white font-semibold">
+            Terms
+          </div>
+          <div className="p-4">
+            <textarea 
+              className={`w-full border rounded px-3 py-2 ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} 
+              value={terms} 
+              onChange={e=>setTerms(e.target.value)} 
+              disabled={disabled} 
+              readOnly={disabled}
+              rows={12}
+              style={{ minHeight: '250px' }}
+            />
+          </div>
         </div>
-      </div>
-      {downloadUrl && (renderFingerprint!==lastGeneratedHash) && (
-        <div className="mb-3 p-2 rounded bg-yellow-50 border text-[12px] text-yellow-800">You have made changes since the last PDF was generated. Please click "Generate Proposal" again to update the download.</div>
-      )}
-      {(isReady && renderFingerprint!==lastSavedHash) && (
-        <div className="mb-3 p-2 rounded bg-blue-50 border text-[12px] text-blue-800">There are unsaved changes in this proposal. Click "Save Proposal" to persist.</div>
-      )}
-      <div className="mt-2 flex items-center justify-between">
-        {/* Only show Back button when not in project context */}
-        {(!projectId || window.location.pathname.includes('/proposals/')) && (
-          <button className="px-3 py-2 rounded bg-gray-100" onClick={async ()=>{
-            if (hasUnsavedChanges) {
-              const result = await confirm({
-                title: 'Unsaved Changes',
-                message: 'You have unsaved changes. What would you like to do?',
-                confirmText: 'Save and Leave',
-                cancelText: 'Cancel',
-                showDiscard: true,
-                discardText: 'Discard Changes'
-              });
-              
-              if (result === 'confirm') {
-                await handleSave();
-                nav(-1);
-              } else if (result === 'discard') {
-                nav(-1);
-              }
-              // If cancelled, do nothing
-            } else {
-              nav(-1);
-            }
-          }}>Back</button>
+        
+        {downloadUrl && (renderFingerprint!==lastGeneratedHash) && (
+          <div className="mb-3 p-2 rounded bg-yellow-50 border text-[12px] text-yellow-800">You have made changes since the last PDF was generated. Please click "Generate Proposal" again to update the download.</div>
         )}
-        {projectId && !window.location.pathname.includes('/proposals/') && <div />}
-        <div className="space-x-2">
-          {/* Show Clear Proposal button when in project context, Delete Proposal when in standalone /proposals route */}
-          {!disabled && projectId && !window.location.pathname.includes('/proposals/') && (
-            <button 
-              className="px-3 py-2 rounded bg-red-600 text-white hover:bg-red-700 disabled:opacity-50" 
-              onClick={handleClearProposal}
-              disabled={disabled}
-            >
-              Clear Proposal
-            </button>
-          )}
-          {!disabled && mode === 'edit' && (!projectId || window.location.pathname.includes('/proposals/')) && (
-            <button 
-              className="px-3 py-2 rounded bg-red-600 text-white hover:bg-red-700" 
-              onClick={async () => {
-                const result = await confirm({ 
-                  title: 'Delete Proposal', 
-                  message: 'Are you sure you want to delete this proposal? This action cannot be undone.' 
-                });
-                if (result !== 'confirm') return;
-                try {
-                  if (initial?.id) {
-                    await api('DELETE', `/proposals/${encodeURIComponent(initial.id)}`);
-                    toast.success('Proposal deleted');
-                    queryClient.invalidateQueries({ queryKey: ['proposals'] });
-                    queryClient.invalidateQueries({ queryKey: ['projectProposals'] });
-                    // Only navigate back if not in project context
-                    if (!projectId || window.location.pathname.includes('/proposals/')) {
-                      nav(-1);
-                    }
-                  }
-                } catch (e: any) {
-                  console.error('Failed to delete proposal:', e);
-                  toast.error(e?.response?.data?.detail || 'Failed to delete proposal');
-                }
-              }}
-            >
-              Delete Proposal
-            </button>
-          )}
-          {!disabled && (
-            <button className="px-3 py-2 rounded bg-gray-100" onClick={handleSave} disabled={disabled || isSaving}>
-              {isSaving ? 'Saving...' : 'Save Proposal'}
-            </button>
-          )}
-          <button className="px-3 py-2 rounded bg-brand-red text-white disabled:opacity-60" disabled={isGenerating} onClick={handleGenerate}>{isGenerating? 'Generating…' : 'Generate Proposal'}</button>
-          {downloadUrl && (
-            (renderFingerprint===lastGeneratedHash) ? (
-              <a className="px-3 py-2 rounded bg-black text-white" href={downloadUrl} download="ProjectProposal.pdf">Download PDF</a>
+        
+        {/* Spacer to prevent fixed bar from overlapping content */}
+        <div className="h-24" />
+      </div>
+      
+      {/* Fixed footer bar */}
+      <div className="fixed left-60 right-0 bottom-0 z-40">
+        <div className="px-4">
+          <div className="mx-auto max-w-[1400px] rounded-t-xl border bg-white/95 backdrop-blur p-4 flex items-center justify-between shadow-[0_-6px_16px_rgba(0,0,0,0.08)]">
+            {/* Left: Status indicator */}
+            {hasUnsavedChanges ? (
+              <div className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-3 py-1.5 font-medium">
+                Unsaved changes
+              </div>
             ) : (
-              <button className="px-3 py-2 rounded bg-gray-200 text-gray-600 cursor-not-allowed" title="PDF is outdated. Generate again to enable download" disabled>Download PDF</button>
-            )
-          )}
+              <div className="text-sm text-green-700 bg-green-50 border border-green-200 rounded-full px-3 py-1.5 font-medium">
+                All changes saved
+              </div>
+            )}
+            
+            {/* Center: Empty space */}
+            <div className="flex-1"></div>
+            
+            {/* Right: Action buttons */}
+            <div className="flex items-center gap-2">
+              {!disabled && projectId && !window.location.pathname.includes('/proposals/') && (
+                <button 
+                  className="px-4 py-2 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium transition-colors" 
+                  onClick={handleClearProposal}
+                  disabled={disabled}
+                >
+                  Clear Proposal
+                </button>
+              )}
+              {!disabled && mode === 'edit' && (!projectId || window.location.pathname.includes('/proposals/')) && (
+                <>
+                  <button 
+                    className="px-4 py-2 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium transition-colors" 
+                    onClick={async () => {
+                      const result = await confirm({ 
+                        title: 'Delete Proposal', 
+                        message: 'Are you sure you want to delete this proposal? This action cannot be undone.' 
+                      });
+                      if (result !== 'confirm') return;
+                      try {
+                        if (initial?.id) {
+                          await api('DELETE', `/proposals/${encodeURIComponent(initial.id)}`);
+                          toast.success('Proposal deleted');
+                          queryClient.invalidateQueries({ queryKey: ['proposals'] });
+                          queryClient.invalidateQueries({ queryKey: ['projectProposals'] });
+                          if (!projectId || window.location.pathname.includes('/proposals/')) {
+                            nav(-1);
+                          }
+                        }
+                      } catch (e: any) {
+                        console.error('Failed to delete proposal:', e);
+                        toast.error(e?.response?.data?.detail || 'Failed to delete proposal');
+                      }
+                    }}
+                  >
+                    Delete Proposal
+                  </button>
+                  <div className="w-px h-5 bg-gray-300"></div>
+                </>
+              )}
+              {!disabled && (
+                <button 
+                  className={`px-5 py-2 rounded-lg text-white font-semibold disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm ${
+                    hasUnsavedChanges
+                      ? 'bg-gradient-to-r from-brand-red to-[#ee2b2b] hover:from-red-700 hover:to-red-800' 
+                      : 'bg-gray-400 hover:bg-gray-500'
+                  }`}
+                  onClick={handleSave} 
+                  disabled={disabled || isSaving || !hasUnsavedChanges}
+                >
+                  {isSaving ? 'Saving...' : 'Save Proposal'}
+                </button>
+              )}
+              <div className="w-px h-5 bg-gray-300"></div>
+              <button 
+                className="px-4 py-2 rounded-lg bg-gray-400 hover:bg-gray-500 text-white font-medium disabled:opacity-60 disabled:cursor-not-allowed transition-colors" 
+                disabled={isGenerating} 
+                onClick={handleGenerate}
+              >
+                {isGenerating ? 'Generating…' : 'Generate Proposal'}
+              </button>
+              {downloadUrl && (
+                <>
+                  <div className="w-px h-5 bg-gray-300"></div>
+                  {(renderFingerprint===lastGeneratedHash) ? (
+                    <a className="px-4 py-2 rounded-lg bg-gray-400 hover:bg-gray-500 text-white font-medium transition-colors" href={downloadUrl} download="ProjectProposal.pdf">Download PDF</a>
+                  ) : (
+                    <button className="px-4 py-2 rounded-lg bg-gray-200 text-gray-600 cursor-not-allowed font-medium" title="PDF is outdated. Generate again to enable download" disabled>Download PDF</button>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
         </div>
       </div>
+      
 
       {pickerFor && (
         <ImagePicker isOpen={true} onClose={()=>setPickerFor(null)} clientId={clientId||undefined} targetWidth={pickerFor==='cover'? 566: 540} targetHeight={pickerFor==='cover'? 537: 340} allowEdit={true} exportScale={2} fileObjectId={pickerFor==='cover'? coverFoId: page2FoId} editorScaleFactor={pickerFor==='cover'? undefined: 1} hideEditButton={pickerFor==='cover'} onConfirm={async(blob)=>{ 
@@ -1204,6 +1904,255 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
           }catch(e){ toast.error('Failed to add image'); }
           setSectionPicker(null);
         }} />
+      )}
+      
+      {/* New Contact Modal */}
+      {contactModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+          <div className="w-[800px] max-w-[95vw] bg-white rounded-xl overflow-hidden">
+            <div className="px-4 py-3 bg-gradient-to-br from-[#7f1010] to-[#a31414] flex items-center justify-between">
+              <div className="font-semibold text-white">New Contact</div>
+              <button 
+                onClick={() => {
+                  setContactModalOpen(false);
+                  setNewContactName('');
+                  setNewContactEmail('');
+                  setNewContactPhone('');
+                  setNewContactRole('');
+                  setNewContactDept('');
+                  setNewContactPrimary('false');
+                  setContactNameError(false);
+                  setContactPhotoBlob(null);
+                }} 
+                className="text-gray-500 hover:text-gray-700 text-2xl font-bold w-8 h-8 flex items-center justify-center rounded hover:bg-gray-100" 
+                title="Close"
+              >
+                ×
+              </button>
+            </div>
+            <div className="p-4 grid md:grid-cols-5 gap-3 items-start">
+              <div className="md:col-span-2">
+                <div className="text-[11px] uppercase text-gray-500 mb-1">Contact Photo</div>
+                <button 
+                  onClick={() => {
+                    setContactPhotoBlob(new Blob());
+                    setPickerForContact('__new__');
+                  }} 
+                  className="w-full h-40 border rounded grid place-items-center bg-gray-50"
+                >
+                  Select Photo
+                </button>
+              </div>
+              <div className="md:col-span-3 grid grid-cols-2 gap-2">
+                <div className="col-span-2">
+                  <label className="text-xs text-gray-600">
+                    Name <span className="text-red-600">*</span>
+                  </label>
+                  <input 
+                    className={`border rounded px-3 py-2 w-full ${contactNameError && !newContactName.trim() ? 'border-red-500' : ''}`} 
+                    value={newContactName} 
+                    onChange={e => {
+                      setNewContactName(e.target.value);
+                      if (contactNameError) setContactNameError(false);
+                    }} 
+                  />
+                  {contactNameError && !newContactName.trim() && (
+                    <div className="text-[11px] text-red-600 mt-1">This field is required</div>
+                  )}
+                </div>
+                <div>
+                  <label className="text-xs text-gray-600">Role/Title</label>
+                  <input 
+                    className="border rounded px-3 py-2 w-full" 
+                    value={newContactRole} 
+                    onChange={e => setNewContactRole(e.target.value)} 
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-gray-600">Department</label>
+                  <input 
+                    className="border rounded px-3 py-2 w-full" 
+                    value={newContactDept} 
+                    onChange={e => setNewContactDept(e.target.value)} 
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-gray-600">Email</label>
+                  <input 
+                    className="border rounded px-3 py-2 w-full" 
+                    value={newContactEmail} 
+                    onChange={e => setNewContactEmail(e.target.value)} 
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-gray-600">Phone</label>
+                  <input 
+                    className="border rounded px-3 py-2 w-full" 
+                    value={newContactPhone} 
+                    onChange={e => setNewContactPhone(formatPhone(e.target.value))} 
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-gray-600">Primary</label>
+                  <div className="flex items-center gap-2 mt-2">
+                    <input
+                      type="checkbox"
+                      checked={(!contacts || contacts.length === 0) || newContactPrimary === 'true'}
+                      onChange={e => setNewContactPrimary(e.target.checked ? 'true' : 'false')}
+                      disabled={!contacts || contacts.length === 0}
+                      className="rounded disabled:opacity-50 disabled:cursor-not-allowed"
+                    />
+                    <span className="text-xs text-gray-600">
+                      {(!contacts || contacts.length === 0) ? 'Primary contact' : 'Set as primary contact'}
+                    </span>
+                  </div>
+                </div>
+                <div className="col-span-2 text-right">
+                  <button 
+                    onClick={async () => {
+                      if (isCreatingContact) return;
+                      if (!newContactName.trim()) {
+                        setContactNameError(true);
+                        toast.error('Name is required');
+                        return;
+                      }
+                      if (!clientId) {
+                        toast.error('Client ID is required');
+                        return;
+                      }
+                      try {
+                        setIsCreatingContact(true);
+                        // If this is the first contact, automatically set as primary
+                        const isFirstContact = !contacts || contacts.length === 0;
+                        const willBePrimary = isFirstContact || newContactPrimary === 'true';
+                        
+                        // If setting as primary, first unset any existing primary contacts
+                        if (willBePrimary && contacts && contacts.length > 0) {
+                          const primaryContact = contacts.find((c: any) => c.is_primary);
+                          if (primaryContact) {
+                            await api('PATCH', `/clients/${clientId}/contacts/${primaryContact.id}`, {
+                              is_primary: false
+                            });
+                          }
+                        }
+                        
+                        const payload: any = {
+                          name: newContactName,
+                          email: newContactEmail,
+                          phone: newContactPhone,
+                          role_title: newContactRole,
+                          department: newContactDept,
+                          is_primary: willBePrimary
+                        };
+                        const created: any = await api('POST', `/clients/${clientId}/contacts`, payload);
+                        // If photo selected, upload it now
+                        if (contactPhotoBlob && created.id) {
+                          try {
+                            const up: any = await api('POST', '/files/upload', { 
+                              project_id: null, 
+                              client_id: clientId, 
+                              employee_id: null, 
+                              category_id: 'contact-photo', 
+                              original_name: `contact-${created.id}.jpg`, 
+                              content_type: 'image/jpeg' 
+                            });
+                            await fetch(up.upload_url, { 
+                              method: 'PUT', 
+                              headers: { 'Content-Type': 'image/jpeg', 'x-ms-blob-type': 'BlockBlob' }, 
+                              body: contactPhotoBlob 
+                            });
+                            const conf: any = await api('POST', '/files/confirm', { 
+                              key: up.key, 
+                              size_bytes: contactPhotoBlob.size, 
+                              checksum_sha256: 'na', 
+                              content_type: 'image/jpeg' 
+                            });
+                            await api('POST', `/clients/${clientId}/files?file_object_id=${encodeURIComponent(conf.id)}&category=${encodeURIComponent('contact-photo-' + created.id)}&original_name=${encodeURIComponent('contact-' + created.id + '.jpg')}`);
+                          } catch (e) {
+                            console.error('Failed to upload contact photo:', e);
+                            // Don't fail the whole operation if photo upload fails
+                          }
+                        }
+                        setNewContactName('');
+                        setNewContactEmail('');
+                        setNewContactPhone('');
+                        setNewContactRole('');
+                        setNewContactDept('');
+                        setNewContactPrimary('false');
+                        setContactNameError(false);
+                        setContactPhotoBlob(null);
+                        setContactModalOpen(false);
+                        // Refresh contacts list
+                        await refetchContacts();
+                        // Select the newly created contact
+                        setSelectedContactId(String(created.id));
+                        setCreatedFor(created.name || '');
+                        setPrimary({
+                          name: created.name || '',
+                          phone: created.phone || '',
+                          email: created.email || ''
+                        });
+                      } catch (e) {
+                        toast.error('Failed to create contact');
+                        setIsCreatingContact(false);
+                      }
+                    }} 
+                    disabled={isCreatingContact} 
+                    className="px-4 py-2 rounded-xl bg-gradient-to-r from-brand-red to-[#ee2b2b] text-white font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {isCreatingContact ? 'Creating...' : 'Create'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {pickerForContact && (
+        <ImagePicker 
+          isOpen={true} 
+          onClose={() => setPickerForContact(null)} 
+          clientId={clientId || undefined} 
+          targetWidth={400} 
+          targetHeight={400} 
+          allowEdit={true} 
+          onConfirm={async (blob) => {
+            try {
+              if (pickerForContact === '__new__') {
+                // We don't yet have the new contact id here; the simple flow is to upload the photo now and let user reassign later.
+                // For now, just keep it in memory not supported; instead, we will upload after contact is created via another round.
+                setContactPhotoBlob(blob);
+              } else {
+                const up: any = await api('POST', '/files/upload', { 
+                  project_id: null, 
+                  client_id: clientId, 
+                  employee_id: null, 
+                  category_id: 'contact-photo', 
+                  original_name: `contact-${pickerForContact}.jpg`, 
+                  content_type: 'image/jpeg' 
+                });
+                await fetch(up.upload_url, { 
+                  method: 'PUT', 
+                  headers: { 'Content-Type': 'image/jpeg', 'x-ms-blob-type': 'BlockBlob' }, 
+                  body: blob 
+                });
+                const conf: any = await api('POST', '/files/confirm', { 
+                  key: up.key, 
+                  size_bytes: blob.size, 
+                  checksum_sha256: 'na', 
+                  content_type: 'image/jpeg' 
+                });
+                await api('POST', `/clients/${clientId}/files?file_object_id=${encodeURIComponent(conf.id)}&category=${encodeURIComponent('contact-photo-' + pickerForContact)}&original_name=${encodeURIComponent('contact-' + pickerForContact + '.jpg')}`);
+                toast.success('Contact photo updated');
+                await refetchContacts();
+              }
+            } catch (e) {
+              toast.error('Failed to update contact photo');
+            } finally {
+              setPickerForContact(null);
+            }
+          }} 
+        />
       )}
     </div>
   );
