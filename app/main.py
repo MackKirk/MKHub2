@@ -23,6 +23,7 @@ from .routes.settings import router as settings_router
 from .routes.inventory import router as inventory_router
 from .routes.integrations import router as integrations_router
 from .routes.proposals import router as proposals_router
+from .routes.quotes import router as quotes_router
 from .routes.users import router as users_router
 from .routes.estimate import router as estimate_router
 from .routes.reviews import router as reviews_router
@@ -70,6 +71,7 @@ def create_app() -> FastAPI:
     app.include_router(integrations_router)
     app.include_router(inventory_router)
     app.include_router(proposals_router)
+    app.include_router(quotes_router)
     app.include_router(users_router)
     app.include_router(estimate_router)
     app.include_router(reviews_router)
@@ -143,10 +145,42 @@ def create_app() -> FastAPI:
         print("[startup] Checking lightweight schema migrations...")
         try:
             from sqlalchemy import text
-            from .db import SessionLocal
+            from .db import SessionLocal, Base, engine
             db = SessionLocal()
             try:
                 dialect = db.bind.dialect.name if getattr(db, "bind", None) is not None else ""
+                
+                # Ensure quotes table exists
+                if dialect == "sqlite":
+                    # SQLite: Check if table exists
+                    try:
+                        db.execute(text("SELECT 1 FROM quotes LIMIT 1")).fetchone()
+                    except Exception:
+                        # Table doesn't exist, create it
+                        from .models.models import Quote
+                        Base.metadata.create_all(bind=engine, tables=[Quote.__table__])
+                        db.commit()
+                        print("[startup] Created quotes table")
+                else:
+                    # PostgreSQL / other dialects: Check if table exists
+                    rows = db.execute(
+                        text(
+                            """
+                            SELECT 1
+                            FROM information_schema.tables
+                            WHERE table_name = 'quotes'
+                            LIMIT 1
+                            """
+                        )
+                    ).fetchall()
+                    if not rows:
+                        # Table doesn't exist, create it
+                        from .models.models import Quote
+                        Base.metadata.create_all(bind=engine, tables=[Quote.__table__])
+                        db.commit()
+                        print("[startup] Created quotes table")
+                
+                # Check for source_attendance_id column in project_time_entries
                 has_col = False
                 if dialect == "sqlite":
                     rows = db.execute(text("PRAGMA table_info(project_time_entries)")).fetchall()

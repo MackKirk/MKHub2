@@ -1,5 +1,5 @@
 import { useParams, Link, useLocation, useNavigate } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { useEffect, useMemo, useState, ReactNode } from 'react';
 import toast from 'react-hot-toast';
@@ -17,8 +17,9 @@ type Contact = { id:string, name?:string, email?:string, phone?:string, is_prima
 export default function CustomerDetail(){
   const location = useLocation();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { id } = useParams();
-  const [tab, setTab] = useState<'overview'|'general'|'files'|'contacts'|'sites'|'projects'|'opportunities'>('overview');
+  const [tab, setTab] = useState<'overview'|'general'|'files'|'contacts'|'sites'|'projects'|'opportunities'|'quotes'>('overview');
   const [newProjectOpen, setNewProjectOpen] = useState(false);
   const [newProjectName, setNewProjectName] = useState('');
   const { data:client, isLoading } = useQuery({ queryKey:['client', id], queryFn: ()=>api<Client>('GET', `/clients/${id}`) });
@@ -94,11 +95,12 @@ export default function CustomerDetail(){
   const leadSources = (settings?.lead_sources||[]) as any[];
   const { data:projects } = useQuery({ queryKey:['clientProjects', id], queryFn: ()=>api<Project[]>('GET', `/projects?client=${encodeURIComponent(String(id||''))}&is_bidding=false`), enabled: hasProjectsRead });
   const { data:opportunities } = useQuery({ queryKey:['clientOpportunities', id], queryFn: ()=>api<Project[]>('GET', `/projects?client=${encodeURIComponent(String(id||''))}&is_bidding=true`), enabled: hasProjectsRead });
+  const { data:quotes } = useQuery({ queryKey:['clientQuotes', id], queryFn: ()=>api<any[]>('GET', `/quotes?client_id=${encodeURIComponent(String(id||''))}`), enabled: hasProjectsRead });
   const { data:contacts } = useQuery({ queryKey:['clientContacts', id], queryFn: ()=>api<Contact[]>('GET', `/clients/${id}/contacts`) });
   
   // Determine available tabs based on permissions
   const availableTabs = useMemo(() => {
-    const allTabs = ['overview','general','files','contacts','sites','opportunities','projects'] as const;
+    const allTabs = ['overview','general','files','contacts','sites','opportunities','projects','quotes'] as const;
     
     if (!hasCustomersRead && !hasProjectsRead) {
       return [];
@@ -751,6 +753,72 @@ export default function CustomerDetail(){
                       <ProjectRow key={p.id} project={p} files={files||[]} onCoverClick={(projectId)=>{ setProjectPicker({ open:true, projectId }); }} hasEditPermission={hasEditPermission} />
                     ))}
                     {(!projects||!projects.length) && <div className="p-4 text-sm text-gray-600">No projects</div>}
+                  </div>
+                </div>
+              )}
+              {tab==='quotes' && (
+                <div>
+                  <div className="mb-3 flex items-center justify-between">
+                    <h3 className="font-semibold">Quotes</h3>
+                    {hasEditPermission && (
+                      <button 
+                        onClick={async()=>{
+                          try{
+                            const nextCode:any = await api('GET', `/quotes/next-code?client_id=${encodeURIComponent(String(id||''))}`);
+                            const code = nextCode?.order_number || '';
+                            const payload:any = { 
+                              client_id: id, 
+                              code,
+                              order_number: code,
+                              cover_title: 'Quotation', // Set default document type
+                              title: 'Quotation',
+                            };
+                            const quote:any = await api('POST','/quotes', payload);
+                            if (!quote?.id) {
+                              toast.error('Failed to create quotation: No ID returned');
+                              return;
+                            }
+                            // Invalidate queries to refresh the list before navigating
+                            queryClient.invalidateQueries({ queryKey: ['clientQuotes', id] });
+                            queryClient.invalidateQueries({ queryKey: ['quotes'] });
+                            toast.success('Quotation created');
+                            // Small delay to ensure toast is visible, then navigate
+                            setTimeout(() => {
+                              navigate(`/quotes/${encodeURIComponent(String(quote.id))}`, { state: { fromCustomer: true } });
+                            }, 100);
+                          }catch(e:any){
+                            console.error('Failed to create quotation:', e);
+                            toast.error(e?.response?.data?.detail || 'Failed to create quotation');
+                          }
+                        }}
+                        className="px-4 py-2 rounded bg-brand-red text-white text-sm font-semibold"
+                      >
+                        + New Quote
+                      </button>
+                    )}
+                  </div>
+                  <div className="rounded-xl border bg-white divide-y">
+                    {(quotes||[]).map(q=> {
+                      // Get document type from data.cover_title or title, default to 'Quotation'
+                      const documentType = (q.document_type || q.data?.cover_title || q.title || 'Quotation');
+                      // Get cover image for quote - same logic as QuoteDetail.tsx General Information
+                      // Search for quote-cover-derived category first, then fallback to any image
+                      const img = (files||[]).find(f=> String(f.category||'')==='quote-cover-derived');
+                      const src = img? `/files/${img.file_object_id}/thumbnail?w=192` : '/ui/assets/login/logo-light.svg';
+                      return (
+                        <Link key={q.id} to={`/quotes/${encodeURIComponent(String(q.id))}`} state={{ fromCustomer: true }} className="p-4 flex items-center justify-between hover:bg-gray-50 cursor-pointer">
+                          <div className="flex items-center gap-4 min-w-0 flex-1">
+                            <img src={src} className="w-24 h-24 rounded-lg border object-cover"/>
+                            <div className="min-w-0 flex-1">
+                              <div className="font-medium text-base truncate">{documentType}</div>
+                              <div className="text-sm text-gray-600 truncate mt-1">{q.code || q.order_number || '—'}</div>
+                            </div>
+                          </div>
+                          <div className="text-sm text-gray-500">{(q.created_at||'').slice(0,10)}</div>
+                        </Link>
+                      );
+                    })}
+                    {(!quotes||!quotes.length) && <div className="p-4 text-sm text-gray-600">No quotes</div>}
                   </div>
                 </div>
               )}

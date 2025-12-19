@@ -1,5 +1,6 @@
 import os
 import uuid
+from datetime import datetime
 from reportlab.lib.pagesizes import A4
 from reportlab.platypus import (
     BaseDocTemplate, Paragraph, Spacer, Frame, PageTemplate, PageBreak, Flowable, KeepTogether,
@@ -27,6 +28,7 @@ pdfmetrics.registerFont(TTFont("Montserrat-Bold", os.path.join(fonts_path, "Mont
 
 def draw_template_page3(c, doc, data):
     # Draw static background template (header, footer, globe, etc.)
+    # Use the same template for both proposals and quotes
     try:
         page_width, page_height = A4
         template_style = data.get("template_style", "Mack Kirk")
@@ -41,6 +43,8 @@ def draw_template_page3(c, doc, data):
         # Fail gracefully – if background can't be drawn, continue with text only
         pass
 
+    # Draw header text (cover_title, company_name, order_number)
+    # This is drawn on top of the template for both quotes and proposals
     c.setFillColor(colors.white)
     # Auto-fit cover title into the available width
     title = data.get("cover_title", "") or ""
@@ -87,6 +91,69 @@ def wrap_text(text, font_name, font_size, max_width):
         lines.append(" ".join(current_line))
     
     return lines if lines else [""]
+
+
+def draw_wrapped_text_right_aligned(c, text, right_x, y, max_width, font="Montserrat-Bold", size=11.5, color=colors.grey):
+    """Draw text right-aligned with line wrapping and justification. Each line is justified, except the last which is right-aligned."""
+    c.setFont(font, size)
+    c.setFillColor(color)
+
+    words = text.split()
+    if not words:
+        return y
+    
+    # Build lines with words
+    lines_words = []
+    current_line = []
+    for word in words:
+        test_words = current_line + [word]
+        test_text = " ".join(test_words)
+        if stringWidth(test_text, font, size) <= max_width:
+            current_line.append(word)
+        else:
+            if current_line:
+                lines_words.append(current_line)
+            current_line = [word]
+    if current_line:
+        lines_words.append(current_line)
+    
+    # Draw each line
+    for idx, line_words in enumerate(lines_words):
+        is_last_line = idx == len(lines_words) - 1
+        line_text = " ".join(line_words)
+        
+        if is_last_line or len(line_words) == 1:
+            # Last line or single word: right-align
+            c.drawRightString(right_x, y, line_text)
+        else:
+            # Justify the line by distributing space between words
+            # Calculate total width of words without spaces
+            word_widths = [stringWidth(word, font, size) for word in line_words]
+            words_width = sum(word_widths)
+            num_gaps = len(line_words) - 1
+            if num_gaps > 0:
+                # Total space to distribute between words
+                total_space = max_width - words_width
+                space_per_gap = total_space / num_gaps
+                
+                # Start at left edge of the text block (right_x - max_width)
+                # This ensures the block is right-aligned and fills exactly max_width
+                x = right_x - max_width
+                for word_idx, word in enumerate(line_words):
+                    c.drawString(x, y, word)
+                    x += word_widths[word_idx]
+                    # Add space after word (except for last word) to justify the line
+                    if word_idx < len(line_words) - 1:
+                        x += space_per_gap
+            else:
+                # Single word (shouldn't happen here, but just in case)
+                c.drawRightString(right_x, y, line_text)
+        
+        # Only move y down if this is not the last line
+        if idx < len(lines_words) - 1:
+            y -= size + 4
+    
+    return y
 
 
 class PricingTable(Flowable):
@@ -408,6 +475,148 @@ def build_dynamic_pages(data, output_path):
 
     story = []
     temp_images: list[str] = []
+    
+    # For quotes, add General Proposal Details and Project Details at the top of dynamic page
+    is_quote = data.get("is_quote", False)
+    if is_quote:
+        class QuoteDetailsFields(Flowable):
+            def __init__(self, data):
+                super().__init__()
+                self.data = data
+                # Calculate height needed for all fields
+                # General Proposal Details header: ~30
+                # Fields (4 fields without Project Name/Address): 4 * 20 = 80
+                # Spacing: 20
+                type_of_project = data.get("type_of_project", "").strip()
+                other_notes = data.get("other_notes", "").strip()
+                
+                # Project Details section (only if at least one field has content)
+                project_details_height = 0
+                if type_of_project or other_notes:
+                    # Project Details header: ~30
+                    project_details_height = 30
+                    # Estimate wrapped lines for type_of_project
+                    type_lines = max(1, len(type_of_project.split()) // 8 + 1) if type_of_project else 0
+                    type_height = type_lines * 15 if type_of_project else 0
+                    # Estimate wrapped lines for other_notes
+                    notes_lines = max(1, len(other_notes.split()) // 8 + 1) if other_notes else 0
+                    notes_height = notes_lines * 15 if other_notes else 0
+                    project_details_height += type_height + notes_height
+                
+                self.height = 30 + 80 + 20 + project_details_height + 40  # Extra padding
+
+            def draw(self):
+                c = self.canv
+                page_width = A4[0]
+                # NOTE: This Flowable is drawn inside `frame_main` (see below), so the origin (0,0)
+                # here is relative to the frame, NOT the page.
+                #
+                # In proposals `build_page2` we draw directly on the page at:
+                # - left edge:  x = 40
+                # - right edge: x = page_width - 40
+                #
+                # Our dynamic pages use a frame that starts at x=35, width=(page_width - 70),
+                # so to match the same visual positions we must offset by -35:
+                frame_x = 35
+                x_left = 40 - frame_x
+                x_right = (page_width - 40) - frame_x
+                y = self.height - 20
+                
+                # General Proposal Details header
+                c.setFont("Montserrat-Bold", 11.5)
+                c.setFillColor(colors.HexColor("#d62028"))
+                c.drawString(x_left, y, "General Proposal Details")
+                
+                # Date on the right
+                date_value = self.data.get("date", "")
+                def format_date(date_str):
+                    try:
+                        dt = datetime.strptime(date_str, "%Y-%m-%d")
+                        day = dt.day
+                        if 10 <= day % 100 <= 20:
+                            suffix = "th"
+                        else:
+                            suffix = {1: "st", 2: "nd", 3: "rd"}.get(day % 10, "th")
+                        return dt.strftime(f"%b {day}{suffix}, %Y")
+                    except Exception:
+                        return date_str
+                formatted_date = format_date(date_value)
+                c.drawRightString(x_right, y, formatted_date)
+                y -= 30
+                
+                # Fields (without Project Name/Description and Project Address)
+                quote_fields = [
+                    ("Proposal Created For:", self.data.get("client_name", "")),
+                    ("Contact Name:", self.data.get("primary_contact_name", "")),
+                    ("Contact Phone:", self.data.get("primary_contact_phone", "")),
+                    ("Contact E-mail:", self.data.get("primary_contact_email", "")),
+                ]
+                for label, value in quote_fields:
+                    c.setFont("Montserrat-Bold", 11.5)
+                    c.setFillColor(colors.black)
+                    c.drawString(x_left, y, label)
+                    c.setFillColor(colors.grey)
+                    # Align values to the right, same as proposals
+                    c.drawRightString(x_right, y, value)
+                    y -= 20
+                
+                # Check if Project Details section should be shown
+                type_of_project = self.data.get("type_of_project", "").strip()
+                other_notes = self.data.get("other_notes", "").strip()
+                
+                # Only show Project Details section if at least one field has content
+                if type_of_project or other_notes:
+                    y -= 20
+                    # Project Details header
+                    c.setFont("Montserrat-Bold", 11.5)
+                    c.setFillColor(colors.HexColor("#d62028"))
+                    c.drawString(x_left, y, "Project Details")
+                    y -= 25
+                    
+                    # Type of Project
+                    if type_of_project:
+                        c.setFont("Montserrat-Bold", 11.5)
+                        c.setFillColor(colors.black)
+                        label_width = stringWidth("Type of Project:", "Montserrat-Bold", 11.5)
+                        label_end_x = x_left + label_width + 20  # left margin + label width + spacing
+                        c.drawString(x_left, y, "Type of Project:")
+                        c.setFillColor(colors.grey)
+                        
+                        # Calculate max width for wrapped text
+                        # The text will be right-aligned, but must not overlap the label
+                        # So available width is from label_end_x to right margin
+                        available_width = x_right - label_end_x  # from label end to right margin
+                        
+                        y = draw_wrapped_text_right_aligned(
+                            c, type_of_project, x_right, y,
+                            available_width,
+                            font="Montserrat-Bold", size=11, color=colors.grey
+                        )
+                        y -= 20
+                    
+                    # Other Notes (if present)
+                    if other_notes:
+                        c.setFont("Montserrat-Bold", 11.5)
+                        c.setFillColor(colors.black)
+                        label_width = stringWidth("Other Notes:", "Montserrat-Bold", 11.5)
+                        label_end_x = x_left + label_width + 20  # left margin + label width + spacing
+                        c.drawString(x_left, y, "Other Notes:")
+                        c.setFillColor(colors.grey)
+                        
+                        # Calculate max width for wrapped text
+                        # The text will be right-aligned, but must not overlap the label
+                        # So available width is from label_end_x to right margin
+                        available_width = x_right - label_end_x  # from label end to right margin
+                        
+                        y = draw_wrapped_text_right_aligned(
+                            c, other_notes, x_right, y,
+                            available_width,
+                            font="Montserrat-Bold", size=11, color=colors.grey
+                        )
+        
+        story.append(QuoteDetailsFields(data))
+        story.append(Spacer(1, 20))  # Space before sections
+    
     sections = data.get("sections") or []
     for sec in sections:
         if sec.get("type") == "text":
@@ -652,15 +861,18 @@ def build_dynamic_pages(data, output_path):
             story.append(OptionalServicesTable({ **data, "optional_services": valid_services }))
 
     # --- Final Terms Page ---
-    story.append(NextPageTemplate('page3_terms'))
-    story.append(PageBreak())
-    terms_title_para = Paragraph("General Project Terms & Conditions", title_style)
-    terms_body_para = Paragraph((data.get("terms_text", "") or "").replace("\n", "<br/>"), user_style)
-    # Ensure there is enough space for title + first chunk of terms on this page
-    _, tth = terms_title_para.wrap(frame_width, 0)
-    _, tbh = terms_body_para.wrap(frame_width, 0)
-    story.append(CondPageBreak(tth + min(tbh, 80)))  # require some body text below title
-    story.append(KeepTogether([terms_title_para, terms_body_para]))
+    # Only show Terms section if terms_text has content
+    terms_text = (data.get("terms_text", "") or "").strip()
+    if terms_text:
+        story.append(NextPageTemplate('page3_terms'))
+        story.append(PageBreak())
+        terms_title_para = Paragraph("General Project Terms & Conditions", title_style)
+        terms_body_para = Paragraph(terms_text.replace("\n", "<br/>"), user_style)
+        # Ensure there is enough space for title + first chunk of terms on this page
+        _, tth = terms_title_para.wrap(frame_width, 0)
+        _, tbh = terms_body_para.wrap(frame_width, 0)
+        story.append(CondPageBreak(tth + min(tbh, 80)))  # require some body text below title
+        story.append(KeepTogether([terms_title_para, terms_body_para]))
 
     top_margin = 115
     # Bottom margin large enough to stay clear of the footer/globe, but still allow 3 rows of images.

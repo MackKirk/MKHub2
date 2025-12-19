@@ -461,6 +461,22 @@ class Proposal(Base):
     data: Mapped[Optional[dict]] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
 
+
+class Quote(Base):
+    __tablename__ = "quotes"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    client_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+    code: Mapped[Optional[str]] = mapped_column(String(50))
+    name: Mapped[Optional[str]] = mapped_column(String(255))
+    estimator_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+    project_division_ids: Mapped[Optional[list]] = mapped_column(JSON)  # Array of division IDs
+    order_number: Mapped[Optional[str]] = mapped_column(String(20))
+    title: Mapped[Optional[str]] = mapped_column(String(255))
+    data: Mapped[Optional[dict]] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow)
+
 class ReviewTemplate(Base):
     __tablename__ = "review_templates"
 

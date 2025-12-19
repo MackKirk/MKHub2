@@ -11,6 +11,7 @@ export type EstimateBuilderRef = {
   hasUnsavedChanges: () => boolean;
   save: () => Promise<boolean>;
   getGrandTotal: () => number;
+  getTotalEstimate: () => number; // Returns Total Estimate (before GST)
   getPst: () => number;
   getGst: () => number;
 };
@@ -706,9 +707,10 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
     hasUnsavedChanges: () => dirty && canEdit,
     save: () => performSave(false),
     getGrandTotal: () => grandTotal,
+    getTotalEstimate: () => finalTotal, // Returns Total Estimate (before GST)
     getPst: () => pst,
     getGst: () => gst
-  }), [dirty, canEdit, performSave, grandTotal, pst, gst]);
+  }), [dirty, canEdit, performSave, grandTotal, finalTotal, pst, gst]);
 
   // Sync section order with items (add new sections that appear in items)
   useEffect(()=>{
