@@ -282,6 +282,7 @@ export default function AppShell({ children }: PropsWithChildren){
         { id: 'customers', label: 'Customers', path: '/customers', icon: <IconUsers />, requiredPermission: 'business:customers:read' },
         { id: 'opportunities', label: 'Opportunities', path: '/opportunities', icon: <IconFileText />, requiredPermission: 'business:projects:read' },
         { id: 'projects', label: 'Projects', path: '/projects', icon: <IconBriefcase />, requiredPermission: 'business:projects:read' },
+        { id: 'quotations', label: 'Quotations', path: '/quotes', icon: <IconFileText />, requiredPermission: 'business:projects:read' },
         { id: 'proposals', label: 'Proposals', path: '/proposals', icon: <IconFileText /> },
       ]
     },

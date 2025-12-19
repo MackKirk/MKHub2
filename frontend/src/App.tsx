@@ -23,6 +23,9 @@ import Proposals from './pages/Proposals';
 import ProposalNew from './pages/ProposalNew';
 import ProposalView from './pages/ProposalView';
 import ProposalEdit from './pages/ProposalEdit';
+import Quotes from './pages/Quotes';
+import QuoteNew from './pages/QuoteNew';
+import QuoteDetail from './pages/QuoteDetail';
 import CustomerDetail from './pages/CustomerDetail';
 import SiteDetail from './pages/SiteDetail';
 import Projects from './pages/Projects';
@@ -106,6 +109,9 @@ export default function App(){
           <Route path="/proposals/new" element={<AppShell><ProposalNew/></AppShell>} />
           <Route path="/proposals/:id" element={<AppShell><ProposalView/></AppShell>} />
           <Route path="/proposals/:id/edit" element={<AppShell><ProposalEdit/></AppShell>} />
+          <Route path="/quotes" element={<AppShell><Quotes/></AppShell>} />
+          <Route path="/quotes/new" element={<AppShell><QuoteNew/></AppShell>} />
+          <Route path="/quotes/:id" element={<AppShell><QuoteDetail/></AppShell>} />
           <Route path="/projects" element={<AppShell><Projects/></AppShell>} />
           <Route path="/projects/new" element={<AppShell><ProjectNew/></AppShell>} />
           <Route path="/projects/:id" element={<AppShell><ProjectDetail/></AppShell>} />
@@ -156,6 +162,7 @@ export default function App(){
         <Routes>
           <Route path="/customers/:customerId/sites/:siteId" element={<AppShell><SiteDetail/></AppShell>} />
           <Route path="/projects/new" element={<AppShell><ProjectNew/></AppShell>} />
+          <Route path="/quotes/new" element={<AppShell><QuoteNew/></AppShell>} />
         </Routes>
       )}
       <Toaster position="top-right" />

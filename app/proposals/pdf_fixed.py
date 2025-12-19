@@ -77,7 +77,13 @@ def build_cover_page(c, data):
         return size
 
     y = 339
-    for value in [data.get("company_name", ""), data.get("company_address", "")]:
+    # For quotes, use primary_contact_name instead of company_address in second line
+    is_quote = data.get("is_quote", False)
+    if is_quote:
+        overlay_values = [data.get("company_name", ""), data.get("primary_contact_name", "")]
+    else:
+        overlay_values = [data.get("company_name", ""), data.get("company_address", "")]
+    for value in overlay_values:
         size = fit_size(value, "Montserrat-Bold", 17.2, 8.0, 516.0)
         c.setFont("Montserrat-Bold", size)
         c.setFillColor(colors.white)
@@ -256,9 +262,9 @@ def build_page2(c, data):
         ("Project Name / Description:", data.get("project_name", "")),
         ("Project Address:", data.get("site_address", "")),
         ("Proposal Created For:", data.get("client_name", "")),
-        ("Primary Contact Name:", data.get("primary_contact_name", "")),
-        ("Primary Contact Phone:", data.get("primary_contact_phone", "")),
-        ("Primary Contact E-mail:", data.get("primary_contact_email", "")),
+        ("Contact Name:", data.get("primary_contact_name", "")),
+        ("Contact Phone:", data.get("primary_contact_phone", "")),
+        ("Contact E-mail:", data.get("primary_contact_email", "")),
     ]
     for label, value in project_fields:
         c.setFont("Montserrat-Bold", 11.5)
@@ -268,41 +274,47 @@ def build_page2(c, data):
         c.drawRightString(page_width - 40, y, value)
         y -= 20
 
-    y -= 20
-    c.setFont("Montserrat-Bold", 11.5)
-    c.setFillColor(colors.HexColor("#d62028"))
-    c.drawString(40, y, "Project Details")
-    y -= 25
-
-    details_fields = [
-        ("Type of Project:", data.get("type_of_project", "")),
-    ]
-    # Only add "Other Notes" if it has content
+    # Check if Project Details section should be shown
+    type_of_project = data.get("type_of_project", "").strip()
     other_notes = data.get("other_notes", "").strip()
-    if other_notes:
-        details_fields.append(("Other Notes:", other_notes))
     
-    for i, (label, value) in enumerate(details_fields):
+    # Only show Project Details section if at least one field has content
+    if type_of_project or other_notes:
+        y -= 20
         c.setFont("Montserrat-Bold", 11.5)
-        c.setFillColor(colors.black)
-        label_width = stringWidth(label, "Montserrat-Bold", 11.5)
-        label_end_x = 40 + label_width + 20  # left margin + label width + spacing
-        c.drawString(40, y, label)
+        c.setFillColor(colors.HexColor("#d62028"))
+        c.drawString(40, y, "Project Details")
+        y -= 25
 
-        # Calculate max width for wrapped text
-        # The text will be right-aligned, but must not overlap the label
-        # So available width is from label_end_x to right margin
-        available_width = (page_width - 40) - label_end_x  # from label end to right margin
-
-        y = draw_wrapped_text_right_aligned(
-            c, value, page_width - 40, y,
-            available_width,
-            font="Montserrat-Bold", size=11, color=colors.grey
-        )
+        details_fields = []
+        # Only add "Type of Project" if it has content
+        if type_of_project:
+            details_fields.append(("Type of Project:", type_of_project))
+        # Only add "Other Notes" if it has content
+        if other_notes:
+            details_fields.append(("Other Notes:", other_notes))
         
-        # Add spacing between fields (only if not the last field)
-        if i < len(details_fields) - 1:
-            y -= 20
+        for i, (label, value) in enumerate(details_fields):
+            c.setFont("Montserrat-Bold", 11.5)
+            c.setFillColor(colors.black)
+            label_width = stringWidth(label, "Montserrat-Bold", 11.5)
+            label_end_x = 40 + label_width + 20  # left margin + label width + spacing
+            c.drawString(40, y, label)
+
+            # Calculate max width for wrapped text
+            # The text will be right-aligned, but must not overlap the label
+            # So available width is from label_end_x to right margin
+            available_width = (page_width - 40) - label_end_x  # from label end to right margin
+
+            y = draw_wrapped_text_right_aligned(
+                c, value, page_width - 40, y,
+                available_width,
+                font="Montserrat-Bold", size=11, color=colors.grey
+            )
+            
+            # Add spacing between fields (only if not the last field)
+            if i < len(details_fields) - 1:
+                y -= 20
 
     page2_img = data.get("page2_image")
     if page2_img and os.path.exists(page2_img):
@@ -314,8 +326,12 @@ def build_fixed_pages(data, output_path):
     c = canvas.Canvas(output_path, pagesize=A4)
     build_cover_page(c, data)
     c.showPage()
-    build_page2(c, data)
-    c.showPage()
+    # For quotes, only build cover page (1 fixed page)
+    # For proposals, build both cover and page2
+    is_quote = data.get("is_quote", False)
+    if not is_quote:
+        build_page2(c, data)
+        c.showPage()
     c.save()
 
 
