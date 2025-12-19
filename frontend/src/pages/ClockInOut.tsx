@@ -66,6 +66,7 @@ type Attendance = {
   time_selected_utc?: string | null; // For backward compatibility
   reason_text?: string;
   job_type?: string; // Extracted job_type from backend (for direct attendance)
+  break_minutes?: number | null; // Break time in minutes
 };
 
 type Project = {
@@ -150,6 +151,25 @@ export default function ClockInOut() {
   const [insertBreakTime, setInsertBreakTime] = useState<boolean>(false);
   const [breakHours, setBreakHours] = useState<string>('0');
   const [breakMinutes, setBreakMinutes] = useState<string>('0');
+
+  // Edit attendance states
+  const [editingAttendance, setEditingAttendance] = useState<Attendance | null>(null);
+  const [editingType, setEditingType] = useState<'in' | 'out' | null>(null);
+  const [editTime, setEditTime] = useState<string>('');
+  const [editHour12, setEditHour12] = useState<string>('');
+  const [editMinute, setEditMinute] = useState<string>('');
+  const [editAmPm, setEditAmPm] = useState<'AM' | 'PM'>('AM');
+  const [editInsertBreakTime, setEditInsertBreakTime] = useState<boolean>(false);
+  const [editBreakHours, setEditBreakHours] = useState<string>('0');
+  const [editBreakMinutes, setEditBreakMinutes] = useState<string>('0');
+  const [editingSubmitting, setEditingSubmitting] = useState(false);
+
+  // Edit break time only states
+  const [editingBreakTimeAttendance, setEditingBreakTimeAttendance] = useState<Attendance | null>(null);
+  const [editBreakTimeOnly, setEditBreakTimeOnly] = useState<boolean>(false);
+  const [editBreakTimeHours, setEditBreakTimeHours] = useState<string>('0');
+  const [editBreakTimeMinutes, setEditBreakTimeMinutes] = useState<string>('0');
+  const [editingBreakTimeSubmitting, setEditingBreakTimeSubmitting] = useState(false);
 
   // Calculate current week (Sunday to Saturday)
   const [weekStart, setWeekStart] = useState<Date>(() => {
@@ -328,6 +348,24 @@ export default function ClockInOut() {
     // But we need to be careful: a clock-in alone with HOURS_WORKED is still "open" until clock-out is created
     return attendance.reason_text.includes("HOURS_WORKED:");
   };
+
+  // Find the most recent complete attendance (with both clock in and clock out) from today
+  const completeAttendanceToday = useMemo(() => {
+    const today = formatDateLocal(new Date());
+    return allAttendancesForDate
+      .filter(a => a.clock_in_time && a.clock_out_time && !isHoursWorked(a))
+      .filter(a => {
+        const attendanceDate = a.clock_in_time || a.clock_out_time || a.time_selected_utc;
+        if (!attendanceDate) return false;
+        const attDate = new Date(attendanceDate);
+        return formatDateLocal(attDate) === today;
+      })
+      .sort((a, b) => {
+        const aTime = a.clock_out_time || a.time_selected_utc || '';
+        const bTime = b.clock_out_time || b.time_selected_utc || '';
+        return new Date(bTime).getTime() - new Date(aTime).getTime();
+      })[0] || null;
+  }, [allAttendancesForDate]);
   
   // Helper to check if a clock-in/out pair forms a complete "hours worked" event
   // This is different from checking a single attendance record
@@ -339,38 +377,79 @@ export default function ClockInOut() {
   // NEW MODEL: Check if there's an open clock-in (one with clock_in_time but no clock_out_time)
   // IMPORTANT: "hours worked" entries are always complete (both clock_in_time and clock_out_time exist)
   // and should never be treated as "open"
+  // The backend uses a single record model where clock_in_time and clock_out_time can be in the same record
+  // OR separate records (one with clock_in_time, another with clock_out_time)
   const hasOpenClockIn = useMemo(() => {
-    // Find the most recent attendance with clock_in_time but no clock_out_time
-    // (excluding "hours worked" entries which always have both)
-    for (const att of allAttendancesForDate) {
-      // Must have clock_in_time
-      if (!att.clock_in_time) continue;
+    // Get the most recent clock-in and clock-out
+    const mostRecentClockIn = clockIns[0];
+    const mostRecentClockOut = clockOuts[0];
+    
+    // If there's no clock-in at all, there's no open clock-in
+    if (!mostRecentClockIn || !mostRecentClockIn.clock_in_time) return false;
+    
+    // If it's a "hours worked" entry, it should have clock_out_time (complete event)
+    if (isHoursWorked(mostRecentClockIn)) {
+      return false;
+    }
+    
+    // If the clock-in record itself has clock_out_time, it's complete (not open)
+    if (mostRecentClockIn.clock_out_time) {
+      return false;
+    }
+    
+    // Check if there's a clock-out that comes AFTER the most recent clock-in
+    // This handles the case where backend creates separate records
+    // IMPORTANT: We need to check if the clock-in is MORE RECENT than any clock-out
+    if (mostRecentClockOut && mostRecentClockOut.clock_out_time) {
+      const clockInTime = new Date(mostRecentClockIn.clock_in_time).getTime();
+      const clockOutTime = new Date(mostRecentClockOut.clock_out_time).getTime();
       
-      // If it's a "hours worked" entry, it should have clock_out_time (complete event)
-      if (isHoursWorked(att)) {
-        // "hours worked" entries should always be complete, but check just in case
-        if (att.clock_out_time) {
-          continue; // Complete "hours worked" event, check next
-        }
-        // Data inconsistency: "hours worked" without clock_out_time, skip it
-        continue;
-      }
-      
-      // Regular attendance: if it has clock_in_time but no clock_out_time, it's open
-      if (!att.clock_out_time) {
-        return true; // Found an open clock-in
+      // If clock-in time is MORE RECENT than clock-out time, there's an open clock-in
+      // If clock-out time is more recent than or equal to clock-in time, the period is closed
+      if (clockInTime > clockOutTime) {
+        // Clock-in is more recent than clock-out, so there's an open clock-in
+        return true;
+      } else {
+        // Clock-out is more recent than or equal to clock-in, so the period is closed
+        return false;
       }
     }
     
-    return false; // No open clock-ins found
-  }, [allAttendancesForDate]);
+    // If we get here, there's a clock-in without a matching clock-out (open)
+    return true;
+  }, [allAttendancesForDate, clockIns, clockOuts]);
 
   // Find the most recent open clock-in for canClockOut and isJobLocked
+  // IMPORTANT: Backend may create separate records for clock-in and clock-out
+  // So we need to check if there's a clock-out that comes after the clock-in
   const openClockIn = useMemo(() => {
-    return allAttendancesForDate.find(att => 
-      att.clock_in_time && !att.clock_out_time && !isHoursWorked(att)
-    ) || null;
-  }, [allAttendancesForDate]);
+    if (!hasOpenClockIn) return null;
+    
+    // Get the most recent clock-in
+    const mostRecentClockIn = clockIns[0];
+    if (!mostRecentClockIn || !mostRecentClockIn.clock_in_time) return null;
+    
+    // If it's a "hours worked" entry, it's not open
+    if (isHoursWorked(mostRecentClockIn)) return null;
+    
+    // If it has clock_out_time, it's not open
+    if (mostRecentClockIn.clock_out_time) return null;
+    
+    // Check if there's a clock-out that comes after this clock-in
+    const clockInTime = new Date(mostRecentClockIn.clock_in_time).getTime();
+    const mostRecentClockOut = clockOuts[0];
+    
+    if (mostRecentClockOut && mostRecentClockOut.clock_out_time) {
+      const clockOutTime = new Date(mostRecentClockOut.clock_out_time).getTime();
+      // If clock-out is after or equal to clock-in, the period is closed
+      // If clock-in is more recent than clock-out, there's an open clock-in
+      if (clockOutTime >= clockInTime) {
+        return null; // Clock-out closes the period
+      }
+    }
+    
+    return mostRecentClockIn;
+  }, [allAttendancesForDate, clockIns, clockOuts, hasOpenClockIn]);
 
   // Get the job type from the open clock-in (for direct attendance, it's stored in reason_text)
   const clockInJobType = useMemo(() => {
@@ -396,24 +475,10 @@ export default function ClockInOut() {
     return selectedDateShift?.job_name || null;
   }, [openClockIn, selectedDateShift]);
   
-  // Check if there's already a complete attendance (clock-in + clock-out) for today
-  // In Personal > Clock in/out, only allow ONE attendance event per day
-  const hasCompleteAttendanceToday = useMemo(() => {
-    for (const att of allAttendancesForDate) {
-      // Check if this is a complete attendance (has both clock_in_time and clock_out_time)
-      // Exclude "hours worked" entries as they are handled differently
-      if (att.clock_in_time && att.clock_out_time && !isHoursWorked(att)) {
-        return true; // Found a complete attendance for today
-      }
-    }
-    return false; // No complete attendance found
-  }, [allAttendancesForDate]);
-
   // Can clock in ONLY if:
   // 1. There's NO open clock-in (must close current event first)
-  // 2. There's NO complete attendance for today (only 1 attendance per day allowed in Personal > Clock in/out)
-  // EXCEPTION: "hours worked" entries are always complete, so they don't block clock-in
-  const canClockIn = !hasOpenClockIn && !hasCompleteAttendanceToday;
+  // Multiple clock ins/outs per day are allowed as long as previous ones are closed
+  const canClockIn = !hasOpenClockIn;
   
   // Can clock out if there's an open clock-in (one with clock_in_time but no clock_out_time)
   // The clock-in must be approved or pending
@@ -558,6 +623,265 @@ export default function ClockInOut() {
       setSearchParams(newSearchParams, { replace: true });
     }
   }, [shiftIdFromUrl, typeFromUrl, dateFromUrl, shiftById, searchParams, setSearchParams]);
+
+  // Helper function to check if an attendance is from today
+  const isAttendanceFromToday = (attendance: Attendance | null): boolean => {
+    if (!attendance) return false;
+    const attendanceDate = attendance.clock_in_time || attendance.clock_out_time || attendance.time_selected_utc;
+    if (!attendanceDate) return false;
+    const attDate = new Date(attendanceDate);
+    const today = new Date();
+    return formatDateLocal(attDate) === formatDateLocal(today);
+  };
+
+  // Helper function to convert 12h time to 24h format
+  const updateEditTimeFrom12h = (hour12: string, minute: string, amPm: 'AM' | 'PM') => {
+    if (!hour12 || !minute) {
+      setEditTime('');
+      return;
+    }
+    const hour = parseInt(hour12, 10);
+    const hour24 = amPm === 'PM' && hour !== 12 ? hour + 12 : amPm === 'AM' && hour === 12 ? 0 : hour;
+    setEditTime(`${String(hour24).padStart(2, '0')}:${minute}`);
+  };
+
+  // Function to open edit modal
+  const openEditModal = (attendance: Attendance, type: 'in' | 'out') => {
+    setEditingAttendance(attendance);
+    setEditingType(type);
+    
+    // Get the time to edit
+    const timeToEdit = type === 'in' ? attendance.clock_in_time : attendance.clock_out_time;
+    if (timeToEdit) {
+      const date = new Date(timeToEdit);
+      const hour24 = date.getHours();
+      const minute = date.getMinutes();
+      const roundedMin = Math.round(minute / 5) * 5;
+      const finalMinute = roundedMin === 60 ? 0 : roundedMin;
+      const finalHour = roundedMin === 60 ? (hour24 === 23 ? 0 : hour24 + 1) : hour24;
+
+      const hour12 = finalHour === 0 ? 12 : finalHour > 12 ? finalHour - 12 : finalHour;
+      const amPm = finalHour >= 12 ? 'PM' : 'AM';
+
+      setEditHour12(String(hour12));
+      setEditMinute(String(finalMinute).padStart(2, '0'));
+      setEditAmPm(amPm);
+      updateEditTimeFrom12h(String(hour12), String(finalMinute).padStart(2, '0'), amPm);
+    }
+
+    // Initialize break time if attendance has break_minutes
+    if (attendance.break_minutes && attendance.break_minutes > 0) {
+      const breakTotalMinutes = attendance.break_minutes;
+      const breakHours = Math.floor(breakTotalMinutes / 60);
+      const breakMins = breakTotalMinutes % 60;
+      setEditInsertBreakTime(true);
+      setEditBreakHours(String(breakHours));
+      setEditBreakMinutes(String(breakMins).padStart(2, '0'));
+    } else {
+      setEditInsertBreakTime(false);
+      setEditBreakHours('0');
+      setEditBreakMinutes('0');
+    }
+  };
+
+  // Function to open edit break time only modal
+  const openEditBreakTimeModal = (attendance: Attendance) => {
+    setEditingBreakTimeAttendance(attendance);
+    
+    // Initialize break time if attendance has break_minutes
+    if (attendance.break_minutes && attendance.break_minutes > 0) {
+      const breakTotalMinutes = attendance.break_minutes;
+      const breakHours = Math.floor(breakTotalMinutes / 60);
+      const breakMins = breakTotalMinutes % 60;
+      setEditBreakTimeOnly(true);
+      setEditBreakTimeHours(String(breakHours));
+      setEditBreakTimeMinutes(String(breakMins).padStart(2, '0'));
+    } else {
+      setEditBreakTimeOnly(false);
+      setEditBreakTimeHours('0');
+      setEditBreakTimeMinutes('0');
+    }
+  };
+
+  // Function to handle break time only edit submission
+  const handleEditBreakTimeOnly = async () => {
+    if (!editingBreakTimeAttendance) {
+      toast.error('No attendance selected');
+      return;
+    }
+
+    setEditingBreakTimeSubmitting(true);
+
+    try {
+      // Validate that attendance has both clock in and clock out
+      if (!editingBreakTimeAttendance.clock_in_time || !editingBreakTimeAttendance.clock_out_time) {
+        toast.error('Cannot edit break time: attendance must be complete (both clock-in and clock-out)');
+        setEditingBreakTimeSubmitting(false);
+        return;
+      }
+
+      const clockInTime = new Date(editingBreakTimeAttendance.clock_in_time);
+      const clockOutTime = new Date(editingBreakTimeAttendance.clock_out_time);
+      const totalMinutes = Math.floor((clockOutTime.getTime() - clockInTime.getTime()) / (1000 * 60));
+
+      // Validate break time if enabled
+      if (editBreakTimeOnly) {
+        const breakTotalMinutes = parseInt(editBreakTimeHours) * 60 + parseInt(editBreakTimeMinutes);
+        
+        if (breakTotalMinutes >= totalMinutes) {
+          toast.error('Break time cannot be greater than or equal to the total attendance time. Please adjust the break time.');
+          setEditingBreakTimeSubmitting(false);
+          return;
+        }
+      }
+
+      const updatePayload: any = {};
+      if (editBreakTimeOnly) {
+        const breakTotalMinutes = parseInt(editBreakTimeHours) * 60 + parseInt(editBreakTimeMinutes);
+        if (breakTotalMinutes > 0) {
+          updatePayload.manual_break_minutes = breakTotalMinutes;
+        } else {
+          updatePayload.manual_break_minutes = 0;
+        }
+      } else {
+        updatePayload.manual_break_minutes = 0;
+      }
+
+      await api('PUT', `/settings/attendance/${editingBreakTimeAttendance.id}`, updatePayload);
+      
+      const breakMsg = editBreakTimeOnly
+        ? `Break time updated to ${parseInt(editBreakTimeHours) * 60 + parseInt(editBreakTimeMinutes)} minutes`
+        : 'Break time removed';
+      toast.success(breakMsg);
+      
+      // Refetch data
+      await refetchAllAttendances();
+      await refetchAttendances();
+      await refetchWeeklySummary();
+      
+      // Close modal
+      setEditingBreakTimeAttendance(null);
+      setEditBreakTimeOnly(false);
+      setEditBreakTimeHours('0');
+      setEditBreakTimeMinutes('0');
+    } catch (error: any) {
+      console.error('Error updating break time:', error);
+      toast.error(error?.response?.data?.detail || 'Failed to update break time');
+    } finally {
+      setEditingBreakTimeSubmitting(false);
+    }
+  };
+
+  // Function to handle edit submission
+  const handleEditAttendance = async () => {
+    if (!editingAttendance || !editingType || !editTime) {
+      toast.error('Please select a time');
+      return;
+    }
+
+    setEditingSubmitting(true);
+
+    try {
+      // Get the date from the attendance
+      const attendanceDate = editingAttendance.clock_in_time || editingAttendance.clock_out_time || editingAttendance.time_selected_utc;
+      if (!attendanceDate) {
+        toast.error('Cannot determine attendance date');
+        setEditingSubmitting(false);
+        return;
+      }
+
+      const date = new Date(attendanceDate);
+      const dateStr = formatDateLocal(date);
+      
+      // Combine date and time
+      const [hours, minutes] = editTime.split(':');
+      const dateTimeLocal = `${dateStr}T${hours}:${minutes}:00`;
+      
+      // Convert to UTC (assuming local timezone)
+      const dateTime = new Date(dateTimeLocal);
+      const dateTimeUtc = dateTime.toISOString();
+
+      // Get clock in and clock out times for validation
+      let clockInTime: Date | null = null;
+      let clockOutTime: Date | null = null;
+
+      if (editingType === 'in') {
+        clockInTime = dateTime;
+        clockOutTime = editingAttendance.clock_out_time ? new Date(editingAttendance.clock_out_time) : null;
+      } else {
+        clockInTime = editingAttendance.clock_in_time ? new Date(editingAttendance.clock_in_time) : null;
+        clockOutTime = dateTime;
+      }
+
+      // Validate that clock-out time is after clock-in time
+      if (clockInTime && clockOutTime && clockOutTime <= clockInTime) {
+        toast.error('Clock-out time must be after clock-in time. Please select a valid time.');
+        setEditingSubmitting(false);
+        return;
+      }
+
+      // Validate break time if enabled
+      if (editInsertBreakTime && clockInTime && clockOutTime) {
+        const breakTotalMinutes = parseInt(editBreakHours) * 60 + parseInt(editBreakMinutes);
+        const totalMinutes = Math.floor((clockOutTime.getTime() - clockInTime.getTime()) / (1000 * 60));
+        
+        if (breakTotalMinutes >= totalMinutes) {
+          toast.error('Break time cannot be greater than or equal to the total attendance time. Please adjust the break or clock-out time.');
+          setEditingSubmitting(false);
+          return;
+        }
+      }
+
+      const updatePayload: any = {};
+      if (editingType === 'in') {
+        updatePayload.clock_in_time = dateTimeUtc;
+      } else {
+        updatePayload.clock_out_time = dateTimeUtc;
+      }
+
+      // Add break time if editing clock-out and break time is enabled
+      // Also allow editing break time when editing clock-in if attendance is complete
+      if (editingType === 'out' || (editingType === 'in' && editingAttendance.clock_out_time)) {
+        if (editInsertBreakTime) {
+          const breakTotalMinutes = parseInt(editBreakHours) * 60 + parseInt(editBreakMinutes);
+          if (breakTotalMinutes > 0) {
+            updatePayload.manual_break_minutes = breakTotalMinutes;
+          } else {
+            updatePayload.manual_break_minutes = 0;
+          }
+        } else {
+          // If break time is disabled, set to 0
+          updatePayload.manual_break_minutes = 0;
+        }
+      }
+
+      await api('PUT', `/settings/attendance/${editingAttendance.id}`, updatePayload);
+      
+      const breakMsg = (editingType === 'out' || (editingType === 'in' && editingAttendance.clock_out_time)) && editInsertBreakTime
+        ? ` with ${parseInt(editBreakHours) * 60 + parseInt(editBreakMinutes)} minutes break`
+        : '';
+      toast.success(`Clock ${editingType === 'in' ? 'in' : 'out'} time updated successfully${breakMsg}`);
+      
+      // Refetch data
+      await refetchAllAttendances();
+      await refetchAttendances();
+      await refetchWeeklySummary();
+      
+      // Close modal
+      setEditingAttendance(null);
+      setEditingType(null);
+      setEditTime('');
+      setEditHour12('');
+      setEditMinute('');
+      setEditAmPm('AM');
+    } catch (error: any) {
+      console.error('Error updating attendance:', error);
+      const errorMsg = error.response?.data?.detail || error.message || 'Failed to update attendance';
+      toast.error(errorMsg);
+    } finally {
+      setEditingSubmitting(false);
+    }
+  };
 
   // Auto-get location when opening clock modal
   useEffect(() => {
@@ -803,7 +1127,7 @@ export default function ClockInOut() {
       queryClient.invalidateQueries({ queryKey: ['clock-in-out-all-attendances', selectedDate, currentUser?.id] });
       
       // Wait a bit to ensure backend has processed the request
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise(resolve => setTimeout(resolve, 500));
       
       await refetchAllAttendances();  // This will update clockIn, clockOut, clockIns, clockOuts, hasOpenClockIn
       await refetchAttendances();
@@ -814,6 +1138,19 @@ export default function ClockInOut() {
       console.error('Error submitting attendance:', error);
       const errorMsg = error.response?.data?.detail || error.message || 'Failed to submit attendance';
       toast.error(errorMsg);
+      
+      // Even on error, refetch to update UI state (in case attendance was created but error was about something else)
+      // This is especially important for conflict errors where the attendance might have been created
+      const isConflictError = error.response?.status === 400 && errorMsg.includes('already');
+      if (isConflictError) {
+        // For conflict errors, wait a bit longer and refetch to sync UI
+        await new Promise(resolve => setTimeout(resolve, 500));
+        queryClient.removeQueries({ queryKey: ['clock-in-out-all-attendances', selectedDate, currentUser?.id] });
+        queryClient.invalidateQueries({ queryKey: ['clock-in-out-all-attendances', selectedDate, currentUser?.id] });
+        await refetchAllAttendances();
+        await refetchAttendances();
+        await refetchWeeklySummary();
+      }
     } finally {
       setSubmitting(false);
     }
@@ -916,8 +1253,8 @@ export default function ClockInOut() {
                   <div className="text-xs text-gray-500 mb-0.5 font-medium uppercase tracking-wide">Status</div>
                   <div className={`text-sm font-semibold ${hasOpenClockIn ? 'text-green-600' : 'text-gray-600'}`}>
                     {hasOpenClockIn ? 'Clocked In' :
-                     hasCompleteAttendanceToday ? 'Completed' :
-                     'Clocked Out'}
+                     (clockOut && !hasOpenClockIn) ? 'Completed' :
+                     'Not Clocked In'}
                   </div>
                 </div>
               </div>
@@ -930,16 +1267,108 @@ export default function ClockInOut() {
                 </div>
               )}
 
+              {/* Break Time (if completed - shown above clock times) */}
+              {!hasOpenClockIn && completeAttendanceToday && completeAttendanceToday.clock_in_time && completeAttendanceToday.clock_out_time && (
+                <div>
+                  <div className="text-xs text-gray-500 mb-1 font-medium uppercase tracking-wide">Break Time</div>
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="text-sm text-gray-900 font-semibold">
+                      {completeAttendanceToday.break_minutes && completeAttendanceToday.break_minutes > 0
+                        ? `${Math.floor(completeAttendanceToday.break_minutes / 60)}h ${String(completeAttendanceToday.break_minutes % 60).padStart(2, '0')}m`
+                        : '0h 00m'}
+                    </div>
+                    {isAttendanceFromToday(completeAttendanceToday) && (
+                      <button
+                        onClick={() => openEditBreakTimeModal(completeAttendanceToday)}
+                        className="p-1.5 rounded-lg border border-gray-200 hover:bg-gray-50 active:scale-95 transition-all"
+                        title="Edit break time"
+                      >
+                        <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                        </svg>
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+
               {/* Clock-in Time */}
               {hasOpenClockIn && openClockIn && (
                 <div>
                   <div className="text-xs text-gray-500 mb-1 font-medium uppercase tracking-wide">Clock-in Time</div>
-                  <div className="text-sm text-gray-900 font-semibold">
-                    {new Date(openClockIn.clock_in_time).toLocaleTimeString('en-US', {
-                      hour: 'numeric',
-                      minute: '2-digit',
-                      hour12: true,
-                    })}
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="text-sm text-gray-900 font-semibold">
+                      {new Date(openClockIn.clock_in_time).toLocaleTimeString('en-US', {
+                        hour: 'numeric',
+                        minute: '2-digit',
+                        hour12: true,
+                      })}
+                    </div>
+                    {isAttendanceFromToday(openClockIn) && (
+                      <button
+                        onClick={() => openEditModal(openClockIn, 'in')}
+                        className="p-1.5 rounded-lg border border-gray-200 hover:bg-gray-50 active:scale-95 transition-all"
+                        title="Edit clock-in time"
+                      >
+                        <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                        </svg>
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Clock-out Time (if completed) */}
+              {!hasOpenClockIn && completeAttendanceToday && completeAttendanceToday.clock_out_time && (
+                <div>
+                  <div className="text-xs text-gray-500 mb-1 font-medium uppercase tracking-wide">Clock-out Time</div>
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="text-sm text-gray-900 font-semibold">
+                      {new Date(completeAttendanceToday.clock_out_time).toLocaleTimeString('en-US', {
+                        hour: 'numeric',
+                        minute: '2-digit',
+                        hour12: true,
+                      })}
+                    </div>
+                    {isAttendanceFromToday(completeAttendanceToday) && (
+                      <button
+                        onClick={() => openEditModal(completeAttendanceToday, 'out')}
+                        className="p-1.5 rounded-lg border border-gray-200 hover:bg-gray-50 active:scale-95 transition-all"
+                        title="Edit clock-out time"
+                      >
+                        <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                        </svg>
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Clock-in Time (if completed, show the clock-in from the complete attendance) */}
+              {!hasOpenClockIn && completeAttendanceToday && completeAttendanceToday.clock_in_time && (
+                <div>
+                  <div className="text-xs text-gray-500 mb-1 font-medium uppercase tracking-wide">Clock-in Time</div>
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="text-sm text-gray-900 font-semibold">
+                      {new Date(completeAttendanceToday.clock_in_time).toLocaleTimeString('en-US', {
+                        hour: 'numeric',
+                        minute: '2-digit',
+                        hour12: true,
+                      })}
+                    </div>
+                    {isAttendanceFromToday(completeAttendanceToday) && (
+                      <button
+                        onClick={() => openEditModal(completeAttendanceToday, 'in')}
+                        className="p-1.5 rounded-lg border border-gray-200 hover:bg-gray-50 active:scale-95 transition-all"
+                        title="Edit clock-in time"
+                      >
+                        <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                        </svg>
+                      </button>
+                    )}
                   </div>
                 </div>
               )}
@@ -1004,7 +1433,6 @@ export default function ClockInOut() {
                 }`}
                 title={
                   hasOpenClockIn ? 'You must clock out first' : 
-                  hasCompleteAttendanceToday ? 'Only one attendance event per day is allowed' : 
                   !selectedDateShift && !selectedJob ? 'Please select a job' : ''
                 }
               >
@@ -1229,40 +1657,274 @@ export default function ClockInOut() {
         </div>
       </div>
 
-      {/* Clock Modal - Outside grid, fixed overlay */}
+      {/* Clock Modal - Premium Centered Style */}
       {clockType && (
-        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl max-w-md w-full p-6 space-y-4">
-            <h3 className="text-lg font-semibold">
-              Clock {clockType === 'in' ? 'In' : 'Out'}
-            </h3>
+        <div 
+          className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setClockType(null);
+              setSelectedTime('');
+              setSelectedHour12('');
+              setSelectedMinute('');
+              setInsertBreakTime(false);
+              setBreakHours('0');
+              setBreakMinutes('0');
+              setGpsLocation(null);
+              setGpsError('');
+            }
+          }}
+        >
+          <div 
+            className="bg-white rounded-2xl shadow-xl max-w-md w-full border border-gray-200/60 flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="p-6 border-b border-gray-200/60 flex-shrink-0">
+              <h3 className="text-xl font-semibold text-gray-900">
+                Clock {clockType === 'in' ? 'In' : 'Out'}
+              </h3>
+            </div>
 
-            {/* Time selector */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Time *</label>
-              {!hasUnrestrictedClock ? (
-                <div className="flex gap-2 items-center pointer-events-none">
-                  <div className="flex-1 border rounded px-3 py-2 bg-gray-100 opacity-60 text-gray-500">
-                    {selectedHour12 || 'Hour'}
+            {/* Body */}
+            <div className="p-6 space-y-5 flex-1 overflow-y-auto">
+              {/* Time selector */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Time *</label>
+                {!hasUnrestrictedClock ? (
+                  <div className="flex gap-2 items-center pointer-events-none">
+                    <div className="flex-1 border border-gray-200/60 rounded-lg px-4 py-2.5 bg-gray-100 opacity-60 text-gray-500">
+                      {selectedHour12 || 'Hour'}
+                    </div>
+                    <span className="text-gray-500 font-medium">:</span>
+                    <div className="flex-1 border border-gray-200/60 rounded-lg px-4 py-2.5 bg-gray-100 opacity-60 text-gray-500">
+                      {selectedMinute || 'Min'}
+                    </div>
+                    <div className="flex-1 border border-gray-200/60 rounded-lg px-4 py-2.5 bg-gray-100 opacity-60 text-gray-500">
+                      {selectedAmPm || 'AM'}
+                    </div>
                   </div>
-                  <span className="text-gray-500 font-medium">:</span>
-                  <div className="flex-1 border rounded px-3 py-2 bg-gray-100 opacity-60 text-gray-500">
-                    {selectedMinute || 'Min'}
+                ) : (
+                  <div className="flex gap-2 items-center">
+                    <select
+                      value={selectedHour12}
+                      onChange={(e) => {
+                        const hour12 = e.target.value;
+                        setSelectedHour12(hour12);
+                        updateTimeFrom12h(hour12, selectedMinute, selectedAmPm);
+                      }}
+                      className="flex-1 border border-gray-200/60 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-brand-red/40 focus:border-brand-red/60 transition-colors"
+                      required
+                    >
+                      <option value="">Hour</option>
+                      {Array.from({ length: 12 }, (_, i) => (
+                        <option key={i + 1} value={String(i + 1)}>
+                          {i + 1}
+                        </option>
+                      ))}
+                    </select>
+                    <span className="text-gray-500 font-medium">:</span>
+                    <select
+                      value={selectedMinute}
+                      onChange={(e) => {
+                        const minute = e.target.value;
+                        setSelectedMinute(minute);
+                        updateTimeFrom12h(selectedHour12, minute, selectedAmPm);
+                      }}
+                      className="flex-1 border border-gray-200/60 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-brand-red/40 focus:border-brand-red/60 transition-colors"
+                      required
+                    >
+                      <option value="">Min</option>
+                      {Array.from({ length: 12 }, (_, i) => {
+                        const m = i * 5;
+                        return (
+                          <option key={m} value={String(m).padStart(2, '0')}>
+                            {String(m).padStart(2, '0')}
+                          </option>
+                        );
+                      })}
+                    </select>
+                    <select
+                      value={selectedAmPm}
+                      onChange={(e) => {
+                        const amPm = e.target.value as 'AM' | 'PM';
+                        setSelectedAmPm(amPm);
+                        updateTimeFrom12h(selectedHour12, selectedMinute, amPm);
+                      }}
+                      className="flex-1 border border-gray-200/60 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-brand-red/40 focus:border-brand-red/60 transition-colors"
+                      required
+                    >
+                      <option value="AM">AM</option>
+                      <option value="PM">PM</option>
+                    </select>
                   </div>
-                  <div className="flex-1 border rounded px-3 py-2 bg-gray-100 opacity-60 text-gray-500">
-                    {selectedAmPm || 'AM'}
-                  </div>
+                )}
+                {!hasUnrestrictedClock && (
+                  <p className="text-xs text-gray-500 mt-2">
+                    Time is locked. Contact an administrator to enable time editing.
+                  </p>
+                )}
+              </div>
+
+              {/* Manual Break Time (only for Clock Out) */}
+              {clockType === 'out' && (
+                <div>
+                  <label className="flex items-center gap-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={insertBreakTime}
+                      onChange={(e) => setInsertBreakTime(e.target.checked)}
+                      className="w-4 h-4 rounded border-gray-300 text-brand-red focus:ring-brand-red focus:ring-2"
+                    />
+                    <span className="text-sm font-medium text-gray-700">Insert Break Time</span>
+                  </label>
+                  {insertBreakTime && (
+                    <div className="mt-3 ml-7 space-y-3">
+                      <div className="flex gap-3 items-center">
+                        <label className="text-sm text-gray-600 w-16">Hours:</label>
+                        <select
+                          value={breakHours}
+                          onChange={(e) => setBreakHours(e.target.value)}
+                          className="flex-1 border border-gray-200/60 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-brand-red/40 focus:border-brand-red/60 transition-colors"
+                        >
+                          {Array.from({ length: 3 }, (_, i) => (
+                            <option key={i} value={String(i)}>
+                              {i}
+                            </option>
+                          ))}
+                        </select>
+                        <label className="text-sm text-gray-600 w-16">Minutes:</label>
+                        <select
+                          value={breakMinutes}
+                          onChange={(e) => setBreakMinutes(e.target.value)}
+                          className="flex-1 border border-gray-200/60 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-brand-red/40 focus:border-brand-red/60 transition-colors"
+                        >
+                          {Array.from({ length: 12 }, (_, i) => {
+                            const m = i * 5;
+                            return (
+                              <option key={m} value={String(m).padStart(2, '0')}>
+                                {String(m).padStart(2, '0')}
+                              </option>
+                            );
+                          })}
+                        </select>
+                      </div>
+                    </div>
+                  )}
                 </div>
-              ) : (
+              )}
+
+              {/* GPS Status - Styled as success card */}
+              <div>
+                {gpsLocation ? (
+                  <div className="p-4 bg-green-50 border border-green-200 rounded-xl">
+                    <div className="flex items-center gap-2 text-green-800 font-medium">
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      </svg>
+                      <span>Location captured</span>
+                    </div>
+                    <div className="text-sm text-green-700 mt-1.5">
+                      Accuracy: {Math.round(gpsLocation.accuracy)}m
+                    </div>
+                  </div>
+                ) : gpsLoading ? (
+                  <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl">
+                    <div className="flex items-center gap-2 text-blue-800">
+                      <div className="animate-spin rounded-full h-4 w-4 border-2 border-blue-800 border-t-transparent"></div>
+                      <span className="text-sm font-medium">Getting location...</span>
+                    </div>
+                  </div>
+                ) : gpsError ? (
+                  <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-xl">
+                    <div className="text-sm text-yellow-800">
+                      {gpsError}
+                      <button
+                        onClick={getCurrentLocation}
+                        className="ml-2 text-xs underline font-medium hover:text-yellow-900"
+                      >
+                        Try again
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="p-4 bg-gray-50 border border-gray-200 rounded-xl">
+                    <div className="text-sm text-gray-600">No location data</div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="p-6 border-t border-gray-200/60 bg-gray-50/50 flex items-center justify-end gap-3 flex-shrink-0">
+              <button
+                onClick={() => {
+                  setClockType(null);
+                  setSelectedTime('');
+                  setSelectedHour12('');
+                  setSelectedMinute('');
+                  setInsertBreakTime(false);
+                  setBreakHours('0');
+                  setBreakMinutes('0');
+                  setGpsLocation(null);
+                  setGpsError('');
+                }}
+                className="px-4 py-2.5 rounded-lg border border-gray-200/60 hover:bg-gray-50 transition-colors text-sm font-medium"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleClockInOut}
+                disabled={submitting}
+                className="px-4 py-2.5 rounded-lg bg-brand-red text-white hover:bg-red-700 transition-colors text-sm font-medium disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                {submitting ? 'Submitting...' : 'Submit'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Attendance Modal */}
+      {editingAttendance && editingType && (
+        <div 
+          className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setEditingAttendance(null);
+              setEditingType(null);
+              setEditTime('');
+              setEditHour12('');
+              setEditMinute('');
+              setEditAmPm('AM');
+            }
+          }}
+        >
+          <div 
+            className="bg-white rounded-2xl shadow-xl max-w-md w-full border border-gray-200/60 flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="p-6 border-b border-gray-200/60 flex-shrink-0">
+              <h3 className="text-xl font-semibold text-gray-900">
+                Edit Clock {editingType === 'in' ? 'In' : 'Out'} Time
+              </h3>
+            </div>
+
+            {/* Body */}
+            <div className="p-6 space-y-5 flex-1 overflow-y-auto">
+              {/* Time selector */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Time *</label>
                 <div className="flex gap-2 items-center">
                   <select
-                    value={selectedHour12}
+                    value={editHour12}
                     onChange={(e) => {
                       const hour12 = e.target.value;
-                      setSelectedHour12(hour12);
-                      updateTimeFrom12h(hour12, selectedMinute, selectedAmPm);
+                      setEditHour12(hour12);
+                      updateEditTimeFrom12h(hour12, editMinute, editAmPm);
                     }}
-                    className="flex-1 border rounded px-3 py-2"
+                    className="flex-1 border border-gray-200/60 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-brand-red/40 focus:border-brand-red/60 transition-colors"
                     required
                   >
                     <option value="">Hour</option>
@@ -1274,13 +1936,13 @@ export default function ClockInOut() {
                   </select>
                   <span className="text-gray-500 font-medium">:</span>
                   <select
-                    value={selectedMinute}
+                    value={editMinute}
                     onChange={(e) => {
                       const minute = e.target.value;
-                      setSelectedMinute(minute);
-                      updateTimeFrom12h(selectedHour12, minute, selectedAmPm);
+                      setEditMinute(minute);
+                      updateEditTimeFrom12h(editHour12, minute, editAmPm);
                     }}
-                    className="flex-1 border rounded px-3 py-2"
+                    className="flex-1 border border-gray-200/60 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-brand-red/40 focus:border-brand-red/60 transition-colors"
                     required
                   >
                     <option value="">Min</option>
@@ -1294,47 +1956,145 @@ export default function ClockInOut() {
                     })}
                   </select>
                   <select
-                    value={selectedAmPm}
+                    value={editAmPm}
                     onChange={(e) => {
                       const amPm = e.target.value as 'AM' | 'PM';
-                      setSelectedAmPm(amPm);
-                      updateTimeFrom12h(selectedHour12, selectedMinute, amPm);
+                      setEditAmPm(amPm);
+                      updateEditTimeFrom12h(editHour12, editMinute, amPm);
                     }}
-                    className="flex-1 border rounded px-3 py-2"
+                    className="flex-1 border border-gray-200/60 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-brand-red/40 focus:border-brand-red/60 transition-colors"
                     required
                   >
                     <option value="AM">AM</option>
                     <option value="PM">PM</option>
                   </select>
                 </div>
-              )}
-              {!hasUnrestrictedClock && (
-                <p className="text-xs text-gray-500 mt-1">
-                  Time is locked. Contact an administrator to enable time editing.
-                </p>
+              </div>
+
+              {/* Break Time (only for clock-out or complete attendance) */}
+              {(editingType === 'out' || (editingType === 'in' && editingAttendance.clock_out_time)) && (
+                <div>
+                  <label className="flex items-center gap-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={editInsertBreakTime}
+                      onChange={(e) => setEditInsertBreakTime(e.target.checked)}
+                      className="w-4 h-4 rounded border-gray-300 text-brand-red focus:ring-brand-red focus:ring-2"
+                    />
+                    <span className="text-sm font-medium text-gray-700">Insert Break Time</span>
+                  </label>
+                  {editInsertBreakTime && (
+                    <div className="mt-3 ml-7 space-y-3">
+                      <div className="flex gap-3 items-center">
+                        <label className="text-sm text-gray-600 w-16">Hours:</label>
+                        <select
+                          value={editBreakHours}
+                          onChange={(e) => setEditBreakHours(e.target.value)}
+                          className="flex-1 border border-gray-200/60 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-brand-red/40 focus:border-brand-red/60 transition-colors"
+                        >
+                          {Array.from({ length: 3 }, (_, i) => (
+                            <option key={i} value={String(i)}>
+                              {i}
+                            </option>
+                          ))}
+                        </select>
+                        <label className="text-sm text-gray-600 w-16">Minutes:</label>
+                        <select
+                          value={editBreakMinutes}
+                          onChange={(e) => setEditBreakMinutes(e.target.value)}
+                          className="flex-1 border border-gray-200/60 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-brand-red/40 focus:border-brand-red/60 transition-colors"
+                        >
+                          {Array.from({ length: 12 }, (_, i) => {
+                            const m = i * 5;
+                            return (
+                              <option key={m} value={String(m).padStart(2, '0')}>
+                                {String(m).padStart(2, '0')}
+                              </option>
+                            );
+                          })}
+                        </select>
+                      </div>
+                    </div>
+                  )}
+                </div>
               )}
             </div>
 
-            {/* Manual Break Time (only for Clock Out) */}
-            {clockType === 'out' && (
+            {/* Footer */}
+            <div className="p-6 border-t border-gray-200/60 bg-gray-50/50 flex items-center justify-end gap-3 flex-shrink-0">
+              <button
+                onClick={() => {
+                  setEditingAttendance(null);
+                  setEditingType(null);
+                  setEditTime('');
+                  setEditHour12('');
+                  setEditMinute('');
+                  setEditAmPm('AM');
+                  setEditInsertBreakTime(false);
+                  setEditBreakHours('0');
+                  setEditBreakMinutes('0');
+                }}
+                className="px-4 py-2.5 rounded-lg border border-gray-200/60 hover:bg-gray-50 transition-colors text-sm font-medium"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleEditAttendance}
+                disabled={editingSubmitting || !editTime}
+                className="px-4 py-2.5 rounded-lg bg-brand-red text-white hover:bg-red-700 transition-colors text-sm font-medium disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                {editingSubmitting ? 'Updating...' : 'Update'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Break Time Only Modal */}
+      {editingBreakTimeAttendance && (
+        <div 
+          className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setEditingBreakTimeAttendance(null);
+              setEditBreakTimeOnly(false);
+              setEditBreakTimeHours('0');
+              setEditBreakTimeMinutes('0');
+            }
+          }}
+        >
+          <div 
+            className="bg-white rounded-2xl shadow-xl max-w-md w-full border border-gray-200/60 flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="p-6 border-b border-gray-200/60 flex-shrink-0">
+              <h3 className="text-xl font-semibold text-gray-900">
+                Edit Break Time
+              </h3>
+            </div>
+
+            {/* Body */}
+            <div className="p-6 space-y-5 flex-1 overflow-y-auto">
+              {/* Break Time Toggle */}
               <div>
-                <label className="flex items-center gap-2 mb-2">
+                <label className="flex items-center gap-3 cursor-pointer">
                   <input
                     type="checkbox"
-                    checked={insertBreakTime}
-                    onChange={(e) => setInsertBreakTime(e.target.checked)}
-                    className="w-4 h-4 rounded border-gray-300 text-brand-red focus:ring-brand-red"
+                    checked={editBreakTimeOnly}
+                    onChange={(e) => setEditBreakTimeOnly(e.target.checked)}
+                    className="w-4 h-4 rounded border-gray-300 text-brand-red focus:ring-brand-red focus:ring-2"
                   />
                   <span className="text-sm font-medium text-gray-700">Insert Break Time</span>
                 </label>
-                {insertBreakTime && (
-                  <div className="ml-6 space-y-2">
-                    <div className="flex gap-2 items-center">
-                      <label className="text-xs text-gray-600 w-12">Hours:</label>
+                {editBreakTimeOnly && (
+                  <div className="mt-3 ml-7 space-y-3">
+                    <div className="flex gap-3 items-center">
+                      <label className="text-sm text-gray-600 w-16">Hours:</label>
                       <select
-                        value={breakHours}
-                        onChange={(e) => setBreakHours(e.target.value)}
-                        className="flex-1 border rounded px-3 py-2"
+                        value={editBreakTimeHours}
+                        onChange={(e) => setEditBreakTimeHours(e.target.value)}
+                        className="flex-1 border border-gray-200/60 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-brand-red/40 focus:border-brand-red/60 transition-colors"
                       >
                         {Array.from({ length: 3 }, (_, i) => (
                           <option key={i} value={String(i)}>
@@ -1342,11 +2102,11 @@ export default function ClockInOut() {
                           </option>
                         ))}
                       </select>
-                      <label className="text-xs text-gray-600 w-12 ml-2">Minutes:</label>
+                      <label className="text-sm text-gray-600 w-16">Minutes:</label>
                       <select
-                        value={breakMinutes}
-                        onChange={(e) => setBreakMinutes(e.target.value)}
-                        className="flex-1 border rounded px-3 py-2"
+                        value={editBreakTimeMinutes}
+                        onChange={(e) => setEditBreakTimeMinutes(e.target.value)}
+                        className="flex-1 border border-gray-200/60 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-brand-red/40 focus:border-brand-red/60 transition-colors"
                       >
                         {Array.from({ length: 12 }, (_, i) => {
                           const m = i * 5;
@@ -1361,65 +2121,27 @@ export default function ClockInOut() {
                   </div>
                 )}
               </div>
-            )}
-
-            {/* GPS Status */}
-            <div>
-              {gpsLocation ? (
-                <div className="p-3 bg-green-50 border border-green-200 rounded text-sm">
-                  <div className="text-green-800">✓ Location captured</div>
-                  <div className="text-xs text-green-600 mt-1">
-                    Accuracy: {Math.round(gpsLocation.accuracy)}m
-                  </div>
-                </div>
-              ) : gpsLoading ? (
-                <div className="p-3 bg-blue-50 border border-blue-200 rounded text-sm text-blue-800">
-                  <div className="flex items-center gap-2">
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-800"></div>
-                    <span>Getting location...</span>
-                  </div>
-                </div>
-              ) : gpsError ? (
-                <div className="p-3 bg-yellow-50 border border-yellow-200 rounded text-sm text-yellow-800">
-                  {gpsError}
-                  <button
-                    onClick={getCurrentLocation}
-                    className="ml-2 text-xs underline"
-                  >
-                    Try again
-                  </button>
-                </div>
-              ) : (
-                <div className="p-3 bg-gray-50 border border-gray-200 rounded text-sm text-gray-600">
-                  No location data
-                </div>
-              )}
             </div>
 
-            {/* Actions */}
-            <div className="flex gap-3 pt-4">
+            {/* Footer */}
+            <div className="p-6 border-t border-gray-200/60 bg-gray-50/50 flex items-center justify-end gap-3 flex-shrink-0">
               <button
                 onClick={() => {
-                  setClockType(null);
-                  setSelectedTime('');
-                  setSelectedHour12('');
-                  setSelectedMinute('');
-                  setInsertBreakTime(false);
-                  setBreakHours('0');
-                  setBreakMinutes('0');
-                  setGpsLocation(null);
-                  setGpsError('');
+                  setEditingBreakTimeAttendance(null);
+                  setEditBreakTimeOnly(false);
+                  setEditBreakTimeHours('0');
+                  setEditBreakTimeMinutes('0');
                 }}
-                className="flex-1 px-4 py-2 rounded border border-gray-300 hover:bg-gray-50"
+                className="px-4 py-2.5 rounded-lg border border-gray-200/60 hover:bg-gray-50 transition-colors text-sm font-medium"
               >
                 Cancel
               </button>
               <button
-                onClick={handleClockInOut}
-                disabled={submitting}
-                className="flex-1 px-4 py-2 rounded bg-brand-red text-white hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                onClick={handleEditBreakTimeOnly}
+                disabled={editingBreakTimeSubmitting}
+                className="px-4 py-2.5 rounded-lg bg-brand-red text-white hover:bg-red-700 transition-colors text-sm font-medium disabled:opacity-60 disabled:cursor-not-allowed"
               >
-                {submitting ? 'Submitting...' : 'Submit'}
+                {editingBreakTimeSubmitting ? 'Updating...' : 'Update'}
               </button>
             </div>
           </div>

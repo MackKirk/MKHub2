@@ -2187,6 +2187,7 @@ def get_direct_attendances_for_date(
             "source": att.source,
             "job_type": job_type,
             "reason_text": att.reason_text,  # Include reason_text so frontend can extract job_type
+            "break_minutes": att.break_minutes,  # Include break time
         })
     
     return result
@@ -3039,6 +3040,7 @@ def get_shift_attendance(
             "status": a.status,
             "source": a.source,
             "reason_text": a.reason_text,
+            "break_minutes": a.break_minutes,  # Include break time
             # GPS data from clock-in (or clock-out if clock-in doesn't exist)
             "gps_lat": float(a.clock_in_gps_lat) if a.clock_in_gps_lat else (float(a.clock_out_gps_lat) if a.clock_out_gps_lat else None),
             "gps_lng": float(a.clock_in_gps_lng) if a.clock_in_gps_lng else (float(a.clock_out_gps_lng) if a.clock_out_gps_lng else None),
