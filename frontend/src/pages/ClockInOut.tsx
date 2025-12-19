@@ -888,7 +888,7 @@ export default function ClockInOut() {
   return (
     <div className="w-full min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-50/50">
       {/* Standardized Page Header */}
-      <div className="bg-slate-200/50 rounded-[12px] border border-slate-200 py-8 px-6 mb-8">
+      <div className="bg-slate-200/50 rounded-[12px] border border-slate-200 py-4 px-6 mb-6">
         <h1 className="text-2xl font-bold text-gray-900 tracking-tight mb-1.5">Clock In / Out</h1>
         <p className="text-sm text-gray-600 font-medium">Track your work hours and manage your attendance</p>
       </div>
@@ -1014,8 +1014,13 @@ export default function ClockInOut() {
                       ? 'bg-green-600 text-white'
                       : 'bg-gray-300 text-gray-500'
                   }`}>
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
+                      {/* Clock circle */}
+                      <circle cx="12" cy="12" r="9" />
+                      {/* Clock hands */}
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3" />
+                      {/* Arrow pointing in (right side) */}
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M19 12h-3m3 0l-2 2m2-2l-2-2" />
                     </svg>
                   </div>
                   <div className="flex-1 min-w-0">
@@ -1059,8 +1064,13 @@ export default function ClockInOut() {
                       ? 'bg-red-600 text-white'
                       : 'bg-gray-300 text-gray-500'
                   }`}>
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" />
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
+                      {/* Clock circle */}
+                      <circle cx="12" cy="12" r="9" />
+                      {/* Clock hands */}
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3" />
+                      {/* Arrow pointing out (left side) */}
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 12h3m-3 0l2 2m-2-2l2-2" />
                     </svg>
                   </div>
                   <div className="flex-1 min-w-0">
