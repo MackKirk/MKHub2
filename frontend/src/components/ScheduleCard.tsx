@@ -577,112 +577,149 @@ export default function ScheduleCard() {
   const isOwnShift = currentUser && selectedShift && String(currentUser.id) === String(selectedShift.worker_id);
 
   return (
-    <div className="rounded-xl border bg-white h-full flex flex-col overflow-hidden">
-      <div className="border-b p-4 flex items-center justify-between bg-white">
-        <h2 className="text-xl font-semibold">Weekly Schedule</h2>
-      </div>
-      
-      <div className="flex-1 overflow-hidden flex">
-        {/* Left side - Calendar */}
-        <div className="flex-1 p-6 overflow-y-auto">
+    <div className="grid grid-cols-[1.5fr_1fr] gap-6">
+      {/* LEFT COLUMN - Weekly Schedule */}
+      <div className="rounded-[12px] border border-gray-200/60 bg-white shadow-sm p-6">
+        {/* Week Navigation Header */}
+        <div className="mb-6 pb-4 border-b border-gray-200/60">
+          <h2 className="text-xl font-semibold text-gray-900 tracking-tight mb-4">Weekly Schedule</h2>
           {/* Week Controls */}
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center justify-between">
+            <button
+              onClick={goToPreviousWeek}
+              className="px-3 py-1.5 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 text-sm font-medium text-gray-700 transition-all duration-200 hover:shadow-sm active:scale-[0.98]"
+            >
+              ← Previous Week
+            </button>
+            <span className="text-sm font-semibold text-gray-700 min-w-[200px] text-center">
+              {weekLabel}
+            </span>
             <div className="flex items-center gap-2">
               <button
-                onClick={goToPreviousWeek}
-                className="px-3 py-1 rounded border"
-              >
-                ← Previous Week
-              </button>
-              <span className="text-sm font-semibold text-gray-700 min-w-[200px] text-center">
-                {weekLabel}
-              </span>
-              <button
-                onClick={goToNextWeek}
-                className="px-3 py-1 rounded border"
-              >
-                Next Week →
-              </button>
-              <button
                 onClick={goToToday}
-                className="px-3 py-1 rounded border"
+                className="px-3 py-1.5 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 text-sm font-medium text-gray-700 transition-all duration-200 hover:shadow-sm active:scale-[0.98]"
               >
                 Today
               </button>
+              <button
+                onClick={goToNextWeek}
+                className="px-3 py-1.5 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 text-sm font-medium text-gray-700 transition-all duration-200 hover:shadow-sm active:scale-[0.98]"
+              >
+                Next Week →
+              </button>
             </div>
           </div>
+        </div>
 
-          {/* Weekly Schedule - List View */}
-          <div className="space-y-2">
-            {weekDays.map(({ date, key, dayName }) => {
-              const dateStr = formatDateLocal(date);
-              const isToday = (() => {
-                const t = new Date();
-                return formatDateLocal(t) === dateStr;
-              })();
+        {/* Day Rows */}
+        <div className="space-y-3">
+          {weekDays.map(({ date, key, dayName }) => {
+            const dateStr = formatDateLocal(date);
+            const isToday = (() => {
+              const t = new Date();
+              return formatDateLocal(t) === dateStr;
+            })();
 
-              const dayShifts = shiftsByDate[dateStr] || [];
-              const dateFormatted = date.toLocaleDateString('en-US', { day: 'numeric', month: 'numeric' });
+            const dayShifts = shiftsByDate[dateStr] || [];
+            const dateFormatted = date.toLocaleDateString('en-US', { day: 'numeric', month: 'short' });
 
-              return (
-                <div
-                  key={key}
-                  className={`rounded border bg-white p-4 flex items-start gap-4 ${
-                    isToday ? 'ring-2 ring-brand-red' : ''
-                  } ${selectedShift && selectedShift.date === dateStr && selectedShift.id ? 'border-blue-500 border-2' : ''}`}
-                >
-                  {/* Date Column */}
-                  <div className="min-w-[120px] flex-shrink-0">
-                    <div className="text-sm font-semibold text-gray-700">
+            return (
+              <div
+                key={key}
+                className={`rounded-lg border transition-all duration-200 ${
+                  dayShifts.length > 0
+                    ? `bg-white border-gray-200/60 p-4 ${
+                        isToday ? 'ring-2 ring-brand-red/30 border-brand-red/40' : ''
+                      }`
+                    : `bg-gray-50/30 border-gray-100/60 p-2.5 ${
+                        isToday ? 'ring-1 ring-brand-red/20 border-brand-red/20' : ''
+                      }`
+                }`}
+              >
+                {/* Day Header */}
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <div className={`text-sm font-semibold ${
+                      dayShifts.length > 0 ? 'text-gray-900' : 'text-gray-500'
+                    }`}>
                       {dayName}
                     </div>
-                    <div className="text-xs text-gray-600">
+                    <div className={`text-xs ${
+                      dayShifts.length > 0 ? 'text-gray-500' : 'text-gray-400'
+                    }`}>
                       {dateFormatted}
                     </div>
+                    {isToday && (
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-brand-red/10 text-brand-red font-medium">
+                        Today
+                      </span>
+                    )}
                   </div>
+                </div>
 
-                  {/* Shifts Column */}
-                  <div className="flex-1 flex flex-wrap gap-2">
-                    {dayShifts.length > 0 ? (
-                      dayShifts.map((shift) => {
-                        const shiftClockIn = getAttendanceForShift(shift.id, 'in');
-                        const shiftClockOut = getAttendanceForShift(shift.id, 'out');
-                        const isSelected = selectedShift?.id === shift.id;
-                        const projectAddress = getProjectAddress(shift.project_id);
+                {/* Shifts */}
+                {dayShifts.length > 0 ? (
+                  <div className="flex flex-wrap gap-3">
+                    {dayShifts.map((shift) => {
+                      const shiftClockIn = getAttendanceForShift(shift.id, 'in');
+                      const shiftClockOut = getAttendanceForShift(shift.id, 'out');
+                      const isSelected = selectedShift?.id === shift.id;
+                      const projectAddress = getProjectAddress(shift.project_id);
 
-                        return (
-                          <div
-                            key={shift.id}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              if (selectedShift?.id === shift.id) {
-                                setSelectedShift(null);
-                              } else {
-                                setSelectedShift(shift);
-                              }
-                            }}
-                            className={`p-3 rounded border cursor-pointer w-[280px] flex-shrink-0 ${
-                              isSelected
-                                ? 'bg-blue-200 border-blue-400'
-                                : 'bg-blue-50 border-blue-200 hover:bg-blue-100'
-                            }`}
-                            title={`${shift.project_name || 'Project'}: ${formatTime12h(shift.start_time)} - ${formatTime12h(shift.end_time)}`}
-                          >
-                            <div className="font-medium text-sm mb-1">
-                              {formatTime12h(shift.start_time)} - {formatTime12h(shift.end_time)}
+                      return (
+                        <div
+                          key={shift.id}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (selectedShift?.id === shift.id) {
+                              setSelectedShift(null);
+                            } else {
+                              setSelectedShift(shift);
+                            }
+                          }}
+                          className={`relative rounded-lg border p-3 cursor-pointer transition-all duration-200 flex-1 min-w-[240px] ${
+                            isSelected
+                              ? 'border-brand-red bg-brand-red/5 shadow-md hover:shadow-lg'
+                              : 'border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50/50 hover:shadow-sm hover:-translate-y-0.5 active:scale-[0.98]'
+                          }`}
+                        >
+                          {/* Left Accent Bar */}
+                          <div className={`absolute left-0 top-0 bottom-0 w-0.5 rounded-l-lg ${
+                            isSelected ? 'bg-brand-red' : 'bg-gray-300'
+                          }`} />
+                          
+                          <div className="pl-2">
+                            {/* Time - Strongest */}
+                            <div className="flex items-center gap-1.5 mb-1.5">
+                              <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                              </svg>
+                              <div className="font-bold text-base text-gray-900">
+                                {formatTime12h(shift.start_time)} - {formatTime12h(shift.end_time)}
+                              </div>
                             </div>
+                            
+                            {/* Project - Secondary */}
                             {shift.project_name && (
-                              <div className="text-xs text-gray-600 mb-1">
+                              <div className="text-sm text-gray-700 mb-2 font-semibold">
                                 {shift.project_name}
                               </div>
                             )}
-                            <div className="text-xs text-gray-500 mb-2">
-                              {projectAddress}
+                            
+                            {/* Address - Muted */}
+                            <div className="flex items-center gap-1.5 text-xs text-gray-500 mb-2">
+                              <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                              </svg>
+                              <span className="line-clamp-1">{projectAddress}</span>
                             </div>
-                            <div className="space-y-1">
-                              {shiftClockIn && (
-                                <div>
-                                  <span className={`text-xs px-2 py-0.5 rounded ${
+                            
+                            {/* Attendance Status */}
+                            {(shiftClockIn || shiftClockOut) && (
+                              <div className="flex flex-wrap gap-1.5 mt-2 pt-2 border-t border-gray-200">
+                                {shiftClockIn && (
+                                  <span className={`text-xs px-2 py-0.5 rounded font-medium ${
                                     shiftClockIn.status === 'approved' ? 'bg-green-100 text-green-800' :
                                     shiftClockIn.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
                                     'bg-red-100 text-red-800'
@@ -697,11 +734,9 @@ export default function ScheduleCard() {
                                       hour12: true,
                                     }) : '--')}
                                   </span>
-                                </div>
-                              )}
-                              {shiftClockOut && (
-                                <div>
-                                  <span className={`text-xs px-2 py-0.5 rounded ${
+                                )}
+                                {shiftClockOut && (
+                                  <span className={`text-xs px-2 py-0.5 rounded font-medium ${
                                     shiftClockOut.status === 'approved' ? 'bg-green-100 text-green-800' :
                                     shiftClockOut.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
                                     'bg-red-100 text-red-800'
@@ -716,57 +751,78 @@ export default function ScheduleCard() {
                                       hour12: true,
                                     }) : '--')}
                                   </span>
-                                </div>
-                              )}
-                            </div>
+                                )}
+                              </div>
+                            )}
                           </div>
-                        );
-                      })
-                    ) : (
-                      <div className="text-sm text-gray-400 italic">No shifts</div>
-                    )}
+                        </div>
+                      );
+                    })}
                   </div>
-                </div>
-              );
-            })}
-          </div>
+                ) : (
+                  <div className="text-xs text-gray-400 italic">No shifts</div>
+                )}
+              </div>
+            );
+          })}
         </div>
+      </div>
 
-        {/* Right side - Shift Details */}
-        <div className="w-96 border-l bg-gray-50 overflow-y-auto">
-          {selectedShift ? (
-            <div className="p-6 space-y-4">
-              <h3 className="text-lg font-semibold">Shift Details</h3>
-
-              {/* Project Name */}
+      {/* RIGHT COLUMN - Shift Details Panel */}
+      <div className="rounded-[12px] border border-gray-200/60 bg-white shadow-sm p-6">
+        <h3 className="text-xl font-semibold text-gray-900 tracking-tight mb-6">Shift Details</h3>
+        
+        {selectedShift ? (
+          <div className="space-y-5">
+            {/* Core Info Section */}
+            <div className="space-y-3">
+              <div className="text-xs uppercase tracking-wide text-gray-500 font-semibold mb-2">Core Info</div>
+              
+              {/* Project Card */}
               {selectedShift.project_name && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Project</label>
-                  <div className="text-gray-900">{selectedShift.project_name}</div>
+                <div className="rounded-lg border border-gray-200/60 bg-gray-50/50 p-4">
+                  <div className="text-xs uppercase tracking-wide text-gray-500 font-medium mb-1.5">Project</div>
+                  <div className="text-sm font-semibold text-gray-900">{selectedShift.project_name}</div>
                 </div>
               )}
 
-              {/* Date and Time */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Date & Time</label>
-                <div className="text-gray-900">
-                  {new Date(selectedShift.date).toLocaleDateString()} • {formatTime12h(selectedShift.start_time)} - {formatTime12h(selectedShift.end_time)}
+              {/* Date & Time Card */}
+              <div className="rounded-lg border border-gray-200/60 bg-gray-50/50 p-4">
+                <div className="text-xs uppercase tracking-wide text-gray-500 font-medium mb-1.5">Date & Time</div>
+                <div className="text-sm font-semibold text-gray-900">
+                  {new Date(selectedShift.date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+                </div>
+                <div className="text-sm text-gray-700 mt-1">
+                  {formatTime12h(selectedShift.start_time)} - {formatTime12h(selectedShift.end_time)}
                 </div>
               </div>
 
-              {/* Worker */}
+              {/* Job Type Card */}
+              {selectedShift.job_name && (
+                <div className="rounded-lg border border-gray-200/60 bg-gray-50/50 p-4">
+                  <div className="text-xs uppercase tracking-wide text-gray-500 font-medium mb-1.5">Job Type</div>
+                  <div className="text-sm font-semibold text-gray-900">{selectedShift.job_name}</div>
+                </div>
+              )}
+            </div>
+
+            {/* People Section */}
+            <div className="space-y-3 pt-2 border-t border-gray-200/60">
+              <div className="text-xs uppercase tracking-wide text-gray-500 font-semibold mb-2">People</div>
+              
+              {/* Worker Card */}
               {worker && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Worker</label>
-                  <div className="text-gray-900">{worker.name || worker.username}</div>
+                <div className="rounded-lg border border-gray-200/60 bg-gray-50/50 p-4">
+                  <div className="text-xs uppercase tracking-wide text-gray-500 font-medium mb-1.5">Worker</div>
+                  <div className="text-sm font-semibold text-gray-900">{worker.name || worker.username}</div>
                 </div>
               )}
 
-              {/* Supervisor of Worker */}
+              {/* Supervisor Card */}
               {workerProfile?.manager_user_id && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Supervisor</label>
-                  <div className="text-gray-900">
+                <div className="rounded-lg border border-gray-200/60 bg-gray-50/50 p-4">
+                  <div className="text-xs uppercase tracking-wide text-gray-500 font-medium mb-1.5">Supervisor</div>
+                  <div className="text-sm font-semibold text-gray-900">
                     {(() => {
                       const supervisor = employees?.find((e: any) => e.id === workerProfile.manager_user_id);
                       return supervisor?.name || supervisor?.username || 'N/A';
@@ -774,163 +830,201 @@ export default function ScheduleCard() {
                   </div>
                 </div>
               )}
+            </div>
 
-              {/* Job Type */}
-              {selectedShift.job_name && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Job Type</label>
-                  <div className="text-gray-900">{selectedShift.job_name}</div>
-                </div>
-              )}
-
-              {/* Address */}
-              {project && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Address</label>
-                  <div className="text-gray-900">
-                    {(() => {
-                      // First try to use project address fields
-                      let addressParts = [
-                        project.address,
-                        project.address_city,
-                        project.address_province,
-                        project.address_country,
-                      ].filter(Boolean);
-                      
-                      // If no project address, fallback to site address fields
-                      if (addressParts.length === 0) {
-                        addressParts = [
-                          project.site_address_line1,
-                          project.site_city,
-                          project.site_province,
-                          project.site_country,
-                        ].filter(Boolean);
-                      }
-                      
-                      return addressParts.length > 0
-                        ? addressParts.join(', ')
-                        : 'No address available';
-                    })()}
-                  </div>
-                </div>
-              )}
-
-              {/* On-site Lead */}
-              {project?.onsite_lead_id && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">On-site Lead</label>
-                  <div className="text-gray-900">
-                    {(() => {
-                      const onsiteLead = employees?.find((e: any) => e.id === project.onsite_lead_id);
-                      return onsiteLead?.name || onsiteLead?.username || 'N/A';
-                    })()}
-                  </div>
-                </div>
-              )}
-
-              {/* Attendance Status */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Attendance Status</label>
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-gray-600">Clock In:</span>
-                    {clockIn ? (
-                      <div className="flex items-center gap-2">
-                        <span className={`px-2 py-1 rounded text-xs ${
-                          clockIn.status === 'approved' ? 'bg-green-100 text-green-800' :
-                          clockIn.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
-                          'bg-red-100 text-red-800'
-                        }`}>
-                          {clockIn.status === 'approved' ? 'Approved' : clockIn.status === 'pending' ? 'Pending' : 'Rejected'}
-                        </span>
-                        <span className="text-sm text-gray-900">
-                          {clockIn.clock_in_time ? new Date(clockIn.clock_in_time).toLocaleTimeString('en-US', {
-                            hour: 'numeric',
-                            minute: '2-digit',
-                            hour12: true,
-                          }) : (clockIn.time_selected_utc ? new Date(clockIn.time_selected_utc).toLocaleTimeString('en-US', {
-                            hour: 'numeric',
-                            minute: '2-digit',
-                            hour12: true,
-                          }) : '--')}
-                        </span>
+            {/* Location Section */}
+            {project && (
+              <div className="space-y-3 pt-2 border-t border-gray-200/60">
+                <div className="text-xs uppercase tracking-wide text-gray-500 font-semibold mb-2">Location</div>
+                
+                <div className="rounded-lg border border-gray-200/60 bg-gray-50/50 p-4">
+                  <div className="flex items-start gap-2">
+                    <svg className="w-4 h-4 text-gray-400 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                    <div className="flex-1">
+                      <div className="text-xs uppercase tracking-wide text-gray-500 font-medium mb-1.5">Address</div>
+                      <div className="text-sm text-gray-900">
+                        {(() => {
+                          let addressParts = [
+                            project.address,
+                            project.address_city,
+                            project.address_province,
+                            project.address_country,
+                          ].filter(Boolean);
+                          
+                          if (addressParts.length === 0) {
+                            addressParts = [
+                              project.site_address_line1,
+                              project.site_city,
+                              project.site_province,
+                              project.site_country,
+                            ].filter(Boolean);
+                          }
+                          
+                          return addressParts.length > 0
+                            ? addressParts.join(', ')
+                            : 'No address available';
+                        })()}
                       </div>
-                    ) : (
-                      <span className="text-sm text-gray-500">Not clocked in</span>
-                    )}
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-gray-600">Clock Out:</span>
-                    {clockOut ? (
-                      <div className="flex items-center gap-2">
-                        <span className={`px-2 py-1 rounded text-xs ${
-                          clockOut.status === 'approved' ? 'bg-green-100 text-green-800' :
-                          clockOut.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
-                          'bg-red-100 text-red-800'
-                        }`}>
-                          {clockOut.status === 'approved' ? 'Approved' : clockOut.status === 'pending' ? 'Pending' : 'Rejected'}
-                        </span>
-                        <span className="text-sm text-gray-900">
-                          {clockOut.clock_out_time ? new Date(clockOut.clock_out_time).toLocaleTimeString('en-US', {
-                            hour: 'numeric',
-                            minute: '2-digit',
-                            hour12: true,
-                          }) : (clockOut.time_selected_utc ? new Date(clockOut.time_selected_utc).toLocaleTimeString('en-US', {
-                            hour: 'numeric',
-                            minute: '2-digit',
-                            hour12: true,
-                          }) : '--')}
-                        </span>
-                      </div>
-                    ) : (
-                      <span className="text-sm text-gray-500">Not clocked out</span>
-                    )}
+                    </div>
                   </div>
                 </div>
               </div>
+            )}
 
-              {/* Clock In/Out Buttons */}
-              {isOwnShift && (
-                <div className="pt-4 border-t">
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => {
-                        // Navigate to clock in/out page with shift_id and type as query params
-                        navigate(`/clock-in-out?shift_id=${selectedShift.id}&type=in&date=${selectedShift.date}`);
-                      }}
-                      disabled={!canClockIn || submitting}
-                      className={`flex-1 px-2 py-1 rounded text-xs font-medium transition-colors ${
-                        canClockIn
-                          ? 'bg-green-600 hover:bg-green-700 text-white'
-                          : 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                      }`}
-                    >
-                      Clock In
-                    </button>
-                    <button
-                      onClick={() => {
-                        // Navigate to clock in/out page with shift_id and type as query params
-                        navigate(`/clock-in-out?shift_id=${selectedShift.id}&type=out&date=${selectedShift.date}`);
-                      }}
-                      disabled={!canClockOut || submitting}
-                      className={`flex-1 px-2 py-1 rounded text-xs font-medium transition-colors ${
-                        canClockOut
-                          ? 'bg-red-600 hover:bg-red-700 text-white'
-                          : 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                      }`}
-                    >
-                      Clock Out
-                    </button>
+            {/* Attendance Status Card */}
+            <div className="rounded-lg border border-gray-200/60 bg-gray-50/50 p-4 pt-2 border-t border-gray-200/60">
+              <div className="text-xs uppercase tracking-wide text-gray-500 font-semibold mb-3">Attendance Status</div>
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <span className="text-sm text-gray-600">Clock In:</span>
                   </div>
+                  {clockIn ? (
+                    <div className="flex items-center gap-2">
+                      <span className={`px-2 py-1 rounded text-xs font-medium ${
+                        clockIn.status === 'approved' ? 'bg-green-100 text-green-800' :
+                        clockIn.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+                        'bg-red-100 text-red-800'
+                      }`}>
+                        {clockIn.status === 'approved' ? 'Approved' : clockIn.status === 'pending' ? 'Pending' : 'Rejected'}
+                      </span>
+                      <span className="text-sm font-semibold text-gray-900">
+                        {clockIn.clock_in_time ? new Date(clockIn.clock_in_time).toLocaleTimeString('en-US', {
+                          hour: 'numeric',
+                          minute: '2-digit',
+                          hour12: true,
+                        }) : (clockIn.time_selected_utc ? new Date(clockIn.time_selected_utc).toLocaleTimeString('en-US', {
+                          hour: 'numeric',
+                          minute: '2-digit',
+                          hour12: true,
+                        }) : '--')}
+                      </span>
+                    </div>
+                  ) : (
+                    <span className="text-sm text-gray-500">Not clocked in</span>
+                  )}
                 </div>
-              )}
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <span className="text-sm text-gray-600">Clock Out:</span>
+                  </div>
+                  {clockOut ? (
+                    <div className="flex items-center gap-2">
+                      <span className={`px-2 py-1 rounded text-xs font-medium ${
+                        clockOut.status === 'approved' ? 'bg-green-100 text-green-800' :
+                        clockOut.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+                        'bg-red-100 text-red-800'
+                      }`}>
+                        {clockOut.status === 'approved' ? 'Approved' : clockOut.status === 'pending' ? 'Pending' : 'Rejected'}
+                      </span>
+                      <span className="text-sm font-semibold text-gray-900">
+                        {clockOut.clock_out_time ? new Date(clockOut.clock_out_time).toLocaleTimeString('en-US', {
+                          hour: 'numeric',
+                          minute: '2-digit',
+                          hour12: true,
+                        }) : (clockOut.time_selected_utc ? new Date(clockOut.time_selected_utc).toLocaleTimeString('en-US', {
+                          hour: 'numeric',
+                          minute: '2-digit',
+                          hour12: true,
+                        }) : '--')}
+                      </span>
+                    </div>
+                  ) : (
+                    <span className="text-sm text-gray-500">Not clocked out</span>
+                  )}
+                </div>
+              </div>
             </div>
-          ) : (
-            <div className="p-6 text-center text-gray-500">
-              <p>Select a shift to view details</p>
-            </div>
-          )}
-        </div>
+
+            {/* Attendance Actions */}
+            {isOwnShift && (
+              <div className="pt-4 border-t border-gray-200/60">
+                <div className="text-xs uppercase tracking-wide text-gray-500 font-semibold mb-3">Actions</div>
+                <div className="space-y-2">
+                  <button
+                    onClick={() => {
+                      navigate(`/clock-in-out?shift_id=${selectedShift.id}&type=in&date=${selectedShift.date}`);
+                    }}
+                    disabled={!canClockIn || submitting}
+                    className={`w-full px-4 py-3 rounded-lg border transition-all duration-200 ${
+                      canClockIn && !submitting
+                        ? 'border-green-200 bg-green-50/50 hover:border-green-300 hover:bg-green-50 hover:shadow-md hover:-translate-y-0.5 active:scale-[0.98] cursor-pointer focus:outline-none focus:ring-2 focus:ring-green-500/20'
+                        : 'border-gray-200 bg-gray-50/30 cursor-not-allowed opacity-50'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <svg className={`w-5 h-5 flex-shrink-0 ${
+                        canClockIn && !submitting ? 'text-green-600' : 'text-gray-400'
+                      }`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      <div className="flex-1 text-left">
+                        <div className={`text-sm font-semibold ${
+                          canClockIn && !submitting ? 'text-green-700' : 'text-gray-400'
+                        }`}>
+                          Clock In
+                        </div>
+                        <div className={`text-xs mt-0.5 ${
+                          canClockIn && !submitting ? 'text-green-600' : 'text-gray-400'
+                        }`}>
+                          Start your shift
+                        </div>
+                      </div>
+                    </div>
+                  </button>
+                  <button
+                    onClick={() => {
+                      navigate(`/clock-in-out?shift_id=${selectedShift.id}&type=out&date=${selectedShift.date}`);
+                    }}
+                    disabled={!canClockOut || submitting}
+                    className={`w-full px-4 py-3 rounded-lg border transition-all duration-200 ${
+                      canClockOut && !submitting
+                        ? 'border-red-200 bg-red-50/50 hover:border-red-300 hover:bg-red-50 hover:shadow-md hover:-translate-y-0.5 active:scale-[0.98] cursor-pointer focus:outline-none focus:ring-2 focus:ring-red-500/20'
+                        : 'border-gray-200 bg-gray-50/30 cursor-not-allowed opacity-50'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <svg className={`w-5 h-5 flex-shrink-0 ${
+                        canClockOut && !submitting ? 'text-red-600' : 'text-gray-400'
+                      }`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      <div className="flex-1 text-left">
+                        <div className={`text-sm font-semibold ${
+                          canClockOut && !submitting ? 'text-red-700' : 'text-gray-400'
+                        }`}>
+                          Clock Out
+                        </div>
+                        <div className={`text-xs mt-0.5 ${
+                          canClockOut && !submitting ? 'text-red-600' : 'text-gray-400'
+                        }`}>
+                          End your shift
+                        </div>
+                      </div>
+                    </div>
+                  </button>
+                </div>
+                <p className="text-xs text-gray-500 mt-3 text-center">Only one action is available at a time</p>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="text-center py-12 text-gray-400">
+            <svg className="w-12 h-12 mx-auto mb-3 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+            </svg>
+            <p className="text-sm font-medium">Select a shift to view details</p>
+          </div>
+        )}
       </div>
 
       {/* Clock In/Out Modal */}

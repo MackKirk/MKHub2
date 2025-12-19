@@ -850,377 +850,504 @@ export default function ClockInOut() {
     return `${startFormatted} - ${endFormatted}`;
   }, [weeklySummary]);
 
+  // Calculate working duration if clocked in
+  const workingDuration = useMemo(() => {
+    if (!hasOpenClockIn || !openClockIn?.clock_in_time) return null;
+    const clockInDate = new Date(openClockIn.clock_in_time);
+    const now = new Date();
+    const diffMs = now.getTime() - clockInDate.getTime();
+    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+    const diffMinutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+    return diffHours > 0 
+      ? `${diffHours}h ${diffMinutes}m`
+      : `${diffMinutes}m`;
+  }, [hasOpenClockIn, openClockIn]);
+
+  // Update working duration every minute
+  const [currentTime, setCurrentTime] = useState(new Date());
+  useEffect(() => {
+    if (!hasOpenClockIn) return;
+    const interval = setInterval(() => {
+      setCurrentTime(new Date());
+    }, 60000);
+    return () => clearInterval(interval);
+  }, [hasOpenClockIn]);
+
+  // Recalculate with currentTime
+  const workingDurationLive = useMemo(() => {
+    if (!hasOpenClockIn || !openClockIn?.clock_in_time) return null;
+    const clockInDate = new Date(openClockIn.clock_in_time);
+    const diffMs = currentTime.getTime() - clockInDate.getTime();
+    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+    const diffMinutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+    return diffHours > 0 
+      ? `${diffHours}h ${diffMinutes}m`
+      : `${diffMinutes}m`;
+  }, [hasOpenClockIn, openClockIn, currentTime]);
+
   return (
-    <div className="w-full">
-      <div className="mb-3 rounded-xl border bg-gradient-to-br from-[#7f1010] to-[#a31414] text-white p-4">
-        <div className="text-2xl font-extrabold">Clock in/out</div>
-        <div className="text-sm opacity-90">Record your attendance and track your work hours.</div>
+    <div className="w-full min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-50/50">
+      {/* Standardized Page Header */}
+      <div className="bg-slate-200/50 rounded-[12px] border border-slate-200 py-4 px-6 mb-6">
+        <h1 className="text-2xl font-bold text-gray-900 tracking-tight mb-1.5">Clock In / Out</h1>
+        <p className="text-sm text-gray-600 font-medium">Track your work hours and manage your attendance</p>
       </div>
-      
-      {fromHome && (
-        <div className="mb-3 flex items-center justify-between">
-          <button
-            onClick={() => navigate('/home')}
-            className="p-2 rounded-lg border hover:bg-gray-50 transition-colors flex items-center gap-2"
-            title="Back to Home"
-          >
-            <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-            </svg>
-            <span className="text-sm text-gray-700 font-medium">Back to Home</span>
-          </button>
-        </div>
-      )}
-      
-      <div className="grid grid-cols-[2fr_3fr] gap-6">
-        {/* Left column - Clock In/Out Form */}
-        <div className="rounded-xl border bg-white p-6 space-y-6">
-          {/* Date Selector */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Date
-            </label>
-            <input
-              type="date"
-              value={selectedDate}
-              onChange={(e) => setSelectedDate(e.target.value)}
-              className="rounded-lg border border-gray-300 px-4 py-2 w-full"
-            />
+
+      <div className="grid grid-cols-[1.2fr_1fr] gap-8">
+        {/* Left Column - Two Stacked Cards */}
+        <div className="space-y-4">
+          {/* CARD 1 — Today Status (Informational Only) */}
+          <div className="rounded-[12px] border border-gray-200/60 bg-white shadow-sm p-5 space-y-4">
+            <h3 className="text-base font-semibold text-gray-900 tracking-tight">Today Status</h3>
+            
+            <div className="space-y-4">
+              {/* Clock Status */}
+              <div className="flex items-center gap-3">
+                <svg 
+                  className={`w-5 h-5 ${hasOpenClockIn ? 'text-green-600' : 'text-gray-400'}`} 
+                  fill="none" 
+                  stroke="currentColor" 
+                  strokeWidth={2} 
+                  viewBox="0 0 24 24"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <div>
+                  <div className="text-xs text-gray-500 mb-0.5 font-medium uppercase tracking-wide">Status</div>
+                  <div className={`text-sm font-semibold ${hasOpenClockIn ? 'text-green-600' : 'text-gray-600'}`}>
+                    {hasOpenClockIn ? 'Clocked In' :
+                     hasCompleteAttendanceToday ? 'Completed' :
+                     'Clocked Out'}
+                  </div>
+                </div>
+              </div>
+
+              {/* Working Time */}
+              {hasOpenClockIn && openClockIn && workingDurationLive && (
+                <div>
+                  <div className="text-xs text-gray-500 mb-1 font-medium uppercase tracking-wide">Working Time</div>
+                  <div className="text-sm text-gray-900 font-semibold">Working for {workingDurationLive}</div>
+                </div>
+              )}
+
+              {/* Clock-in Time */}
+              {hasOpenClockIn && openClockIn && (
+                <div>
+                  <div className="text-xs text-gray-500 mb-1 font-medium uppercase tracking-wide">Clock-in Time</div>
+                  <div className="text-sm text-gray-900 font-semibold">
+                    {new Date(openClockIn.clock_in_time).toLocaleTimeString('en-US', {
+                      hour: 'numeric',
+                      minute: '2-digit',
+                      hour12: true,
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Approval Status */}
+              {hasOpenClockIn && openClockIn && openClockIn.status && (
+                <div>
+                  <div className="text-xs text-gray-500 mb-1 font-medium uppercase tracking-wide">Approval Status</div>
+                  <span className={`inline-block text-xs px-2.5 py-1 rounded font-medium ${
+                    openClockIn.status === 'approved' ? 'bg-green-50 text-green-700' :
+                    openClockIn.status === 'pending' ? 'bg-yellow-50 text-yellow-700' :
+                    'bg-red-50 text-red-700'
+                  }`}>
+                    {openClockIn.status}
+                  </span>
+                </div>
+              )}
+
+              {/* Contextual Notices */}
+              <div className="pt-3 border-t border-gray-200/40 space-y-2">
+                {selectedDateShift && (
+                  <div className="flex items-start gap-2 text-xs text-gray-600">
+                    <svg className="w-4 h-4 text-blue-500 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <span>Assigned to project: {selectedDateShift.project_name || 'Unknown'}</span>
+                  </div>
+                )}
+                {!selectedDateShift && selectedDate === todayStr && (
+                  <div className="flex items-start gap-2 text-xs text-gray-600">
+                    <svg className="w-4 h-4 text-gray-500 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <span>Not assigned to any specific project today</span>
+                  </div>
+                )}
+                {hasOpenClockIn && (
+                  <div className="flex items-start gap-2 text-xs text-gray-600">
+                    <svg className="w-4 h-4 text-blue-500 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <span>You have an open clock-in. Clock out to close this period.</span>
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
 
-          {/* Message based on shift status */}
-          {selectedDateShift ? (
-            <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
-              <p className="text-sm text-blue-800 font-medium">
-                You are assigned for a shift {selectedDate === todayStr ? 'today' : `on ${formatDate(selectedDate)}`} at the project {selectedDateShift.project_name || 'Unknown'}
-              </p>
-            </div>
-          ) : (
-            <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-              <p className="text-sm text-yellow-800 font-medium">
-                You are not assigned for any specific project {selectedDate === todayStr ? 'today' : `on ${formatDate(selectedDate)}`}
-              </p>
-            </div>
-          )}
-
-          {/* Shift Details (if scheduled) */}
-          {selectedDateShift && (
-            <div className="border rounded-lg p-4 space-y-4">
-              <div>
-                <h3 className="font-semibold text-gray-900 mb-4">Shift Details</h3>
-                <div className="space-y-3">
-                  {/* Project Name */}
-                  {selectedDateShift.project_name && (
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Project</label>
-                      <div className="text-gray-900">{selectedDateShift.project_name}</div>
+          {/* CARD 2 — Clock Actions (Action-Focused) */}
+          <div className="rounded-[12px] border border-gray-200/60 bg-white shadow-sm p-5 space-y-4">
+            <h3 className="text-base font-semibold text-gray-900 tracking-tight">Clock Actions</h3>
+            
+            <div className="space-y-3">
+              {/* Clock In Action Tile */}
+              <button
+                onClick={() => setClockType('in')}
+                disabled={hasOpenClockIn || !canClockIn || submitting || (!selectedDateShift && !selectedJob)}
+                className={`w-full rounded-[12px] border-2 p-4 text-left transition-all duration-200 ${
+                  !hasOpenClockIn && canClockIn && (selectedDateShift || selectedJob) && !submitting
+                    ? 'border-green-200 bg-green-50/50 hover:border-green-300 hover:bg-green-50 hover:shadow-md hover:-translate-y-0.5 active:scale-[0.98] cursor-pointer'
+                    : 'border-gray-200 bg-gray-50/50 cursor-not-allowed opacity-60'
+                }`}
+                title={
+                  hasOpenClockIn ? 'You must clock out first' : 
+                  hasCompleteAttendanceToday ? 'Only one attendance event per day is allowed' : 
+                  !selectedDateShift && !selectedJob ? 'Please select a job' : ''
+                }
+              >
+                <div className="flex items-start gap-3">
+                  <div className={`flex-shrink-0 w-10 h-10 rounded-lg flex items-center justify-center ${
+                    !hasOpenClockIn && canClockIn && (selectedDateShift || selectedJob) && !submitting
+                      ? 'bg-green-600 text-white'
+                      : 'bg-gray-300 text-gray-500'
+                  }`}>
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
+                      {/* Clock circle */}
+                      <circle cx="12" cy="12" r="9" />
+                      {/* Clock hands */}
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3" />
+                      {/* Arrow pointing in (right side) */}
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M19 12h-3m3 0l-2 2m2-2l-2-2" />
+                    </svg>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className={`text-base font-semibold mb-1 ${
+                      !hasOpenClockIn && canClockIn && (selectedDateShift || selectedJob) && !submitting
+                        ? 'text-gray-900'
+                        : 'text-gray-400'
+                    }`}>
+                      Clock In
                     </div>
-                  )}
+                    <div className={`text-xs ${
+                      !hasOpenClockIn && canClockIn && (selectedDateShift || selectedJob) && !submitting
+                        ? 'text-gray-600'
+                        : 'text-gray-400'
+                    }`}>
+                      Start tracking your work time
+                    </div>
+                  </div>
+                </div>
+              </button>
 
-                  {/* Date and Time */}
+              {/* Clock Out Action Tile */}
+              <button
+                onClick={() => {
+                  if (isJobLocked && clockInJobType) {
+                    setSelectedJob(clockInJobType);
+                  }
+                  setClockType('out');
+                }}
+                disabled={!hasOpenClockIn || !canClockOut || submitting}
+                className={`w-full rounded-[12px] border-2 p-4 text-left transition-all duration-200 ${
+                  hasOpenClockIn && canClockOut && !submitting
+                    ? 'border-red-200 bg-red-50/50 hover:border-red-300 hover:bg-red-50 hover:shadow-md hover:-translate-y-0.5 active:scale-[0.98] cursor-pointer'
+                    : 'border-gray-200 bg-gray-50/50 cursor-not-allowed opacity-60'
+                }`}
+                title={!canClockOut && hasOpenClockIn ? 'Clock-in must be approved or pending' : ''}
+              >
+                <div className="flex items-start gap-3">
+                  <div className={`flex-shrink-0 w-10 h-10 rounded-lg flex items-center justify-center ${
+                    hasOpenClockIn && canClockOut && !submitting
+                      ? 'bg-red-600 text-white'
+                      : 'bg-gray-300 text-gray-500'
+                  }`}>
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
+                      {/* Clock circle */}
+                      <circle cx="12" cy="12" r="9" />
+                      {/* Clock hands */}
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3" />
+                      {/* Arrow pointing out (left side) */}
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 12h3m-3 0l2 2m-2-2l2-2" />
+                    </svg>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className={`text-base font-semibold mb-1 ${
+                      hasOpenClockIn && canClockOut && !submitting
+                        ? 'text-gray-900'
+                        : 'text-gray-400'
+                    }`}>
+                      Clock Out
+                    </div>
+                    <div className={`text-xs ${
+                      hasOpenClockIn && canClockOut && !submitting
+                        ? 'text-gray-600'
+                        : 'text-gray-400'
+                    }`}>
+                      End your current work session
+                    </div>
+                  </div>
+                </div>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Right Column - Weekly Summary Panel */}
+        <div className="rounded-[12px] border border-gray-200/60 bg-white shadow-sm p-5 space-y-5">
+          <div className="flex items-center justify-between">
+            <h3 className="text-base font-semibold text-gray-900 tracking-tight">Weekly Summary</h3>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={goToPreviousWeek}
+                className="px-2 py-1 rounded-lg border border-gray-200/60 hover:bg-gray-50 active:bg-gray-100 active:scale-[0.98] text-xs font-medium text-gray-600 transition-all duration-150"
+              >
+                ←
+              </button>
+              <button
+                onClick={goToCurrentWeek}
+                className="px-2.5 py-1 rounded-lg border border-gray-200/60 hover:bg-gray-50 active:bg-gray-100 active:scale-[0.98] text-xs font-medium text-gray-600 transition-all duration-150"
+              >
+                Today
+              </button>
+              <button
+                onClick={goToNextWeek}
+                className="px-2 py-1 rounded-lg border border-gray-200/60 hover:bg-gray-50 active:bg-gray-100 active:scale-[0.98] text-xs font-medium text-gray-600 transition-all duration-150"
+              >
+                →
+              </button>
+            </div>
+          </div>
+
+          {weeklySummary && (
+            <>
+              {/* SECTION A — Weekly Overview (General Information) */}
+              <div className="pb-6 border-b border-gray-200/60">
+                <div className="text-xs text-gray-500 text-center font-medium uppercase tracking-wide mb-4">
+                  {weekRangeLabel}
+                </div>
+
+                {/* Compact Metrics Grid */}
+                <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Date & Time</label>
-                    <div className="text-gray-900">
-                      {new Date(selectedDateShift.date).toLocaleDateString()} • {formatTime12h(selectedDateShift.start_time)} - {formatTime12h(selectedDateShift.end_time)}
-                    </div>
+                    <div className="text-xs text-gray-500 mb-1.5 font-medium">Total Hours Worked</div>
+                    <div className="text-lg font-bold text-gray-900">{weeklySummary.total_hours_formatted || '0h 00m'}</div>
                   </div>
-
-                  {/* Worker */}
-                  {(() => {
-                    const worker = employees?.find((e: any) => e.id === selectedDateShift.worker_id);
-                    return worker ? (
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Worker</label>
-                        <div className="text-gray-900">{worker.name || worker.username}</div>
-                      </div>
-                    ) : null;
-                  })()}
-
-                  {/* Supervisor of Worker */}
-                  {workerProfile?.manager_user_id && (
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Supervisor</label>
-                      <div className="text-gray-900">
-                        {(() => {
-                          const supervisor = employees?.find((e: any) => e.id === workerProfile.manager_user_id);
-                          return supervisor?.name || supervisor?.username || 'N/A';
-                        })()}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Job Type */}
-                  {selectedDateShift.job_name && (
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Job Type</label>
-                      <div className="text-gray-900">{selectedDateShift.job_name}</div>
-                    </div>
-                  )}
-
-                  {/* Address */}
-                  {project && (
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Address</label>
-                      <div className="text-gray-900">
-                        {(() => {
-                          // First try to use project address fields
-                          let addressParts = [
-                            project.address,
-                            project.address_city,
-                            project.address_province,
-                            project.address_country,
-                          ].filter(Boolean);
-                          
-                          // If no project address, fallback to site address fields
-                          if (addressParts.length === 0) {
-                            addressParts = [
-                              project.site_address_line1,
-                              project.site_city,
-                              project.site_province,
-                              project.site_country,
-                            ].filter(Boolean);
-                          }
-                          
-                          return addressParts.length > 0
-                            ? addressParts.join(', ')
-                            : 'No address available';
-                        })()}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* On-site Lead */}
-                  {project?.onsite_lead_id && (
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">On-site Lead</label>
-                      <div className="text-gray-900">
-                        {(() => {
-                          const onsiteLead = employees?.find((e: any) => e.id === project.onsite_lead_id);
-                          return onsiteLead?.name || onsiteLead?.username || 'N/A';
-                        })()}
-                      </div>
-                    </div>
-                  )}
+                  <div>
+                    <div className="text-xs text-gray-500 mb-1.5 font-medium">Break Time</div>
+                    <div className="text-lg font-bold text-gray-900">{weeklySummary.total_break_formatted || '0h 00m'}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-gray-500 mb-1.5 font-medium">Overtime</div>
+                    <div className="text-lg font-bold text-gray-900">0h 00m</div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-gray-500 mb-1.5 font-medium">Regular Hours</div>
+                    <div className="text-lg font-bold text-gray-900">{weeklySummary.reg_hours_formatted || '0h 00m'}</div>
+                  </div>
                 </div>
               </div>
 
-              {/* Current Status - show only when there's an open clock-in (without clock-out) */}
-              {/* After clock-out, the event is closed and this section disappears */}
-              {selectedDateShift && hasOpenClockIn && openClockIn && (
-                <div className="pt-4 border-t">
-                  <h4 className="text-sm font-medium text-gray-700 mb-2">Status</h4>
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-gray-600">Clock In:</span>
-                      <div className="flex items-center gap-2">
-                        <span className={`px-2 py-0.5 rounded text-xs ${
-                          openClockIn.status === 'approved' ? 'bg-green-100 text-green-800' :
-                          openClockIn.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
-                          'bg-red-100 text-red-800'
-                        }`}>
-                          {openClockIn.status}
-                        </span>
-                        <span className="font-medium">
-                          {new Date(openClockIn.clock_in_time).toLocaleTimeString('en-US', {
-                            hour: 'numeric',
-                            minute: '2-digit',
-                            hour12: true,
-                          })}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="mt-2 text-xs text-blue-600">
-                    * You have an open clock-in. Clock out to close this period.
-                  </div>
-                </div>
-              )}
+              {/* SECTION B — Daily Breakdown (Detailed Reference) */}
+              <div className="pt-6">
+                <h4 className="text-xs font-semibold text-gray-600 mb-4 uppercase tracking-wide">Daily Breakdown</h4>
+                <div className="space-y-3.5 max-h-[400px] overflow-y-auto">
+                  {weeklySummary.days.map((day, index) => {
+                    const clockInTime = day.clock_in 
+                      ? new Date(day.clock_in).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
+                      : null;
+                    const clockOutTime = day.clock_out
+                      ? new Date(day.clock_out).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
+                      : null;
+                    const timeRange = clockInTime && clockOutTime 
+                      ? `${clockInTime} - ${clockOutTime}`
+                      : clockInTime 
+                      ? `${clockInTime} - --:--`
+                      : null;
 
-              {/* Clock In/Out Buttons */}
-              <div className="pt-4 border-t space-y-2">
-                <button
-                  onClick={() => setClockType('in')}
-                  disabled={!canClockIn || submitting}
-                  className={`w-full px-4 py-2 rounded font-medium transition-colors ${
-                    canClockIn
-                      ? 'bg-green-600 hover:bg-green-700 text-white'
-                      : 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                  }`}
-                  title={hasOpenClockIn ? 'You must clock out first to close the current event before starting a new one' : hasCompleteAttendanceToday ? 'Only one attendance event per day is allowed in Personal > Clock in/out' : ''}
-                >
-                  Clock In
-                </button>
-                <button
-                  onClick={() => {
-                    // Ensure job is set from clock-in before opening modal (for scheduled shifts, job comes from shift)
-                    setClockType('out');
-                  }}
-                  disabled={!canClockOut || submitting}
-                  className={`w-full px-4 py-2 rounded font-medium transition-colors ${
-                    canClockOut
-                      ? 'bg-red-600 hover:bg-red-700 text-white'
-                      : 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                  }`}
-                  title={!hasOpenClockIn ? 'You must clock in first before clocking out' : !canClockOut ? 'Clock-in must be approved or pending' : ''}
-                >
-                  Clock Out
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* Job Selector and Clock In/Out (if no scheduled shift) */}
-          {!selectedDateShift && (
-            <div className="border rounded-lg p-4 space-y-4">
-              {/* Job Selector */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Job <span className="text-red-500">*</span>
-                  {isJobLocked && clockInJobType && (
-                    <span className="ml-2 text-xs text-gray-500">(Locked - same as clock-in)</span>
-                  )}
-                </label>
-                <select
-                  value={isJobLocked && clockInJobType ? clockInJobType : selectedJob}
-                  onChange={(e) => !isJobLocked && setSelectedJob(e.target.value)}
-                  disabled={isJobLocked}
-                  className={`w-full rounded-lg border border-gray-300 px-4 py-2 ${
-                    isJobLocked ? 'bg-gray-100 cursor-not-allowed' : ''
-                  }`}
-                  required
-                >
-                  <option value="">Select a job...</option>
-                  {jobOptions.map(job => (
-                    <option key={job.id} value={job.id}>
-                      {job.code} - {job.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Current Status for non-scheduled - show only when there's an open clock-in (without clock-out) */}
-              {/* After clock-out, the event is closed and this section disappears */}
-              {hasOpenClockIn && openClockIn && !isHoursWorked(openClockIn) && (
-                <div className="pt-4 border-t">
-                  <h4 className="text-sm font-medium text-gray-700 mb-2">Status</h4>
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-gray-600">Clock In:</span>
-                      <div className="flex items-center gap-2">
-                        <span className={`px-2 py-0.5 rounded text-xs ${
-                          openClockIn.status === 'approved' ? 'bg-green-100 text-green-800' :
-                          openClockIn.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
-                          'bg-red-100 text-red-800'
-                        }`}>
-                          {openClockIn.status}
-                        </span>
-                        <span className="font-medium">
-                          {new Date(openClockIn.clock_in_time).toLocaleTimeString('en-US', {
-                            hour: 'numeric',
-                            minute: '2-digit',
-                            hour12: true,
-                          })}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="mt-2 text-xs text-blue-600">
-                    * You have an open clock-in. Clock out to close this period.
-                  </div>
-                </div>
-              )}
-
-              {/* Clock In/Out Buttons */}
-              <div className="space-y-2">
-                <button
-                  onClick={() => setClockType('in')}
-                  disabled={!selectedJob || submitting || !canClockIn}
-                  className={`w-full px-4 py-2 rounded font-medium transition-colors ${
-                    selectedJob && canClockIn
-                      ? 'bg-green-600 hover:bg-green-700 text-white'
-                      : 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                  }`}
-                  title={hasOpenClockIn ? 'You must clock out first to close the current event before starting a new one' : hasCompleteAttendanceToday ? 'Only one attendance event per day is allowed in Personal > Clock in/out' : !selectedJob ? 'Please select a job' : ''}
-                >
-                  Clock In
-                </button>
-                <button
-                  onClick={() => {
-                    // Ensure job is set from clock-in before opening modal
-                    if (isJobLocked && clockInJobType) {
-                      setSelectedJob(clockInJobType);
+                    // Show entry if it has clock_in/out OR if it has hours worked
+                    if (!day.clock_in && !day.clock_out && (!day.hours_worked_minutes || day.hours_worked_minutes === 0)) {
+                      return null; // Don't show days with no entries
                     }
-                    setClockType('out');
-                  }}
-                  disabled={submitting || !canClockOut || (!selectedJob && !clockInJobType)}
-                  className={`w-full px-4 py-2 rounded font-medium transition-colors ${
-                    canClockOut && (selectedJob || clockInJobType)
-                      ? 'bg-red-600 hover:bg-red-700 text-white'
-                      : 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                  }`}
-                  title={!hasOpenClockIn ? 'You must clock in first before clocking out' : !canClockOut ? 'Clock-in must be approved or pending' : !selectedJob && !clockInJobType ? 'Job not selected' : ''}
-                >
-                  Clock Out
-                </button>
-              </div>
-            </div>
-          )}
 
-          {/* Clock Modal */}
-          {clockType && (
-            <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
-              <div className="bg-white rounded-xl max-w-md w-full p-6 space-y-4">
-                <h3 className="text-lg font-semibold">
-                  Clock {clockType === 'in' ? 'In' : 'Out'}
-                </h3>
+                    // Use unique key combining date, clock_in time, and index to handle multiple events per day
+                    const uniqueKey = `${day.date}-${day.clock_in || 'no-in'}-${day.clock_out || 'no-out'}-${index}`;
 
-                {/* Time selector */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Time *</label>
-                  {!hasUnrestrictedClock ? (
-                    <div className="flex gap-2 items-center pointer-events-none">
-                      <div className="flex-1 border rounded px-3 py-2 bg-gray-100 opacity-60 text-gray-500">
-                        {selectedHour12 || 'Hour'}
+                    return (
+                      <div key={uniqueKey} className="border-b border-gray-200/30 pb-3.5 last:border-b-0 last:pb-0">
+                        <div className="flex items-start justify-between gap-4">
+                          <div className="flex-1 min-w-0">
+                            <div className="text-xs font-medium text-gray-700 mb-1">
+                              {day.day_name}, {formatDate(day.date)}
+                            </div>
+                            {timeRange && (
+                              <div className="text-xs text-gray-500 mb-0.5">
+                                {timeRange}
+                              </div>
+                            )}
+                            {day.job_name && (
+                              <div className="text-xs text-gray-500 truncate">
+                                {day.job_type || ''} - {day.job_name}
+                              </div>
+                            )}
+                          </div>
+                          <div className="text-right flex-shrink-0">
+                            <div className="text-xs font-semibold text-gray-700 flex items-center justify-end gap-1.5">
+                              <span>{day.hours_worked_formatted || '0h 00m'}</span>
+                              {day.shift_deleted && (
+                                <span
+                                  className="text-yellow-600"
+                                  title={
+                                    day.shift_deleted_by
+                                      ? `The shift related to this attendance was deleted by ${day.shift_deleted_by}${day.shift_deleted_at ? ` on ${new Date(day.shift_deleted_at).toLocaleDateString()}` : ''}`
+                                      : 'The shift related to this attendance was deleted'
+                                  }
+                                >
+                                  <svg className="w-3.5 h-3.5 inline-block" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                                  </svg>
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
                       </div>
-                      <span className="text-gray-500 font-medium">:</span>
-                      <div className="flex-1 border rounded px-3 py-2 bg-gray-100 opacity-60 text-gray-500">
-                        {selectedMinute || 'Min'}
-                      </div>
-                      <div className="flex-1 border rounded px-3 py-2 bg-gray-100 opacity-60 text-gray-500">
-                        {selectedAmPm || 'AM'}
-                      </div>
+                    );
+                  })}
+
+                  {(!weeklySummary.days || weeklySummary.days.filter(d => d.clock_in || d.clock_out).length === 0) && (
+                    <div className="text-center text-gray-400 py-6 text-xs">
+                      No attendance records for this week
                     </div>
-                  ) : (
-                    <div className="flex gap-2 items-center">
-                      <select
-                        value={selectedHour12}
-                        onChange={(e) => {
-                          const hour12 = e.target.value;
-                          setSelectedHour12(hour12);
-                          updateTimeFrom12h(hour12, selectedMinute, selectedAmPm);
-                        }}
-                        className="flex-1 border rounded px-3 py-2"
-                        required
-                      >
-                      <option value="">Hour</option>
-                      {Array.from({ length: 12 }, (_, i) => (
-                        <option key={i + 1} value={String(i + 1)}>
-                          {i + 1}
+                  )}
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* Clock Modal - Outside grid, fixed overlay */}
+      {clockType && (
+        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl max-w-md w-full p-6 space-y-4">
+            <h3 className="text-lg font-semibold">
+              Clock {clockType === 'in' ? 'In' : 'Out'}
+            </h3>
+
+            {/* Time selector */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Time *</label>
+              {!hasUnrestrictedClock ? (
+                <div className="flex gap-2 items-center pointer-events-none">
+                  <div className="flex-1 border rounded px-3 py-2 bg-gray-100 opacity-60 text-gray-500">
+                    {selectedHour12 || 'Hour'}
+                  </div>
+                  <span className="text-gray-500 font-medium">:</span>
+                  <div className="flex-1 border rounded px-3 py-2 bg-gray-100 opacity-60 text-gray-500">
+                    {selectedMinute || 'Min'}
+                  </div>
+                  <div className="flex-1 border rounded px-3 py-2 bg-gray-100 opacity-60 text-gray-500">
+                    {selectedAmPm || 'AM'}
+                  </div>
+                </div>
+              ) : (
+                <div className="flex gap-2 items-center">
+                  <select
+                    value={selectedHour12}
+                    onChange={(e) => {
+                      const hour12 = e.target.value;
+                      setSelectedHour12(hour12);
+                      updateTimeFrom12h(hour12, selectedMinute, selectedAmPm);
+                    }}
+                    className="flex-1 border rounded px-3 py-2"
+                    required
+                  >
+                    <option value="">Hour</option>
+                    {Array.from({ length: 12 }, (_, i) => (
+                      <option key={i + 1} value={String(i + 1)}>
+                        {i + 1}
+                      </option>
+                    ))}
+                  </select>
+                  <span className="text-gray-500 font-medium">:</span>
+                  <select
+                    value={selectedMinute}
+                    onChange={(e) => {
+                      const minute = e.target.value;
+                      setSelectedMinute(minute);
+                      updateTimeFrom12h(selectedHour12, minute, selectedAmPm);
+                    }}
+                    className="flex-1 border rounded px-3 py-2"
+                    required
+                  >
+                    <option value="">Min</option>
+                    {Array.from({ length: 12 }, (_, i) => {
+                      const m = i * 5;
+                      return (
+                        <option key={m} value={String(m).padStart(2, '0')}>
+                          {String(m).padStart(2, '0')}
                         </option>
-                      ))}
-                    </select>
-                    <span className="text-gray-500 font-medium">:</span>
+                      );
+                    })}
+                  </select>
+                  <select
+                    value={selectedAmPm}
+                    onChange={(e) => {
+                      const amPm = e.target.value as 'AM' | 'PM';
+                      setSelectedAmPm(amPm);
+                      updateTimeFrom12h(selectedHour12, selectedMinute, amPm);
+                    }}
+                    className="flex-1 border rounded px-3 py-2"
+                    required
+                  >
+                    <option value="AM">AM</option>
+                    <option value="PM">PM</option>
+                  </select>
+                </div>
+              )}
+              {!hasUnrestrictedClock && (
+                <p className="text-xs text-gray-500 mt-1">
+                  Time is locked. Contact an administrator to enable time editing.
+                </p>
+              )}
+            </div>
+
+            {/* Manual Break Time (only for Clock Out) */}
+            {clockType === 'out' && (
+              <div>
+                <label className="flex items-center gap-2 mb-2">
+                  <input
+                    type="checkbox"
+                    checked={insertBreakTime}
+                    onChange={(e) => setInsertBreakTime(e.target.checked)}
+                    className="w-4 h-4 rounded border-gray-300 text-brand-red focus:ring-brand-red"
+                  />
+                  <span className="text-sm font-medium text-gray-700">Insert Break Time</span>
+                </label>
+                {insertBreakTime && (
+                  <div className="ml-6 space-y-2">
+                    <div className="flex gap-2 items-center">
+                      <label className="text-xs text-gray-600 w-12">Hours:</label>
                       <select
-                        value={selectedMinute}
-                        onChange={(e) => {
-                          const minute = e.target.value;
-                          setSelectedMinute(minute);
-                          updateTimeFrom12h(selectedHour12, minute, selectedAmPm);
-                        }}
+                        value={breakHours}
+                        onChange={(e) => setBreakHours(e.target.value)}
                         className="flex-1 border rounded px-3 py-2"
-                        required
                       >
-                        <option value="">Min</option>
+                        {Array.from({ length: 3 }, (_, i) => (
+                          <option key={i} value={String(i)}>
+                            {i}
+                          </option>
+                        ))}
+                      </select>
+                      <label className="text-xs text-gray-600 w-12 ml-2">Minutes:</label>
+                      <select
+                        value={breakMinutes}
+                        onChange={(e) => setBreakMinutes(e.target.value)}
+                        className="flex-1 border rounded px-3 py-2"
+                      >
                         {Array.from({ length: 12 }, (_, i) => {
                           const m = i * 5;
                           return (
@@ -1230,272 +1357,74 @@ export default function ClockInOut() {
                           );
                         })}
                       </select>
-                      <select
-                        value={selectedAmPm}
-                        onChange={(e) => {
-                          const amPm = e.target.value as 'AM' | 'PM';
-                          setSelectedAmPm(amPm);
-                          updateTimeFrom12h(selectedHour12, selectedMinute, amPm);
-                        }}
-                        className="flex-1 border rounded px-3 py-2"
-                        required
-                      >
-                        <option value="AM">AM</option>
-                        <option value="PM">PM</option>
-                      </select>
                     </div>
-                  )}
-                  {!hasUnrestrictedClock && (
-                    <p className="text-xs text-gray-500 mt-1">
-                      Time is locked. Contact an administrator to enable time editing.
-                    </p>
-                  )}
-                </div>
-
-                {/* Manual Break Time (only for Clock Out) */}
-                {clockType === 'out' && (
-                  <div>
-                    <label className="flex items-center gap-2 mb-2">
-                      <input
-                        type="checkbox"
-                        checked={insertBreakTime}
-                        onChange={(e) => setInsertBreakTime(e.target.checked)}
-                        className="w-4 h-4 rounded border-gray-300 text-brand-red focus:ring-brand-red"
-                      />
-                      <span className="text-sm font-medium text-gray-700">Insert Break Time</span>
-                    </label>
-                    {insertBreakTime && (
-                      <div className="ml-6 space-y-2">
-                        <div className="flex gap-2 items-center">
-                          <label className="text-xs text-gray-600 w-12">Hours:</label>
-                          <select
-                            value={breakHours}
-                            onChange={(e) => setBreakHours(e.target.value)}
-                            className="flex-1 border rounded px-3 py-2"
-                          >
-                            {Array.from({ length: 3 }, (_, i) => (
-                              <option key={i} value={String(i)}>
-                                {i}
-                              </option>
-                            ))}
-                          </select>
-                          <label className="text-xs text-gray-600 w-12 ml-2">Minutes:</label>
-                          <select
-                            value={breakMinutes}
-                            onChange={(e) => setBreakMinutes(e.target.value)}
-                            className="flex-1 border rounded px-3 py-2"
-                          >
-                            {Array.from({ length: 12 }, (_, i) => {
-                              const m = i * 5;
-                              return (
-                                <option key={m} value={String(m).padStart(2, '0')}>
-                                  {String(m).padStart(2, '0')}
-                                </option>
-                              );
-                            })}
-                          </select>
-                        </div>
-                      </div>
-                    )}
                   </div>
                 )}
-
-                {/* GPS Status */}
-                <div>
-                  {gpsLocation ? (
-                    <div className="p-3 bg-green-50 border border-green-200 rounded text-sm">
-                      <div className="text-green-800">✓ Location captured</div>
-                      <div className="text-xs text-green-600 mt-1">
-                        Accuracy: {Math.round(gpsLocation.accuracy)}m
-                      </div>
-                    </div>
-                  ) : gpsLoading ? (
-                    <div className="p-3 bg-blue-50 border border-blue-200 rounded text-sm text-blue-800">
-                      <div className="flex items-center gap-2">
-                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-800"></div>
-                        <span>Getting location...</span>
-                      </div>
-                    </div>
-                  ) : gpsError ? (
-                    <div className="p-3 bg-yellow-50 border border-yellow-200 rounded text-sm text-yellow-800">
-                      {gpsError}
-                      <button
-                        onClick={getCurrentLocation}
-                        className="ml-2 text-xs underline"
-                      >
-                        Try again
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="p-3 bg-gray-50 border border-gray-200 rounded text-sm text-gray-600">
-                      No location data
-                    </div>
-                  )}
-                </div>
-
-                {/* Actions */}
-                <div className="flex gap-3 pt-4">
-                  <button
-                    onClick={() => {
-                      setClockType(null);
-                      setSelectedTime('');
-                      setSelectedHour12('');
-                      setSelectedMinute('');
-                      setInsertBreakTime(false);
-                      setBreakHours('0');
-                      setBreakMinutes('0');
-                      setGpsLocation(null);
-                      setGpsError('');
-                    }}
-                    className="flex-1 px-4 py-2 rounded border border-gray-300 hover:bg-gray-50"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={handleClockInOut}
-                    disabled={submitting}
-                    className="flex-1 px-4 py-2 rounded bg-brand-red text-white hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {submitting ? 'Submitting...' : 'Submit'}
-                  </button>
-                </div>
               </div>
-            </div>
-          )}
-        </div>
+            )}
 
-        {/* Right column - Weekly Summary */}
-        <div className="rounded-xl border bg-white p-6 space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-xl font-semibold">Weekly Summary</h2>
-            <div className="flex items-center gap-2">
+            {/* GPS Status */}
+            <div>
+              {gpsLocation ? (
+                <div className="p-3 bg-green-50 border border-green-200 rounded text-sm">
+                  <div className="text-green-800">✓ Location captured</div>
+                  <div className="text-xs text-green-600 mt-1">
+                    Accuracy: {Math.round(gpsLocation.accuracy)}m
+                  </div>
+                </div>
+              ) : gpsLoading ? (
+                <div className="p-3 bg-blue-50 border border-blue-200 rounded text-sm text-blue-800">
+                  <div className="flex items-center gap-2">
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-800"></div>
+                    <span>Getting location...</span>
+                  </div>
+                </div>
+              ) : gpsError ? (
+                <div className="p-3 bg-yellow-50 border border-yellow-200 rounded text-sm text-yellow-800">
+                  {gpsError}
+                  <button
+                    onClick={getCurrentLocation}
+                    className="ml-2 text-xs underline"
+                  >
+                    Try again
+                  </button>
+                </div>
+              ) : (
+                <div className="p-3 bg-gray-50 border border-gray-200 rounded text-sm text-gray-600">
+                  No location data
+                </div>
+              )}
+            </div>
+
+            {/* Actions */}
+            <div className="flex gap-3 pt-4">
               <button
-                onClick={goToPreviousWeek}
-                className="px-2 py-1 rounded border text-sm hover:bg-gray-50"
+                onClick={() => {
+                  setClockType(null);
+                  setSelectedTime('');
+                  setSelectedHour12('');
+                  setSelectedMinute('');
+                  setInsertBreakTime(false);
+                  setBreakHours('0');
+                  setBreakMinutes('0');
+                  setGpsLocation(null);
+                  setGpsError('');
+                }}
+                className="flex-1 px-4 py-2 rounded border border-gray-300 hover:bg-gray-50"
               >
-                ←
+                Cancel
               </button>
               <button
-                onClick={goToCurrentWeek}
-                className="px-3 py-1 rounded border text-sm hover:bg-gray-50"
+                onClick={handleClockInOut}
+                disabled={submitting}
+                className="flex-1 px-4 py-2 rounded bg-brand-red text-white hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Today
-              </button>
-              <button
-                onClick={goToNextWeek}
-                className="px-2 py-1 rounded border text-sm hover:bg-gray-50"
-              >
-                →
+                {submitting ? 'Submitting...' : 'Submit'}
               </button>
             </div>
           </div>
-
-          {weeklySummary && (
-            <>
-              <div className="text-sm text-gray-600 text-center">
-                {weekRangeLabel}
-              </div>
-
-              {/* Total Hours Summary */}
-              <div className="grid grid-cols-5 gap-2 text-sm border-b pb-3">
-                <div className="text-center">
-                  <div className="text-gray-600">Reg</div>
-                  <div className="font-medium">{weeklySummary.reg_hours_formatted || '0h 00m'}</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-gray-600">OT1</div>
-                  <div className="font-medium">0h 00m</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-gray-600">OT2</div>
-                  <div className="font-medium">0h 00m</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-gray-600">Break</div>
-                  <div className="font-medium">{weeklySummary.total_break_formatted || '0h 00m'}</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-gray-600">Total</div>
-                  <div className="font-medium">{weeklySummary.total_hours_formatted || '0h 00m'}</div>
-                </div>
-              </div>
-
-              {/* Daily Entries */}
-              <div className="space-y-3 max-h-[600px] overflow-y-auto">
-                {weeklySummary.days.map((day, index) => {
-                  const clockInTime = day.clock_in 
-                    ? new Date(day.clock_in).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
-                    : null;
-                  const clockOutTime = day.clock_out
-                    ? new Date(day.clock_out).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
-                    : null;
-                  const timeRange = clockInTime && clockOutTime 
-                    ? `${clockInTime} - ${clockOutTime}`
-                    : clockInTime 
-                    ? `${clockInTime} - --:--`
-                    : null;
-
-                  // Show entry if it has clock_in/out OR if it has hours worked
-                  if (!day.clock_in && !day.clock_out && (!day.hours_worked_minutes || day.hours_worked_minutes === 0)) {
-                    return null; // Don't show days with no entries
-                  }
-
-                  // Use unique key combining date, clock_in time, and index to handle multiple events per day
-                  const uniqueKey = `${day.date}-${day.clock_in || 'no-in'}-${day.clock_out || 'no-out'}-${index}`;
-
-                  return (
-                    <div key={uniqueKey} className="border-b pb-3 last:border-b-0">
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1">
-                          <div className="font-medium text-sm">
-                            {day.day_name}, {formatDate(day.date)}
-                          </div>
-                          <div className="text-xs text-gray-600 space-y-1 mt-1">
-                            {day.job_name && (
-                              <div>Job: {day.job_type || ''} - {day.job_name}</div>
-                            )}
-                            <div>Service Item: 1 - Regular</div>
-                          </div>
-                        </div>
-                        <div className="text-right ml-4">
-                          <div className="text-sm font-medium flex items-center justify-end gap-1">
-                            <span>{day.hours_worked_formatted || '0h 00m'}</span>
-                            {day.shift_deleted && (
-                              <span
-                                className="text-yellow-600"
-                                title={
-                                  day.shift_deleted_by
-                                    ? `The shift related to this attendance was deleted by ${day.shift_deleted_by}${day.shift_deleted_at ? ` on ${new Date(day.shift_deleted_at).toLocaleDateString()}` : ''}`
-                                    : 'The shift related to this attendance was deleted'
-                                }
-                              >
-                                <svg className="w-4 h-4 inline-block" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                                </svg>
-                              </span>
-                            )}
-                          </div>
-                          {timeRange && (
-                            <div className="text-xs text-gray-600 mt-1">
-                              {timeRange}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-
-                {(!weeklySummary.days || weeklySummary.days.filter(d => d.clock_in || d.clock_out).length === 0) && (
-                  <div className="text-center text-gray-500 py-8 text-sm">
-                    No attendance records for this week
-                  </div>
-                )}
-              </div>
-            </>
-          )}
         </div>
-      </div>
+      )}
     </div>
   );
 }

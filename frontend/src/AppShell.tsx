@@ -255,12 +255,18 @@ export default function AppShell({ children }: PropsWithChildren){
     // If profile is complete, show all categories
     return [
     {
+      id: 'home',
+      label: 'Home',
+      icon: <IconHome />,
+      items: [
+        { id: 'home', label: 'Home', path: '/home', icon: <IconHome /> },
+      ]
+    },
+    {
       id: 'personal',
       label: 'Personal',
       icon: <IconUser />,
       items: [
-        { id: 'home', label: 'Home', path: '/home', icon: <IconHome /> },
-        { id: 'profile', label: 'My Information', path: '/profile', icon: <IconUser /> },
         { id: 'schedule', label: 'Schedule', path: '/schedule', icon: <IconCalendar /> },
         { id: 'clock-in-out', label: 'Clock in/out', path: '/clock-in-out', icon: <IconClock /> },
         { id: 'task-requests', label: 'Requests', path: '/task-requests', icon: <IconRequest /> },
@@ -433,17 +439,70 @@ export default function AppShell({ children }: PropsWithChildren){
 
   return (
     <div className="min-h-screen flex">
-      <aside className={`${sidebarCollapsed ? 'w-16' : 'w-64'} text-white bg-gradient-to-b from-gray-800 via-gray-700 to-gray-600 transition-all duration-300 flex flex-col`}>
-        <div className={`p-4 flex items-center ${sidebarCollapsed ? 'justify-center' : 'justify-between'} border-b border-gray-600`}>
+      <aside className={`${sidebarCollapsed ? 'w-16' : 'w-64'} text-white bg-gradient-to-b from-gray-800/95 via-gray-800 to-gray-900 transition-all duration-300 flex flex-col relative`} style={{
+        position: 'relative'
+      }}>
+        {/* Subtle abstract pattern overlay */}
+        <div 
+          className="absolute inset-0 pointer-events-none opacity-[0.03] z-0"
+          style={{
+            backgroundImage: `
+              repeating-linear-gradient(
+                0deg,
+                transparent,
+                transparent 2px,
+                rgba(255, 255, 255, 0.03) 2px,
+                rgba(255, 255, 255, 0.03) 4px
+              ),
+              repeating-linear-gradient(
+                90deg,
+                transparent,
+                transparent 2px,
+                rgba(255, 255, 255, 0.02) 2px,
+                rgba(255, 255, 255, 0.02) 4px
+              ),
+              radial-gradient(
+                circle at 20% 30%,
+                rgba(255, 255, 255, 0.015) 0%,
+                transparent 50%
+              ),
+              radial-gradient(
+                circle at 80% 70%,
+                rgba(255, 255, 255, 0.015) 0%,
+                transparent 50%
+              ),
+              radial-gradient(
+                circle at 50% 50%,
+                rgba(255, 255, 255, 0.01) 0%,
+                transparent 50%
+              )
+            `,
+            backgroundSize: '100% 100%, 100% 100%, 200% 200%, 200% 200%, 300% 300%',
+            backgroundPosition: '0 0, 0 0, 0 0, 0 0, 0 0',
+            mixBlendMode: 'overlay'
+          }}
+        />
+        {/* Subtle brand globe watermark */}
+        <div 
+          className="absolute inset-0 pointer-events-none z-[1]"
+          style={{
+            backgroundImage: 'url(/assets/brand/globe.svg)',
+            backgroundSize: '460px 460px',
+            backgroundPosition: 'left bottom',
+            backgroundRepeat: 'no-repeat',
+            opacity: 0.04,
+            filter: 'blur(0.2px)'
+          }}
+        />
+        <div className={`py-3 px-4 ${sidebarCollapsed ? 'flex items-center justify-center' : 'flex items-center justify-between'} border-b border-gray-700/50 relative z-10`}>
           {!sidebarCollapsed ? (
             <>
-              <div className="flex items-center gap-2">
-                <img src="/ui/assets/login/logo-light.svg" className="h-8"/>
-                <span className="text-sm text-gray-300 font-semibold">MK Hub</span>
+              <div className="flex-1 flex items-center justify-center">
+                <img src="/ui/assets/login/logo-light.svg" className="h-14 w-full max-w-[180px] object-contain"/>
               </div>
               <button
                 onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-                className="text-gray-300 hover:text-white p-1 rounded hover:bg-gray-600 transition-colors"
+                className="text-gray-400 hover:text-white p-1.5 rounded-lg hover:bg-gray-700/50 transition-all duration-200 flex-shrink-0"
                 title="Collapse sidebar"
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -454,7 +513,7 @@ export default function AppShell({ children }: PropsWithChildren){
           ) : (
             <button
               onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-              className="text-gray-300 hover:text-white p-1 rounded hover:bg-gray-600 transition-colors w-full flex items-center justify-center"
+              className="text-gray-400 hover:text-white p-1.5 rounded-lg hover:bg-gray-700/50 transition-all duration-200 w-full flex items-center justify-center"
               title="Expand sidebar"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -463,7 +522,7 @@ export default function AppShell({ children }: PropsWithChildren){
             </button>
           )}
         </div>
-        <nav className="flex-1 overflow-y-auto p-2">
+        <nav className="flex-1 overflow-y-auto p-3 space-y-1 relative z-10">
           {menuCategories
             .filter(category => {
               // Special handling for Business category: hide entire category if user doesn't have business:projects:read OR business:customers:read
@@ -531,17 +590,22 @@ export default function AppShell({ children }: PropsWithChildren){
             if (sidebarCollapsed) {
               // When collapsed, show only category icons
               return (
-                <div key={category.id} className="mb-2">
+                <div key={category.id} className="mb-1">
                   <NavLink
                     to={getDefaultPath()}
                     className={() => 
-                      `flex items-center justify-center px-3 py-2 rounded-lg transition-colors ${
-                        isActive ? 'bg-brand-red text-white' : 'text-gray-300 hover:bg-gray-600 hover:text-white'
+                      `relative flex items-center justify-center px-3 py-2.5 rounded-lg transition-all duration-200 ${
+                        isActive 
+                          ? 'bg-brand-red text-white shadow-lg shadow-brand-red/20' 
+                          : 'text-gray-400 hover:text-white hover:bg-gray-700/50'
                       }`
                     }
                     title={category.label}
                     end={category.id === 'settings'} // Use exact match for Settings to prevent /settings/attendance from matching
                   >
+                    {isActive && (
+                      <div className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-6 bg-white rounded-r-full" />
+                    )}
                     <span className="flex-shrink-0">{category.icon}</span>
                   </NavLink>
                 </div>
@@ -549,21 +613,26 @@ export default function AppShell({ children }: PropsWithChildren){
             }
             
             return (
-              <div key={category.id} className="mb-2">
+              <div key={category.id} className="mb-1">
                 <NavLink
                   to={getDefaultPath()}
                   className={() => 
-                    `flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${
-                      isActive ? 'bg-brand-red text-white' : 'text-gray-300 hover:bg-gray-600 hover:text-white'
+                    `relative flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 ${
+                      isActive 
+                        ? 'bg-brand-red text-white font-semibold shadow-lg shadow-brand-red/20' 
+                        : 'text-gray-400 hover:text-white hover:bg-gray-700/50'
                     }`
                   }
                   end={category.id === 'settings'} // Use exact match for Settings to prevent /settings/attendance from matching
                 >
-                  <span className="flex-shrink-0">{category.icon}</span>
+                  {isActive && (
+                    <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-white rounded-r-full" />
+                  )}
+                  <span className={`flex-shrink-0 ${isActive ? 'opacity-100' : 'opacity-70'}`}>{category.icon}</span>
                   <span className="font-medium flex-1">{category.label}</span>
                 </NavLink>
-                {showSubItems && (
-                  <div className="mt-1 ml-4 space-y-1">
+                {showSubItems && category.items.length > 1 && (
+                  <div className="mt-1.5 ml-4 space-y-0.5">
                     {category.items
                       .filter(item => {
                         // Filter items based on permissions
@@ -609,12 +678,17 @@ export default function AppShell({ children }: PropsWithChildren){
                             // otherwise they stay highlighted on sub-routes like /fleet/assets.
                             end={item.id === 'fleet-dashboard' || item.id === 'business-dashboard'}
                             className={({isActive: navActive}) =>
-                              `flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${
-                                (isItemActive || navActive) ? 'bg-brand-red/80 text-white' : 'text-gray-400 hover:bg-gray-600 hover:text-white'
+                              `relative flex items-center gap-3 px-3 py-2 rounded-lg transition-all duration-200 ${
+                                (isItemActive || navActive) 
+                                  ? 'bg-brand-red/80 text-white font-medium shadow-md shadow-brand-red/10' 
+                                  : 'text-gray-400 hover:text-white hover:bg-gray-700/50'
                               }`
                             }
                           >
-                            <span className="flex-shrink-0">{item.icon}</span>
+                            {(isItemActive || location.pathname === item.path || location.pathname.startsWith(item.path + '/')) && (
+                              <div className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 bg-white rounded-r-full" />
+                            )}
+                            <span className={`flex-shrink-0 ${(isItemActive || location.pathname === item.path || location.pathname.startsWith(item.path + '/')) ? 'opacity-100' : 'opacity-60'}`}>{item.icon}</span>
                             <span className="text-sm">{item.label}</span>
                           </NavLink>
                         );
@@ -627,21 +701,31 @@ export default function AppShell({ children }: PropsWithChildren){
         </nav>
       </aside>
       <main className="flex-1 min-w-0">
-        <div className="h-14 border-b text-white flex items-center justify-between px-4 bg-gradient-to-r from-gray-800 via-gray-700 to-gray-600">
-          <input placeholder="Search" className="w-80 rounded-full px-3 py-1 text-sm bg-[#0c0e11] border border-[#1f242b]"/>
-          <div className="flex items-center gap-3">
+        <div className="h-14 border-b border-gray-700/40 shadow-sm text-white flex items-center justify-between px-6 bg-gradient-to-r from-gray-700 via-gray-700 to-gray-800">
+          <div className="relative w-80">
+            <div className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none z-10">
+              <svg className="w-4 h-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+            </div>
+            <input 
+              placeholder="Search" 
+              className="w-full rounded-lg pl-10 pr-3 py-2 text-sm bg-gray-800/80 border border-gray-600/50 text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-red/40 focus:border-brand-red/60 focus:bg-gray-800 transition-all duration-200"
+            />
+          </div>
+          <div className="flex items-center gap-4">
             <NotificationBell />
-            <div className="relative flex items-center gap-2">
-              <button onClick={()=>setOpen(v=>!v)} className="flex items-center gap-3">
-                <span className="text-base font-medium max-w-[220px] truncate">{displayName}</span>
-                <img src={avatarUrl} className="w-10 h-10 rounded-full border-2 border-brand-red object-cover"/>
+            <div className="relative flex items-center gap-3">
+              <button onClick={()=>setOpen(v=>!v)} className="flex items-center gap-3 hover:opacity-90 transition-opacity duration-200">
+                <span className="text-base font-medium text-gray-50 max-w-[220px] truncate">{displayName}</span>
+                <img src={avatarUrl} className="w-11 h-11 rounded-full border-2 border-gray-500/60 object-cover shadow-md"/>
               </button>
               <FixedBugReportButton />
               {open && (
-                <div className="absolute right-0 mt-2 w-56 rounded-lg border bg-white text-black shadow-lg z-50">
-                  <Link to="/profile" onClick={()=>setOpen(false)} className="block px-3 py-2 hover:bg-gray-50">My Information</Link>
-                  <Link to="/reviews/my" onClick={()=>setOpen(false)} className="block px-3 py-2 hover:bg-gray-50">My Reviews</Link>
-                  <button onClick={handleLogout} className="w-full text-left px-3 py-2 hover:bg-gray-50">Logout</button>
+                <div className="absolute right-0 mt-2 w-56 rounded-lg border border-gray-200/20 bg-white text-black shadow-xl z-50">
+                  <Link to="/profile" onClick={()=>setOpen(false)} className="block px-4 py-2.5 hover:bg-gray-50 transition-colors duration-150">My Information</Link>
+                  <Link to="/reviews/my" onClick={()=>setOpen(false)} className="block px-4 py-2.5 hover:bg-gray-50 transition-colors duration-150">My Reviews</Link>
+                  <button onClick={handleLogout} className="w-full text-left px-4 py-2.5 hover:bg-gray-50 transition-colors duration-150">Logout</button>
                 </div>
               )}
             </div>
