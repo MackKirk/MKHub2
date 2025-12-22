@@ -15,6 +15,7 @@ type MenuItem = {
   icon: React.ReactNode;
   category?: string;
   requiredPermission?: string;  // Permission required to see this item
+  children?: MenuItem[];
 };
 
 type MenuCategory = {
@@ -146,6 +147,48 @@ const IconHumanResources = () => (
   </svg>
 );
 
+const IconServices = () => (
+  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+  </svg>
+);
+
+const IconBusiness = () => (
+  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+  </svg>
+);
+
+const IconSales = () => (
+  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+  </svg>
+);
+
+const IconDashboard = () => (
+  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+  </svg>
+);
+
+const IconOpportunities = () => (
+  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+  </svg>
+);
+
+const IconProjects = () => (
+  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+  </svg>
+);
+
+const IconQuotations = () => (
+  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+  </svg>
+);
+
 export default function AppShell({ children }: PropsWithChildren){
   const location = useLocation();
   const navigate = useNavigate();
@@ -222,6 +265,25 @@ export default function AppShell({ children }: PropsWithChildren){
   
   const { hasUnsavedChanges } = useUnsavedChanges();
   const confirm = useConfirm();
+
+  const isAdmin = (me?.roles || []).includes('admin');
+  const permissionsSet = useMemo(() => new Set((me?.permissions || []).map((p: any) => String(p))), [me]);
+
+  const hasPermission = (requiredPermission?: string) => {
+    if (!requiredPermission) return true;
+    if (isAdmin) return true;
+    const has = permissionsSet.has(requiredPermission);
+    if (requiredPermission.startsWith('hr:')) {
+      const legacyPerm = requiredPermission.replace('hr:', '');
+      return has || permissionsSet.has(legacyPerm);
+    }
+    return has;
+  };
+
+  const canSeeMenuItem = (item: MenuItem): boolean => {
+    if (hasPermission(item.requiredPermission)) return true;
+    return Array.isArray(item.children) && item.children.some(canSeeMenuItem);
+  };
   
   const handleLogout = async () => {
     if (hasUnsavedChanges) {
@@ -274,25 +336,32 @@ export default function AppShell({ children }: PropsWithChildren){
       ]
     },
     {
-      id: 'business',
-      label: 'Business',
-      icon: <IconBriefcase />,
+      id: 'services',
+      label: 'Services',
+      icon: <IconServices />,
       items: [
-        { id: 'business-dashboard', label: 'Dashboard', path: '/business', icon: <IconBriefcase />, requiredPermission: 'business:projects:read' },
-        { id: 'customers', label: 'Customers', path: '/customers', icon: <IconUsers />, requiredPermission: 'business:customers:read' },
-        { id: 'opportunities', label: 'Opportunities', path: '/opportunities', icon: <IconFileText />, requiredPermission: 'business:projects:read' },
-        { id: 'projects', label: 'Projects', path: '/projects', icon: <IconBriefcase />, requiredPermission: 'business:projects:read' },
-        { id: 'quotations', label: 'Quotations', path: '/quotes', icon: <IconFileText />, requiredPermission: 'business:projects:read' },
-        { id: 'proposals', label: 'Proposals', path: '/proposals', icon: <IconFileText /> },
+        { id: 'business-dashboard', label: 'Dashboard', path: '/business', icon: <IconDashboard />, requiredPermission: 'business:projects:read' },
+        { id: 'opportunities', label: 'Opportunities', path: '/opportunities', icon: <IconOpportunities />, requiredPermission: 'business:projects:read' },
+        { id: 'projects', label: 'Projects', path: '/projects', icon: <IconProjects />, requiredPermission: 'business:projects:read' },
       ]
     },
     {
-      id: 'inventory',
-      label: 'Inventory',
-      icon: <IconBox />,
+      id: 'business',
+      label: 'Business',
+      icon: <IconBusiness />,
       items: [
-        { id: 'suppliers', label: 'Suppliers', path: '/inventory/suppliers', icon: <IconShoppingCart />, requiredPermission: 'inventory:suppliers:read' },
-        { id: 'products', label: 'Products', path: '/inventory/products', icon: <IconBox />, requiredPermission: 'inventory:products:read' },
+        { id: 'customers', label: 'Customers', path: '/customers', icon: <IconUsers />, requiredPermission: 'business:customers:read' },
+        { id: 'suppliers', label: 'Suppliers', path: '/inventory/suppliers', icon: <IconShoppingCart />, requiredPermission: 'inventory:suppliers:read', children: [
+          { id: 'products', label: 'Products', path: '/inventory/products', icon: <IconBox />, requiredPermission: 'inventory:products:read' },
+        ] },
+      ]
+    },
+    {
+      id: 'sales',
+      label: 'Sales',
+      icon: <IconSales />,
+      items: [
+        { id: 'quotations', label: 'Quotations', path: '/quotes', icon: <IconQuotations />, requiredPermission: 'sales:quotations:read' },
       ]
     },
     {
@@ -377,9 +446,9 @@ export default function AppShell({ children }: PropsWithChildren){
         return false; // Explicitly return false and don't check items
       }
     }
-    // Special handling for Business category: if we're viewing an opportunity, 
+    // Special handling for Services category: if we're viewing an opportunity,
     // check against opportunities path instead of projects path
-    if (category.id === 'business' && isViewingOpportunity) {
+    if (category.id === 'services' && isViewingOpportunity) {
       const opportunitiesItem = category.items.find(item => item.id === 'opportunities');
       const projectsItem = category.items.find(item => item.id === 'projects');
       if (opportunitiesItem && projectsItem) {
@@ -388,8 +457,8 @@ export default function AppShell({ children }: PropsWithChildren){
                (location.pathname.startsWith('/projects/') && currentProject?.is_bidding);
       }
     }
-    // Special handling for Business category: check if we're on the business dashboard
-    if (category.id === 'business' && location.pathname === '/business') {
+    // Special handling for Services category: check if we're on the business dashboard
+    if (category.id === 'services' && location.pathname === '/business') {
       return true;
     }
     // Check if any item in the category is active
@@ -428,7 +497,12 @@ export default function AppShell({ children }: PropsWithChildren){
       if (item.id === 'business-dashboard' && item.path === '/business') {
         return location.pathname === '/business';
       }
-      return location.pathname === item.path || location.pathname.startsWith(item.path + '/');
+      const isSelfActive = location.pathname === item.path || location.pathname.startsWith(item.path + '/');
+      if (isSelfActive) return true;
+      if (Array.isArray(item.children) && item.children.some(child => location.pathname === child.path || location.pathname.startsWith(child.path + '/'))) {
+        return true;
+      }
+      return false;
     });
   };
 
@@ -525,65 +599,56 @@ export default function AppShell({ children }: PropsWithChildren){
         <nav className="flex-1 overflow-y-auto p-3 space-y-1 relative z-10">
           {menuCategories
             .filter(category => {
-              // Special handling for Business category: hide entire category if user doesn't have business:projects:read OR business:customers:read
+              // Special handling for Services category: requires projects access
+              if (category.id === 'services') {
+                if (!hasPermission('business:projects:read')) return false;
+              }
+              // Special handling for Business category: requires customers or inventory access
               if (category.id === 'business') {
-                if ((me?.roles||[]).includes('admin')) return true;
-                const hasBusinessAccess = (me?.permissions||[]).includes('business:projects:read') || (me?.permissions||[]).includes('business:customers:read');
+                const hasBusinessAccess =
+                  hasPermission('business:customers:read') ||
+                  hasPermission('inventory:suppliers:read') ||
+                  hasPermission('inventory:products:read');
                 if (!hasBusinessAccess) return false;
               }
-              // Special handling for Inventory category: hide entire category if user doesn't have inventory:suppliers:read OR inventory:products:read
-              if (category.id === 'inventory') {
-                if ((me?.roles||[]).includes('admin')) return true;
-                const hasInventoryAccess = (me?.permissions||[]).includes('inventory:suppliers:read') || (me?.permissions||[]).includes('inventory:products:read');
-                if (!hasInventoryAccess) return false;
+              // Special handling for Sales category: requires sales quotations access
+              if (category.id === 'sales') {
+                if (!hasPermission('sales:quotations:read')) return false;
               }
               // Filter categories that have no visible items
-              const visibleItems = category.items.filter(item => {
-                if (!item.requiredPermission) return true;
-                if ((me?.roles||[]).includes('admin')) return true;
-                const hasPermission = (me?.permissions||[]).includes(item.requiredPermission);
-                // For HR permissions, also check legacy permissions for backward compatibility
-                if (item.requiredPermission.startsWith('hr:')) {
-                  const legacyPerm = item.requiredPermission.replace('hr:', '');
-                  const hasLegacy = (me?.permissions||[]).includes(legacyPerm);
-                  return hasPermission || hasLegacy;
-                }
-                return hasPermission;
-              });
+              const visibleItems = category.items.filter(canSeeMenuItem);
               return visibleItems.length > 0;
             })
             .map(category => {
             const isActive = isCategoryActive(category);
             const showSubItems = !sidebarCollapsed && isActive;
             
+            // Determine the default path for Services category based on permissions
+            const getServicesDefaultPath = () => {
+              if (category.id !== 'services') return category.items[0]?.path || '#';
+              return '/business';
+            };
+
             // Determine the default path for Business category based on permissions
             const getBusinessDefaultPath = () => {
               if (category.id !== 'business') return category.items[0]?.path || '#';
-              if ((me?.roles||[]).includes('admin')) return '/business';
-              const hasProjectsAccess = (me?.permissions||[]).includes('business:projects:read');
-              const hasCustomersAccess = (me?.permissions||[]).includes('business:customers:read');
-              // If user has projects access, go to dashboard; otherwise go to customers
-              if (hasProjectsAccess) return '/business';
-              if (hasCustomersAccess) return '/customers';
+              if (hasPermission('business:customers:read')) return '/customers';
+              if (hasPermission('inventory:suppliers:read')) return '/inventory/suppliers';
+              if (hasPermission('inventory:products:read')) return '/inventory/products';
               return category.items[0]?.path || '#';
             };
 
-            // Determine the default path for Inventory category based on permissions
-            const getInventoryDefaultPath = () => {
-              if (category.id !== 'inventory') return category.items[0]?.path || '#';
-              if ((me?.roles||[]).includes('admin')) return '/inventory/suppliers';
-              const hasSuppliersAccess = (me?.permissions||[]).includes('inventory:suppliers:read');
-              const hasProductsAccess = (me?.permissions||[]).includes('inventory:products:read');
-              // If user has suppliers access, go to suppliers; otherwise go to products
-              if (hasSuppliersAccess) return '/inventory/suppliers';
-              if (hasProductsAccess) return '/inventory/products';
-              return category.items[0]?.path || '#';
+            // Determine the default path for Sales category based on permissions
+            const getSalesDefaultPath = () => {
+              if (category.id !== 'sales') return category.items[0]?.path || '#';
+              return '/quotes';
             };
 
             // Get the default path based on category
             const getDefaultPath = () => {
+              if (category.id === 'services') return getServicesDefaultPath();
               if (category.id === 'business') return getBusinessDefaultPath();
-              if (category.id === 'inventory') return getInventoryDefaultPath();
+              if (category.id === 'sales') return getSalesDefaultPath();
               return category.items[0]?.path || '#';
             };
 
@@ -631,24 +696,10 @@ export default function AppShell({ children }: PropsWithChildren){
                   <span className={`flex-shrink-0 ${isActive ? 'opacity-100' : 'opacity-70'}`}>{category.icon}</span>
                   <span className="font-medium flex-1">{category.label}</span>
                 </NavLink>
-                {showSubItems && category.items.length > 1 && (
+                {showSubItems && (category.items.length > 1 || category.id === 'sales') && (
                   <div className="mt-1.5 ml-4 space-y-0.5">
                     {category.items
-                      .filter(item => {
-                        // Filter items based on permissions
-                        if (!item.requiredPermission) return true;  // No permission required
-                        if ((me?.roles||[]).includes('admin')) return true;  // Admin sees all
-                        // Check if user has the required permission
-                        const hasPermission = (me?.permissions||[]).includes(item.requiredPermission);
-                        // For HR permissions, also check legacy permissions for backward compatibility
-                        if (item.requiredPermission.startsWith('hr:')) {
-                          // Map HR permissions to legacy: hr:users:read -> users:read
-                          const legacyPerm = item.requiredPermission.replace('hr:', '');
-                          const hasLegacy = (me?.permissions||[]).includes(legacyPerm);
-                          return hasPermission || hasLegacy;
-                        }
-                        return hasPermission;
-                      })
+                      .filter(canSeeMenuItem)
                       .map(item => {
                         // Special handling: if we're viewing an opportunity, 
                         // don't highlight any individual items, only the category
@@ -670,6 +721,87 @@ export default function AppShell({ children }: PropsWithChildren){
                             isItemActive = location.pathname === item.path || location.pathname.startsWith(item.path + '/');
                           }
                         }
+
+                        const visibleChildren = (item.children || []).filter(canSeeMenuItem);
+                        const hasChildren = visibleChildren.length > 0;
+                        const isAnyChildActive = hasChildren
+                          ? visibleChildren.some(child => location.pathname === child.path || location.pathname.startsWith(child.path + '/'))
+                          : false;
+                        const isItemOrChildActive = isItemActive || isAnyChildActive;
+                        // Only show children after user navigates to Suppliers (or a child like Products)
+                        const isGroupExpanded = isItemActive || isAnyChildActive;
+
+                        const selfNavigable = hasPermission(item.requiredPermission);
+
+                        if (hasChildren) {
+                          return (
+                            <div key={item.id}>
+                              {selfNavigable ? (
+                                <NavLink
+                                  to={item.path}
+                                  // Dashboards should only be active on the exact route (/fleet, /business),
+                                  // otherwise they stay highlighted on sub-routes like /fleet/assets.
+                                  end={item.id === 'fleet-dashboard' || item.id === 'business-dashboard'}
+                                  className={({ isActive: navActive }) =>
+                                    `relative flex items-center gap-3 px-3 py-2 rounded-lg transition-all duration-200 ${
+                                      (isItemOrChildActive || navActive)
+                                        ? 'bg-brand-red/80 text-white font-medium shadow-md shadow-brand-red/10'
+                                        : 'text-gray-400 hover:text-white hover:bg-gray-700/50'
+                                    }`
+                                  }
+                                >
+                                  {(isItemOrChildActive || location.pathname === item.path || location.pathname.startsWith(item.path + '/')) && (
+                                    <div className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 bg-white rounded-r-full" />
+                                  )}
+                                  <span className={`flex-shrink-0 ${(isItemOrChildActive || location.pathname === item.path || location.pathname.startsWith(item.path + '/')) ? 'opacity-100' : 'opacity-60'}`}>{item.icon}</span>
+                                  <span className="text-sm flex-1">{item.label}</span>
+                                </NavLink>
+                              ) : (
+                                <div
+                                  className={`relative w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-all duration-200 ${
+                                    isItemOrChildActive
+                                      ? 'bg-brand-red/80 text-white font-medium shadow-md shadow-brand-red/10'
+                                      : 'text-gray-400 hover:text-white hover:bg-gray-700/50'
+                                  }`}
+                                >
+                                  {isItemOrChildActive && (
+                                    <div className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 bg-white rounded-r-full" />
+                                  )}
+                                  <span className={`flex-shrink-0 ${isItemOrChildActive ? 'opacity-100' : 'opacity-60'}`}>{item.icon}</span>
+                                  <span className="text-sm flex-1 text-left">{item.label}</span>
+                                </div>
+                              )}
+
+                              {isGroupExpanded && (
+                                <div className="mt-0.5 ml-6 space-y-0.5">
+                                  {visibleChildren.map(child => {
+                                    const childActive = !isViewingOpportunity && (location.pathname === child.path || location.pathname.startsWith(child.path + '/'));
+                                    return (
+                                      <NavLink
+                                        key={child.id}
+                                        to={child.path}
+                                        className={() =>
+                                          `relative flex items-center gap-3 px-3 py-2 rounded-lg transition-all duration-200 ${
+                                            childActive
+                                              ? 'bg-brand-red/70 text-white font-medium shadow-md shadow-brand-red/10'
+                                              : 'text-gray-400 hover:text-white hover:bg-gray-700/50'
+                                          }`
+                                        }
+                                      >
+                                        {childActive && (
+                                          <div className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 bg-white rounded-r-full" />
+                                        )}
+                                        <span className={`flex-shrink-0 ${childActive ? 'opacity-100' : 'opacity-60'}`}>{child.icon}</span>
+                                        <span className="text-sm">{child.label}</span>
+                                      </NavLink>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        }
+
                         return (
                           <NavLink
                             key={item.id}

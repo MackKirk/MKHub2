@@ -522,7 +522,7 @@ def list_sites(client_id: str, db: Session = Depends(get_db), _=Depends(require_
 
 
 @router.post("/{client_id}/sites", response_model=ClientSiteResponse)
-def create_site(client_id: str, payload: ClientSiteCreate, db: Session = Depends(get_db), _=Depends(require_permissions("clients:write"))):
+def create_site(client_id: str, payload: ClientSiteCreate, db: Session = Depends(get_db), _=Depends(require_permissions("business:customers:write"))):
     row = ClientSite(client_id=client_id, **payload.dict(exclude_unset=True))
     db.add(row)
     db.commit()
@@ -542,7 +542,7 @@ def create_site(client_id: str, payload: ClientSiteCreate, db: Session = Depends
 
 
 @router.patch("/{client_id}/sites/{site_id}")
-def update_site(client_id: str, site_id: str, payload: dict, db: Session = Depends(get_db), _=Depends(require_permissions("clients:write"))):
+def update_site(client_id: str, site_id: str, payload: dict, db: Session = Depends(get_db), _=Depends(require_permissions("business:customers:write"))):
     from ..models.models import Project, Shift
     from datetime import datetime, timezone
     
@@ -660,7 +660,7 @@ def update_site(client_id: str, site_id: str, payload: dict, db: Session = Depen
 
 
 @router.delete("/{client_id}/sites/{site_id}")
-def delete_site(client_id: str, site_id: str, db: Session = Depends(get_db), _=Depends(require_permissions("clients:write"))):
+def delete_site(client_id: str, site_id: str, db: Session = Depends(get_db), _=Depends(require_permissions("business:customers:write"))):
     row = db.query(ClientSite).filter(ClientSite.id == site_id, ClientSite.client_id == client_id).first()
     if not row:
         return {"status": "ok"}

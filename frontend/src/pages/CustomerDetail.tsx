@@ -28,6 +28,9 @@ export default function CustomerDetail(){
   const permissions = new Set(me?.permissions || []);
   const hasCustomersRead = isAdmin || permissions.has('business:customers:read');
   const hasProjectsRead = isAdmin || permissions.has('business:projects:read');
+  const hasFilesRead = isAdmin || permissions.has('business:projects:files:read');
+  const hasFilesWrite = isAdmin || permissions.has('business:projects:files:write');
+  const hasQuotationsRead = isAdmin || permissions.has('sales:quotations:read');
   const hasEditPermission = isAdmin || permissions.has('business:customers:write');
   const { data:sites } = useQuery({ queryKey:['clientSites', id], queryFn: ()=>api<Site[]>('GET', `/clients/${id}/sites`) });
   const { data:files, refetch: refetchFiles } = useQuery({ queryKey:['clientFiles', id], queryFn: ()=>api<ClientFile[]>('GET', `/clients/${id}/files`) });
@@ -95,24 +98,41 @@ export default function CustomerDetail(){
   const leadSources = (settings?.lead_sources||[]) as any[];
   const { data:projects } = useQuery({ queryKey:['clientProjects', id], queryFn: ()=>api<Project[]>('GET', `/projects?client=${encodeURIComponent(String(id||''))}&is_bidding=false`), enabled: hasProjectsRead });
   const { data:opportunities } = useQuery({ queryKey:['clientOpportunities', id], queryFn: ()=>api<Project[]>('GET', `/projects?client=${encodeURIComponent(String(id||''))}&is_bidding=true`), enabled: hasProjectsRead });
-  const { data:quotes } = useQuery({ queryKey:['clientQuotes', id], queryFn: ()=>api<any[]>('GET', `/quotes?client_id=${encodeURIComponent(String(id||''))}`), enabled: hasProjectsRead });
+  const { data:quotes } = useQuery({ queryKey:['clientQuotes', id], queryFn: ()=>api<any[]>('GET', `/quotes?client_id=${encodeURIComponent(String(id||''))}`), enabled: hasQuotationsRead });
   const { data:contacts } = useQuery({ queryKey:['clientContacts', id], queryFn: ()=>api<Contact[]>('GET', `/clients/${id}/contacts`) });
   
   // Determine available tabs based on permissions
+  // Order: Overview → General → Contacts → Files → Sites → Opportunities → Projects → Quotes
   const availableTabs = useMemo(() => {
-    const allTabs = ['overview','general','files','contacts','sites','opportunities','projects','quotes'] as const;
+    const tabs: string[] = [];
     
-    if (!hasCustomersRead && !hasProjectsRead) {
-      return [];
-    } else if (hasCustomersRead && !hasProjectsRead) {
-      // Only customers read: show general and contacts
-      return ['general', 'contacts'];
-    } else if (hasProjectsRead) {
-      // Has projects read: show all tabs
-      return allTabs;
+    // Overview (requires View Projects & Opportunities)
+    if (hasProjectsRead) {
+      tabs.push('overview');
     }
-    return [];
-  }, [hasCustomersRead, hasProjectsRead]);
+    
+    // General and Contacts (requires View Customers)
+    if (hasCustomersRead) {
+      tabs.push('general', 'contacts');
+    }
+    
+    // Files (requires View Files)
+    if (hasFilesRead) {
+      tabs.push('files');
+    }
+    
+    // Sites, Opportunities, Projects (requires View Projects & Opportunities)
+    if (hasProjectsRead) {
+      tabs.push('sites', 'opportunities', 'projects');
+    }
+    
+    // Quotes (requires View Quotations)
+    if (hasQuotationsRead) {
+      tabs.push('quotes');
+    }
+    
+    return tabs;
+  }, [hasCustomersRead, hasProjectsRead, hasFilesRead, hasQuotationsRead]);
   
   // Redirect to first available tab if current tab is not available
   useEffect(() => {
@@ -673,7 +693,7 @@ export default function CustomerDetail(){
                 </div>
               )}
               {tab==='files' && (
-                <CustomerDocuments id={String(id)} files={files||[]} sites={sites||[]} onRefresh={refetchFiles} hasEditPermission={hasEditPermission} />
+                <CustomerDocuments id={String(id)} files={files||[]} sites={sites||[]} onRefresh={refetchFiles} hasEditPermission={hasFilesWrite} />
               )}
               {tab==='contacts' && (
                 <ContactsCard id={String(id)} hasEditPermission={hasEditPermission} />
@@ -760,7 +780,7 @@ export default function CustomerDetail(){
                 <div>
                   <div className="mb-3 flex items-center justify-between">
                     <h3 className="font-semibold">Quotes</h3>
-                    {hasEditPermission && (
+                    {(isAdmin || permissions.has('sales:quotations:write')) && (
                       <button 
                         onClick={async()=>{
                           try{
@@ -1585,5 +1605,6 @@ function ContactsCard({ id, hasEditPermission }: { id: string, hasEditPermission
     </div>
   );
 }
+
 
 

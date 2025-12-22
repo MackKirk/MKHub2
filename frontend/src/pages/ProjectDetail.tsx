@@ -553,7 +553,7 @@ export default function ProjectDetail(){
       )}
 
       {/* Convert to Project Button (for opportunities) */}
-      {!tab && proj?.is_bidding && (
+      {!tab && proj?.is_bidding && hasEditPermission && (
         <div className="mb-4">
           <button onClick={async()=>{
             const result = await confirm({

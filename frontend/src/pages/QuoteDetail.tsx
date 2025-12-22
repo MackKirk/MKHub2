@@ -41,7 +41,8 @@ export default function QuoteDetail(){
   // Check permissions
   const isAdmin = (me?.roles||[]).includes('admin');
   const permissions = new Set(me?.permissions || []);
-  const hasEditPermission = isAdmin || permissions.has('business:projects:write');
+  const hasViewPermission = isAdmin || permissions.has('sales:quotations:read');
+  const hasEditPermission = isAdmin || permissions.has('sales:quotations:write');
   
   const estimator = employees?.find((e:any) => String(e.id) === String(quote?.estimator_id));
   
@@ -209,11 +210,18 @@ export default function QuoteDetail(){
       </div>
 
       {/* Quote Form */}
-      <QuoteForm 
-        mode="edit" 
-        clientId={String(quote.client_id||'')} 
-        initial={quote}
-      />
+      {hasViewPermission ? (
+        <QuoteForm 
+          mode="edit" 
+          clientId={String(quote.client_id||'')} 
+          initial={quote}
+          disabled={!hasEditPermission}
+        />
+      ) : (
+        <div className="text-center py-12 text-gray-500">
+          You do not have permission to view quotations.
+        </div>
+      )}
 
       {/* Image Picker Modal */}
       <ImagePicker

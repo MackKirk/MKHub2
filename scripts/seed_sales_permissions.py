@@ -1,7 +1,7 @@
 """
-Script para adicionar permissões de Inventory com estrutura hierárquica.
-A primeira permissão sempre é a liberação da área (inventory:access).
-Se bloquear inventory:access, automaticamente bloqueia todas as sub-permissões.
+Script para adicionar permissões de Sales com estrutura hierárquica.
+A primeira permissão sempre é a liberação da área (sales:access).
+Se bloquear sales:access, automaticamente bloqueia todas as sub-permissões.
 """
 import sys
 import os
@@ -34,65 +34,53 @@ except ImportError as e:
     sys.exit(1)
 
 
-def seed_inventory_permissions():
-    """Seed Inventory permissions with hierarchical structure"""
+def seed_sales_permissions():
+    """Seed Sales permissions with hierarchical structure"""
     db = SessionLocal()
     
     try:
-        # Create or get Inventory category
-        category = db.query(PermissionCategory).filter(PermissionCategory.name == "inventory").first()
+        # Create or get Sales category
+        category = db.query(PermissionCategory).filter(PermissionCategory.name == "sales").first()
         if category:
-            print(f"Category 'inventory' already exists, updating...")
-            category.label = "Inventory"
-            category.description = "Permissions for Inventory area. Blocking access blocks all sub-permissions."
+            print(f"Category 'sales' already exists, updating...")
+            category.label = "Sales"
+            category.description = "Permissions for Sales area. Blocking access blocks all sub-permissions."
             category.is_active = True
         else:
             category = PermissionCategory(
-                name="inventory",
-                label="Inventory",
-                description="Permissions for Inventory area. Blocking access blocks all sub-permissions.",
-                sort_index=2,  # After Business
+                name="sales",
+                label="Sales",
+                description="Permissions for Sales area. Blocking access blocks all sub-permissions.",
+                sort_index=3,  # After Business
             )
             db.add(category)
         
         db.flush()  # To get the category ID
         
-        # Define Inventory permissions with hierarchical structure
+        # Define Sales permissions with hierarchical structure
         # First permission is always the area access
-        inventory_permissions = [
+        sales_permissions = [
             {
-                "key": "inventory:access",
-                "label": "Access Inventory",
-                "description": "Grants access to the Inventory area. Required for all Inventory functions. If disabled, all Inventory permissions are blocked.",
+                "key": "sales:access",
+                "label": "Access Sales",
+                "description": "Grants access to the Sales area. Required for all Sales functions. If disabled, all Sales permissions are blocked.",
                 "sort_index": 1,
             },
             {
-                "key": "inventory:suppliers:read",
-                "label": "View Suppliers",
-                "description": "Allows viewing suppliers list and suppliers details.",
+                "key": "sales:quotations:read",
+                "label": "View Quotations",
+                "description": "Allows viewing quotations list and quotations details.",
                 "sort_index": 2,
             },
             {
-                "key": "inventory:suppliers:write",
-                "label": "Edit Suppliers",
-                "description": "Allows creating, updating, and deleting suppliers.",
+                "key": "sales:quotations:write",
+                "label": "Edit Quotations",
+                "description": "Allows creating, updating, and deleting quotations",
                 "sort_index": 3,
-            },
-            {
-                "key": "inventory:products:read",
-                "label": "View Products",
-                "description": "Allows viewing products list and products details.",
-                "sort_index": 4,
-            },
-            {
-                "key": "inventory:products:write",
-                "label": "Edit Products",
-                "description": "Allows creating, updating, and deleting products.",
-                "sort_index": 5,
             },
         ]
         
-        for perm_data in inventory_permissions:
+        for perm_data in sales_permissions:
             # Find or create permission
             permission = db.query(PermissionDefinition).filter(PermissionDefinition.key == perm_data["key"]).first()
             if permission:
@@ -116,17 +104,17 @@ def seed_inventory_permissions():
                 print(f"Created permission: {perm_data['key']}")
         
         db.commit()
-        print(f"\nSuccessfully seeded Inventory permissions!")
-        print(f"Total permissions: {len(inventory_permissions)}")
+        print(f"\nSuccessfully seeded Sales permissions!")
+        print(f"Total permissions: {len(sales_permissions)}")
         
     except Exception as e:
         db.rollback()
-        print(f"Error seeding Inventory permissions: {e}")
+        print(f"Error seeding Sales permissions: {e}")
         raise
     finally:
         db.close()
 
 
 if __name__ == "__main__":
-    seed_inventory_permissions()
+    seed_sales_permissions()
 

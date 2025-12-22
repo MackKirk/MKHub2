@@ -1080,8 +1080,8 @@ def list_timesheet(project_id: str, month: Optional[str] = None, user_id: Option
                 "is_from_attendance": False,
             })
     
-    # Sort by work_date and start_time
-    out.sort(key=lambda x: (x.get("work_date", ""), x.get("start_time", "")))
+    # Sort by work_date and start_time (handle None values)
+    out.sort(key=lambda x: (x.get("work_date") or "", x.get("start_time") or ""))
     
     return out
 

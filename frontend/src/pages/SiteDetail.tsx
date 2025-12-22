@@ -31,6 +31,10 @@ export default function SiteDetail(){
   const { customerId, siteId } = useParams();
   const nav = useNavigate();
   const confirm = useConfirm();
+  const { data: me } = useQuery({ queryKey:['me'], queryFn: ()=>api<any>('GET','/auth/me') });
+  const isAdmin = (me?.roles||[]).includes('admin');
+  const permissions = new Set(me?.permissions || []);
+  const hasEditPermission = isAdmin || permissions.has('business:customers:write');
   const { data:sites } = useQuery({ queryKey:['clientSites', customerId], queryFn: ()=>api<Site[]>('GET', `/clients/${customerId}/sites`) });
   const { data:files } = useQuery({ queryKey:['clientFilesForSiteHeader', customerId], queryFn: ()=> api<ClientFile[]>('GET', `/clients/${customerId}/files`), enabled: !!customerId });
   const s = useMemo(()=> (sites||[]).find(x=> String(x.id)===String(siteId)) || null, [sites, siteId]);
@@ -132,7 +136,7 @@ export default function SiteDetail(){
           </button>
           <div className="w-24 h-24 rounded-xl border-4 border-white shadow-lg overflow-hidden bg-white flex items-center justify-center relative">
             <img src={previewSrc} className="w-full h-full object-cover" alt={form.site_name||'Site'} />
-            {!isNew && (
+            {!isNew && hasEditPermission && (
               <button
                 onClick={()=> setCoverPickerOpen(true)}
                 className="absolute bottom-1 right-1 text-[11px] px-2 py-0.5 rounded bg-black/60 text-white hover:bg-black/70"
@@ -159,12 +163,14 @@ export default function SiteDetail(){
             <div className="md:col-span-2">
               <Field label={<><span>Site name</span> <span className="text-red-600">*</span></>}>
                 <input 
-                  className={`w-full border rounded px-3 py-2 ${siteNameError && !form.site_name?.trim() ? 'border-red-500' : ''}`} 
+                  className={`w-full border rounded px-3 py-2 ${siteNameError && !form.site_name?.trim() ? 'border-red-500' : ''} ${!hasEditPermission ? 'bg-gray-100 cursor-not-allowed' : ''}`} 
                   value={form.site_name||''} 
                   onChange={e=>{
                     setField('site_name', e.target.value);
                     if(siteNameError) setSiteNameError(false);
-                  }} 
+                  }}
+                  disabled={!hasEditPermission}
+                  readOnly={!hasEditPermission}
                 />
                 {siteNameError && !form.site_name?.trim() && (
                   <div className="text-[11px] text-red-600 mt-1">This field is required</div>
@@ -175,6 +181,7 @@ export default function SiteDetail(){
               <AddressAutocomplete
                 value={form.site_address_line1||''}
                 onChange={(value) => setField('site_address_line1', value)}
+                disabled={!hasEditPermission}
                 onAddressSelect={(address) => {
                   console.log('onAddressSelect called with:', address);
                   // Update all address fields at once using setForm directly
@@ -191,18 +198,20 @@ export default function SiteDetail(){
                   }));
                 }}
                 placeholder="Enter address"
-                className="w-full border rounded px-3 py-2"
+                className={`w-full border rounded px-3 py-2 ${!hasEditPermission ? 'bg-gray-100 cursor-not-allowed' : ''}`}
               />
             </Field>
             <Field label="Complement">
               <input
-                className="w-full border rounded px-3 py-2"
+                className={`w-full border rounded px-3 py-2 ${!hasEditPermission ? 'bg-gray-100 cursor-not-allowed' : ''}`}
                 value={form.site_address_line1_complement||''}
                 onChange={e=>setField('site_address_line1_complement', e.target.value)}
                 placeholder="Apartment, Unit, Block, etc (Optional)"
+                disabled={!hasEditPermission}
+                readOnly={!hasEditPermission}
               />
             </Field>
-            {!showAddress2 && (
+            {!showAddress2 && hasEditPermission && (
               <div className="md:col-span-2">
                 <button
                   type="button"
@@ -224,6 +233,7 @@ export default function SiteDetail(){
                   <AddressAutocomplete
                     value={form.site_address_line2||''}
                     onChange={(value) => setField('site_address_line2', value)}
+                    disabled={!hasEditPermission}
                     onAddressSelect={(address) => {
                       setForm((prev: any) => ({
                         ...prev,
@@ -232,20 +242,23 @@ export default function SiteDetail(){
                       }));
                     }}
                     placeholder="Enter address"
-                    className="w-full border rounded px-3 py-2"
+                    className={`w-full border rounded px-3 py-2 ${!hasEditPermission ? 'bg-gray-100 cursor-not-allowed' : ''}`}
                   />
                 </Field>
                 <div className="flex items-end gap-2">
                   <div className="flex-1">
                     <Field label="Complement">
                       <input
-                        className="w-full border rounded px-3 py-2"
+                        className={`w-full border rounded px-3 py-2 ${!hasEditPermission ? 'bg-gray-100 cursor-not-allowed' : ''}`}
                         value={form.site_address_line2_complement||''}
                         onChange={e=>setField('site_address_line2_complement', e.target.value)}
                         placeholder="Apartment, Unit, Block, etc (Optional)"
+                        disabled={!hasEditPermission}
+                        readOnly={!hasEditPermission}
                       />
                     </Field>
                   </div>
+                  {hasEditPermission && (
                   <button
                     type="button"
                     onClick={() => {
@@ -268,8 +281,9 @@ export default function SiteDetail(){
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                     </svg>
                   </button>
+                  )}
                 </div>
-                {!showAddress3 && (
+                {!showAddress3 && hasEditPermission && (
                   <div className="md:col-span-2">
                     <button
                       type="button"
@@ -293,6 +307,7 @@ export default function SiteDetail(){
                   <AddressAutocomplete
                     value={form.site_address_line3||''}
                     onChange={(value) => setField('site_address_line3', value)}
+                    disabled={!hasEditPermission}
                     onAddressSelect={(address) => {
                       setForm((prev: any) => ({
                         ...prev,
@@ -301,20 +316,23 @@ export default function SiteDetail(){
                       }));
                     }}
                     placeholder="Enter address"
-                    className="w-full border rounded px-3 py-2"
+                    className={`w-full border rounded px-3 py-2 ${!hasEditPermission ? 'bg-gray-100 cursor-not-allowed' : ''}`}
                   />
                 </Field>
                 <div className="flex items-end gap-2">
                   <div className="flex-1">
                     <Field label="Complement">
                       <input
-                        className="w-full border rounded px-3 py-2"
+                        className={`w-full border rounded px-3 py-2 ${!hasEditPermission ? 'bg-gray-100 cursor-not-allowed' : ''}`}
                         value={form.site_address_line3_complement||''}
                         onChange={e=>setField('site_address_line3_complement', e.target.value)}
                         placeholder="Apartment, Unit, Block, etc (Optional)"
+                        disabled={!hasEditPermission}
+                        readOnly={!hasEditPermission}
                       />
                     </Field>
                   </div>
+                  {hasEditPermission && (
                   <button
                     type="button"
                     onClick={() => {
@@ -329,6 +347,7 @@ export default function SiteDetail(){
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                     </svg>
                   </button>
+                  )}
                 </div>
               </>
             )}
@@ -365,13 +384,22 @@ export default function SiteDetail(){
               />
             </Field>
             <div className="md:col-span-2">
-              <Field label="Notes"><textarea rows={4} className="w-full border rounded px-3 py-2" value={form.site_notes||''} onChange={e=>setField('site_notes', e.target.value)} /></Field>
+              <Field label="Notes">
+                <textarea 
+                  rows={4} 
+                  className={`w-full border rounded px-3 py-2 ${!hasEditPermission ? 'bg-gray-100 cursor-not-allowed' : ''}`} 
+                  value={form.site_notes||''} 
+                  onChange={e=>setField('site_notes', e.target.value)}
+                  disabled={!hasEditPermission}
+                  readOnly={!hasEditPermission}
+                />
+              </Field>
             </div>
           </div>
         </div>
         <div className="px-5 py-4 border-t bg-gray-50 flex items-center justify-between gap-2">
           <div>
-            {!isNew && (
+            {!isNew && hasEditPermission && (
               <button onClick={async()=>{
                 const ok = await confirm({ 
                   title: 'Delete Site', 
@@ -423,6 +451,7 @@ export default function SiteDetail(){
                 nav(-1);
               }
             }} className="px-4 py-2 rounded bg-gray-200 hover:bg-gray-300">Close</button>
+            {hasEditPermission && (
             <button 
               onClick={async()=>{
                 // Prevent multiple clicks
@@ -461,6 +490,7 @@ export default function SiteDetail(){
             >
               {isCreating ? (isNew ? 'Creating...' : 'Saving...') : (isNew ? 'Create' : 'Save')}
             </button>
+            )}
           </div>
         </div>
       </div>

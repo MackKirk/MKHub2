@@ -1093,7 +1093,7 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
                   <div>
                     <div className="mb-1 text-sm text-gray-600">Front Cover Image</div>
                     {!disabled && (
-                      <button className="px-3 py-1.5 rounded bg-gray-100" onClick={()=>setPickerFor('cover')}>Choose</button>
+                      <button className="px-3 py-1.5 rounded bg-gray-100" onClick={()=>{ if (!disabled) setPickerFor('cover'); }}>Choose</button>
                     )}
                     {coverPreview && <div className="mt-2"><img src={coverPreview} className="w-full rounded border" style={{ aspectRatio: '566/537', objectFit: 'contain' }} /></div>}
                   </div>
@@ -1431,7 +1431,7 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
                   statusLabel=""
                   settings={settings||{}} 
                   isBidding={false}
-                  canEdit={true}
+                  canEdit={!disabled}
                   hideFooter={true}
                 />
               ) : (
@@ -1507,14 +1507,15 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
           <div className="mb-3 p-2 rounded bg-yellow-50 border text-[12px] text-yellow-800">You have made changes since the last PDF was generated. Please click "Generate Quote" again to update the download.</div>
         )}
         
-        {/* Spacer to prevent fixed bar from overlapping content */}
-        <div className="h-24" />
+        {/* Spacer to prevent fixed bar from overlapping content - only needed when footer is visible */}
+        {!disabled && <div className="h-24" />}
       </div>
       
-      {/* Fixed footer bar */}
-      <div className="fixed left-60 right-0 bottom-0 z-40">
-        <div className="px-4">
-          <div className="mx-auto max-w-[1400px] rounded-t-xl border bg-white/95 backdrop-blur p-4 flex items-center justify-between shadow-[0_-6px_16px_rgba(0,0,0,0.08)]">
+      {/* Fixed footer bar - hidden when disabled (view-only mode) */}
+      {!disabled && (
+        <div className="fixed left-60 right-0 bottom-0 z-40">
+          <div className="px-4">
+            <div className="mx-auto max-w-[1400px] rounded-t-xl border bg-white/95 backdrop-blur p-4 flex items-center justify-between shadow-[0_-6px_16px_rgba(0,0,0,0.08)]">
             {/* Left: Status indicator */}
             {hasUnsavedChanges ? (
               <div className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-3 py-1.5 font-medium">
@@ -1598,14 +1599,18 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
                   {isSaving ? 'Saving...' : 'Save Quote'}
                 </button>
               )}
-              <div className="w-px h-5 bg-gray-300"></div>
-              <button 
-                className="px-4 py-2 rounded-lg bg-gray-400 hover:bg-gray-500 text-white font-medium disabled:opacity-60 disabled:cursor-not-allowed transition-colors" 
-                disabled={isGenerating} 
-                onClick={handleGenerate}
-              >
-                {isGenerating ? 'Generating…' : 'Generate Quote'}
-              </button>
+              {!disabled && (
+                <>
+                  <div className="w-px h-5 bg-gray-300"></div>
+                  <button 
+                    className="px-4 py-2 rounded-lg bg-gray-400 hover:bg-gray-500 text-white font-medium disabled:opacity-60 disabled:cursor-not-allowed transition-colors" 
+                    disabled={isGenerating} 
+                    onClick={handleGenerate}
+                  >
+                    {isGenerating ? 'Generating…' : 'Generate Quote'}
+                  </button>
+                </>
+              )}
               {downloadUrl && (
                 <>
                   <div className="w-px h-5 bg-gray-300"></div>
@@ -1619,8 +1624,8 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
             </div>
           </div>
         </div>
-      </div>
-      
+        </div>
+      )}
 
       {pickerFor && (
         <ImagePicker isOpen={true} onClose={()=>setPickerFor(null)} clientId={clientId||undefined} targetWidth={566} targetHeight={537} allowEdit={true} exportScale={2} fileObjectId={coverFoId} hideEditButton={true} onConfirm={async(blob)=>{ 

@@ -171,7 +171,18 @@ export default function Quotes(){
 
   // Check permissions
   const { data: me } = useQuery({ queryKey:['me'], queryFn: ()=>api<any>('GET','/auth/me') });
-  const hasEditPermission = (me?.roles||[]).includes('admin') || (me?.permissions||[]).includes('business:projects:write');
+  const isAdmin = (me?.roles||[]).includes('admin');
+  const permissions = new Set(me?.permissions || []);
+  const hasViewPermission = isAdmin || permissions.has('sales:quotations:read');
+  const hasEditPermission = isAdmin || permissions.has('sales:quotations:write');
+
+  if (!hasViewPermission) {
+    return (
+      <div className="text-center py-12 text-gray-500">
+        You do not have permission to view quotations.
+      </div>
+    );
+  }
 
   return (
     <div>
