@@ -9,6 +9,7 @@ import { useConfirm } from '@/components/ConfirmProvider';
 import { useUnsavedChanges } from '@/components/UnsavedChangesProvider';
 import EstimateBuilder, { EstimateBuilderRef } from '@/components/EstimateBuilder';
 type Client = { id:string, name?:string, display_name?:string, address_line1?:string, city?:string, province?:string, country?:string };
+type Material = { id:number, name:string, supplier_name?:string, category?:string, unit?:string, price?:number, last_updated?:string, unit_type?:string, units_per_package?:number, coverage_sqs?:number, coverage_ft2?:number, coverage_m2?:number, description?:string, image_base64?:string, technical_manual_url?:string };
 
 export default function QuoteForm({ mode, clientId: clientIdProp, initial, disabled, onSave, showRestrictionWarning, restrictionMessage }: { mode:'new'|'edit', clientId?:string, initial?: any, disabled?: boolean, onSave?: ()=>void, showRestrictionWarning?: boolean, restrictionMessage?: string }){
   const nav = useNavigate();
@@ -34,42 +35,18 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
   const [otherNotes, setOtherNotes] = useState<string>('');
   const [projectDescription, setProjectDescription] = useState<string>('');
   const [additionalNotes, setAdditionalNotes] = useState<string>('');
-  const [pricingItems, setPricingItems] = useState<{ name:string, price:string, pst?:boolean, gst?:boolean }[]>([]);
+  const [pricingItems, setPricingItems] = useState<{ name:string, price:string, quantity?:string, pst?:boolean, gst?:boolean, productId?:number }[]>([]);
+  const [productSearchModalOpen, setProductSearchModalOpen] = useState<number | null>(null);
   const [optionalServices, setOptionalServices] = useState<{ service:string, price:string }[]>([]);
   const [showTotalInPdf, setShowTotalInPdf] = useState<boolean>(true);
-  const [pricingType, setPricingType] = useState<'pricing'|'estimate'>('pricing');
+  // Pricing type is always 'pricing' (manual) for quotations
+  const [pricingType] = useState<'pricing'|'estimate'>('pricing');
   const [markup, setMarkup] = useState<number>(0);
   const [pstRate, setPstRate] = useState<number>(7);
   const [gstRate, setGstRate] = useState<number>(5);
   const [profitRate, setProfitRate] = useState<number>(0);
   
-  // Estimate values for when pricingType === 'estimate'
-  const [estimateGrandTotal, setEstimateGrandTotal] = useState<number>(0);
-  const [estimateTotalEstimate, setEstimateTotalEstimate] = useState<number>(0); // Total Estimate (before GST)
-  const [estimatePst, setEstimatePst] = useState<number>(0);
-  const [estimateGst, setEstimateGst] = useState<number>(0);
-  
-  // Update estimate values periodically when using estimate pricing
-  useEffect(() => {
-    if (pricingType === 'estimate' && estimateBuilderRef.current) {
-      const interval = setInterval(() => {
-        const total = estimateBuilderRef.current?.getGrandTotal() || 0;
-        const totalEstimate = estimateBuilderRef.current?.getTotalEstimate() || 0; // Total Estimate (before GST)
-        const pstValue = estimateBuilderRef.current?.getPst() || 0;
-        const gstValue = estimateBuilderRef.current?.getGst() || 0;
-        setEstimateGrandTotal(total);
-        setEstimateTotalEstimate(totalEstimate);
-        setEstimatePst(pstValue);
-        setEstimateGst(gstValue);
-      }, 100);
-      return () => clearInterval(interval);
-    } else {
-      setEstimateGrandTotal(0);
-      setEstimateTotalEstimate(0);
-      setEstimatePst(0);
-      setEstimateGst(0);
-    }
-  }, [pricingType]);
+  // Estimate values are not used for quotations (only manual pricing is supported)
   const defaultTermsText = '';
 
   const [terms, setTerms] = useState<string>(mode === 'new' ? defaultTermsText : '');
@@ -155,22 +132,35 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
     return cleaned;
   };
 
+  // Total Direct Costs = sum of all line totals (price × quantity)
   const totalNum = useMemo(()=>{ 
-    return pricingItems.reduce((a,c)=> a + Number(parseAccounting(c.price)||'0'), 0); 
+    return pricingItems.reduce((a,c)=> {
+      const price = Number(parseAccounting(c.price)||'0');
+      const qty = Number(c.quantity || '1');
+      return a + (price * qty);
+    }, 0); 
   }, [pricingItems]);
 
-  // Calculate PST only on items marked for PST
+  // Calculate PST only on items marked for PST (based on line totals: price × quantity)
   const totalForPst = useMemo(() => {
     return pricingItems
       .filter(c => c.pst === true)
-      .reduce((a, c) => a + Number(parseAccounting(c.price)||'0'), 0);
+      .reduce((a, c) => {
+        const price = Number(parseAccounting(c.price)||'0');
+        const qty = Number(c.quantity || '1');
+        return a + (price * qty);
+      }, 0);
   }, [pricingItems]);
 
-  // Calculate GST only on items marked for GST
+  // Calculate GST only on items marked for GST (based on line totals: price × quantity)
   const totalForGst = useMemo(() => {
     return pricingItems
       .filter(c => c.gst === true)
-      .reduce((a, c) => a + Number(parseAccounting(c.price)||'0'), 0);
+      .reduce((a, c) => {
+        const price = Number(parseAccounting(c.price)||'0');
+        const qty = Number(c.quantity || '1');
+        return a + (price * qty);
+      }, 0);
   }, [pricingItems]);
 
   // Calculate Summary values for manual pricing
@@ -183,7 +173,7 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
   }, [totalWithMarkup, totalNum]);
 
   const pst = useMemo(() => {
-    // PST is calculated only on items marked for PST (applied to direct costs)
+    // PST is calculated on line totals (price × quantity) of items marked for PST
     return totalForPst * (pstRate / 100);
   }, [totalForPst, pstRate]);
 
@@ -193,7 +183,7 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
   }, [totalNum, pst]);
 
   const gst = useMemo(() => {
-    // GST is calculated only on items marked for GST (applied directly to direct costs, independent of PST)
+    // GST is calculated on line totals (price × quantity) of items marked for GST
     return totalForGst * (gstRate / 100);
   }, [totalForGst, gstRate]);
 
@@ -202,18 +192,18 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
     return subtotal + gst;
   }, [subtotal, gst]);
 
-  // Use estimate values when pricingType === 'estimate', otherwise use manual pricing
+  // Always use manual pricing values for quotations
   const displayTotal = useMemo(() => {
-    return pricingType === 'estimate' ? estimateGrandTotal : grandTotal;
-  }, [pricingType, estimateGrandTotal, grandTotal]);
+    return grandTotal;
+  }, [grandTotal]);
 
   const displayPst = useMemo(() => {
-    return pricingType === 'estimate' ? estimatePst : pst;
-  }, [pricingType, estimatePst, pst]);
+    return pst;
+  }, [pst]);
 
   const displayGst = useMemo(() => {
-    return pricingType === 'estimate' ? estimateGst : gst;
-  }, [pricingType, estimateGst, gst]);
+    return gst;
+  }, [gst]);
 
   // Calculate if PST/GST should be shown in PDF based on items
   const showPstInPdf = useMemo(() => {
@@ -243,8 +233,7 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
         showPstInPdf,
         showGstInPdf,
         pricingType,
-        // Include displayTotal when using estimate pricing to trigger auto-save on estimate changes
-        displayTotal: pricingType === 'estimate' ? displayTotal : undefined,
+        displayTotal: undefined, // Not used for manual pricing
         markup,
         pstRate,
         gstRate,
@@ -260,7 +249,7 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
 
   // prefill from initial (edit)
   useEffect(()=>{
-    if (!initial) return;
+    if (!initial || !initial.id) return;
     const d = initial?.data || {};
     setCoverTitle(String(d.cover_title || initial.title || 'Quotation'));
     setTemplateStyle(String(d.template_style || 'Mack Kirk'));
@@ -276,19 +265,22 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
     // Load pricing items from bid_price and additional_costs (legacy support)
     const legacyBidPrice = d.bid_price ?? 0;
     const dc = Array.isArray(d.additional_costs)? d.additional_costs : [];
-    const loadedItems: { name:string, price:string, pst?:boolean, gst?:boolean }[] = [];
+    const loadedItems: { name:string, price:string, quantity?:string, pst?:boolean, gst?:boolean, productId?:number }[] = [];
     if (legacyBidPrice && Number(legacyBidPrice) > 0) {
-      loadedItems.push({ name: 'Bid Price', price: formatAccounting(legacyBidPrice), pst: false, gst: false });
+      loadedItems.push({ name: 'Bid Price', price: formatAccounting(legacyBidPrice), quantity: '1', pst: false, gst: false });
     }
     dc.forEach((c:any)=> {
       const label = String(c.label||'');
       const value = c.value ?? c.amount ?? '';
-      if (label && Number(value) > 0) {
+      // Load items even if value is 0 or empty, as long as there's a label
+      if (label) {
         loadedItems.push({ 
           name: label, 
-          price: formatAccounting(value),
+          price: formatAccounting(value || '0'),
+          quantity: c.quantity || '1',
           pst: c.pst === true || c.pst === 'true' || c.pst === 1,
-          gst: c.gst === true || c.gst === 'true' || c.gst === 1
+          gst: c.gst === true || c.gst === 'true' || c.gst === 1,
+          productId: c.product_id || c.productId || undefined
         });
       }
     });
@@ -296,9 +288,7 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
     const os = Array.isArray(d.optional_services)? d.optional_services : [];
     setOptionalServices(os.map((s:any)=> ({ service: String(s.service||''), price: formatAccounting(s.price ?? '') })));
     setShowTotalInPdf(d.show_total_in_pdf !== undefined ? Boolean(d.show_total_in_pdf) : true);
-    // Load pricing type (pricing or estimate)
-    const savedPricingType = d.pricing_type || 'pricing';
-    setPricingType(savedPricingType === 'estimate' ? 'estimate' : 'pricing');
+    // Pricing type is always 'pricing' (manual) for quotations - ignore saved pricing_type
     setMarkup(d.markup !== undefined && d.markup !== null ? Number(d.markup) : 5);
     setPstRate(d.pst_rate !== undefined && d.pst_rate !== null ? Number(d.pst_rate) : 7);
     setGstRate(d.gst_rate !== undefined && d.gst_rate !== null ? Number(d.gst_rate) : 5);
@@ -323,7 +313,7 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
       quoteIdRef.current = initial.id;
     }
     setIsReady(true);
-  }, [initial?.id]);
+  }, [initial]);
 
   // When creating new (no initial), mark ready on mount
   useEffect(()=>{ if (mode==='new') setIsReady(true); }, [mode]);
@@ -624,25 +614,9 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
       if (disabled) toast.error('Editing is restricted');
       return;
     }
+    
     try{
       setIsSaving(true);
-      
-      // If using estimate pricing, save the estimate first
-      if (pricingType === 'estimate' && estimateBuilderRef.current) {
-        try {
-          const estimateSaved = await estimateBuilderRef.current.save();
-          if (!estimateSaved) {
-            toast.error('Failed to save estimate');
-            setIsSaving(false);
-            return;
-          }
-        } catch (e) {
-          console.error('Error saving estimate:', e);
-          toast.error('Failed to save estimate');
-          setIsSaving(false);
-          return;
-        }
-      }
       
       const quoteId = mode==='edit'? initial?.id : undefined;
       
@@ -669,7 +643,7 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
         show_total_in_pdf: showTotalInPdf,
         show_pst_in_pdf: showPstInPdf,
         show_gst_in_pdf: showGstInPdf,
-        additional_costs: pricingItems.map(c=> ({ label: c.name, value: Number(parseAccounting(c.price)||'0'), pst: c.pst === true, gst: c.gst === true })),
+        additional_costs: pricingItems.map(c=> ({ label: c.name, value: Number(parseAccounting(c.price)||'0'), quantity: c.quantity || '1', pst: c.pst === true, gst: c.gst === true, product_id: c.productId })),
         optional_services: optionalServices.map(s=> ({ service: s.service, price: Number(parseAccounting(s.price)||'0') })),
         pricing_type: pricingType,
         markup: markup,
@@ -723,7 +697,6 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
     
     try {
       setCoverTitle('Quotation');
-      setPricingType('pricing');
       setDate(getTodayLocal());
       setCreatedFor('');
       setPrimary({});
@@ -763,16 +736,6 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
     try {
       isAutoSavingRef.current = true;
       
-      // If using estimate pricing, save the estimate first
-      if (pricingType === 'estimate' && estimateBuilderRef.current) {
-        try {
-          await estimateBuilderRef.current.save();
-        } catch (e) {
-          console.error('Error saving estimate in auto-save:', e);
-          // Continue with quote save even if estimate save fails
-        }
-      }
-      
       const payload:any = {
         id: quoteIdRef.current || (mode==='edit'? initial?.id : undefined),
         client_id: clientId||null,
@@ -796,7 +759,7 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
         show_total_in_pdf: showTotalInPdf,
         show_pst_in_pdf: showPstInPdf,
         show_gst_in_pdf: showGstInPdf,
-        additional_costs: pricingItems.map(c=> ({ label: c.name, value: Number(parseAccounting(c.price)||'0'), pst: c.pst === true, gst: c.gst === true })),
+        additional_costs: pricingItems.map(c=> ({ label: c.name, value: Number(parseAccounting(c.price)||'0'), quantity: c.quantity || '1', pst: c.pst === true, gst: c.gst === true, product_id: c.productId })),
         optional_services: optionalServices.map(s=> ({ service: s.service, price: Number(parseAccounting(s.price)||'0') })),
         pricing_type: pricingType,
         markup: markup,
@@ -892,16 +855,15 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
       form.append('show_gst_in_pdf', String(showGstInPdf));
       form.append('pst_value', String(displayPst));
       form.append('gst_value', String(displayGst));
-      // For estimate pricing, use the Total Estimate (before GST) from summary table; otherwise use 0
-      const estimateTotal = pricingType === 'estimate' ? estimateTotalEstimate : 0;
-      form.append('estimate_total_estimate', String(estimateTotal));
+      // Estimate total is not used for quotations (only manual pricing)
+      form.append('estimate_total_estimate', '0');
       form.append('terms_text', terms||'');
       form.append('pricing_type', pricingType);
       form.append('markup', String(markup));
       form.append('pst_rate', String(pstRate));
       form.append('gst_rate', String(gstRate));
       form.append('profit_rate', String(profitRate));
-      form.append('additional_costs', JSON.stringify(pricingItems.map(c=> ({ label: c.name, value: Number(parseAccounting(c.price)||'0') }))));
+      form.append('additional_costs', JSON.stringify(pricingItems.map(c=> ({ label: c.name, value: Number(parseAccounting(c.price)||'0'), quantity: c.quantity || '1', pst: c.pst === true, gst: c.gst === true, product_id: c.productId }))));
       form.append('optional_services', JSON.stringify(optionalServices.map(s=> ({ service: s.service, price: Number(parseAccounting(s.price)||'0') }))));
       form.append('sections', JSON.stringify(sanitizeSections(sections)));
       if (coverFoId) form.append('cover_file_object_id', coverFoId);
@@ -1276,27 +1238,14 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
             Pricing
           </div>
           <div className="p-4">
-          {!disabled && (
-            <div className="mb-3">
-              <select
-                value={pricingType}
-                onChange={(e) => setPricingType(e.target.value as 'pricing' | 'estimate')}
-                className="border rounded px-3 py-1.5 text-sm text-gray-700 cursor-pointer"
-                disabled={disabled}
-              >
-                <option value="pricing">Insert Pricing manually</option>
-                <option value="estimate">Insert Pricing via Estimate</option>
-              </select>
-            </div>
-          )}
           <div className="text-[12px] text-gray-600 mb-2">If no pricing items are added, the "Pricing Table" section will be hidden in the PDF.</div>
-          {pricingType === 'pricing' ? (
+          {(
             <>
               {!disabled && (
                 <div className="sticky top-0 z-30 bg-white/95 backdrop-blur mb-3 py-3 border-b">
                   <div className="flex items-center gap-2">
                     <button 
-                      onClick={()=> setPricingItems(arr=> [...arr, { name:'', price:'', pst: false, gst: false }])}
+                      onClick={()=> setProductSearchModalOpen(-1)}
                       disabled={disabled}
                       className="px-3 py-2 rounded bg-gray-100 hover:bg-gray-200 disabled:opacity-60 text-base">
                       + Add Pricing Item
@@ -1329,38 +1278,121 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
               
               {/* Pricing items list - below the gray line */}
               <div className="space-y-2">
-                {pricingItems.map((c, i)=> (
-                  <div key={i} className="grid grid-cols-12 gap-2 items-center">
-                    <input className={`col-span-6 border rounded px-3 py-2 ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} placeholder="Name" value={c.name} onChange={e=>{ const v=e.target.value; setPricingItems(arr=> arr.map((x,j)=> j===i? { ...x, name:v }: x)); }} disabled={disabled} readOnly={disabled} />
-                    <input type="text" className={`col-span-2 border rounded px-3 py-2 ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} placeholder="Price" value={c.price} onChange={e=>{ const v = parseAccounting(e.target.value); setPricingItems(arr=> arr.map((x,j)=> j===i? { ...x, price:v }: x)); }} onBlur={!disabled ? ()=> setPricingItems(arr=> arr.map((x,j)=> j===i? { ...x, price: formatAccounting(x.price) }: x)) : undefined} disabled={disabled} readOnly={disabled} />
-                    <div className="col-span-2 flex items-center gap-3">
-                      <span className="text-sm text-gray-600 whitespace-nowrap">Apply for this item:</span>
-                      <label className={`flex items-center gap-1 text-sm ${disabled ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
+                {pricingItems.map((c, i)=> {
+                  // Calculate line total: price × quantity
+                  const priceNum = parseFloat(parseAccounting(c.price || '0').replace(/,/g, '')) || 0;
+                  const qtyNum = parseFloat(c.quantity || '1') || 1;
+                  const lineTotal = priceNum * qtyNum;
+                  
+                  return (
+                    <div key={i} className="grid grid-cols-12 gap-2 items-center">
+                      <div className="col-span-6 flex items-center gap-2 relative">
                         <input 
-                          type="checkbox" 
-                          checked={c.pst === true}
-                          onChange={e=> setPricingItems(arr=> arr.map((x,j)=> j===i? { ...x, pst: e.target.checked }: x))}
-                          className={disabled ? 'cursor-not-allowed' : 'cursor-pointer'}
-                          disabled={disabled}
+                          className={`w-full border rounded px-3 py-2 ${disabled || c.productId ? 'bg-gray-50 cursor-not-allowed' : ''}`} 
+                          placeholder="Name" 
+                          value={c.name} 
+                          onChange={e=>{ 
+                            const v=e.target.value; 
+                            setPricingItems(arr=> arr.map((x,j)=> j===i? { ...x, name:v }: x)); 
+                          }}
+                          disabled={disabled || !!c.productId} 
+                          readOnly={disabled || !!c.productId} 
                         />
-                        <span className="text-gray-700">PST</span>
-                      </label>
-                      <label className={`flex items-center gap-1 text-sm ${disabled ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
+                        {!disabled && (
+                          <button
+                            onClick={() => setProductSearchModalOpen(i)}
+                            className="p-1 text-gray-500 hover:text-gray-700 flex-shrink-0"
+                            title="Browse Products by Supplier"
+                          >
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <circle cx="11" cy="11" r="8"></circle>
+                              <path d="M21 21l-4.35-4.35"></path>
+                            </svg>
+                          </button>
+                        )}
+                      </div>
+                      <input type="text" className={`col-span-1 border rounded px-3 py-2 ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} placeholder="Price" value={c.price} onChange={e=>{ const v = parseAccounting(e.target.value); setPricingItems(arr=> arr.map((x,j)=> j===i? { ...x, price:v }: x)); }} onBlur={!disabled ? ()=> setPricingItems(arr=> arr.map((x,j)=> j===i? { ...x, price: formatAccounting(x.price) }: x)) : undefined} disabled={disabled} readOnly={disabled} />
+                      <div className="col-span-1 flex items-center border rounded overflow-hidden">
                         <input 
-                          type="checkbox" 
-                          checked={c.gst === true}
-                          onChange={e=> setPricingItems(arr=> arr.map((x,j)=> j===i? { ...x, gst: e.target.checked }: x))}
-                          className={disabled ? 'cursor-not-allowed' : 'cursor-pointer'}
-                          disabled={disabled}
+                          type="number" 
+                          min="1"
+                          step="1"
+                          className={`flex-1 min-w-0 border-0 rounded-none px-3 py-2 appearance-none [-moz-appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} 
+                          placeholder="Qty" 
+                          value={c.quantity || '1'} 
+                          onChange={e=>{ 
+                            const v = e.target.value;
+                            const num = parseInt(v) || 1;
+                            const finalValue = num < 1 ? '1' : String(num);
+                            setPricingItems(arr=> arr.map((x,j)=> j===i? { ...x, quantity: finalValue }: x)); 
+                          }} 
+                          disabled={disabled} 
+                          readOnly={disabled} 
                         />
-                        <span className="text-gray-700">GST</span>
-                      </label>
+                        {!disabled && (
+                          <div className="flex flex-col flex-none border-l bg-white w-6">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const currentQty = parseInt(c.quantity || '1') || 1;
+                                const newQty = currentQty + 1;
+                                setPricingItems(arr=> arr.map((x,j)=> j===i? { ...x, quantity: String(newQty) }: x));
+                              }}
+                              className="px-0.5 py-0 text-[9px] leading-tight border-b hover:bg-gray-100 flex items-center justify-center flex-1"
+                              title="Increase"
+                            >
+                              ▲
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const currentQty = parseInt(c.quantity || '1') || 1;
+                                const newQty = Math.max(1, currentQty - 1);
+                                setPricingItems(arr=> arr.map((x,j)=> j===i? { ...x, quantity: String(newQty) }: x));
+                              }}
+                              className="px-0.5 py-0 text-[9px] leading-tight hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center flex-1"
+                              title="Decrease"
+                              disabled={parseInt(c.quantity || '1') <= 1}
+                            >
+                              ▼
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                      <div className={`col-span-1 border rounded px-3 py-2 bg-gray-50 ${disabled ? 'cursor-not-allowed' : ''}`}>
+                        <div className="text-sm font-medium text-gray-700 text-right">
+                          ${formatAccounting(lineTotal)}
+                        </div>
+                      </div>
+                      <div className="col-span-2 flex items-center gap-3">
+                        <span className="text-sm text-gray-600 whitespace-nowrap">Apply for this item:</span>
+                        <label className={`flex items-center gap-1 text-sm ${disabled ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
+                          <input 
+                            type="checkbox" 
+                            checked={c.pst === true}
+                            onChange={e=> setPricingItems(arr=> arr.map((x,j)=> j===i? { ...x, pst: e.target.checked }: x))}
+                            className={disabled ? 'cursor-not-allowed' : 'cursor-pointer'}
+                            disabled={disabled}
+                          />
+                          <span className="text-gray-700">PST</span>
+                        </label>
+                        <label className={`flex items-center gap-1 text-sm ${disabled ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
+                          <input 
+                            type="checkbox" 
+                            checked={c.gst === true}
+                            onChange={e=> setPricingItems(arr=> arr.map((x,j)=> j===i? { ...x, gst: e.target.checked }: x))}
+                            className={disabled ? 'cursor-not-allowed' : 'cursor-pointer'}
+                            disabled={disabled}
+                          />
+                          <span className="text-gray-700">GST</span>
+                        </label>
+                      </div>
+                      {!disabled && (
+                        <button className="col-span-1 px-2 py-2 rounded bg-gray-100 text-sm" onClick={()=> setPricingItems(arr=> arr.filter((_,j)=> j!==i))}>Remove</button>
+                      )}
                     </div>
-                    {!disabled && (
-                      <button className="col-span-2 px-2 py-2 rounded bg-gray-100" onClick={()=> setPricingItems(arr=> arr.filter((_,j)=> j!==i))}>Remove</button>
-                    )}
-                  </div>
-                ))}
+                  );
+                })}
               </div>
               
               {/* Show PST, GST fields even when disabled (read-only view) */}
@@ -1421,25 +1453,6 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
               </div>
 
             </>
-          ) : (
-            <div>
-              {/* For quotes, use quoteId as projectId to make estimate independent but still saveable */}
-              {quoteIdRef.current ? (
-                <EstimateBuilder 
-                  ref={estimateBuilderRef}
-                  projectId={quoteIdRef.current}
-                  statusLabel=""
-                  settings={settings||{}} 
-                  isBidding={false}
-                  canEdit={!disabled}
-                  hideFooter={true}
-                />
-              ) : (
-                <div className="text-sm text-gray-600 p-4 border rounded bg-gray-50">
-                  Please save the quotation first to use Estimate pricing.
-                </div>
-              )}
-            </div>
           )}
 
           {/* Total with Show in PDF checkbox - PST/GST shown in PDF automatically based on items marked */}
@@ -1928,6 +1941,822 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
           }} 
         />
       )}
+
+      {/* Add Product Modal - Opens when clicking Add Pricing Item */}
+      {productSearchModalOpen !== null && (
+        <AddProductModalForQuote
+          open={true}
+          onClose={() => setProductSearchModalOpen(null)}
+          onSelect={(product: Material) => {
+            const index = productSearchModalOpen;
+            if (index === -1) {
+              // Adding new item - append to the end
+              setPricingItems(arr => [...arr, {
+                name: product.name,
+                price: formatAccounting(String(product.price || 0)),
+                quantity: '1',
+                pst: false,
+                gst: false,
+                productId: product.id
+              }]);
+            } else {
+              // Updating existing item
+              setPricingItems(arr => arr.map((x, j) => 
+                j === index 
+                  ? { 
+                      ...x, 
+                      name: product.name, 
+                      price: formatAccounting(String(product.price || 0)),
+                      quantity: x.quantity || '1',
+                      productId: product.id
+                    } 
+                  : x
+              ));
+            }
+            setProductSearchModalOpen(null);
+          }}
+        />
+      )}
+
+    </div>
+  );
+}
+
+// Product Search Modal Component - Based on EstimateBuilder's AddProductModal
+function AddProductModalForQuote({ open, onClose, onSelect }: { open: boolean, onClose: () => void, onSelect: (product: Material) => void }) {
+  const [q, setQ] = useState('');
+  const [selection, setSelection] = useState<Material | null>(null);
+  const [supplierModalOpen, setSupplierModalOpen] = useState(false);
+  const [compareModalOpen, setCompareModalOpen] = useState(false);
+  const [newProductModalOpen, setNewProductModalOpen] = useState(false);
+  const [displayedCount, setDisplayedCount] = useState(5);
+  
+  const { data, isLoading } = useQuery({ 
+    queryKey: ['mat-search-quote', q], 
+    queryFn: async () => {
+      if (!q.trim()) return [];
+      const params = new URLSearchParams(); 
+      params.set('q', q);
+      return await api<Material[]>('GET', `/estimate/products/search?${params.toString()}`);
+    },
+    enabled: !!q.trim() && open
+  });
+  
+  const allResults = data || [];
+  const list = allResults.slice(0, displayedCount);
+  const hasMore = allResults.length > displayedCount;
+  const hasNoResults = q.trim().length >= 2 && !isLoading && allResults.length === 0;
+
+  useEffect(() => {
+    if (!open) {
+      setQ('');
+      setSelection(null);
+      setDisplayedCount(5);
+    }
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => { 
+      if (e.key === 'Escape') onClose(); 
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open, onClose]);
+
+  if (!open) return null;
+
+  return (
+    <>
+      <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center">
+        <div className="w-[720px] max-w-[95vw] bg-white rounded-xl overflow-hidden max-h-[90vh] flex flex-col">
+          <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] p-6 flex items-center gap-6 relative flex-shrink-0">
+            <div className="font-semibold text-lg text-white">Add Product</div>
+            <button 
+              onClick={onClose} 
+              className="ml-auto text-white hover:text-gray-200 text-2xl font-bold w-8 h-8 flex items-center justify-center rounded hover:bg-white/20" 
+              title="Close"
+            >
+              ×
+            </button>
+          </div>
+          <div className="p-4 space-y-3 overflow-y-auto flex-1">
+            <div className="flex items-center gap-2">
+              <div className="flex-1">
+                <label className="text-xs text-gray-600">Search Product:</label>
+                <input 
+                  className="w-full border rounded px-3 py-2" 
+                  placeholder="Type product name..." 
+                  value={q} 
+                  onChange={e => setQ(e.target.value)}
+                  autoFocus
+                />
+              </div>
+              <button
+                onClick={() => setSupplierModalOpen(true)}
+                className="px-2 py-1 rounded text-gray-500 hover:text-blue-600 mt-6"
+                title="Browse by supplier"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="11" cy="11" r="8"></circle>
+                  <path d="M21 21l-4.35-4.35"></path>
+                </svg>
+              </button>
+            </div>
+            {q.trim() && list.length > 0 && (
+              <div className="max-h-64 overflow-auto rounded border divide-y">
+                {list.map(p => (
+                  <button 
+                    key={p.id} 
+                    onClick={() => setSelection(p)} 
+                    className={`w-full text-left px-3 py-2 bg-white hover:bg-gray-50 ${selection?.id === p.id ? 'ring-2 ring-brand-red' : ''}`}
+                  >
+                    <div className="font-medium">{p.name}</div>
+                    <div className="text-xs text-gray-500">
+                      {p.supplier_name || ''} · {p.unit || ''} · ${Number(p.price || 0).toFixed(2)}
+                    </div>
+                  </button>
+                ))}
+                {hasMore && (
+                  <button
+                    onClick={() => setDisplayedCount(prev => prev + 5)}
+                    className="w-full text-center px-3 py-2 bg-gray-50 hover:bg-gray-100 text-sm text-gray-600 border-t"
+                  >
+                    Load more ({allResults.length - displayedCount} remaining)
+                  </button>
+                )}
+              </div>
+            )}
+            {hasNoResults && (
+              <div className="border rounded p-4 bg-gray-50">
+                <div className="text-sm text-gray-600 mb-3">
+                  No products found matching "{q}"
+                </div>
+                <button
+                  onClick={() => setNewProductModalOpen(true)}
+                  className="w-full px-4 py-2 rounded bg-blue-50 hover:bg-blue-100 text-blue-700 font-medium text-sm"
+                >
+                  + Create new product: "{q}"
+                </button>
+              </div>
+            )}
+            {selection && (
+              <div className="border rounded p-3 bg-gray-50 space-y-2">
+                <div className="flex items-start gap-3">
+                  <div className="flex-shrink-0 w-24 h-24 relative">
+                    {selection.image_base64 ? (
+                      <img 
+                        src={selection.image_base64.startsWith('data:') ? selection.image_base64 : `data:image/jpeg;base64,${selection.image_base64}`}
+                        alt={selection.name}
+                        className="w-full h-full object-contain rounded"
+                        onError={(e) => {
+                          (e.target as HTMLImageElement).style.display = 'none';
+                          const placeholder = (e.target as HTMLImageElement).nextElementSibling as HTMLElement;
+                          if (placeholder) placeholder.style.display = 'flex';
+                        }}
+                      />
+                    ) : null}
+                    <div 
+                      className={`w-full h-full bg-gray-200 rounded flex items-center justify-center text-gray-400 text-xs ${selection.image_base64 ? 'hidden' : ''}`} 
+                      style={{ display: selection.image_base64 ? 'none' : 'flex' }}
+                    >
+                      No Image
+                    </div>
+                  </div>
+                  <div className="flex-1 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="font-medium">{selection.name}</div>
+                      <button
+                        onClick={() => setCompareModalOpen(true)}
+                        className="px-3 py-1.5 rounded bg-gray-700 text-white hover:bg-gray-800 text-sm"
+                      >
+                        Compare
+                      </button>
+                    </div>
+                    <div className="text-sm text-gray-600">Supplier: {selection.supplier_name || 'N/A'}</div>
+                    <div className="text-sm text-gray-600">Unit: {selection.unit || '-'} · Price: ${Number(selection.price || 0).toFixed(2)}</div>
+                    {selection.unit_type === 'coverage' && (
+                      <div className="text-xs text-gray-600 mt-1">
+                        Coverage: {selection.coverage_sqs ? `${selection.coverage_sqs} SQS · ` : ''}{selection.coverage_ft2 ? `${selection.coverage_ft2} ft² · ` : ''}{selection.coverage_m2 ? `${selection.coverage_m2} m²` : ''}
+                      </div>
+                    )}
+                    {selection.unit_type === 'multiple' && selection.units_per_package && (
+                      <div className="text-xs text-gray-600 mt-1">
+                        {selection.units_per_package} units per package
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+            <div className="text-right">
+              <button 
+                onClick={() => {
+                  if (!selection) { 
+                    toast.error('Select a product first'); 
+                    return; 
+                  }
+                  onSelect(selection);
+                }} 
+                className="px-3 py-2 rounded text-white bg-gradient-to-br from-[#7f1010] to-[#a31414] hover:from-[#6d0d0d] hover:to-[#8f1111]"
+              >
+                Add Item
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+      {supplierModalOpen && (
+        <SupplierProductModalForQuote
+          open={supplierModalOpen}
+          onClose={() => setSupplierModalOpen(false)}
+          onSelect={(product) => {
+            setSelection(product);
+            setSupplierModalOpen(false);
+          }}
+        />
+      )}
+      {compareModalOpen && selection && (
+        <CompareProductsModalForQuote
+          open={compareModalOpen}
+          onClose={() => setCompareModalOpen(false)}
+          selectedProduct={selection}
+          onSelect={(product) => {
+            setSelection(product);
+            setCompareModalOpen(false);
+          }}
+        />
+      )}
+      {newProductModalOpen && (
+        <NewProductModalForQuote
+          open={true}
+          onClose={() => setNewProductModalOpen(false)}
+          onProductCreated={(product: Material) => {
+            setSelection(product);
+            setNewProductModalOpen(false);
+            // Pre-fill the search query with the new product name
+            setQ(product.name);
+            // Automatically select the product so user can click "Add Item"
+            // The product is already set in selection, so it will show in the preview
+          }}
+        />
+      )}
+    </>
+  );
+}
+
+// New Product Modal for Quote
+function NewProductModalForQuote({ open, onClose, onProductCreated, initialSupplier }: { open: boolean, onClose: () => void, onProductCreated: (product: Material) => void, initialSupplier?: string }) {
+  const [name, setName] = useState('');
+  const [nameError, setNameError] = useState(false);
+  const [newSupplier, setNewSupplier] = useState('');
+  const [newCategory, setNewCategory] = useState('');
+  const [unit, setUnit] = useState('');
+  const [price, setPrice] = useState<string>('');
+  const [priceDisplay, setPriceDisplay] = useState<string>('');
+  const [priceFocused, setPriceFocused] = useState(false);
+  const [priceError, setPriceError] = useState(false);
+  const [desc, setDesc] = useState('');
+  const [unitType, setUnitType] = useState<'unitary'|'multiple'|'coverage'>('unitary');
+  const [unitsPerPackage, setUnitsPerPackage] = useState<string>('');
+  const [covSqs, setCovSqs] = useState<string>('');
+  const [covFt2, setCovFt2] = useState<string>('');
+  const [covM2, setCovM2] = useState<string>('');
+  const [imageDataUrl, setImageDataUrl] = useState<string>('');
+  const [imagePickerOpen, setImagePickerOpen] = useState(false);
+  const [isSavingProduct, setIsSavingProduct] = useState(false);
+  const [technicalManualUrl, setTechnicalManualUrl] = useState<string>('');
+
+  const { data: supplierOptions } = useQuery({ queryKey:['invSuppliersOptions-quote'], queryFn: ()=> api<any[]>('GET','/inventory/suppliers') });
+
+  const formatCurrency = (value: string): string => {
+    if (!value) return '';
+    const numericValue = value.replace(/[^0-9.]/g, '');
+    if (!numericValue) return '';
+    const num = parseFloat(numericValue);
+    if (isNaN(num)) return numericValue;
+    return new Intl.NumberFormat('en-CA', {
+      style: 'currency',
+      currency: 'CAD',
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(num);
+  };
+
+  const parseCurrency = (value: string): string => {
+    const parsed = value.replace(/[^0-9.]/g, '');
+    const parts = parsed.split('.');
+    if (parts.length > 2) {
+      return parts[0] + '.' + parts.slice(1).join('');
+    }
+    return parsed;
+  };
+
+  const onCoverageChange = (which: 'sqs'|'ft2'|'m2', val: string) => {
+    if (!val) { setCovSqs(''); setCovFt2(''); setCovM2(''); return; }
+    const num = parseFloat(val) || 0;
+    if (which === 'sqs') {
+      setCovSqs(val);
+      setCovFt2(String((num * 100).toFixed(2)));
+      setCovM2(String((num * 9.29).toFixed(2)));
+    } else if (which === 'ft2') {
+      setCovFt2(val);
+      setCovSqs(String((num / 100).toFixed(2)));
+      setCovM2(String((num * 0.0929).toFixed(2)));
+    } else if (which === 'm2') {
+      setCovM2(val);
+      setCovSqs(String((num / 9.29).toFixed(2)));
+      setCovFt2(String((num * 10.764).toFixed(2)));
+    }
+  };
+
+  useEffect(() => {
+    if (!open) {
+      setName('');
+      setNameError(false);
+      setNewSupplier(initialSupplier || '');
+      setNewCategory('');
+      setUnit('');
+      setPrice('');
+      setPriceDisplay('');
+      setPriceFocused(false);
+      setPriceError(false);
+      setDesc('');
+      setUnitsPerPackage('');
+      setCovSqs('');
+      setCovFt2('');
+      setCovM2('');
+      setUnitType('unitary');
+      setImageDataUrl('');
+      setTechnicalManualUrl('');
+    } else if (open && initialSupplier) {
+      setNewSupplier(initialSupplier);
+    }
+  }, [open, initialSupplier]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => { 
+      if (e.key === 'Escape') onClose(); 
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open, onClose]);
+
+  if (!open) return null;
+
+  return (
+    <>
+      <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
+        <div className="w-[800px] max-w-[95vw] bg-white rounded-xl overflow-hidden max-h-[90vh] flex flex-col">
+          <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] p-6 flex items-center gap-6 relative flex-shrink-0">
+            <div className="font-semibold text-lg text-white">New Product</div>
+            <button 
+              onClick={onClose} 
+              className="ml-auto text-white hover:text-gray-200 text-2xl font-bold w-8 h-8 flex items-center justify-center rounded hover:bg-white/20" 
+              title="Close"
+            >
+              ×
+            </button>
+          </div>
+          <div className="p-6 overflow-y-auto flex-1">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="col-span-2">
+                <label className="text-xs font-semibold text-gray-700">
+                  Name <span className="text-red-600">*</span>
+                </label>
+                <input 
+                  className={`w-full border rounded px-3 py-2 mt-1 ${nameError && !name.trim() ? 'border-red-500' : ''}`}
+                  value={name} 
+                  onChange={e=>{
+                    setName(e.target.value);
+                    if (nameError) setNameError(false);
+                  }} 
+                />
+                {nameError && !name.trim() && (
+                  <div className="text-[11px] text-red-600 mt-1">This field is required</div>
+                )}
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-gray-700">Supplier</label>
+                <select 
+                  className="w-full border rounded px-3 py-2 mt-1"
+                  value={newSupplier} 
+                  onChange={e=>setNewSupplier(e.target.value)}
+                >
+                  <option value="">Select a supplier</option>
+                  {Array.isArray(supplierOptions) && supplierOptions.map((s:any)=> (
+                    <option key={s.id} value={s.name}>{s.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div><label className="text-xs font-semibold text-gray-700">Category</label><input className="w-full border rounded px-3 py-2 mt-1" value={newCategory} onChange={e=>setNewCategory(e.target.value)} /></div>
+              <div><label className="text-xs font-semibold text-gray-700">Sell Unit</label><input className="w-full border rounded px-3 py-2 mt-1" placeholder="e.g., Roll, Pail (20L), Box" value={unit} onChange={e=>setUnit(e.target.value)} /></div>
+              <div>
+                <label className="text-xs font-semibold text-gray-700">
+                  Price ($) <span className="text-red-600">*</span>
+                </label>
+                <input 
+                  type="text" 
+                  className={`w-full border rounded px-3 py-2 mt-1 ${priceError && (!price || !price.trim() || Number(parseCurrency(price)) <= 0) ? 'border-red-500' : ''}`}
+                  placeholder="$0.00"
+                  value={priceFocused ? priceDisplay : (price ? formatCurrency(price) : '')}
+                  onFocus={() => {
+                    setPriceFocused(true);
+                    setPriceDisplay(price || '');
+                  }}
+                  onBlur={() => {
+                    setPriceFocused(false);
+                    const parsed = parseCurrency(priceDisplay);
+                    setPrice(parsed);
+                    setPriceDisplay(parsed);
+                    if (priceError && parsed && Number(parsed) > 0) setPriceError(false);
+                  }}
+                  onChange={e => {
+                    const raw = e.target.value;
+                    setPriceDisplay(raw);
+                  }}
+                />
+                {priceError && (!price || !price.trim() || Number(parseCurrency(price)) <= 0) && (
+                  <div className="text-[11px] text-red-600 mt-1">This field is required</div>
+                )}
+              </div>
+              <div className="col-span-2">
+                <label className="text-xs font-semibold text-gray-700">Unit Type</label>
+                <div className="flex items-center gap-6 mt-1">
+                  <label className="flex items-center gap-2 text-sm"><input type="radio" name="unit-type-quote" checked={unitType==='unitary'} onChange={()=>{ setUnitType('unitary'); setUnitsPerPackage(''); setCovSqs(''); setCovFt2(''); setCovM2(''); }} /> Unitary</label>
+                  <label className="flex items-center gap-2 text-sm"><input type="radio" name="unit-type-quote" checked={unitType==='multiple'} onChange={()=>{ setUnitType('multiple'); setCovSqs(''); setCovFt2(''); setCovM2(''); }} /> Multiple</label>
+                  <label className="flex items-center gap-2 text-sm"><input type="radio" name="unit-type-quote" checked={unitType==='coverage'} onChange={()=>{ setUnitType('coverage'); setUnitsPerPackage(''); }} /> Coverage</label>
+                </div>
+              </div>
+              {unitType==='multiple' && (
+                <div className="col-span-2">
+                  <label className="text-xs font-semibold text-gray-700">Units per Package</label>
+                  <input type="number" step="0.01" className="w-full border rounded px-3 py-2 mt-1" value={unitsPerPackage} onChange={e=>setUnitsPerPackage(e.target.value)} />
+                </div>
+              )}
+              {unitType==='coverage' && (
+                <div className="col-span-2">
+                  <label className="text-xs font-semibold text-gray-700">Coverage Area</label>
+                  <div className="flex items-center gap-2 mt-1">
+                    <div className="flex-1 flex items-center gap-1">
+                      <input 
+                        className="w-full border rounded px-3 py-2" 
+                        placeholder="0" 
+                        value={covSqs} 
+                        onChange={e=> onCoverageChange('sqs', e.target.value)} 
+                      />
+                      <span className="text-sm text-gray-600 whitespace-nowrap">SQS</span>
+                    </div>
+                    <span className="text-gray-400">=</span>
+                    <div className="flex-1 flex items-center gap-1">
+                      <input 
+                        className="w-full border rounded px-3 py-2" 
+                        placeholder="0" 
+                        value={covFt2} 
+                        onChange={e=> onCoverageChange('ft2', e.target.value)} 
+                      />
+                      <span className="text-sm text-gray-600 whitespace-nowrap">ft²</span>
+                    </div>
+                    <span className="text-gray-400">=</span>
+                    <div className="flex-1 flex items-center gap-1">
+                      <input 
+                        className="w-full border rounded px-3 py-2" 
+                        placeholder="0" 
+                        value={covM2} 
+                        onChange={e=> onCoverageChange('m2', e.target.value)} 
+                      />
+                      <span className="text-sm text-gray-600 whitespace-nowrap">m²</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+              <div className="col-span-2"><label className="text-xs font-semibold text-gray-700">Description / Notes</label><textarea className="w-full border rounded px-3 py-2 mt-1" rows={3} value={desc} onChange={e=>setDesc(e.target.value)} /></div>
+              <div className="col-span-2">
+                <label className="text-xs font-semibold text-gray-700">Technical Manual URL</label>
+                <input 
+                  className="w-full border rounded px-3 py-2 mt-1" 
+                  type="url"
+                  placeholder="https://supplier.com/manual/product"
+                  value={technicalManualUrl} 
+                  onChange={e=>setTechnicalManualUrl(e.target.value)} 
+                />
+              </div>
+              <div className="col-span-2">
+                <label className="text-xs font-semibold text-gray-700">Product Image</label>
+                <div className="mt-1 space-y-2">
+                  <button
+                    type="button"
+                    onClick={() => setImagePickerOpen(true)}
+                    className="px-3 py-2 rounded bg-gray-100 hover:bg-gray-200 text-sm">
+                    {imageDataUrl ? 'Change Image' : 'Select Image'}
+                  </button>
+                  {imageDataUrl && (
+                    <div className="mt-2">
+                      <img src={imageDataUrl} className="w-32 h-32 object-contain border rounded" alt="Preview" />
+                      <button
+                        type="button"
+                        onClick={() => setImageDataUrl('')}
+                        className="mt-2 px-2 py-1 text-xs rounded bg-red-100 text-red-700 hover:bg-red-200">
+                        Remove Image
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+          <div className="px-4 py-3 border-t bg-gray-50 flex justify-end gap-2">
+            <button onClick={onClose} className="px-4 py-2 rounded bg-gray-200 hover:bg-gray-300">Cancel</button>
+            <button 
+              onClick={async()=>{
+                if(isSavingProduct) return;
+                
+                if(!name.trim()){
+                  setNameError(true);
+                  toast.error('Name is required');
+                  return;
+                }
+                
+                const priceValue = parseCurrency(price);
+                if(!priceValue || !priceValue.trim() || Number(priceValue) <= 0){
+                  setPriceError(true);
+                  toast.error('Price is required');
+                  return;
+                }
+                
+                try{
+                  setIsSavingProduct(true);
+                  const payload = {
+                    name: name.trim(),
+                    supplier_name: newSupplier||null,
+                    category: newCategory||null,
+                    unit: unit||null,
+                    price: Number(parseCurrency(price)),
+                    description: desc||null,
+                    unit_type: unitType,
+                    units_per_package: unitType==='multiple'? (unitsPerPackage? Number(unitsPerPackage): null) : null,
+                    coverage_sqs: unitType==='coverage'? (covSqs? Number(covSqs): null) : null,
+                    coverage_ft2: unitType==='coverage'? (covFt2? Number(covFt2): null) : null,
+                    coverage_m2: unitType==='coverage'? (covM2? Number(covM2): null) : null,
+                    image_base64: imageDataUrl || null,
+                    technical_manual_url: technicalManualUrl || null,
+                  };
+                  const created = await api<Material>('POST','/estimate/products', payload);
+                  toast.success('Product created');
+                  onProductCreated(created);
+                }catch(_e){ 
+                  toast.error('Failed to create product'); 
+                }
+                finally{ 
+                  setIsSavingProduct(false); 
+                }
+              }} 
+              disabled={isSavingProduct} 
+              className="px-4 py-2 rounded bg-brand-red text-white disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isSavingProduct ? 'Creating...' : 'Create Product'}
+            </button>
+          </div>
+        </div>
+      </div>
+      {imagePickerOpen && (
+        <ImagePicker
+          isOpen={true}
+          onClose={() => setImagePickerOpen(false)}
+          onConfirm={(blob) => {
+            const reader = new FileReader();
+            reader.onload = () => {
+              setImageDataUrl(String(reader.result || ''));
+              setImagePickerOpen(false);
+            };
+            reader.readAsDataURL(blob);
+          }}
+          targetWidth={800}
+          targetHeight={800}
+        />
+      )}
+    </>
+  );
+}
+
+// Supplier Product Modal for Quote - Same as EstimateBuilder
+function SupplierProductModalForQuote({ open, onClose, onSelect }: { open: boolean, onClose: () => void, onSelect: (product: Material) => void }) {
+  const [selectedSupplier, setSelectedSupplier] = useState<string | null>(null);
+  const [displayedProductCount, setDisplayedProductCount] = useState(20);
+  const [newProductModalOpen, setNewProductModalOpen] = useState(false);
+  
+  const { data: suppliers } = useQuery({ 
+    queryKey: ['suppliers-quote'], 
+    queryFn: async () => {
+      const suppliers = await api<{id: string, name: string}[]>('GET', '/inventory/suppliers');
+      return suppliers;
+    },
+    enabled: open
+  });
+  
+  const { data: allProducts } = useQuery({
+    queryKey: ['all-products-quote'],
+    queryFn: async () => {
+      return await api<Material[]>('GET', '/estimate/products');
+    },
+    enabled: open
+  });
+
+  const allProductsForSupplier = useMemo(() => {
+    if (!selectedSupplier || !allProducts) return [];
+    const selectedSupplierName = suppliers?.find(s => s.id === selectedSupplier)?.name;
+    if (!selectedSupplierName) return [];
+    return allProducts.filter(p => p.supplier_name === selectedSupplierName);
+  }, [allProducts, selectedSupplier, suppliers]);
+
+  const products = useMemo(() => {
+    return allProductsForSupplier.slice(0, displayedProductCount);
+  }, [allProductsForSupplier, displayedProductCount]);
+
+  const hasMoreProducts = allProductsForSupplier.length > displayedProductCount;
+
+  useEffect(() => {
+    if (selectedSupplier) {
+      setDisplayedProductCount(20);
+    }
+  }, [selectedSupplier]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open, onClose]);
+
+  if (!open) return null;
+
+  return (
+    <>
+      <div className="fixed inset-0 z-[60] bg-black/60 flex items-center justify-center p-4">
+      <div className="w-[1000px] max-w-[95vw] bg-white rounded-xl overflow-hidden max-h-[90vh] flex flex-col">
+        <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] p-6 flex items-center gap-6 relative flex-shrink-0">
+          <div className="font-semibold text-lg text-white">Browse Products by Supplier</div>
+          <button onClick={onClose} className="ml-auto text-white hover:text-gray-200 text-2xl font-bold w-8 h-8 flex items-center justify-center rounded hover:bg-white/20" title="Close">×</button>
+        </div>
+        <div className="flex flex-1 overflow-hidden">
+          {/* Left: Suppliers List */}
+          <div className="w-64 border-r overflow-y-auto bg-gray-50">
+            <div className="p-4">
+              <div className="font-semibold mb-3 text-sm text-gray-700">Suppliers</div>
+              <div className="space-y-2">
+                {(suppliers || []).map(supplier => (
+                  <button
+                    key={supplier.id}
+                    onClick={() => setSelectedSupplier(supplier.id)}
+                    className={`w-full text-left px-3 py-2 rounded text-sm transition-colors ${
+                      selectedSupplier === supplier.id
+                        ? 'text-white bg-gradient-to-br from-[#7f1010] to-[#a31414]'
+                        : 'bg-white hover:bg-gray-100 text-gray-700'
+                    }`}>
+                    {supplier.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+          
+          {/* Right: Products Grid */}
+          <div className="flex-1 overflow-y-auto p-4">
+            {!selectedSupplier ? (
+              <div className="flex items-center justify-center h-full text-gray-500">
+                Select a supplier to view products
+              </div>
+            ) : (
+              <div>
+                <div className="font-semibold mb-4 text-gray-700">
+                  Products from {suppliers?.find(s => s.id === selectedSupplier)?.name || 'Supplier'}
+                </div>
+                {products && products.length > 0 ? (
+                  <>
+                    <div className="grid grid-cols-4 gap-3">
+                      {/* New Product Card - First position */}
+                      <button
+                        onClick={() => setNewProductModalOpen(true)}
+                        className="border-2 border-dashed border-gray-300 rounded-lg p-3 hover:border-brand-red hover:bg-gray-50 transition-all text-center bg-white flex flex-col items-center justify-center min-h-[200px]">
+                        <div className="text-4xl text-gray-400 mb-2">+</div>
+                        <div className="font-medium text-sm text-gray-700">New Product</div>
+                        <div className="text-xs text-gray-500 mt-1">Add new product to {suppliers?.find(s => s.id === selectedSupplier)?.name || 'supplier'}</div>
+                      </button>
+                      {products.map(product => (
+                      <button
+                        key={product.id}
+                        onClick={() => onSelect(product)}
+                        className="border rounded-lg p-3 hover:border-brand-red hover:shadow-md transition-all text-left bg-white flex flex-col">
+                        <div className="w-full h-24 mb-2 relative">
+                          {product.image_base64 ? (
+                            <img 
+                              src={product.image_base64.startsWith('data:') ? product.image_base64 : `data:image/jpeg;base64,${product.image_base64}`}
+                              alt={product.name}
+                              className="w-full h-full object-contain rounded"
+                              onError={(e) => {
+                                (e.target as HTMLImageElement).style.display = 'none';
+                                const placeholder = (e.target as HTMLImageElement).nextElementSibling as HTMLElement;
+                                if (placeholder) placeholder.style.display = 'flex';
+                              }}
+                            />
+                          ) : null}
+                          <div className={`w-full h-full bg-gray-200 rounded flex items-center justify-center text-gray-400 text-xs ${product.image_base64 ? 'hidden' : ''}`} style={{ display: product.image_base64 ? 'none' : 'flex' }}>
+                            No Image
+                          </div>
+                        </div>
+                        <div className="font-medium text-sm mb-1 line-clamp-2">{product.name}</div>
+                        {product.category && (
+                          <div className="text-xs text-gray-500 mb-1">{product.category}</div>
+                        )}
+                        <div className="text-sm font-semibold text-brand-red">${Number(product.price || 0).toFixed(2)}</div>
+                      </button>
+                      ))}
+                    </div>
+                    {hasMoreProducts && (
+                      <button
+                        onClick={() => setDisplayedProductCount(prev => prev + 20)}
+                        className="mt-4 w-full text-center px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded text-sm text-gray-600">
+                        Load more ({allProductsForSupplier.length - displayedProductCount} remaining)
+                      </button>
+                    )}
+                  </>
+                ) : (
+                  <div className="text-center py-8">
+                    <div className="text-gray-500 mb-4">No products found for this supplier</div>
+                    <button
+                      onClick={() => setNewProductModalOpen(true)}
+                      className="border-2 border-dashed border-gray-300 rounded-lg p-6 hover:border-brand-red hover:bg-gray-50 transition-all text-center bg-white flex flex-col items-center justify-center mx-auto w-64">
+                      <div className="text-4xl text-gray-400 mb-2">+</div>
+                      <div className="font-medium text-sm text-gray-700">New Product</div>
+                      <div className="text-xs text-gray-500 mt-1">Add new product to {suppliers?.find(s => s.id === selectedSupplier)?.name || 'supplier'}</div>
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+      </div>
+      {newProductModalOpen && selectedSupplier && (
+        <NewProductModalForQuote
+          open={true}
+          onClose={() => setNewProductModalOpen(false)}
+          initialSupplier={suppliers?.find(s => s.id === selectedSupplier)?.name || ''}
+          onProductCreated={(product: Material) => {
+            onSelect(product);
+            setNewProductModalOpen(false);
+          }}
+        />
+      )}
+    </>
+  );
+}
+
+// Compare Products Modal for Quote (simplified version)
+function CompareProductsModalForQuote({ open, onClose, selectedProduct, onSelect }: { open: boolean, onClose: () => void, selectedProduct: Material, onSelect: (product: Material) => void }) {
+  const { data: similarProducts } = useQuery({
+    queryKey: ['similar-products-quote', selectedProduct.name],
+    queryFn: async () => {
+      if (!selectedProduct.name) return [];
+      const params = new URLSearchParams();
+      params.set('q', selectedProduct.name);
+      const results = await api<Material[]>('GET', `/estimate/products/search?${params.toString()}`);
+      return results.filter(p => p.id !== selectedProduct.id).slice(0, 5);
+    },
+    enabled: open && !!selectedProduct.name
+  });
+
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 z-[70] bg-black/60 flex items-center justify-center">
+      <div className="w-[720px] max-w-[95vw] bg-white rounded-xl overflow-hidden max-h-[90vh] flex flex-col">
+        <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] p-6 flex items-center gap-6 relative flex-shrink-0">
+          <div className="font-semibold text-lg text-white">Compare Products</div>
+          <button onClick={onClose} className="ml-auto text-white hover:text-gray-200 text-2xl font-bold w-8 h-8 flex items-center justify-center rounded hover:bg-white/20">×</button>
+        </div>
+        <div className="p-4 space-y-3 overflow-y-auto flex-1">
+          <div className="border rounded p-3 bg-gray-50">
+            <div className="font-medium mb-2">Selected: {selectedProduct.name}</div>
+            <div className="text-sm text-gray-600">${Number(selectedProduct.price || 0).toFixed(2)} · {selectedProduct.supplier_name || 'N/A'}</div>
+          </div>
+          {(similarProducts || []).length > 0 && (
+            <div className="space-y-2">
+              <div className="text-sm font-medium">Similar Products:</div>
+              <div className="max-h-64 overflow-auto rounded border divide-y">
+                {(similarProducts || []).map(p => (
+                  <button key={p.id} onClick={() => onSelect(p)} className="w-full text-left px-3 py-2 bg-white hover:bg-gray-50">
+                    <div className="font-medium">{p.name}</div>
+                    <div className="text-xs text-gray-500">{p.supplier_name || ''} · ${Number(p.price || 0).toFixed(2)}</div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

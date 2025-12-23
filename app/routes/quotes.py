@@ -383,7 +383,8 @@ def save_quote(payload: dict = Body(...), db: Session = Depends(get_db), user=De
         q.client_id = payload.get('client_id') or q.client_id
         q.code = payload.get('code') or q.code
         q.name = payload.get('name') or q.name
-        q.estimator_id = getattr(user, 'id', None) if not payload.get('estimator_id') else payload.get('estimator_id')
+        # estimator_id should never change after creation - keep original value
+        # q.estimator_id is not updated here to preserve the original creator
         q.project_division_ids = payload.get('project_division_ids') or q.project_division_ids
         q.order_number = payload.get('order_number') or q.order_number
         q.title = title
@@ -642,8 +643,8 @@ def update_quote(quote_id: str, payload: dict = Body(...), db: Session = Depends
         q.order_number = payload['order_number']
     if 'title' in payload:
         q.title = payload['title']
-    if 'estimator_id' in payload:
-        q.estimator_id = payload['estimator_id']
+    # estimator_id should never change after creation - ignore if provided in payload
+    # The estimator is always the user who created the quotation
     if 'data' in payload:
         try:
             import copy as _copy
