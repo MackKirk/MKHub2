@@ -358,7 +358,7 @@ export default function AppShell({ children }: PropsWithChildren){
     },
     {
       id: 'sales',
-      label: 'Sales',
+      label: 'Sales (MK Metals)',
       icon: <IconSales />,
       items: [
         { id: 'quotations', label: 'Quotations', path: '/quotes', icon: <IconQuotations />, requiredPermission: 'sales:quotations:read' },

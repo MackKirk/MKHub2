@@ -61,7 +61,7 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
   const canEditEstimate = isAdmin || permissions.has('business:projects:estimate:write');
 
   // form state
-  const [templateStyle, setTemplateStyle] = useState<string>('Mack Kirk');
+  const templateStyle = 'Mack Kirk'; // Fixed template for proposals
   const [coverTitle, setCoverTitle] = useState<string>('Proposal');
   const [orderNumber, setOrderNumber] = useState<string>('');
   const [date, setDate] = useState<string>(getTodayLocal());
@@ -379,7 +379,6 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
     if (!initial) return;
     const d = initial?.data || {};
     setCoverTitle(String(d.cover_title || initial.title || 'Proposal'));
-    setTemplateStyle(String(d.template_style || 'Mack Kirk'));
     // For edit mode, use project code if available, otherwise use saved order_number
     // This will be overridden by the project code sync effect if project is loaded
     const savedOrderNumber = String(initial.order_number || d.order_number || '');
@@ -1063,6 +1062,19 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
 
   const handleGenerate = async()=>{
     try{
+      // Validate required images
+      const missingImages: string[] = [];
+      if (!coverFoId && !coverBlob) {
+        missingImages.push('Front Cover Image');
+      }
+      if (!page2FoId && !page2Blob) {
+        missingImages.push('Inside Cover Image');
+      }
+      if (missingImages.length > 0) {
+        toast.error(`Cannot generate PDF: ${missingImages.join(' and ')} ${missingImages.length === 1 ? 'is' : 'are'} required`);
+        return;
+      }
+      
       setIsGenerating(true);
       // cleanup previous
       try{ if (downloadUrl) { URL.revokeObjectURL(downloadUrl); setDownloadUrl(''); } }catch(_e){}
@@ -1242,20 +1254,8 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
           </div>
           <div className="p-4">
             <div className="grid md:grid-cols-2 gap-4">
-              {/* Card 1 */}
+              {/* Card 1 - Left Column */}
               <div className="space-y-2 text-sm">
-                <div>
-                  <label className="text-sm text-gray-600">Template Style</label>
-                  <select 
-                    className={`w-full border rounded px-3 py-2 ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`}
-                    value={templateStyle}
-                    onChange={e=>setTemplateStyle(e.target.value)}
-                    disabled={disabled}
-                  >
-                    <option value="Mack Kirk">Mack Kirk</option>
-                    <option value="Mack Kirk Metals">Mack Kirk Metals</option>
-                  </select>
-                </div>
                 <div>
                   <label className="text-sm text-gray-600">Document Type (Shown on cover page)</label>
                   <input className={`w-full border rounded px-3 py-2 ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} value={coverTitle} onChange={e=>setCoverTitle(e.target.value)} maxLength={44} aria-label="Document Type" disabled={disabled} readOnly={disabled} />
@@ -1269,9 +1269,6 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                   <label className="text-sm text-gray-600">Date</label>
                   <input type="date" className={`w-full border rounded px-3 py-2 ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} value={date} onChange={e=>setDate(e.target.value)} disabled={disabled} readOnly={disabled} />
                 </div>
-              </div>
-              {/* Card 2 */}
-              <div className="space-y-2 text-sm">
                 <div className="grid grid-cols-3 gap-2">
                   <div>
                     <label className="text-sm text-gray-600">Primary Contact Name</label>
@@ -1327,6 +1324,9 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                   <textarea className={`w-full border rounded px-3 py-2 ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} value={otherNotes} onChange={e=>setOtherNotes(e.target.value)} maxLength={250} disabled={disabled} readOnly={disabled} />
                   <div className="mt-1 text-[11px] text-gray-500">{otherNotes.length}/250 characters</div>
                 </div>
+              </div>
+              {/* Card 2 - Right Column (Covers only) */}
+              <div className="space-y-2 text-sm">
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <div className="mb-1 text-sm text-gray-600">Front Cover Image</div>

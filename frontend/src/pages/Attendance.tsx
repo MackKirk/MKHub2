@@ -40,6 +40,7 @@ type AttendanceEvent = {
   job_name?: string | null;
   project_name?: string | null;
   job_type?: string | null;
+  project_id?: string | null; // project_id from shift when shift_id exists
   shift_id?: string | null;
   clock_in_id?: string | null;
   clock_in_time?: string | null;
@@ -163,7 +164,7 @@ const isHoursWorkedEntry = (reason?: string | null): boolean => {
   return extractHoursWorked(reason) !== null;
 };
 
-const buildEvents = (attendances: Attendance[]): AttendanceEvent[] => {
+const buildEvents = (attendances: Attendance[], projects: Project[] = []): AttendanceEvent[] => {
   // NEW MODEL: Each attendance record is already a complete event
   // No need to group clock-in and clock-out records together
   // Ensure attendances is always an array
@@ -195,13 +196,29 @@ const buildEvents = (attendances: Attendance[]): AttendanceEvent[] => {
       hoursWorked = Math.max(0, hoursWorked - (att.break_minutes / 60));
     }
     
+    // When there's a shift_id, try to find the project_id from project_name
+    let projectId: string | null = null;
+    let jobType: string | null = null;
+    if (att.shift_id && att.project_name) {
+      // Find project by name in the projects list
+      const project = projects.find((p) => p.name === att.project_name);
+      if (project) {
+        projectId = project.id;
+        jobType = project.id; // Use project_id as job_type when there's a shift
+      }
+    } else if (!att.shift_id) {
+      // No shift - extract job_type from reason_text
+      jobType = extractJobType(att.reason_text);
+    }
+    
     return {
       event_id: att.id,
       worker_id: att.worker_id,
       worker_name: att.worker_name,
       job_name: att.job_name,
       project_name: att.project_name,
-      job_type: att.shift_id ? null : extractJobType(att.reason_text),
+      job_type: jobType,
+      project_id: projectId,
       shift_id: att.shift_id || undefined,
       clock_in_id: att.clock_in_time ? att.id : null,
       // For "hours worked", store the date (not time) so we can use it for editing
@@ -293,10 +310,13 @@ export default function Attendance() {
     },
   });
 
-  const attendanceEvents = useMemo(
-    () => buildEvents(Array.isArray(attendances) ? attendances : []),
-    [attendances]
-  );
+  const { data: projects = [] } = useQuery({
+    queryKey: ['attendance-projects'],
+    queryFn: async () => {
+      const result = await api<Project[]>('GET', '/projects');
+      return Array.isArray(result) ? result : [];
+    },
+  });
 
   const { data: users } = useQuery({
     queryKey: ['employees'],
@@ -306,14 +326,10 @@ export default function Attendance() {
     },
   });
 
-
-  const { data: projects = [] } = useQuery({
-    queryKey: ['attendance-projects'],
-    queryFn: async () => {
-      const result = await api<Project[]>('GET', '/projects');
-      return Array.isArray(result) ? result : [];
-    },
-  });
+  const attendanceEvents = useMemo(
+    () => buildEvents(Array.isArray(attendances) ? attendances : [], Array.isArray(projects) ? projects : []),
+    [attendances, projects]
+  );
 
   const jobOptions = useMemo(() => {
     const projectsArray = Array.isArray(projects) ? projects : [];
@@ -422,9 +438,12 @@ export default function Attendance() {
         clockInTimeValue = toLocalInputValue(event.clock_in_time);
       }
       
+      // Determine job_type: use project_id if available (from shift), otherwise use job_type from reason_text
+      const jobTypeForForm = event.project_id || event.job_type || '0';
+      
       setFormData({
         worker_id: event.worker_id,
-        job_type: event.job_type || '0',
+        job_type: jobTypeForForm,
         clock_in_time: clockInTimeValue,
         clock_out_time: toLocalInputValue(event.clock_out_time),
         status: event.clock_in_status || 'approved',
@@ -730,7 +749,8 @@ export default function Attendance() {
           clock_in_time: clockInUtc,
           clock_out_time: clockOutUtc,
           status: formData.status,
-          ...(editingEvent.shift_id ? {} : { reason_text: reasonText }),
+          // Always include reason_text to allow job editing even when there's a shift_id
+          reason_text: reasonText,
         };
         
         // Add manual break time if checkbox is checked and clock_out_time exists
@@ -1260,23 +1280,22 @@ export default function Attendance() {
                   )}
                 </div>
               )}
-              {!editingEvent?.shift_id && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Job *</label>
-                  <select
-                    value={formData.job_type}
-                    onChange={(e) => setFormData({ ...formData, job_type: e.target.value })}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2"
-                    required
-                  >
-                    {jobOptions.map((job) => (
-                      <option key={job.id} value={job.id}>
-                        {job.code} - {job.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
+              {/* Job field - always show */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Job *</label>
+                <select
+                  value={formData.job_type}
+                  onChange={(e) => setFormData({ ...formData, job_type: e.target.value })}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2"
+                  required
+                >
+                  {jobOptions.map((job) => (
+                    <option key={job.id} value={job.id}>
+                      {job.code} - {job.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Entry Type

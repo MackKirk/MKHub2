@@ -7,7 +7,7 @@ export default function Schedule() {
   const fromHome = location.state?.fromHome === true;
   
   return (
-    <div className="space-y-6 min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-50/50">
+    <div className="space-y-6 min-h-screen">
       {/* Page Header */}
       <div className="bg-slate-200/50 rounded-[12px] border border-slate-200 py-4 px-6 mb-6">
         <h1 className="text-2xl font-bold text-gray-900 tracking-tight mb-1.5">Schedule</h1>

@@ -182,8 +182,8 @@ class PricingTable(Flowable):
             base_height = 70 if show_total else 50  # Reduced height if total is hidden
             
             # Calculate height considering wrapped text for each cost item
-            # Reserve space for price on right (about 100px width)
-            max_label_width = (A4[0] - 80) - 100  # Total width minus space for price
+            # Reserve space for quantity and total on right (about 150px width)
+            max_label_width = (A4[0] - 80) - 150  # Total width minus space for quantity and total
             font_name = "Montserrat-Bold"
             font_size = 11.5
             additional_height = 0
@@ -277,8 +277,8 @@ class PricingTable(Flowable):
             # For manual pricing, show the full format
             additional_costs = self.data.get("additional_costs") or []
             if additional_costs:
-                # Reserve space for price on right (about 100px width)
-                max_label_width = width - 100
+                # Reserve space for quantity and total on right (about 150px width)
+                max_label_width = width - 150
                 font_name = "Montserrat-Bold"
                 font_size = 11.5
                 
@@ -286,7 +286,27 @@ class PricingTable(Flowable):
                     c.setFont(font_name, font_size)
                     c.setFillColor(colors.black)
                     label = cost.get("label", "")
-                    value = f"${float(cost.get('value', 0)):,.2f}"
+                    # Get quantity (default to 1 if not provided)
+                    # Handle both string and numeric quantities
+                    quantity_raw = cost.get('quantity', 1)
+                    try:
+                        if isinstance(quantity_raw, str):
+                            quantity = float(quantity_raw)
+                        else:
+                            quantity = float(quantity_raw)
+                    except (ValueError, TypeError):
+                        quantity = 1.0
+                    
+                    # Get unit price
+                    unit_price = float(cost.get('value', 0))
+                    # Calculate line total (price × quantity)
+                    line_total = unit_price * quantity
+                    line_total_str = f"${line_total:,.2f}"
+                    # Format quantity: show as integer if whole number, otherwise show decimal
+                    if quantity == int(quantity):
+                        quantity_str = f"Qty: {int(quantity)}"
+                    else:
+                        quantity_str = f"Qty: {quantity:.2f}"
                     
                     # Wrap text into multiple lines
                     wrapped_lines = wrap_text(label, font_name, font_size, max_label_width)
@@ -298,10 +318,14 @@ class PricingTable(Flowable):
                         if i < len(wrapped_lines) - 1:
                             line_y -= 16 + 2  # 16px line height + 2px spacing
                     
-                    # Draw price aligned to the right, on the last line of the label
+                    # Draw quantity and line total aligned to the right, on the last line of the label
                     c.setFont(font_name, font_size)
                     c.setFillColor(colors.grey)
-                    c.drawRightString(x_right, line_y, value)
+                    # Draw quantity first (slightly to the left)
+                    quantity_x = x_right - 100
+                    c.drawRightString(quantity_x, line_y, quantity_str)
+                    # Draw line total at the right edge
+                    c.drawRightString(x_right, line_y, line_total_str)
                     
                     # Move y down by the total height of this item (all lines)
                     y -= len(wrapped_lines) * 16 + (len(wrapped_lines) - 1) * 2

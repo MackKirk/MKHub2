@@ -25,7 +25,8 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
   const { data:me } = useQuery({ queryKey:['me'], queryFn: ()=>api<any>('GET','/auth/me') });
 
   // form state
-  const [templateStyle, setTemplateStyle] = useState<string>('Mack Kirk');
+  // Template style is always 'Mack Kirk Metals' for quotations
+  const templateStyle = 'Mack Kirk Metals';
   const [coverTitle, setCoverTitle] = useState<string>('Quotation');
   const [orderNumber, setOrderNumber] = useState<string>('');
   const [date, setDate] = useState<string>(getTodayLocal());
@@ -252,7 +253,7 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
     if (!initial || !initial.id) return;
     const d = initial?.data || {};
     setCoverTitle(String(d.cover_title || initial.title || 'Quotation'));
-    setTemplateStyle(String(d.template_style || 'Mack Kirk'));
+    // Template style is always 'Mack Kirk Metals' for quotations
     const savedOrderNumber = String(initial.order_number || d.order_number || initial.code || '');
     setOrderNumber(savedOrderNumber);
     setDate(String(d.date||'').slice(0,10) || getTodayLocal());
@@ -824,6 +825,12 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
 
   const handleGenerate = async()=>{
     try{
+      // Validate required images
+      if (!coverFoId && !coverBlob) {
+        toast.error('Cannot generate PDF: Front Cover Image is required');
+        return;
+      }
+      
       setIsGenerating(true);
       // cleanup previous
       try{ if (downloadUrl) { URL.revokeObjectURL(downloadUrl); setDownloadUrl(''); } }catch(_e){}
@@ -964,22 +971,10 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
           <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] p-3 text-white font-semibold">
             General Information
           </div>
-          <div className="p-4">
-            <div className="grid md:grid-cols-2 gap-4">
-              {/* Card 1 */}
+          <div className="p-3 sm:p-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Card 1 - Left side: Document info, Contact, and Other Notes */}
               <div className="space-y-2 text-sm">
-                <div>
-                  <label className="text-sm text-gray-600">Template Style</label>
-                  <select 
-                    className={`w-full border rounded px-3 py-2 ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`}
-                    value={templateStyle}
-                    onChange={e=>setTemplateStyle(e.target.value)}
-                    disabled={disabled}
-                  >
-                    <option value="Mack Kirk">Mack Kirk</option>
-                    <option value="Mack Kirk Metals">Mack Kirk Metals</option>
-                  </select>
-                </div>
                 <div>
                   <label className="text-sm text-gray-600">Document Type (Shown on cover page)</label>
                   <input className={`w-full border rounded px-3 py-2 ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} value={coverTitle} onChange={e=>setCoverTitle(e.target.value)} maxLength={44} aria-label="Document Type" disabled={disabled} readOnly={disabled} />
@@ -993,10 +988,7 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
                   <label className="text-sm text-gray-600">Date</label>
                   <input type="date" className={`w-full border rounded px-3 py-2 ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} value={date} onChange={e=>setDate(e.target.value)} disabled={disabled} readOnly={disabled} />
                 </div>
-              </div>
-              {/* Card 2 */}
-              <div className="space-y-2 text-sm">
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                   <div>
                     <label className="text-sm text-gray-600">Primary Contact Name</label>
                     <select 
@@ -1051,14 +1043,15 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
                   <textarea className={`w-full border rounded px-3 py-2 ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} value={otherNotes} onChange={e=>setOtherNotes(e.target.value)} maxLength={250} disabled={disabled} readOnly={disabled} />
                   <div className="mt-1 text-[11px] text-gray-500">{otherNotes.length}/250 characters</div>
                 </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <div className="mb-1 text-sm text-gray-600">Front Cover Image</div>
-                    {!disabled && (
-                      <button className="px-3 py-1.5 rounded bg-gray-100" onClick={()=>{ if (!disabled) setPickerFor('cover'); }}>Choose</button>
-                    )}
-                    {coverPreview && <div className="mt-2"><img src={coverPreview} className="w-full rounded border" style={{ aspectRatio: '566/537', objectFit: 'contain' }} /></div>}
-                  </div>
+              </div>
+              {/* Card 2 - Right side: Front Cover Image only */}
+              <div className="space-y-2 text-sm">
+                <div className="max-w-[50%]">
+                  <div className="mb-1 text-sm text-gray-600">Front Cover Image</div>
+                  {!disabled && (
+                    <button className="px-3 py-1.5 rounded bg-gray-100" onClick={()=>{ if (!disabled) setPickerFor('cover'); }}>Choose</button>
+                  )}
+                  {coverPreview && <div className="mt-2"><img src={coverPreview} className="w-full rounded border" style={{ aspectRatio: '566/537', objectFit: 'contain' }} /></div>}
                 </div>
               </div>
             </div>
@@ -1070,7 +1063,7 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
           <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] p-3 text-white font-semibold">
             Sections
           </div>
-          <div className="p-4">
+          <div className="p-3 sm:p-4">
           <div className="space-y-3">
             {sections.map((s:any, idx:number)=> (
               <div key={s.id||idx}
@@ -1285,8 +1278,8 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
                   const lineTotal = priceNum * qtyNum;
                   
                   return (
-                    <div key={i} className="grid grid-cols-12 gap-2 items-center">
-                      <div className="col-span-6 flex items-center gap-2 relative">
+                    <div key={i} className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-center">
+                      <div className="col-span-1 sm:col-span-6 flex items-center gap-2 relative">
                         <input 
                           className={`w-full border rounded px-3 py-2 ${disabled || c.productId ? 'bg-gray-50 cursor-not-allowed' : ''}`} 
                           placeholder="Name" 
@@ -1311,13 +1304,13 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
                           </button>
                         )}
                       </div>
-                      <input type="text" className={`col-span-1 border rounded px-3 py-2 ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} placeholder="Price" value={c.price} onChange={e=>{ const v = parseAccounting(e.target.value); setPricingItems(arr=> arr.map((x,j)=> j===i? { ...x, price:v }: x)); }} onBlur={!disabled ? ()=> setPricingItems(arr=> arr.map((x,j)=> j===i? { ...x, price: formatAccounting(x.price) }: x)) : undefined} disabled={disabled} readOnly={disabled} />
-                      <div className="col-span-1 flex items-center border rounded overflow-hidden">
+                      <input type="text" className={`col-span-1 sm:col-span-1 border rounded px-2 sm:px-3 py-2 text-sm ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} placeholder="Price" value={c.price} onChange={e=>{ const v = parseAccounting(e.target.value); setPricingItems(arr=> arr.map((x,j)=> j===i? { ...x, price:v }: x)); }} onBlur={!disabled ? ()=> setPricingItems(arr=> arr.map((x,j)=> j===i? { ...x, price: formatAccounting(x.price) }: x)) : undefined} disabled={disabled} readOnly={disabled} />
+                      <div className="col-span-1 sm:col-span-1 flex items-center border rounded overflow-hidden">
                         <input 
                           type="number" 
                           min="1"
                           step="1"
-                          className={`flex-1 min-w-0 border-0 rounded-none px-3 py-2 appearance-none [-moz-appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} 
+                          className={`flex-1 min-w-0 border-0 rounded-none px-2 sm:px-3 py-2 text-sm appearance-none [-moz-appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} 
                           placeholder="Qty" 
                           value={c.quantity || '1'} 
                           onChange={e=>{ 
@@ -1359,14 +1352,14 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
                           </div>
                         )}
                       </div>
-                      <div className={`col-span-1 border rounded px-3 py-2 bg-gray-50 ${disabled ? 'cursor-not-allowed' : ''}`}>
-                        <div className="text-sm font-medium text-gray-700 text-right">
+                      <div className={`col-span-1 sm:col-span-1 border rounded px-2 sm:px-3 py-2 bg-gray-50 ${disabled ? 'cursor-not-allowed' : ''}`}>
+                        <div className="text-xs sm:text-sm font-medium text-gray-700 text-right">
                           ${formatAccounting(lineTotal)}
                         </div>
                       </div>
-                      <div className="col-span-2 flex items-center gap-3">
-                        <span className="text-sm text-gray-600 whitespace-nowrap">Apply for this item:</span>
-                        <label className={`flex items-center gap-1 text-sm ${disabled ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
+                      <div className="col-span-1 sm:col-span-2 flex items-center gap-2 sm:gap-3 flex-wrap">
+                        <span className="text-xs sm:text-sm text-gray-600 whitespace-nowrap">Apply for this item:</span>
+                        <label className={`flex items-center gap-1 text-xs sm:text-sm ${disabled ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
                           <input 
                             type="checkbox" 
                             checked={c.pst === true}
@@ -1376,7 +1369,7 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
                           />
                           <span className="text-gray-700">PST</span>
                         </label>
-                        <label className={`flex items-center gap-1 text-sm ${disabled ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
+                        <label className={`flex items-center gap-1 text-xs sm:text-sm ${disabled ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
                           <input 
                             type="checkbox" 
                             checked={c.gst === true}
@@ -1388,7 +1381,7 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
                         </label>
                       </div>
                       {!disabled && (
-                        <button className="col-span-1 px-2 py-2 rounded bg-gray-100 text-sm" onClick={()=> setPricingItems(arr=> arr.filter((_,j)=> j!==i))}>Remove</button>
+                        <button className="col-span-1 sm:col-span-1 px-2 py-2 rounded bg-gray-100 text-xs sm:text-sm whitespace-nowrap" onClick={()=> setPricingItems(arr=> arr.filter((_,j)=> j!==i))}>Remove</button>
                       )}
                     </div>
                   );
@@ -1479,15 +1472,15 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
           <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] p-3 text-white font-semibold">
             Optional Services
           </div>
-          <div className="p-4">
+          <div className="p-3 sm:p-4">
           <div className="text-[12px] text-gray-600 mb-2">If no services are added, the "Optional Services" section will be hidden in the PDF.</div>
             <div className="space-y-2">
               {optionalServices.map((s, i)=> (
-                <div key={i} className="grid grid-cols-5 gap-2">
-                  <input className={`col-span-3 border rounded px-3 py-2 ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} placeholder="Service" value={s.service} onChange={e=>{ const v=e.target.value; setOptionalServices(arr=> arr.map((x,j)=> j===i? { ...x, service:v }: x)); }} disabled={disabled} readOnly={disabled} />
-                  <input type="text" className={`col-span-1 border rounded px-3 py-2 ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} placeholder="Price" value={s.price} onChange={e=>{ const v = parseAccounting(e.target.value); setOptionalServices(arr=> arr.map((x,j)=> j===i? { ...x, price:v }: x)); }} onBlur={!disabled ? ()=> setOptionalServices(arr=> arr.map((x,j)=> j===i? { ...x, price: formatAccounting(x.price) }: x)) : undefined} disabled={disabled} readOnly={disabled} />
+                <div key={i} className="grid grid-cols-1 sm:grid-cols-5 gap-2">
+                  <input className={`col-span-1 sm:col-span-3 border rounded px-3 py-2 ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} placeholder="Service" value={s.service} onChange={e=>{ const v=e.target.value; setOptionalServices(arr=> arr.map((x,j)=> j===i? { ...x, service:v }: x)); }} disabled={disabled} readOnly={disabled} />
+                  <input type="text" className={`col-span-1 sm:col-span-1 border rounded px-3 py-2 ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} placeholder="Price" value={s.price} onChange={e=>{ const v = parseAccounting(e.target.value); setOptionalServices(arr=> arr.map((x,j)=> j===i? { ...x, price:v }: x)); }} onBlur={!disabled ? ()=> setOptionalServices(arr=> arr.map((x,j)=> j===i? { ...x, price: formatAccounting(x.price) }: x)) : undefined} disabled={disabled} readOnly={disabled} />
                   {!disabled && (
-                    <button className="col-span-1 px-2 py-2 rounded bg-gray-100" onClick={()=> setOptionalServices(arr=> arr.filter((_,j)=> j!==i))}>Remove</button>
+                    <button className="col-span-1 sm:col-span-1 px-2 py-2 rounded bg-gray-100" onClick={()=> setOptionalServices(arr=> arr.filter((_,j)=> j!==i))}>Remove</button>
                   )}
                 </div>
               ))}
@@ -1503,7 +1496,7 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
           <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] p-3 text-white font-semibold">
             Terms
           </div>
-          <div className="p-4">
+          <div className="p-3 sm:p-4">
             <textarea 
               className={`w-full border rounded px-3 py-2 ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} 
               value={terms} 
@@ -1717,7 +1710,7 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
                 ×
               </button>
             </div>
-            <div className="p-4 grid md:grid-cols-5 gap-3 items-start">
+            <div className="p-4 grid grid-cols-1 md:grid-cols-5 gap-3 items-start">
               <div className="md:col-span-2">
                 <div className="text-[11px] uppercase text-gray-500 mb-1">Contact Photo</div>
                 <button 
@@ -1730,7 +1723,7 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
                   Select Photo
                 </button>
               </div>
-              <div className="md:col-span-3 grid grid-cols-2 gap-2">
+              <div className="md:col-span-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <div className="col-span-2">
                   <label className="text-xs text-gray-600">
                     Name <span className="text-red-600">*</span>
@@ -2307,7 +2300,7 @@ function NewProductModalForQuote({ open, onClose, onProductCreated, initialSuppl
 
   return (
     <>
-      <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
+      <div className="fixed inset-0 z-[80] bg-black/60 flex items-center justify-center p-4">
         <div className="w-[800px] max-w-[95vw] bg-white rounded-xl overflow-hidden max-h-[90vh] flex flex-col">
           <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] p-6 flex items-center gap-6 relative flex-shrink-0">
             <div className="font-semibold text-lg text-white">New Product</div>
@@ -2320,7 +2313,7 @@ function NewProductModalForQuote({ open, onClose, onProductCreated, initialSuppl
             </button>
           </div>
           <div className="p-6 overflow-y-auto flex-1">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="col-span-2">
                 <label className="text-xs font-semibold text-gray-700">
                   Name <span className="text-red-600">*</span>
@@ -2593,15 +2586,15 @@ function SupplierProductModalForQuote({ open, onClose, onSelect }: { open: boole
 
   return (
     <>
-      <div className="fixed inset-0 z-[60] bg-black/60 flex items-center justify-center p-4">
+      <div className="fixed inset-0 z-[60] bg-black/60 flex items-center justify-center p-2 sm:p-4">
       <div className="w-[1000px] max-w-[95vw] bg-white rounded-xl overflow-hidden max-h-[90vh] flex flex-col">
-        <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] p-6 flex items-center gap-6 relative flex-shrink-0">
-          <div className="font-semibold text-lg text-white">Browse Products by Supplier</div>
+        <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] p-4 sm:p-6 flex items-center gap-4 sm:gap-6 relative flex-shrink-0">
+          <div className="font-semibold text-base sm:text-lg text-white">Browse Products by Supplier</div>
           <button onClick={onClose} className="ml-auto text-white hover:text-gray-200 text-2xl font-bold w-8 h-8 flex items-center justify-center rounded hover:bg-white/20" title="Close">×</button>
         </div>
-        <div className="flex flex-1 overflow-hidden">
+        <div className="flex flex-col sm:flex-row flex-1 overflow-hidden">
           {/* Left: Suppliers List */}
-          <div className="w-64 border-r overflow-y-auto bg-gray-50">
+          <div className="w-full sm:w-64 border-r sm:border-r border-b sm:border-b-0 overflow-y-auto bg-gray-50 flex-shrink-0 sm:flex-shrink">
             <div className="p-4">
               <div className="font-semibold mb-3 text-sm text-gray-700">Suppliers</div>
               <div className="space-y-2">
@@ -2622,7 +2615,7 @@ function SupplierProductModalForQuote({ open, onClose, onSelect }: { open: boole
           </div>
           
           {/* Right: Products Grid */}
-          <div className="flex-1 overflow-y-auto p-4">
+          <div className="flex-1 overflow-y-auto p-3 sm:p-4">
             {!selectedSupplier ? (
               <div className="flex items-center justify-center h-full text-gray-500">
                 Select a supplier to view products
@@ -2634,7 +2627,7 @@ function SupplierProductModalForQuote({ open, onClose, onSelect }: { open: boole
                 </div>
                 {products && products.length > 0 ? (
                   <>
-                    <div className="grid grid-cols-4 gap-3">
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
                       {/* New Product Card - First position */}
                       <button
                         onClick={() => setNewProductModalOpen(true)}

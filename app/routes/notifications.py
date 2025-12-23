@@ -135,20 +135,23 @@ def list_notifications(
                         message += f" from {start_time} to {end_time}"
                     
                     notif_type = "shift"
-                    link = f"/projects/{project_id}?tab=dispatch" if project_id else None
+                    link = "/schedule" if project_id else None
                     
                 elif shift_type == "updated":
                     title = "Shift Updated"
                     message = "Your shift has been updated"
                     notif_type = "shift"
+                    link = "/schedule" if project_id else None
                 elif shift_type == "cancelled":
                     title = "Shift Cancelled"
                     message = "Your shift has been cancelled"
                     notif_type = "shift"
+                    link = "/schedule" if project_id else None
                 else:
                     title = "Shift Notification"
                     message = "You have a shift notification"
                     notif_type = "shift"
+                    link = "/schedule" if project_id else None
                     
             elif notif.template_key.startswith("attendance_"):
                 attendance_type = payload.get("type", notif.template_key.replace("attendance_", ""))
