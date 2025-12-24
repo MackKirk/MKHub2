@@ -513,9 +513,7 @@ export default function AppShell({ children }: PropsWithChildren){
 
   return (
     <div className="min-h-screen flex">
-      <aside className={`${sidebarCollapsed ? 'w-16' : 'w-64'} text-white bg-gradient-to-b from-gray-800/95 via-gray-800 to-gray-900 transition-all duration-300 flex flex-col relative`} style={{
-        position: 'relative'
-      }}>
+      <aside className={`${sidebarCollapsed ? 'w-16' : 'w-64'} text-white bg-gradient-to-b from-gray-800/95 via-gray-800 to-gray-900 transition-all duration-300 flex flex-col fixed left-0 top-0 h-screen z-40`}>
         {/* Subtle abstract pattern overlay */}
         <div 
           className="absolute inset-0 pointer-events-none opacity-[0.03] z-0"
@@ -832,7 +830,7 @@ export default function AppShell({ children }: PropsWithChildren){
           })}
         </nav>
       </aside>
-      <main className="flex-1 min-w-0">
+      <main className={`flex-1 min-w-0 transition-all duration-300 ${sidebarCollapsed ? 'ml-16' : 'ml-64'}`} style={{ height: '100vh', overflowY: 'auto' }}>
         <div className="h-14 border-b border-gray-700/40 shadow-sm text-white flex items-center justify-between px-6 bg-gradient-to-r from-gray-700 via-gray-700 to-gray-800">
           <div className="relative w-80">
             <div className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none z-10">
@@ -863,7 +861,7 @@ export default function AppShell({ children }: PropsWithChildren){
             </div>
           </div>
         </div>
-        <div className="p-5">{children}</div>
+        <div className="p-5 min-h-full">{children}</div>
       </main>
       <InstallPrompt />
     </div>
