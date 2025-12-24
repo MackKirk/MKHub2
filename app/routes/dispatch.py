@@ -1881,8 +1881,11 @@ def create_direct_attendance(
         clock_in_attendance = None
         if attendance_type == "out":
             # Find attendance records with clock-in but no clock-out, matching job_type
-            date_start = datetime.combine(attendance_date, time.min).replace(tzinfo=timezone.utc)
-            date_end = datetime.combine(attendance_date + timedelta(days=1), time.min).replace(tzinfo=timezone.utc)
+            # IMPORTANT: attendance_date is local (settings.tz_default), but stored times are UTC.
+            # Build the UTC window that corresponds to this local date.
+            from ..services.time_rules import local_to_utc
+            date_start = local_to_utc(datetime.combine(attendance_date, time.min), settings.tz_default)
+            date_end = local_to_utc(datetime.combine(attendance_date + timedelta(days=1), time.min), settings.tz_default)
             
             open_attendances = db.query(Attendance).filter(
                 Attendance.shift_id.is_(None),  # No shift - direct attendance
@@ -2126,10 +2129,12 @@ def get_direct_attendances_for_date(
     except:
         raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
     
-    # Get all direct attendances (no shift) for this date
-    # NEW MODEL: Query by clock_in_time or clock_out_time
-    date_start = datetime.combine(attendance_date, time.min).replace(tzinfo=timezone.utc)
-    date_end = datetime.combine(attendance_date + timedelta(days=1), time.min).replace(tzinfo=timezone.utc)
+    # Get all direct attendances (no shift) for this date.
+    # IMPORTANT: `date` is a LOCAL date (settings.tz_default), but stored times are UTC.
+    # Build the UTC window that corresponds to the local date.
+    from ..services.time_rules import local_to_utc
+    date_start = local_to_utc(datetime.combine(attendance_date, time.min), settings.tz_default)
+    date_end = local_to_utc(datetime.combine(attendance_date + timedelta(days=1), time.min), settings.tz_default)
     
     attendances = db.query(Attendance).filter(
         Attendance.shift_id.is_(None),  # No shift - direct attendance

@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { useSearchParams, useNavigate, useLocation } from 'react-router-dom';
 import { api } from '@/lib/api';
@@ -19,21 +19,29 @@ function formatTime12h(timeStr: string | null | undefined): string {
   return `${hours12}:${minutes} ${period}`;
 }
 
-// Helper to format date to Portuguese day name
+// Helper to format day name in English (Mon, Tue, ...)
 function formatDayName(dateStr: string): string {
-  const days = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sab'];
   const date = new Date(dateStr + 'T00:00:00');
-  const dayIndex = date.getDay();
-  return days[dayIndex] || dateStr;
+  return date.toLocaleDateString('en-US', { weekday: 'short' });
 }
 
-// Helper to format date as "day, month dd"
+// Helper to format date as "Mon dd" (e.g., "Dec 23")
 function formatDate(dateStr: string): string {
   const date = new Date(dateStr + 'T00:00:00');
-  const months = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
-  const month = months[date.getMonth()];
-  const day = date.getDate();
-  return `${month} ${day}`;
+  return date.toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+  });
+}
+
+// Helper to format date with year as "month dd, yyyy"
+function formatDateWithYear(dateStr: string): string {
+  const date = new Date(dateStr + 'T00:00:00');
+  return date.toLocaleDateString('en-US', {
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric',
+  });
 }
 
 type Shift = {
@@ -112,7 +120,21 @@ export default function ClockInOut() {
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const location = useLocation();
+  const dateInputRef = useRef<HTMLInputElement>(null);
   const fromHome = location.state?.fromHome === true;
+
+  const openDatePicker = () => {
+    const el = dateInputRef.current;
+    if (!el) return;
+    const anyEl = el as any;
+    // Chrome/Edge support showPicker(); fallback to focus+click for others
+    if (typeof anyEl.showPicker === 'function') {
+      anyEl.showPicker();
+      return;
+    }
+    el.focus();
+    el.click();
+  };
   
   // Get query params for auto-opening modal from Schedule page
   const shiftIdFromUrl = searchParams.get('shift_id');
@@ -1376,18 +1398,55 @@ export default function ClockInOut() {
         <div className="space-y-4">
           {/* CARD 1 — Clock Actions (Action-Focused) */}
           <div className="rounded-[12px] border border-gray-200/60 bg-white shadow-sm p-5 space-y-4">
-            <h3 className="text-base font-semibold text-gray-900 tracking-tight">Clock Actions</h3>
-            
-            {/* Date selector */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Date *</label>
-              <input
-                type="date"
-                value={selectedDate}
-                onChange={(e) => setSelectedDate(e.target.value)}
-                className="w-full border border-gray-200/60 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-brand-red/40 focus:border-brand-red/60 transition-colors"
-                required
-              />
+            <div className="flex items-center justify-between gap-3">
+              <h3 className="text-base font-semibold text-gray-900 tracking-tight">Clock Actions</h3>
+
+              {/* Date selector (compact, right-aligned) */}
+              <div className="relative">
+                <label htmlFor="clock-actions-date" className="sr-only">Date</label>
+                <div
+                  className="relative w-[220px] max-w-[60vw] rounded-lg border border-gray-200/60 bg-white px-3 py-2 shadow-sm hover:shadow-md hover:border-gray-300 transition-all duration-200 cursor-pointer"
+                  onClick={openDatePicker}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      openDatePicker();
+                    }
+                  }}
+                  aria-label="Select date"
+                >
+                  <div className="flex items-center gap-2">
+                    <div className="w-7 h-7 rounded-md bg-gray-100 flex items-center justify-center flex-shrink-0">
+                      <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                      </svg>
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="text-[14px] font-semibold text-gray-500 uppercase tracking-wide leading-tight">
+                        {selectedDate === todayStr ? 'Today' : formatDayName(selectedDate)}
+                      </div>
+                      <div className="text-sm font-semibold text-gray-900 leading-tight truncate">
+                        {formatDateWithYear(selectedDate)}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Transparent native input kept in the DOM to allow the picker to open */}
+                  <input
+                    ref={dateInputRef}
+                    id="clock-actions-date"
+                    type="date"
+                    value={selectedDate}
+                    onChange={(e) => setSelectedDate(e.target.value)}
+                    className="absolute inset-0 opacity-0 cursor-pointer"
+                    aria-hidden="true"
+                    tabIndex={-1}
+                    required
+                  />
+                </div>
+              </div>
             </div>
             
             <div className="space-y-3">
@@ -1873,7 +1932,7 @@ export default function ClockInOut() {
                                   className="text-yellow-600"
                                   title={
                                     day.shift_deleted_by
-                                      ? `The shift related to this attendance was deleted by ${day.shift_deleted_by}${day.shift_deleted_at ? ` on ${new Date(day.shift_deleted_at).toLocaleDateString()}` : ''}`
+                                      ? `The shift related to this attendance was deleted by ${day.shift_deleted_by}${day.shift_deleted_at ? ` on ${new Date(day.shift_deleted_at).toLocaleDateString('en-US')}` : ''}`
                                       : 'The shift related to this attendance was deleted'
                                   }
                                 >

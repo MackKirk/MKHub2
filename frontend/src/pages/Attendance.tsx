@@ -1072,11 +1072,13 @@ export default function Attendance() {
                     {event.is_hours_worked ? '-' : (event.clock_out_time ? formatDateTime(event.clock_out_time) : '--')}
                   </td>
                   <td className="p-3">
-                    {event.job_name ||
-                      event.project_name ||
-                      (event.job_type
-                        ? jobOptions.find((j) => j.id === event.job_type)?.name || 'Unknown'
-                        : 'No Project')}
+                    {event.shift_id
+                      ? (event.project_name || event.job_name || 'No Project')
+                      : (event.job_name ||
+                         event.project_name ||
+                         (event.job_type
+                           ? jobOptions.find((j) => j.id === event.job_type)?.name || 'Unknown'
+                           : 'No Project'))}
                   </td>
                   <td className="p-3">{formatHours(event.hours_worked)}</td>
                   <td className="p-3">{formatBreak(event.break_minutes)}</td>
