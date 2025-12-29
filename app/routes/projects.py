@@ -6,7 +6,7 @@ from typing import List, Optional
 import uuid
 
 from ..db import get_db
-from ..models.models import Project, ClientFile, FileObject, ProjectUpdate, ProjectReport, ProjectEvent, ProjectTimeEntry, ProjectTimeEntryLog, User, EmployeeProfile, Client, ClientSite, ClientFolder, ClientContact, SettingList, SettingItem, Shift, AuditLog
+from ..models.models import Project, ClientFile, FileObject, Proposal, ProjectUpdate, ProjectReport, ProjectEvent, ProjectTimeEntry, ProjectTimeEntryLog, User, EmployeeProfile, Client, ClientSite, ClientFolder, ClientContact, SettingList, SettingItem, Shift, AuditLog
 from datetime import datetime, timezone, time, timedelta
 from ..auth.security import get_current_user, require_permissions, can_approve_timesheet
 from sqlalchemy import or_, and_, cast, String, Date
@@ -62,6 +62,23 @@ def create_project(payload: dict, db: Session = Depends(get_db)):
         code = f"MK-{seq:05d}/{client_code}-{year}"
     
     payload["code"] = code
+    
+    # If this is an opportunity (is_bidding=True), always set status to "Prospecting"
+    if payload.get("is_bidding", False):
+        status_list = db.query(SettingList).filter(SettingList.name == "project_statuses").first()
+        if status_list:
+            prospecting_status = db.query(SettingItem).filter(
+                SettingItem.list_id == status_list.id,
+                SettingItem.label == "Prospecting"
+            ).first()
+            if prospecting_status:
+                payload["status_id"] = prospecting_status.id
+                payload["status_label"] = "Prospecting"
+                payload["status_changed_at"] = datetime.now(timezone.utc)
+    
+    # If status_label is provided in payload, also set status_changed_at
+    if payload.get("status_label") and not payload.get("status_changed_at"):
+        payload["status_changed_at"] = datetime.now(timezone.utc)
     
     # If site_id is provided, copy lat/lng from site to project for geofencing
     if payload.get("site_id"):
@@ -151,6 +168,7 @@ def list_projects(client: Optional[str] = None, site: Optional[str] = None, stat
             "date_end": p.date_end.isoformat() if getattr(p, 'date_end', None) else None,
             "progress": getattr(p, 'progress', None),
             "status_label": getattr(p, 'status_label', None),
+            "status_changed_at": getattr(p, 'status_changed_at', None).isoformat() if getattr(p, 'status_changed_at', None) else None,
             "division_ids": getattr(p, 'division_ids', None),  # Legacy
             "project_division_ids": getattr(p, 'project_division_ids', None),
             "is_bidding": getattr(p, 'is_bidding', False),
@@ -203,6 +221,7 @@ def get_project(project_id: str, db: Session = Depends(get_db)):
         "status_id": getattr(p, 'status_id', None),
         "division_id": getattr(p, 'division_id', None),
         "status_label": getattr(p, 'status_label', None),
+        "status_changed_at": getattr(p, 'status_changed_at', None).isoformat() if getattr(p, 'status_changed_at', None) else None,
         "division_ids": getattr(p, 'division_ids', None),  # Legacy
         "project_division_ids": getattr(p, 'project_division_ids', None),
         "site_id": str(getattr(p,'site_id', None)) if getattr(p,'site_id', None) else None,
@@ -230,6 +249,8 @@ def get_project(project_id: str, db: Session = Depends(get_db)):
         "lng": float(p.lng) if getattr(p, 'lng', None) is not None else None,
         "timezone": getattr(p, 'timezone', None),
         "is_bidding": getattr(p, 'is_bidding', False),
+        "image_file_object_id": str(getattr(p, 'image_file_object_id', None)) if getattr(p, 'image_file_object_id', None) else None,
+        "image_manually_set": getattr(p, 'image_manually_set', False),
         "created_at": p.created_at.isoformat() if getattr(p, 'created_at', None) else None,
     }
 
@@ -246,6 +267,10 @@ def update_project(project_id: str, payload: dict, db: Session = Depends(get_db)
     # Check if status_label is being updated
     old_status_label = getattr(p, 'status_label', None)
     new_status_label = payload.get("status_label")
+    
+    # If status is changing, update status_changed_at timestamp
+    if new_status_label and new_status_label != old_status_label:
+        payload["status_changed_at"] = datetime.now(timezone.utc)
     
     # If status is changing, check if we need to update dates
     if new_status_label and new_status_label != old_status_label:
@@ -301,6 +326,16 @@ def update_project(project_id: str, payload: dict, db: Session = Depends(get_db)
     old_name = getattr(p, 'name', None)
     new_name = payload.get('name')
     name_changed = new_name is not None and new_name != old_name
+    
+    # Handle image_file_object_id update: if user is setting it manually, mark as manually set
+    if 'image_file_object_id' in payload:
+        # If user is explicitly setting the image, mark it as manually set
+        # This prevents auto-updates from proposals
+        if payload.get('image_file_object_id') is not None:
+            payload['image_manually_set'] = True
+        else:
+            # If clearing the image, also clear the manually_set flag
+            payload['image_manually_set'] = False
     
     # Update project
     for k, v in payload.items():
@@ -1641,6 +1676,18 @@ def convert_to_project(project_id: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Not found")
     if not getattr(p, 'is_bidding', False):
         raise HTTPException(status_code=400, detail="This is already a project, not a bidding")
+    
+    # Set status to "In Progress" when converting to project
+    status_list = db.query(SettingList).filter(SettingList.name == "project_statuses").first()
+    if status_list:
+        in_progress_status = db.query(SettingItem).filter(
+            SettingItem.list_id == status_list.id,
+            SettingItem.label == "In Progress"
+        ).first()
+        if in_progress_status:
+            p.status_id = in_progress_status.id
+            p.status_label = "In Progress"
+    
     p.is_bidding = False
     db.commit()
     return {"status": "ok", "id": str(p.id)}
@@ -1902,9 +1949,90 @@ def business_opportunities(
         )
     
     projects = query.order_by(Project.created_at.desc()).limit(limit).all()
-    
-    return [
-        {
+
+    # Build cover_image_url for cards (same source priority as General Information)
+    project_ids = [p.id for p in projects]
+    client_ids = list(set([p.client_id for p in projects if getattr(p, 'client_id', None)]))
+
+    legacy_categories = {
+        "project-cover-derived",
+        "project-cover",
+        "cover",
+        "hero-cover",
+        "opportunity-cover-derived",
+        "opportunity-cover",
+    }
+
+    cover_images: dict[str, ClientFile] = {}
+    if project_ids and client_ids:
+        cover_files = db.query(ClientFile).filter(ClientFile.client_id.in_(client_ids)).order_by(ClientFile.uploaded_at.desc()).all()
+        file_object_ids = [cf.file_object_id for cf in cover_files]
+        file_objects: dict[str, FileObject] = {}
+        if file_object_ids:
+            fos = db.query(FileObject).filter(FileObject.id.in_(file_object_ids)).all()
+            for fo in fos:
+                file_objects[str(fo.id)] = fo
+
+        project_id_set = set([str(pid) for pid in project_ids])
+        for cf in cover_files:
+            fo = file_objects.get(str(cf.file_object_id))
+            if not fo or not getattr(fo, "project_id", None):
+                continue
+            pid = str(fo.project_id)
+            if pid not in project_id_set:
+                continue
+            ct = getattr(fo, "content_type", None) or ""
+            if not ct.startswith("image/"):
+                continue
+            cat = (cf.category or "").lower().strip()
+            # Only accept explicit legacy cover categories (do NOT fall back to any image)
+            if cat not in legacy_categories:
+                continue
+            if pid not in cover_images:
+                cover_images[pid] = cf
+            elif cat == "project-cover-derived":
+                # Strong preference
+                cover_images[pid] = cf
+
+    # Latest proposal cover per project (batch)
+    proposal_cover_by_project: dict[str, str] = {}
+    if project_ids:
+        rows = db.query(Proposal).filter(Proposal.project_id.in_(project_ids)).order_by(Proposal.created_at.desc()).all()
+        for r in rows:
+            pid = str(getattr(r, "project_id", None) or "")
+            if not pid or pid in proposal_cover_by_project:
+                continue
+            data = getattr(r, "data", None) or {}
+            if isinstance(data, dict):
+                foid = data.get("cover_file_object_id")
+                if foid:
+                    proposal_cover_by_project[pid] = str(foid)
+
+    out = []
+    for p in projects:
+        pid = str(p.id)
+        cover_url = None
+
+        # 1) Manual new field
+        if getattr(p, "image_manually_set", False) and getattr(p, "image_file_object_id", None):
+            cover_url = f"/files/{str(p.image_file_object_id)}/thumbnail?w=400"
+        # 2) Legacy manual cover from files
+        if not cover_url and pid in cover_images:
+            cf = cover_images[pid]
+            ts = cf.uploaded_at.isoformat() if getattr(cf, "uploaded_at", None) else None
+            tparam = f"&t={ts}" if ts else ""
+            cover_url = f"/files/{str(cf.file_object_id)}/thumbnail?w=400{tparam}"
+        # 3) Synced image field (proposal auto or other)
+        if not cover_url and getattr(p, "image_file_object_id", None):
+            cover_url = f"/files/{str(p.image_file_object_id)}/thumbnail?w=400"
+        # 4) Latest proposal cover (if not synced yet)
+        if not cover_url and pid in proposal_cover_by_project:
+            cover_url = f"/files/{proposal_cover_by_project[pid]}/thumbnail?w=400"
+        # 5) Default blueprint
+        if not cover_url:
+            cover_url = "/ui/assets/placeholders/project.png"
+
+        out.append({
             "id": str(p.id),
             "code": p.code,
             "name": p.name,
@@ -1919,9 +2047,10 @@ def business_opportunities(
             "project_division_ids": getattr(p, 'project_division_ids', None),
             "cost_estimated": getattr(p, 'cost_estimated', None),
             "is_bidding": True,
-        }
-        for p in projects
-    ]
+            "cover_image_url": cover_url,
+        })
+
+    return out
 
 
 @router.get("/business/projects")
@@ -2138,7 +2267,7 @@ def business_projects(
     project_ids = [p.id for p in projects[:limit]]
     client_ids = list(set([p.client_id for p in projects[:limit] if getattr(p, 'client_id', None)]))
     
-    # Fetch project cover images in one query
+    # Fetch legacy cover images in one query (ONLY explicit cover categories; do NOT fall back to any image)
     cover_images = {}
     if project_ids and client_ids:
         from ..models.models import ClientFile, FileObject
@@ -2155,7 +2284,16 @@ def business_projects(
             for fo in fos:
                 file_objects[str(fo.id)] = fo
         
-        # Build map: project_id -> cover file
+        legacy_categories = {
+            'project-cover-derived',
+            'project-cover',
+            'cover',
+            'hero-cover',
+            'opportunity-cover-derived',
+            'opportunity-cover',
+        }
+
+        # Build map: project_id -> legacy cover file (by category only)
         for cf in cover_files:
             fo = file_objects.get(str(cf.file_object_id))
             if not fo or not getattr(fo, 'project_id', None):
@@ -2165,18 +2303,18 @@ def business_projects(
             if project_id_str not in [str(pid) for pid in project_ids]:
                 continue
             
-            # Prefer project-cover-derived, otherwise any image
-            category_lower = (cf.category or '').lower()
-            is_image = False
+            category_lower = (cf.category or '').lower().strip()
             ct = getattr(fo, 'content_type', None) or ''
-            if ct.startswith('image/'):
-                is_image = True
-            
+            if not ct.startswith('image/'):
+                continue
+
+            # Only accept explicit legacy cover categories.
+            if category_lower not in legacy_categories:
+                continue
+
+            # Prefer project-cover-derived over others if multiple exist
             if project_id_str not in cover_images:
-                if category_lower == 'project-cover-derived':
-                    cover_images[project_id_str] = (cf, fo)
-                elif is_image:
-                    cover_images[project_id_str] = (cf, fo)
+                cover_images[project_id_str] = (cf, fo)
             elif category_lower == 'project-cover-derived':
                 cover_images[project_id_str] = (cf, fo)
     
@@ -2192,6 +2330,20 @@ def business_projects(
                 "display_name": client.display_name,
             }
     
+    # Latest proposal cover per project (batch) - used if cover isn't already present
+    proposal_cover_by_project: dict[str, str] = {}
+    if project_ids:
+        rows = db.query(Proposal).filter(Proposal.project_id.in_(project_ids)).order_by(Proposal.created_at.desc()).all()
+        for r in rows:
+            pid = str(getattr(r, "project_id", None) or "")
+            if not pid or pid in proposal_cover_by_project:
+                continue
+            data = getattr(r, "data", None) or {}
+            if isinstance(data, dict):
+                foid = data.get("cover_file_object_id")
+                if foid:
+                    proposal_cover_by_project[pid] = str(foid)
+
     # Build response with cover images and client info
     result = []
     for p in projects[:limit]:
@@ -2218,13 +2370,26 @@ def business_projects(
             "onsite_lead_id": getattr(p, 'onsite_lead_id', None),
         }
         
-        # Add cover image URL if found
+        # Add cover image URL - same priority as General Information
         project_id_str = str(p.id)
-        if project_id_str in cover_images:
-            cover_file, file_object = cover_images[project_id_str]
+        # 1) Manual new field
+        if getattr(p, "image_manually_set", False) and getattr(p, "image_file_object_id", None):
+            project_dict["cover_image_url"] = f"/files/{str(p.image_file_object_id)}/thumbnail?w=400"
+        # 2) Legacy manual cover from files
+        if (not project_dict["cover_image_url"]) and project_id_str in cover_images:
+            cover_file, _file_object = cover_images[project_id_str]
             timestamp = cover_file.uploaded_at.isoformat() if cover_file.uploaded_at else None
             timestamp_param = f"&t={timestamp}" if timestamp else ""
             project_dict["cover_image_url"] = f"/files/{cover_file.file_object_id}/thumbnail?w=400{timestamp_param}"
+        # 3) Synced image field (proposal auto or other)
+        if (not project_dict["cover_image_url"]) and getattr(p, "image_file_object_id", None):
+            project_dict["cover_image_url"] = f"/files/{str(p.image_file_object_id)}/thumbnail?w=400"
+        # 4) Latest proposal cover (if not synced yet)
+        if (not project_dict["cover_image_url"]) and project_id_str in proposal_cover_by_project:
+            project_dict["cover_image_url"] = f"/files/{proposal_cover_by_project[project_id_str]}/thumbnail?w=400"
+        # 5) Default blueprint
+        if not project_dict["cover_image_url"]:
+            project_dict["cover_image_url"] = "/ui/assets/placeholders/project.png"
         
         # Add client information if found
         client_id_str = str(p.client_id) if getattr(p, 'client_id', None) else None

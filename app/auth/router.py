@@ -948,7 +948,16 @@ def my_profile(user: User = Depends(get_current_user), db: Session = Depends(get
             "emergency_contact_name": ep.emergency_contact_name,
             "emergency_contact_relationship": ep.emergency_contact_relationship,
             "emergency_contact_phone": ep.emergency_contact_phone,
+            "cloth_size": getattr(ep, "cloth_size", None),
         }
+        # Get global custom cloth sizes
+        from ..models.models import SettingList, SettingItem
+        custom_sizes_list = db.query(SettingList).filter(SettingList.name == "cloth_sizes_custom").first()
+        if custom_sizes_list:
+            custom_items = db.query(SettingItem).filter(SettingItem.list_id == custom_sizes_list.id).order_by(SettingItem.sort_index.asc()).all()
+            data["profile"]["cloth_sizes_custom"] = [item.label for item in custom_items]
+        else:
+            data["profile"]["cloth_sizes_custom"] = []
     # Try to surface first/last name from profile for convenience
     if ep:
         data["user"]["first_name"] = ep.first_name
@@ -985,14 +994,15 @@ def update_my_profile(payload: EmployeeProfileInput, user: User = Depends(get_cu
         "sin_number","work_permit_status","visa_status","work_eligibility_status",
         "emergency_contact_name","emergency_contact_relationship","emergency_contact_phone",
         "profile_photo_file_id",
+        "cloth_size",  # cloth_sizes_custom is now managed globally via /cloth-sizes/custom endpoints
     }
     incoming = payload.dict(exclude_unset=True)
     # Map new API field to legacy column so existing DB schema still works
     if "work_eligibility_status" in incoming and incoming.get("work_eligibility_status") is not None:
         incoming["work_permit_status"] = incoming["work_eligibility_status"]
     data = { k: v for k, v in incoming.items() if k in allowed_keys }
-    # Convert empty strings to None
-    data = { k: (None if v == "" else v) for k, v in data.items() }
+    # Convert empty strings to None (but preserve lists and other non-string types)
+    data = { k: (None if (isinstance(v, str) and v == "") else v) for k, v in data.items() }
     if "date_of_birth" in data and data["date_of_birth"]:
         data["date_of_birth"] = _parse_dt(data.get("date_of_birth"))
 
@@ -1096,10 +1106,19 @@ def get_user_profile(user_id: str, db: Session = Depends(get_db), me: User = Dep
                 "hire_date","termination_date","job_title","division","work_email","work_phone","manager_user_id",
                 "pay_rate","pay_type","employment_type","sin_number","work_permit_status","visa_status","profile_photo_file_id",
                 "emergency_contact_name","emergency_contact_relationship","emergency_contact_phone",
+                "cloth_size",
             ]
         }
         # New API field backed by legacy column
         profile_data["work_eligibility_status"] = getattr(ep, "work_permit_status", None)
+        # Get global custom cloth sizes
+        from ..models.models import SettingList, SettingItem
+        custom_sizes_list = db.query(SettingList).filter(SettingList.name == "cloth_sizes_custom").first()
+        if custom_sizes_list:
+            custom_items = db.query(SettingItem).filter(SettingItem.list_id == custom_sizes_list.id).order_by(SettingItem.sort_index.asc()).all()
+            profile_data["cloth_sizes_custom"] = [item.label for item in custom_items]
+        else:
+            profile_data["cloth_sizes_custom"] = []
     return {
         "user": {
             "id": str(u.id),
@@ -1945,6 +1964,66 @@ def password_reset(token: str, new_password: str, db: Session = Depends(get_db))
         raise HTTPException(status_code=400, detail="Invalid token")
     user.password_hash = get_password_hash(new_password)
     pr.used_at = now_utc
+    db.commit()
+    return {"status": "ok"}
+
+
+# Cloth sizes custom management (global, shared across all users)
+@router.get("/cloth-sizes/custom")
+def get_custom_cloth_sizes(db: Session = Depends(get_db), _=Depends(get_current_user)):
+    """Get all custom cloth sizes (global, visible to all users)"""
+    from ..models.models import SettingList, SettingItem
+    lst = db.query(SettingList).filter(SettingList.name == "cloth_sizes_custom").first()
+    if not lst:
+        return []
+    items = db.query(SettingItem).filter(SettingItem.list_id == lst.id).order_by(SettingItem.sort_index.asc()).all()
+    return [item.label for item in items]
+
+
+@router.post("/cloth-sizes/custom")
+def create_custom_cloth_size(size: str = Body(..., embed=True), db: Session = Depends(get_db), _=Depends(require_permissions("users:write", "hr:users:edit:general"))):
+    """Create a new custom cloth size (admin only)"""
+    from ..models.models import SettingList, SettingItem
+    size_upper = size.strip().upper()
+    if not size_upper:
+        raise HTTPException(status_code=400, detail="Size cannot be empty")
+    
+    lst = db.query(SettingList).filter(SettingList.name == "cloth_sizes_custom").first()
+    if not lst:
+        lst = SettingList(name="cloth_sizes_custom")
+        db.add(lst)
+        db.flush()
+    
+    # Check if size already exists
+    existing = db.query(SettingItem).filter(SettingItem.list_id == lst.id, SettingItem.label == size_upper).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="Size already exists")
+    
+    # Get max sort_index
+    last = db.query(SettingItem).filter(SettingItem.list_id == lst.id).order_by(SettingItem.sort_index.desc()).first()
+    sort_index = ((last.sort_index or 0) + 1) if last and (last.sort_index is not None) else 0
+    
+    it = SettingItem(list_id=lst.id, label=size_upper, sort_index=sort_index)
+    db.add(it)
+    db.commit()
+    return {"status": "ok", "size": size_upper}
+
+
+@router.delete("/cloth-sizes/custom/{size}")
+def delete_custom_cloth_size(size: str, db: Session = Depends(get_db), _=Depends(require_permissions("users:write", "hr:users:edit:general"))):
+    """Delete a custom cloth size (admin only)"""
+    from ..models.models import SettingList, SettingItem
+    size_upper = size.strip().upper()
+    
+    lst = db.query(SettingList).filter(SettingList.name == "cloth_sizes_custom").first()
+    if not lst:
+        raise HTTPException(status_code=404, detail="Size not found")
+    
+    item = db.query(SettingItem).filter(SettingItem.list_id == lst.id, SettingItem.label == size_upper).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Size not found")
+    
+    db.delete(item)
     db.commit()
     return {"status": "ok"}
 

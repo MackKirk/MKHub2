@@ -515,7 +515,7 @@ export default function Customers(){
 
 function ClientRow({ c, statusColorMap, hasEditPermission, onOpen, onDeleted }:{ c: Client, statusColorMap: Record<string,string>, hasEditPermission?: boolean, onOpen: ()=>void, onDeleted: ()=>void }){
   // Use logo_url from the client data (loaded together with the client list)
-  const avatarUrl = c.logo_url || '/ui/assets/login/logo-light.svg';
+  const avatarUrl = c.logo_url || '/ui/assets/placeholders/customer.png';
   const status = String(c.client_status||'').trim();
   const color = status ? (statusColorMap[status] || '') : '';
   const badgeStyle: any = color ? { backgroundColor: color, borderColor: 'transparent', color: '#000' } : {};

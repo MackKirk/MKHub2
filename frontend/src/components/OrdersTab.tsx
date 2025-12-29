@@ -59,7 +59,7 @@ type Project = {
   site_postal_code?: string;
 };
 
-export default function OrdersTab({ projectId, project }: { projectId: string; project: Project }) {
+export default function OrdersTab({ projectId, project, statusLabel }: { projectId: string; project: Project; statusLabel?: string }) {
   const confirm = useConfirm();
   const queryClient = useQueryClient();
   const location = useLocation();
@@ -70,7 +70,16 @@ export default function OrdersTab({ projectId, project }: { projectId: string; p
   const { data: me } = useQuery({ queryKey:['me'], queryFn: ()=>api<any>('GET','/auth/me') });
   const isAdmin = (me?.roles||[]).includes('admin');
   const permissions = new Set(me?.permissions || []);
-  const canEditOrders = isAdmin || permissions.has('business:projects:orders:write');
+  const hasEditPermission = isAdmin || permissions.has('business:projects:orders:write');
+  
+  // Check if editing is restricted based on status (only Finished restricts editing)
+  const isEditingRestricted = useMemo(() => {
+    if (!statusLabel) return false;
+    const statusLower = String(statusLabel).trim().toLowerCase();
+    return statusLower === 'finished';
+  }, [statusLabel]);
+  
+  const canEditOrders = hasEditPermission && !isEditingRestricted;
   
   const handleBackToOverview = () => {
     nav(location.pathname, { replace: true });
@@ -299,6 +308,13 @@ export default function OrdersTab({ projectId, project }: { projectId: string; p
 
   return (
     <div className="space-y-6">
+      {/* Editing Restricted Warning */}
+      {isEditingRestricted && statusLabel && (
+        <div className="mb-4 p-4 bg-yellow-50 border border-yellow-200 rounded text-sm text-yellow-800">
+          <strong>Editing Restricted:</strong> This project has status "{statusLabel}" which does not allow editing orders.
+        </div>
+      )}
+      
       {/* Header with Clear All button */}
       {/* Minimalist header */}
       <div className="mb-4">

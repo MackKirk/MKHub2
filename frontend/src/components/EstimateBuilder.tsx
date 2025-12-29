@@ -51,15 +51,18 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
       // Always allow editing by default unless explicitly restricted
       if (!statusLabel || !statusLabel.trim()) return true;
       
-      const statusLabelStr = String(statusLabel).trim();
+      const statusLabelStr = String(statusLabel).trim().toLowerCase();
       
-      // Always allow "estimating" status
-      if (statusLabelStr.toLowerCase() === 'estimating') return true;
+      // Always allow "estimating" and "prospecting" status
+      if (statusLabelStr === 'estimating' || statusLabelStr === 'prospecting') return true;
+      
+      // Always restrict "In Progress" and "On Hold" (same as proposals)
+      if (statusLabelStr === 'in progress' || statusLabelStr === 'on hold') return false;
       
       // If no settings or project_statuses, allow editing
       if (!settings || !settings.project_statuses || !Array.isArray(settings.project_statuses)) return true;
       
-      const statusConfig = (settings.project_statuses as any[]).find((s:any)=> s.label === statusLabelStr);
+      const statusConfig = (settings.project_statuses as any[]).find((s:any)=> s.label?.toLowerCase() === statusLabelStr);
       
       // If status not found in config, allow editing by default
       if (!statusConfig) return true;
@@ -78,15 +81,18 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
     // Always allow editing by default unless explicitly restricted
     if (!statusLabel || !statusLabel.trim()) return true;
     
-    const statusLabelStr = String(statusLabel).trim();
+    const statusLabelStr = String(statusLabel).trim().toLowerCase();
     
-    // Always allow "estimating" status
-    if (statusLabelStr.toLowerCase() === 'estimating') return true;
+    // Always allow "estimating" and "prospecting" status
+    if (statusLabelStr === 'estimating' || statusLabelStr === 'prospecting') return true;
+    
+    // Always restrict "In Progress" and "On Hold" (same as proposals)
+    if (statusLabelStr === 'in progress' || statusLabelStr === 'on hold') return false;
     
     // If no settings or project_statuses, allow editing
     if (!settings || !settings.project_statuses || !Array.isArray(settings.project_statuses)) return true;
     
-    const statusConfig = (settings.project_statuses as any[]).find((s:any)=> s.label === statusLabelStr);
+    const statusConfig = (settings.project_statuses as any[]).find((s:any)=> s.label?.toLowerCase() === statusLabelStr);
     
     // If status not found in config, allow editing by default
     if (!statusConfig) return true;
@@ -100,14 +106,6 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
     // Otherwise allow editing (default behavior)
     return true;
   }, [statusLabel, settings, canEditProp]);
-  
-  // Show warning if editing is restricted
-  useEffect(() => {
-    if (!canEdit && statusLabel) {
-      toast.error(`Editing is restricted for projects with status "${statusLabel}"`, { duration: 5000 });
-    }
-  }, [canEdit, statusLabel]);
-
 
   // Fetch estimate by project_id if only projectId is provided
   const { data: projectEstimates } = useQuery({
@@ -379,13 +377,6 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
       isSavingRef.current = false;
     }
   }, [projectId, markup, pstRate, gstRate, profitRate, sectionOrder, sectionNames, items, currentEstimateId, canEdit, queryClient, dirty]);
-
-  // Show warning if editing is restricted
-  useEffect(() => {
-    if (!canEdit && statusLabel) {
-      toast.error(`Editing is restricted for projects with status "${statusLabel}"`, { duration: 5000 });
-    }
-  }, [canEdit, statusLabel]);
 
   // Keep pendingSaveRef updated with current state whenever it changes
   useEffect(() => {
@@ -755,7 +746,6 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
   // Handle remove item with confirmation
   const handleRemoveItem = useCallback(async (index: number, itemName: string) => {
     if (!canEdit) {
-      toast.error('Editing is restricted for this project status');
       return;
     }
     
@@ -785,7 +775,6 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
   // Handle remove section with confirmation
   const handleRemoveSection = useCallback(async (section: string) => {
     if (!canEdit) {
-      toast.error('Editing is restricted for this project status');
       return;
     }
     
@@ -815,8 +804,7 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
     <div>
       {showRestrictionWarning && (
         <div className="mb-4 p-4 bg-yellow-50 border border-yellow-200 rounded text-sm text-yellow-800">
-          <strong>Editing Restricted:</strong> This project has status "{statusLabel}" which does not allow editing proposals or estimates. 
-          Please change the project status to allow editing.
+          <strong>Editing Restricted:</strong> This project has status "{statusLabel}" which does not allow editing proposals or estimates.
         </div>
       )}
       {canEdit && (
@@ -1694,6 +1682,7 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
                       min={0} 
                       step={1}
                       onChange={e=>setProfitRate(Number(e.target.value||0))} 
+                      disabled={!canEdit}
                     />
                   </div>
                   <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span className="font-bold">Total Profit</span><span className="font-bold">${profitValue.toFixed(2)}</span></div>

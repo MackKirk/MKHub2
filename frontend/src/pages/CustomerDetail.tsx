@@ -145,8 +145,8 @@ export default function CustomerDetail(){
   const { data:employees } = useQuery({ queryKey:['employees'], queryFn: ()=> api<any[]>('GET','/employees') });
   const primaryContact = (contacts||[]).find(c=>c.is_primary) || (contacts||[])[0];
   const clientLogoRec = (files||[]).find(f=> !f.site_id && String(f.category||'').toLowerCase()==='client-logo-derived');
-  const clientAvatar = clientLogoRec? `/files/${clientLogoRec.file_object_id}/thumbnail?w=96` : '/ui/assets/login/logo-light.svg';
-  const clientAvatarLarge = clientLogoRec? `/files/${clientLogoRec.file_object_id}/thumbnail?w=800` : '/ui/assets/login/logo-light.svg';
+  const clientAvatar = clientLogoRec? `/files/${clientLogoRec.file_object_id}/thumbnail?w=96` : '/ui/assets/placeholders/customer.png';
+  const clientAvatarLarge = clientLogoRec? `/files/${clientLogoRec.file_object_id}/thumbnail?w=800` : '/ui/assets/placeholders/customer.png';
   const [form, setForm] = useState<any>({});
   const [dirty, setDirty] = useState(false);
   const [isSaving, setIsSaving] = useState(false);

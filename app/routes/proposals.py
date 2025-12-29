@@ -389,6 +389,17 @@ def save_proposal(payload: dict = Body(...), db: Session = Depends(get_db)):
             p.data = _copy.deepcopy(payload)
         except Exception:
             p.data = payload
+        
+        # Sync cover image to project if project_id exists and user hasn't manually set it
+        if p.project_id:
+            from ..models.models import Project
+            project = db.query(Project).filter(Project.id == p.project_id).first()
+            if project and not getattr(project, 'image_manually_set', False):
+                cover_file_object_id = payload.get('cover_file_object_id')
+                if cover_file_object_id:
+                    project.image_file_object_id = cover_file_object_id
+                    # Don't set image_manually_set to True here - it stays False so it can be auto-updated
+        
         db.commit()
         return {"id": str(p.id)}
     else:
@@ -401,6 +412,18 @@ def save_proposal(payload: dict = Body(...), db: Session = Depends(get_db)):
             data=payload,
         )
         db.add(p)
+        db.flush()  # Flush to get the ID
+        
+        # Sync cover image to project if project_id exists and user hasn't manually set it
+        if p.project_id:
+            from ..models.models import Project
+            project = db.query(Project).filter(Project.id == p.project_id).first()
+            if project and not getattr(project, 'image_manually_set', False):
+                cover_file_object_id = payload.get('cover_file_object_id')
+                if cover_file_object_id:
+                    project.image_file_object_id = cover_file_object_id
+                    # Don't set image_manually_set to True here - it stays False so it can be auto-updated
+        
         db.commit()
         return {"id": str(p.id)}
 
@@ -423,6 +446,7 @@ def list_proposals(client_id: Optional[str] = Query(None), site_id: Optional[str
         "order_number": r.order_number,
         "title": r.title,
         "created_at": r.created_at.isoformat() if r.created_at else None,
+        "data": r.data if r.data else {},
     } for r in rows]
 
 

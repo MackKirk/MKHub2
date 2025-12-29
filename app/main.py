@@ -230,6 +230,50 @@ def create_app() -> FastAPI:
                             # Constraint may already exist or DB may not support it as written
                             pass
                         db.commit()
+                
+                # Check for cloth_size and cloth_sizes_custom columns in employee_profiles
+                if dialect == "sqlite":
+                    rows = db.execute(text("PRAGMA table_info(employee_profiles)")).fetchall()
+                    col_names = {str(r[1]) for r in rows}
+                    if "cloth_size" not in col_names:
+                        db.execute(text("ALTER TABLE employee_profiles ADD COLUMN cloth_size TEXT NULL"))
+                    if "cloth_sizes_custom" not in col_names:
+                        db.execute(text("ALTER TABLE employee_profiles ADD COLUMN cloth_sizes_custom TEXT NULL"))
+                    db.commit()
+                else:
+                    # PostgreSQL / other dialects
+                    # Check cloth_size column
+                    rows = db.execute(
+                        text(
+                            """
+                            SELECT 1
+                            FROM information_schema.columns
+                            WHERE table_name = 'employee_profiles'
+                              AND column_name = 'cloth_size'
+                            LIMIT 1
+                            """
+                        )
+                    ).fetchall()
+                    if not rows:
+                        db.execute(text("ALTER TABLE employee_profiles ADD COLUMN cloth_size VARCHAR(50) NULL"))
+                    
+                    # Check cloth_sizes_custom column
+                    rows = db.execute(
+                        text(
+                            """
+                            SELECT 1
+                            FROM information_schema.columns
+                            WHERE table_name = 'employee_profiles'
+                              AND column_name = 'cloth_sizes_custom'
+                            LIMIT 1
+                            """
+                        )
+                    ).fetchall()
+                    if not rows:
+                        db.execute(text("ALTER TABLE employee_profiles ADD COLUMN cloth_sizes_custom JSON NULL"))
+                    
+                    db.commit()
+                
                 print("[startup] Schema migrations check completed")
             except Exception as e:
                 print(f"[startup] Schema migrations check error (non-critical): {e}")

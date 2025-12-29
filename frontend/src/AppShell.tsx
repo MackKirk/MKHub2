@@ -852,7 +852,7 @@ export default function AppShell({ children }: PropsWithChildren){
               </button>
               <FixedBugReportButton />
               {open && (
-                <div className="absolute right-0 mt-2 w-56 rounded-lg border border-gray-200/20 bg-white text-black shadow-xl z-50">
+                <div className="absolute right-0 top-full mt-2 w-56 rounded-lg border border-gray-200/20 bg-white text-black shadow-xl z-50">
                   <Link to="/profile" onClick={()=>setOpen(false)} className="block px-4 py-2.5 hover:bg-gray-50 transition-colors duration-150">My Information</Link>
                   <Link to="/reviews/my" onClick={()=>setOpen(false)} className="block px-4 py-2.5 hover:bg-gray-50 transition-colors duration-150">My Reviews</Link>
                   <button onClick={handleLogout} className="w-full text-left px-4 py-2.5 hover:bg-gray-50 transition-colors duration-150">Logout</button>

@@ -769,7 +769,6 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
 
   const handleSave = useCallback(async()=>{
     if (disabled || isSaving) {
-      if (disabled) toast.error('Editing is restricted for this project status');
       return;
     }
     try{
@@ -896,7 +895,6 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
   // Clear proposal function - clears all fields except orderNumber, companyName, and companyAddress
   const handleClearProposal = useCallback(async () => {
     if (disabled) {
-      toast.error('Editing is restricted for this project status');
       return;
     }
     

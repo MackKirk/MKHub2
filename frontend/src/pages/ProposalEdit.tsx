@@ -127,7 +127,7 @@ export default function ProposalEdit(){
           initial={p} 
           disabled={!canEdit}
           showRestrictionWarning={!canEdit && !!project?.status_label}
-          restrictionMessage={!canEdit && project?.status_label ? `This project has status "${project.status_label}" which does not allow editing proposals or estimates. Please change the project status to allow editing.` : undefined}
+          restrictionMessage={!canEdit && project?.status_label ? `This project has status "${project.status_label}" which does not allow editing proposals or estimates.` : undefined}
         />
       )}
       {/* Image pickers handled inside ProposalForm */}

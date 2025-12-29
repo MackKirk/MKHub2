@@ -193,6 +193,9 @@ class Project(Base):
     description: Mapped[Optional[str]] = mapped_column(String(2000))
     notes: Mapped[Optional[str]] = mapped_column(String(2000))
     is_bidding: Mapped[bool] = mapped_column(Boolean, default=False)  # True if this is a bidding (quote), False if it's an active project
+    status_changed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))  # Timestamp when status was last changed
+    image_file_object_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))  # Image for general information card
+    image_manually_set: Mapped[bool] = mapped_column(Boolean, default=False)  # True if user manually set the image (prevents auto-update from proposal)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
 
 
@@ -669,6 +672,8 @@ class EmployeeProfile(Base):
     emergency_contact_name: Mapped[Optional[str]] = mapped_column(String(255))
     emergency_contact_relationship: Mapped[Optional[str]] = mapped_column(String(100))
     emergency_contact_phone: Mapped[Optional[str]] = mapped_column(String(100))
+    cloth_size: Mapped[Optional[str]] = mapped_column(String(50))
+    cloth_sizes_custom: Mapped[Optional[list]] = mapped_column(JSON)
 
     # Sistema / Auditoria
     created_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))

@@ -73,7 +73,6 @@
 
   <div id="projects" class="card" style="display:none">
     <h3>Projects</h3>
-    <div class="row" style="justify-content:flex-end"><button id="btnNewProject">New Project</button></div>
     <div class="muted">Coming soon</div>
   </div>
 </div>
@@ -169,14 +168,6 @@ async function delClientFile(id){ try{ await fetch(`/clients/${encodeURIComponen
 document.getElementById('btnNewProposal').addEventListener('click', ()=>{
   // Open proposals form with context to enable draft association and site files
   window.location.href = '/ui/proposal-auto.html?client_id=' + encodeURIComponent(clientId||'') + '&site_id=' + encodeURIComponent(siteId||'');
-});
-
-document.getElementById('btnNewProject').addEventListener('click', async ()=>{
-  try{
-    const name = prompt('Project name'); if (!name) return;
-    const r = await fetch('/projects', { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ name, code: name.replace(/\s+/g,'-').slice(0,50), client_id: clientId }) });
-    const txt = await r.text(); alert(r.ok ? 'Project created' : txt);
-  }catch(e){ alert('Failed'); }
 });
 
 loadSite();

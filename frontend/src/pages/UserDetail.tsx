@@ -92,7 +92,7 @@ export default function UserDetail(){
   return (
     <div className="max-w-5xl">
       <div className="mb-3 flex items-center justify-between">
-        <div className="flex items-center gap-3"><img src={user.profile_photo_file_id? `/files/${user.profile_photo_file_id}/thumbnail?w=160`:'/ui/assets/login/logo-light.svg'} className="w-16 h-16 rounded-full object-cover"/><h1 className="text-2xl font-bold">{user.name||user.username}</h1></div>
+        <div className="flex items-center gap-3"><img src={user.profile_photo_file_id? `/files/${user.profile_photo_file_id}/thumbnail?w=160`:'/ui/assets/placeholders/user.png'} className="w-16 h-16 rounded-full object-cover"/><h1 className="text-2xl font-bold">{user.name||user.username}</h1></div>
         <div className="flex gap-2">
           {([
             ...(canViewGeneral ? ['general'] : []),

@@ -6,7 +6,7 @@ import toast from 'react-hot-toast';
 import { Link, useLocation, useSearchParams, useNavigate } from 'react-router-dom';
 import LoadingOverlay from '@/components/LoadingOverlay';
 
-type Opportunity = { id:string, code?:string, name?:string, slug?:string, client_id?:string, created_at?:string, date_start?:string, date_end?:string, is_bidding?:boolean, project_division_ids?:string[] };
+type Opportunity = { id:string, code?:string, name?:string, slug?:string, client_id?:string, created_at?:string, date_start?:string, date_end?:string, is_bidding?:boolean, project_division_ids?:string[], cover_image_url?:string };
 type ClientFile = { id:string, file_object_id:string, is_image?:boolean, content_type?:string };
 
 export default function Opportunities(){
@@ -598,15 +598,12 @@ function OpportunityListCard({ opportunity, onOpenReportModal }: {
   onOpenReportModal: (projectId: string) => void;
 }){
   const navigate = useNavigate();
-  const { data:files } = useQuery({ queryKey:['client-files-for-opportunity-card', opportunity.client_id], queryFn: ()=> opportunity.client_id? api<any[]>('GET', `/clients/${encodeURIComponent(String(opportunity.client_id))}/files`) : Promise.resolve([]), enabled: !!opportunity.client_id, staleTime: 60_000 });
-  const pfiles = useMemo(()=> (files||[]).filter((f:any)=> String((f as any).project_id||'')===String(opportunity.id)), [files, opportunity?.id]);
-  const cover = pfiles.find((f:any)=> String(f.category||'')==='project-cover-derived') || pfiles.find((f:any)=> (f.is_image===true) || String(f.content_type||'').startsWith('image/'));
-  const src = cover? `/files/${cover.file_object_id}/thumbnail?w=400` : '/ui/assets/login/logo-light.svg';
+  // Card cover should match General Information: backend now provides cover_image_url with correct priority
+  const src = opportunity.cover_image_url || '/ui/assets/placeholders/project.png';
   const { data:details } = useQuery({ queryKey:['opportunity-detail-card', opportunity.id], queryFn: ()=> api<any>('GET', `/projects/${encodeURIComponent(String(opportunity.id))}`), staleTime: 60_000 });
   const { data:client } = useQuery({ queryKey:['opportunity-client', opportunity.client_id], queryFn: ()=> opportunity.client_id? api<any>('GET', `/clients/${encodeURIComponent(String(opportunity.client_id||''))}`): Promise.resolve(null), enabled: !!opportunity.client_id, staleTime: 300_000 });
   const { data:projectDivisions } = useQuery({ queryKey:['project-divisions'], queryFn: ()=> api<any[]>('GET','/settings/project-divisions'), staleTime: 300_000 });
   const status = (opportunity as any).status_label || details?.status_label || '';
-  const progress = Math.max(0, Math.min(100, Number((opportunity as any).progress ?? details?.progress ?? 0)));
   const start = (opportunity.date_start || details?.date_start || opportunity.created_at || '').slice(0,10);
   const estimatedValue = details?.cost_estimated || (opportunity as any).cost_estimated || 0;
   const clientName = client?.display_name || client?.name || '';
@@ -731,16 +728,6 @@ function OpportunityListCard({ opportunity, onOpenReportModal }: {
                   </div>
                 </button>
               ))}
-            </div>
-          </div>
-
-          {/* Progress bar - same style as project detail page */}
-          <div>
-            <div className="flex items-center gap-3">
-              <div className="flex-1 h-3 bg-gray-200 rounded-full overflow-hidden">
-                <div className="h-full bg-brand-red rounded-full transition-all" style={{ width: `${progress}%` }} />
-              </div>
-              <span className="text-sm font-semibold text-gray-700 w-12 text-right">{progress}%</span>
             </div>
           </div>
         </div>

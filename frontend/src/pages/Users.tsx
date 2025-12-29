@@ -162,7 +162,7 @@ export default function Users(){
                   {u.profile_photo_file_id? (
                     <img src={`/files/${u.profile_photo_file_id}/thumbnail?w=96`} className="w-12 h-12 rounded-full object-cover flex-shrink-0"/>
                   ) : (
-                    <span className="w-12 h-12 rounded-full bg-gray-200 inline-block flex-shrink-0"/>
+                    <img src="/ui/assets/placeholders/user.png" className="w-12 h-12 rounded-full object-cover flex-shrink-0"/>
                   )}
                   <div className="min-w-0 flex-1">
                     <div className="font-semibold truncate flex items-center gap-1">

@@ -153,14 +153,13 @@ export default function InventoryProducts(){
   const [isSavingProduct, setIsSavingProduct] = useState(false);
   const [technicalManualUrl, setTechnicalManualUrl] = useState<string>('');
 
-  const [viewRelated, setViewRelated] = useState<number|null>(null);
   const [relatedList, setRelatedList] = useState<any[]>([]);
   const [addRelatedOpen, setAddRelatedOpen] = useState(false);
   const [addRelatedTarget, setAddRelatedTarget] = useState<number|null>(null);
   const [addRelatedSearch, setAddRelatedSearch] = useState('');
   const [addRelatedResults, setAddRelatedResults] = useState<any[]>([]);
   const [relatedCounts, setRelatedCounts] = useState<Record<number, number>>({});
-  const [productTab, setProductTab] = useState<'details'|'usage'>('details');
+  const [productTab, setProductTab] = useState<'details'|'usage'|'related'>('details');
   const [productUsage, setProductUsage] = useState<any[]>([]);
   const [loadingUsage, setLoadingUsage] = useState(false);
 
@@ -173,17 +172,16 @@ export default function InventoryProducts(){
 
   // ESC key handler for modals
   useEffect(() => {
-    if (!open && viewRelated === null && !addRelatedOpen) return;
+    if (!open && !addRelatedOpen) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         if (addRelatedOpen) setAddRelatedOpen(false);
-        else if (viewRelated !== null) setViewRelated(null);
         else if (open) resetModal();
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [open, viewRelated, addRelatedOpen]);
+  }, [open, addRelatedOpen]);
 
   const onCoverageChange = (which: 'sqs'|'ft2'|'m2', val: string)=>{
     if(!val){ setCovSqs(''); setCovFt2(''); setCovM2(''); return; }
@@ -194,15 +192,24 @@ export default function InventoryProducts(){
     if(which==='sqs'){
       const ft2 = num * SQS_TO_FT2;
       const m2 = ft2 * FT2_TO_M2;
-      setCovSqs(String(num)); setCovFt2(String(Number(ft2.toFixed(0)))); setCovM2(String(Number(m2.toFixed(2))));
+      // Preserve decimals: allow up to 2 decimal places for all fields
+      setCovSqs(String(num)); 
+      setCovFt2(String(Number(ft2.toFixed(2)))); 
+      setCovM2(String(Number(m2.toFixed(2))));
     }else if(which==='ft2'){
       const sqs = num / SQS_TO_FT2;
       const m2 = num * FT2_TO_M2;
-      setCovSqs(String(Number(sqs.toFixed(3)))); setCovFt2(String(num)); setCovM2(String(Number(m2.toFixed(2))));
+      // Preserve decimals: allow up to 2 decimal places for all fields
+      setCovSqs(String(Number(sqs.toFixed(2)))); 
+      setCovFt2(String(num)); 
+      setCovM2(String(Number(m2.toFixed(2))));
     }else{
       const ft2 = num / FT2_TO_M2;
       const sqs = ft2 / SQS_TO_FT2;
-      setCovSqs(String(Number(sqs.toFixed(3)))); setCovFt2(String(Number(ft2.toFixed(0)))); setCovM2(String(Number(num.toFixed(2))));
+      // Preserve decimals: allow up to 2 decimal places for all fields
+      setCovSqs(String(Number(sqs.toFixed(2)))); 
+      setCovFt2(String(Number(ft2.toFixed(2)))); 
+      setCovM2(String(num));
     }
   };
 
@@ -227,6 +234,7 @@ export default function InventoryProducts(){
     setOpen(true);
     setProductTab('details');
     setProductUsage([]);
+    setRelatedList([]);
     // Load usage data when opening modal
     if (p.id) {
       loadProductUsage(p.id);
@@ -294,11 +302,10 @@ export default function InventoryProducts(){
     }
   };
 
-  const handleViewRelated = async (id: number)=>{
+  const handleViewRelated = async (id: number)=>{ 
     try{
       const rels = await api<any[]>('GET', `/estimate/related/${id}`);
       setRelatedList(rels);
-      setViewRelated(id);
     }catch(_e){ toast.error('Failed to load related'); }
   };
 
@@ -318,6 +325,7 @@ export default function InventoryProducts(){
     setTechnicalManualUrl(''); setImagePickerOpen(false);
     setProductTab('details');
     setProductUsage([]);
+    setRelatedList([]);
   };
 
   const searchRelatedProducts = async (txt: string)=>{
@@ -341,6 +349,7 @@ export default function InventoryProducts(){
       // Update the current viewing product's related list
       if(viewing){
         const updatedRels = await api<any[]>('GET', `/estimate/related/${viewing.id}`);
+        setRelatedList(updatedRels);
         // Update related counts
         const counts = await api<Record<string, number>>('GET', `/estimate/related/count?ids=${productIds}`);
         if(counts) setRelatedCounts(counts);
@@ -363,8 +372,8 @@ export default function InventoryProducts(){
       // Update related counts
       const counts = await api<Record<string, number>>('GET', `/estimate/related/count?ids=${productIds}`);
       if(counts) setRelatedCounts(counts);
-      // Reload the related list
-      if(viewRelated) handleViewRelated(viewRelated);
+      // Reload the related list if viewing
+      if(viewing) handleViewRelated(viewing.id);
       await refetch();
     }catch(_e){ toast.error('Failed'); }
   };
@@ -587,7 +596,7 @@ export default function InventoryProducts(){
               >
                 <div className="flex items-center gap-3 min-w-0">
                   <img
-                    src={p.image_base64 || '/ui/assets/login/logo-light.svg'}
+                    src={p.image_base64 || '/ui/assets/placeholders/product.png'}
                     className="w-12 h-12 rounded-lg border object-cover"
                     alt={p.name}
                   />
@@ -637,12 +646,6 @@ export default function InventoryProducts(){
                       </a>
                     );
                   })()}
-                  <button
-                    onClick={() => handleViewRelated(p.id)}
-                    className="px-3 py-1.5 rounded bg-brand-red text-white"
-                  >
-                    {relatedCounts[p.id] || 0} Related
-                  </button>
                 </div>
               </div>
             ))}
@@ -668,7 +671,7 @@ export default function InventoryProducts(){
                     </button>
                     <div className="w-24 h-24 rounded-xl border-4 border-white shadow-lg overflow-hidden bg-white flex items-center justify-center">
                       <img 
-                        src={viewing.image_base64 || '/ui/assets/login/logo-light.svg'} 
+                        src={viewing.image_base64 || '/ui/assets/placeholders/product.png'} 
                         className="w-full h-full object-cover" 
                         alt={viewing.name}
                       />
@@ -715,6 +718,23 @@ export default function InventoryProducts(){
                       >
                         Usage {productUsage.length > 0 && `(${productUsage.length})`}
                       </button>
+                      {canEditProducts && viewing && (
+                        <button
+                          onClick={() => {
+                            setProductTab('related');
+                            if (viewing.id && relatedList.length === 0) {
+                              handleViewRelated(viewing.id);
+                            }
+                          }}
+                          className={`px-4 py-2 font-medium text-sm transition-colors ${
+                            productTab === 'related'
+                              ? 'text-brand-red border-b-2 border-brand-red'
+                              : 'text-gray-600 hover:text-gray-900'
+                          }`}
+                        >
+                          Related {relatedCounts[viewing.id] ? `(${relatedCounts[viewing.id]})` : ''}
+                        </button>
+                      )}
                     </div>
                   </div>
 
@@ -793,7 +813,7 @@ export default function InventoryProducts(){
                       );
                     })()}
                   </div>
-                  ) : (
+                  ) : productTab === 'usage' ? (
                     <div className="px-6 pb-6">
                       {loadingUsage ? (
                         <div className="py-8 text-center text-gray-500">Loading usage data...</div>
@@ -869,7 +889,68 @@ export default function InventoryProducts(){
                         </div>
                       )}
                     </div>
-                  )}
+                  ) : productTab === 'related' && viewing ? (
+                    <div className="px-6 pb-6">
+                      {Array.isArray(relatedList) && relatedList.length ? (
+                        <div className="space-y-3">
+                          <div className="text-sm text-gray-600 mb-4">
+                            This product is related to {relatedList.length} product{relatedList.length !== 1 ? 's' : ''}:
+                          </div>
+                          <div className="border rounded-lg divide-y">
+                            {relatedList.map((r: any, i: number) => (
+                              <div key={i} className="p-4 hover:bg-gray-50 flex items-center gap-4">
+                                <img
+                                  src={r.image_base64 || '/ui/assets/placeholders/product.png'}
+                                  className="w-16 h-16 rounded-lg border object-cover flex-shrink-0"
+                                  alt={r.name}
+                                />
+                                <div className="flex-1 min-w-0">
+                                  <div className="font-medium text-gray-900">{r.name}</div>
+                                  {r.supplier_name && (
+                                    <div className="text-sm text-gray-500">Supplier: {r.supplier_name}</div>
+                                  )}
+                                  {typeof r.price === 'number' && (
+                                    <div className="text-sm text-brand-red font-semibold mt-1">
+                                      ${r.price.toFixed(2)}
+                                    </div>
+                                  )}
+                                </div>
+                                {canEditProducts && (
+                                  <button
+                                    onClick={() => deleteRelation(viewing.id, r.id)}
+                                    className="px-3 py-1.5 rounded bg-red-100 text-red-700 hover:bg-red-200 text-sm flex-shrink-0"
+                                  >
+                                    Remove
+                                  </button>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                          {canEditProducts && (
+                            <button
+                              onClick={() => handleAddRelated(viewing.id)}
+                              className="w-full mt-4 px-4 py-2 rounded bg-brand-red text-white hover:bg-[#6d0d0d] transition-colors"
+                            >
+                              + Add Related Product
+                            </button>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="py-8 text-center text-gray-500">
+                          <div className="text-lg mb-2">🔗</div>
+                          <div>This product has no related products.</div>
+                          {canEditProducts && (
+                            <button
+                              onClick={() => handleAddRelated(viewing.id)}
+                              className="mt-4 px-4 py-2 rounded bg-brand-red text-white hover:bg-[#6d0d0d] transition-colors"
+                            >
+                              + Add Related Product
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  ) : null}
                 </div>
               ) : (
                 // Edit/Create mode - form inputs
@@ -983,6 +1064,8 @@ export default function InventoryProducts(){
                   <div className="flex items-center gap-2 mt-1">
                     <div className="flex-1 flex items-center gap-1">
                       <input 
+                        type="number"
+                        step="any"
                         className="w-full border rounded px-3 py-2" 
                         placeholder="0" 
                         value={covSqs} 
@@ -993,6 +1076,8 @@ export default function InventoryProducts(){
                     <span className="text-gray-400">=</span>
                     <div className="flex-1 flex items-center gap-1">
                       <input 
+                        type="number"
+                        step="any"
                         className="w-full border rounded px-3 py-2" 
                         placeholder="0" 
                         value={covFt2} 
@@ -1003,6 +1088,8 @@ export default function InventoryProducts(){
                     <span className="text-gray-400">=</span>
                     <div className="flex-1 flex items-center gap-1">
                       <input 
+                        type="number"
+                        step="any"
                         className="w-full border rounded px-3 py-2" 
                         placeholder="0" 
                         value={covM2} 
@@ -1057,7 +1144,6 @@ export default function InventoryProducts(){
                 <>
                   {canEditProducts && (
                     <>
-                      <button onClick={()=> handleAddRelated(viewing.id)} className="px-4 py-2 rounded bg-black text-white">Add Related</button>
                       <button onClick={openEditModal} className="px-4 py-2 rounded bg-gray-100">Edit</button>
                       <button onClick={()=> handleDelete(viewing.id)} className="px-4 py-2 rounded bg-red-600 text-white hover:bg-red-700">Delete</button>
                     </>
@@ -1128,65 +1214,52 @@ export default function InventoryProducts(){
         </div>
       )}
 
-      {viewRelated!==null && (
-        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center">
-          <div className="w-[600px] max-w-[95vw] bg-white rounded-xl overflow-hidden">
-            <div className="px-6 py-4 border-b flex items-center justify-between bg-gray-50">
-              <div className="font-semibold text-lg">Related Products</div>
-              <button onClick={()=> setViewRelated(null)} className="text-gray-500 hover:text-gray-700 text-2xl font-bold w-8 h-8 flex items-center justify-center rounded hover:bg-gray-100" title="Close">×</button>
-            </div>
-            <div className="p-4">
-              <div className="border rounded divide-y">
-                {Array.isArray(relatedList) && relatedList.length? relatedList.map((r:any,i:number)=> (
-                  <div key={i} className="px-3 py-2 flex items-center justify-between">
-                    <div>
-                      <div className="font-medium">{r.name}</div>
-                      <div className="text-xs text-gray-500">{r.supplier_name||''} · ${Number(r.price||0).toFixed(2)}</div>
-                    </div>
-                    {canEditProducts && (
-                      <button onClick={()=> deleteRelation(viewRelated, r.id)} className="px-2 py-1 rounded bg-red-100 text-xs">Remove</button>
-                    )}
-                  </div>
-                )): <div className="p-3 text-gray-600">No related products</div>}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
 
       {addRelatedOpen && (
         <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center">
-          <div className="w-[600px] max-w-[95vw] bg-white rounded-xl overflow-hidden flex flex-col">
+          <div className="w-[600px] max-w-[95vw] bg-white rounded-xl overflow-hidden">
             <div className="px-6 py-4 border-b flex items-center justify-between bg-gray-50">
               <div className="font-semibold text-lg">Add Related Product</div>
-              <button onClick={()=> setAddRelatedOpen(false)} className="text-gray-500 hover:text-gray-700 text-2xl font-bold w-8 h-8 flex items-center justify-center rounded hover:bg-gray-100" title="Close">×</button>
+              <button
+                onClick={() => setAddRelatedOpen(false)}
+                className="text-gray-500 hover:text-gray-700 text-2xl font-bold w-8 h-8 flex items-center justify-center rounded hover:bg-gray-100"
+                title="Close"
+              >
+                ×
+              </button>
             </div>
             <div className="p-4">
-              <input 
-                className="w-full border rounded px-3 py-2 mb-3" 
-                placeholder="Search products..." 
-                value={addRelatedSearch} 
-                onChange={e=> searchRelatedProducts(e.target.value)} 
-                autoFocus
+              <input
+                type="text"
+                className="w-full border rounded px-3 py-2 mb-4"
+                placeholder="Search products..."
+                value={addRelatedSearch}
+                onChange={e => searchRelatedProducts(e.target.value)}
               />
-              <div className="border rounded divide-y max-h-96 overflow-y-auto">
-                {Array.isArray(addRelatedResults) && addRelatedResults.length > 0 ? addRelatedResults.map(r=> (
-                  <div 
-                    key={r.id} 
-                    className="px-3 py-2 flex items-center justify-between hover:bg-gray-50 cursor-pointer" 
-                    onClick={()=> createRelation(addRelatedTarget!, r.id)}
-                  >
-                    <div className="flex-1">
-                      <div className="font-medium">{r.name}</div>
-                      <div className="text-xs text-gray-500">{r.supplier_name||''} · ${Number(r.price||0).toFixed(2)}</div>
-                    </div>
-                  </div>
-                )) : addRelatedResults.length === 0 && !addRelatedSearch && (
-                  <div className="p-3 text-gray-600">No products available</div>
-                )}
-                {addRelatedSearch && addRelatedResults.length === 0 && (
-                  <div className="p-3 text-gray-600">No products found</div>
-                )}
+              <div className="max-h-[50vh] overflow-y-auto">
+                {Array.isArray(addRelatedResults) && addRelatedResults.length > 0 ? (
+                  addRelatedResults.map(r => (
+                    <button
+                      key={r.id}
+                      onClick={() => createRelation(addRelatedTarget!, r.id)}
+                      className="w-full text-left p-3 border-b hover:bg-gray-50 flex items-center justify-between"
+                    >
+                      <div>
+                        <div className="font-medium">{r.name}</div>
+                        {r.supplier_name && (
+                          <div className="text-sm text-gray-500">{r.supplier_name}</div>
+                        )}
+                      </div>
+                      <div className="text-sm text-brand-red font-semibold">
+                        ${Number(r.price || 0).toFixed(2)}
+                      </div>
+                    </button>
+                  ))
+                ) : addRelatedResults.length === 0 && !addRelatedSearch ? (
+                  <div className="p-3 text-gray-500 text-center">Start typing to search products...</div>
+                ) : addRelatedSearch && addRelatedResults.length === 0 ? (
+                  <div className="p-3 text-gray-500 text-center">No products found</div>
+                ) : null}
               </div>
             </div>
           </div>

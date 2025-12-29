@@ -612,7 +612,6 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
 
   const handleSave = useCallback(async()=>{
     if (disabled || isSaving) {
-      if (disabled) toast.error('Editing is restricted');
       return;
     }
     
@@ -683,7 +682,6 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
   // Clear quote function - clears all fields except orderNumber, companyName, and companyAddress
   const handleClearQuote = useCallback(async () => {
     if (disabled) {
-      toast.error('Editing is restricted');
       return;
     }
     

@@ -22,7 +22,7 @@ function formatTime12h(timeStr: string | null | undefined): string {
 }
 
 
-export default function DispatchTab({ projectId }: { projectId: string }) {
+export default function DispatchTab({ projectId, statusLabel }: { projectId: string; statusLabel?: string }) {
   const confirm = useConfirm();
   const queryClient = useQueryClient();
   const location = useLocation();
@@ -37,7 +37,16 @@ export default function DispatchTab({ projectId }: { projectId: string }) {
   const { data: me } = useQuery({ queryKey:['me'], queryFn: ()=>api<any>('GET','/auth/me') });
   const isAdmin = (me?.roles||[]).includes('admin');
   const permissions = new Set(me?.permissions || []);
-  const canEditWorkload = isAdmin || permissions.has('business:projects:workload:write');
+  const hasEditPermission = isAdmin || permissions.has('business:projects:workload:write');
+  
+  // Check if editing is restricted based on status (only Finished restricts editing for workload)
+  const isEditingRestricted = useMemo(() => {
+    if (!statusLabel) return false;
+    const statusLower = String(statusLabel).trim().toLowerCase();
+    return statusLower === 'finished';
+  }, [statusLabel]);
+  
+  const canEditWorkload = hasEditPermission && !isEditingRestricted;
 
   // Update view when URL search params change
   useEffect(() => {
@@ -165,6 +174,13 @@ export default function DispatchTab({ projectId }: { projectId: string }) {
 
   return (
     <div className="space-y-4">
+      {/* Editing Restricted Warning */}
+      {isEditingRestricted && statusLabel && (
+        <div className="mb-4 p-4 bg-yellow-50 border border-yellow-200 rounded text-sm text-yellow-800">
+          <strong>Editing Restricted:</strong> This project has status "{statusLabel}" which does not allow editing workload.
+        </div>
+      )}
+      
       {/* Minimalist header */}
       <div className="mb-4">
         <div className="flex items-center gap-3">

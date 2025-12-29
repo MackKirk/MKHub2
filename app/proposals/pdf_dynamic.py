@@ -181,9 +181,12 @@ class PricingTable(Flowable):
             show_gst = data.get('show_gst_in_pdf', True)
             base_height = 70 if show_total else 50  # Reduced height if total is hidden
             
+            # Check if this is a quotation - affects label width calculation
+            is_quote = data.get("is_quote", False)
+            
             # Calculate height considering wrapped text for each cost item
-            # Reserve space for quantity and total on right (about 150px width)
-            max_label_width = (A4[0] - 80) - 150  # Total width minus space for quantity and total
+            # Reserve space for quantity and total on right (about 150px width if showing Qty, otherwise less)
+            max_label_width = (A4[0] - 80) - 150 if is_quote else (A4[0] - 80) - 80
             font_name = "Montserrat-Bold"
             font_size = 11.5
             additional_height = 0
@@ -277,8 +280,11 @@ class PricingTable(Flowable):
             # For manual pricing, show the full format
             additional_costs = self.data.get("additional_costs") or []
             if additional_costs:
-                # Reserve space for quantity and total on right (about 150px width)
-                max_label_width = width - 150
+                # Check if this is a quotation (quote) - only show Qty for quotations
+                is_quote = self.data.get("is_quote", False)
+                
+                # Reserve space for quantity and total on right (about 150px width if showing Qty, otherwise less)
+                max_label_width = width - 150 if is_quote else width - 80
                 font_name = "Montserrat-Bold"
                 font_size = 11.5
                 
@@ -302,11 +308,15 @@ class PricingTable(Flowable):
                     # Calculate line total (price × quantity)
                     line_total = unit_price * quantity
                     line_total_str = f"${line_total:,.2f}"
-                    # Format quantity: show as integer if whole number, otherwise show decimal
-                    if quantity == int(quantity):
-                        quantity_str = f"Qty: {int(quantity)}"
-                    else:
-                        quantity_str = f"Qty: {quantity:.2f}"
+                    
+                    # Only format quantity string if this is a quotation
+                    quantity_str = None
+                    if is_quote:
+                        # Format quantity: show as integer if whole number, otherwise show decimal
+                        if quantity == int(quantity):
+                            quantity_str = f"Qty: {int(quantity)}"
+                        else:
+                            quantity_str = f"Qty: {quantity:.2f}"
                     
                     # Wrap text into multiple lines
                     wrapped_lines = wrap_text(label, font_name, font_size, max_label_width)
@@ -321,9 +331,12 @@ class PricingTable(Flowable):
                     # Draw quantity and line total aligned to the right, on the last line of the label
                     c.setFont(font_name, font_size)
                     c.setFillColor(colors.grey)
-                    # Draw quantity first (slightly to the left)
-                    quantity_x = x_right - 100
-                    c.drawRightString(quantity_x, line_y, quantity_str)
+                    
+                    # Draw quantity first (slightly to the left) only if it's a quotation
+                    if is_quote and quantity_str:
+                        quantity_x = x_right - 100
+                        c.drawRightString(quantity_x, line_y, quantity_str)
+                    
                     # Draw line total at the right edge
                     c.drawRightString(x_right, line_y, line_total_str)
                     
