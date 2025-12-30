@@ -335,7 +335,7 @@ export default function Quotes(){
         </button>
       </div>
       <LoadingOverlay isLoading={isInitialLoading} text="Loading quotes...">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-4 gap-4">
           {isLoading && !arr.length ? (
             <>
               {[1, 2, 3, 4, 5, 6].map(i => (
@@ -368,12 +368,6 @@ function QuoteListCard({ quote, employees, clientFiles }:{ quote: Quote, employe
   const clientName = quote.client_display_name || quote.client_name || '';
   const created = (quote.created_at || '').slice(0,10);
   const updated = (quote.updated_at || '').slice(0,10);
-  
-  // Get cover image
-  const coverImage = useMemo(() => {
-    const img = (clientFiles || []).find(f => String(f.category || '') === 'quote-cover-derived');
-    return img ? `/files/${img.file_object_id}/thumbnail?w=400` : '/ui/assets/login/logo-light.svg';
-  }, [clientFiles]);
   
   // Get estimator name
   const estimator = employees?.find((e: any) => String(e.id) === String(quote.estimator_id));
@@ -457,54 +451,44 @@ function QuoteListCard({ quote, employees, clientFiles }:{ quote: Quote, employe
   return (
     <Link 
       to={`/quotes/${encodeURIComponent(String(quote.id))}`} 
-      className="group rounded-xl border bg-white hover:shadow-lg transition-all overflow-hidden block flex flex-col h-full relative"
+      className="group rounded-xl border bg-white hover:border-gray-200 hover:shadow-md block h-full transition-all relative"
     >
-      {/* Top section: Image + Header */}
-      <div className="flex">
-        {/* Image on the left */}
-        <div className="w-40 h-40 flex-shrink-0 p-4">
-          <div className="w-full h-full bg-gray-100 rounded-lg overflow-hidden relative">
-            <img className="w-full h-full object-cover" src={coverImage} alt={documentType} />
-            <div className="absolute inset-0 bg-gradient-to-t from-black/10 to-transparent" />
-          </div>
-        </div>
-        
-        {/* Header on the right */}
-        <div className="flex-1 p-4 flex flex-col min-w-0">
-          <div className="mb-3">
-            <div className="text-xs text-gray-500 mb-1 truncate">{clientName || 'No client'}</div>
-            <div className="font-bold text-lg text-gray-900 group-hover:text-[#7f1010] transition-colors truncate mb-1">
+      <div className="p-4 flex flex-col gap-3">
+        {/* Header (no image) */}
+        <div className="min-w-0">
+          <div className="text-xs text-gray-500 truncate min-w-0">{clientName || 'No client'}</div>
+          <div className="min-w-0">
+            <div className="font-semibold text-base text-gray-900 group-hover:text-[#7f1010] transition-colors whitespace-normal break-words">
               {documentType}
             </div>
-            <div className="text-xs text-gray-600 truncate mb-2">{quote.code || quote.order_number || '—'}</div>
+            <div className="text-xs text-gray-600 break-words">{quote.code || quote.order_number || '—'}</div>
           </div>
         </div>
-      </div>
 
-      {/* Bottom section: Info */}
-      <div className="px-4 pb-4">
-        {/* Info grid */}
-        <div className="grid grid-cols-2 gap-3 text-sm mb-3">
-          <div>
+        {/* Separator */}
+        <div className="border-t border-black/5" />
+
+        {/* Info grid (same info as before, simple text) */}
+        <div className="grid grid-cols-2 gap-3 text-sm">
+          <div className="min-w-0">
             <div className="text-xs text-gray-500">Created</div>
-            <div className="font-medium text-gray-900">{created || '—'}</div>
+            <div className="font-medium text-gray-900 truncate">{created || '—'}</div>
           </div>
-          <div>
+          <div className="min-w-0">
             <div className="text-xs text-gray-500">Updated</div>
-            <div className="font-medium text-gray-900">{updated || '—'}</div>
+            <div className="font-medium text-gray-900 truncate">{updated || '—'}</div>
           </div>
-          <div className="truncate" title={estimatorName}>
+          <div className="min-w-0 truncate" title={estimatorName}>
             <div className="text-xs text-gray-500">Estimator</div>
             <div className="font-medium text-gray-900 text-xs">{estimatorName}</div>
           </div>
-          <div>
+          <div className="min-w-0">
             <div className="text-xs text-gray-500">Estimated Value</div>
-            <div className="font-medium text-gray-900">
+            <div className="font-medium text-gray-900 truncate">
               {estimatedValue > 0 ? `$${estimatedValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—'}
             </div>
           </div>
         </div>
-
       </div>
     </Link>
   );

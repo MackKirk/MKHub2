@@ -365,7 +365,7 @@ export default function Projects(){
         </button>
       </div>
       <LoadingOverlay isLoading={isInitialLoading} text="Loading projects...">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-3 gap-4">
           {isLoading && !arr.length ? (
             <>
               {[1, 2, 3, 4, 5, 6].map(i => (
@@ -477,35 +477,30 @@ function ProjectListCard({ project, projectDivisions }:{ project: Project, proje
   return (
     <Link 
       to={`/projects/${encodeURIComponent(String(project.id))}`} 
-      className="group rounded-xl border bg-white hover:shadow-lg transition-all overflow-hidden block flex flex-col h-full relative"
+      className="group rounded-xl border bg-white hover:border-gray-200 hover:shadow-md block h-full transition-all relative"
     >
-      {/* Status badge at top right */}
-      <div className="absolute top-3 right-3 z-10">
-        <span className="px-2 py-1 rounded-full text-xs font-medium border bg-white/95 backdrop-blur-sm text-gray-800 shadow-sm" title={status}>
-          {status || '—'}
-        </span>
-      </div>
-
-      {/* Top section: Image + Header/Progress */}
-      <div className="flex">
-        {/* Image on the left */}
-        <div className="w-40 h-40 flex-shrink-0 p-4">
-          <div className="w-full h-full bg-gray-100 rounded-lg overflow-hidden relative">
-            <img className="w-full h-full object-cover" src={src} alt={project.name || 'Project'} />
-            <div className="absolute inset-0 bg-gradient-to-t from-black/10 to-transparent" />
-          </div>
-        </div>
-        
-        {/* Header and Progress on the right */}
-        <div className="flex-1 p-4 flex flex-col min-w-0">
-          <div className="mb-3">
-            <div className="text-xs text-gray-500 mb-1 truncate">{clientName || 'No client'}</div>
-            <div className="font-bold text-lg text-gray-900 group-hover:text-[#7f1010] transition-colors truncate mb-1">
-              {project.name || 'Project'}
+      <div className="p-4 flex flex-col gap-3">
+        {/* Top row: thumb + title */}
+        <div className="flex gap-4">
+          {/* Image (smaller) */}
+          <div className="w-24 h-20 flex-shrink-0">
+            <div className="w-full h-full bg-gray-100 rounded-lg overflow-hidden relative">
+              <img className="w-full h-full object-cover" src={src} alt={project.name || 'Project'} />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/10 to-transparent" />
             </div>
-            <div className="text-xs text-gray-600 truncate mb-2">{project.code || '—'}</div>
-            <div className="flex items-center gap-1.5 flex-wrap">
-              {/* Tab shortcut buttons */}
+          </div>
+
+          <div className="flex-1 min-w-0">
+            <div className="text-xs text-gray-500 truncate min-w-0">{clientName || 'No client'}</div>
+            <div className="min-w-0">
+              <div className="font-semibold text-base text-gray-900 group-hover:text-[#7f1010] transition-colors whitespace-normal break-words">
+                {project.name || 'Project'}
+              </div>
+              <div className="text-xs text-gray-600 break-words">{project.code || '—'}</div>
+            </div>
+
+            {/* Icons row (right below code) */}
+            <div className="mt-2 flex items-center gap-1.5 flex-wrap">
               {tabButtons.map((btn) => (
                 <button
                   key={btn.key}
@@ -514,11 +509,10 @@ function ProjectListCard({ project, projectDivisions }:{ project: Project, proje
                     e.stopPropagation();
                     navigate(`/projects/${encodeURIComponent(String(project.id))}?tab=${btn.tab}`);
                   }}
-                  className="relative group/btn w-7 h-7 rounded-lg bg-gray-100 hover:bg-gray-200 border border-gray-200 hover:border-gray-300 flex items-center justify-center text-sm transition-all hover:scale-110"
+                  className="relative group/btn w-6 h-6 rounded-md bg-gray-100 hover:bg-gray-200 border border-gray-200 hover:border-gray-300 flex items-center justify-center text-xs transition-all hover:scale-[1.05]"
                   title={btn.label}
                 >
                   {btn.icon}
-                  {/* Tooltip */}
                   <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-1 px-2 py-1 bg-gray-900 text-white text-xs rounded whitespace-nowrap opacity-0 group-hover/btn:opacity-100 transition-opacity pointer-events-none z-20">
                     {btn.label}
                     <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-gray-900 rotate-45"></div>
@@ -527,83 +521,97 @@ function ProjectListCard({ project, projectDivisions }:{ project: Project, proje
               ))}
             </div>
           </div>
+        </div>
 
-          {/* Progress bar - same style as project detail page */}
-          <div>
-            <div className="flex items-center gap-3">
-              <div className="flex-1 h-3 bg-gray-200 rounded-full overflow-hidden">
-                <div className="h-full bg-brand-red rounded-full transition-all" style={{ width: `${progress}%` }} />
-              </div>
-              <span className="text-sm font-semibold text-gray-700 w-12 text-right">{progress}%</span>
+        {/* Progress bar */}
+        <div>
+          <div className="flex items-center gap-3">
+            <div className="flex-1 h-3 bg-gray-200 rounded-full overflow-hidden">
+              <div className="h-full bg-brand-red rounded-full transition-all" style={{ width: `${progress}%` }} />
             </div>
+            <span className="text-sm font-semibold text-gray-700 w-12 text-right">{progress}%</span>
           </div>
         </div>
-      </div>
 
-      {/* Bottom section: Start Date, ETA, Estimator, On-site Lead, Actual Value, Tab Buttons, Division Icons */}
-      <div className="px-4 pb-4">
-        {/* Info grid */}
-        <div className="grid grid-cols-2 gap-3 text-sm mb-3">
-          <div>
+        {/* Separator */}
+        <div className="border-t border-black/5" />
+
+        {/* Fields (same info as before, simple text) */}
+        <div className="grid grid-cols-2 gap-3 text-sm">
+          <div className="min-w-0">
             <div className="text-xs text-gray-500">Start Date</div>
-            <div className="font-medium text-gray-900">{start || '—'}</div>
+            <div className="font-medium text-gray-900 truncate">{start || '—'}</div>
           </div>
-          <div>
+          <div className="min-w-0">
             <div className="text-xs text-gray-500">ETA</div>
-            <div className="font-medium text-gray-900">{eta || '—'}</div>
+            <div className="font-medium text-gray-900 truncate">{eta || '—'}</div>
           </div>
-          <div className="truncate" title={est}>
+          <div className="min-w-0 truncate" title={est}>
             <div className="text-xs text-gray-500">Estimator</div>
             <div className="font-medium text-gray-900 text-xs">{est ? <UserInline id={est} /> : '—'}</div>
           </div>
-          <div>
+          <div className="min-w-0">
             <div className="text-xs text-gray-500">Estimated Value</div>
-            <div className="font-medium text-gray-900">
+            <div className="font-medium text-gray-900 truncate">
               {estimatedValue > 0 ? `$${estimatedValue.toLocaleString()}` : '—'}
             </div>
           </div>
         </div>
         {actualValue > 0 && (
-          <div className="mb-3">
+          <div>
             <div className="text-xs text-gray-500">Actual Value</div>
             <div className="font-semibold text-[#7f1010]">${actualValue.toLocaleString()}</div>
           </div>
         )}
 
-        {/* Division icons */}
-        {divisionIcons.length > 0 && (
-          <div className="pt-3 border-t">
-            <div className="flex items-center gap-2 flex-wrap">
-              {divisionIcons.map((div, idx) => (
-                <div
-                  key={idx}
-                  className="relative group/icon"
-                  title={div.label}
-                >
-                  <div className="text-2xl cursor-pointer hover:scale-110 transition-transform">
-                    {div.icon}
+        {/* Separator */}
+        <div className="border-t border-black/5" />
+
+        {/* Bottom row: divisions (left) + status (right) */}
+        <div className="flex items-center justify-between gap-2">
+          <div className="min-w-0">
+            {divisionIcons.length > 0 ? (
+              <div className="flex items-center gap-2 flex-wrap">
+                {divisionIcons.map((div, idx) => (
+                  <div key={idx} className="relative group/icon" title={div.label}>
+                    <div className="text-xl cursor-pointer hover:scale-110 transition-transform">
+                      {div.icon}
+                    </div>
+                    <div className="absolute left-0 bottom-full mb-1 px-2 py-1 bg-gray-900 text-white text-xs rounded whitespace-nowrap opacity-0 group-hover/icon:opacity-100 transition-opacity pointer-events-none z-10">
+                      {div.label}
+                      <div className="absolute -bottom-1 left-2 w-2 h-2 bg-gray-900 rotate-45"></div>
+                    </div>
                   </div>
-                  {/* Tooltip */}
-                  <div className="absolute left-0 bottom-full mb-1 px-2 py-1 bg-gray-900 text-white text-xs rounded whitespace-nowrap opacity-0 group-hover/icon:opacity-100 transition-opacity pointer-events-none z-10">
-                    {div.label}
-                    <div className="absolute -bottom-1 left-2 w-2 h-2 bg-gray-900 rotate-45"></div>
+                ))}
+                {projectDivIds.length > 5 && (
+                  <div className="relative group/icon">
+                    <div className="text-sm text-gray-400 cursor-pointer" title={`${projectDivIds.length - 5} more divisions`}>
+                      +{projectDivIds.length - 5}
+                    </div>
+                    <div className="absolute left-0 bottom-full mb-1 px-2 py-1 bg-gray-900 text-white text-xs rounded whitespace-nowrap opacity-0 group-hover/icon:opacity-100 transition-opacity pointer-events-none z-10">
+                      {projectDivIds.length - 5} more divisions
+                      <div className="absolute -bottom-1 left-2 w-2 h-2 bg-gray-900 rotate-45"></div>
+                    </div>
                   </div>
-                </div>
-              ))}
-              {projectDivIds.length > 5 && (
-                <div className="relative group/icon">
-                  <div className="text-lg text-gray-400 cursor-pointer" title={`${projectDivIds.length - 5} more divisions`}>
-                    +{projectDivIds.length - 5}
-                  </div>
-                  <div className="absolute left-0 bottom-full mb-1 px-2 py-1 bg-gray-900 text-white text-xs rounded whitespace-nowrap opacity-0 group-hover/icon:opacity-100 transition-opacity pointer-events-none z-10">
-                    {projectDivIds.length - 5} more divisions
-                    <div className="absolute -bottom-1 left-2 w-2 h-2 bg-gray-900 rotate-45"></div>
-                  </div>
-                </div>
-              )}
-            </div>
+                )}
+              </div>
+            ) : (
+              <div className="text-xs text-gray-400">No division</div>
+            )}
           </div>
-        )}
+
+          <div className="relative flex-shrink-0">
+            <span
+              className={[
+                'inline-flex items-center gap-1 px-2 py-1 rounded-full text-[11px] leading-4 font-medium border shadow-sm',
+                'bg-white/90 backdrop-blur-sm border-gray-200 text-gray-800',
+              ].join(' ')}
+              title={status}
+            >
+              <span className="truncate max-w-[10rem]">{status || '—'}</span>
+            </span>
+          </div>
+        </div>
       </div>
     </Link>
   );

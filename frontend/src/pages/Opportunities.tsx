@@ -290,7 +290,7 @@ export default function Opportunities(){
       </div>
       
       <LoadingOverlay isLoading={isInitialLoading} text="Loading opportunities...">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-3 gap-4">
           {arr.map(p => (
             <OpportunityListCard 
               key={p.id} 
@@ -605,6 +605,7 @@ function OpportunityListCard({ opportunity, onOpenReportModal }: {
   const { data:projectDivisions } = useQuery({ queryKey:['project-divisions'], queryFn: ()=> api<any[]>('GET','/settings/project-divisions'), staleTime: 300_000 });
   const status = (opportunity as any).status_label || details?.status_label || '';
   const start = (opportunity.date_start || details?.date_start || opportunity.created_at || '').slice(0,10);
+  const eta = (opportunity.date_end || details?.date_end || '').slice(0, 10);
   const estimatedValue = details?.cost_estimated || (opportunity as any).cost_estimated || 0;
   const clientName = client?.display_name || client?.name || '';
   const projectDivIds = (opportunity as any).project_division_ids || details?.project_division_ids || [];
@@ -659,52 +660,65 @@ function OpportunityListCard({ opportunity, onOpenReportModal }: {
   return (
     <Link 
       to={`/opportunities/${encodeURIComponent(String(opportunity.id))}`} 
-      className="group rounded-xl border bg-white hover:shadow-lg transition-all overflow-hidden block flex flex-col h-full relative"
+      className="group rounded-xl border bg-white hover:border-gray-200 hover:shadow-md block h-full transition-all relative"
     >
-      {/* Status badge at top right */}
-      <div className="absolute top-3 right-3 z-10 flex items-center gap-2">
-        {hasPendingData && (
-          <div className="relative group/pending">
-            <div className="w-8 h-8 rounded-full bg-amber-500 text-white flex items-center justify-center text-sm font-bold shadow-md hover:bg-amber-600 transition-colors cursor-help">
-              ⚠️
-            </div>
-            {/* Tooltip showing missing fields */}
-            <div className="absolute right-0 top-full mt-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg whitespace-nowrap opacity-0 group-hover/pending:opacity-100 transition-opacity pointer-events-none z-20 shadow-lg">
-              <div className="font-semibold mb-1">Pending Data:</div>
-              <div className="space-y-0.5">
-                {missingFields.map((field, idx) => (
-                  <div key={idx}>• {field}</div>
-                ))}
-              </div>
-              <div className="absolute -top-1 right-4 w-2 h-2 bg-gray-900 rotate-45"></div>
-            </div>
-          </div>
-        )}
-        <span className="px-2 py-1 rounded-full text-xs font-medium border bg-white/95 backdrop-blur-sm text-gray-800 shadow-sm" title={status}>
-          {status || '—'}
-        </span>
-      </div>
+      {/* Pending data alert icon (separate, top-left) */}
+      {hasPendingData && (
+        <div className="absolute top-3 right-3 z-20 group/alert">
+          <svg
+            viewBox="0 0 24 24"
+            className="w-5 h-5 text-orange-600 drop-shadow-sm"
+            fill="none"
+            stroke="currentColor"
+            aria-hidden="true"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+            />
+          </svg>
 
-      {/* Top section: Image + Header/Progress */}
-      <div className="flex">
-        {/* Image on the left */}
-        <div className="w-40 h-40 flex-shrink-0 p-4">
-          <div className="w-full h-full bg-gray-100 rounded-lg overflow-hidden relative">
-            <img className="w-full h-full object-cover" src={src} alt={opportunity.name || 'Opportunity'} />
-            <div className="absolute inset-0 bg-gradient-to-t from-black/10 to-transparent" />
+          {/* Tooltip showing missing fields */}
+          <div className="absolute right-0 bottom-full mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg whitespace-nowrap opacity-0 group-hover/alert:opacity-100 transition-opacity pointer-events-none z-50 shadow-lg">
+            <div className="font-semibold mb-1">Pending Data:</div>
+            <div className="space-y-0.5">
+              {missingFields.map((field, idx) => (
+                <div key={idx}>• {field}</div>
+              ))}
+            </div>
+            <div className="absolute -bottom-1 right-4 w-2 h-2 bg-gray-900 rotate-45"></div>
           </div>
         </div>
-        
-        {/* Header and Progress on the right */}
-        <div className="flex-1 p-4 flex flex-col min-w-0">
-          <div className="mb-3">
-            <div className="text-xs text-gray-500 mb-1 truncate">{clientName || 'No client'}</div>
-            <div className="font-bold text-lg text-gray-900 group-hover:text-[#7f1010] transition-colors truncate mb-1">
-              {opportunity.name || 'Opportunity'}
+      )}
+
+      <div className="p-4 flex flex-col gap-3">
+        {/* Status row (own line, top-right) */}
+        {/* Top row: thumb + title */}
+        <div className="flex gap-4">
+          {/* Image (smaller, does NOT dictate card size) */}
+          <div className="w-24 h-20 flex-shrink-0">
+            <div className="w-full h-full bg-gray-100 rounded-lg overflow-hidden relative">
+              <img className="w-full h-full object-cover" src={src} alt={opportunity.name || 'Opportunity'} />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/10 to-transparent" />
             </div>
-            <div className="text-xs text-gray-600 truncate mb-2">{opportunity.code || '—'}</div>
-            <div className="flex items-center gap-1.5 flex-wrap">
-              {/* Tab shortcut buttons */}
+          </div>
+
+          <div className="flex-1 min-w-0">
+            {/* Customer + Status on the same row */}
+            <div className="flex items-start justify-between gap-2">
+              <div className="text-xs text-gray-500 truncate min-w-0">{clientName || 'No client'}</div>
+            </div>
+            <div className="min-w-0">
+              <div className="font-semibold text-base text-gray-900 group-hover:text-[#7f1010] transition-colors whitespace-normal break-words">
+                {opportunity.name || 'Opportunity'}
+              </div>
+              <div className="text-xs text-gray-600 break-words">{opportunity.code || '—'}</div>
+            </div>
+
+            {/* Icons row (right below code) */}
+            <div className="mt-2 flex items-center gap-1.5 flex-wrap">
               {tabButtons.map((btn) => (
                 <button
                   key={btn.key}
@@ -717,11 +731,10 @@ function OpportunityListCard({ opportunity, onOpenReportModal }: {
                       navigate(`/opportunities/${encodeURIComponent(String(opportunity.id))}?tab=${btn.tab}`);
                     }
                   }}
-                  className="relative group/btn w-7 h-7 rounded-lg bg-gray-100 hover:bg-gray-200 border border-gray-200 hover:border-gray-300 flex items-center justify-center text-sm transition-all hover:scale-110"
+                  className="relative group/btn w-6 h-6 rounded-md bg-gray-100 hover:bg-gray-200 border border-gray-200 hover:border-gray-300 flex items-center justify-center text-xs transition-all hover:scale-[1.05]"
                   title={btn.label}
                 >
                   {btn.icon}
-                  {/* Tooltip */}
                   <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-1 px-2 py-1 bg-gray-900 text-white text-xs rounded whitespace-nowrap opacity-0 group-hover/btn:opacity-100 transition-opacity pointer-events-none z-20">
                     {btn.label}
                     <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-gray-900 rotate-45"></div>
@@ -731,74 +744,82 @@ function OpportunityListCard({ opportunity, onOpenReportModal }: {
             </div>
           </div>
         </div>
-      </div>
 
-      {/* Bottom section: Start Date, ETA, Estimator, On-site Lead, Estimated Value, Tab Buttons, Division Icons */}
-      <div className="px-4 pb-4">
-        {/* Info grid */}
-        <div className="grid grid-cols-2 gap-3 text-sm mb-3">
-          <div>
-            <div className="text-xs text-gray-500">Start Date</div>
-            <div className="font-medium text-gray-900">{start || '—'}</div>
+        {/* Separator */}
+        <div className="border-t border-black/5" />
+
+        {/* Fields (simple text, no boxed grid) */}
+        <div className="grid grid-cols-2 gap-3 text-sm">
+          <div className="min-w-0">
+            <div className="text-xs text-gray-500">Start</div>
+            <div className="font-medium text-gray-900 truncate">{start || '—'}</div>
           </div>
-          <div>
+          <div className="min-w-0">
             <div className="text-xs text-gray-500">ETA</div>
-            <div className="font-medium text-gray-900">—</div>
+            <div className="font-medium text-gray-900 truncate">{eta || '—'}</div>
           </div>
-          <div>
+          <div className="min-w-0">
             <div className="text-xs text-gray-500">Estimator</div>
-            <div className={`font-medium ${details?.estimator_id ? 'text-gray-900' : 'text-amber-600'}`}>
-              {details?.estimator_id ? (details?.estimator_name || '—') : '⚠️ Not set'}
+            <div className={`font-medium truncate ${details?.estimator_id ? 'text-gray-900' : 'text-gray-400'}`}>
+              {details?.estimator_id ? (details?.estimator_name || '—') : '—'}
             </div>
           </div>
-          <div>
-            <div className="text-xs text-gray-500">On-site Lead</div>
-            <div className={`font-medium ${details?.onsite_lead_id ? 'text-gray-900' : 'text-gray-400'}`}>
-              {details?.onsite_lead_id ? (details?.onsite_lead_name || '—') : '—'}
+          <div className="min-w-0">
+            <div className="text-xs text-gray-500">Estimated Value</div>
+            <div className="font-semibold text-[#7f1010] truncate">
+              {estimatedValue > 0 ? `$${estimatedValue.toLocaleString()}` : '—'}
             </div>
           </div>
         </div>
-        {estimatedValue > 0 && (
-          <div className="mb-3">
-            <div className="text-xs text-gray-500">Estimated Value</div>
-            <div className="font-semibold text-[#7f1010]">${estimatedValue.toLocaleString()}</div>
-          </div>
-        )}
 
-        {/* Division icons */}
-        {divisionIcons.length > 0 && (
-          <div className="pt-3 border-t">
-            <div className="flex items-center gap-2 flex-wrap">
-              {divisionIcons.map((div, idx) => (
-                <div
-                  key={idx}
-                  className="relative group/icon"
-                  title={div.label}
-                >
-                  <div className="text-2xl cursor-pointer hover:scale-110 transition-transform">
-                    {div.icon}
+        {/* Separator */}
+        <div className="border-t border-black/5" />
+
+        {/* Bottom row: divisions (left) + status (right) */}
+        <div className="flex items-center justify-between gap-2">
+          <div className="min-w-0">
+            {divisionIcons.length > 0 ? (
+              <div className="flex items-center gap-2 flex-wrap">
+                {divisionIcons.map((div, idx) => (
+                  <div key={idx} className="relative group/icon" title={div.label}>
+                    <div className="text-xl cursor-pointer hover:scale-110 transition-transform">
+                      {div.icon}
+                    </div>
+                    <div className="absolute left-0 bottom-full mb-1 px-2 py-1 bg-gray-900 text-white text-xs rounded whitespace-nowrap opacity-0 group-hover/icon:opacity-100 transition-opacity pointer-events-none z-10">
+                      {div.label}
+                      <div className="absolute -bottom-1 left-2 w-2 h-2 bg-gray-900 rotate-45"></div>
+                    </div>
                   </div>
-                  {/* Tooltip */}
-                  <div className="absolute left-0 bottom-full mb-1 px-2 py-1 bg-gray-900 text-white text-xs rounded whitespace-nowrap opacity-0 group-hover/icon:opacity-100 transition-opacity pointer-events-none z-10">
-                    {div.label}
-                    <div className="absolute -bottom-1 left-2 w-2 h-2 bg-gray-900 rotate-45"></div>
+                ))}
+                {projectDivIds.length > 5 && (
+                  <div className="relative group/icon">
+                    <div className="text-sm text-gray-400 cursor-pointer" title={`${projectDivIds.length - 5} more divisions`}>
+                      +{projectDivIds.length - 5}
+                    </div>
+                    <div className="absolute left-0 bottom-full mb-1 px-2 py-1 bg-gray-900 text-white text-xs rounded whitespace-nowrap opacity-0 group-hover/icon:opacity-100 transition-opacity pointer-events-none z-10">
+                      {projectDivIds.length - 5} more divisions
+                      <div className="absolute -bottom-1 left-2 w-2 h-2 bg-gray-900 rotate-45"></div>
+                    </div>
                   </div>
-                </div>
-              ))}
-              {projectDivIds.length > 5 && (
-                <div className="relative group/icon">
-                  <div className="text-lg text-gray-400 cursor-pointer" title={`${projectDivIds.length - 5} more divisions`}>
-                    +{projectDivIds.length - 5}
-                  </div>
-                  <div className="absolute left-0 bottom-full mb-1 px-2 py-1 bg-gray-900 text-white text-xs rounded whitespace-nowrap opacity-0 group-hover/icon:opacity-100 transition-opacity pointer-events-none z-10">
-                    {projectDivIds.length - 5} more divisions
-                    <div className="absolute -bottom-1 left-2 w-2 h-2 bg-gray-900 rotate-45"></div>
-                  </div>
-                </div>
-              )}
-            </div>
+                )}
+              </div>
+            ) : (
+              <div className="text-xs text-gray-400">No division</div>
+            )}
           </div>
-        )}
+
+          <div className="relative flex-shrink-0">
+            <span
+              className={[
+                'inline-flex items-center gap-1 px-2 py-1 rounded-full text-[11px] leading-4 font-medium border shadow-sm',
+                'bg-white/90 backdrop-blur-sm border-gray-200 text-gray-800',
+              ].join(' ')}
+              title={status}
+            >
+              <span className="truncate max-w-[10rem]">{status || '—'}</span>
+            </span>
+          </div>
+        </div>
       </div>
     </Link>
   );

@@ -2256,9 +2256,6 @@ export default function ClockInOut() {
                         <span className="text-gray-400 font-medium">•</span>{' '}
                         {formatTime12h(s.start_time)} - {formatTime12h(s.end_time)}
                       </div>
-                      <div className="text-xs text-gray-500 mt-1">
-                        Shift ID: {s.id}
-                      </div>
                     </div>
                     <div
                       className={`w-4 h-4 rounded-full border flex-shrink-0 ${

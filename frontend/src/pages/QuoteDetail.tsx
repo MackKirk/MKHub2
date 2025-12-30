@@ -46,9 +46,19 @@ export default function QuoteDetail(){
   
   const estimator = employees?.find((e:any) => String(e.id) === String(quote?.estimator_id));
   
-  const cover = useMemo(()=>{
-    const img = (clientFiles||[]).find(f=> String(f.category||'')==='quote-cover-derived');
-    return img? `/files/${img.file_object_id}/thumbnail?w=1000` : '/ui/assets/login/logo-light.svg';
+  // Hero/General Information image:
+  // - Use quote override if user set it (quote-cover-derived)
+  // - Otherwise match Customer image (client-logo-derived)
+  // - Otherwise show the same default placeholder used on Customer pages
+  const cover = useMemo(() => {
+    const files = (clientFiles || []);
+    const override = files.find(f => String(f.category || '') === 'quote-cover-derived');
+    if (override) return `/files/${override.file_object_id}/thumbnail?w=1000`;
+
+    const customerLogo = files.find(f => String(f.category || '') === 'client-logo-derived');
+    if (customerLogo) return `/files/${customerLogo.file_object_id}/thumbnail?w=1000`;
+
+    return '/ui/assets/placeholders/customer.png';
   }, [clientFiles]);
 
   if (isLoading) {
@@ -230,6 +240,7 @@ export default function QuoteDetail(){
         onConfirm={async(blob)=>{
           if(!quote?.client_id) return;
           try{
+            // Save a quote-specific override (should prevail over Customer default image)
             const up:any = await api('POST','/files/upload',{ client_id: quote.client_id, employee_id:null, category_id:'quote-cover-derived', original_name:'quote-cover.jpg', content_type:'image/jpeg' });
             await fetch(up.upload_url, { method:'PUT', headers:{ 'Content-Type':'image/jpeg', 'x-ms-blob-type':'BlockBlob' }, body: blob });
             const conf:any = await api('POST','/files/confirm',{ key: up.key, size_bytes: blob.size, checksum_sha256:'na', content_type:'image/jpeg' });
