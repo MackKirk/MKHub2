@@ -222,6 +222,14 @@ class ProjectReport(Base):
     status: Mapped[Optional[str]] = mapped_column(String(100))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
     created_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
+    
+    # Financial report fields
+    financial_value: Mapped[Optional[float]] = mapped_column(Float)  # For Additional Income/Expense
+    financial_type: Mapped[Optional[str]] = mapped_column(String(50))  # "additional-income", "additional-expense", "estimate-changes"
+    estimate_data: Mapped[Optional[dict]] = mapped_column(JSON)  # JSON with items, rates, etc. for Estimate Changes
+    approval_status: Mapped[Optional[str]] = mapped_column(String(50))  # "pending", "approved", "rejected" (for Estimate Changes)
+    approved_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
 
 
 class ProjectEvent(Base):
@@ -1244,6 +1252,10 @@ class EstimateItem(Base):
     section = Column(String)
     description = Column(String)  # For manual entries (labour, sub-contractors, shop)
     item_type = Column(String)  # 'product', 'labour', 'subcontractor', 'shop'
+    
+    # Report tracking fields
+    added_via_report_id = Column(UUID(as_uuid=True), ForeignKey("project_reports.id"), nullable=True)
+    added_via_report_date = Column(DateTime(timezone=True), nullable=True)
 
 
 class RelatedProduct(Base):

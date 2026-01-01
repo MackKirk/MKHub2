@@ -5,6 +5,8 @@ import toast from 'react-hot-toast';
 import { useConfirm } from '@/components/ConfirmProvider';
 import ImagePicker from '@/components/ImagePicker';
 import { useNavigate } from 'react-router-dom';
+import SupplierSelect from '@/components/SupplierSelect';
+import NewSupplierModal from '@/components/NewSupplierModal';
 
 type Material = { id:number, name:string, supplier_name?:string, category?:string, unit?:string, price?:number, last_updated?:string, unit_type?:string, units_per_package?:number, coverage_sqs?:number, coverage_ft2?:number, coverage_m2?:number, description?:string, image_base64?:string, technical_manual_url?:string };
 
@@ -136,6 +138,8 @@ export default function InventoryProducts(){
   const [name, setName] = useState('');
   const [nameError, setNameError] = useState(false);
   const [newSupplier, setNewSupplier] = useState('');
+  const [supplierError, setSupplierError] = useState(false);
+  const [newSupplierModalOpen, setNewSupplierModalOpen] = useState(false);
   const [newCategory, setNewCategory] = useState('');
   const [unit, setUnit] = useState('');
   const [price, setPrice] = useState<string>('');
@@ -320,7 +324,7 @@ export default function InventoryProducts(){
     setEditing(null);
     setViewing(null);
     setOpen(false);
-    setName(''); setNameError(false); setNewSupplier(''); setNewCategory(''); setUnit(''); setPrice(''); setPriceDisplay(''); setPriceFocused(false); setPriceError(false); setDesc('');
+    setName(''); setNameError(false); setNewSupplier(''); setSupplierError(false); setNewCategory(''); setUnit(''); setPrice(''); setPriceDisplay(''); setPriceFocused(false); setPriceError(false); setDesc('');
     setUnitsPerPackage(''); setCovSqs(''); setCovFt2(''); setCovM2(''); setUnitType('unitary');     setImageDataUrl('');
     setTechnicalManualUrl(''); setImagePickerOpen(false);
     setProductTab('details');
@@ -385,13 +389,19 @@ export default function InventoryProducts(){
 
   return (
     <div>
-      <div className="mb-3 rounded-xl border bg-gradient-to-br from-[#7f1010] to-[#a31414] text-white p-4 flex items-center justify-between">
+      <div className="bg-slate-200/50 rounded-[12px] border border-slate-200 flex items-center justify-between py-4 px-6 mb-6">
         <div>
-          <div className="text-2xl font-extrabold">Products</div>
-          <div className="text-sm opacity-90">Catalog of materials and pricing.</div>
+          <div className="text-xl font-bold text-gray-900 tracking-tight mb-0.5">Products</div>
+          <div className="text-sm text-gray-500 font-medium">Catalog of materials and pricing</div>
         </div>
         {canEditProducts && (
-          <button onClick={()=>{ resetModal(); setOpen(true); }} className="px-4 py-2 rounded bg-white text-brand-red font-semibold">+ New Product</button>
+          <button 
+            onClick={()=>{ resetModal(); setOpen(true); }} 
+            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[#bc1414] text-white text-sm font-medium transition-all duration-200 hover:bg-[#aa1212] hover:shadow-md active:translate-y-[1px] active:shadow-sm"
+          >
+            <span className="text-base leading-none">+</span>
+            New Product
+          </button>
         )}
       </div>
       {/* Advanced Search Panel */}
@@ -1001,17 +1011,24 @@ export default function InventoryProducts(){
                 )}
               </div>
               <div>
-                <label className="text-xs font-semibold text-gray-700">Supplier</label>
-                <select 
-                  className="w-full border rounded px-3 py-2 mt-1"
-                  value={newSupplier} 
-                  onChange={e=>setNewSupplier(e.target.value)}
-                >
-                  <option value="">Select a supplier</option>
-                  {Array.isArray(supplierOptions) && supplierOptions.map((s:any)=> (
-                    <option key={s.id} value={s.name}>{s.name}</option>
-                  ))}
-                </select>
+                <label className="text-xs font-semibold text-gray-700">
+                  Supplier <span className="text-red-600">*</span>
+                </label>
+                <div className="mt-1">
+                  <SupplierSelect
+                    value={newSupplier}
+                    onChange={(value) => {
+                      setNewSupplier(value);
+                      if (supplierError) setSupplierError(false);
+                    }}
+                    onOpenNewSupplierModal={() => setNewSupplierModalOpen(true)}
+                    error={supplierError && !newSupplier.trim()}
+                    placeholder="Select a supplier"
+                  />
+                </div>
+                {supplierError && !newSupplier.trim() && (
+                  <div className="text-[11px] text-red-600 mt-1">This field is required</div>
+                )}
               </div>
               <div><label className="text-xs font-semibold text-gray-700">Category</label><input className="w-full border rounded px-3 py-2 mt-1" value={newCategory} onChange={e=>setNewCategory(e.target.value)} /></div>
               <div><label className="text-xs font-semibold text-gray-700">Sell Unit</label><input className="w-full border rounded px-3 py-2 mt-1" placeholder="e.g., Roll, Pail (20L), Box" value={unit} onChange={e=>setUnit(e.target.value)} /></div>
@@ -1156,7 +1173,7 @@ export default function InventoryProducts(){
                     if(editing){
                       setViewing(editing);
                       setEditing(null);
-                      setName(''); setNameError(false); setNewSupplier(''); setNewCategory(''); setUnit('');                       setPrice(''); setPriceDisplay(''); setPriceFocused(false); setPriceError(false); setDesc('');
+                      setName(''); setNameError(false); setNewSupplier(''); setSupplierError(false); setNewCategory(''); setUnit('');                       setPrice(''); setPriceDisplay(''); setPriceFocused(false); setPriceError(false); setDesc('');
                       setUnitsPerPackage(''); setCovSqs(''); setCovFt2(''); setCovM2(''); setUnitType('unitary'); setImageDataUrl('');
                       setTechnicalManualUrl('');
                     }else{
@@ -1172,6 +1189,13 @@ export default function InventoryProducts(){
                       toast.error('Name is required');
                       return;
                     }
+
+                    // Validate supplier
+                    if(!newSupplier.trim()){
+                      setSupplierError(true);
+                      toast.error('Supplier is required');
+                      return;
+                    }
                     
                     // Validate price
                     const priceValue = parseCurrency(price);
@@ -1185,7 +1209,7 @@ export default function InventoryProducts(){
                       setIsSavingProduct(true);
                       const payload = {
                         name: name.trim(),
-                        supplier_name: newSupplier||null,
+                        supplier_name: newSupplier.trim(),
                         category: newCategory||null,
                         unit: unit||null,
                         price: Number(parseCurrency(price)),
@@ -1273,6 +1297,20 @@ export default function InventoryProducts(){
         allowEdit={true}
         onConfirm={handleImagePickerConfirm}
       />
+      {newSupplierModalOpen && (
+        <NewSupplierModal
+          open={true}
+          onClose={() => setNewSupplierModalOpen(false)}
+          onSupplierCreated={(supplierName: string) => {
+            setNewSupplier(supplierName);
+            setSupplierError(false);
+            setNewSupplierModalOpen(false);
+            queryClient.invalidateQueries({ queryKey: ['invSuppliersOptions'] });
+            queryClient.invalidateQueries({ queryKey: ['invSuppliersOptions-select'] });
+          }}
+        />
+      )}
     </div>
   );
 }
+

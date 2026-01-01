@@ -862,26 +862,46 @@ def build_dynamic_pages(data, output_path):
 
     # --- Pricing (conditional) - independent from Optional Services
     try:
-        add_costs = data.get("additional_costs") or []
-        # Filter out empty costs
-        valid_costs = [c for c in add_costs if c.get("label") and c.get("label").strip()]
-        # Show pricing if there are valid costs
-        show_pricing = len(valid_costs) > 0
+        pricing_type = data.get("pricing_type", "pricing")
         
-        # Calculate total
-        sum_costs = 0.0
-        for c in valid_costs:
+        if pricing_type == "estimate":
+            # For estimate pricing, show if estimate_total_estimate exists and is > 0
+            estimate_total_estimate = data.get("estimate_total_estimate", 0.0)
             try:
-                sum_costs += float(c.get("value") or 0)
+                estimate_total_estimate = float(estimate_total_estimate)
+                show_pricing = estimate_total_estimate > 0
             except Exception:
-                pass
-        total_val = data.get("total")
-        try:
-            total_val = float(total_val)
-        except Exception:
-            total_val = sum_costs
+                show_pricing = False
+            total_val = data.get("total", 0.0)
+            try:
+                total_val = float(total_val)
+            except Exception:
+                total_val = 0.0
+            valid_costs = []  # No additional costs for estimate pricing
+        else:
+            # For manual pricing, check additional_costs
+            add_costs = data.get("additional_costs") or []
+            # Filter out empty costs
+            valid_costs = [c for c in add_costs if c.get("label") and c.get("label").strip()]
+            # Show pricing if there are valid costs
+            show_pricing = len(valid_costs) > 0
+            
+            # Calculate total
+            sum_costs = 0.0
+            for c in valid_costs:
+                try:
+                    sum_costs += float(c.get("value") or 0)
+                except Exception:
+                    pass
+            total_val = data.get("total")
+            try:
+                total_val = float(total_val)
+            except Exception:
+                total_val = sum_costs
     except Exception:
         show_pricing = False
+        total_val = 0.0
+        valid_costs = []
 
     if show_pricing:
         story.append(YellowLine())

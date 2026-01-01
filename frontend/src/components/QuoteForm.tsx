@@ -8,6 +8,8 @@ import ImagePicker from '@/components/ImagePicker';
 import { useConfirm } from '@/components/ConfirmProvider';
 import { useUnsavedChanges } from '@/components/UnsavedChangesProvider';
 import EstimateBuilder, { EstimateBuilderRef } from '@/components/EstimateBuilder';
+import SupplierSelect from '@/components/SupplierSelect';
+import NewSupplierModal from '@/components/NewSupplierModal';
 type Client = { id:string, name?:string, display_name?:string, address_line1?:string, city?:string, province?:string, country?:string };
 type Material = { id:number, name:string, supplier_name?:string, category?:string, unit?:string, price?:number, last_updated?:string, unit_type?:string, units_per_package?:number, coverage_sqs?:number, coverage_ft2?:number, coverage_m2?:number, description?:string, image_base64?:string, technical_manual_url?:string };
 
@@ -2200,7 +2202,10 @@ function AddProductModalForQuote({ open, onClose, onSelect }: { open: boolean, o
 function NewProductModalForQuote({ open, onClose, onProductCreated, initialSupplier }: { open: boolean, onClose: () => void, onProductCreated: (product: Material) => void, initialSupplier?: string }) {
   const [name, setName] = useState('');
   const [nameError, setNameError] = useState(false);
+  const [duplicateError, setDuplicateError] = useState(false);
   const [newSupplier, setNewSupplier] = useState('');
+  const [supplierError, setSupplierError] = useState(false);
+  const [newSupplierModalOpen, setNewSupplierModalOpen] = useState(false);
   const [newCategory, setNewCategory] = useState('');
   const [unit, setUnit] = useState('');
   const [price, setPrice] = useState<string>('');
@@ -2218,7 +2223,42 @@ function NewProductModalForQuote({ open, onClose, onProductCreated, initialSuppl
   const [isSavingProduct, setIsSavingProduct] = useState(false);
   const [technicalManualUrl, setTechnicalManualUrl] = useState<string>('');
 
+  const queryClient = useQueryClient();
   const { data: supplierOptions } = useQuery({ queryKey:['invSuppliersOptions-quote'], queryFn: ()=> api<any[]>('GET','/inventory/suppliers') });
+  
+  // Check for duplicate products (same name and supplier)
+  const { data: existingProducts } = useQuery({
+    queryKey: ['product-duplicate-check-quote', name.trim(), newSupplier],
+    queryFn: async () => {
+      if (!name.trim()) return [];
+      const params = new URLSearchParams();
+      params.set('q', name.trim());
+      if (newSupplier) {
+        params.set('supplier', newSupplier);
+      }
+      return await api<Material[]>('GET', `/estimate/products/search?${params.toString()}`);
+    },
+    enabled: !!name.trim() && !!newSupplier && open,
+  });
+
+  // Check for duplicates when name or supplier changes
+  useEffect(() => {
+    if (name.trim() && newSupplier && existingProducts) {
+      // Check if any product has the exact same name and supplier (case-insensitive)
+      const duplicate = existingProducts.find(
+        (p: Material) => 
+          p.name.toLowerCase().trim() === name.toLowerCase().trim() && 
+          p.supplier_name?.toLowerCase().trim() === newSupplier.toLowerCase().trim()
+      );
+      if (duplicate) {
+        setDuplicateError(true);
+      } else {
+        setDuplicateError(false);
+      }
+    } else {
+      setDuplicateError(false);
+    }
+  }, [name, newSupplier, existingProducts]);
 
   const formatCurrency = (value: string): string => {
     if (!value) return '';
@@ -2265,6 +2305,7 @@ function NewProductModalForQuote({ open, onClose, onProductCreated, initialSuppl
     if (!open) {
       setName('');
       setNameError(false);
+      setDuplicateError(false);
       setNewSupplier(initialSupplier || '');
       setNewCategory('');
       setUnit('');
@@ -2317,29 +2358,45 @@ function NewProductModalForQuote({ open, onClose, onProductCreated, initialSuppl
                   Name <span className="text-red-600">*</span>
                 </label>
                 <input 
-                  className={`w-full border rounded px-3 py-2 mt-1 ${nameError && !name.trim() ? 'border-red-500' : ''}`}
+                  className={`w-full border rounded px-3 py-2 mt-1 ${(nameError && !name.trim()) || duplicateError ? 'border-red-500' : ''}`}
                   value={name} 
                   onChange={e=>{
                     setName(e.target.value);
                     if (nameError) setNameError(false);
+                    // Clear duplicate error when user starts typing
+                    if (duplicateError) setDuplicateError(false);
                   }} 
                 />
                 {nameError && !name.trim() && (
                   <div className="text-[11px] text-red-600 mt-1">This field is required</div>
                 )}
+                {duplicateError && (
+                  <div className="text-[11px] text-red-600 mt-1">
+                    A product with this name already exists for supplier "{newSupplier}". Please use a different name or select a different supplier.
+                  </div>
+                )}
               </div>
               <div>
-                <label className="text-xs font-semibold text-gray-700">Supplier</label>
-                <select 
-                  className="w-full border rounded px-3 py-2 mt-1"
-                  value={newSupplier} 
-                  onChange={e=>setNewSupplier(e.target.value)}
-                >
-                  <option value="">Select a supplier</option>
-                  {Array.isArray(supplierOptions) && supplierOptions.map((s:any)=> (
-                    <option key={s.id} value={s.name}>{s.name}</option>
-                  ))}
-                </select>
+                <label className="text-xs font-semibold text-gray-700">
+                  Supplier <span className="text-red-600">*</span>
+                </label>
+                <div className="mt-1">
+                  <SupplierSelect
+                    value={newSupplier}
+                    onChange={(value) => {
+                      setNewSupplier(value);
+                      if (supplierError) setSupplierError(false);
+                      // Clear duplicate error when supplier changes
+                      if (duplicateError) setDuplicateError(false);
+                    }}
+                    onOpenNewSupplierModal={() => setNewSupplierModalOpen(true)}
+                    error={(supplierError && !newSupplier.trim()) || duplicateError}
+                    placeholder="Select a supplier"
+                  />
+                </div>
+                {supplierError && !newSupplier.trim() && (
+                  <div className="text-[11px] text-red-600 mt-1">This field is required</div>
+                )}
               </div>
               <div><label className="text-xs font-semibold text-gray-700">Category</label><input className="w-full border rounded px-3 py-2 mt-1" value={newCategory} onChange={e=>setNewCategory(e.target.value)} /></div>
               <div><label className="text-xs font-semibold text-gray-700">Sell Unit</label><input className="w-full border rounded px-3 py-2 mt-1" placeholder="e.g., Roll, Pail (20L), Box" value={unit} onChange={e=>setUnit(e.target.value)} /></div>
@@ -2469,6 +2526,35 @@ function NewProductModalForQuote({ open, onClose, onProductCreated, initialSuppl
                   return;
                 }
                 
+                if(!newSupplier.trim()){
+                  setSupplierError(true);
+                  toast.error('Supplier is required');
+                  return;
+                }
+                
+                // Check for duplicate before creating
+                if (name.trim() && newSupplier) {
+                  try {
+                    const params = new URLSearchParams();
+                    params.set('q', name.trim());
+                    params.set('supplier', newSupplier);
+                    const duplicateCheck = await api<Material[]>('GET', `/estimate/products/search?${params.toString()}`);
+                    const duplicate = duplicateCheck.find(
+                      (p: Material) => 
+                        p.name.toLowerCase().trim() === name.toLowerCase().trim() && 
+                        p.supplier_name?.toLowerCase().trim() === newSupplier.toLowerCase().trim()
+                    );
+                    if (duplicate) {
+                      setDuplicateError(true);
+                      toast.error(`A product with the name "${name.trim()}" already exists for supplier "${newSupplier}". Please use a different name or select a different supplier.`);
+                      return;
+                    }
+                  } catch (e) {
+                    // If check fails, continue (server will validate anyway)
+                    console.error('Error checking for duplicate:', e);
+                  }
+                }
+                
                 const priceValue = parseCurrency(price);
                 if(!priceValue || !priceValue.trim() || Number(priceValue) <= 0){
                   setPriceError(true);
@@ -2527,9 +2613,23 @@ function NewProductModalForQuote({ open, onClose, onProductCreated, initialSuppl
           targetHeight={800}
         />
       )}
+      {newSupplierModalOpen && (
+        <NewSupplierModal
+          open={true}
+          onClose={() => setNewSupplierModalOpen(false)}
+          onSupplierCreated={(supplierName: string) => {
+            setNewSupplier(supplierName);
+            setNewSupplierModalOpen(false);
+            // Invalidate supplier options to refresh the list
+            queryClient.invalidateQueries({ queryKey: ['invSuppliersOptions-quote'] });
+            queryClient.invalidateQueries({ queryKey: ['invSuppliersOptions-select'] });
+          }}
+        />
+      )}
     </>
   );
 }
+
 
 // Supplier Product Modal for Quote - Same as EstimateBuilder
 function SupplierProductModalForQuote({ open, onClose, onSelect }: { open: boolean, onClose: () => void, onSelect: (product: Material) => void }) {

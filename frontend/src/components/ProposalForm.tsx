@@ -74,7 +74,7 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
   const [pricingItems, setPricingItems] = useState<{ name:string, price:string, pst?:boolean, gst?:boolean }[]>([]);
   const [optionalServices, setOptionalServices] = useState<{ service:string, price:string }[]>([]);
   const [showTotalInPdf, setShowTotalInPdf] = useState<boolean>(true);
-  const [pricingType, setPricingType] = useState<'pricing'|'estimate'>('pricing');
+  const [pricingType, setPricingType] = useState<'pricing'|'estimate'>('estimate');
   const [markup, setMarkup] = useState<number>(0);
   const [pstRate, setPstRate] = useState<number>(7);
   const [gstRate, setGstRate] = useState<number>(5);
@@ -415,7 +415,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
     const os = Array.isArray(d.optional_services)? d.optional_services : [];
     setOptionalServices(os.map((s:any)=> ({ service: String(s.service||''), price: formatAccounting(s.price ?? '') })));
     setShowTotalInPdf(d.show_total_in_pdf !== undefined ? Boolean(d.show_total_in_pdf) : true);
-    setPricingType(d.pricing_type === 'estimate' ? 'estimate' : 'pricing');
+    setPricingType('estimate');
     setMarkup(d.markup !== undefined && d.markup !== null ? Number(d.markup) : 5);
     setPstRate(d.pst_rate !== undefined && d.pst_rate !== null ? Number(d.pst_rate) : 7);
     setGstRate(d.gst_rate !== undefined && d.gst_rate !== null ? Number(d.gst_rate) : 5);
@@ -922,7 +922,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
       setPricingItems([]);
     setOptionalServices([]);
     setShowTotalInPdf(true);
-    setPricingType('pricing');
+    setPricingType('estimate');
     setMarkup(5);
     setPstRate(7);
     setGstRate(5);
@@ -1519,170 +1519,24 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
             Pricing
           </div>
           <div className="p-4">
-          {!disabled && projectId && projectId.trim() !== '' && (
-            <div className="mb-3">
-              <select
-                value={pricingType}
-                onChange={(e) => setPricingType(e.target.value as 'pricing' | 'estimate')}
-                className="border rounded px-3 py-1.5 text-sm text-gray-700 cursor-pointer"
-                disabled={disabled}
-              >
-                <option value="pricing">Insert Pricing manually</option>
-                <option value="estimate">Insert Pricing via Estimate</option>
-              </select>
-            </div>
-          )}
           <div className="text-[12px] text-gray-600 mb-2">If no pricing items are added, the "Pricing Table" section will be hidden in the PDF.</div>
-          {pricingType === 'pricing' ? (
-            <>
-              {!disabled && (
-                <div className="sticky top-0 z-30 bg-white/95 backdrop-blur mb-3 py-3 border-b">
-                  <div className="flex items-center gap-2">
-                    <button 
-                      onClick={()=> setPricingItems(arr=> [...arr, { name:'', price:'', pst: false, gst: false }])}
-                      disabled={disabled}
-                      className="px-3 py-2 rounded bg-gray-100 hover:bg-gray-200 disabled:opacity-60 text-base">
-                      + Add Pricing Item
-                    </button>
-                    <div className="ml-auto flex items-center gap-3 text-sm">
-                      <label className="text-sm">PST (%)</label>
-                      <input 
-                        type="number" 
-                        className="border rounded px-2 py-1 w-20" 
-                        value={pstRate} 
-                        min={0} 
-                        step={1} 
-                        onChange={e=>setPstRate(Number(e.target.value||0))} 
-                        disabled={disabled}
-                      />
-                      <label className="text-sm">GST (%)</label>
-                      <input 
-                        type="number" 
-                        className="border rounded px-2 py-1 w-20" 
-                        value={gstRate} 
-                        min={0} 
-                        step={1} 
-                        onChange={e=>setGstRate(Number(e.target.value||0))} 
-                        disabled={disabled}
-                      />
-                    </div>
-                  </div>
-                </div>
-              )}
-              
-              {/* Pricing items list - below the gray line */}
-              <div className="space-y-2">
-                {pricingItems.map((c, i)=> (
-                  <div key={i} className="grid grid-cols-12 gap-2 items-center">
-                    <input className={`col-span-6 border rounded px-3 py-2 ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} placeholder="Name" value={c.name} onChange={e=>{ const v=e.target.value; setPricingItems(arr=> arr.map((x,j)=> j===i? { ...x, name:v }: x)); }} disabled={disabled} readOnly={disabled} />
-                    <input type="text" className={`col-span-2 border rounded px-3 py-2 ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} placeholder="Price" value={c.price} onChange={e=>{ const v = parseAccounting(e.target.value); setPricingItems(arr=> arr.map((x,j)=> j===i? { ...x, price:v }: x)); }} onBlur={!disabled ? ()=> setPricingItems(arr=> arr.map((x,j)=> j===i? { ...x, price: formatAccounting(x.price) }: x)) : undefined} disabled={disabled} readOnly={disabled} />
-                    <div className="col-span-2 flex items-center gap-3">
-                      <span className="text-sm text-gray-600 whitespace-nowrap">Apply for this item:</span>
-                      <label className={`flex items-center gap-1 text-sm ${disabled ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
-                        <input 
-                          type="checkbox" 
-                          checked={c.pst === true}
-                          onChange={e=> setPricingItems(arr=> arr.map((x,j)=> j===i? { ...x, pst: e.target.checked }: x))}
-                          className={disabled ? 'cursor-not-allowed' : 'cursor-pointer'}
-                          disabled={disabled}
-                        />
-                        <span className="text-gray-700">PST</span>
-                      </label>
-                      <label className={`flex items-center gap-1 text-sm ${disabled ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
-                        <input 
-                          type="checkbox" 
-                          checked={c.gst === true}
-                          onChange={e=> setPricingItems(arr=> arr.map((x,j)=> j===i? { ...x, gst: e.target.checked }: x))}
-                          className={disabled ? 'cursor-not-allowed' : 'cursor-pointer'}
-                          disabled={disabled}
-                        />
-                        <span className="text-gray-700">GST</span>
-                      </label>
-                    </div>
-                    {!disabled && (
-                      <button className="col-span-2 px-2 py-2 rounded bg-gray-100" onClick={()=> setPricingItems(arr=> arr.filter((_,j)=> j!==i))}>Remove</button>
-                    )}
-                  </div>
-                ))}
+          <div>
+            {projectId && projectId.trim() !== '' ? (
+              <EstimateBuilder 
+                ref={estimateBuilderRef}
+                projectId={projectId} 
+                statusLabel={project?.status_label||''} 
+                settings={settings||{}} 
+                isBidding={project?.is_bidding}
+                canEdit={canEditEstimate}
+                hideFooter={true}
+              />
+            ) : (
+              <div className="text-sm text-gray-600 p-4 border rounded bg-gray-50">
+                Estimate requires a project to be associated with this proposal.
               </div>
-              
-              {/* Show PST, GST fields even when disabled (read-only view) */}
-              {disabled && (
-                <div className="mt-4 flex items-center gap-4">
-                  <label className="flex items-center gap-2 text-sm">
-                    <span>PST (%)</span>
-                    <input 
-                      type="number" 
-                      className="border rounded px-2 py-1 w-20 bg-gray-100 cursor-not-allowed" 
-                      value={pstRate} 
-                      disabled={true}
-                      readOnly={true}
-                    />
-                  </label>
-                  <label className="flex items-center gap-2 text-sm">
-                    <span>GST (%)</span>
-                    <input 
-                      type="number" 
-                      className="border rounded px-2 py-1 w-20 bg-gray-100 cursor-not-allowed" 
-                      value={gstRate} 
-                      disabled={true}
-                      readOnly={true}
-                    />
-                  </label>
-                </div>
-              )}
-
-              {/* Summary Section */}
-              <div className="mt-6">
-                <div className="rounded-xl border bg-white overflow-hidden">
-                  {/* Summary Header - Gray */}
-                  <div className="bg-gray-500 p-3 text-white font-semibold">
-                    Summary
-                  </div>
-                  
-                  {/* Two Cards Grid - inside Summary card */}
-                  <div className="p-4">
-                    <div className="grid md:grid-cols-2 gap-4">
-                      {/* Left Card */}
-                      <div className="rounded-xl border bg-white p-4">
-                        <div className="space-y-1 text-sm">
-                          <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span className="font-bold">Total Direct Costs</span><span className="font-bold">${totalNum.toFixed(2)}</span></div>
-                          <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span>PST ({pstRate}%)</span><span>${pst.toFixed(2)}</span></div>
-                          <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span className="font-bold">Sub-total</span><span className="font-bold">${subtotal.toFixed(2)}</span></div>
-                        </div>
-                      </div>
-                      {/* Right Card */}
-                      <div className="rounded-xl border bg-white p-4">
-                        <div className="space-y-1 text-sm">
-                          <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span>GST ({gstRate}%)</span><span>${gst.toFixed(2)}</span></div>
-                          <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1 text-lg"><span className="font-bold">Final Total (with GST)</span><span className="font-bold">${grandTotal.toFixed(2)}</span></div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-            </>
-          ) : (
-            <div>
-              {projectId && projectId.trim() !== '' ? (
-                <EstimateBuilder 
-                  ref={estimateBuilderRef}
-                  projectId={projectId} 
-                  statusLabel={project?.status_label||''} 
-                  settings={settings||{}} 
-                  isBidding={project?.is_bidding}
-                  canEdit={canEditEstimate}
-                  hideFooter={true}
-                />
-              ) : (
-                <div className="text-sm text-gray-600 p-4 border rounded bg-gray-50">
-                  Estimate requires a project to be associated with this proposal.
-                </div>
-              )}
-            </div>
-          )}
+            )}
+          </div>
 
           {/* Total with Show in PDF checkbox - PST/GST shown in PDF automatically based on items marked */}
           <div className="mt-3 space-y-2">

@@ -132,7 +132,7 @@ function formatHoursMinutes(totalMinutes: number): string {
 type Project = { id:string, code?:string, name?:string, client_id?:string, client_display_name?:string, client_name?:string, address?:string, address_city?:string, address_province?:string, address_country?:string, address_postal_code?:string, description?:string, status_id?:string, division_id?:string, division_ids?:string[], project_division_ids?:string[], estimator_id?:string, onsite_lead_id?:string, division_onsite_leads?:Record<string, string>, contact_id?:string, contact_name?:string, contact_email?:string, contact_phone?:string, date_start?:string, date_eta?:string, date_end?:string, cost_estimated?:number, cost_actual?:number, service_value?:number, progress?:number, site_id?:string, site_name?:string, site_address_line1?:string, site_address_line2?:string, site_city?:string, site_province?:string, site_country?:string, site_postal_code?:string, status_label?:string, status_changed_at?:string, is_bidding?:boolean };
 type ProjectFile = { id:string, file_object_id:string, is_image?:boolean, content_type?:string, category?:string, original_name?:string, uploaded_at?:string };
 type Update = { id:string, timestamp?:string, text?:string, images?:any };
-type Report = { id:string, title?:string, category_id?:string, division_id?:string, description?:string, images?:any, status?:string, created_at?:string, created_by?:string };
+type Report = { id:string, title?:string, category_id?:string, division_id?:string, description?:string, images?:any, status?:string, created_at?:string, created_by?:string, financial_value?:number, financial_type?:string, estimate_data?:any, approval_status?:string, approved_by?:string, approved_at?:string };
 type Proposal = { id:string, title?:string, order_number?:string, created_at?:string, data?:any };
 
 export default function ProjectDetail(){
@@ -1111,6 +1111,15 @@ function ReportsTabEnhanced({ projectId, items, onRefresh }:{ projectId:string, 
       })
       .sort((a, b) => (a.sort_index || 0) - (b.sort_index || 0));
   }, [reportCategories]);
+  
+  const financialCategories = useMemo(() => {
+    return reportCategories
+      .filter(cat => {
+        const meta = cat.meta || {};
+        return meta.group === 'financial';
+      })
+      .sort((a, b) => (a.sort_index || 0) - (b.sort_index || 0));
+  }, [reportCategories]);
 
   // Calculate counts per category
   const categoryCounts = useMemo(() => {
@@ -1264,6 +1273,18 @@ function ReportsTabEnhanced({ projectId, items, onRefresh }:{ projectId:string, 
                   })}
                 </optgroup>
               )}
+              {financialCategories.length > 0 && (
+                <optgroup label="📌 Financial">
+                  {financialCategories.map(cat => {
+                    const count = categoryCounts[cat.value || ''] || 0;
+                    return (
+                      <option key={cat.id || cat.value || cat.label} value={cat.value || cat.label}>
+                        {cat.label} ({count})
+                      </option>
+                    );
+                  })}
+                </optgroup>
+              )}
             </select>
             {canEditReports && (
               <button
@@ -1387,36 +1408,241 @@ function ReportsTabEnhanced({ projectId, items, onRefresh }:{ projectId:string, 
                         )}
                       </div>
                     </div>
-                    {canEditReports && (
-                      <button
-                        onClick={async () => {
-                          const result = await confirm({
-                            title: 'Delete Report',
-                            message: `Are you sure you want to delete "${selectedReport.title || 'this report'}"? This action cannot be undone.`,
-                            confirmText: 'Delete',
-                            cancelText: 'Cancel'
-                          });
-                          if (result !== 'confirm') return;
-                          try {
-                            await api('DELETE', `/projects/${projectId}/reports/${selectedReport.id}`);
-                            await onRefresh();
-                            setSelectedReportId(null);
-                            toast.success('Report deleted');
-                          } catch (_e) {
-                            toast.error('Failed to delete report');
-                          }
-                        }}
-                        className="px-3 py-1.5 rounded text-gray-500 hover:bg-red-50 hover:text-red-600 text-sm flex-shrink-0"
-                        title="Delete report"
-                      >
-                        🗑️ Delete
-                      </button>
-                    )}
+                    <div className="flex items-center gap-2">
+                      {selectedReport.financial_type === 'estimate-changes' && selectedReport.approval_status === 'pending' && canEditReports && (
+                        <button
+                          onClick={async () => {
+                            const result = await confirm({
+                              title: 'Approve Estimate Changes',
+                              message: `Are you sure you want to approve this Estimate Changes report? The items will be added to the project's estimate.`,
+                              confirmText: 'Approve',
+                              cancelText: 'Cancel'
+                            });
+                            if (result !== 'confirm') return;
+                            try {
+                              await api('POST', `/projects/${projectId}/reports/${selectedReport.id}/approve`);
+                              await onRefresh();
+                              toast.success('Report approved and items added to estimate');
+                            } catch (_e: any) {
+                              toast.error(_e.message || 'Failed to approve report');
+                            }
+                          }}
+                          className="px-3 py-1.5 rounded bg-green-600 hover:bg-green-700 text-white text-sm flex-shrink-0"
+                          title="Approve report"
+                        >
+                          ✓ Approve
+                        </button>
+                      )}
+                      {selectedReport.financial_type === 'estimate-changes' && selectedReport.approval_status && (
+                        <span className={`px-3 py-1.5 rounded text-sm flex-shrink-0 ${
+                          selectedReport.approval_status === 'approved' ? 'bg-green-100 text-green-700' :
+                          selectedReport.approval_status === 'pending' ? 'bg-yellow-100 text-yellow-700' :
+                          'bg-gray-100 text-gray-700'
+                        }`}>
+                          {selectedReport.approval_status === 'approved' ? '✓ Approved' :
+                           selectedReport.approval_status === 'pending' ? '⏳ Pending' :
+                           'Rejected'}
+                        </span>
+                      )}
+                      {canEditReports && (
+                        <button
+                          onClick={async () => {
+                            const result = await confirm({
+                              title: 'Delete Report',
+                              message: `Are you sure you want to delete "${selectedReport.title || 'this report'}"? This action cannot be undone.`,
+                              confirmText: 'Delete',
+                              cancelText: 'Cancel'
+                            });
+                            if (result !== 'confirm') return;
+                            try {
+                              await api('DELETE', `/projects/${projectId}/reports/${selectedReport.id}`);
+                              await onRefresh();
+                              setSelectedReportId(null);
+                              toast.success('Report deleted');
+                            } catch (_e) {
+                              toast.error('Failed to delete report');
+                            }
+                          }}
+                          className="px-3 py-1.5 rounded text-gray-500 hover:bg-red-50 hover:text-red-600 text-sm flex-shrink-0"
+                          title="Delete report"
+                        >
+                          🗑️ Delete
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
 
                 {/* Content */}
                 <div className="p-6 overflow-y-auto flex-1">
+                  {/* Financial value display */}
+                  {(selectedReport.financial_type === 'additional-income' || selectedReport.financial_type === 'additional-expense') && selectedReport.financial_value !== undefined && (
+                    <div className={`mb-4 p-4 rounded-lg border ${
+                      selectedReport.financial_type === 'additional-expense' 
+                        ? 'bg-red-50 border-red-200' 
+                        : 'bg-blue-50 border-blue-200'
+                    }`}>
+                      <div className="text-sm font-semibold text-gray-700 mb-1">
+                        {selectedReport.financial_type === 'additional-income' ? 'Additional Income' : 'Additional Expense'}
+                      </div>
+                      <div className="text-2xl font-bold text-gray-900">
+                        ${(selectedReport.financial_value || 0).toFixed(2)}
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* Estimate Changes display */}
+                  {selectedReport.financial_type === 'estimate-changes' && selectedReport.estimate_data && (() => {
+                    const estimateData = selectedReport.estimate_data;
+                    const items = estimateData?.items || [];
+                    const sectionOrder = estimateData?.section_order || [];
+                    const sectionNames = estimateData?.section_names || {};
+                    
+                    // Calculate item total base (without markup)
+                    const calculateItemTotal = (item: any): number => {
+                      if (item.item_type === 'labour' && item.labour_journey_type) {
+                        if (item.labour_journey_type === 'contract') {
+                          return (item.labour_journey || 0) * (item.unit_price || 0);
+                        } else {
+                          return (item.labour_journey || 0) * (item.labour_men || 0) * (item.unit_price || 0);
+                        }
+                      }
+                      return (item.quantity || 0) * (item.unit_price || 0);
+                    };
+                    
+                    // Calculate item total with markup applied
+                    const calculateItemTotalWithMarkup = (item: any): number => {
+                      const itemTotal = calculateItemTotal(item);
+                      const itemMarkup = item.markup !== undefined && item.markup !== null ? item.markup : (estimateData?.markup || 0);
+                      return itemTotal * (1 + (itemMarkup / 100));
+                    };
+                    
+                    const grandTotal = items.reduce((sum: number, item: any) => sum + calculateItemTotalWithMarkup(item), 0);
+                    
+                    // Group items by section
+                    const itemsBySection: Record<string, any[]> = {};
+                    items.forEach((item: any) => {
+                      const section = item.section || 'other';
+                      if (!itemsBySection[section]) {
+                        itemsBySection[section] = [];
+                      }
+                      itemsBySection[section].push(item);
+                    });
+                    
+                    // Get ordered sections
+                    const orderedSections = sectionOrder.length > 0 
+                      ? sectionOrder.filter((s: string) => itemsBySection[s])
+                      : Object.keys(itemsBySection).sort();
+                    
+                    return (
+                      <div className="mb-4 p-4 bg-gray-50 border border-gray-200 rounded-lg">
+                        <div className="flex items-center justify-between mb-3">
+                          <div className="text-sm font-semibold text-gray-700">Estimate Changes Summary</div>
+                          {selectedReport.approval_status === 'approved' && (
+                            <span className="text-xs text-green-600 font-medium">✓ Items have been added to the project estimate</span>
+                          )}
+                        </div>
+                        
+                        {items.length === 0 ? (
+                          <div className="text-xs text-gray-500">No items in this estimate change.</div>
+                        ) : (
+                          <div className="space-y-4">
+                            {orderedSections.map((section: string) => {
+                              const sectionItems = itemsBySection[section] || [];
+                              const sectionName = sectionNames[section] || section || 'Other';
+                              const sectionTotal = sectionItems.reduce((sum: number, item: any) => sum + calculateItemTotalWithMarkup(item), 0);
+                              
+                              return (
+                                <div key={section} className="border border-gray-200 rounded bg-white">
+                                  <div className="px-3 py-2 bg-gray-100 border-b border-gray-200">
+                                    <div className="text-xs font-semibold text-gray-700">{sectionName}</div>
+                                  </div>
+                                  <div className="divide-y divide-gray-100">
+                                    {sectionItems.map((item: any, idx: number) => {
+                                      const itemTotal = calculateItemTotalWithMarkup(item);
+                                      return (
+                                        <div key={idx} className="px-3 py-2">
+                                          <div className="flex items-start justify-between gap-4">
+                                            <div className="flex-1 min-w-0">
+                                              <div className="text-sm font-medium text-gray-900 mb-1">
+                                                {item.name || 'Unnamed Item'}
+                                              </div>
+                                              <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-600">
+                                                <span>
+                                                  <span className="font-medium">Qty:</span> {item.quantity || 0} {item.unit || ''}
+                                                </span>
+                                                {item.item_type === 'labour' && item.labour_journey && (
+                                                  <>
+                                                    <span>
+                                                      <span className="font-medium">Journey:</span> {item.labour_journey} {item.labour_journey_type || 'hours'}
+                                                    </span>
+                                                    {item.labour_men && item.labour_men > 0 && (
+                                                      <span>
+                                                        <span className="font-medium">Men:</span> {item.labour_men}
+                                                      </span>
+                                                    )}
+                                                  </>
+                                                )}
+                                                <span>
+                                                  <span className="font-medium">Unit Price:</span> ${(item.unit_price || 0).toFixed(2)}
+                                                </span>
+                                                {item.item_type && (
+                                                  <span>
+                                                    <span className="font-medium">Type:</span> {item.item_type}
+                                                  </span>
+                                                )}
+                                                {item.supplier_name && (
+                                                  <span>
+                                                    <span className="font-medium">Supplier:</span> {item.supplier_name}
+                                                  </span>
+                                                )}
+                                                {item.markup !== undefined && item.markup !== null && item.markup > 0 && (
+                                                  <span>
+                                                    <span className="font-medium">Markup:</span> {item.markup.toFixed(1)}%
+                                                  </span>
+                                                )}
+                                                {item.taxable && (
+                                                  <span className="text-green-600 font-medium">Taxable</span>
+                                                )}
+                                              </div>
+                                              {item.description && (
+                                                <div className="text-xs text-gray-500 mt-1 italic">
+                                                  {item.description}
+                                                </div>
+                                              )}
+                                            </div>
+                                            <div className="text-sm font-semibold text-gray-900 whitespace-nowrap">
+                                              ${itemTotal.toFixed(2)}
+                                            </div>
+                                          </div>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                  {sectionItems.length > 1 && (
+                                    <div className="px-3 py-2 bg-gray-50 border-t border-gray-200 flex justify-end">
+                                      <div className="text-xs font-semibold text-gray-700">
+                                        Section Total: ${sectionTotal.toFixed(2)}
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
+                            
+                            <div className="pt-2 border-t border-gray-300">
+                              <div className="flex justify-end">
+                                <div className="text-sm font-bold text-gray-900">
+                                  Grand Total: ${grandTotal.toFixed(2)}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
+                  
                   <div className="prose max-w-none">
                     <div className="text-gray-800 whitespace-pre-wrap leading-relaxed">
                       {selectedReport.description || 'No description provided.'}
@@ -1504,6 +1730,8 @@ function CreateReportModal({ projectId, reportCategories, onClose, onSuccess }: 
   const [category, setCategory] = useState('');
   const [desc, setDesc] = useState('');
   const [file, setFile] = useState<File|null>(null);
+  const [financialValue, setFinancialValue] = useState<number>(0);
+  const estimateBuilderRef = useRef<EstimateBuilderRef>(null);
   const { data:project } = useQuery({ queryKey:['project', projectId], queryFn: ()=>api<any>('GET', `/projects/${projectId}`) });
   
   // Separate categories into commercial and production based on meta.group
@@ -1525,6 +1753,15 @@ function CreateReportModal({ projectId, reportCategories, onClose, onSuccess }: 
       .sort((a, b) => (a.sort_index || 0) - (b.sort_index || 0));
   }, [reportCategories]);
   
+  const financialCategories = useMemo(() => {
+    return reportCategories
+      .filter(cat => {
+        const meta = cat.meta || {};
+        return meta.group === 'financial';
+      })
+      .sort((a, b) => (a.sort_index || 0) - (b.sort_index || 0));
+  }, [reportCategories]);
+  
   // If it's an opportunity (is_bidding), show only commercial categories
   const isBidding = project?.is_bidding === true;
 
@@ -1533,9 +1770,25 @@ function CreateReportModal({ projectId, reportCategories, onClose, onSuccess }: 
       toast.error('Please enter a title');
       return;
     }
+    if ((category === 'additional-income' || category === 'additional-expense') && financialValue <= 0) {
+      toast.error('Please enter a valid value');
+      return;
+    }
     if (!desc.trim()) {
       toast.error('Please enter a description');
       return;
+    }
+    if (category === 'estimate-changes') {
+      // Validate estimate has items
+      if (!estimateBuilderRef.current) {
+        toast.error('Estimate builder not ready');
+        return;
+      }
+      const estimateData = estimateBuilderRef.current.getEstimateData();
+      if (!estimateData || !estimateData.items || estimateData.items.length === 0) {
+        toast.error('Please add at least one item to the estimate');
+        return;
+      }
     }
     try {
       let imgMeta: any = undefined;
@@ -1568,25 +1821,79 @@ function CreateReportModal({ projectId, reportCategories, onClose, onSuccess }: 
           content_type: file.type || 'application/octet-stream'
         };
       }
-      await api('POST', `/projects/${projectId}/reports`, {
+      
+      // Get estimate data if it's estimate-changes
+      let estimateDataPayload: any = undefined;
+      if (category === 'estimate-changes') {
+        const estimateData = estimateBuilderRef.current?.getEstimateData();
+        if (estimateData) {
+          // Format estimate data to match backend expectations
+          estimateDataPayload = {
+            markup: estimateData.markup,
+            pst_rate: estimateData.pstRate,
+            gst_rate: estimateData.gstRate,
+            profit_rate: estimateData.profitRate,
+            section_order: estimateData.sectionOrder,
+            section_names: estimateData.sectionNames,
+            items: estimateData.items.map(it => ({
+              material_id: it.material_id,
+              quantity: it.quantity,
+              unit_price: it.unit_price,
+              section: it.section,
+              description: it.description,
+              item_type: it.item_type,
+              name: it.name,
+              unit: it.unit,
+              markup: it.markup,
+              taxable: it.taxable,
+              qty_required: it.qty_required,
+              unit_required: it.unit_required,
+              supplier_name: it.supplier_name,
+              unit_type: it.unit_type,
+              units_per_package: it.units_per_package,
+              coverage_sqs: it.coverage_sqs,
+              coverage_ft2: it.coverage_ft2,
+              coverage_m2: it.coverage_m2,
+              labour_journey: it.labour_journey,
+              labour_men: it.labour_men,
+              labour_journey_type: it.labour_journey_type
+            }))
+          };
+        }
+      }
+      
+      const payload: any = {
         title: title.trim(),
         category_id: category || null,
         description: desc,
         images: imgMeta ? { attachments: [imgMeta] } : undefined
-      });
+      };
+      
+      if (category === 'additional-income' || category === 'additional-expense') {
+        payload.financial_value = financialValue;
+        payload.financial_type = category;
+      } else if (category === 'estimate-changes') {
+        payload.financial_type = 'estimate-changes';
+        payload.estimate_data = estimateDataPayload;
+      }
+      
+      await api('POST', `/projects/${projectId}/reports`, payload);
       setTitle('');
       setCategory('');
       setDesc('');
       setFile(null);
+      setFinancialValue(0);
       await onSuccess();
     } catch (_e) {
       toast.error('Failed to create report');
     }
   };
 
+  const isEstimateChanges = category === 'estimate-changes';
+  
   return (
     <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
-      <div className="bg-white rounded-xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+      <div className={`bg-white rounded-xl ${isEstimateChanges ? 'max-w-7xl' : 'max-w-2xl'} w-full max-h-[90vh] overflow-hidden flex flex-col`}>
         <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] p-6 flex items-center justify-between flex-shrink-0">
           <h2 className="text-xl font-semibold text-white">Create Project Report</h2>
           <button
@@ -1630,6 +1937,13 @@ function CreateReportModal({ projectId, reportCategories, onClose, onSuccess }: 
                     ))}
                   </optgroup>
                 )}
+                {!isBidding && financialCategories.length > 0 && (
+                  <optgroup label="Financial">
+                    {financialCategories.map(cat => (
+                      <option key={cat.id || cat.value || cat.label} value={cat.value || cat.label}>{cat.label}</option>
+                    ))}
+                  </optgroup>
+                )}
                 {isBidding && commercialCategories.length > 0 && (
                   <>
                     {commercialCategories.map(cat => (
@@ -1639,16 +1953,60 @@ function CreateReportModal({ projectId, reportCategories, onClose, onSuccess }: 
                 )}
               </select>
             </div>
-            <div>
-              <label className="text-xs text-gray-600 block mb-1">Description *</label>
-              <textarea
-                className="w-full border rounded px-3 py-2 text-sm"
-                rows={6}
-                placeholder="Describe what happened, how the day went, or any events on site..."
-                value={desc}
-                onChange={e => setDesc(e.target.value)}
-              />
-            </div>
+            {category === 'additional-income' || category === 'additional-expense' ? (
+              <div>
+                <label className="text-xs text-gray-600 block mb-1">Value *</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  className="w-full border rounded px-3 py-2 text-sm"
+                  placeholder="Enter amount..."
+                  value={financialValue}
+                  onChange={e => setFinancialValue(e.target.value ? parseFloat(e.target.value) : 0)}
+                />
+              </div>
+            ) : null}
+            {category === 'estimate-changes' ? (
+              <div className="border rounded p-4">
+                <label className="text-xs text-gray-600 block mb-2">Estimate Changes</label>
+                <div className="max-h-[400px] overflow-y-auto">
+                  <EstimateBuilder
+                    ref={estimateBuilderRef}
+                    projectId=""
+                    estimateId={undefined}
+                    settings={project?.settings}
+                    isBidding={project?.is_bidding}
+                    canEdit={true}
+                    hideFooter={true}
+                  />
+                </div>
+              </div>
+            ) : null}
+            {category !== 'estimate-changes' && (
+              <div>
+                <label className="text-xs text-gray-600 block mb-1">Description *</label>
+                <textarea
+                  className="w-full border rounded px-3 py-2 text-sm"
+                  rows={6}
+                  placeholder="Describe what happened, how the day went, or any events on site..."
+                  value={desc}
+                  onChange={e => setDesc(e.target.value)}
+                />
+              </div>
+            )}
+            {category === 'estimate-changes' && (
+              <div>
+                <label className="text-xs text-gray-600 block mb-1">Description *</label>
+                <textarea
+                  className="w-full border rounded px-3 py-2 text-sm"
+                  rows={4}
+                  placeholder="Additional notes about these estimate changes..."
+                  value={desc}
+                  onChange={e => setDesc(e.target.value)}
+                />
+              </div>
+            )}
             <div>
               <label className="text-xs text-gray-600 block mb-1">Attachment (optional)</label>
               <input

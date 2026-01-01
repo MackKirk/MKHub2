@@ -186,13 +186,20 @@ export default function Quotes(){
 
   return (
     <div>
-      <div className="mb-3 rounded-xl border bg-gradient-to-br from-[#7f1010] to-[#a31414] text-white p-4 flex items-center justify-between">
+      <div className="bg-slate-200/50 rounded-[12px] border border-slate-200 flex items-center justify-between py-4 px-6 mb-6">
         <div>
-          <div className="text-2xl font-extrabold">Quotations</div>
-          <div className="text-sm opacity-90">List, search and manage quotations.</div>
+          <div className="text-xl font-bold text-gray-900 tracking-tight mb-0.5">Quotations</div>
+          <div className="text-sm text-gray-500 font-medium">List, search and manage quotations</div>
         </div>
         {hasEditPermission && (
-          <Link to="/quotes/new" state={{ backgroundLocation: location }} className="px-4 py-2 rounded bg-white text-brand-red font-semibold">+ New Quote</Link>
+          <Link 
+            to="/quotes/new" 
+            state={{ backgroundLocation: location }} 
+            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[#bc1414] text-white text-sm font-medium transition-all duration-200 hover:bg-[#aa1212] hover:shadow-md active:translate-y-[1px] active:shadow-sm"
+          >
+            <span className="text-base leading-none">+</span>
+            New Quote
+          </Link>
         )}
       </div>
       {/* Advanced Search Panel */}

@@ -6,7 +6,7 @@ from typing import List, Optional
 import uuid
 
 from ..db import get_db
-from ..models.models import Project, ClientFile, FileObject, Proposal, ProjectUpdate, ProjectReport, ProjectEvent, ProjectTimeEntry, ProjectTimeEntryLog, User, EmployeeProfile, Client, ClientSite, ClientFolder, ClientContact, SettingList, SettingItem, Shift, AuditLog
+from ..models.models import Project, ClientFile, FileObject, Proposal, ProjectUpdate, ProjectReport, ProjectEvent, ProjectTimeEntry, ProjectTimeEntryLog, User, EmployeeProfile, Client, ClientSite, ClientFolder, ClientContact, SettingList, SettingItem, Shift, AuditLog, Estimate, EstimateItem
 from datetime import datetime, timezone, time, timedelta
 from ..auth.security import get_current_user, require_permissions, can_approve_timesheet
 from sqlalchemy import or_, and_, cast, String, Date
@@ -409,6 +409,19 @@ def delete_project(project_id: str, db: Session = Depends(get_db)):
     p = db.query(Project).filter(Project.id == project_id).first()
     if not p:
         return {"status": "ok"}
+    
+    # Before deleting the project, remove references from estimate_items that were added via reports
+    # Get all reports for this project
+    project_reports = db.query(ProjectReport).filter(ProjectReport.project_id == project_id).all()
+    report_ids = [r.id for r in project_reports]
+    
+    if report_ids:
+        # Remove references from estimate_items that point to any of these reports
+        db.query(EstimateItem).filter(EstimateItem.added_via_report_id.in_(report_ids)).update({
+            EstimateItem.added_via_report_id: None,
+            EstimateItem.added_via_report_date: None
+        }, synchronize_session=False)
+    
     db.delete(p)
     db.commit()
     return {"status": "ok"}
@@ -558,12 +571,23 @@ def list_project_reports(project_id: str, db: Session = Depends(get_db)):
             "status": getattr(r, 'status', None),
             "created_at": getattr(r, 'created_at', None).isoformat() if getattr(r, 'created_at', None) else None,
             "created_by": str(getattr(r, 'created_by', None)) if getattr(r, 'created_by', None) else None,
+            "financial_value": getattr(r, 'financial_value', None),
+            "financial_type": getattr(r, 'financial_type', None),
+            "estimate_data": getattr(r, 'estimate_data', None),
+            "approval_status": getattr(r, 'approval_status', None),
+            "approved_by": str(getattr(r, 'approved_by', None)) if getattr(r, 'approved_by', None) else None,
+            "approved_at": getattr(r, 'approved_at', None).isoformat() if getattr(r, 'approved_at', None) else None,
         })
     return out
 
 
 @router.post("/{project_id}/reports")
 def create_project_report(project_id: str, payload: dict, db: Session = Depends(get_db), user=Depends(get_current_user)):
+    financial_type = payload.get("financial_type")
+    approval_status = None
+    if financial_type == "estimate-changes":
+        approval_status = "pending"
+    
     row = ProjectReport(
         project_id=project_id,
         title=payload.get("title"),
@@ -573,6 +597,10 @@ def create_project_report(project_id: str, payload: dict, db: Session = Depends(
         images=payload.get("images"),
         status=payload.get("status"),
         created_by=user.id,
+        financial_value=payload.get("financial_value"),
+        financial_type=financial_type,
+        estimate_data=payload.get("estimate_data"),
+        approval_status=approval_status,
     )
     db.add(row)
     db.commit()
@@ -585,9 +613,280 @@ def delete_project_report(project_id: str, report_id: str, db: Session = Depends
     row = db.query(ProjectReport).filter(ProjectReport.id == report_id, ProjectReport.project_id == project_id).first()
     if not row:
         return {"status": "ok"}
+
+    # If this is an "Estimate Changes" report, deleting the report should also delete the estimate items
+    # that were added via this report (instead of detaching them).
+    if getattr(row, "financial_type", None) == "estimate-changes":
+        import json
+
+        items_to_delete = db.query(EstimateItem).filter(EstimateItem.added_via_report_id == row.id).all()
+        deleted_item_ids = [it.id for it in items_to_delete]
+
+        if items_to_delete:
+            # Delete the items first
+            for it in items_to_delete:
+                db.delete(it)
+            db.flush()
+
+            # Clean up any saved item_extras for the deleted items and recompute estimate total_cost
+            estimate = db.query(Estimate).filter(Estimate.project_id == project_id).first()
+            if estimate:
+                # Update notes: remove item_extras entries for deleted items
+                if estimate.notes:
+                    try:
+                        ui_state = json.loads(estimate.notes) or {}
+                    except Exception:
+                        ui_state = {}
+                    item_extras = ui_state.get("item_extras") or {}
+                    if isinstance(item_extras, dict) and deleted_item_ids:
+                        for iid in deleted_item_ids:
+                            item_extras.pop(f"item_{iid}", None)
+                        ui_state["item_extras"] = item_extras
+                        estimate.notes = json.dumps(ui_state) if ui_state else None
+
+                # Recompute total_cost (basic sum; detailed totals are computed in /estimate endpoints using extras)
+                remaining = db.query(EstimateItem).filter(EstimateItem.estimate_id == estimate.id).all()
+                estimate.total_cost = sum((it.quantity or 0.0) * (it.unit_price or 0.0) for it in remaining)
+
+    else:
+        # For non estimate-changes reports, detach any estimate items referencing this report
+        # (keeps the items in the estimate, but removes the FK reference).
+        db.query(EstimateItem).filter(EstimateItem.added_via_report_id == report_id).update({
+            EstimateItem.added_via_report_id: None,
+            EstimateItem.added_via_report_date: None
+        })
+
     db.delete(row)
     db.commit()
     return {"status": "ok"}
+
+
+@router.post("/{project_id}/reports/{report_id}/approve")
+def approve_estimate_changes_report(project_id: str, report_id: str, db: Session = Depends(get_db), user=Depends(get_current_user)):
+    """Approve an Estimate Changes report and add its items to the project's estimate"""
+    from ..models.models import Material
+    import json
+    
+    # Get the report
+    report = db.query(ProjectReport).filter(
+        ProjectReport.id == report_id,
+        ProjectReport.project_id == project_id
+    ).first()
+    
+    if not report:
+        raise HTTPException(status_code=404, detail="Report not found")
+    
+    # Validate it's an estimate-changes report
+    if getattr(report, 'financial_type', None) != "estimate-changes":
+        raise HTTPException(status_code=400, detail="This endpoint only applies to Estimate Changes reports")
+    
+    # Validate it's pending approval
+    if getattr(report, 'approval_status', None) != "pending":
+        raise HTTPException(status_code=400, detail="Report is not pending approval")
+    
+    # Get estimate_data
+    estimate_data = getattr(report, 'estimate_data', None)
+    if not estimate_data:
+        raise HTTPException(status_code=400, detail="Report does not contain estimate data")
+    
+    # Get or create estimate for the project
+    estimate = db.query(Estimate).filter(Estimate.project_id == project_id).first()
+    if not estimate:
+        # Create new estimate
+        estimate = Estimate(
+            project_id=project_id,
+            markup=estimate_data.get('markup', 0.0),
+            notes=None,
+            created_by=user.id,
+        )
+        db.add(estimate)
+        db.flush()
+    
+    # Parse existing UI state from estimate notes
+    existing_ui_state = {}
+    if estimate.notes:
+        try:
+            existing_ui_state = json.loads(estimate.notes)
+        except:
+            pass
+    
+    # Get items from estimate_data
+    items = estimate_data.get('items', [])
+    if not items:
+        raise HTTPException(status_code=400, detail="Estimate data contains no items")
+    
+    # Get existing sections from the project's estimate to match section names.
+    #
+    # IMPORTANT: the EstimateBuilder uses unique section keys (e.g. "Product Section 173...") and
+    # stores user-facing labels in `section_names` (e.g. "Product Section"). So matching only by raw
+    # section key will create duplicates that *look* identical. We therefore match by display name.
+    #
+    # Also, sections can exist in UI state (`section_order`) even if there are no items yet,
+    # so we must consider both `section_order` and existing items.
+    def _norm_section_name(name: str) -> str:
+        # normalize for comparison: trim and collapse whitespace, case-insensitive
+        return " ".join(str(name).split()).strip().lower()
+
+    section_order_existing = existing_ui_state.get('section_order') or []
+    section_names_existing = existing_ui_state.get('section_names') or {}
+    if not isinstance(section_names_existing, dict):
+        section_names_existing = {}
+
+    canonical_section_key_by_display_norm: dict[str, str] = {}
+    canonical_section_key_by_key_norm: dict[str, str] = {}
+
+    def _existing_display_for_key(section_key: str) -> str:
+        return str(section_names_existing.get(section_key) or section_key)
+
+    # Prefer the exact section key already present in section_order (source of truth for UI sections)
+    for section_key in section_order_existing:
+        if not section_key:
+            continue
+        section_key = str(section_key)
+        nk = _norm_section_name(section_key)
+        if nk:
+            canonical_section_key_by_key_norm.setdefault(nk, section_key)
+        nd = _norm_section_name(_existing_display_for_key(section_key))
+        if nd:
+            canonical_section_key_by_display_norm.setdefault(nd, section_key)
+
+    # Also consider sections from existing items (in case notes is missing / older estimates)
+    if estimate.id:
+        existing_items = db.query(EstimateItem).filter(EstimateItem.estimate_id == estimate.id).all()
+        for it in existing_items:
+            if not it.section:
+                continue
+            section_key = str(it.section)
+            nk = _norm_section_name(section_key)
+            if nk:
+                canonical_section_key_by_key_norm.setdefault(nk, section_key)
+            # if the section isn't in section_order, treat its key as its display too
+            nd = _norm_section_name(section_key)
+            if nd:
+                canonical_section_key_by_display_norm.setdefault(nd, section_key)
+    
+    # Add items to estimate
+    total = estimate.total_cost or 0.0
+    item_extras = existing_ui_state.get('item_extras', {})
+    now = datetime.now(timezone.utc)
+    
+    # Create a mapping of report section keys to canonical existing section keys.
+    # We match primarily by the display name (report sectionNames -> "Product Section"),
+    # falling back to key matching.
+    report_section_names = estimate_data.get('sectionNames') or estimate_data.get('section_names') or {}
+    if not isinstance(report_section_names, dict):
+        report_section_names = {}
+
+    section_mapping: dict[str, str] = {}
+    for report_section_key in {item.get('section', '') for item in items if item.get('section')}:
+        if not report_section_key:
+            continue
+        rkey = str(report_section_key).strip()
+        if not rkey:
+            continue
+
+        rdisp = str(report_section_names.get(rkey) or rkey)
+        mapped = canonical_section_key_by_display_norm.get(_norm_section_name(rdisp))
+        if not mapped:
+            mapped = canonical_section_key_by_key_norm.get(_norm_section_name(rkey))
+        section_mapping[rkey] = mapped or rkey
+    
+    for item_data in items:
+        price = item_data.get('unit_price')
+        if price is None and item_data.get('material_id'):
+            material = db.query(Material).filter(Material.id == item_data['material_id']).first()
+            price = (material.price or 0.0) if material else 0.0
+        elif price is None:
+            price = 0.0
+        
+        quantity = item_data.get('quantity', 0.0)
+        line_total = quantity * price
+        total += line_total
+        
+        # Map the section key to match an existing section if it exists (see mapping above).
+        report_section = str(item_data.get('section') or '').strip()
+        mapped_section = section_mapping.get(report_section, report_section) if report_section else item_data.get('section')
+        
+        estimate_item = EstimateItem(
+            estimate_id=estimate.id,
+            material_id=item_data.get('material_id'),
+            quantity=quantity,
+            unit_price=price,
+            total_price=line_total,
+            section=mapped_section,
+            description=item_data.get('description'),
+            item_type=item_data.get('item_type', 'product'),
+            added_via_report_id=report.id,
+            added_via_report_date=now,
+        )
+        db.add(estimate_item)
+        db.flush()
+        
+        # Store item extras if they exist
+        extras = {}
+        if 'qty_required' in item_data:
+            extras['qty_required'] = item_data['qty_required']
+        if 'unit_required' in item_data:
+            extras['unit_required'] = item_data['unit_required']
+        if 'markup' in item_data:
+            extras['markup'] = item_data['markup']
+        if 'taxable' in item_data:
+            extras['taxable'] = item_data['taxable']
+        if 'labour_journey' in item_data:
+            extras['labour_journey'] = item_data['labour_journey']
+        if 'labour_men' in item_data:
+            extras['labour_men'] = item_data['labour_men']
+        if 'labour_journey_type' in item_data:
+            extras['labour_journey_type'] = item_data['labour_journey_type']
+        if 'unit' in item_data:
+            extras['unit'] = item_data['unit']
+        
+        if extras:
+            item_extras[f'item_{estimate_item.id}'] = extras
+    
+    # Update estimate total_cost
+    estimate.total_cost = total
+    
+    # Update estimate notes with item_extras
+    if item_extras:
+        existing_ui_state['item_extras'] = item_extras
+    estimate.notes = json.dumps(existing_ui_state) if existing_ui_state else None
+    
+    # Update report approval status
+    report.approval_status = "approved"
+    report.approved_by = user.id
+    report.approved_at = now
+    
+    db.commit()
+    db.refresh(estimate)
+    
+    return {"status": "ok", "estimate_id": estimate.id}
+
+
+@router.get("/{project_id}/financial-totals")
+def get_project_financial_totals(project_id: str, db: Session = Depends(get_db)):
+    """Get total Additional Income and Additional Expense for a project"""
+    reports = db.query(ProjectReport).filter(
+        ProjectReport.project_id == project_id,
+        ProjectReport.financial_type.in_(["additional-income", "additional-expense"])
+    ).all()
+    
+    additional_income = 0.0
+    additional_expense = 0.0
+    
+    for report in reports:
+        financial_value = getattr(report, 'financial_value', None) or 0.0
+        financial_type = getattr(report, 'financial_type', None)
+        
+        if financial_type == "additional-income":
+            additional_income += financial_value
+        elif financial_type == "additional-expense":
+            additional_expense += financial_value
+    
+    return {
+        "additional_income": additional_income,
+        "additional_expense": additional_expense
+    }
 
 
 # ---- Events ----
@@ -1697,10 +1996,75 @@ def convert_to_project(project_id: str, db: Session = Depends(get_db)):
 # Business Dashboard
 # =====================
 
+def calculate_estimate_values(estimate, db: Session) -> tuple[Optional[float], Optional[float]]:
+    """
+    Calculate Final Total (With GST) and Profit from an estimate.
+    Returns: (final_total_with_gst, profit) or (None, None) if calculation fails.
+    """
+    if not estimate or not estimate.notes:
+        return (None, None)
+    
+    try:
+        import json
+        ui_state = json.loads(estimate.notes)
+        pst_rate = ui_state.get('pst_rate', 7.0)
+        gst_rate = ui_state.get('gst_rate', 5.0)
+        profit_rate = ui_state.get('profit_rate', 20.0)
+        markup = estimate.markup or 0.0
+        
+        items = db.query(EstimateItem).filter(EstimateItem.estimate_id == estimate.id).all()
+        item_extras_map = ui_state.get('item_extras', {})
+        
+        # Calculate total with markup applied per item (matching EstimateBuilder logic)
+        # Each item can have its own markup, or use the global markup
+        total = 0.0
+        taxable_total = 0.0
+        for item in items:
+            # Get item-specific markup or use global markup
+            item_extras = item_extras_map.get(f'item_{item.id}', {})
+            item_markup = item_extras.get('markup')
+            if item_markup is None:
+                item_markup = markup
+            
+            # Calculate item base total based on item type
+            if item.item_type == 'labour' and item_extras.get('labour_journey_type'):
+                if item_extras.get('labour_journey_type') == 'contract':
+                    item_base_total = (item_extras.get('labour_journey', 0) or 0) * (item.unit_price or 0.0)
+                else:
+                    item_base_total = (item_extras.get('labour_journey', 0) or 0) * (item_extras.get('labour_men', 0) or 0) * (item.unit_price or 0.0)
+            else:
+                item_base_total = (item.quantity or 0.0) * (item.unit_price or 0.0)
+            
+            # Apply markup to item (matching EstimateBuilder: itemTotal * (1 + markup/100))
+            item_total = item_base_total * (1 + (item_markup / 100))
+            
+            total += item_total
+            # PST only applies to taxable items - and it's calculated on the total WITH markup
+            # (matching EstimateBuilder: taxableTotal includes markup)
+            if item_extras.get('taxable', True) is not False:
+                taxable_total += item_total  # PST is calculated on total WITH markup
+        
+        # Calculate PST, subtotal, profit, final_total, GST, grand_total
+        # Following EstimateBuilder logic exactly
+        pst = taxable_total * (pst_rate / 100)
+        subtotal = total + pst  # total already includes markup per item
+        profit_value = subtotal * (profit_rate / 100)
+        final_total = subtotal + profit_value
+        gst = final_total * (gst_rate / 100)
+        final_total_with_gst = final_total + gst
+        
+        return (final_total_with_gst, profit_value)
+    except Exception:
+        return (None, None)
+
+
 @router.get("/business/dashboard")
 def business_dashboard(
     division_id: Optional[str] = None,
     subdivision_id: Optional[str] = None,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    mode: Optional[str] = "quantity",
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user)
 ):
@@ -1708,6 +2072,24 @@ def business_dashboard(
     # Base queries
     opportunities_query = db.query(Project).filter(Project.is_bidding == True)
     projects_query = db.query(Project).filter(Project.is_bidding == False)
+    
+    # Apply date filtering
+    effective_start_dt = func.coalesce(Project.date_start, Project.created_at)
+    if date_from:
+        try:
+            start_d = datetime.strptime(date_from, "%Y-%m-%d").date()
+            opportunities_query = opportunities_query.filter(cast(effective_start_dt, Date) >= start_d)
+            projects_query = projects_query.filter(cast(effective_start_dt, Date) >= start_d)
+        except Exception:
+            pass
+    
+    if date_to:
+        try:
+            end_d = datetime.strptime(date_to, "%Y-%m-%d").date()
+            opportunities_query = opportunities_query.filter(cast(effective_start_dt, Date) <= end_d)
+            projects_query = projects_query.filter(cast(effective_start_dt, Date) <= end_d)
+        except Exception:
+            pass
     
     # Filter by project division/subdivision if provided
     if subdivision_id:
@@ -1781,15 +2163,47 @@ def business_dashboard(
     
     # Get opportunities by status
     opportunities_by_status = {}
-    for opp in opportunities_query.all():
-        status = getattr(opp, 'status_label', None) or 'No Status'
-        opportunities_by_status[status] = opportunities_by_status.get(status, 0) + 1
+    if mode == "value":
+        # Calculate values from estimates
+        for opp in opportunities_query.all():
+            status = getattr(opp, 'status_label', None) or 'No Status'
+            estimate = db.query(Estimate).filter(Estimate.project_id == opp.id).order_by(Estimate.created_at.desc()).first()
+            final_total, profit = calculate_estimate_values(estimate, db)
+            
+            if status not in opportunities_by_status:
+                opportunities_by_status[status] = {"final_total_with_gst": 0.0, "profit": 0.0}
+            
+            if final_total is not None:
+                opportunities_by_status[status]["final_total_with_gst"] += final_total
+            if profit is not None:
+                opportunities_by_status[status]["profit"] += profit
+    else:
+        # Count by status (quantity mode)
+        for opp in opportunities_query.all():
+            status = getattr(opp, 'status_label', None) or 'No Status'
+            opportunities_by_status[status] = opportunities_by_status.get(status, 0) + 1
     
     # Get projects by status
     projects_by_status = {}
-    for proj in projects_query.all():
-        status = getattr(proj, 'status_label', None) or 'No Status'
-        projects_by_status[status] = projects_by_status.get(status, 0) + 1
+    if mode == "value":
+        # Calculate values from estimates
+        for proj in projects_query.all():
+            status = getattr(proj, 'status_label', None) or 'No Status'
+            estimate = db.query(Estimate).filter(Estimate.project_id == proj.id).order_by(Estimate.created_at.desc()).first()
+            final_total, profit = calculate_estimate_values(estimate, db)
+            
+            if status not in projects_by_status:
+                projects_by_status[status] = {"final_total_with_gst": 0.0, "profit": 0.0}
+            
+            if final_total is not None:
+                projects_by_status[status]["final_total_with_gst"] += final_total
+            if profit is not None:
+                projects_by_status[status]["profit"] += profit
+    else:
+        # Count by status (quantity mode)
+        for proj in projects_query.all():
+            status = getattr(proj, 'status_label', None) or 'No Status'
+            projects_by_status[status] = projects_by_status.get(status, 0) + 1
     
     # Get total estimated value
     total_estimated_value = sum(
@@ -2404,7 +2818,12 @@ def business_projects(
 
 
 @router.get("/business/divisions-stats")
-def business_divisions_stats(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+def business_divisions_stats(
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user)
+):
     """Get statistics for each project division"""
     from ..models.models import SettingList, SettingItem
     
@@ -2451,6 +2870,24 @@ def business_divisions_stats(db: Session = Depends(get_db), user: User = Depends
                 Project.is_bidding == False,
                 or_(*conditions)
             )
+            
+            # Apply date filtering
+            effective_start_dt = func.coalesce(Project.date_start, Project.created_at)
+            if date_from:
+                try:
+                    start_d = datetime.strptime(date_from, "%Y-%m-%d").date()
+                    opp_query = opp_query.filter(cast(effective_start_dt, Date) >= start_d)
+                    proj_query = proj_query.filter(cast(effective_start_dt, Date) >= start_d)
+                except Exception:
+                    pass
+            
+            if date_to:
+                try:
+                    end_d = datetime.strptime(date_to, "%Y-%m-%d").date()
+                    opp_query = opp_query.filter(cast(effective_start_dt, Date) <= end_d)
+                    proj_query = proj_query.filter(cast(effective_start_dt, Date) <= end_d)
+                except Exception:
+                    pass
             
             opportunities_count = opp_query.count()
             projects_count = proj_query.count()

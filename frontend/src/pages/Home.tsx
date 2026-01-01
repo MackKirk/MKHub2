@@ -35,48 +35,15 @@ export default function Home(){
     'User';
   const jobTitle = profile.job_title || '';
   
-  // Get current date formatted
-  const currentDate = useMemo(() => {
-    return new Date().toLocaleDateString('en-US', { 
-      weekday: 'long', 
-      year: 'numeric', 
-      month: 'long', 
-      day: 'numeric' 
+  // Get current date formatted (same as Business Dashboard)
+  const todayLabel = useMemo(() => {
+    return new Date().toLocaleDateString('pt-BR', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
     });
   }, []);
-  
-  // Get clock status
-  const today = formatDateLocal(new Date());
-  const { data: currentUser } = useQuery({
-    queryKey: ['me'],
-    queryFn: () => api<any>('GET', '/auth/me'),
-  });
-  const { data: todayAttendance } = useQuery({
-    queryKey: ['attendance-today', today],
-    queryFn: () => api<any[]>('GET', `/settings/attendance/list?start_date=${today}&end_date=${today}`).catch(() => []),
-  });
-  
-  const clockStatus = useMemo(() => {
-    if (!currentUser?.id || !Array.isArray(todayAttendance)) return 'Not clocked in';
-    const myAttendance = todayAttendance.find((a: any) => {
-      if (String(a.worker_id) !== String(currentUser?.id)) return false;
-      const attendanceDate = a.clock_in_time 
-        ? new Date(a.clock_in_time).toISOString().split('T')[0]
-        : (a.clock_out_time ? new Date(a.clock_out_time).toISOString().split('T')[0] : null);
-      return attendanceDate === today;
-    });
-    
-    if (!myAttendance || !myAttendance.clock_in_time) {
-      return 'Not clocked in';
-    }
-    if (myAttendance.clock_in_time && myAttendance.clock_out_time) {
-      return 'Clocked out';
-    }
-    if (myAttendance.clock_in_time) {
-      return 'Clocked in';
-    }
-    return 'Not clocked in';
-  }, [todayAttendance, currentUser?.id, today]);
   
   // Overlay image from settings (same as Project hero overlay)
   const overlayUrl = useMemo(() => {
@@ -117,28 +84,10 @@ export default function Home(){
           <div className="text-xl font-bold text-gray-900 tracking-tight mb-0.5">
             {getTimeBasedGreeting()}, {displayName}
           </div>
-          <div className="text-sm text-gray-500 font-medium">{currentDate}</div>
         </div>
         <div className="text-right">
-          <div className="text-xs text-gray-400 mb-1.5 font-medium uppercase tracking-wide">Clock Status</div>
-          <div className="flex items-center justify-end gap-2">
-            <svg 
-              className={`w-[18px] h-[18px] transition-opacity duration-300 ${
-                clockStatus === 'Clocked in' ? 'text-green-600' : 
-                clockStatus === 'Clocked out' ? 'text-red-500' : 
-                'text-red-500'
-              }`}
-              fill="none" 
-              stroke="currentColor" 
-              strokeWidth={2} 
-              viewBox="0 0 24 24"
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            <span className="text-sm font-semibold text-gray-700">
-              {clockStatus}
-            </span>
-          </div>
+          <div className="text-xs text-gray-400 mb-1.5 font-medium uppercase tracking-wide">Today</div>
+          <div className="text-sm font-semibold text-gray-700">{todayLabel}</div>
         </div>
       </div>
       

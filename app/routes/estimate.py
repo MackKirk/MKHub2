@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.orm import Session, defer
 from sqlalchemy.exc import ProgrammingError
+from sqlalchemy import func
 
 from ..auth.security import require_permissions
 from ..db import get_db
@@ -69,10 +70,28 @@ def search_products(
 
 @router.post("/products")
 def create_product(body: MaterialIn, db: Session = Depends(get_db), _=Depends(require_permissions("inventory:products:write"))):
+    # Enforce required supplier and uniqueness (name + supplier), case-insensitive
+    name = (body.name or "").strip()
+    supplier_name = (body.supplier_name or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Name is required")
+    if not supplier_name:
+        raise HTTPException(status_code=400, detail="Supplier is required")
+
+    existing = (
+        db.query(Material)
+        .filter(Material.supplier_name.isnot(None))
+        .filter(func.lower(Material.name) == name.lower())
+        .filter(func.lower(Material.supplier_name) == supplier_name.lower())
+        .first()
+    )
+    if existing:
+        raise HTTPException(status_code=400, detail="A product with this name already exists for this supplier")
+
     row = Material(
-        name=body.name,
+        name=name,
         category=body.category,
-        supplier_name=body.supplier_name,
+        supplier_name=supplier_name,
         unit=body.unit,
         price=body.price or 0.0,
         description=body.description,
@@ -518,10 +537,18 @@ def _update_estimate_internal(estimate_id: int, body: EstimateIn, db: Session):
             pass
     
     # Map old items by material_id + section + description for matching
+    # Also preserve report tracking fields
     old_items_map = {}
+    old_items_report_tracking = {}  # Map item_id -> (added_via_report_id, added_via_report_date)
     for old_item in old_items:
         key = f"{old_item.material_id}_{old_item.section}_{old_item.description}"
         old_items_map[key] = old_item
+        # Preserve report tracking fields
+        if getattr(old_item, 'added_via_report_id', None):
+            old_items_report_tracking[old_item.id] = (
+                old_item.added_via_report_id,
+                getattr(old_item, 'added_via_report_date', None)
+            )
     
     db.query(EstimateItem).filter(EstimateItem.estimate_id == estimate_id).delete()
     
@@ -537,6 +564,16 @@ def _update_estimate_internal(estimate_id: int, body: EstimateIn, db: Session):
             price = 0.0
         line_total = (it.quantity or 0.0) * (price or 0.0)
         total += line_total
+        
+        # Try to preserve report tracking from old item
+        added_via_report_id = None
+        added_via_report_date = None
+        key = f"{it.material_id}_{it.section or ''}_{it.description or ''}"
+        if key in old_items_map:
+            old_item_id = old_items_map[key].id
+            if old_item_id in old_items_report_tracking:
+                added_via_report_id, added_via_report_date = old_items_report_tracking[old_item_id]
+        
         estimate_item = EstimateItem(
             estimate_id=est.id,
             material_id=it.material_id,
@@ -545,7 +582,9 @@ def _update_estimate_internal(estimate_id: int, body: EstimateIn, db: Session):
             total_price=line_total,
             section=it.section or None,
             description=it.description or None,
-            item_type=it.item_type or 'product'
+            item_type=it.item_type or 'product',
+            added_via_report_id=added_via_report_id,
+            added_via_report_date=added_via_report_date
         )
         db.add(estimate_item)
         db.flush()  # Flush to get the ID
@@ -722,7 +761,9 @@ def get_estimate(estimate_id: int, db: Session = Depends(get_db), _=Depends(requ
             "total_price": item.total_price,
             "section": item.section,
             "description": item.description,
-            "item_type": item.item_type or 'product'
+            "item_type": item.item_type or 'product',
+            "added_via_report_id": str(item.added_via_report_id) if getattr(item, 'added_via_report_id', None) else None,
+            "added_via_report_date": item.added_via_report_date.isoformat() if getattr(item, 'added_via_report_date', None) else None,
         }
         
         # Get extras for this item (by item ID)

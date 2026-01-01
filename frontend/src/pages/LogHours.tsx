@@ -28,7 +28,10 @@ export default function LogHours(){
   }, [start, end]);
   return (
     <div className="max-w-2xl">
-      <h1 className="text-2xl font-bold mb-3">Log Hours</h1>
+      <div className="bg-slate-200/50 rounded-[12px] border border-slate-200 py-4 px-6 mb-6">
+        <h1 className="text-2xl font-bold text-gray-900 tracking-tight mb-1.5">Log Hours</h1>
+        <p className="text-sm text-gray-600 font-medium">Record your work hours for projects</p>
+      </div>
       <div className="rounded-xl border bg-white p-4 grid md:grid-cols-2 gap-3">
         <div className="md:col-span-2">
           <label className="text-xs text-gray-600">Project</label>

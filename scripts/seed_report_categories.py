@@ -52,6 +52,10 @@ def seed_report_categories():
             {"label": "Deficiency Found", "value": "deficiency-found", "sort_index": 14, "meta": {"group": "production"}},
             {"label": "Work Completed", "value": "work-completed", "sort_index": 15, "meta": {"group": "production"}},
             {"label": "Weather Impact", "value": "weather-impact", "sort_index": 16, "meta": {"group": "production"}},
+            # Financial categories
+            {"label": "Additional Income", "value": "additional-income", "sort_index": 20, "meta": {"group": "financial"}},
+            {"label": "Additional Expense", "value": "additional-expense", "sort_index": 21, "meta": {"group": "financial"}},
+            {"label": "Estimate Changes", "value": "estimate-changes", "sort_index": 22, "meta": {"group": "financial"}},
         ]
         
         # Upsert categories
