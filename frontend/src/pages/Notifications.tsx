@@ -128,7 +128,12 @@ export default function Notifications() {
 
   const handleNotificationClick = (notif: Notification) => {
     if (notif.link) {
-      navigate(notif.link);
+      // For shift notifications, always redirect to schedule
+      let targetLink = notif.link;
+      if (notif.type === 'shift') {
+        targetLink = '/schedule';
+      }
+      navigate(targetLink);
       // Mark as read when clicked
       if (!notif.read) {
         markAsRead(notif.id);

@@ -59,18 +59,37 @@ type Project = {
   site_postal_code?: string;
 };
 
-export default function OrdersTab({ projectId, project }: { projectId: string; project: Project }) {
+export default function OrdersTab({ projectId, project, statusLabel }: { projectId: string; project: Project; statusLabel?: string }) {
   const confirm = useConfirm();
   const queryClient = useQueryClient();
   const location = useLocation();
   const nav = useNavigate();
   const [reviewingOrder, setReviewingOrder] = useState<Order | null>(null);
+  const [isGeneratingOrders, setIsGeneratingOrders] = useState(false);
   
   // Check permissions for orders
   const { data: me } = useQuery({ queryKey:['me'], queryFn: ()=>api<any>('GET','/auth/me') });
   const isAdmin = (me?.roles||[]).includes('admin');
   const permissions = new Set(me?.permissions || []);
-  const canEditOrders = isAdmin || permissions.has('business:projects:orders:write');
+  const hasEditPermission = isAdmin || permissions.has('business:projects:orders:write');
+  
+  // Check if editing is restricted based on status (only Finished restricts editing)
+  const isEditingRestricted = useMemo(() => {
+    if (!statusLabel) return false;
+    const statusLower = String(statusLabel).trim().toLowerCase();
+    return statusLower === 'finished';
+  }, [statusLabel]);
+  
+  const canEditOrders = hasEditPermission && !isEditingRestricted;
+  
+  // Fetch project estimates to get the current estimate ID
+  const { data: projectEstimates = [] } = useQuery<any[]>({
+    queryKey: ['projectEstimates', projectId],
+    queryFn: () => api<any[]>('GET', `/estimate/estimates?project_id=${encodeURIComponent(projectId)}`),
+    enabled: !!projectId && !(project as any)?.is_bidding
+  });
+  
+  const currentEstimateId = projectEstimates[0]?.id;
   
   const handleBackToOverview = () => {
     nav(location.pathname, { replace: true });
@@ -299,6 +318,13 @@ export default function OrdersTab({ projectId, project }: { projectId: string; p
 
   return (
     <div className="space-y-6">
+      {/* Editing Restricted Warning */}
+      {isEditingRestricted && statusLabel && (
+        <div className="mb-4 p-4 bg-yellow-50 border border-yellow-200 rounded text-sm text-yellow-800">
+          <strong>Editing Restricted:</strong> This project has status "{statusLabel}" which does not allow editing orders.
+        </div>
+      )}
+      
       {/* Header with Clear All button */}
       {/* Minimalist header */}
       <div className="mb-4">
@@ -322,6 +348,34 @@ export default function OrdersTab({ projectId, project }: { projectId: string; p
       {canEditOrders && (
         <div className="flex items-center justify-between">
           <div className="flex gap-2">
+            {/* Generate Order from Estimate button - only for Projects (not Opportunities) */}
+            {!(project as any)?.is_bidding && (
+              <button
+                onClick={async () => {
+                  if (!currentEstimateId) {
+                    toast.error('Please save an estimate first');
+                    return;
+                  }
+                  try {
+                    setIsGeneratingOrders(true);
+                    const response = await api('POST', `/orders/projects/${projectId}/generate`, { estimate_id: currentEstimateId });
+                    toast.success(`Generated ${response.orders_created || 0} orders successfully`);
+                    // Invalidate orders query so they appear immediately
+                    queryClient.invalidateQueries({ queryKey: ['projectOrders', projectId] });
+                    await refetch();
+                  } catch (error: any) {
+                    const errorMsg = error.response?.data?.detail || error.message || 'Failed to generate orders';
+                    toast.error(errorMsg);
+                  } finally {
+                    setIsGeneratingOrders(false);
+                  }
+                }}
+                disabled={isGeneratingOrders || !currentEstimateId}
+                className="px-4 py-2 rounded bg-blue-600 text-white text-sm hover:bg-blue-700 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                {isGeneratingOrders ? 'Generating...' : 'Generate Order from Estimate'}
+              </button>
+            )}
             <button
               onClick={() => {
                 setShowAddExtraOrder(true);

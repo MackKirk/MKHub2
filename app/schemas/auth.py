@@ -106,6 +106,8 @@ class EmployeeProfileInput(BaseModel):
     emergency_contact_name: Optional[str] = None
     emergency_contact_relationship: Optional[str] = None
     emergency_contact_phone: Optional[str] = None
+    cloth_size: Optional[str] = None
+    cloth_sizes_custom: Optional[List[str]] = None
 
 
 class RegisterPayload(BaseModel):

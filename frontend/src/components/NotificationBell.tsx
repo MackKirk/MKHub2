@@ -161,7 +161,9 @@ export default function NotificationBell() {
                       setIsOpen(false);
                       // Navigate to link if available
                       if (notif.link) {
-                        navigate(notif.link);
+                        // For shift notifications, always redirect to schedule
+                        const targetLink = notif.type === 'shift' ? '/schedule' : notif.link;
+                        navigate(targetLink);
                       }
                     }}
                   >

@@ -181,9 +181,12 @@ class PricingTable(Flowable):
             show_gst = data.get('show_gst_in_pdf', True)
             base_height = 70 if show_total else 50  # Reduced height if total is hidden
             
+            # Check if this is a quotation - affects label width calculation
+            is_quote = data.get("is_quote", False)
+            
             # Calculate height considering wrapped text for each cost item
-            # Reserve space for price on right (about 100px width)
-            max_label_width = (A4[0] - 80) - 100  # Total width minus space for price
+            # Reserve space for quantity and total on right (about 150px width if showing Qty, otherwise less)
+            max_label_width = (A4[0] - 80) - 150 if is_quote else (A4[0] - 80) - 80
             font_name = "Montserrat-Bold"
             font_size = 11.5
             additional_height = 0
@@ -277,8 +280,11 @@ class PricingTable(Flowable):
             # For manual pricing, show the full format
             additional_costs = self.data.get("additional_costs") or []
             if additional_costs:
-                # Reserve space for price on right (about 100px width)
-                max_label_width = width - 100
+                # Check if this is a quotation (quote) - only show Qty for quotations
+                is_quote = self.data.get("is_quote", False)
+                
+                # Reserve space for quantity and total on right (about 150px width if showing Qty, otherwise less)
+                max_label_width = width - 150 if is_quote else width - 80
                 font_name = "Montserrat-Bold"
                 font_size = 11.5
                 
@@ -286,7 +292,31 @@ class PricingTable(Flowable):
                     c.setFont(font_name, font_size)
                     c.setFillColor(colors.black)
                     label = cost.get("label", "")
-                    value = f"${float(cost.get('value', 0)):,.2f}"
+                    # Get quantity (default to 1 if not provided)
+                    # Handle both string and numeric quantities
+                    quantity_raw = cost.get('quantity', 1)
+                    try:
+                        if isinstance(quantity_raw, str):
+                            quantity = float(quantity_raw)
+                        else:
+                            quantity = float(quantity_raw)
+                    except (ValueError, TypeError):
+                        quantity = 1.0
+                    
+                    # Get unit price
+                    unit_price = float(cost.get('value', 0))
+                    # Calculate line total (price × quantity)
+                    line_total = unit_price * quantity
+                    line_total_str = f"${line_total:,.2f}"
+                    
+                    # Only format quantity string if this is a quotation
+                    quantity_str = None
+                    if is_quote:
+                        # Format quantity: show as integer if whole number, otherwise show decimal
+                        if quantity == int(quantity):
+                            quantity_str = f"Qty: {int(quantity)}"
+                        else:
+                            quantity_str = f"Qty: {quantity:.2f}"
                     
                     # Wrap text into multiple lines
                     wrapped_lines = wrap_text(label, font_name, font_size, max_label_width)
@@ -298,10 +328,17 @@ class PricingTable(Flowable):
                         if i < len(wrapped_lines) - 1:
                             line_y -= 16 + 2  # 16px line height + 2px spacing
                     
-                    # Draw price aligned to the right, on the last line of the label
+                    # Draw quantity and line total aligned to the right, on the last line of the label
                     c.setFont(font_name, font_size)
                     c.setFillColor(colors.grey)
-                    c.drawRightString(x_right, line_y, value)
+                    
+                    # Draw quantity first (slightly to the left) only if it's a quotation
+                    if is_quote and quantity_str:
+                        quantity_x = x_right - 100
+                        c.drawRightString(quantity_x, line_y, quantity_str)
+                    
+                    # Draw line total at the right edge
+                    c.drawRightString(x_right, line_y, line_total_str)
                     
                     # Move y down by the total height of this item (all lines)
                     y -= len(wrapped_lines) * 16 + (len(wrapped_lines) - 1) * 2
@@ -825,26 +862,46 @@ def build_dynamic_pages(data, output_path):
 
     # --- Pricing (conditional) - independent from Optional Services
     try:
-        add_costs = data.get("additional_costs") or []
-        # Filter out empty costs
-        valid_costs = [c for c in add_costs if c.get("label") and c.get("label").strip()]
-        # Show pricing if there are valid costs
-        show_pricing = len(valid_costs) > 0
+        pricing_type = data.get("pricing_type", "pricing")
         
-        # Calculate total
-        sum_costs = 0.0
-        for c in valid_costs:
+        if pricing_type == "estimate":
+            # For estimate pricing, show if estimate_total_estimate exists and is > 0
+            estimate_total_estimate = data.get("estimate_total_estimate", 0.0)
             try:
-                sum_costs += float(c.get("value") or 0)
+                estimate_total_estimate = float(estimate_total_estimate)
+                show_pricing = estimate_total_estimate > 0
             except Exception:
-                pass
-        total_val = data.get("total")
-        try:
-            total_val = float(total_val)
-        except Exception:
-            total_val = sum_costs
+                show_pricing = False
+            total_val = data.get("total", 0.0)
+            try:
+                total_val = float(total_val)
+            except Exception:
+                total_val = 0.0
+            valid_costs = []  # No additional costs for estimate pricing
+        else:
+            # For manual pricing, check additional_costs
+            add_costs = data.get("additional_costs") or []
+            # Filter out empty costs
+            valid_costs = [c for c in add_costs if c.get("label") and c.get("label").strip()]
+            # Show pricing if there are valid costs
+            show_pricing = len(valid_costs) > 0
+            
+            # Calculate total
+            sum_costs = 0.0
+            for c in valid_costs:
+                try:
+                    sum_costs += float(c.get("value") or 0)
+                except Exception:
+                    pass
+            total_val = data.get("total")
+            try:
+                total_val = float(total_val)
+            except Exception:
+                total_val = sum_costs
     except Exception:
         show_pricing = False
+        total_val = 0.0
+        valid_costs = []
 
     if show_pricing:
         story.append(YellowLine())

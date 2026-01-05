@@ -12,6 +12,89 @@ import DispatchTab from '@/components/DispatchTab';
 import OrdersTab from '@/components/OrdersTab';
 import { formatDateLocal, getCurrentMonthLocal } from '@/lib/dateUtils';
 
+// Helper function to calculate and format time since status change
+function getTimeSinceStatusChange(project: any): string {
+  if (!project) return '';
+  
+  // Don't show timer for certain statuses:
+  // - "Refused" for Opportunities (is_bidding = true)
+  // - "Finished" for Projects (is_bidding = false)
+  const statusLabel = (project as any).status_label || '';
+  const isBidding = (project as any).is_bidding || false;
+  
+  if (isBidding && statusLabel.toLowerCase().trim() === 'refused') {
+    return ''; // Don't show timer for Refused opportunities
+  }
+  
+  if (!isBidding && statusLabel.toLowerCase().trim() === 'finished') {
+    return ''; // Don't show timer for Finished projects
+  }
+  
+  // Use status_changed_at if available (this is when status was last changed)
+  // If status_changed_at is not set, it means status was never changed, so don't show timer
+  const statusChangedAt = (project as any).status_changed_at;
+  if (!statusChangedAt) return '';
+  
+  const now = new Date();
+  const changedAt = new Date(statusChangedAt);
+  
+  // Debug: log if the date parsing fails
+  if (isNaN(changedAt.getTime())) {
+    console.warn('Invalid status_changed_at date:', statusChangedAt);
+    return '';
+  }
+  
+  const diffMs = now.getTime() - changedAt.getTime();
+  const diffSeconds = Math.floor(diffMs / 1000);
+  const diffMinutes = Math.floor(diffSeconds / 60);
+  const diffHours = Math.floor(diffMinutes / 60);
+  const diffDays = Math.floor(diffHours / 24);
+  const diffWeeks = Math.floor(diffDays / 7);
+  const diffMonths = Math.floor(diffDays / 30);
+  const diffYears = Math.floor(diffDays / 365);
+  
+  if (diffYears > 0) {
+    return `${diffYears} ${diffYears === 1 ? 'year' : 'years'} ago`;
+  } else if (diffMonths > 0) {
+    return `${diffMonths} ${diffMonths === 1 ? 'month' : 'months'} ago`;
+  } else if (diffWeeks > 0) {
+    return `${diffWeeks} ${diffWeeks === 1 ? 'week' : 'weeks'} ago`;
+  } else if (diffDays > 0) {
+    return `${diffDays} ${diffDays === 1 ? 'day' : 'days'} ago`;
+  } else if (diffHours > 0) {
+    return `${diffHours} ${diffHours === 1 ? 'hour' : 'hours'} ago`;
+  } else if (diffMinutes > 0) {
+    return `${diffMinutes} ${diffMinutes === 1 ? 'minute' : 'minutes'} ago`;
+  } else {
+    return 'Just now';
+  }
+}
+
+// Component to display status timer
+function StatusTimer({ project }: { project: any }) {
+  const [timeSince, setTimeSince] = useState(getTimeSinceStatusChange(project));
+  
+  useEffect(() => {
+    // Update immediately when project changes
+    setTimeSince(getTimeSinceStatusChange(project));
+    
+    // Then update every minute
+    const interval = setInterval(() => {
+      setTimeSince(getTimeSinceStatusChange(project));
+    }, 60000);
+    
+    return () => clearInterval(interval);
+  }, [project?.status_changed_at, project?.status_label, project?.is_bidding]); // Depend on status fields to trigger updates
+  
+  if (!timeSince) return null;
+  
+  return (
+    <div className="text-xs text-gray-500 mt-1">
+      {timeSince}
+    </div>
+  );
+}
+
 // Helper function to convert 24h time (HH:MM:SS or HH:MM) to 12h format (h:mm AM/PM)
 function formatTime12h(timeStr: string | null | undefined): string {
   if (!timeStr || timeStr === '--:--' || timeStr === '-') return timeStr || '--:--';
@@ -46,11 +129,11 @@ function formatHoursMinutes(totalMinutes: number): string {
   return `${hours}h${minutes}min`;
 }
 
-type Project = { id:string, code?:string, name?:string, client_id?:string, client_display_name?:string, client_name?:string, address?:string, address_city?:string, address_province?:string, address_country?:string, address_postal_code?:string, description?:string, status_id?:string, division_id?:string, division_ids?:string[], project_division_ids?:string[], estimator_id?:string, onsite_lead_id?:string, division_onsite_leads?:Record<string, string>, contact_id?:string, contact_name?:string, contact_email?:string, contact_phone?:string, date_start?:string, date_eta?:string, date_end?:string, cost_estimated?:number, cost_actual?:number, service_value?:number, progress?:number, site_id?:string, site_name?:string, site_address_line1?:string, site_address_line2?:string, site_city?:string, site_province?:string, site_country?:string, site_postal_code?:string, status_label?:string, is_bidding?:boolean };
+type Project = { id:string, code?:string, name?:string, client_id?:string, client_display_name?:string, client_name?:string, address?:string, address_city?:string, address_province?:string, address_country?:string, address_postal_code?:string, description?:string, status_id?:string, division_id?:string, division_ids?:string[], project_division_ids?:string[], estimator_id?:string, onsite_lead_id?:string, division_onsite_leads?:Record<string, string>, contact_id?:string, contact_name?:string, contact_email?:string, contact_phone?:string, date_start?:string, date_eta?:string, date_end?:string, cost_estimated?:number, cost_actual?:number, service_value?:number, progress?:number, site_id?:string, site_name?:string, site_address_line1?:string, site_address_line2?:string, site_city?:string, site_province?:string, site_country?:string, site_postal_code?:string, status_label?:string, status_changed_at?:string, is_bidding?:boolean };
 type ProjectFile = { id:string, file_object_id:string, is_image?:boolean, content_type?:string, category?:string, original_name?:string, uploaded_at?:string };
 type Update = { id:string, timestamp?:string, text?:string, images?:any };
-type Report = { id:string, title?:string, category_id?:string, division_id?:string, description?:string, images?:any, status?:string, created_at?:string, created_by?:string };
-type Proposal = { id:string, title?:string, order_number?:string, created_at?:string };
+type Report = { id:string, title?:string, category_id?:string, division_id?:string, description?:string, images?:any, status?:string, created_at?:string, created_by?:string, financial_value?:number, financial_type?:string, estimate_data?:any, approval_status?:string, approved_by?:string, approved_at?:string };
+type Proposal = { id:string, title?:string, order_number?:string, created_at?:string, data?:any };
 
 export default function ProjectDetail(){
   const location = useLocation();
@@ -60,6 +143,7 @@ export default function ProjectDetail(){
   const { id } = useParams();
   const { data:proj, isLoading } = useQuery({ queryKey:['project', id], queryFn: ()=>api<Project>('GET', `/projects/${id}`) });
   const { data:settings } = useQuery({ queryKey:['settings'], queryFn: ()=>api<any>('GET','/settings') });
+  const { data:projectDivisions } = useQuery({ queryKey:['project-divisions'], queryFn: ()=>api<any[]>('GET','/settings/project-divisions'), staleTime: 300_000 });
   const { data:files, refetch: refetchFiles } = useQuery({ queryKey:['projectFiles', id], queryFn: ()=>api<ProjectFile[]>('GET', `/projects/${id}/files`) });
   const { data:clientFiles } = useQuery({ queryKey:['clientFilesForContacts-project', proj?.client_id||''], queryFn: ()=> proj?.client_id? api<any[]>('GET', `/clients/${encodeURIComponent(String(proj?.client_id||''))}/files`) : Promise.resolve([]), enabled: !!proj?.client_id });
   const { data:updates, refetch: refetchUpdates } = useQuery({ queryKey:['projectUpdates', id], queryFn: ()=>api<Update[]>('GET', `/projects/${id}/updates`) });
@@ -82,6 +166,7 @@ export default function ProjectDetail(){
   const permissions = new Set(me?.permissions || []);
   const hasEditPermission = isAdmin || permissions.has('business:projects:write');
   const canEditEstimate = isAdmin || permissions.has('business:projects:estimate:write');
+  const hasAdministratorAccess = isAdmin || permissions.has('users:write');
   
   // Helper to check if user has permission for a tab
   const hasTabPermission = useMemo(() => {
@@ -124,9 +209,40 @@ export default function ProjectDetail(){
   }, [location.search, hasTabPermission, me]);
   
   const cover = useMemo(()=>{
-    const img = (files||[]).find(f=> String(f.category||'')==='project-cover-derived');
-    return img? `/files/${img.file_object_id}/thumbnail?w=1000` : '/ui/assets/login/logo-light.svg';
-  }, [files]);
+    const arr = (files||[]) as ProjectFile[];
+
+    // 1) Manual legacy cover (what users were already setting before)
+    const legacyPreferredCategories = new Set([
+      'project-cover-derived',
+      'project-cover',
+      'cover',
+      'hero-cover',
+      'opportunity-cover-derived',
+      'opportunity-cover',
+    ]);
+    const legacy = arr.find(f => legacyPreferredCategories.has(String(f.category||'')) && (f.is_image===true || String(f.content_type||'').startsWith('image/')));
+    if (legacy?.file_object_id) return `/files/${legacy.file_object_id}/thumbnail?w=1000`;
+
+    // 2) Manual new field (General Info image picker)
+    if ((proj as any)?.image_manually_set && (proj as any)?.image_file_object_id) {
+      return `/files/${(proj as any).image_file_object_id}/thumbnail?w=1000`;
+    }
+
+    // 3) Synced from proposal (project.image_file_object_id) OR latest proposal cover
+    if ((proj as any)?.image_file_object_id) {
+      return `/files/${(proj as any).image_file_object_id}/thumbnail?w=1000`;
+    }
+    const latest = (proposals||[]).slice().sort((a,b)=>{
+      const ad = a.created_at ? new Date(a.created_at).getTime() : 0;
+      const bd = b.created_at ? new Date(b.created_at).getTime() : 0;
+      return bd-ad;
+    })[0];
+    const proposalCoverFo = latest?.data?.cover_file_object_id;
+    if (proposalCoverFo) return `/files/${proposalCoverFo}/thumbnail?w=1000`;
+
+    // 4) Default blueprint
+    return '/ui/assets/placeholders/project.png';
+  }, [files, proj, proposals]);
   const overlayUrl = useMemo(()=>{
     const branding = (settings?.branding||[]) as any[];
     const row = branding.find((i:any)=> ['project_hero_overlay_url','hero_overlay_url','project hero overlay','hero overlay'].includes(String(i.label||'').toLowerCase()));
@@ -156,7 +272,7 @@ export default function ProjectDetail(){
 
   // Base available tabs
   const baseAvailableTabs = proj?.is_bidding 
-    ? (['overview','files','proposal','estimate'] as const)
+    ? (['overview','reports','files','proposal','estimate'] as const)
     : (['overview','reports','dispatch','timesheet','files','proposal','estimate','orders'] as const);
   
   // Filter tabs based on permissions (only when user data is loaded)
@@ -247,13 +363,15 @@ export default function ProjectDetail(){
                 <h3 className="text-lg font-semibold text-gray-900 truncate">{proj?.name||'—'}</h3>
               </div>
               <div className="flex items-center gap-6 flex-shrink-0 pr-10">
-                {/* Progress */}
-                <div className="flex items-center gap-3">
-                  <div className="w-24 h-2 bg-gray-200 rounded-full overflow-hidden">
-                    <div className="h-full bg-brand-red rounded-full transition-all" style={{ width: `${Math.max(0,Math.min(100,Number(proj?.progress||0)))}%` }} />
+                {/* Progress - only show for projects, not opportunities */}
+                {!proj?.is_bidding && (
+                  <div className="flex items-center gap-3">
+                    <div className="w-24 h-2 bg-gray-200 rounded-full overflow-hidden">
+                      <div className="h-full bg-brand-red rounded-full transition-all" style={{ width: `${Math.max(0,Math.min(100,Number(proj?.progress||0)))}%` }} />
+                    </div>
+                    <span className="text-sm font-semibold text-gray-700 w-10 text-right">{Math.max(0,Math.min(100,Number(proj?.progress||0)))}%</span>
                   </div>
-                  <span className="text-sm font-semibold text-gray-700 w-10 text-right">{Math.max(0,Math.min(100,Number(proj?.progress||0)))}%</span>
-                </div>
+                )}
                 {/* Estimator */}
                 {estimator ? (
                   <div className="flex items-center gap-2">
@@ -399,7 +517,7 @@ export default function ProjectDetail(){
                 </div>
                 
                 {/* Progress and Status moved here */}
-                <div className="grid grid-cols-2 gap-4">
+                <div className={proj?.is_bidding ? "grid grid-cols-1 gap-4" : "grid grid-cols-2 gap-4"}>
                   <div>
                     <div className="flex items-center gap-1.5 mb-2">
                       <label className="text-xs text-gray-600 block">Status</label>
@@ -416,29 +534,33 @@ export default function ProjectDetail(){
                       )}
                     </div>
                     <span className="px-3 py-1.5 rounded text-sm font-medium inline-block" style={{ backgroundColor: statusColor, color: '#000' }}>{statusLabel||'—'}</span>
+                    {statusLabel && <StatusTimer project={proj} />}
                   </div>
-                  <div>
-                    <div className="flex items-center gap-1.5 mb-2">
-                      <label className="text-xs text-gray-600 block">Progress</label>
-                      {hasEditPermission && (
-                        <button
-                          onClick={() => setEditProgressModal(true)}
-                          className="text-gray-400 hover:text-[#7f1010] transition-colors"
-                          title="Edit Progress"
-                        >
-                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                          </svg>
-                        </button>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <div className="flex-1 h-3 bg-gray-200 rounded-full overflow-hidden">
-                        <div className="h-full bg-brand-red rounded-full transition-all" style={{ width: `${Math.max(0,Math.min(100,Number(proj?.progress||0)))}%` }} />
+                  {/* Progress - only show for projects, not opportunities */}
+                  {!proj?.is_bidding && (
+                    <div>
+                      <div className="flex items-center gap-1.5 mb-2">
+                        <label className="text-xs text-gray-600 block">Progress</label>
+                        {hasEditPermission && (
+                          <button
+                            onClick={() => setEditProgressModal(true)}
+                            className="text-gray-400 hover:text-[#7f1010] transition-colors"
+                            title="Edit Progress"
+                          >
+                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                            </svg>
+                          </button>
+                        )}
                       </div>
-                      <span className="text-sm font-semibold text-gray-700 w-12 text-right">{Math.max(0,Math.min(100,Number(proj?.progress||0)))}%</span>
+                      <div className="flex items-center gap-3">
+                        <div className="flex-1 h-3 bg-gray-200 rounded-full overflow-hidden">
+                          <div className="h-full bg-brand-red rounded-full transition-all" style={{ width: `${Math.max(0,Math.min(100,Number(proj?.progress||0)))}%` }} />
+                        </div>
+                        <span className="text-sm font-semibold text-gray-700 w-12 text-right">{Math.max(0,Math.min(100,Number(proj?.progress||0)))}%</span>
+                      </div>
                     </div>
-                  </div>
+                  )}
                 </div>
               </div>
               
@@ -553,44 +675,83 @@ export default function ProjectDetail(){
       )}
 
       {/* Convert to Project Button (for opportunities) */}
-      {!tab && proj?.is_bidding && hasEditPermission && (
-        <div className="mb-4">
-          <button onClick={async()=>{
-            const result = await confirm({
-              title: 'Convert to Project',
-              message: `Are you sure you want to convert "${proj?.name||'this opportunity'}" to an active project? This will enable all project features including reports, schedule, timesheet, photos, and orders.`,
-              confirmText: 'Convert',
-              cancelText: 'Cancel'
-            });
-            if (result !== 'confirm') return;
-            try {
-              const response = await api('POST', `/projects/${encodeURIComponent(String(id||''))}/convert-to-project`);
-              if (response) {
-                await Promise.all([
-                  queryClient.invalidateQueries({ queryKey: ['project', id] }),
-                  queryClient.invalidateQueries({ queryKey: ['clientProjects'] }),
-                  queryClient.invalidateQueries({ queryKey: ['clientOpportunities'] }),
-                  queryClient.invalidateQueries({ queryKey: ['projects'] }),
-                  queryClient.invalidateQueries({ queryKey: ['opportunities'] })
-                ]);
-                toast.success('Opportunity converted to project');
-                nav(`/projects/${encodeURIComponent(String(id||''))}`, { replace: true });
-              }
-            } catch (e: any) {
-              console.error('Failed to convert opportunity:', e);
-              toast.error(e?.response?.data?.detail || e?.message || 'Failed to convert opportunity');
-            }
-          }} className="w-full px-6 py-4 rounded-xl bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white font-semibold text-base shadow-md hover:shadow-lg transition-all duration-200 flex items-center justify-center gap-3">
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-            </svg>
-            <span>Convert to Project</span>
-          </button>
-        </div>
-      )}
+      {!tab && proj?.is_bidding && hasEditPermission && (() => {
+        // Check if all required fields are filled
+        const hasName = !!proj?.name?.trim();
+        const hasSite = !!proj?.site_id;
+        const hasEstimator = !!proj?.estimator_id;
+        const hasDivisions = Array.isArray(proj?.project_division_ids) && proj.project_division_ids.length > 0;
+        
+        const isComplete = hasName && hasSite && hasEstimator && hasDivisions;
+        
+        // Build missing fields message
+        const missingFields: string[] = [];
+        if (!hasName) missingFields.push('Project Name');
+        if (!hasSite) missingFields.push('Site');
+        if (!hasEstimator) missingFields.push('Estimator');
+        if (!hasDivisions) missingFields.push('Project Divisions');
+        
+        const missingMessage = missingFields.length > 0 
+          ? `Please complete the following fields before converting: ${missingFields.join(', ')}`
+          : '';
+        
+        return (
+          <div className="mb-4">
+            <button 
+              onClick={async()=>{
+                if (!isComplete) {
+                  toast.error(missingMessage);
+                  return;
+                }
+                const result = await confirm({
+                  title: 'Convert to Project',
+                  message: `Are you sure you want to convert "${proj?.name||'this opportunity'}" to an active project? This will enable all project features including workload, timesheet and orders. Be careful, this action cannot be undone.`,
+                  confirmText: 'Convert',
+                  cancelText: 'Cancel'
+                });
+                if (result !== 'confirm') return;
+                try {
+                  const response = await api('POST', `/projects/${encodeURIComponent(String(id||''))}/convert-to-project`);
+                  if (response) {
+                    await Promise.all([
+                      queryClient.invalidateQueries({ queryKey: ['project', id] }),
+                      queryClient.invalidateQueries({ queryKey: ['clientProjects'] }),
+                      queryClient.invalidateQueries({ queryKey: ['clientOpportunities'] }),
+                      queryClient.invalidateQueries({ queryKey: ['projects'] }),
+                      queryClient.invalidateQueries({ queryKey: ['opportunities'] })
+                    ]);
+                    toast.success('Opportunity converted to project');
+                    nav(`/projects/${encodeURIComponent(String(id||''))}`, { replace: true });
+                  }
+                } catch (e: any) {
+                  console.error('Failed to convert opportunity:', e);
+                  toast.error(e?.response?.data?.detail || e?.message || 'Failed to convert opportunity');
+                }
+              }} 
+              disabled={!isComplete}
+              className={`w-full px-6 py-4 rounded-xl font-semibold text-base shadow-md transition-all duration-200 flex items-center justify-center gap-3 ${
+                isComplete 
+                  ? 'bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white hover:shadow-lg cursor-pointer' 
+                  : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+              }`}
+              title={missingMessage || 'Convert this opportunity to an active project'}
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+              <span>Convert to Project</span>
+            </button>
+            {!isComplete && (
+              <p className="mt-2 text-xs text-gray-600 text-center">
+                {missingMessage}
+              </p>
+            )}
+          </div>
+        );
+      })()}
 
       {/* Danger Zone */}
-      {!tab && hasEditPermission && (
+      {!tab && hasAdministratorAccess && (
         <div className="mt-6 rounded-xl border border-red-200 bg-red-50 p-4">
           <h3 className="text-sm font-semibold text-red-900 mb-3">Danger Zone</h3>
           <div className="flex gap-3">
@@ -630,7 +791,7 @@ export default function ProjectDetail(){
             <>
               {tab==='overview' && (
                 <div className="grid md:grid-cols-3 gap-4">
-                  <ProjectGeneralInfoCard projectId={String(id)} proj={proj||{}} />
+                  <ProjectGeneralInfoCard projectId={String(id)} proj={proj||{}} files={files||[]} />
                   <ProjectQuickEdit projectId={String(id)} proj={proj||{}} settings={settings||{}} />
                   <ProjectContactCard projectId={String(id)} proj={proj||{}} clientId={proj?.client_id ? String(proj.client_id) : undefined} clientFiles={clientFiles||[]} />
                   <div className="rounded-xl border bg-white p-4">
@@ -652,11 +813,11 @@ export default function ProjectDetail(){
               )}
 
               {tab==='dispatch' && (
-                <DispatchTab projectId={String(id)} />
+                <DispatchTab projectId={String(id)} statusLabel={proj?.status_label||''} />
               )}
 
               {tab==='timesheet' && (
-                <TimesheetTab projectId={String(id)} />
+                <TimesheetTab projectId={String(id)} statusLabel={proj?.status_label||''} />
               )}
 
               {tab==='files' && (
@@ -695,7 +856,7 @@ export default function ProjectDetail(){
               )}
 
               {tab==='orders' && (
-                <OrdersTab projectId={String(id)} project={proj||{id: String(id)}} />
+                <OrdersTab projectId={String(id)} project={proj||{id: String(id)}} statusLabel={proj?.status_label||''} />
               )}
             </>
           ) : null}
@@ -705,17 +866,18 @@ export default function ProjectDetail(){
       {showOnSiteLeadsModal && !proj?.is_bidding && (
         <OnSiteLeadsModal
           projectId={String(id||'')}
-          originalDivisions={proj?.division_ids || []}
+          originalDivisions={Array.isArray(proj?.project_division_ids) ? proj.project_division_ids : []}
           divisionLeads={proj?.division_onsite_leads || {}}
           settings={settings||{}}
+          projectDivisions={projectDivisions||[]}
           employees={employees||[]}
           canEdit={hasEditPermission}
           onClose={() => setShowOnSiteLeadsModal(false)}
           onUpdate={async (updatedLeads, updatedDivisions) => {
             try {
               await api('PATCH', `/projects/${encodeURIComponent(String(id||''))}`, { 
-                division_onsite_leads: updatedLeads,
-                division_ids: updatedDivisions
+                division_onsite_leads: updatedLeads
+                // Note: updatedDivisions is not used anymore since divisions come from project_division_ids
               });
               await queryClient.invalidateQueries({ queryKey: ['project', id] });
               toast.success('On-site leads updated');
@@ -822,6 +984,7 @@ export default function ProjectDetail(){
           currentStatus={proj?.status_id || ''}
           currentStatusLabel={statusLabel}
           settings={settings}
+          isBidding={proj?.is_bidding}
           onClose={() => setEditStatusModal(false)}
           onSave={async () => {
             await queryClient.invalidateQueries({ queryKey: ['project', id] });
@@ -945,6 +1108,15 @@ function ReportsTabEnhanced({ projectId, items, onRefresh }:{ projectId:string, 
       .filter(cat => {
         const meta = cat.meta || {};
         return meta.group === 'production';
+      })
+      .sort((a, b) => (a.sort_index || 0) - (b.sort_index || 0));
+  }, [reportCategories]);
+  
+  const financialCategories = useMemo(() => {
+    return reportCategories
+      .filter(cat => {
+        const meta = cat.meta || {};
+        return meta.group === 'financial';
       })
       .sort((a, b) => (a.sort_index || 0) - (b.sort_index || 0));
   }, [reportCategories]);
@@ -1101,6 +1273,18 @@ function ReportsTabEnhanced({ projectId, items, onRefresh }:{ projectId:string, 
                   })}
                 </optgroup>
               )}
+              {financialCategories.length > 0 && (
+                <optgroup label="📌 Financial">
+                  {financialCategories.map(cat => {
+                    const count = categoryCounts[cat.value || ''] || 0;
+                    return (
+                      <option key={cat.id || cat.value || cat.label} value={cat.value || cat.label}>
+                        {cat.label} ({count})
+                      </option>
+                    );
+                  })}
+                </optgroup>
+              )}
             </select>
             {canEditReports && (
               <button
@@ -1224,36 +1408,241 @@ function ReportsTabEnhanced({ projectId, items, onRefresh }:{ projectId:string, 
                         )}
                       </div>
                     </div>
-                    {canEditReports && (
-                      <button
-                        onClick={async () => {
-                          const result = await confirm({
-                            title: 'Delete Report',
-                            message: `Are you sure you want to delete "${selectedReport.title || 'this report'}"? This action cannot be undone.`,
-                            confirmText: 'Delete',
-                            cancelText: 'Cancel'
-                          });
-                          if (result !== 'confirm') return;
-                          try {
-                            await api('DELETE', `/projects/${projectId}/reports/${selectedReport.id}`);
-                            await onRefresh();
-                            setSelectedReportId(null);
-                            toast.success('Report deleted');
-                          } catch (_e) {
-                            toast.error('Failed to delete report');
-                          }
-                        }}
-                        className="px-3 py-1.5 rounded text-gray-500 hover:bg-red-50 hover:text-red-600 text-sm flex-shrink-0"
-                        title="Delete report"
-                      >
-                        🗑️ Delete
-                      </button>
-                    )}
+                    <div className="flex items-center gap-2">
+                      {selectedReport.financial_type === 'estimate-changes' && selectedReport.approval_status === 'pending' && canEditReports && (
+                        <button
+                          onClick={async () => {
+                            const result = await confirm({
+                              title: 'Approve Estimate Changes',
+                              message: `Are you sure you want to approve this Estimate Changes report? The items will be added to the project's estimate.`,
+                              confirmText: 'Approve',
+                              cancelText: 'Cancel'
+                            });
+                            if (result !== 'confirm') return;
+                            try {
+                              await api('POST', `/projects/${projectId}/reports/${selectedReport.id}/approve`);
+                              await onRefresh();
+                              toast.success('Report approved and items added to estimate');
+                            } catch (_e: any) {
+                              toast.error(_e.message || 'Failed to approve report');
+                            }
+                          }}
+                          className="px-3 py-1.5 rounded bg-green-600 hover:bg-green-700 text-white text-sm flex-shrink-0"
+                          title="Approve report"
+                        >
+                          ✓ Approve
+                        </button>
+                      )}
+                      {selectedReport.financial_type === 'estimate-changes' && selectedReport.approval_status && (
+                        <span className={`px-3 py-1.5 rounded text-sm flex-shrink-0 ${
+                          selectedReport.approval_status === 'approved' ? 'bg-green-100 text-green-700' :
+                          selectedReport.approval_status === 'pending' ? 'bg-yellow-100 text-yellow-700' :
+                          'bg-gray-100 text-gray-700'
+                        }`}>
+                          {selectedReport.approval_status === 'approved' ? '✓ Approved' :
+                           selectedReport.approval_status === 'pending' ? '⏳ Pending' :
+                           'Rejected'}
+                        </span>
+                      )}
+                      {canEditReports && (
+                        <button
+                          onClick={async () => {
+                            const result = await confirm({
+                              title: 'Delete Report',
+                              message: `Are you sure you want to delete "${selectedReport.title || 'this report'}"? This action cannot be undone.`,
+                              confirmText: 'Delete',
+                              cancelText: 'Cancel'
+                            });
+                            if (result !== 'confirm') return;
+                            try {
+                              await api('DELETE', `/projects/${projectId}/reports/${selectedReport.id}`);
+                              await onRefresh();
+                              setSelectedReportId(null);
+                              toast.success('Report deleted');
+                            } catch (_e) {
+                              toast.error('Failed to delete report');
+                            }
+                          }}
+                          className="px-3 py-1.5 rounded text-gray-500 hover:bg-red-50 hover:text-red-600 text-sm flex-shrink-0"
+                          title="Delete report"
+                        >
+                          🗑️ Delete
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
 
                 {/* Content */}
                 <div className="p-6 overflow-y-auto flex-1">
+                  {/* Financial value display */}
+                  {(selectedReport.financial_type === 'additional-income' || selectedReport.financial_type === 'additional-expense') && selectedReport.financial_value !== undefined && (
+                    <div className={`mb-4 p-4 rounded-lg border ${
+                      selectedReport.financial_type === 'additional-expense' 
+                        ? 'bg-red-50 border-red-200' 
+                        : 'bg-blue-50 border-blue-200'
+                    }`}>
+                      <div className="text-sm font-semibold text-gray-700 mb-1">
+                        {selectedReport.financial_type === 'additional-income' ? 'Additional Income' : 'Additional Expense'}
+                      </div>
+                      <div className="text-2xl font-bold text-gray-900">
+                        ${(selectedReport.financial_value || 0).toFixed(2)}
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* Estimate Changes display */}
+                  {selectedReport.financial_type === 'estimate-changes' && selectedReport.estimate_data && (() => {
+                    const estimateData = selectedReport.estimate_data;
+                    const items = estimateData?.items || [];
+                    const sectionOrder = estimateData?.section_order || [];
+                    const sectionNames = estimateData?.section_names || {};
+                    
+                    // Calculate item total base (without markup)
+                    const calculateItemTotal = (item: any): number => {
+                      if (item.item_type === 'labour' && item.labour_journey_type) {
+                        if (item.labour_journey_type === 'contract') {
+                          return (item.labour_journey || 0) * (item.unit_price || 0);
+                        } else {
+                          return (item.labour_journey || 0) * (item.labour_men || 0) * (item.unit_price || 0);
+                        }
+                      }
+                      return (item.quantity || 0) * (item.unit_price || 0);
+                    };
+                    
+                    // Calculate item total with markup applied
+                    const calculateItemTotalWithMarkup = (item: any): number => {
+                      const itemTotal = calculateItemTotal(item);
+                      const itemMarkup = item.markup !== undefined && item.markup !== null ? item.markup : (estimateData?.markup || 0);
+                      return itemTotal * (1 + (itemMarkup / 100));
+                    };
+                    
+                    const grandTotal = items.reduce((sum: number, item: any) => sum + calculateItemTotalWithMarkup(item), 0);
+                    
+                    // Group items by section
+                    const itemsBySection: Record<string, any[]> = {};
+                    items.forEach((item: any) => {
+                      const section = item.section || 'other';
+                      if (!itemsBySection[section]) {
+                        itemsBySection[section] = [];
+                      }
+                      itemsBySection[section].push(item);
+                    });
+                    
+                    // Get ordered sections
+                    const orderedSections = sectionOrder.length > 0 
+                      ? sectionOrder.filter((s: string) => itemsBySection[s])
+                      : Object.keys(itemsBySection).sort();
+                    
+                    return (
+                      <div className="mb-4 p-4 bg-gray-50 border border-gray-200 rounded-lg">
+                        <div className="flex items-center justify-between mb-3">
+                          <div className="text-sm font-semibold text-gray-700">Estimate Changes Summary</div>
+                          {selectedReport.approval_status === 'approved' && (
+                            <span className="text-xs text-green-600 font-medium">✓ Items have been added to the project estimate</span>
+                          )}
+                        </div>
+                        
+                        {items.length === 0 ? (
+                          <div className="text-xs text-gray-500">No items in this estimate change.</div>
+                        ) : (
+                          <div className="space-y-4">
+                            {orderedSections.map((section: string) => {
+                              const sectionItems = itemsBySection[section] || [];
+                              const sectionName = sectionNames[section] || section || 'Other';
+                              const sectionTotal = sectionItems.reduce((sum: number, item: any) => sum + calculateItemTotalWithMarkup(item), 0);
+                              
+                              return (
+                                <div key={section} className="border border-gray-200 rounded bg-white">
+                                  <div className="px-3 py-2 bg-gray-100 border-b border-gray-200">
+                                    <div className="text-xs font-semibold text-gray-700">{sectionName}</div>
+                                  </div>
+                                  <div className="divide-y divide-gray-100">
+                                    {sectionItems.map((item: any, idx: number) => {
+                                      const itemTotal = calculateItemTotalWithMarkup(item);
+                                      return (
+                                        <div key={idx} className="px-3 py-2">
+                                          <div className="flex items-start justify-between gap-4">
+                                            <div className="flex-1 min-w-0">
+                                              <div className="text-sm font-medium text-gray-900 mb-1">
+                                                {item.name || 'Unnamed Item'}
+                                              </div>
+                                              <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-600">
+                                                <span>
+                                                  <span className="font-medium">Qty:</span> {item.quantity || 0} {item.unit || ''}
+                                                </span>
+                                                {item.item_type === 'labour' && item.labour_journey && (
+                                                  <>
+                                                    <span>
+                                                      <span className="font-medium">Journey:</span> {item.labour_journey} {item.labour_journey_type || 'hours'}
+                                                    </span>
+                                                    {item.labour_men && item.labour_men > 0 && (
+                                                      <span>
+                                                        <span className="font-medium">Men:</span> {item.labour_men}
+                                                      </span>
+                                                    )}
+                                                  </>
+                                                )}
+                                                <span>
+                                                  <span className="font-medium">Unit Price:</span> ${(item.unit_price || 0).toFixed(2)}
+                                                </span>
+                                                {item.item_type && (
+                                                  <span>
+                                                    <span className="font-medium">Type:</span> {item.item_type}
+                                                  </span>
+                                                )}
+                                                {item.supplier_name && (
+                                                  <span>
+                                                    <span className="font-medium">Supplier:</span> {item.supplier_name}
+                                                  </span>
+                                                )}
+                                                {item.markup !== undefined && item.markup !== null && item.markup > 0 && (
+                                                  <span>
+                                                    <span className="font-medium">Markup:</span> {item.markup.toFixed(1)}%
+                                                  </span>
+                                                )}
+                                                {item.taxable && (
+                                                  <span className="text-green-600 font-medium">Taxable</span>
+                                                )}
+                                              </div>
+                                              {item.description && (
+                                                <div className="text-xs text-gray-500 mt-1 italic">
+                                                  {item.description}
+                                                </div>
+                                              )}
+                                            </div>
+                                            <div className="text-sm font-semibold text-gray-900 whitespace-nowrap">
+                                              ${itemTotal.toFixed(2)}
+                                            </div>
+                                          </div>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                  {sectionItems.length > 1 && (
+                                    <div className="px-3 py-2 bg-gray-50 border-t border-gray-200 flex justify-end">
+                                      <div className="text-xs font-semibold text-gray-700">
+                                        Section Total: ${sectionTotal.toFixed(2)}
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
+                            
+                            <div className="pt-2 border-t border-gray-300">
+                              <div className="flex justify-end">
+                                <div className="text-sm font-bold text-gray-900">
+                                  Grand Total: ${grandTotal.toFixed(2)}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
+                  
                   <div className="prose max-w-none">
                     <div className="text-gray-800 whitespace-pre-wrap leading-relaxed">
                       {selectedReport.description || 'No description provided.'}
@@ -1341,6 +1730,8 @@ function CreateReportModal({ projectId, reportCategories, onClose, onSuccess }: 
   const [category, setCategory] = useState('');
   const [desc, setDesc] = useState('');
   const [file, setFile] = useState<File|null>(null);
+  const [financialValue, setFinancialValue] = useState<number>(0);
+  const estimateBuilderRef = useRef<EstimateBuilderRef>(null);
   const { data:project } = useQuery({ queryKey:['project', projectId], queryFn: ()=>api<any>('GET', `/projects/${projectId}`) });
   
   // Separate categories into commercial and production based on meta.group
@@ -1362,6 +1753,15 @@ function CreateReportModal({ projectId, reportCategories, onClose, onSuccess }: 
       .sort((a, b) => (a.sort_index || 0) - (b.sort_index || 0));
   }, [reportCategories]);
   
+  const financialCategories = useMemo(() => {
+    return reportCategories
+      .filter(cat => {
+        const meta = cat.meta || {};
+        return meta.group === 'financial';
+      })
+      .sort((a, b) => (a.sort_index || 0) - (b.sort_index || 0));
+  }, [reportCategories]);
+  
   // If it's an opportunity (is_bidding), show only commercial categories
   const isBidding = project?.is_bidding === true;
 
@@ -1370,9 +1770,25 @@ function CreateReportModal({ projectId, reportCategories, onClose, onSuccess }: 
       toast.error('Please enter a title');
       return;
     }
+    if ((category === 'additional-income' || category === 'additional-expense') && financialValue <= 0) {
+      toast.error('Please enter a valid value');
+      return;
+    }
     if (!desc.trim()) {
       toast.error('Please enter a description');
       return;
+    }
+    if (category === 'estimate-changes') {
+      // Validate estimate has items
+      if (!estimateBuilderRef.current) {
+        toast.error('Estimate builder not ready');
+        return;
+      }
+      const estimateData = estimateBuilderRef.current.getEstimateData();
+      if (!estimateData || !estimateData.items || estimateData.items.length === 0) {
+        toast.error('Please add at least one item to the estimate');
+        return;
+      }
     }
     try {
       let imgMeta: any = undefined;
@@ -1405,25 +1821,79 @@ function CreateReportModal({ projectId, reportCategories, onClose, onSuccess }: 
           content_type: file.type || 'application/octet-stream'
         };
       }
-      await api('POST', `/projects/${projectId}/reports`, {
+      
+      // Get estimate data if it's estimate-changes
+      let estimateDataPayload: any = undefined;
+      if (category === 'estimate-changes') {
+        const estimateData = estimateBuilderRef.current?.getEstimateData();
+        if (estimateData) {
+          // Format estimate data to match backend expectations
+          estimateDataPayload = {
+            markup: estimateData.markup,
+            pst_rate: estimateData.pstRate,
+            gst_rate: estimateData.gstRate,
+            profit_rate: estimateData.profitRate,
+            section_order: estimateData.sectionOrder,
+            section_names: estimateData.sectionNames,
+            items: estimateData.items.map(it => ({
+              material_id: it.material_id,
+              quantity: it.quantity,
+              unit_price: it.unit_price,
+              section: it.section,
+              description: it.description,
+              item_type: it.item_type,
+              name: it.name,
+              unit: it.unit,
+              markup: it.markup,
+              taxable: it.taxable,
+              qty_required: it.qty_required,
+              unit_required: it.unit_required,
+              supplier_name: it.supplier_name,
+              unit_type: it.unit_type,
+              units_per_package: it.units_per_package,
+              coverage_sqs: it.coverage_sqs,
+              coverage_ft2: it.coverage_ft2,
+              coverage_m2: it.coverage_m2,
+              labour_journey: it.labour_journey,
+              labour_men: it.labour_men,
+              labour_journey_type: it.labour_journey_type
+            }))
+          };
+        }
+      }
+      
+      const payload: any = {
         title: title.trim(),
         category_id: category || null,
         description: desc,
         images: imgMeta ? { attachments: [imgMeta] } : undefined
-      });
+      };
+      
+      if (category === 'additional-income' || category === 'additional-expense') {
+        payload.financial_value = financialValue;
+        payload.financial_type = category;
+      } else if (category === 'estimate-changes') {
+        payload.financial_type = 'estimate-changes';
+        payload.estimate_data = estimateDataPayload;
+      }
+      
+      await api('POST', `/projects/${projectId}/reports`, payload);
       setTitle('');
       setCategory('');
       setDesc('');
       setFile(null);
+      setFinancialValue(0);
       await onSuccess();
     } catch (_e) {
       toast.error('Failed to create report');
     }
   };
 
+  const isEstimateChanges = category === 'estimate-changes';
+  
   return (
     <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
-      <div className="bg-white rounded-xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+      <div className={`bg-white rounded-xl ${isEstimateChanges ? 'max-w-7xl' : 'max-w-2xl'} w-full max-h-[90vh] overflow-hidden flex flex-col`}>
         <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] p-6 flex items-center justify-between flex-shrink-0">
           <h2 className="text-xl font-semibold text-white">Create Project Report</h2>
           <button
@@ -1467,6 +1937,13 @@ function CreateReportModal({ projectId, reportCategories, onClose, onSuccess }: 
                     ))}
                   </optgroup>
                 )}
+                {!isBidding && financialCategories.length > 0 && (
+                  <optgroup label="Financial">
+                    {financialCategories.map(cat => (
+                      <option key={cat.id || cat.value || cat.label} value={cat.value || cat.label}>{cat.label}</option>
+                    ))}
+                  </optgroup>
+                )}
                 {isBidding && commercialCategories.length > 0 && (
                   <>
                     {commercialCategories.map(cat => (
@@ -1476,16 +1953,60 @@ function CreateReportModal({ projectId, reportCategories, onClose, onSuccess }: 
                 )}
               </select>
             </div>
-            <div>
-              <label className="text-xs text-gray-600 block mb-1">Description *</label>
-              <textarea
-                className="w-full border rounded px-3 py-2 text-sm"
-                rows={6}
-                placeholder="Describe what happened, how the day went, or any events on site..."
-                value={desc}
-                onChange={e => setDesc(e.target.value)}
-              />
-            </div>
+            {category === 'additional-income' || category === 'additional-expense' ? (
+              <div>
+                <label className="text-xs text-gray-600 block mb-1">Value *</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  className="w-full border rounded px-3 py-2 text-sm"
+                  placeholder="Enter amount..."
+                  value={financialValue}
+                  onChange={e => setFinancialValue(e.target.value ? parseFloat(e.target.value) : 0)}
+                />
+              </div>
+            ) : null}
+            {category === 'estimate-changes' ? (
+              <div className="border rounded p-4">
+                <label className="text-xs text-gray-600 block mb-2">Estimate Changes</label>
+                <div className="max-h-[400px] overflow-y-auto">
+                  <EstimateBuilder
+                    ref={estimateBuilderRef}
+                    projectId=""
+                    estimateId={undefined}
+                    settings={project?.settings}
+                    isBidding={project?.is_bidding}
+                    canEdit={true}
+                    hideFooter={true}
+                  />
+                </div>
+              </div>
+            ) : null}
+            {category !== 'estimate-changes' && (
+              <div>
+                <label className="text-xs text-gray-600 block mb-1">Description *</label>
+                <textarea
+                  className="w-full border rounded px-3 py-2 text-sm"
+                  rows={6}
+                  placeholder="Describe what happened, how the day went, or any events on site..."
+                  value={desc}
+                  onChange={e => setDesc(e.target.value)}
+                />
+              </div>
+            )}
+            {category === 'estimate-changes' && (
+              <div>
+                <label className="text-xs text-gray-600 block mb-1">Description *</label>
+                <textarea
+                  className="w-full border rounded px-3 py-2 text-sm"
+                  rows={4}
+                  placeholder="Additional notes about these estimate changes..."
+                  value={desc}
+                  onChange={e => setDesc(e.target.value)}
+                />
+              </div>
+            )}
             <div>
               <label className="text-xs text-gray-600 block mb-1">Attachment (optional)</label>
               <input
@@ -2180,7 +2701,7 @@ function ProjectProposalTab({ projectId, clientId, siteId, proposals, statusLabe
           initial={proposalData || null}
           disabled={!canEdit}
           showRestrictionWarning={!canEdit && !!statusLabel}
-          restrictionMessage={!canEdit && statusLabel ? `This project has status "${statusLabel}" which does not allow editing proposals or estimates. Please change the project status to allow editing.` : undefined}
+          restrictionMessage={!canEdit && statusLabel ? `This project has status "${statusLabel}" which does not allow editing proposals or estimates.` : undefined}
           onSave={async ()=>{
             // Always refetch proposals list after save to get the updated/created proposal
             await refetchProposals();
@@ -2288,7 +2809,7 @@ function EmployeeSelect({ label, value, onChange, employees }:{ label:string, va
   );
 }
 
-function TimesheetTab({ projectId }:{ projectId:string }){
+function TimesheetTab({ projectId, statusLabel }:{ projectId:string; statusLabel?: string }){
   const queryClient = useQueryClient();
   const confirm = useConfirm();
   const location = useLocation();
@@ -2307,6 +2828,13 @@ function TimesheetTab({ projectId }:{ projectId:string }){
     queryKey: ['project', projectId], 
     queryFn: () => api<Project>('GET', `/projects/${projectId}`) 
   });
+  
+  // Check if editing is restricted based on status (On Hold and Finished restrict editing for timesheet)
+  const isEditingRestricted = useMemo(() => {
+    if (!statusLabel) return false;
+    const statusLower = String(statusLabel).trim().toLowerCase();
+    return statusLower === 'on hold' || statusLower === 'finished';
+  }, [statusLabel]);
   
   const handleBackToOverview = () => {
     nav(location.pathname, { replace: true });
@@ -2501,7 +3029,8 @@ function TimesheetTab({ projectId }:{ projectId:string }){
   // Check permissions for timesheet
   const isAdmin = (currentUser?.roles||[]).includes('admin');
   const permissions = new Set(currentUser?.permissions || []);
-  const canEditTimesheet = isAdmin || permissions.has('business:projects:timesheet:write');
+  const hasEditTimesheetPermission = isAdmin || permissions.has('business:projects:timesheet:write');
+  const canEditTimesheet = hasEditTimesheetPermission && !isEditingRestricted;
   const canEditAttendance = isAdmin || permissions.has('hr:attendance:write') || permissions.has('hr:users:edit:timesheet') || permissions.has('users:write');
   
   // Check if user is supervisor or admin
@@ -2537,9 +3066,11 @@ function TimesheetTab({ projectId }:{ projectId:string }){
 
   // In Projects > Timesheet, clock-in/out actions are allowed for admins/supervisors/on-site leads
   // as long as they have attendance edit permissions (or business timesheet write).
+  // Also restricted by project status (On Hold and Finished)
   const canProjectClockActions = useMemo(() => {
+    if (isEditingRestricted) return false;
     return !!(canEditTimesheet || (canEditAttendance && (isSupervisorOrAdmin || isOnSiteLead)));
-  }, [canEditTimesheet, canEditAttendance, isSupervisorOrAdmin, isOnSiteLead]);
+  }, [canEditTimesheet, canEditAttendance, isSupervisorOrAdmin, isOnSiteLead, isEditingRestricted]);
   
   // Fetch shifts for the selected date
   const dateRange = useMemo(() => {
@@ -3110,6 +3641,13 @@ function TimesheetTab({ projectId }:{ projectId:string }){
   
   return (
     <div className="space-y-4">
+      {/* Editing Restricted Warning */}
+      {isEditingRestricted && statusLabel && (
+        <div className="mb-4 p-4 bg-yellow-50 border border-yellow-200 rounded text-sm text-yellow-800">
+          <strong>Editing Restricted:</strong> This project has status "{statusLabel}" which does not allow editing timesheet.
+        </div>
+      )}
+      
       {/* Minimalist header */}
       <div className="mb-4">
         <div className="flex items-center gap-3">
@@ -3319,7 +3857,8 @@ function TimesheetTab({ projectId }:{ projectId:string }){
               {(() => {
                 const isAttendanceRow = !!e.is_from_attendance;
                 const hasAttendanceId = !!e.attendance_id || (typeof e.id === 'string' && e.id.startsWith('attendance_'));
-                const canModify = isAttendanceRow ? (canEditAttendance && hasAttendanceId) : canEditTimesheet;
+                // Also check editing restriction for attendance rows
+                const canModify = isEditingRestricted ? false : (isAttendanceRow ? (canEditAttendance && hasAttendanceId) : canEditTimesheet);
                 if (!canModify) return null;
                 return (
                 <div className="flex items-center gap-2">
@@ -4079,57 +4618,25 @@ function TimesheetAuditSection({ projectId }:{ projectId:string }){
   );
 }
 
-function OnSiteLeadsModal({ projectId, originalDivisions, divisionLeads, settings, employees, canEdit, onClose, onUpdate }: {
+function OnSiteLeadsModal({ projectId, originalDivisions, divisionLeads, settings, projectDivisions, employees, canEdit, onClose, onUpdate }: {
   projectId: string,
   originalDivisions: string[],
   divisionLeads: Record<string, string>,
   settings: any,
+  projectDivisions: any[],
   employees: any[],
   canEdit: boolean,
   onClose: () => void,
   onUpdate: (updatedLeads: Record<string, string>, updatedDivisions: string[]) => Promise<void>
 }){
-  const confirm = useConfirm();
   const [localDivisions, setLocalDivisions] = useState<string[]>(originalDivisions);
   const [localLeads, setLocalLeads] = useState<Record<string, string>>(divisionLeads);
   const [isSaving, setIsSaving] = useState(false);
-  const [showAddDropdown, setShowAddDropdown] = useState(false);
-  const [dropdownPosition, setDropdownPosition] = useState<{top: number, right: number} | null>(null);
-  const buttonRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     setLocalDivisions(originalDivisions);
     setLocalLeads(divisionLeads);
   }, [originalDivisions, divisionLeads]);
-
-  const allAvailableDivisions = (settings?.divisions||[]).map((d:any) => String(d.id||d.label||d.value));
-  const availableToAdd = allAvailableDivisions.filter((divId: string) => !localDivisions.includes(divId));
-
-  // Calculate dropdown position when it opens
-  useEffect(() => {
-    if (showAddDropdown && buttonRef.current) {
-      const rect = buttonRef.current.getBoundingClientRect();
-      setDropdownPosition({
-        top: rect.bottom + 4,
-        right: window.innerWidth - rect.right
-      });
-    } else {
-      setDropdownPosition(null);
-    }
-  }, [showAddDropdown]);
-
-  // Close dropdown when clicking outside
-  useEffect(() => {
-    if (!showAddDropdown) return;
-    const handleClickOutside = (e: MouseEvent) => {
-      const target = e.target as HTMLElement;
-      if (!target.closest('.on-site-leads-modal') && !target.closest('.add-division-dropdown')) {
-        setShowAddDropdown(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [showAddDropdown]);
 
   const handleLeadChange = async (divId: string, leadId: string) => {
     if (!canEdit) return;
@@ -4137,56 +4644,16 @@ function OnSiteLeadsModal({ projectId, originalDivisions, divisionLeads, setting
     setLocalLeads(updated);
     setIsSaving(true);
     try {
+      // Pass the same divisions (they come from project_division_ids and cannot be changed here)
       await onUpdate(updated, localDivisions);
     } finally {
       setIsSaving(false);
     }
   };
 
-  const handleAddDivision = async (divId: string) => {
-    if (!canEdit) return;
-    const updated = [...localDivisions, divId];
-    setLocalDivisions(updated);
-    setShowAddDropdown(false);
-    setIsSaving(true);
-    try {
-      await onUpdate(localLeads, updated);
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  const handleRemoveDivision = async (divId: string) => {
-    if (!canEdit) return;
-    
-    // Get division label for confirmation message
-    const div = (settings?.divisions||[]).find((d:any) => String(d.id||d.label||d.value) === divId);
-    const divLabel = div?.meta?.abbr || div?.label || divId;
-    
-    // Show confirmation dialog
-    const result = await confirm({
-      title: 'Remove Division',
-      message: `Are you sure you want to remove the "${divLabel}" division? This action cannot be undone.`,
-      confirmText: 'Remove',
-      cancelText: 'Cancel'
-    });
-    
-    if (result !== 'confirm') return;
-    
-    const updated = localDivisions.filter(d => d !== divId);
-    const updatedLeads = { ...localLeads };
-    delete updatedLeads[divId];
-    setLocalDivisions(updated);
-    setLocalLeads(updatedLeads);
-    setIsSaving(true);
-    try {
-      await onUpdate(updatedLeads, updated);
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  if (localDivisions.length === 0 && availableToAdd.length === 0) {
+  // Divisions come from project_division_ids and cannot be modified in this modal
+  // No add/remove functionality - only edit leads
+  if (localDivisions.length === 0) {
     return null;
   }
 
@@ -4205,71 +4672,53 @@ function OnSiteLeadsModal({ projectId, originalDivisions, divisionLeads, setting
         <div className="p-6 overflow-y-auto flex-1">
           <div className="flex items-center justify-between mb-4">
             <div className="text-sm text-gray-600">
-              {localDivisions.length} division{localDivisions.length !== 1 ? 's' : ''} configured
+              {localDivisions.length} division{localDivisions.length !== 1 ? 's' : ''} from Project Divisions
             </div>
             <div className="flex items-center gap-2">
               {isSaving && <span className="text-xs text-gray-500">Saving...</span>}
-              {canEdit && availableToAdd.length > 0 && (
-                <div className="relative">
-                  <button
-                    ref={buttonRef}
-                    onClick={() => setShowAddDropdown(!showAddDropdown)}
-                    className="px-3 py-1.5 rounded bg-blue-500 hover:bg-blue-600 text-white text-sm font-medium flex items-center gap-2"
-                    title="Add division"
-                  >
-                    <span>+</span>
-                    <span>Add Division</span>
-                  </button>
-                  {showAddDropdown && dropdownPosition && (
-                    <div 
-                      className="fixed bg-white border rounded-lg shadow-lg z-[100] w-[200px] max-h-60 overflow-auto add-division-dropdown"
-                      style={{
-                        top: `${dropdownPosition.top}px`,
-                        right: `${dropdownPosition.right}px`
-                      }}
-                    >
-                      {availableToAdd.map((divId: string) => {
-                        const div = (settings?.divisions||[]).find((d:any) => String(d.id||d.label||d.value) === divId);
-                        const divLabel = div?.meta?.abbr || div?.label || divId;
-                        return (
-                          <button
-                            key={divId}
-                            onClick={() => handleAddDivision(divId)}
-                            className="w-full text-left px-3 py-2 hover:bg-gray-50 border-b last:border-b-0 text-sm"
-                          >
-                            {divLabel}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              )}
             </div>
           </div>
           <div className="space-y-3">
             {localDivisions.map((divId: string) => {
-          const div = (settings?.divisions||[]).find((d:any) => String(d.id||d.label||d.value) === divId);
-          const divLabel = div?.meta?.abbr || div?.label || divId;
-          const divColor = div?.meta?.color || '#eef2f7';
+          // Find division in projectDivisions (check main divisions and subdivisions)
+          // Format: "Division" for main division, "Division - Subdivision" for subdivisions
+          let divLabel = '';
+          let divIcon = '';
+          let mainDivisionLabel = ''; // For getting the icon from main division
+          
+          for (const div of (projectDivisions || [])) {
+            if (String(div.id) === String(divId)) {
+              // Main division
+              divLabel = div.label || divId;
+              mainDivisionLabel = div.label || '';
+              divIcon = getDivisionIcon(div.label || '');
+              break;
+            }
+            // Check subdivisions - format as "Division - Subdivision"
+            for (const sub of (div.subdivisions || [])) {
+              if (String(sub.id) === String(divId)) {
+                divLabel = `${div.label} - ${sub.label}`;
+                mainDivisionLabel = div.label || '';
+                divIcon = getDivisionIcon(div.label || '');
+                break;
+              }
+            }
+            if (divLabel) break;
+          }
+          
+          // Fallback if not found
+          if (!divLabel) {
+            divLabel = divId;
+            divIcon = '';
+          }
+          
           const leadId = localLeads[divId] || '';
           const lead = leadId ? employees.find((e:any) => String(e.id) === String(leadId)) : null;
-          const canRemove = !originalDivisions.includes(divId);
           return (
-            <div key={divId} className="p-3 rounded-lg border hover:bg-gray-50 transition-colors">
-              <div className="mb-2 flex items-center justify-between">
-                <span className="px-3 py-1.5 rounded text-xs border font-semibold inline-block" style={{ backgroundColor: divColor }}>{divLabel}</span>
-                {canEdit && (
-                  <button
-                    onClick={() => handleRemoveDivision(divId)}
-                    className="px-2 py-1 rounded text-gray-500 hover:text-red-600 transition-colors"
-                    title="Remove division"
-                  >
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                      <path d="M9 3h6a1 1 0 0 1 1 1v2h4v2h-1l-1 13a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 8H4V6h4V4a1 1 0 0 1 1-1Zm1 3h4V5h-4v1Zm-2 2 1 12h8l1-12H8Z"></path>
-                    </svg>
-                  </button>
-                )}
+            <div key={divId} className="space-y-2">
+              <div className="flex items-center gap-2">
+                {divIcon && <span className="text-lg">{divIcon}</span>}
+                <span className="text-sm font-medium text-gray-900">{divLabel}</span>
               </div>
               <div className="flex items-center gap-2">
                 <select
@@ -4628,17 +5077,46 @@ const getDivisionIcon = (label: string): string => {
 };
 
 // Edit Status Modal Component
-function EditStatusModal({ projectId, currentStatus, currentStatusLabel, settings, onClose, onSave }: {
+function EditStatusModal({ projectId, currentStatus, currentStatusLabel, settings, isBidding, onClose, onSave }: {
   projectId: string;
   currentStatus: string;
   currentStatusLabel: string;
   settings: any;
+  isBidding?: boolean;
   onClose: () => void;
   onSave: () => Promise<void>;
 }) {
   const [selectedStatusId, setSelectedStatusId] = useState(currentStatus);
   const [saving, setSaving] = useState(false);
-  const projectStatuses = (settings?.project_statuses || []) as any[];
+  const allProjectStatuses = (settings?.project_statuses || []) as any[];
+  
+  // For opportunities, only show: Prospecting, Sent to Customer, Refused
+  // For projects, show all statuses except "Prospecting"
+  const projectStatuses = useMemo(() => {
+    if (isBidding) {
+      // Filter to only show the 3 allowed statuses for opportunities
+      // Use case-insensitive comparison and trim to handle variations
+      const allowedLabels = ['Prospecting', 'Sent to Customer', 'Refused'].map(l => l.toLowerCase().trim());
+      const filtered = allProjectStatuses.filter((status: any) => {
+        const statusLabel = String(status.label || '').toLowerCase().trim();
+        return allowedLabels.includes(statusLabel);
+      });
+      
+      // If no statuses found, log for debugging
+      if (filtered.length === 0 && allProjectStatuses.length > 0) {
+        console.warn('No matching opportunity statuses found. Available statuses:', allProjectStatuses.map((s: any) => s.label));
+      }
+      
+      return filtered;
+    } else {
+      // For projects, hide "Prospecting", "Sent to Customer", and "Refused"
+      const excludedLabels = ['prospecting', 'sent to customer', 'refused'].map(l => l.toLowerCase().trim());
+      return allProjectStatuses.filter((status: any) => {
+        const statusLabel = String(status.label || '').toLowerCase().trim();
+        return !excludedLabels.includes(statusLabel);
+      });
+    }
+  }, [allProjectStatuses, isBidding]);
 
   const handleSave = async () => {
     try {
@@ -4670,18 +5148,23 @@ function EditStatusModal({ projectId, currentStatus, currentStatusLabel, setting
         </div>
         <div className="p-4">
           <label className="text-sm font-medium text-gray-700 mb-2 block">Status</label>
-          <select
-            value={selectedStatusId}
-            onChange={(e) => setSelectedStatusId(e.target.value)}
-            className="w-full border rounded px-3 py-2 mb-4"
-          >
-            <option value="">No Status</option>
-            {projectStatuses.map((status: any) => (
-              <option key={status.id} value={status.id}>
-                {status.label}
-              </option>
-            ))}
-          </select>
+          {projectStatuses.length === 0 ? (
+            <div className="text-sm text-gray-500 mb-4">
+              No statuses available. Please ensure the following statuses exist in settings: {isBidding ? 'Prospecting, Sent to Customer, Refused' : 'All statuses except Prospecting'}
+            </div>
+          ) : (
+            <select
+              value={selectedStatusId}
+              onChange={(e) => setSelectedStatusId(e.target.value)}
+              className="w-full border rounded px-3 py-2 mb-4"
+            >
+              {projectStatuses.map((status: any) => (
+                <option key={status.id} value={status.id}>
+                  {status.label}
+                </option>
+              ))}
+            </select>
+          )}
           <div className="flex gap-2">
             <button
               onClick={handleSave}
@@ -5386,7 +5869,7 @@ function EditDivisionsModal({ projectId, currentDivisions, projectDivisions, onC
   );
 }
 
-function ProjectGeneralInfoCard({ projectId, proj }:{ projectId:string, proj:any }){
+function ProjectGeneralInfoCard({ projectId, proj, files }:{ projectId:string, proj:any, files: ProjectFile[] }){
   const queryClient = useQueryClient();
   const [description, setDescription] = useState<string>(proj?.description || '');
   const [projectName, setProjectName] = useState<string>(proj?.name || '');
@@ -5394,7 +5877,9 @@ function ProjectGeneralInfoCard({ projectId, proj }:{ projectId:string, proj:any
   const [editingDivisions, setEditingDivisions] = useState(false);
   const [editingName, setEditingName] = useState(false);
   const [projectDivs, setProjectDivs] = useState<string[]>(Array.isArray(proj?.project_division_ids) ? proj.project_division_ids : []);
+  const [pickerOpen, setPickerOpen] = useState(false);
   const { data:projectDivisions } = useQuery({ queryKey:['project-divisions'], queryFn: ()=>api<any[]>('GET','/settings/project-divisions'), staleTime: 300_000 });
+  const { data:proposals } = useQuery({ queryKey:['projectProposals', projectId], queryFn: ()=>api<Proposal[]>('GET', `/proposals?project_id=${encodeURIComponent(String(projectId||''))}`) });
 
   useEffect(()=>{
     setDescription(proj?.description || '');
@@ -5424,6 +5909,90 @@ function ProjectGeneralInfoCard({ projectId, proj }:{ projectId:string, proj:any
       setSaving(false);
     }
   }, [projectId, description, projectDivs, projectName, editingName, proj?.name, queryClient]);
+
+  // Get image URL priority:
+  // 1) Manual image set by user (image_manually_set + image_file_object_id)
+  // 2) Legacy manual image (existing project-cover-derived file)
+  // 3) Cover from latest proposal
+  // 4) Default blueprint
+  const imageUrl = useMemo(() => {
+    // If project has manually set image, use it
+    if (proj?.image_file_object_id && proj?.image_manually_set) {
+      return `/files/${proj.image_file_object_id}/thumbnail?w=800`;
+    }
+    // Legacy: if there is an existing cover image file, treat it as user-selected (manual)
+    const legacyCover = (files||[]).find(f=> String(f.category||'') === 'project-cover-derived');
+    if (legacyCover?.file_object_id) {
+      return `/files/${legacyCover.file_object_id}/thumbnail?w=800`;
+    }
+    // If project has image (synced from proposal), use it
+    if (proj?.image_file_object_id) {
+      return `/files/${proj.image_file_object_id}/thumbnail?w=800`;
+    }
+    // Try to get from latest proposal
+    if (proposals && proposals.length > 0) {
+      // Sort by created_at descending to get latest
+      const sortedProposals = [...proposals].sort((a, b) => {
+        const aDate = a.created_at ? new Date(a.created_at).getTime() : 0;
+        const bDate = b.created_at ? new Date(b.created_at).getTime() : 0;
+        return bDate - aDate;
+      });
+      const latestProposal = sortedProposals[0];
+      if (latestProposal?.data?.cover_file_object_id) {
+        return `/files/${latestProposal.data.cover_file_object_id}/thumbnail?w=800`;
+      }
+    }
+    // Default blueprint image (served by backend static /ui)
+    return '/ui/assets/placeholders/project.png';
+  }, [proj?.image_file_object_id, proj?.image_manually_set, proposals, files]);
+
+  const handleImageConfirm = useCallback(async (blob: Blob, originalFileObjectId?: string) => {
+    try {
+      setSaving(true);
+      // Convert blob to File for upload
+      const file = new File([blob], 'project-image.png', { type: 'image/png' });
+      
+      // Step 1: Get upload URL
+      const up: any = await api('POST', '/files/upload', {
+        project_id: projectId,
+        client_id: proj?.client_id || null,
+        employee_id: null,
+        category_id: 'project-general-image',
+        original_name: file.name,
+        content_type: file.type || 'image/png'
+      });
+      
+      // Step 2: Upload file to storage
+      await fetch(up.upload_url, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': file.type || 'image/png',
+          'x-ms-blob-type': 'BlockBlob'
+        },
+        body: file
+      });
+      
+      // Step 3: Confirm upload
+      const conf: any = await api('POST', '/files/confirm', {
+        key: up.key,
+        size_bytes: file.size
+      });
+      
+      // Step 4: Update project with the new image
+      await api('PATCH', `/projects/${projectId}`, {
+        image_file_object_id: conf.file_object_id,
+        image_manually_set: true
+      });
+      
+      toast.success('Image updated');
+      queryClient.invalidateQueries({ queryKey: ['project', projectId] });
+      setPickerOpen(false);
+    } catch (e) {
+      toast.error('Failed to update image');
+    } finally {
+      setSaving(false);
+    }
+  }, [projectId, proj?.client_id, queryClient]);
 
   const city = proj?.address_city || proj?.site_city || '—';
   const province = proj?.address_province || proj?.site_province || proj?.site_state || '—';
@@ -5487,6 +6056,33 @@ function ProjectGeneralInfoCard({ projectId, proj }:{ projectId:string, proj:any
         )}
       </div>
       <div className="space-y-4 text-sm">
+        {/* Project Image */}
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <label className="text-xs text-gray-600">Project Image</label>
+            <button
+              onClick={() => setPickerOpen(true)}
+              className="text-xs text-[#7f1010] hover:text-[#a31414] font-medium"
+            >
+              Change
+            </button>
+          </div>
+          <div className="mt-1 rounded border overflow-hidden bg-gray-50">
+            <img 
+              src={imageUrl} 
+              alt="Project" 
+              className="w-full h-48 object-cover"
+              onError={(e) => {
+                // Only fallback to logo if it's not already the default image
+                const currentSrc = (e.target as HTMLImageElement).src;
+                if (!currentSrc.includes('/ui/assets/placeholders/project.png')) {
+                  (e.target as HTMLImageElement).src = '/ui/assets/placeholders/project.png';
+                }
+              }}
+            />
+          </div>
+        </div>
+
         {/* Project Name - Editable */}
         <div>
           <div className="flex items-center justify-between mb-2">

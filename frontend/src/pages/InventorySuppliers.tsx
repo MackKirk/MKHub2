@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
@@ -6,6 +6,10 @@ import { useConfirm } from '@/components/ConfirmProvider';
 import ImagePicker from '@/components/ImagePicker';
 import AddressAutocomplete from '@/components/AddressAutocomplete';
 import { useNavigate } from 'react-router-dom';
+import FilterBuilderModal from '@/components/FilterBuilder/FilterBuilderModal';
+import FilterChip from '@/components/FilterBuilder/FilterChip';
+import { FilterRule, FieldConfig } from '@/components/FilterBuilder/types';
+import LoadingOverlay from '@/components/LoadingOverlay';
 
 type Supplier = {
   id: string;
@@ -41,6 +45,118 @@ const formatPhone = (phone: string | undefined): string => {
   return phone;
 };
 
+// Helper functions for currency formatting (CAD)
+const formatCurrency = (value: string): string => {
+  if (!value) return '';
+  const numericValue = value.replace(/[^0-9.]/g, '');
+  if (!numericValue) return '';
+  const num = parseFloat(numericValue);
+  if (isNaN(num)) return numericValue;
+  return new Intl.NumberFormat('en-CA', {
+    style: 'currency',
+    currency: 'CAD',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(num);
+};
+
+const parseCurrency = (value: string): string => {
+  const parsed = value.replace(/[^0-9.]/g, '');
+  const parts = parsed.split('.');
+  if (parts.length > 2) {
+    return parts[0] + '.' + parts.slice(1).join('');
+  }
+  return parsed;
+};
+
+// Helper: Convert filter rules to URL parameters
+function convertRulesToParams(rules: FilterRule[]): URLSearchParams {
+  const params = new URLSearchParams();
+  
+  // Clear all potential conflicting parameters first
+  params.delete('country');
+  params.delete('country_not');
+  params.delete('province');
+  params.delete('province_not');
+  params.delete('city');
+  params.delete('city_not');
+  
+  for (const rule of rules) {
+    if (!rule.value || (Array.isArray(rule.value) && (!rule.value[0] || !rule.value[1]))) {
+      continue; // Skip empty rules
+    }
+    
+    switch (rule.field) {
+      case 'country':
+        if (typeof rule.value === 'string') {
+          if (rule.operator === 'is') {
+            params.set('country', rule.value);
+          } else if (rule.operator === 'is_not') {
+            params.set('country_not', rule.value);
+          }
+        }
+        break;
+      
+      case 'province':
+        if (typeof rule.value === 'string') {
+          if (rule.operator === 'is') {
+            params.set('province', rule.value);
+          } else if (rule.operator === 'is_not') {
+            params.set('province_not', rule.value);
+          }
+        }
+        break;
+      
+      case 'city':
+        if (typeof rule.value === 'string') {
+          if (rule.operator === 'is') {
+            params.set('city', rule.value);
+          } else if (rule.operator === 'is_not') {
+            params.set('city_not', rule.value);
+          }
+        }
+        break;
+    }
+  }
+  
+  return params;
+}
+
+// Helper: Convert URL parameters to filter rules
+function convertParamsToRules(params: URLSearchParams): FilterRule[] {
+  const rules: FilterRule[] = [];
+  let idCounter = 1;
+  
+  // Country
+  const country = params.get('country');
+  const countryNot = params.get('country_not');
+  if (country) {
+    rules.push({ id: `rule-${idCounter++}`, field: 'country', operator: 'is', value: country });
+  } else if (countryNot) {
+    rules.push({ id: `rule-${idCounter++}`, field: 'country', operator: 'is_not', value: countryNot });
+  }
+  
+  // Province
+  const province = params.get('province');
+  const provinceNot = params.get('province_not');
+  if (province) {
+    rules.push({ id: `rule-${idCounter++}`, field: 'province', operator: 'is', value: province });
+  } else if (provinceNot) {
+    rules.push({ id: `rule-${idCounter++}`, field: 'province', operator: 'is_not', value: provinceNot });
+  }
+  
+  // City
+  const city = params.get('city');
+  const cityNot = params.get('city_not');
+  if (city) {
+    rules.push({ id: `rule-${idCounter++}`, field: 'city', operator: 'is', value: city });
+  } else if (cityNot) {
+    rules.push({ id: `rule-${idCounter++}`, field: 'city', operator: 'is_not', value: cityNot });
+  }
+  
+  return rules;
+}
+
 export default function InventorySuppliers() {
   const queryClient = useQueryClient();
   const confirm = useConfirm();
@@ -50,7 +166,21 @@ export default function InventorySuppliers() {
   const permissions = new Set(me?.permissions || []);
   const canViewSuppliers = isAdmin || permissions.has('inventory:suppliers:read');
   const canEditSuppliers = isAdmin || permissions.has('inventory:suppliers:write');
+  const canEditProducts = isAdmin || permissions.has('inventory:products:write');
   const [q, setQ] = useState('');
+  const [hasAnimated, setHasAnimated] = useState(false);
+  const [animationComplete, setAnimationComplete] = useState(false);
+  const hasLoadedDataRef = useRef(false);
+
+  // Get current date formatted (same as Dashboard)
+  const todayLabel = useMemo(() => {
+    return new Date().toLocaleDateString('en-CA', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+    });
+  }, []);
 
   // Redirect if user doesn't have permission
   useEffect(() => {
@@ -59,11 +189,25 @@ export default function InventorySuppliers() {
       navigate('/home');
     }
   }, [meLoading, me, canViewSuppliers, navigate]);
-  const [showAdvanced, setShowAdvanced] = useState(false);
-  const [isFiltersCollapsed, setIsFiltersCollapsed] = useState(false);
-  const [countryFilter, setCountryFilter] = useState('');
-  const [provinceFilter, setProvinceFilter] = useState('');
-  const [cityFilter, setCityFilter] = useState('');
+  const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
+  
+  // Get filter params from URL
+  const [searchParams, setSearchParams] = useState(() => {
+    const params = new URLSearchParams();
+    // Initialize from current URL if available
+    if (typeof window !== 'undefined') {
+      const urlParams = new URLSearchParams(window.location.search);
+      urlParams.forEach((value, key) => {
+        if (key !== 'q') params.set(key, value);
+      });
+    }
+    return params;
+  });
+  
+  // Convert current URL params to rules for modal
+  const currentRules = useMemo(() => {
+    return convertParamsToRules(searchParams);
+  }, [searchParams]);
   const [open, setOpen] = useState(false);
   const [viewing, setViewing] = useState<Supplier | null>(null);
   const [editing, setEditing] = useState<Supplier | null>(null);
@@ -95,6 +239,20 @@ export default function InventorySuppliers() {
   const [contacts, setContacts] = useState<any[]>([]);
   const [contactModalOpen, setContactModalOpen] = useState(false);
   const [editingContact, setEditingContact] = useState<any | null>(null);
+  const [productsModalOpen, setProductsModalOpen] = useState(false);
+  const [newProductModalOpen, setNewProductModalOpen] = useState(false);
+  const [viewingProduct, setViewingProduct] = useState<any | null>(null);
+  const [productModalOpen, setProductModalOpen] = useState(false);
+  const [productTab, setProductTab] = useState<'details'|'usage'|'related'>('details');
+  const [productUsage, setProductUsage] = useState<any[]>([]);
+  const [loadingUsage, setLoadingUsage] = useState(false);
+  const [editingProduct, setEditingProduct] = useState<any | null>(null);
+  const [relatedList, setRelatedList] = useState<any[]>([]);
+  const [addRelatedOpen, setAddRelatedOpen] = useState(false);
+  const [addRelatedTarget, setAddRelatedTarget] = useState<number|null>(null);
+  const [addRelatedSearch, setAddRelatedSearch] = useState('');
+  const [addRelatedResults, setAddRelatedResults] = useState<any[]>([]);
+  const [relatedCounts, setRelatedCounts] = useState<Record<number, number>>({});
   
   // Contact form fields
   const [contactName, setContactName] = useState('');
@@ -102,12 +260,68 @@ export default function InventorySuppliers() {
   const [contactPhone, setContactPhone] = useState('');
   const [contactTitle, setContactTitle] = useState('');
   const [contactNotes, setContactNotes] = useState('');
+  
+  // New product form fields
+  const [productName, setProductName] = useState('');
+  const [productNameError, setProductNameError] = useState(false);
+  const [productCategory, setProductCategory] = useState('');
+  const [productUnit, setProductUnit] = useState('');
+  const [productPrice, setProductPrice] = useState<string>('');
+  const [productPriceDisplay, setProductPriceDisplay] = useState<string>('');
+  const [productPriceFocused, setProductPriceFocused] = useState(false);
+  const [productPriceError, setProductPriceError] = useState(false);
+  const [productDesc, setProductDesc] = useState('');
+  const [productUnitType, setProductUnitType] = useState<'unitary'|'multiple'|'coverage'>('unitary');
+  const [productUnitsPerPackage, setProductUnitsPerPackage] = useState<string>('');
+  const [productCovSqs, setProductCovSqs] = useState<string>('');
+  const [productCovFt2, setProductCovFt2] = useState<string>('');
+  const [productCovM2, setProductCovM2] = useState<string>('');
+  const [productImageDataUrl, setProductImageDataUrl] = useState<string>('');
+  const [productImagePickerOpen, setProductImagePickerOpen] = useState(false);
+  const [productTechnicalManualUrl, setProductTechnicalManualUrl] = useState<string>('');
+  const [isSavingProduct, setIsSavingProduct] = useState(false);
+  
+  // Edit product form fields (separate from new product)
+  const [editProductName, setEditProductName] = useState('');
+  const [editProductNameError, setEditProductNameError] = useState(false);
+  const [editProductCategory, setEditProductCategory] = useState('');
+  const [editProductUnit, setEditProductUnit] = useState('');
+  const [editProductPrice, setEditProductPrice] = useState<string>('');
+  const [editProductPriceDisplay, setEditProductPriceDisplay] = useState<string>('');
+  const [editProductPriceFocused, setEditProductPriceFocused] = useState(false);
+  const [editProductPriceError, setEditProductPriceError] = useState(false);
+  const [editProductDesc, setEditProductDesc] = useState('');
+  const [editProductUnitType, setEditProductUnitType] = useState<'unitary'|'multiple'|'coverage'>('unitary');
+  const [editProductUnitsPerPackage, setEditProductUnitsPerPackage] = useState<string>('');
+  const [editProductCovSqs, setEditProductCovSqs] = useState<string>('');
+  const [editProductCovFt2, setEditProductCovFt2] = useState<string>('');
+  const [editProductCovM2, setEditProductCovM2] = useState<string>('');
+  const [editProductImageDataUrl, setEditProductImageDataUrl] = useState<string>('');
+  const [editProductImagePickerOpen, setEditProductImagePickerOpen] = useState(false);
+  const [editProductTechnicalManualUrl, setEditProductTechnicalManualUrl] = useState<string>('');
+  const [isSavingEditProduct, setIsSavingEditProduct] = useState(false);
 
   useEffect(() => {
-    if (!open && !contactModalOpen) return;
+    if (!open && !contactModalOpen && !productsModalOpen && !newProductModalOpen && !productModalOpen && !addRelatedOpen && !editProductImagePickerOpen) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        if (contactModalOpen) {
+        if (editProductImagePickerOpen) {
+          setEditProductImagePickerOpen(false);
+        } else if (addRelatedOpen) {
+          setAddRelatedOpen(false);
+        } else if (productModalOpen) {
+          if (editingProduct) {
+            setViewingProduct(editingProduct);
+            setEditingProduct(null);
+          } else {
+            setProductModalOpen(false);
+            setViewingProduct(null);
+          }
+        } else if (newProductModalOpen) {
+          setNewProductModalOpen(false);
+        } else if (productsModalOpen) {
+          setProductsModalOpen(false);
+        } else if (contactModalOpen) {
           setContactModalOpen(false);
           setEditingContact(null);
         } else if (open) {
@@ -118,14 +332,22 @@ export default function InventorySuppliers() {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [open, contactModalOpen]);
+  }, [open, contactModalOpen, productsModalOpen, newProductModalOpen, productModalOpen, addRelatedOpen, editProductImagePickerOpen, editingProduct]);
 
+  // Build query params from searchParams
+  const queryParams = useMemo(() => {
+    const params = new URLSearchParams();
+    if (q) params.set('q', q);
+    searchParams.forEach((value, key) => {
+      if (key !== 'q') params.set(key, value);
+    });
+    return params;
+  }, [q, searchParams]);
+  
   const { data, isLoading, isFetching, refetch: refetchSuppliers } = useQuery({
-    queryKey: ['suppliers', q],
+    queryKey: ['suppliers', queryParams.toString()],
     queryFn: async () => {
-      const params = new URLSearchParams();
-      if (q) params.set('q', q);
-      const path = params.toString() ? `/inventory/suppliers?${params.toString()}` : '/inventory/suppliers';
+      const path = queryParams.toString() ? `/inventory/suppliers?${queryParams.toString()}` : '/inventory/suppliers';
       return await api<Supplier[]>('GET', path);
     },
   });
@@ -134,7 +356,77 @@ export default function InventorySuppliers() {
   useEffect(() => {
     refetchSuppliers();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [q]);
+  }, [queryParams]);
+  
+  // Extract unique countries, provinces, and cities from suppliers data
+  const allCountries = useMemo(() => {
+    const countriesSet = new Set<string>();
+    (data || []).forEach((s: Supplier) => {
+      if (s.country) countriesSet.add(s.country);
+    });
+    return Array.from(countriesSet).sort();
+  }, [data]);
+  
+  const allProvinces = useMemo(() => {
+    const provincesSet = new Set<string>();
+    (data || []).forEach((s: Supplier) => {
+      if (s.province) provincesSet.add(s.province);
+    });
+    return Array.from(provincesSet).sort();
+  }, [data]);
+  
+  const allCities = useMemo(() => {
+    const citiesSet = new Set<string>();
+    (data || []).forEach((s: Supplier) => {
+      if (s.city) citiesSet.add(s.city);
+    });
+    return Array.from(citiesSet).sort();
+  }, [data]);
+  
+  // Filter Builder Configuration
+  const filterFields: FieldConfig[] = useMemo(() => [
+    {
+      id: 'country',
+      label: 'Country',
+      type: 'select',
+      operators: ['is', 'is_not'],
+      getOptions: () => allCountries.map(country => ({ value: country, label: country })),
+    },
+    {
+      id: 'province',
+      label: 'Province',
+      type: 'select',
+      operators: ['is', 'is_not'],
+      getOptions: () => allProvinces.map(province => ({ value: province, label: province })),
+    },
+    {
+      id: 'city',
+      label: 'City',
+      type: 'select',
+      operators: ['is', 'is_not'],
+      getOptions: () => allCities.map(city => ({ value: city, label: city })),
+    },
+  ], [allCountries, allProvinces, allCities]);
+
+  const handleApplyFilters = (rules: FilterRule[]) => {
+    const params = convertRulesToParams(rules);
+    if (q) params.set('q', q);
+    setSearchParams(params);
+    refetchSuppliers();
+  };
+
+  const hasActiveFilters = currentRules.length > 0;
+
+  // Helper to format rule value for display
+  const formatRuleValue = (rule: FilterRule): string => {
+    return String(rule.value);
+  };
+
+  // Helper to get field label
+  const getFieldLabel = (fieldId: string): string => {
+    const field = filterFields.find(f => f.id === fieldId);
+    return field?.label || fieldId;
+  };
 
   const { data: contactsData, refetch: refetchContacts } = useQuery({
     queryKey: ['supplierContacts', viewing?.id],
@@ -144,6 +436,203 @@ export default function InventorySuppliers() {
     },
     enabled: !!viewing?.id && supplierTab === 'contacts',
   });
+
+  const { data: supplierOptions } = useQuery({ 
+    queryKey: ['invSuppliersOptions-supplier'], 
+    queryFn: () => api<any[]>('GET', '/inventory/suppliers') 
+  });
+
+  const { data: supplierProducts, isLoading: loadingProducts, refetch: refetchSupplierProducts } = useQuery({
+    queryKey: ['supplierProducts', viewing?.id, viewing?.name],
+    queryFn: async () => {
+      if (!viewing?.name) return [];
+      const allProducts = await api<any[]>('GET', '/estimate/products');
+      return allProducts.filter((p: any) => p.supplier_name === viewing.name);
+    },
+    enabled: !!viewing?.id && !!viewing?.name && productsModalOpen,
+  });
+
+  const loadProductUsage = async (productId: number) => {
+    setLoadingUsage(true);
+    try {
+      const usage = await api<any[]>('GET', `/estimate/products/${productId}/usage`);
+      setProductUsage(usage || []);
+    } catch (e) {
+      console.error('Failed to load product usage:', e);
+      setProductUsage([]);
+    } finally {
+      setLoadingUsage(false);
+    }
+  };
+
+  const openProductModal = (product: any) => {
+    setViewingProduct(product);
+    setProductModalOpen(true);
+    setProductTab('details');
+    setProductUsage([]);
+    setEditingProduct(null);
+    setRelatedList([]);
+    // Load usage data when opening modal
+    if (product.id) {
+      loadProductUsage(product.id);
+      // Load related counts
+      loadRelatedCounts([product.id]);
+    }
+  };
+
+  const loadRelatedCounts = async (productIds: number[]) => {
+    if (!productIds.length) return;
+    try {
+      const counts = await api<Record<string, number>>('GET', `/estimate/related/count?ids=${productIds.join(',')}`);
+      if (counts) {
+        const numCounts: Record<number, number> = {};
+        Object.entries(counts).forEach(([k, v]) => {
+          numCounts[Number(k)] = v;
+        });
+        setRelatedCounts(numCounts);
+      }
+    } catch (e) {
+      console.error('Failed to load related counts:', e);
+    }
+  };
+
+  const handleViewRelated = async (id: number) => {
+    try {
+      const rels = await api<any[]>('GET', `/estimate/related/${id}`);
+      setRelatedList(rels);
+    } catch (_e) {
+      toast.error('Failed to load related');
+    }
+  };
+
+  const handleAddRelated = async (targetId: number) => {
+    setAddRelatedTarget(targetId);
+    setAddRelatedOpen(true);
+    setAddRelatedSearch('');
+    setAddRelatedResults([]);
+  };
+
+  const searchRelatedProducts = async (txt: string) => {
+    setAddRelatedSearch(txt);
+    try {
+      const params = new URLSearchParams();
+      if (txt.trim()) {
+        params.set('q', txt);
+      }
+      const results = await api<any[]>('GET', `/estimate/products/search?${params.toString()}`);
+      // Filter out the current product and products already related
+      const filtered = results.filter(r => r.id !== addRelatedTarget && r.id !== viewingProduct?.id);
+      setAddRelatedResults(filtered);
+    } catch (_e) {
+      setAddRelatedResults([]);
+    }
+  };
+
+  const createRelation = async (productA: number, productB: number) => {
+    try {
+      await api('POST', `/estimate/related/${productA}`, { related_id: productB });
+      toast.success('Relation created');
+      setAddRelatedOpen(false);
+      // Update the current viewing product's related list
+      if (viewingProduct) {
+        const updatedRels = await api<any[]>('GET', `/estimate/related/${viewingProduct.id}`);
+        setRelatedList(updatedRels);
+        // Update related counts
+        await loadRelatedCounts([viewingProduct.id]);
+      }
+      await refetchSupplierProducts();
+    } catch (_e) {
+      toast.error('Failed to create relation');
+    }
+  };
+
+  const deleteRelation = async (a: number, b: number) => {
+    const ok = await confirm({
+      title: 'Remove relation',
+      message: 'Are you sure you want to remove this relation between products?',
+      confirmText: 'Remove',
+      cancelText: 'Cancel'
+    });
+    if (!ok) return;
+    try {
+      await api('DELETE', `/estimate/related/${a}/${b}`);
+      toast.success('Relation removed');
+      // Update related counts
+      if (viewingProduct) {
+        await loadRelatedCounts([viewingProduct.id]);
+      }
+      // Reload the related list
+      if (viewingProduct) {
+        handleViewRelated(viewingProduct.id);
+      }
+      await refetchSupplierProducts();
+    } catch (_e) {
+      toast.error('Failed to remove relation');
+    }
+  };
+
+  const openEditProductModal = () => {
+    if (!viewingProduct) return;
+    setEditingProduct(viewingProduct);
+    setEditProductName(viewingProduct.name);
+    setEditProductNameError(false);
+    setEditProductCategory(viewingProduct.category || '');
+    setEditProductUnit(viewingProduct.unit || '');
+    setEditProductPrice(viewingProduct.price?.toString() || '');
+    setEditProductPriceDisplay(viewingProduct.price?.toString() || '');
+    setEditProductPriceFocused(false);
+    setEditProductPriceError(false);
+    setEditProductDesc(viewingProduct.description || '');
+    setEditProductUnitType((viewingProduct.unit_type as any) || 'unitary');
+    setEditProductUnitsPerPackage(viewingProduct.units_per_package?.toString() || '');
+    setEditProductCovSqs(viewingProduct.coverage_sqs?.toString() || '');
+    setEditProductCovFt2(viewingProduct.coverage_ft2?.toString() || '');
+    setEditProductCovM2(viewingProduct.coverage_m2?.toString() || '');
+    setEditProductImageDataUrl(viewingProduct.image_base64 || '');
+    setEditProductTechnicalManualUrl(viewingProduct.technical_manual_url || '');
+    setViewingProduct(null);
+  };
+
+  const onProductCoverageChange = (which: 'sqs'|'ft2'|'m2', val: string) => {
+    if (!val) { setProductCovSqs(''); setProductCovFt2(''); setProductCovM2(''); return; }
+    const num = parseFloat(val) || 0;
+    if (which === 'sqs') {
+      setProductCovSqs(val);
+      setProductCovFt2(String((num * 100).toFixed(2)));
+      setProductCovM2(String((num * 9.29).toFixed(2)));
+    } else if (which === 'ft2') {
+      setProductCovFt2(val);
+      setProductCovSqs(String((num / 100).toFixed(2)));
+      setProductCovM2(String((num * 0.0929).toFixed(2)));
+    } else if (which === 'm2') {
+      setProductCovM2(val);
+      setProductCovSqs(String((num / 9.29).toFixed(2)));
+      setProductCovFt2(String((num * 10.764).toFixed(2)));
+    }
+  };
+
+  useEffect(() => {
+    if (!newProductModalOpen) {
+      setProductName('');
+      setProductNameError(false);
+      setProductCategory('');
+      setProductUnit('');
+      setProductPrice('');
+      setProductPriceDisplay('');
+      setProductPriceFocused(false);
+      setProductPriceError(false);
+      setProductDesc('');
+      setProductUnitsPerPackage('');
+      setProductCovSqs('');
+      setProductCovFt2('');
+      setProductCovM2('');
+      setProductUnitType('unitary');
+      setProductImageDataUrl('');
+      setProductTechnicalManualUrl('');
+    } else if (newProductModalOpen && viewing) {
+      // Pre-fill supplier name if available
+    }
+  }, [newProductModalOpen, viewing]);
 
   const createMut = useMutation({
     mutationFn: async (data: any) => api('POST', '/inventory/suppliers', data),
@@ -307,19 +796,9 @@ export default function InventorySuppliers() {
     }
   };
 
-  const filteredRows = useMemo(() => {
-    if (!data) return [];
-    return data.filter((s) => {
-      if (countryFilter && (s.country || '').toLowerCase() !== countryFilter.toLowerCase()) return false;
-      if (provinceFilter && (s.province || '').toLowerCase() !== provinceFilter.toLowerCase()) return false;
-      if (cityFilter && (s.city || '').toLowerCase() !== cityFilter.toLowerCase()) return false;
-      return true;
-    });
-  }, [data, countryFilter, provinceFilter, cityFilter]);
-
   const sortedRows = useMemo(() => {
-    if (!filteredRows) return [];
-    const sorted = [...filteredRows];
+    if (!data) return [];
+    const sorted = [...data];
     
     sorted.sort((a, b) => {
       let aVal: any = a[sortColumn as keyof Supplier];
@@ -356,9 +835,32 @@ export default function InventorySuppliers() {
 
   const rows = sortedRows;
 
-  const countries = useMemo(() => Array.from(new Set((data || []).map(s => (s.country || '').trim()).filter(Boolean))), [data]);
-  const provinces = useMemo(() => Array.from(new Set((data || []).map(s => (s.province || '').trim()).filter(Boolean))), [data]);
-  const cities = useMemo(() => Array.from(new Set((data || []).map(s => (s.city || '').trim()).filter(Boolean))), [data]);
+  // Track if we've loaded data at least once
+  useEffect(() => {
+    if (data) {
+      hasLoadedDataRef.current = true;
+    }
+  }, [data]);
+
+  // Check if we're still loading initial data (only show overlay if no data yet and we haven't loaded before)
+  const isInitialLoading = (isLoading && !data) && !hasLoadedDataRef.current;
+
+  // Track when animation completes to remove inline styles for hover to work
+  useEffect(() => {
+    if (hasAnimated) {
+      const timer = setTimeout(() => setAnimationComplete(true), 400);
+      return () => clearTimeout(timer);
+    }
+  }, [hasAnimated]);
+
+  // Track when initial data is loaded to trigger entry animations
+  useEffect(() => {
+    if (!isInitialLoading && !hasAnimated) {
+      // Small delay to ensure DOM is ready
+      const timer = setTimeout(() => setHasAnimated(true), 50);
+      return () => clearTimeout(timer);
+    }
+  }, [isInitialLoading, hasAnimated]);
 
   // Don't render if still loading or user doesn't have permission
   if (meLoading || !canViewSuppliers) {
@@ -367,150 +869,90 @@ export default function InventorySuppliers() {
 
   return (
     <div>
-      <div className="mb-3 rounded-xl border bg-gradient-to-br from-[#7f1010] to-[#a31414] text-white p-4 flex items-center justify-between">
+      <div 
+        className="bg-slate-200/50 rounded-[12px] border border-slate-200 flex items-center justify-between py-4 px-6 mb-6"
+        style={animationComplete ? {} : {
+          opacity: hasAnimated ? 1 : 0,
+          transform: hasAnimated ? 'translateY(0) scale(1)' : 'translateY(-8px) scale(0.98)',
+          transition: 'opacity 400ms ease-out, transform 400ms ease-out'
+        }}
+      >
         <div>
-          <div className="text-2xl font-extrabold">Suppliers</div>
-          <div className="text-sm opacity-90">Manage vendors and contact information.</div>
+          <div className="text-xl font-bold text-gray-900 tracking-tight mb-0.5">Suppliers</div>
+          <div className="text-sm text-gray-500 font-medium">Manage vendors and contact information</div>
         </div>
-        {canEditSuppliers && (
-          <button
-            onClick={() => {
-              resetForm();
-              setOpen(true);
-            }}
-            className="px-4 py-2 rounded bg-white text-brand-red font-semibold"
-          >
-            + New Supplier
-          </button>
-        )}
+        <div className="text-right">
+          <div className="text-xs text-gray-400 mb-1.5 font-medium uppercase tracking-wide">Today</div>
+          <div className="text-sm font-semibold text-gray-700">{todayLabel}</div>
+        </div>
       </div>
-      {/* Advanced Search Panel */}
-      <div className="mb-3 rounded-xl border bg-white shadow-sm overflow-hidden relative">
-        {/* Main Search Bar */}
-        {isFiltersCollapsed ? (
-          <div className="p-4 bg-gradient-to-r from-gray-50 to-white">
-            <div className="flex items-center justify-between">
-              <div className="text-lg font-semibold text-gray-700">Show Filters</div>
-            </div>
-          </div>
-        ) : (
-          <div className="p-4 bg-gradient-to-r from-gray-50 to-white border-b">
-            <div className="flex items-center gap-3">
-              <div className="flex-1">
-                <label className="block text-xs font-medium text-gray-700 mb-1.5">Search Suppliers</label>
-                <div className="relative">
-                  <input 
-                    className="w-full border border-gray-300 rounded-lg px-4 py-2.5 pl-10 focus:outline-none focus:ring-2 focus:ring-brand-red focus:border-transparent text-gray-900" 
-                    placeholder="Search by supplier name, email, or phone..." 
-                    value={q} 
-                    onChange={e=>setQ(e.target.value)} 
-                    onKeyDown={e=>{ if(e.key==='Enter') refetchSuppliers(); }} 
-                  />
-                  <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                  </svg>
-                </div>
-              </div>
-              <div className="flex items-end gap-2 pt-6">
-                <button 
-                  onClick={()=>setShowAdvanced(!showAdvanced)}
-                  className="px-4 py-2.5 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors flex items-center gap-2 text-sm font-medium"
-                >
-                  <svg className={`w-4 h-4 transition-transform ${showAdvanced ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                  </svg>
-                  Advanced Filters
-                </button>
+      {/* Filter Bar */}
+      <div className="mb-3 rounded-lg border border-gray-200 bg-white shadow-sm overflow-hidden">
+        {/* Primary Row: Global Search + Actions */}
+        <div className="px-6 py-4 bg-white">
+          <div className="flex items-center gap-4">
+            {/* Global Search - Dominant, large */}
+            <div className="flex-1">
+              <div className="relative">
+                <input 
+                  className="w-full border border-gray-200 rounded-md px-4 py-2.5 pl-10 text-sm bg-gray-50/50 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300 focus:bg-white transition-all duration-150" 
+                  placeholder="Search by supplier name, email, or phone..." 
+                  value={q} 
+                  onChange={e=>setQ(e.target.value)} 
+                />
+                <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
               </div>
             </div>
-          </div>
-        )}
 
-        {/* Advanced Filters */}
-        {!isFiltersCollapsed && showAdvanced && (
-          <div className="p-4 bg-gray-50 border-t animate-in slide-in-from-top duration-200">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1.5">Country</label>
-                <select
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-red focus:border-transparent bg-white"
-                  value={countryFilter}
-                  onChange={e => { setCountryFilter(e.target.value); setProvinceFilter(''); setCityFilter(''); }}
-                >
-                  <option value="">All Countries</option>
-                  {countries.map(c => <option key={c} value={c}>{c}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1.5">Province / State</label>
-                <select
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-red focus:border-transparent bg-white"
-                  value={provinceFilter}
-                  onChange={e => { setProvinceFilter(e.target.value); setCityFilter(''); }}
-                  disabled={countries.length === 0}
-                >
-                  <option value="">All Provinces</option>
-                  {provinces.map(p => <option key={p} value={p}>{p}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1.5">City</label>
-                <select
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-red focus:border-transparent bg-white"
-                  value={cityFilter}
-                  onChange={e => setCityFilter(e.target.value)}
-                  disabled={provinces.length === 0 && !provinceFilter}
-                >
-                  <option value="">All Cities</option>
-                  {cities.map(c => <option key={c} value={c}>{c}</option>)}
-                </select>
-              </div>
-            </div>
-          </div>
-        )}
+            {/* + Filters Button - Opens Modal */}
+            <button 
+              onClick={()=>setIsFilterModalOpen(true)}
+              className="px-3 py-2.5 text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors duration-150 whitespace-nowrap"
+            >
+              + Filters
+            </button>
 
-        {/* Action Buttons */}
-        {!isFiltersCollapsed && (
-          <div className="p-4 bg-white border-t flex items-center justify-between">
-            <div className="text-sm text-gray-600">
-              {Array.isArray(rows) && rows.length > 0 && (
-                <span>Found {rows.length} supplier{rows.length !== 1 ? 's' : ''}</span>
-              )}
-            </div>
-            <div className="flex items-center gap-2 pr-10">
+            {/* Clear Filters - Only when active */}
+            {hasActiveFilters && (
               <button 
                 onClick={()=>{
                   setQ('');
-                  setCountryFilter('');
-                  setProvinceFilter('');
-                  setCityFilter('');
+                  setSearchParams(new URLSearchParams());
                   refetchSuppliers();
                 }} 
-                className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors font-medium"
+                className="px-3 py-2.5 text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors duration-150 whitespace-nowrap"
               >
-                Clear All
+                Clear Filters
               </button>
-            </div>
+            )}
           </div>
-        )}
-
-        {/* Collapse/Expand button - bottom right corner */}
-        <button
-          onClick={() => setIsFiltersCollapsed(!isFiltersCollapsed)}
-          className="absolute bottom-0 right-0 w-8 h-8 rounded-tl-lg border-t border-l bg-white hover:bg-gray-50 transition-colors flex items-center justify-center shadow-sm"
-          title={isFiltersCollapsed ? "Expand filters" : "Collapse filters"}
-        >
-          <svg 
-            className={`w-4 h-4 text-gray-600 transition-transform ${!isFiltersCollapsed ? 'rotate-180' : ''}`}
-            fill="none" 
-            stroke="currentColor" 
-            viewBox="0 0 24 24"
-          >
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-          </svg>
-        </button>
+        </div>
       </div>
 
+      {/* Filter Chips */}
+      {hasActiveFilters && (
+        <div className="mb-4 flex items-center gap-2 flex-wrap">
+          {currentRules.map((rule) => (
+            <FilterChip
+              key={rule.id}
+              rule={rule}
+              onRemove={() => {
+                const updatedRules = currentRules.filter(r => r.id !== rule.id);
+                const params = convertRulesToParams(updatedRules);
+                if (q) params.set('q', q);
+                setSearchParams(params);
+                refetchSuppliers();
+              }}
+              getValueLabel={formatRuleValue}
+              getFieldLabel={getFieldLabel}
+            />
+          ))}
+        </div>
+      )}
+
+      <LoadingOverlay isLoading={isInitialLoading} text="Loading suppliers...">
       <div className="rounded-xl border bg-white">
         {isLoading ? (
           <div className="p-4">
@@ -522,6 +964,23 @@ export default function InventorySuppliers() {
           </div>
         ) : (
           <div className="divide-y">
+            {canEditSuppliers && (
+              <button
+                onClick={() => {
+                  resetForm();
+                  setOpen(true);
+                }}
+                className="w-full p-3 flex items-center justify-center border-2 border-dashed border-gray-300 hover:border-brand-red hover:bg-gray-50 transition-all cursor-pointer"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="text-3xl text-gray-400">+</div>
+                  <div>
+                    <div className="font-medium text-sm text-gray-700">New Supplier</div>
+                    <div className="text-xs text-gray-500">Add new supplier</div>
+                  </div>
+                </div>
+              </button>
+            )}
             {rows.map((s) => (
               <div
                 key={s.id}
@@ -530,7 +989,7 @@ export default function InventorySuppliers() {
               >
                 <div className="flex items-center gap-3 min-w-0">
                   <img
-                    src={s.image_base64 || '/ui/assets/login/logo-light.svg'}
+                    src={s.image_base64 || '/ui/assets/placeholders/supplier.png'}
                     className="w-12 h-12 rounded-lg border object-cover"
                     alt={s.name}
                   />
@@ -563,6 +1022,7 @@ export default function InventorySuppliers() {
           </div>
         )}
       </div>
+      </LoadingOverlay>
 
       {open && (
         <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center">
@@ -587,7 +1047,7 @@ export default function InventorySuppliers() {
                       className="w-24 h-24 rounded-xl border-4 border-white shadow-lg overflow-hidden hover:border-white/80 transition-all relative group"
                     >
                       <img 
-                        src={viewing.image_base64 || '/ui/assets/login/logo-light.svg'} 
+                        src={viewing.image_base64 || '/ui/assets/placeholders/supplier.png'} 
                         className="w-full h-full object-cover" 
                         alt={viewing.name}
                       />
@@ -635,6 +1095,14 @@ export default function InventorySuppliers() {
                           }`}
                         >
                           Contacts
+                        </button>
+                        <button
+                          onClick={() => {
+                            setProductsModalOpen(true);
+                          }}
+                          className="px-4 py-2 rounded-full bg-white/10 text-white/80 hover:bg-white/20"
+                        >
+                          Products
                         </button>
                       </div>
                     </div>
@@ -1212,6 +1680,1159 @@ export default function InventorySuppliers() {
         />
       )}
 
+      {productsModalOpen && viewing && (
+        <div className="fixed inset-0 z-[100] bg-black/60 flex items-center justify-center p-4">
+          <div className="w-[1200px] max-w-[95vw] bg-white rounded-xl overflow-hidden max-h-[90vh] flex flex-col">
+            <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] p-6 flex items-center gap-6 relative flex-shrink-0">
+              <div className="font-semibold text-lg text-white">
+                Products from {viewing.name}
+              </div>
+              <button 
+                onClick={() => setProductsModalOpen(false)} 
+                className="ml-auto text-white hover:text-gray-200 text-2xl font-bold w-8 h-8 flex items-center justify-center rounded hover:bg-white/20" 
+                title="Close"
+              >
+                ×
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4">
+              {loadingProducts ? (
+                <div className="flex items-center justify-center h-full text-gray-500">
+                  Loading products...
+                </div>
+              ) : supplierProducts && supplierProducts.length > 0 ? (
+                <div className="grid grid-cols-4 gap-3">
+                  {/* New Product Card - First position */}
+                  <button
+                    onClick={() => setNewProductModalOpen(true)}
+                    className="border-2 border-dashed border-gray-300 rounded-lg p-3 hover:border-brand-red hover:bg-gray-50 transition-all text-center bg-white flex flex-col items-center justify-center min-h-[200px]"
+                  >
+                    <div className="text-4xl text-gray-400 mb-2">+</div>
+                    <div className="font-medium text-sm text-gray-700">New Product</div>
+                    <div className="text-xs text-gray-500 mt-1">Add new product to {viewing.name}</div>
+                  </button>
+                  {supplierProducts.map((product: any) => (
+                    <button
+                      key={product.id}
+                      onClick={() => openProductModal(product)}
+                      className="border rounded-lg p-3 hover:border-brand-red hover:shadow-md transition-all bg-white flex flex-col text-left"
+                    >
+                      <div className="w-full h-24 mb-2 relative">
+                        {product.image_base64 ? (
+                          <img 
+                            src={product.image_base64.startsWith('data:') ? product.image_base64 : `data:image/jpeg;base64,${product.image_base64}`}
+                            alt={product.name}
+                            className="w-full h-full object-contain rounded"
+                            onError={(e) => {
+                              (e.target as HTMLImageElement).style.display = 'none';
+                              const placeholder = (e.target as HTMLImageElement).nextElementSibling as HTMLElement;
+                              if (placeholder) placeholder.style.display = 'flex';
+                            }}
+                          />
+                        ) : null}
+                        <div className={`w-full h-full bg-gray-200 rounded flex items-center justify-center text-gray-400 text-xs ${product.image_base64 ? 'hidden' : ''}`} style={{ display: product.image_base64 ? 'none' : 'flex' }}>
+                          No Image
+                        </div>
+                      </div>
+                      <div className="font-medium text-sm mb-1 line-clamp-2">{product.name}</div>
+                      {product.category && (
+                        <div className="text-xs text-gray-500 mb-1">{product.category}</div>
+                      )}
+                      <div className="text-xs text-red-600 font-semibold mt-auto">
+                        ${Number(product.price || 0).toFixed(2)}
+                      </div>
+                      {product.unit && (
+                        <div className="text-xs text-gray-500">Unit: {product.unit}</div>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center h-64 text-gray-500">
+                  <div className="mb-4">No products found for this supplier</div>
+                  <button
+                    onClick={() => setNewProductModalOpen(true)}
+                    className="border-2 border-dashed border-gray-300 rounded-lg p-6 hover:border-brand-red hover:bg-gray-50 transition-all text-center bg-white flex flex-col items-center justify-center w-64"
+                  >
+                    <div className="text-4xl text-gray-400 mb-2">+</div>
+                    <div className="font-medium text-sm text-gray-700">New Product</div>
+                    <div className="text-xs text-gray-500 mt-1">Add new product to {viewing.name}</div>
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {newProductModalOpen && viewing && (
+        <>
+          <div className="fixed inset-0 z-[100] bg-black/60 flex items-center justify-center p-4">
+            <div className="w-[800px] max-w-[95vw] bg-white rounded-xl overflow-hidden max-h-[90vh] flex flex-col">
+              <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] p-6 flex items-center gap-6 relative flex-shrink-0">
+                <div className="font-semibold text-lg text-white">New Product</div>
+                <button 
+                  onClick={() => setNewProductModalOpen(false)} 
+                  className="ml-auto text-white hover:text-gray-200 text-2xl font-bold w-8 h-8 flex items-center justify-center rounded hover:bg-white/20" 
+                  title="Close"
+                >
+                  ×
+                </button>
+              </div>
+              <div className="p-6 overflow-y-auto flex-1">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="col-span-2">
+                    <label className="text-xs font-semibold text-gray-700">
+                      Name <span className="text-red-600">*</span>
+                    </label>
+                    <input 
+                      className={`w-full border rounded px-3 py-2 mt-1 ${productNameError && !productName.trim() ? 'border-red-500' : ''}`}
+                      value={productName} 
+                      onChange={e=>{
+                        setProductName(e.target.value);
+                        if (productNameError) setProductNameError(false);
+                      }} 
+                    />
+                    {productNameError && !productName.trim() && (
+                      <div className="text-[11px] text-red-600 mt-1">This field is required</div>
+                    )}
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-gray-700">Supplier</label>
+                    <input 
+                      className="w-full border rounded px-3 py-2 mt-1 bg-gray-50 cursor-not-allowed"
+                      value={viewing.name}
+                      readOnly
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-gray-700">Category</label>
+                    <input 
+                      className="w-full border rounded px-3 py-2 mt-1" 
+                      value={productCategory} 
+                      onChange={e=>setProductCategory(e.target.value)} 
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-gray-700">Sell Unit</label>
+                    <input 
+                      className="w-full border rounded px-3 py-2 mt-1" 
+                      placeholder="e.g., Roll, Pail (20L), Box" 
+                      value={productUnit} 
+                      onChange={e=>setProductUnit(e.target.value)} 
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-gray-700">
+                      Price ($) <span className="text-red-600">*</span>
+                    </label>
+                    <input 
+                      type="text" 
+                      className={`w-full border rounded px-3 py-2 mt-1 ${productPriceError && (!productPrice || !productPrice.trim() || Number(parseCurrency(productPrice)) <= 0) ? 'border-red-500' : ''}`}
+                      placeholder="$0.00"
+                      value={productPriceFocused ? productPriceDisplay : (productPrice ? formatCurrency(productPrice) : '')}
+                      onFocus={() => {
+                        setProductPriceFocused(true);
+                        setProductPriceDisplay(productPrice || '');
+                      }}
+                      onBlur={() => {
+                        setProductPriceFocused(false);
+                        const parsed = parseCurrency(productPriceDisplay);
+                        setProductPrice(parsed);
+                        setProductPriceDisplay(parsed);
+                        if (productPriceError && parsed && Number(parsed) > 0) setProductPriceError(false);
+                      }}
+                      onChange={e => {
+                        const raw = e.target.value;
+                        setProductPriceDisplay(raw);
+                      }}
+                    />
+                    {productPriceError && (!productPrice || !productPrice.trim() || Number(parseCurrency(productPrice)) <= 0) && (
+                      <div className="text-[11px] text-red-600 mt-1">This field is required</div>
+                    )}
+                  </div>
+                  <div className="col-span-2">
+                    <label className="text-xs font-semibold text-gray-700">Unit Type</label>
+                    <div className="flex items-center gap-6 mt-1">
+                      <label className="flex items-center gap-2 text-sm">
+                        <input 
+                          type="radio" 
+                          name="unit-type-supplier" 
+                          checked={productUnitType==='unitary'} 
+                          onChange={()=>{ 
+                            setProductUnitType('unitary'); 
+                            setProductUnitsPerPackage(''); 
+                            setProductCovSqs(''); 
+                            setProductCovFt2(''); 
+                            setProductCovM2(''); 
+                          }} 
+                        /> 
+                        Unitary
+                      </label>
+                      <label className="flex items-center gap-2 text-sm">
+                        <input 
+                          type="radio" 
+                          name="unit-type-supplier" 
+                          checked={productUnitType==='multiple'} 
+                          onChange={()=>{ 
+                            setProductUnitType('multiple'); 
+                            setProductCovSqs(''); 
+                            setProductCovFt2(''); 
+                            setProductCovM2(''); 
+                          }} 
+                        /> 
+                        Multiple
+                      </label>
+                      <label className="flex items-center gap-2 text-sm">
+                        <input 
+                          type="radio" 
+                          name="unit-type-supplier" 
+                          checked={productUnitType==='coverage'} 
+                          onChange={()=>{ 
+                            setProductUnitType('coverage'); 
+                            setProductUnitsPerPackage(''); 
+                          }} 
+                        /> 
+                        Coverage
+                      </label>
+                    </div>
+                  </div>
+                  {productUnitType==='multiple' && (
+                    <div className="col-span-2">
+                      <label className="text-xs font-semibold text-gray-700">Units per Package</label>
+                      <input 
+                        type="number" 
+                        step="0.01" 
+                        className="w-full border rounded px-3 py-2 mt-1" 
+                        value={productUnitsPerPackage} 
+                        onChange={e=>setProductUnitsPerPackage(e.target.value)} 
+                      />
+                    </div>
+                  )}
+                  {productUnitType==='coverage' && (
+                    <div className="col-span-2">
+                      <label className="text-xs font-semibold text-gray-700">Coverage Area</label>
+                      <div className="flex items-center gap-2 mt-1">
+                        <div className="flex-1 flex items-center gap-1">
+                          <input 
+                            className="w-full border rounded px-3 py-2" 
+                            placeholder="0" 
+                            value={productCovSqs} 
+                            onChange={e=> onProductCoverageChange('sqs', e.target.value)} 
+                          />
+                          <span className="text-sm text-gray-600 whitespace-nowrap">SQS</span>
+                        </div>
+                        <span className="text-gray-400">=</span>
+                        <div className="flex-1 flex items-center gap-1">
+                          <input 
+                            className="w-full border rounded px-3 py-2" 
+                            placeholder="0" 
+                            value={productCovFt2} 
+                            onChange={e=> onProductCoverageChange('ft2', e.target.value)} 
+                          />
+                          <span className="text-sm text-gray-600 whitespace-nowrap">ft²</span>
+                        </div>
+                        <span className="text-gray-400">=</span>
+                        <div className="flex-1 flex items-center gap-1">
+                          <input 
+                            className="w-full border rounded px-3 py-2" 
+                            placeholder="0" 
+                            value={productCovM2} 
+                            onChange={e=> onProductCoverageChange('m2', e.target.value)} 
+                          />
+                          <span className="text-sm text-gray-600 whitespace-nowrap">m²</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  <div className="col-span-2">
+                    <label className="text-xs font-semibold text-gray-700">Description / Notes</label>
+                    <textarea 
+                      className="w-full border rounded px-3 py-2 mt-1" 
+                      rows={3} 
+                      value={productDesc} 
+                      onChange={e=>setProductDesc(e.target.value)} 
+                    />
+                  </div>
+                  <div className="col-span-2">
+                    <label className="text-xs font-semibold text-gray-700">Technical Manual URL</label>
+                    <input 
+                      className="w-full border rounded px-3 py-2 mt-1" 
+                      type="url"
+                      placeholder="https://supplier.com/manual/product"
+                      value={productTechnicalManualUrl} 
+                      onChange={e=>setProductTechnicalManualUrl(e.target.value)} 
+                    />
+                  </div>
+                  <div className="col-span-2">
+                    <label className="text-xs font-semibold text-gray-700">Product Image</label>
+                    <div className="mt-1 space-y-2">
+                      <button
+                        type="button"
+                        onClick={() => setProductImagePickerOpen(true)}
+                        className="px-3 py-2 rounded bg-gray-100 hover:bg-gray-200 text-sm"
+                      >
+                        {productImageDataUrl ? 'Change Image' : 'Select Image'}
+                      </button>
+                      {productImageDataUrl && (
+                        <div className="mt-2">
+                          <img src={productImageDataUrl} className="w-32 h-32 object-contain border rounded" alt="Preview" />
+                          <button
+                            type="button"
+                            onClick={() => setProductImageDataUrl('')}
+                            className="mt-2 px-2 py-1 text-xs rounded bg-red-100 text-red-700 hover:bg-red-200"
+                          >
+                            Remove Image
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div className="px-4 py-3 border-t bg-gray-50 flex justify-end gap-2">
+                <button 
+                  onClick={() => setNewProductModalOpen(false)} 
+                  className="px-4 py-2 rounded bg-gray-200 hover:bg-gray-300"
+                >
+                  Cancel
+                </button>
+                <button 
+                  onClick={async()=>{
+                    if(isSavingProduct) return;
+                    
+                    if(!productName.trim()){
+                      setProductNameError(true);
+                      toast.error('Name is required');
+                      return;
+                    }
+                    
+                    const priceValue = parseCurrency(productPrice);
+                    if(!priceValue || !priceValue.trim() || Number(priceValue) <= 0){
+                      setProductPriceError(true);
+                      toast.error('Price is required');
+                      return;
+                    }
+                    
+                    try{
+                      setIsSavingProduct(true);
+                      
+                      // If no image is provided, load the default product placeholder image
+                      let finalImageBase64 = productImageDataUrl;
+                      if (!finalImageBase64) {
+                        try {
+                          const response = await fetch('/ui/assets/placeholders/product.png');
+                          if (response.ok) {
+                            const blob = await response.blob();
+                            const reader = new FileReader();
+                            finalImageBase64 = await new Promise<string>((resolve) => {
+                              reader.onload = () => resolve(reader.result as string);
+                              reader.readAsDataURL(blob);
+                            });
+                          }
+                        } catch (e) {
+                          console.warn('Failed to load default product image:', e);
+                        }
+                      }
+                      
+                      const payload = {
+                        name: productName.trim(),
+                        supplier_name: viewing.name,
+                        category: productCategory||null,
+                        unit: productUnit||null,
+                        price: Number(parseCurrency(productPrice)),
+                        description: productDesc||null,
+                        unit_type: productUnitType,
+                        units_per_package: productUnitType==='multiple'? (productUnitsPerPackage? Number(productUnitsPerPackage): null) : null,
+                        coverage_sqs: productUnitType==='coverage'? (productCovSqs? Number(productCovSqs): null) : null,
+                        coverage_ft2: productUnitType==='coverage'? (productCovFt2? Number(productCovFt2): null) : null,
+                        coverage_m2: productUnitType==='coverage'? (productCovM2? Number(productCovM2): null) : null,
+                        image_base64: finalImageBase64 || null,
+                        technical_manual_url: productTechnicalManualUrl || null,
+                      };
+                      await api('POST','/estimate/products', payload);
+                      toast.success('Product created');
+                      setNewProductModalOpen(false);
+                      // Refetch products to show the new one
+                      await refetchSupplierProducts();
+                      queryClient.invalidateQueries({ queryKey: ['supplierProducts'] });
+                    }catch(e: any){ 
+                      toast.error(e?.message || 'Failed to create product');
+                    }finally{
+                      setIsSavingProduct(false);
+                    }
+                  }}
+                  disabled={isSavingProduct}
+                  className="px-4 py-2 rounded bg-brand-red text-white hover:bg-brand-red-dark disabled:opacity-50"
+                >
+                  {isSavingProduct ? 'Creating...' : 'Create Product'}
+                </button>
+              </div>
+            </div>
+          </div>
+          {productImagePickerOpen && (
+            <ImagePicker 
+              isOpen={true} 
+              onClose={() => setProductImagePickerOpen(false)} 
+              targetWidth={800} 
+              targetHeight={800} 
+              allowEdit={true}
+              onConfirm={async (blob) => {
+                const reader = new FileReader();
+                reader.onload = () => {
+                  setProductImageDataUrl(String(reader.result || ''));
+                  setProductImagePickerOpen(false);
+                };
+                reader.readAsDataURL(blob);
+              }} 
+            />
+          )}
+        </>
+      )}
+
+      {productModalOpen && (viewingProduct || editingProduct) && (
+        <div className="fixed inset-0 z-[110] bg-black/60 flex items-center justify-center">
+          <div className="w-[900px] max-w-[95vw] max-h-[90vh] bg-white rounded-xl overflow-hidden flex flex-col">
+            <div className="overflow-y-auto">
+              {viewingProduct && !editingProduct ? (
+                // View mode - display product details
+                <div className="space-y-6">
+                {/* Product Header */}
+                <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] p-6 flex items-center gap-6 relative">
+                  <button
+                    onClick={() => {
+                      setProductModalOpen(false);
+                      setViewingProduct(null);
+                    }}
+                    className="absolute top-4 right-4 text-white/80 hover:text-white text-2xl font-bold w-8 h-8 flex items-center justify-center rounded hover:bg-white/10"
+                    title="Close"
+                  >
+                    ×
+                  </button>
+                  <div className="w-24 h-24 rounded-xl border-4 border-white shadow-lg overflow-hidden bg-white flex items-center justify-center">
+                    <img 
+                      src={viewingProduct.image_base64 || '/ui/assets/placeholders/product.png'} 
+                      className="w-full h-full object-cover" 
+                      alt={viewingProduct.name}
+                    />
+                  </div>
+                  <div className="flex-1">
+                    <h2 className="text-3xl font-extrabold text-white">{viewingProduct.name}</h2>
+                    <div className="flex items-center gap-4 mt-3 text-sm">
+                      {viewingProduct.supplier_name && (
+                        <div className="flex items-center gap-2">
+                          <span className="text-white/80">🏢</span>
+                          <span className="text-white">{viewingProduct.supplier_name}</span>
+                        </div>
+                      )}
+                      {viewingProduct.category && (
+                        <div className="flex items-center gap-2">
+                          <span className="text-white/80">📦</span>
+                          <span className="text-white">{viewingProduct.category}</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Tabs */}
+                <div className="px-6 border-b">
+                  <div className="flex gap-1">
+                    <button
+                      onClick={() => setProductTab('details')}
+                      className={`px-4 py-2 font-medium text-sm transition-colors ${
+                        productTab === 'details'
+                          ? 'text-brand-red border-b-2 border-brand-red'
+                          : 'text-gray-600 hover:text-gray-900'
+                      }`}
+                    >
+                      Details
+                    </button>
+                    <button
+                      onClick={() => setProductTab('usage')}
+                      className={`px-4 py-2 font-medium text-sm transition-colors ${
+                        productTab === 'usage'
+                          ? 'text-brand-red border-b-2 border-brand-red'
+                          : 'text-gray-600 hover:text-gray-900'
+                      }`}
+                    >
+                      Usage {productUsage.length > 0 && `(${productUsage.length})`}
+                    </button>
+                    {canEditProducts && viewingProduct && (
+                      <button
+                        onClick={() => {
+                          setProductTab('related');
+                          if (viewingProduct.id) {
+                            handleViewRelated(viewingProduct.id);
+                          }
+                        }}
+                        className={`px-4 py-2 font-medium text-sm transition-colors ${
+                          productTab === 'related'
+                            ? 'text-brand-red border-b-2 border-brand-red'
+                            : 'text-gray-600 hover:text-gray-900'
+                        }`}
+                      >
+                        Related {relatedCounts[viewingProduct.id] ? `(${relatedCounts[viewingProduct.id]})` : ''}
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Product Details, Usage, or Related */}
+                {productTab === 'details' ? (
+                  <div className="px-6 pb-6 space-y-4">
+                    <div className="grid grid-cols-2 gap-4">
+                      {viewingProduct.unit && (
+                        <div className="bg-white border rounded-lg p-4">
+                          <div className="text-xs font-semibold text-gray-600 mb-1">Sell Unit</div>
+                          <div className="text-gray-900">{viewingProduct.unit}</div>
+                        </div>
+                      )}
+                      {viewingProduct.unit_type && (
+                        <div className="bg-white border rounded-lg p-4">
+                          <div className="text-xs font-semibold text-gray-600 mb-1">Unit Type</div>
+                          <div className="text-gray-900">{viewingProduct.unit_type}</div>
+                        </div>
+                      )}
+                    </div>
+                    {typeof viewingProduct.price === 'number' && (
+                      <div className="bg-white border rounded-lg p-4">
+                        <div className="text-xs font-semibold text-gray-600 mb-1">Price</div>
+                        <div className="text-gray-900 font-semibold text-lg">${viewingProduct.price.toFixed(2)}</div>
+                      </div>
+                    )}
+                    {viewingProduct.units_per_package && (
+                      <div className="bg-white border rounded-lg p-4">
+                        <div className="text-xs font-semibold text-gray-600 mb-1">Units per Package</div>
+                        <div className="text-gray-900">{viewingProduct.units_per_package}</div>
+                      </div>
+                    )}
+                    {(viewingProduct.coverage_sqs || viewingProduct.coverage_ft2 || viewingProduct.coverage_m2) && (
+                      <div className="bg-white border rounded-lg p-4">
+                        <div className="text-sm font-semibold text-gray-900 mb-3">📍 Coverage Area</div>
+                        <div className="grid grid-cols-3 gap-2">
+                          <div className="text-gray-700">SQS: {viewingProduct.coverage_sqs||'-'}</div>
+                          <div className="text-gray-700">ft²: {viewingProduct.coverage_ft2||'-'}</div>
+                          <div className="text-gray-700">m²: {viewingProduct.coverage_m2||'-'}</div>
+                        </div>
+                      </div>
+                    )}
+                    {viewingProduct.description && (
+                      <div className="bg-white border rounded-lg p-4">
+                        <div className="text-sm font-semibold text-gray-900 mb-2">Description</div>
+                        <div className="text-gray-700 whitespace-pre-wrap">{viewingProduct.description}</div>
+                      </div>
+                    )}
+                    {viewingProduct.technical_manual_url && (() => {
+                      const url = viewingProduct.technical_manual_url.trim();
+                      const absoluteUrl = url.match(/^https?:\/\//i) ? url : `https://${url}`;
+                      return (
+                        <div className="bg-white border rounded-lg p-4">
+                          <div className="flex items-center justify-between">
+                            <div className="text-sm font-semibold text-gray-900">Technical Manual</div>
+                            <a
+                              href={absoluteUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              onClick={(e) => {
+                                if (!absoluteUrl || absoluteUrl === 'https://') {
+                                  e.preventDefault();
+                                }
+                              }}
+                              className="px-4 py-2 rounded bg-brand-red text-white hover:bg-[#6d0d0d] transition-colors flex items-center gap-2"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                              </svg>
+                              View Manual
+                            </a>
+                        </div>
+                      </div>
+                    );
+                  })()}
+                  </div>
+                ) : productTab === 'usage' ? (
+                  <div className="px-6 pb-6">
+                    {loadingUsage ? (
+                      <div className="py-8 text-center text-gray-500">Loading usage data...</div>
+                    ) : productUsage.length === 0 ? (
+                      <div className="py-8 text-center text-gray-500">
+                        <div className="text-lg mb-2">📦</div>
+                        <div>This product is not being used in any estimates.</div>
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        <div className="text-sm text-gray-600 mb-4">
+                          This product is being used in {productUsage.length} estimate{productUsage.length !== 1 ? 's' : ''}:
+                        </div>
+                        <div className="border rounded-lg divide-y">
+                          {productUsage.map((usage, idx) => (
+                            <div key={idx} className="p-4 hover:bg-gray-50">
+                              {usage.status === 'orphaned' ? (
+                                <div className="flex items-center justify-between">
+                                  <div>
+                                    <div className="font-medium text-gray-900">Orphaned Estimate</div>
+                                    <div className="text-sm text-gray-500">Estimate #{usage.estimate_id} (deleted)</div>
+                                  </div>
+                                  <span className="px-2 py-1 text-xs rounded bg-amber-100 text-amber-800">Orphaned</span>
+                                </div>
+                              ) : usage.status === 'project_deleted' || usage.project_deleted ? (
+                                <div className="flex items-center justify-between">
+                                  <div className="flex-1">
+                                    <div className="font-medium text-gray-900">{usage.project_name || 'Project Deleted'}</div>
+                                    <div className="text-sm text-gray-500">Estimate #{usage.estimate_id} - Project was deleted</div>
+                                    {usage.created_at && (
+                                      <div className="text-xs text-gray-400 mt-1">
+                                        Created: {new Date(usage.created_at).toLocaleDateString()}
+                                      </div>
+                                    )}
+                                  </div>
+                                  <span className="px-2 py-1 text-xs rounded bg-red-100 text-red-800">Project Deleted</span>
+                                </div>
+                              ) : (
+                                <div className="flex items-center justify-between">
+                                  <div className="flex-1">
+                                    {usage.project_name ? (
+                                      <>
+                                        <div className="font-medium text-gray-900">{usage.project_name}</div>
+                                        {usage.client_name && (
+                                          <div className="text-sm text-gray-500">Client: {usage.client_name}</div>
+                                        )}
+                                        {usage.created_at && (
+                                          <div className="text-xs text-gray-400 mt-1">
+                                            Created: {new Date(usage.created_at).toLocaleDateString()}
+                                          </div>
+                                        )}
+                                      </>
+                                    ) : (
+                                      <div className="text-gray-500">No project associated</div>
+                                    )}
+                                  </div>
+                                  {usage.project_id && !usage.project_deleted && (
+                                    <button
+                                      onClick={() => {
+                                        navigate(`/projects/${usage.project_id}`);
+                                        setProductModalOpen(false);
+                                        setViewingProduct(null);
+                                      }}
+                                      className="px-3 py-1.5 rounded bg-brand-red text-white hover:bg-[#6d0d0d] transition-colors text-sm"
+                                    >
+                                      View Project
+                                    </button>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ) : productTab === 'related' && viewingProduct ? (
+                  <div className="px-6 pb-6">
+                    {Array.isArray(relatedList) && relatedList.length ? (
+                      <div className="space-y-3">
+                        <div className="text-sm text-gray-600 mb-4">
+                          This product is related to {relatedList.length} product{relatedList.length !== 1 ? 's' : ''}:
+                        </div>
+                        <div className="border rounded-lg divide-y">
+                          {relatedList.map((r: any, i: number) => (
+                            <div key={i} className="p-4 hover:bg-gray-50 flex items-center gap-4">
+                              <img
+                                src={r.image_base64 || '/ui/assets/placeholders/product.png'}
+                                className="w-16 h-16 rounded-lg border object-cover flex-shrink-0"
+                                alt={r.name}
+                              />
+                              <div className="flex-1 min-w-0">
+                                <div className="font-medium text-gray-900">{r.name}</div>
+                                {r.supplier_name && (
+                                  <div className="text-sm text-gray-500">Supplier: {r.supplier_name}</div>
+                                )}
+                                {typeof r.price === 'number' && (
+                                  <div className="text-sm text-brand-red font-semibold mt-1">
+                                    ${r.price.toFixed(2)}
+                                  </div>
+                                )}
+                              </div>
+                              {canEditProducts && (
+                                <button
+                                  onClick={() => deleteRelation(viewingProduct.id, r.id)}
+                                  className="px-3 py-1.5 rounded bg-red-100 text-red-700 hover:bg-red-200 text-sm flex-shrink-0"
+                                >
+                                  Remove
+                                </button>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                        {canEditProducts && (
+                          <button
+                            onClick={() => handleAddRelated(viewingProduct.id)}
+                            className="w-full mt-4 px-4 py-2 rounded bg-brand-red text-white hover:bg-[#6d0d0d] transition-colors"
+                          >
+                            + Add Related Product
+                          </button>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="py-8 text-center text-gray-500">
+                        <div className="text-lg mb-2">🔗</div>
+                        <div>This product has no related products.</div>
+                        {canEditProducts && (
+                          <button
+                            onClick={() => handleAddRelated(viewingProduct.id)}
+                            className="mt-4 px-4 py-2 rounded bg-brand-red text-white hover:bg-[#6d0d0d] transition-colors"
+                          >
+                            + Add Related Product
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                ) : null}
+                </div>
+              ) : (
+                // Edit mode - form inputs
+                <div className="space-y-6">
+                  {/* Edit Header */}
+                  <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] p-6 relative">
+                    <button
+                      onClick={() => {
+                        setEditingProduct(null);
+                        setViewingProduct(editingProduct);
+                        // Reset form fields
+                        setEditProductName('');
+                        setEditProductNameError(false);
+                        setEditProductCategory('');
+                        setEditProductUnit('');
+                        setEditProductPrice('');
+                        setEditProductPriceDisplay('');
+                        setEditProductPriceFocused(false);
+                        setEditProductPriceError(false);
+                        setEditProductDesc('');
+                        setEditProductUnitsPerPackage('');
+                        setEditProductCovSqs('');
+                        setEditProductCovFt2('');
+                        setEditProductCovM2('');
+                        setEditProductUnitType('unitary');
+                        setEditProductImageDataUrl('');
+                        setEditProductTechnicalManualUrl('');
+                      }}
+                      className="absolute top-4 right-4 text-white/80 hover:text-white text-2xl font-bold w-8 h-8 flex items-center justify-center rounded hover:bg-white/10"
+                      title="Close"
+                    >
+                      ×
+                    </button>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h2 className="text-2xl font-extrabold text-white">Edit Product</h2>
+                        <p className="text-sm text-white/80 mt-1">Update product information</p>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div className="p-6 grid grid-cols-2 gap-4">
+                    <div className="col-span-2">
+                      <label className="text-xs font-semibold text-gray-700">
+                        Name <span className="text-red-600">*</span>
+                      </label>
+                      <input 
+                        className={`w-full border rounded px-3 py-2 mt-1 ${editProductNameError && !editProductName.trim() ? 'border-red-500' : ''}`}
+                        value={editProductName} 
+                        onChange={e=>{
+                          setEditProductName(e.target.value);
+                          if (editProductNameError) setEditProductNameError(false);
+                        }} 
+                      />
+                      {editProductNameError && !editProductName.trim() && (
+                        <div className="text-[11px] text-red-600 mt-1">This field is required</div>
+                      )}
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold text-gray-700">Supplier</label>
+                      <input 
+                        className="w-full border rounded px-3 py-2 mt-1 bg-gray-50 cursor-not-allowed"
+                        value={editingProduct?.supplier_name || ''}
+                        readOnly
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold text-gray-700">Category</label>
+                      <input 
+                        className="w-full border rounded px-3 py-2 mt-1" 
+                        value={editProductCategory} 
+                        onChange={e=>setEditProductCategory(e.target.value)} 
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold text-gray-700">Sell Unit</label>
+                      <input 
+                        className="w-full border rounded px-3 py-2 mt-1" 
+                        placeholder="e.g., Roll, Pail (20L), Box" 
+                        value={editProductUnit} 
+                        onChange={e=>setEditProductUnit(e.target.value)} 
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold text-gray-700">
+                        Price ($) <span className="text-red-600">*</span>
+                      </label>
+                      <input 
+                        type="text" 
+                        className={`w-full border rounded px-3 py-2 mt-1 ${editProductPriceError && (!editProductPrice || !editProductPrice.trim() || Number(parseCurrency(editProductPrice)) <= 0) ? 'border-red-500' : ''}`}
+                        placeholder="$0.00"
+                        value={editProductPriceFocused ? editProductPriceDisplay : (editProductPrice ? formatCurrency(editProductPrice) : '')}
+                        onFocus={() => {
+                          setEditProductPriceFocused(true);
+                          setEditProductPriceDisplay(editProductPrice || '');
+                        }}
+                        onBlur={() => {
+                          setEditProductPriceFocused(false);
+                          const parsed = parseCurrency(editProductPriceDisplay);
+                          setEditProductPrice(parsed);
+                          setEditProductPriceDisplay(parsed);
+                          if (editProductPriceError && parsed && Number(parsed) > 0) setEditProductPriceError(false);
+                        }}
+                        onChange={e => {
+                          const raw = e.target.value;
+                          setEditProductPriceDisplay(raw);
+                        }}
+                      />
+                      {editProductPriceError && (!editProductPrice || !editProductPrice.trim() || Number(parseCurrency(editProductPrice)) <= 0) && (
+                        <div className="text-[11px] text-red-600 mt-1">This field is required</div>
+                      )}
+                    </div>
+                    <div className="col-span-2">
+                      <label className="text-xs font-semibold text-gray-700">Unit Type</label>
+                      <div className="flex items-center gap-6 mt-1">
+                        <label className="flex items-center gap-2 text-sm">
+                          <input 
+                            type="radio" 
+                            name="unit-type-edit" 
+                            checked={editProductUnitType==='unitary'} 
+                            onChange={()=>{ 
+                              setEditProductUnitType('unitary'); 
+                              setEditProductUnitsPerPackage(''); 
+                              setEditProductCovSqs(''); 
+                              setEditProductCovFt2(''); 
+                              setEditProductCovM2(''); 
+                            }} 
+                          /> 
+                          Unitary
+                        </label>
+                        <label className="flex items-center gap-2 text-sm">
+                          <input 
+                            type="radio" 
+                            name="unit-type-edit" 
+                            checked={editProductUnitType==='multiple'} 
+                            onChange={()=>{ 
+                              setEditProductUnitType('multiple'); 
+                              setEditProductCovSqs(''); 
+                              setEditProductCovFt2(''); 
+                              setEditProductCovM2(''); 
+                            }} 
+                          /> 
+                          Multiple
+                        </label>
+                        <label className="flex items-center gap-2 text-sm">
+                          <input 
+                            type="radio" 
+                            name="unit-type-edit" 
+                            checked={editProductUnitType==='coverage'} 
+                            onChange={()=>{ 
+                              setEditProductUnitType('coverage'); 
+                              setEditProductUnitsPerPackage(''); 
+                            }} 
+                          /> 
+                          Coverage
+                        </label>
+                      </div>
+                    </div>
+                    {editProductUnitType==='multiple' && (
+                      <div className="col-span-2">
+                        <label className="text-xs font-semibold text-gray-700">Units per Package</label>
+                        <input 
+                          type="number" 
+                          step="0.01" 
+                          className="w-full border rounded px-3 py-2 mt-1" 
+                          value={editProductUnitsPerPackage} 
+                          onChange={e=>setEditProductUnitsPerPackage(e.target.value)} 
+                        />
+                      </div>
+                    )}
+                    {editProductUnitType==='coverage' && (
+                      <div className="col-span-2">
+                        <label className="text-xs font-semibold text-gray-700">Coverage Area</label>
+                        <div className="flex items-center gap-2 mt-1">
+                          <div className="flex-1 flex items-center gap-1">
+                            <input 
+                              className="w-full border rounded px-3 py-2" 
+                              placeholder="0" 
+                              value={editProductCovSqs} 
+                              onChange={e=> onEditProductCoverageChange('sqs', e.target.value)} 
+                            />
+                            <span className="text-sm text-gray-600 whitespace-nowrap">SQS</span>
+                          </div>
+                          <span className="text-gray-400">=</span>
+                          <div className="flex-1 flex items-center gap-1">
+                            <input 
+                              className="w-full border rounded px-3 py-2" 
+                              placeholder="0" 
+                              value={editProductCovFt2} 
+                              onChange={e=> onEditProductCoverageChange('ft2', e.target.value)} 
+                            />
+                            <span className="text-sm text-gray-600 whitespace-nowrap">ft²</span>
+                          </div>
+                          <span className="text-gray-400">=</span>
+                          <div className="flex-1 flex items-center gap-1">
+                            <input 
+                              className="w-full border rounded px-3 py-2" 
+                              placeholder="0" 
+                              value={editProductCovM2} 
+                              onChange={e=> onEditProductCoverageChange('m2', e.target.value)} 
+                            />
+                            <span className="text-sm text-gray-600 whitespace-nowrap">m²</span>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                    <div className="col-span-2">
+                      <label className="text-xs font-semibold text-gray-700">Description / Notes</label>
+                      <textarea 
+                        className="w-full border rounded px-3 py-2 mt-1" 
+                        rows={3} 
+                        value={editProductDesc} 
+                        onChange={e=>setEditProductDesc(e.target.value)} 
+                      />
+                    </div>
+                    <div className="col-span-2">
+                      <label className="text-xs font-semibold text-gray-700">Technical Manual URL</label>
+                      <input 
+                        className="w-full border rounded px-3 py-2 mt-1" 
+                        type="url"
+                        placeholder="https://supplier.com/manual/product"
+                        value={editProductTechnicalManualUrl} 
+                        onChange={e=>setEditProductTechnicalManualUrl(e.target.value)} 
+                      />
+                    </div>
+                    <div className="col-span-2">
+                      <label className="text-xs font-semibold text-gray-700">Product Image</label>
+                      <div className="mt-1 space-y-2">
+                        <button
+                          type="button"
+                          onClick={() => setEditProductImagePickerOpen(true)}
+                          className="px-3 py-2 rounded bg-gray-100 hover:bg-gray-200 text-sm"
+                        >
+                          {editProductImageDataUrl ? 'Change Image' : 'Select Image'}
+                        </button>
+                        {editProductImageDataUrl && (
+                          <div className="mt-2">
+                            <img src={editProductImageDataUrl} className="w-32 h-32 object-contain border rounded" alt="Preview" />
+                            <button
+                              type="button"
+                              onClick={() => setEditProductImageDataUrl('')}
+                              className="mt-2 px-2 py-1 text-xs rounded bg-red-100 text-red-700 hover:bg-red-200"
+                            >
+                              Remove Image
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+            <div className="px-6 py-4 border-t bg-gray-50 flex justify-end gap-2">
+              {viewingProduct && !editingProduct ? (
+                // View mode buttons
+                <>
+                    {canEditProducts && (
+                      <>
+                        <button
+                        onClick={openEditProductModal}
+                        className="px-4 py-2 rounded bg-gray-100 hover:bg-gray-200"
+                      >
+                        Edit
+                      </button>
+                    </>
+                  )}
+                </>
+              ) : editingProduct ? (
+                // Edit mode buttons
+                <>
+                  <button
+                    onClick={() => {
+                      setViewingProduct(editingProduct);
+                      setEditingProduct(null);
+                      // Reset form fields
+                      setEditProductName('');
+                      setEditProductNameError(false);
+                      setEditProductCategory('');
+                      setEditProductUnit('');
+                      setEditProductPrice('');
+                      setEditProductPriceDisplay('');
+                      setEditProductPriceFocused(false);
+                      setEditProductPriceError(false);
+                      setEditProductDesc('');
+                      setEditProductUnitsPerPackage('');
+                      setEditProductCovSqs('');
+                      setEditProductCovFt2('');
+                      setEditProductCovM2('');
+                      setEditProductUnitType('unitary');
+                      setEditProductImageDataUrl('');
+                      setEditProductTechnicalManualUrl('');
+                    }}
+                    className="px-4 py-2 rounded bg-gray-200 hover:bg-gray-300"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={async () => {
+                      if (isSavingEditProduct) return;
+                      
+                      if (!editProductName.trim()) {
+                        setEditProductNameError(true);
+                        toast.error('Name is required');
+                        return;
+                      }
+                      
+                      const priceValue = parseCurrency(editProductPrice);
+                      if (!priceValue || !priceValue.trim() || Number(priceValue) <= 0) {
+                        setEditProductPriceError(true);
+                        toast.error('Price is required');
+                        return;
+                      }
+                      
+                      try {
+                        setIsSavingEditProduct(true);
+                        const payload = {
+                          name: editProductName.trim(),
+                          supplier_name: editingProduct.supplier_name,
+                          category: editProductCategory || null,
+                          unit: editProductUnit || null,
+                          price: Number(parseCurrency(editProductPrice)),
+                          description: editProductDesc || null,
+                          unit_type: editProductUnitType,
+                          units_per_package: editProductUnitType === 'multiple' ? (editProductUnitsPerPackage ? Number(editProductUnitsPerPackage) : null) : null,
+                          coverage_sqs: editProductUnitType === 'coverage' ? (editProductCovSqs ? Number(editProductCovSqs) : null) : null,
+                          coverage_ft2: editProductUnitType === 'coverage' ? (editProductCovFt2 ? Number(editProductCovFt2) : null) : null,
+                          coverage_m2: editProductUnitType === 'coverage' ? (editProductCovM2 ? Number(editProductCovM2) : null) : null,
+                          image_base64: editProductImageDataUrl || null,
+                          technical_manual_url: editProductTechnicalManualUrl || null,
+                        };
+                        const updated = await api('PUT', `/estimate/products/${editingProduct.id}`, payload);
+                        toast.success('Product updated');
+                        setViewingProduct(updated);
+                        setEditingProduct(null);
+                        // Reset form fields
+                        setEditProductName('');
+                        setEditProductNameError(false);
+                        setEditProductCategory('');
+                        setEditProductUnit('');
+                        setEditProductPrice('');
+                        setEditProductPriceDisplay('');
+                        setEditProductPriceFocused(false);
+                        setEditProductPriceError(false);
+                        setEditProductDesc('');
+                        setEditProductUnitsPerPackage('');
+                        setEditProductCovSqs('');
+                        setEditProductCovFt2('');
+                        setEditProductCovM2('');
+                        setEditProductUnitType('unitary');
+                        setEditProductImageDataUrl('');
+                        setEditProductTechnicalManualUrl('');
+                        // Refetch products to show the updated one
+                        await refetchSupplierProducts();
+                        queryClient.invalidateQueries({ queryKey: ['supplierProducts'] });
+                      } catch (e: any) {
+                        toast.error(e?.message || 'Failed to update product');
+                      } finally {
+                        setIsSavingEditProduct(false);
+                      }
+                    }}
+                    disabled={isSavingEditProduct}
+                    className="px-4 py-2 rounded bg-brand-red text-white hover:bg-brand-red-dark disabled:opacity-50"
+                  >
+                    {isSavingEditProduct ? 'Updating...' : 'Update'}
+                  </button>
+                </>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {editProductImagePickerOpen && (
+        <ImagePicker 
+          isOpen={true} 
+          onClose={() => setEditProductImagePickerOpen(false)} 
+          targetWidth={800} 
+          targetHeight={800} 
+          allowEdit={true}
+          onConfirm={async (blob) => {
+            const reader = new FileReader();
+            reader.onload = () => {
+              setEditProductImageDataUrl(String(reader.result || ''));
+              setEditProductImagePickerOpen(false);
+            };
+            reader.readAsDataURL(blob);
+          }} 
+        />
+      )}
+
+
+      {addRelatedOpen && (
+        <div className="fixed inset-0 z-[120] bg-black/60 flex items-center justify-center">
+          <div className="w-[600px] max-w-[95vw] bg-white rounded-xl overflow-hidden">
+            <div className="px-6 py-4 border-b flex items-center justify-between bg-gray-50">
+              <div className="font-semibold text-lg">Add Related Product</div>
+              <button
+                onClick={() => setAddRelatedOpen(false)}
+                className="text-gray-500 hover:text-gray-700 text-2xl font-bold w-8 h-8 flex items-center justify-center rounded hover:bg-gray-100"
+                title="Close"
+              >
+                ×
+              </button>
+            </div>
+            <div className="p-4">
+              <input
+                type="text"
+                className="w-full border rounded px-3 py-2 mb-4"
+                placeholder="Search products..."
+                value={addRelatedSearch}
+                onChange={e => searchRelatedProducts(e.target.value)}
+              />
+              <div className="max-h-[50vh] overflow-y-auto">
+                {Array.isArray(addRelatedResults) && addRelatedResults.length > 0 ? (
+                  addRelatedResults.map(r => (
+                    <button
+                      key={r.id}
+                      onClick={() => createRelation(addRelatedTarget!, r.id)}
+                      className="w-full text-left p-3 border-b hover:bg-gray-50 flex items-center justify-between"
+                    >
+                      <div>
+                        <div className="font-medium">{r.name}</div>
+                        {r.supplier_name && (
+                          <div className="text-sm text-gray-500">{r.supplier_name}</div>
+                        )}
+                      </div>
+                      <div className="text-sm text-brand-red font-semibold">
+                        ${Number(r.price || 0).toFixed(2)}
+                      </div>
+                    </button>
+                  ))
+                ) : addRelatedResults.length === 0 && !addRelatedSearch ? (
+                  <div className="p-3 text-gray-500 text-center">Start typing to search products...</div>
+                ) : addRelatedSearch && addRelatedResults.length === 0 ? (
+                  <div className="p-3 text-gray-500 text-center">No products found</div>
+                ) : null}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {contactModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center">
           <div className="w-[600px] max-w-[95vw] bg-white rounded-xl overflow-hidden flex flex-col max-h-[90vh]">
@@ -1335,6 +2956,19 @@ export default function InventorySuppliers() {
           </div>
         </div>
       )}
+      
+      {/* Filter Builder Modal */}
+      <FilterBuilderModal
+        isOpen={isFilterModalOpen}
+        onClose={() => setIsFilterModalOpen(false)}
+        onApply={handleApplyFilters}
+        initialRules={currentRules}
+        fields={filterFields}
+        getFieldData={(fieldId) => {
+          // Return data for field if needed
+          return null;
+        }}
+      />
     </div>
   );
 }

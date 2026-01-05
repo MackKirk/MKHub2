@@ -4,6 +4,9 @@ import { useMemo, useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import { Link, useSearchParams, useNavigate, useLocation } from 'react-router-dom';
 import LoadingOverlay from '@/components/LoadingOverlay';
+import FilterBuilderModal from '@/components/FilterBuilder/FilterBuilderModal';
+import FilterChip from '@/components/FilterBuilder/FilterChip';
+import { FilterRule, FieldConfig } from '@/components/FilterBuilder/types';
 
 type Quote = { 
   id:string, 
@@ -52,62 +55,221 @@ const parseCurrency = (value: string): string => {
   return parsed;
 };
 
+// Helper: Convert filter rules to URL parameters
+function convertRulesToParams(rules: FilterRule[]): URLSearchParams {
+  const params = new URLSearchParams();
+  
+  // Clear all potential conflicting parameters first
+  const fieldsToClear: Record<string, string[]> = {
+    'client': ['client_id', 'client_id_not'],
+    'creation_date': ['creation_date_start', 'creation_date_end'],
+    'update_date': ['update_date_start', 'update_date_end'],
+    'estimator': ['estimator_id', 'estimator_id_not'],
+    'value': ['value_min', 'value_max'],
+  };
+  
+  Object.values(fieldsToClear).flat().forEach(param => {
+    params.delete(param);
+  });
+  
+  for (const rule of rules) {
+    if (!rule.value || (Array.isArray(rule.value) && (!rule.value[0] || !rule.value[1]))) {
+      continue; // Skip empty rules
+    }
+    
+    switch (rule.field) {
+      case 'client':
+        if (typeof rule.value === 'string') {
+          if (rule.operator === 'is') {
+            params.set('client_id', rule.value);
+          } else if (rule.operator === 'is_not') {
+            params.set('client_id_not', rule.value);
+          }
+        }
+        break;
+      
+      case 'creation_date':
+        if (typeof rule.value === 'string') {
+          if (rule.operator === 'is_before') {
+            params.set('creation_date_end', rule.value);
+          } else if (rule.operator === 'is_after') {
+            params.set('creation_date_start', rule.value);
+          } else if (rule.operator === 'is' && rule.value) {
+            params.set('creation_date_start', rule.value);
+            params.set('creation_date_end', rule.value);
+          }
+        } else if (Array.isArray(rule.value) && rule.operator === 'is_between') {
+          params.set('creation_date_start', rule.value[0]);
+          params.set('creation_date_end', rule.value[1]);
+        }
+        break;
+      
+      case 'update_date':
+        if (typeof rule.value === 'string') {
+          if (rule.operator === 'is_before') {
+            params.set('update_date_end', rule.value);
+          } else if (rule.operator === 'is_after') {
+            params.set('update_date_start', rule.value);
+          } else if (rule.operator === 'is' && rule.value) {
+            params.set('update_date_start', rule.value);
+            params.set('update_date_end', rule.value);
+          }
+        } else if (Array.isArray(rule.value) && rule.operator === 'is_between') {
+          params.set('update_date_start', rule.value[0]);
+          params.set('update_date_end', rule.value[1]);
+        }
+        break;
+      
+      case 'estimator':
+        if (typeof rule.value === 'string') {
+          if (rule.operator === 'is') {
+            params.set('estimator_id', rule.value);
+          } else if (rule.operator === 'is_not') {
+            params.set('estimator_id_not', rule.value);
+          }
+        }
+        break;
+      
+      case 'value':
+        if (typeof rule.value === 'string') {
+          if (rule.operator === 'greater_than') {
+            params.set('value_min', rule.value);
+          } else if (rule.operator === 'less_than') {
+            params.set('value_max', rule.value);
+          } else if (rule.operator === 'is_equal_to') {
+            params.set('value_min', rule.value);
+            params.set('value_max', rule.value);
+          }
+        } else if (Array.isArray(rule.value) && rule.operator === 'between') {
+          params.set('value_min', rule.value[0]);
+          params.set('value_max', rule.value[1]);
+        }
+        break;
+    }
+  }
+  
+  return params;
+}
+
+// Helper: Convert URL parameters to filter rules
+function convertParamsToRules(params: URLSearchParams): FilterRule[] {
+  const rules: FilterRule[] = [];
+  let idCounter = 1;
+  
+  // Client
+  const client = params.get('client_id');
+  const clientNot = params.get('client_id_not');
+  if (client) {
+    rules.push({ id: `rule-${idCounter++}`, field: 'client', operator: 'is', value: client });
+  } else if (clientNot) {
+    rules.push({ id: `rule-${idCounter++}`, field: 'client', operator: 'is_not', value: clientNot });
+  }
+  
+  // Creation Date range
+  const creationDateStart = params.get('creation_date_start');
+  const creationDateEnd = params.get('creation_date_end');
+  if (creationDateStart && creationDateEnd) {
+    if (creationDateStart === creationDateEnd) {
+      rules.push({ id: `rule-${idCounter++}`, field: 'creation_date', operator: 'is', value: creationDateStart });
+    } else {
+      rules.push({ id: `rule-${idCounter++}`, field: 'creation_date', operator: 'is_between', value: [creationDateStart, creationDateEnd] });
+    }
+  } else if (creationDateStart) {
+    rules.push({ id: `rule-${idCounter++}`, field: 'creation_date', operator: 'is_after', value: creationDateStart });
+  } else if (creationDateEnd) {
+    rules.push({ id: `rule-${idCounter++}`, field: 'creation_date', operator: 'is_before', value: creationDateEnd });
+  }
+  
+  // Update Date range
+  const updateDateStart = params.get('update_date_start');
+  const updateDateEnd = params.get('update_date_end');
+  if (updateDateStart && updateDateEnd) {
+    if (updateDateStart === updateDateEnd) {
+      rules.push({ id: `rule-${idCounter++}`, field: 'update_date', operator: 'is', value: updateDateStart });
+    } else {
+      rules.push({ id: `rule-${idCounter++}`, field: 'update_date', operator: 'is_between', value: [updateDateStart, updateDateEnd] });
+    }
+  } else if (updateDateStart) {
+    rules.push({ id: `rule-${idCounter++}`, field: 'update_date', operator: 'is_after', value: updateDateStart });
+  } else if (updateDateEnd) {
+    rules.push({ id: `rule-${idCounter++}`, field: 'update_date', operator: 'is_before', value: updateDateEnd });
+  }
+  
+  // Estimator
+  const estimator = params.get('estimator_id');
+  const estimatorNot = params.get('estimator_id_not');
+  if (estimator) {
+    rules.push({ id: `rule-${idCounter++}`, field: 'estimator', operator: 'is', value: estimator });
+  } else if (estimatorNot) {
+    rules.push({ id: `rule-${idCounter++}`, field: 'estimator', operator: 'is_not', value: estimatorNot });
+  }
+  
+  // Value range
+  const valueMin = params.get('value_min');
+  const valueMax = params.get('value_max');
+  if (valueMin && valueMax) {
+    if (valueMin === valueMax) {
+      rules.push({ id: `rule-${idCounter++}`, field: 'value', operator: 'is_equal_to', value: valueMin });
+    } else {
+      rules.push({ id: `rule-${idCounter++}`, field: 'value', operator: 'between', value: [valueMin, valueMax] });
+    }
+  } else if (valueMin) {
+    rules.push({ id: `rule-${idCounter++}`, field: 'value', operator: 'greater_than', value: valueMin });
+  } else if (valueMax) {
+    rules.push({ id: `rule-${idCounter++}`, field: 'value', operator: 'less_than', value: valueMax });
+  }
+  
+  return rules;
+}
+
 export default function Quotes(){
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
-  const minValue = searchParams.get('min_value') || '';
   const queryParam = searchParams.get('q') || '';
-  const clientIdParam = searchParams.get('client_id') || '';
-  const dateStartParam = searchParams.get('date_start') || '';
-  const dateEndParam = searchParams.get('date_end') || '';
   
   const [q, setQ] = useState(queryParam);
-  const [minValueInput, setMinValueInput] = useState(minValue);
-  const [minValueDisplay, setMinValueDisplay] = useState(minValue ? formatCurrency(minValue) : '');
-  const [minValueFocused, setMinValueFocused] = useState(false);
-  const [selectedClient, setSelectedClient] = useState(clientIdParam);
-  const [dateStart, setDateStart] = useState(dateStartParam);
-  const [dateEnd, setDateEnd] = useState(dateEndParam);
-  const [isFiltersCollapsed, setIsFiltersCollapsed] = useState(false);
+  const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
+  const [hasAnimated, setHasAnimated] = useState(false);
+  const [animationComplete, setAnimationComplete] = useState(false);
   
-  // Sync URL params with state when URL changes
+  // Get current date formatted (same as Dashboard)
+  const todayLabel = useMemo(() => {
+    return new Date().toLocaleDateString('en-CA', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+    });
+  }, []);
+  
+  // Convert current URL params to rules for modal
+  const currentRules = useMemo(() => {
+    return convertParamsToRules(searchParams);
+  }, [searchParams]);
+  
+  // Sync search query with URL when it changes
   useEffect(() => {
-    const urlMinValue = searchParams.get('min_value') || '';
+    const params = new URLSearchParams(searchParams);
+    if (q) {
+      params.set('q', q);
+    } else {
+      params.delete('q');
+    }
+    setSearchParams(params, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [q]);
+  
+  // Sync q state when URL changes
+  useEffect(() => {
     const urlQ = searchParams.get('q') || '';
-    const urlClient = searchParams.get('client_id') || '';
-    const urlDateStart = searchParams.get('date_start') || '';
-    const urlDateEnd = searchParams.get('date_end') || '';
-    
-    if (urlMinValue !== minValueInput) setMinValueInput(urlMinValue);
     if (urlQ !== q) setQ(urlQ);
-    if (urlClient !== selectedClient) setSelectedClient(urlClient);
-    if (urlDateStart !== dateStart) setDateStart(urlDateStart);
-    if (urlDateEnd !== dateEnd) setDateEnd(urlDateEnd);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
-
-  // Auto-apply filters when they change
-  useEffect(() => {
-    const params = new URLSearchParams();
-    if (q) params.set('q', q);
-    if (minValueInput) params.set('min_value', minValueInput);
-    if (selectedClient) params.set('client_id', selectedClient);
-    if (dateStart) params.set('date_start', dateStart);
-    if (dateEnd) params.set('date_end', dateEnd);
-    setSearchParams(params);
-    refetch();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [q, minValueInput, selectedClient, dateStart, dateEnd]);
   
   const qs = useMemo(()=> {
-    const params = new URLSearchParams();
-    if (q) params.set('q', q);
-    if (minValueInput) params.set('min_value', minValueInput);
-    if (selectedClient) params.set('client_id', selectedClient);
-    if (dateStart) params.set('date_start', dateStart);
-    if (dateEnd) params.set('date_end', dateEnd);
+    const params = new URLSearchParams(searchParams);
     return params.toString() ? '?' + params.toString() : '';
-  }, [q, minValueInput, selectedClient, dateStart, dateEnd]);
+  }, [searchParams]);
   
   const { data, isLoading, refetch } = useQuery({ 
     queryKey:['quotes', qs], 
@@ -116,6 +278,23 @@ export default function Quotes(){
   
   // Show loading until quotes are loaded
   const isInitialLoading = isLoading && !data;
+  
+  // Track when animation completes to remove inline styles for hover to work
+  useEffect(() => {
+    if (hasAnimated) {
+      const timer = setTimeout(() => setAnimationComplete(true), 400);
+      return () => clearTimeout(timer);
+    }
+  }, [hasAnimated]);
+  
+  // Track when initial data is loaded to trigger entry animations
+  useEffect(() => {
+    if (!isInitialLoading && !hasAnimated) {
+      // Small delay to ensure DOM is ready
+      const timer = setTimeout(() => setHasAnimated(true), 50);
+      return () => clearTimeout(timer);
+    }
+  }, [isInitialLoading, hasAnimated]);
   
   const { data: settings } = useQuery({ 
     queryKey:['settings'], 
@@ -176,6 +355,88 @@ export default function Quotes(){
   const hasViewPermission = isAdmin || permissions.has('sales:quotations:read');
   const hasEditPermission = isAdmin || permissions.has('sales:quotations:write');
 
+  // Filter Builder Configuration
+  const filterFields: FieldConfig[] = useMemo(() => [
+    {
+      id: 'client',
+      label: 'Client',
+      type: 'select',
+      operators: ['is', 'is_not'],
+      getOptions: () => clients.map((c: any) => ({ 
+        value: c.id, 
+        label: c.display_name || c.name || c.code || c.id 
+      })),
+    },
+    {
+      id: 'creation_date',
+      label: 'Creation Date',
+      type: 'date',
+      operators: ['is', 'is_before', 'is_after', 'is_between'],
+    },
+    {
+      id: 'update_date',
+      label: 'Update Date',
+      type: 'date',
+      operators: ['is', 'is_before', 'is_after', 'is_between'],
+    },
+    {
+      id: 'estimator',
+      label: 'Estimator',
+      type: 'select',
+      operators: ['is', 'is_not'],
+      getOptions: () => (employees || []).map((emp: any) => ({ 
+        value: emp.id, 
+        label: emp.name || emp.username || emp.id 
+      })),
+    },
+    {
+      id: 'value',
+      label: 'Value',
+      type: 'number',
+      operators: ['is_equal_to', 'greater_than', 'less_than', 'between'],
+    },
+  ], [clients, employees]);
+
+  const handleApplyFilters = (rules: FilterRule[]) => {
+    const params = convertRulesToParams(rules);
+    if (q) params.set('q', q);
+    setSearchParams(params);
+    refetch();
+  };
+
+  const hasActiveFilters = currentRules.length > 0;
+
+  // Helper to format rule value for display
+  const formatRuleValue = (rule: FilterRule): string => {
+    if (rule.field === 'client') {
+      const client = clients.find((c: any) => String(c.id) === rule.value);
+      return client?.display_name || client?.name || String(rule.value);
+    }
+    if (rule.field === 'creation_date' || rule.field === 'update_date') {
+      if (Array.isArray(rule.value)) {
+        return `${rule.value[0]} → ${rule.value[1]}`;
+      }
+      return String(rule.value);
+    }
+    if (rule.field === 'estimator') {
+      const emp = (employees || []).find((e: any) => String(e.id) === rule.value);
+      return emp?.name || emp?.username || String(rule.value);
+    }
+    if (rule.field === 'value') {
+      if (Array.isArray(rule.value)) {
+        return `$${Number(rule.value[0]).toLocaleString()} → $${Number(rule.value[1]).toLocaleString()}`;
+      }
+      return `$${Number(rule.value).toLocaleString()}`;
+    }
+    return String(rule.value);
+  };
+
+  // Helper to get field label
+  const getFieldLabel = (fieldId: string): string => {
+    const field = filterFields.find(f => f.id === fieldId);
+    return field?.label || fieldId;
+  };
+
   if (!hasViewPermission) {
     return (
       <div className="text-center py-12 text-gray-500">
@@ -186,178 +447,141 @@ export default function Quotes(){
 
   return (
     <div>
-      <div className="mb-3 rounded-xl border bg-gradient-to-br from-[#7f1010] to-[#a31414] text-white p-4 flex items-center justify-between">
+      <div className="bg-slate-200/50 rounded-[12px] border border-slate-200 flex items-center justify-between py-4 px-6 mb-6">
         <div>
-          <div className="text-2xl font-extrabold">Quotations</div>
-          <div className="text-sm opacity-90">List, search and manage quotations.</div>
+          <div className="text-xl font-bold text-gray-900 tracking-tight mb-0.5">Quotations</div>
+          <div className="text-sm text-gray-500 font-medium">List, search and manage quotations</div>
         </div>
-        {hasEditPermission && (
-          <Link to="/quotes/new" state={{ backgroundLocation: location }} className="px-4 py-2 rounded bg-white text-brand-red font-semibold">+ New Quote</Link>
-        )}
+        <div className="text-right">
+          <div className="text-xs text-gray-400 mb-1.5 font-medium uppercase tracking-wide">Today</div>
+          <div className="text-sm font-semibold text-gray-700">{todayLabel}</div>
+        </div>
       </div>
-      {/* Advanced Search Panel */}
-      <div className="mb-3 rounded-xl border bg-white shadow-sm overflow-hidden relative">
-        {/* Main Search Bar */}
-        {isFiltersCollapsed ? (
-          <div className="p-4 bg-gradient-to-r from-gray-50 to-white">
-            <div className="flex items-center justify-between">
-              <div className="text-lg font-semibold text-gray-700">Show Filters</div>
-            </div>
-          </div>
-        ) : (
-          <div className="p-4 bg-gradient-to-r from-gray-50 to-white border-b">
-            <div className="flex items-center gap-3">
-              <div className="flex-1">
-                <label className="block text-xs font-medium text-gray-700 mb-1.5">Search Quotes</label>
-                <div className="relative">
-                  <input 
-                    className="w-full border border-gray-300 rounded-lg px-4 py-2.5 pl-10 focus:outline-none focus:ring-2 focus:ring-brand-red focus:border-transparent text-gray-900" 
-                    placeholder="Search by quote name, code, or client name..." 
-                    value={q} 
-                    onChange={e=>setQ(e.target.value)} 
-                    onKeyDown={e=>{ if(e.key==='Enter') refetch(); }} 
-                  />
-                  <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                  </svg>
-                </div>
+      {/* Filter Bar */}
+      <div className="mb-3 rounded-lg border border-gray-200 bg-white shadow-sm overflow-hidden">
+        {/* Primary Row: Global Search + Actions */}
+        <div className="px-6 py-4 bg-white">
+          <div className="flex items-center gap-4">
+            {/* Global Search - Dominant, large */}
+            <div className="flex-1">
+              <div className="relative">
+                <input 
+                  className="w-full border border-gray-200 rounded-md px-4 py-2.5 pl-10 text-sm bg-gray-50/50 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300 focus:bg-white transition-all duration-150" 
+                  placeholder="Search by quote name, code, or client name..." 
+                  value={q} 
+                  onChange={e=>setQ(e.target.value)} 
+                />
+                <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
               </div>
             </div>
-          </div>
-        )}
 
-        {/* Filters Row */}
-        {!isFiltersCollapsed && (
-          <div className="p-4 border-b bg-gray-50/50">
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1.5">Customer</label>
-                <select 
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-red focus:border-transparent bg-white"
-                  value={selectedClient}
-                  onChange={e=>setSelectedClient(e.target.value)}
-                >
-                  <option value="">All Customers</option>
-                  {clients.map((client: any) => (
-                    <option key={client.id} value={client.id}>
-                      {client.display_name || client.name || client.code || client.id}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1.5">Min Value ($)</label>
-                <input 
-                  type="text"
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-red focus:border-transparent bg-white" 
-                  placeholder="$0.00" 
-                  value={minValueFocused ? minValueDisplay : (minValueInput ? formatCurrency(minValueInput) : '')}
-                  onFocus={() => {
-                    setMinValueFocused(true);
-                    setMinValueDisplay(minValueInput || '');
-                  }}
-                  onBlur={() => {
-                    setMinValueFocused(false);
-                    const parsed = parseCurrency(minValueDisplay);
-                    setMinValueInput(parsed);
-                    setMinValueDisplay(parsed);
-                  }}
-                  onChange={e=>{
-                    const raw = e.target.value;
-                    setMinValueDisplay(raw);
-                  }}
-                  onKeyDown={e=>{ if(e.key==='Enter') { e.currentTarget.blur(); refetch(); } }} 
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1.5">Start Date (From)</label>
-                <input 
-                  type="date"
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-red focus:border-transparent bg-white" 
-                  value={dateStart} 
-                  onChange={e=>setDateStart(e.target.value)} 
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1.5">End Date (To)</label>
-                <input 
-                  type="date"
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-red focus:border-transparent bg-white" 
-                  value={dateEnd} 
-                  onChange={e=>setDateEnd(e.target.value)} 
-                />
-              </div>
-            </div>
-          </div>
-        )}
+            {/* + Filters Button - Opens Modal */}
+            <button 
+              onClick={()=>setIsFilterModalOpen(true)}
+              className="px-3 py-2.5 text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors duration-150 whitespace-nowrap"
+            >
+              + Filters
+            </button>
 
-        {/* Action Buttons */}
-        {!isFiltersCollapsed && (
-          <div className="p-4 bg-white border-t flex items-center justify-between">
-            <div className="text-sm text-gray-600">
-              {arr.length > 0 && (
-                <span>Found {arr.length} quote{arr.length !== 1 ? 's' : ''}</span>
-              )}
-            </div>
-            <div className="flex items-center gap-2 pr-10">
+            {/* Clear Filters - Only when active */}
+            {hasActiveFilters && (
               <button 
                 onClick={()=>{
-                  setQ('');
-                  setMinValueInput('');
-                  setSelectedClient('');
-                  setDateStart('');
-                  setDateEnd('');
-                  setSearchParams({});
+                  const params = new URLSearchParams();
+                  if (q) params.set('q', q);
+                  setSearchParams(params);
                   refetch();
                 }} 
-                className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors font-medium"
+                className="px-3 py-2.5 text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors duration-150 whitespace-nowrap"
               >
-                Clear All
+                Clear Filters
               </button>
-            </div>
+            )}
           </div>
-        )}
-
-        {/* Collapse/Expand button - bottom right corner */}
-        <button
-          onClick={() => setIsFiltersCollapsed(!isFiltersCollapsed)}
-          className="absolute bottom-0 right-0 w-8 h-8 rounded-tl-lg border-t border-l bg-white hover:bg-gray-50 transition-colors flex items-center justify-center shadow-sm"
-          title={isFiltersCollapsed ? "Expand filters" : "Collapse filters"}
-        >
-          <svg 
-            className={`w-4 h-4 text-gray-600 transition-transform ${!isFiltersCollapsed ? 'rotate-180' : ''}`}
-            fill="none" 
-            stroke="currentColor" 
-            viewBox="0 0 24 24"
-          >
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-          </svg>
-        </button>
+        </div>
       </div>
+
+      {/* Filter Chips */}
+      {hasActiveFilters && (
+        <div className="mb-4 flex items-center gap-2 flex-wrap">
+          {currentRules.map((rule) => (
+            <FilterChip
+              key={rule.id}
+              rule={rule}
+              onRemove={() => {
+                const updatedRules = currentRules.filter(r => r.id !== rule.id);
+                const params = convertRulesToParams(updatedRules);
+                if (q) params.set('q', q);
+                setSearchParams(params);
+                refetch();
+              }}
+              getValueLabel={formatRuleValue}
+              getFieldLabel={getFieldLabel}
+            />
+          ))}
+        </div>
+      )}
       <LoadingOverlay isLoading={isInitialLoading} text="Loading quotes...">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div 
+          className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-4 gap-4"
+          style={animationComplete ? {} : {
+            opacity: hasAnimated ? 1 : 0,
+            transform: hasAnimated ? 'translateY(0) scale(1)' : 'translateY(-8px) scale(0.98)',
+            transition: 'opacity 400ms ease-out, transform 400ms ease-out'
+          }}
+        >
           {isLoading && !arr.length ? (
             <>
               {[1, 2, 3, 4, 5, 6].map(i => (
                 <div key={i} className="h-64 bg-gray-100 animate-pulse rounded-xl" />
               ))}
             </>
-          ) : arr.length > 0 ? (
-            arr.map(quote => (
-              <QuoteListCard 
-                key={quote.id} 
-                quote={quote} 
-                employees={employees}
-                clientFiles={allClientFiles?.[quote.client_id || ''] || []}
-              />
-            ))
           ) : (
-            <div className="col-span-2 p-8 text-center text-gray-500 rounded-xl border bg-white">
-              No quotes found matching your criteria.
-            </div>
+            <>
+              {hasEditPermission && (
+                <Link
+                  to="/quotes/new"
+                  state={{ backgroundLocation: location }}
+                  className="border-2 border-dashed border-gray-300 rounded-xl p-4 hover:border-brand-red hover:bg-gray-50 transition-all text-center bg-white flex flex-col items-center justify-center min-h-[200px]"
+                >
+                  <div className="text-4xl text-gray-400 mb-2">+</div>
+                  <div className="font-medium text-sm text-gray-700">New Quote</div>
+                  <div className="text-xs text-gray-500 mt-1">Add new quote</div>
+                </Link>
+              )}
+              {arr.length > 0 ? (
+                arr.map(quote => (
+                  <QuoteListCard 
+                    key={quote.id} 
+                    quote={quote} 
+                    employees={employees}
+                    clientFiles={allClientFiles?.[quote.client_id || ''] || []}
+                  />
+                ))
+              ) : (
+                <div className="col-span-2 p-8 text-center text-gray-500 rounded-xl border bg-white">
+                  No quotes found matching your criteria.
+                </div>
+              )}
+            </>
           )}
         </div>
       </LoadingOverlay>
+      
+      {/* Filter Builder Modal */}
+      <FilterBuilderModal
+        isOpen={isFilterModalOpen}
+        onClose={() => setIsFilterModalOpen(false)}
+        onApply={handleApplyFilters}
+        initialRules={currentRules}
+        fields={filterFields}
+        getFieldData={(fieldId) => {
+          // Return data for field if needed
+          return null;
+        }}
+      />
     </div>
   );
 }
@@ -368,12 +592,6 @@ function QuoteListCard({ quote, employees, clientFiles }:{ quote: Quote, employe
   const clientName = quote.client_display_name || quote.client_name || '';
   const created = (quote.created_at || '').slice(0,10);
   const updated = (quote.updated_at || '').slice(0,10);
-  
-  // Get cover image
-  const coverImage = useMemo(() => {
-    const img = (clientFiles || []).find(f => String(f.category || '') === 'quote-cover-derived');
-    return img ? `/files/${img.file_object_id}/thumbnail?w=400` : '/ui/assets/login/logo-light.svg';
-  }, [clientFiles]);
   
   // Get estimator name
   const estimator = employees?.find((e: any) => String(e.id) === String(quote.estimator_id));
@@ -457,54 +675,44 @@ function QuoteListCard({ quote, employees, clientFiles }:{ quote: Quote, employe
   return (
     <Link 
       to={`/quotes/${encodeURIComponent(String(quote.id))}`} 
-      className="group rounded-xl border bg-white hover:shadow-lg transition-all overflow-hidden block flex flex-col h-full relative"
+      className="group rounded-xl border bg-white hover:border-gray-200 hover:shadow-md block h-full transition-all relative"
     >
-      {/* Top section: Image + Header */}
-      <div className="flex">
-        {/* Image on the left */}
-        <div className="w-40 h-40 flex-shrink-0 p-4">
-          <div className="w-full h-full bg-gray-100 rounded-lg overflow-hidden relative">
-            <img className="w-full h-full object-cover" src={coverImage} alt={documentType} />
-            <div className="absolute inset-0 bg-gradient-to-t from-black/10 to-transparent" />
-          </div>
-        </div>
-        
-        {/* Header on the right */}
-        <div className="flex-1 p-4 flex flex-col min-w-0">
-          <div className="mb-3">
-            <div className="text-xs text-gray-500 mb-1 truncate">{clientName || 'No client'}</div>
-            <div className="font-bold text-lg text-gray-900 group-hover:text-[#7f1010] transition-colors truncate mb-1">
+      <div className="p-4 flex flex-col gap-3">
+        {/* Header (no image) */}
+        <div className="min-w-0">
+          <div className="text-xs text-gray-500 truncate min-w-0">{clientName || 'No client'}</div>
+          <div className="min-w-0">
+            <div className="font-semibold text-base text-gray-900 group-hover:text-[#7f1010] transition-colors whitespace-normal break-words">
               {documentType}
             </div>
-            <div className="text-xs text-gray-600 truncate mb-2">{quote.code || quote.order_number || '—'}</div>
+            <div className="text-xs text-gray-600 break-words">{quote.code || quote.order_number || '—'}</div>
           </div>
         </div>
-      </div>
 
-      {/* Bottom section: Info */}
-      <div className="px-4 pb-4">
-        {/* Info grid */}
-        <div className="grid grid-cols-2 gap-3 text-sm mb-3">
-          <div>
+        {/* Separator */}
+        <div className="border-t border-black/5" />
+
+        {/* Info grid (same info as before, simple text) */}
+        <div className="grid grid-cols-2 gap-3 text-sm">
+          <div className="min-w-0">
             <div className="text-xs text-gray-500">Created</div>
-            <div className="font-medium text-gray-900">{created || '—'}</div>
+            <div className="font-medium text-gray-900 truncate">{created || '—'}</div>
           </div>
-          <div>
+          <div className="min-w-0">
             <div className="text-xs text-gray-500">Updated</div>
-            <div className="font-medium text-gray-900">{updated || '—'}</div>
+            <div className="font-medium text-gray-900 truncate">{updated || '—'}</div>
           </div>
-          <div className="truncate" title={estimatorName}>
+          <div className="min-w-0 truncate" title={estimatorName}>
             <div className="text-xs text-gray-500">Estimator</div>
             <div className="font-medium text-gray-900 text-xs">{estimatorName}</div>
           </div>
-          <div>
+          <div className="min-w-0">
             <div className="text-xs text-gray-500">Estimated Value</div>
-            <div className="font-medium text-gray-900">
+            <div className="font-medium text-gray-900 truncate">
               {estimatedValue > 0 ? `$${estimatedValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—'}
             </div>
           </div>
         </div>
-
       </div>
     </Link>
   );

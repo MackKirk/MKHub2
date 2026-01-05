@@ -14,7 +14,7 @@ type ConfirmContextValue = {
   confirm: (opts: ConfirmOptions) => Promise<'confirm' | 'discard' | 'cancel'>;
 };
 
-const ConfirmContext = createContext<ConfirmContextValue | null>(null);
+export const ConfirmContext = createContext<ConfirmContextValue | null>(null);
 
 export function useConfirm(){
   const ctx = useContext(ConfirmContext);

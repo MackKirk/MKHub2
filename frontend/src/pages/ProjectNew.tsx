@@ -14,8 +14,6 @@ export default function ProjectNew(){
   const [sp] = useSearchParams();
   const initialClientId = sp.get('client_id')||'';
   const initialIsBidding = sp.get('is_bidding') === 'true';
-  // If coming from projects page, default to creating as active project (checkbox checked)
-  const defaultCreateAsProject = sp.get('create_as_project') === 'true';
 
   const [clientId, setClientId] = useState<string>(initialClientId);
   const [name, setName] = useState<string>('');
@@ -35,7 +33,6 @@ export default function ProjectNew(){
   const [coverPreview, setCoverPreview] = useState<string>('');
   const [hiddenPickerOpen, setHiddenPickerOpen] = useState<boolean>(false);
   const [isBidding, setIsBidding] = useState<boolean>(initialIsBidding);
-  const [createAsProject, setCreateAsProject] = useState<boolean>(defaultCreateAsProject);
   const [clientSearch, setClientSearch] = useState<string>('');
   const [clientModalOpen, setClientModalOpen] = useState<boolean>(false);
   const [showClientDropdown, setShowClientDropdown] = useState<boolean>(false);
@@ -139,20 +136,19 @@ export default function ProjectNew(){
         const created:any = await api('POST', `/clients/${encodeURIComponent(clientId)}/sites`, siteForm);
         newSiteId = String(created?.id||'');
       }
-      // For opportunities, automatically set status to "Prospecting" if not creating as project
-      const finalStatusLabel = (isBidding && !createAsProject) ? 'Prospecting' : (statusLabel || null);
+      // For opportunities, status will be automatically set to "Prospecting" by the backend
       const payload:any = { 
         name, 
         description: desc||null, 
         client_id: clientId, 
         site_id: newSiteId||null, 
-        status_label: finalStatusLabel, 
+        status_label: isBidding ? null : (statusLabel || null), // Backend will set "Prospecting" for opportunities
         division_ids: divisionIds, // Legacy support
         project_division_ids: projectDivisionIds.length > 0 ? projectDivisionIds : null, // New project divisions
         estimator_id: estimatorId||null, 
         onsite_lead_id: leadId||null, 
         contact_id: contactId||null, 
-        is_bidding: isBidding && !createAsProject 
+        is_bidding: isBidding 
       };
       const proj:any = await api('POST','/projects', payload);
       if(coverBlob){
@@ -163,8 +159,8 @@ export default function ProjectNew(){
           await api('POST', `/projects/${encodeURIComponent(String(proj?.id||''))}/files?file_object_id=${encodeURIComponent(conf.id)}&category=project-cover-derived&original_name=project-cover.jpg`);
         }catch(_e){ /* silent */ }
       }
-      toast.success(isBidding && !createAsProject ? 'Opportunity created' : 'Project created');
-      if (isBidding && !createAsProject) {
+      toast.success(isBidding ? 'Opportunity created' : 'Project created');
+      if (isBidding) {
         nav(`/opportunities/${encodeURIComponent(String(proj?.id||''))}`);
       } else {
         nav(`/projects/${encodeURIComponent(String(proj?.id||''))}`);
@@ -196,15 +192,6 @@ export default function ProjectNew(){
               </div>
             </div>
             {step===1 ? ( <>
-            {(isBidding || defaultCreateAsProject) && (
-              <div className="md:col-span-2">
-                <label className="text-xs text-gray-600 flex items-center gap-2">
-                  <input type="checkbox" checked={createAsProject} onChange={e=>setCreateAsProject(e.target.checked)} />
-                  <span>Create as active project (skip opportunity stage)</span>
-                </label>
-                <div className="text-[11px] text-gray-500 mt-1 ml-6">If checked, this will be created as a full project with all features enabled. Otherwise, it will be created as an opportunity.</div>
-              </div>
-            )}
             <div className="md:col-span-2">
               <label className="text-xs text-gray-600">Name *</label>
               <input className={`w-full border rounded px-3 py-2 ${!nameValid? 'border-red-500':''}`} value={name} onChange={e=>setName(e.target.value)} />
@@ -411,7 +398,7 @@ export default function ProjectNew(){
             </>
             ) : (
               <>
-                {!(isBidding && !createAsProject) && (
+                {!isBidding && (
                   <div>
                     <label className="text-xs text-gray-600">Status</label>
                     <select className="w-full border rounded px-3 py-2" value={statusLabel} onChange={e=> setStatusLabel(e.target.value)}>
@@ -487,7 +474,7 @@ export default function ProjectNew(){
                     {(employees||[]).map((emp:any)=> <option key={emp.id} value={emp.id}>{emp.name||emp.username}</option>)}
                   </select>
                 </div>
-                {!(isBidding && !createAsProject) && (
+                {!isBidding && (
                   <div>
                     <label className="text-xs text-gray-600">On-site lead</label>
                     <select className="w-full border rounded px-3 py-2" value={leadId} onChange={e=> setLeadId(e.target.value)}>

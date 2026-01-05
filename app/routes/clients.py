@@ -181,9 +181,12 @@ def get_client_locations(
 
 @router.get("")
 def list_clients(
-    city: Optional[str] = None, 
-    status: Optional[str] = None, 
-    type: Optional[str] = None, 
+    city: Optional[str] = None,
+    city_not: Optional[str] = None,
+    status: Optional[str] = None,
+    status_not: Optional[str] = None,
+    type: Optional[str] = None,
+    type_not: Optional[str] = None,
     q: Optional[str] = None,
     page: int = 1,
     limit: int = 10,
@@ -211,6 +214,11 @@ def list_clients(
     # Apply filters
     if city:
         base_query = base_query.filter(Client.city == city)
+    
+    # Filter by city (exclusion)
+    if city_not:
+        base_query = base_query.filter(Client.city != city_not)
+    
     if status:
         # Try to match by status_id (UUID) first
         try:
@@ -231,6 +239,32 @@ def list_clients(
         except (ValueError, AttributeError):
             # If status is not a valid UUID, try matching by client_status string
             base_query = base_query.filter(Client.client_status == status)
+    
+    # Filter by status (exclusion)
+    if status_not:
+        try:
+            status_uuid = uuid.UUID(str(status_not))
+            status_item = db.query(SettingItem).filter(SettingItem.id == status_uuid).first()
+            status_label = status_item.label if status_item else None
+            
+            if status_label:
+                base_query = base_query.filter(
+                    or_(
+                        and_(
+                            Client.status_id.isnot(None),
+                            Client.status_id != status_uuid
+                        ),
+                        and_(
+                            Client.status_id.is_(None),
+                            Client.client_status != status_label
+                        )
+                    )
+                )
+            else:
+                base_query = base_query.filter(Client.status_id != status_uuid)
+        except (ValueError, AttributeError):
+            base_query = base_query.filter(Client.client_status != status_not)
+    
     if type:
         # Try to match by type_id (UUID) first
         try:
@@ -251,8 +285,45 @@ def list_clients(
         except (ValueError, AttributeError):
             # If type is not a valid UUID, try matching by client_type string
             base_query = base_query.filter(Client.client_type == type)
+    
+    # Filter by type (exclusion)
+    if type_not:
+        try:
+            type_uuid = uuid.UUID(str(type_not))
+            type_item = db.query(SettingItem).filter(SettingItem.id == type_uuid).first()
+            type_label = type_item.label if type_item else None
+            
+            if type_label:
+                base_query = base_query.filter(
+                    or_(
+                        and_(
+                            Client.type_id.isnot(None),
+                            Client.type_id != type_uuid
+                        ),
+                        and_(
+                            Client.type_id.is_(None),
+                            Client.client_type != type_label
+                        )
+                    )
+                )
+            else:
+                base_query = base_query.filter(Client.type_id != type_uuid)
+        except (ValueError, AttributeError):
+            base_query = base_query.filter(Client.client_type != type_not)
+    
     if q:
-        base_query = base_query.filter((Client.name.ilike(f"%{q}%")) | (Client.display_name.ilike(f"%{q}%")))
+        search_term = f"%{q}%"
+        base_query = base_query.filter(
+            (Client.name.ilike(search_term)) |
+            (Client.display_name.ilike(search_term)) |
+            (Client.code.ilike(search_term)) |
+            (Client.address_line1.ilike(search_term)) |
+            (Client.address_line2.ilike(search_term)) |
+            (Client.city.ilike(search_term)) |
+            (Client.province.ilike(search_term)) |
+            (Client.postal_code.ilike(search_term)) |
+            (Client.country.ilike(search_term))
+        )
     
     # Get total count
     total = base_query.count()

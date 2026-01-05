@@ -7,6 +7,7 @@ import toast from 'react-hot-toast';
 import { useConfirm } from '@/components/ConfirmProvider';
 import NationalitySelect from '@/components/NationalitySelect';
 import AddressAutocomplete from '@/components/AddressAutocomplete';
+import ClothSizeSelect from '@/components/ClothSizeSelect';
 import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard';
 import UserLoans from '@/components/UserLoans';
 import UserReports from '@/components/UserReports';
@@ -87,7 +88,7 @@ export default function Profile(){
       prefered_name: p.prefered_name||'',
       phone: p.phone||'', mobile_phone: p.mobile_phone||'',
       gender: p.gender||'', marital_status: p.marital_status||'',
-      date_of_birth: p.date_of_birth||'', nationality: p.nationality||'',
+      date_of_birth: p.date_of_birth||'', nationality: p.nationality||'', cloth_size: p.cloth_size||'',
       address_line1: p.address_line1||'', address_line1_complement: p.address_line1_complement||'',
       address_line2: p.address_line2||'', address_line2_complement: p.address_line2_complement||'',
       city: p.city||'', province: p.province||'', postal_code: p.postal_code||'', country: p.country||'',
@@ -236,7 +237,7 @@ export default function Profile(){
           <div className="relative z-10">
             <div className="flex gap-4 items-stretch min-h-[210px]">
               <div className="w-[220px] relative group">
-                <img className="w-full h-full object-cover rounded-xl border-2 border-brand-red" src={p.profile_photo_file_id? `/files/${p.profile_photo_file_id}/thumbnail?w=240`:'/ui/assets/login/logo-light.svg'} />
+                <img className="w-full h-full object-cover rounded-xl border-2 border-brand-red" src={p.profile_photo_file_id? `/files/${p.profile_photo_file_id}/thumbnail?w=240`:'/ui/assets/placeholders/user.png'} />
                 <button onClick={()=>fileRef.current?.click()} className="absolute inset-0 rounded-xl bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white transition-opacity">✏️ Change</button>
                 <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={async(e)=>{
                   const f = e.target.files?.[0];
@@ -334,6 +335,14 @@ export default function Profile(){
                           <Field label="Nationality" required invalid={missingPersonal.includes('nationality')}>
                             <NationalitySelect value={form.nationality || ''} onChange={v=>set('nationality', v)} />
                           </Field>
+                          <Field label="Cloth Size" required={false} invalid={false}>
+                            <ClothSizeSelect 
+                              value={form.cloth_size || ''} 
+                              onChange={v=>set('cloth_size', v)} 
+                              allowCustom={false}
+                              customSizes={p.cloth_sizes_custom && Array.isArray(p.cloth_sizes_custom) ? p.cloth_sizes_custom : []}
+                            />
+                          </Field>
                         </>
                       ) : (
                         <>
@@ -345,6 +354,7 @@ export default function Profile(){
                           <ViewField label="Marital status" value={p.marital_status} required />
                           <ViewField label="Date of birth" value={p.date_of_birth ? String(p.date_of_birth).slice(0,10) : ''} required />
                           <ViewField label="Nationality" value={p.nationality} required />
+                          <ViewField label="Cloth Size" value={p.cloth_size} />
                         </>
                       )}
                     </div>

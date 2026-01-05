@@ -3,9 +3,12 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
 import { useConfirm } from '@/components/ConfirmProvider';
+import ImagePicker from '@/components/ImagePicker';
+import SupplierSelect from '@/components/SupplierSelect';
+import NewSupplierModal from '@/components/NewSupplierModal';
 
 type Material = { id:number, name:string, supplier_name?:string, category?:string, unit?:string, price?:number, last_updated?:string, unit_type?:string, units_per_package?:number, coverage_sqs?:number, coverage_ft2?:number, coverage_m2?:number, description?:string, image_base64?:string };
-type Item = { material_id?:number, name:string, unit?:string, quantity:number, unit_price:number, section:string, description?:string, item_type?:string, supplier_name?:string, unit_type?:string, qty_required?:number, unit_required?:string, markup?:number, taxable?:boolean, units_per_package?:number, coverage_sqs?:number, coverage_ft2?:number, coverage_m2?:number, labour_journey?:number, labour_men?:number, labour_journey_type?:'days'|'hours'|'contract' };
+type Item = { material_id?:number, name:string, unit?:string, quantity:number, unit_price:number, section:string, description?:string, item_type?:string, supplier_name?:string, unit_type?:string, qty_required?:number, unit_required?:string, markup?:number, taxable?:boolean, units_per_package?:number, coverage_sqs?:number, coverage_ft2?:number, coverage_m2?:number, labour_journey?:number, labour_men?:number, labour_journey_type?:'days'|'hours'|'contract', added_via_report_id?:string, added_via_report_date?:string };
 
 export type EstimateBuilderRef = {
   hasUnsavedChanges: () => boolean;
@@ -14,7 +17,17 @@ export type EstimateBuilderRef = {
   getTotalEstimate: () => number; // Returns Total Estimate (before GST)
   getPst: () => number;
   getGst: () => number;
+  getEstimateData: () => { items: Item[], markup: number, pstRate: number, gstRate: number, profitRate: number, sectionOrder: string[], sectionNames: Record<string, string> } | null;
 };
+
+// Alert icon component for Estimate Changes (circle with exclamation mark)
+const EstimateChangesAlertIcon = ({ className = "w-5 h-5" }: { className?: string }) => (
+  <svg viewBox="0 0 24 24" className={`${className} text-orange-600`} fill="currentColor" stroke="none">
+    <circle cx="12" cy="12" r="10" fill="currentColor" opacity="0.1"/>
+    <circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" strokeWidth="2"/>
+    <text x="12" y="17" textAnchor="middle" fontSize="14" fontWeight="bold" fill="currentColor" fontFamily="system-ui, -apple-system, sans-serif">!</text>
+  </svg>
+);
 
 const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, estimateId?: number, statusLabel?: string, settings?: any, isBidding?: boolean, canEdit?: boolean, hideFooter?: boolean }>(
   function EstimateBuilder({ projectId, estimateId, statusLabel, settings, isBidding, canEdit: canEditProp, hideFooter }, ref) {
@@ -51,15 +64,18 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
       // Always allow editing by default unless explicitly restricted
       if (!statusLabel || !statusLabel.trim()) return true;
       
-      const statusLabelStr = String(statusLabel).trim();
+      const statusLabelStr = String(statusLabel).trim().toLowerCase();
       
-      // Always allow "estimating" status
-      if (statusLabelStr.toLowerCase() === 'estimating') return true;
+      // Always allow "estimating" and "prospecting" status
+      if (statusLabelStr === 'estimating' || statusLabelStr === 'prospecting') return true;
+      
+      // Always restrict "In Progress" and "On Hold" (same as proposals)
+      if (statusLabelStr === 'in progress' || statusLabelStr === 'on hold') return false;
       
       // If no settings or project_statuses, allow editing
       if (!settings || !settings.project_statuses || !Array.isArray(settings.project_statuses)) return true;
       
-      const statusConfig = (settings.project_statuses as any[]).find((s:any)=> s.label === statusLabelStr);
+      const statusConfig = (settings.project_statuses as any[]).find((s:any)=> s.label?.toLowerCase() === statusLabelStr);
       
       // If status not found in config, allow editing by default
       if (!statusConfig) return true;
@@ -78,15 +94,18 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
     // Always allow editing by default unless explicitly restricted
     if (!statusLabel || !statusLabel.trim()) return true;
     
-    const statusLabelStr = String(statusLabel).trim();
+    const statusLabelStr = String(statusLabel).trim().toLowerCase();
     
-    // Always allow "estimating" status
-    if (statusLabelStr.toLowerCase() === 'estimating') return true;
+    // Always allow "estimating" and "prospecting" status
+    if (statusLabelStr === 'estimating' || statusLabelStr === 'prospecting') return true;
+    
+    // Always restrict "In Progress" and "On Hold" (same as proposals)
+    if (statusLabelStr === 'in progress' || statusLabelStr === 'on hold') return false;
     
     // If no settings or project_statuses, allow editing
     if (!settings || !settings.project_statuses || !Array.isArray(settings.project_statuses)) return true;
     
-    const statusConfig = (settings.project_statuses as any[]).find((s:any)=> s.label === statusLabelStr);
+    const statusConfig = (settings.project_statuses as any[]).find((s:any)=> s.label?.toLowerCase() === statusLabelStr);
     
     // If status not found in config, allow editing by default
     if (!statusConfig) return true;
@@ -100,14 +119,6 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
     // Otherwise allow editing (default behavior)
     return true;
   }, [statusLabel, settings, canEditProp]);
-  
-  // Show warning if editing is restricted
-  useEffect(() => {
-    if (!canEdit && statusLabel) {
-      toast.error(`Editing is restricted for projects with status "${statusLabel}"`, { duration: 5000 });
-    }
-  }, [canEdit, statusLabel]);
-
 
   // Fetch estimate by project_id if only projectId is provided
   const { data: projectEstimates } = useQuery({
@@ -157,6 +168,13 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
       return products.find(p => p.id === viewingProductId) || null;
     },
     enabled: !!viewingProductId
+  });
+
+  // Load financial totals for Additional Income/Expense
+  const { data: financialTotals } = useQuery({
+    queryKey: ['projectFinancialTotals', projectId],
+    queryFn: () => projectId ? api<any>('GET', `/projects/${projectId}/financial-totals`) : Promise.resolve({ additional_income: 0, additional_expense: 0 }),
+    enabled: !!projectId
   });
 
   // Load estimate data on mount - only once per estimateId
@@ -217,7 +235,9 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
           taxable: it.taxable !== false,
           labour_journey: it.labour_journey,
           labour_men: it.labour_men,
-          labour_journey_type: it.labour_journey_type
+          labour_journey_type: it.labour_journey_type,
+          added_via_report_id: it.added_via_report_id,
+          added_via_report_date: it.added_via_report_date
         };
       });
       setItems(formattedItems);
@@ -247,6 +267,13 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
     }
     return it.quantity * it.unit_price;
   };
+
+  // Calculate item total with markup applied
+  const calculateItemTotalWithMarkup = useCallback((it: Item): number => {
+    const itemTotal = calculateItemTotal(it);
+    const itemMarkup = it.markup !== undefined && it.markup !== null ? it.markup : markup;
+    return itemTotal * (1 + (itemMarkup / 100));
+  }, [markup]);
 
   // Total of all items
   const total = useMemo(()=> {
@@ -379,13 +406,6 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
       isSavingRef.current = false;
     }
   }, [projectId, markup, pstRate, gstRate, profitRate, sectionOrder, sectionNames, items, currentEstimateId, canEdit, queryClient, dirty]);
-
-  // Show warning if editing is restricted
-  useEffect(() => {
-    if (!canEdit && statusLabel) {
-      toast.error(`Editing is restricted for projects with status "${statusLabel}"`, { duration: 5000 });
-    }
-  }, [canEdit, statusLabel]);
 
   // Keep pendingSaveRef updated with current state whenever it changes
   useEffect(() => {
@@ -667,6 +687,61 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
              .reduce((sum, section) => sum + calculateSectionSubtotal(section), 0);
   }, [sectionOrder, calculateSectionSubtotal]);
 
+  // Calculate Estimate Changes totals by category
+  const estimateChangesProductsTotal = useMemo(() => {
+    return items
+      .filter(it => {
+        const section = it.section || 'Miscellaneous';
+        return !!it.added_via_report_id &&
+               !['Labour', 'Sub-Contractors', 'Shop', 'Miscellaneous'].includes(section) &&
+               !section.startsWith('Labour Section') &&
+               !section.startsWith('Sub-Contractor Section') &&
+               !section.startsWith('Shop Section') &&
+               !section.startsWith('Miscellaneous Section');
+      })
+      .reduce((acc, it) => acc + calculateItemTotalWithMarkup(it), 0);
+  }, [items, calculateItemTotalWithMarkup]);
+
+  const estimateChangesLabourTotal = useMemo(() => {
+    return items
+      .filter(it => {
+        const section = it.section || 'Miscellaneous';
+        return !!it.added_via_report_id &&
+               (section === 'Labour' || section.startsWith('Labour Section'));
+      })
+      .reduce((acc, it) => acc + calculateItemTotalWithMarkup(it), 0);
+  }, [items, calculateItemTotalWithMarkup]);
+
+  const estimateChangesSubContractorsTotal = useMemo(() => {
+    return items
+      .filter(it => {
+        const section = it.section || 'Miscellaneous';
+        return !!it.added_via_report_id &&
+               (section === 'Sub-Contractors' || section.startsWith('Sub-Contractor Section'));
+      })
+      .reduce((acc, it) => acc + calculateItemTotalWithMarkup(it), 0);
+  }, [items, calculateItemTotalWithMarkup]);
+
+  const estimateChangesShopTotal = useMemo(() => {
+    return items
+      .filter(it => {
+        const section = it.section || 'Miscellaneous';
+        return !!it.added_via_report_id &&
+               (section === 'Shop' || section.startsWith('Shop Section'));
+      })
+      .reduce((acc, it) => acc + calculateItemTotalWithMarkup(it), 0);
+  }, [items, calculateItemTotalWithMarkup]);
+
+  const estimateChangesMiscellaneousTotal = useMemo(() => {
+    return items
+      .filter(it => {
+        const section = it.section || 'Miscellaneous';
+        return !!it.added_via_report_id &&
+               (section === 'Miscellaneous' || section.startsWith('Miscellaneous Section'));
+      })
+      .reduce((acc, it) => acc + calculateItemTotalWithMarkup(it), 0);
+  }, [items, calculateItemTotalWithMarkup]);
+
   // Calculate Total Direct Project Costs as sum of all specific costs
   const totalDirectProjectCosts = useMemo(() => {
     return totalProductsCosts + totalLabourCosts + totalSubContractorsCosts + totalShopCosts + totalMiscellaneousCosts;
@@ -709,8 +784,17 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
     getGrandTotal: () => grandTotal,
     getTotalEstimate: () => finalTotal, // Returns Total Estimate (before GST)
     getPst: () => pst,
-    getGst: () => gst
-  }), [dirty, canEdit, performSave, grandTotal, finalTotal, pst, gst]);
+    getGst: () => gst,
+    getEstimateData: () => ({
+      items,
+      markup,
+      pstRate,
+      gstRate,
+      profitRate,
+      sectionOrder,
+      sectionNames
+    })
+  }), [dirty, canEdit, performSave, grandTotal, finalTotal, pst, gst, items, markup, pstRate, gstRate, profitRate, sectionOrder, sectionNames]);
 
   // Sync section order with items (add new sections that appear in items)
   useEffect(()=>{
@@ -755,7 +839,6 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
   // Handle remove item with confirmation
   const handleRemoveItem = useCallback(async (index: number, itemName: string) => {
     if (!canEdit) {
-      toast.error('Editing is restricted for this project status');
       return;
     }
     
@@ -785,7 +868,6 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
   // Handle remove section with confirmation
   const handleRemoveSection = useCallback(async (section: string) => {
     if (!canEdit) {
-      toast.error('Editing is restricted for this project status');
       return;
     }
     
@@ -815,8 +897,7 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
     <div>
       {showRestrictionWarning && (
         <div className="mb-4 p-4 bg-yellow-50 border border-yellow-200 rounded text-sm text-yellow-800">
-          <strong>Editing Restricted:</strong> This project has status "{statusLabel}" which does not allow editing proposals or estimates. 
-          Please change the project status to allow editing.
+          <strong>Editing Restricted:</strong> This project has status "{statusLabel}" which does not allow editing proposals or estimates.
         </div>
       )}
       {canEdit && (
@@ -1257,24 +1338,39 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
                       }
                     }
                     const totalWithMarkup = totalValue * (1 + (itemMarkup/100));
+                    const isFromReport = !!it.added_via_report_id;
                     return (
-                      <tr key={`${section}-${originalIdx}`} className="border-b hover:bg-gray-50">
+                      <tr
+                        key={`${section}-${originalIdx}`}
+                        className={`border-b ${isFromReport ? '!bg-yellow-50' : 'hover:bg-gray-50'}`}
+                      >
                         {!isLabourSection ? (
                           <>
-                            <td className="p-2">
-                              {it.item_type === 'product' && it.material_id ? (
-                                <button
-                                  onClick={() => setViewingProductId(it.material_id!)}
-                                  className="text-left cursor-pointer hover:text-red-600"
-                                  title="View product details"
-                                >
-                                  {it.name}
-                                </button>
-                              ) : (
-                                <span>{it.name}</span>
-                              )}
+                            <td className={`p-2 ${isFromReport ? 'bg-yellow-50' : ''}`}>
+                              <div className="flex items-center gap-2">
+                                {it.added_via_report_id && (
+                                  <div className="relative group/alert inline-flex items-center">
+                                    <EstimateChangesAlertIcon />
+                                    <div className="absolute left-0 bottom-full mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg whitespace-nowrap opacity-0 group-hover/alert:opacity-100 transition-opacity pointer-events-none z-50 shadow-lg">
+                                      Added via Report (Estimate Changes) on {it.added_via_report_date ? new Date(it.added_via_report_date).toLocaleDateString() : 'unknown date'}
+                                      <div className="absolute -bottom-1 left-4 w-2 h-2 bg-gray-900 rotate-45"></div>
+                                    </div>
+                                  </div>
+                                )}
+                                {it.item_type === 'product' && it.material_id ? (
+                                  <button
+                                    onClick={() => setViewingProductId(it.material_id!)}
+                                    className="text-left cursor-pointer hover:text-red-600"
+                                    title="View product details"
+                                  >
+                                    {it.name}
+                                  </button>
+                                ) : (
+                                  <span>{it.name}</span>
+                                )}
+                              </div>
                             </td>
-                            <td className="p-2">
+                            <td className={`p-2 ${isFromReport ? 'bg-yellow-50' : ''}`}>
                               <input type="number" className={`w-20 border rounded px-2 py-1 ${!canEdit ? 'bg-gray-100 cursor-not-allowed' : ''}`}
                                 value={it.qty_required ?? ''} min={0} step={1}
                                 onChange={e=>{
@@ -1304,7 +1400,7 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
                                 disabled={!canEdit}
                                 readOnly={!canEdit} />
                             </td>
-                            <td className="p-2">
+                            <td className={`p-2 ${isFromReport ? 'bg-yellow-50' : ''}`}>
                               <select className={`w-20 border rounded px-2 py-1 ${!canEdit ? 'bg-gray-100 cursor-not-allowed' : ''}`}
                                 value={it.unit_required||''}
                                 onChange={e=>{
@@ -1327,8 +1423,8 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
                                 {it.unit_type === 'unitary' && <option value="Each">Each</option>}
                               </select>
                             </td>
-                            <td className="p-2">${it.unit_price.toFixed(2)}</td>
-                            <td className="p-2">
+                            <td className={`p-2 ${isFromReport ? 'bg-yellow-50' : ''}`}>${it.unit_price.toFixed(2)}</td>
+                            <td className={`p-2 ${isFromReport ? 'bg-yellow-50' : ''}`}>
                               <input type="number" className={`w-20 border rounded px-2 py-1 ${!canEdit ? 'bg-gray-100 cursor-not-allowed' : ''}`}
                                 value={it.quantity ?? ''} min={0} step={1}
                                 onChange={e=>{
@@ -1352,9 +1448,9 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
                                 disabled={!canEdit}
                                 readOnly={!canEdit} />
                             </td>
-                            <td className="p-2">{it.unit||''}</td>
-                            <td className="p-2">${totalValue.toFixed(2)}</td>
-                            <td className="p-2">
+                            <td className={`p-2 ${isFromReport ? 'bg-yellow-50' : ''}`}>{it.unit||''}</td>
+                            <td className={`p-2 ${isFromReport ? 'bg-yellow-50' : ''}`}>${totalValue.toFixed(2)}</td>
+                            <td className={`p-2 ${isFromReport ? 'bg-yellow-50' : ''}`}>
                               <input type="number" className={`w-16 border rounded px-2 py-1 ${!canEdit ? 'bg-gray-100 cursor-not-allowed' : ''}`}
                                 value={it.markup !== undefined && it.markup !== null ? it.markup : ''} min={0} step={1}
                                 onChange={e=>{
@@ -1378,8 +1474,8 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
                                 disabled={!canEdit}
                                 readOnly={!canEdit} />
                             </td>
-                            <td className="p-2">${totalWithMarkup.toFixed(2)}</td>
-                            <td className="p-2 text-center">
+                            <td className={`p-2 ${isFromReport ? 'bg-yellow-50' : ''}`}>${totalWithMarkup.toFixed(2)}</td>
+                            <td className={`p-2 text-center ${isFromReport ? 'bg-yellow-50' : ''}`}>
                               <input type="checkbox" checked={it.taxable!==false} 
                                 onChange={e=>{
                                   if (!canEdit) return;
@@ -1388,12 +1484,25 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
                                 className={canEdit ? 'cursor-pointer' : 'cursor-not-allowed'}
                                 disabled={!canEdit} />
                             </td>
-                            <td className="p-2">{it.supplier_name||''}</td>
+                            <td className={`p-2 ${isFromReport ? 'bg-yellow-50' : ''}`}>{it.supplier_name||''}</td>
                           </>
                         ) : (
                           <>
-                            <td className="p-2">{it.description||it.name}</td>
-                            <td className="p-2">
+                            <td className={`p-2 ${isFromReport ? 'bg-yellow-50' : ''}`}>
+                              <div className="flex items-center gap-2">
+                                {it.added_via_report_id && (
+                                  <div className="relative group/alert inline-flex items-center">
+                                    <EstimateChangesAlertIcon />
+                                    <div className="absolute left-0 bottom-full mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg whitespace-nowrap opacity-0 group-hover/alert:opacity-100 transition-opacity pointer-events-none z-50 shadow-lg">
+                                      Added via Report (Estimate Changes) on {it.added_via_report_date ? new Date(it.added_via_report_date).toLocaleDateString() : 'unknown date'}
+                                      <div className="absolute -bottom-1 left-4 w-2 h-2 bg-gray-900 rotate-45"></div>
+                                    </div>
+                                  </div>
+                                )}
+                                <span>{it.description||it.name}</span>
+                              </div>
+                            </td>
+                            <td className={`p-2 ${isFromReport ? 'bg-yellow-50' : ''}`}>
                               {it.item_type === 'labour' && it.labour_journey_type ? (
                                 it.labour_journey_type === 'contract' ? (
                                   <div className="flex items-center gap-2">
@@ -1499,7 +1608,7 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
                                 </div>
                               )}
                             </td>
-                            <td className="p-2 text-left">
+                            <td className={`p-2 text-left ${isFromReport ? 'bg-yellow-50' : ''}`}>
                               <div className="flex items-center gap-1">
                                 <span>$</span>
                                 <input type="number" className={`w-20 border rounded px-2 py-1 ${!canEdit ? 'bg-gray-100 cursor-not-allowed' : ''}`}
@@ -1569,8 +1678,8 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
                                 </span>
                               </div>
                             </td>
-                            <td className="p-2">${totalValue.toFixed(2)}</td>
-                            <td className="p-2">
+                            <td className={`p-2 ${isFromReport ? 'bg-yellow-50' : ''}`}>${totalValue.toFixed(2)}</td>
+                            <td className={`p-2 ${isFromReport ? 'bg-yellow-50' : ''}`}>
                               <input type="number" className={`w-16 border rounded px-2 py-1 ${!canEdit ? 'bg-gray-100 cursor-not-allowed' : ''}`}
                                 value={it.markup !== undefined && it.markup !== null ? it.markup : ''} min={0} step={1}
                                 onChange={e=>{
@@ -1594,8 +1703,8 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
                                 disabled={!canEdit}
                                 readOnly={!canEdit} />
                             </td>
-                            <td className="p-2">${totalWithMarkup.toFixed(2)}</td>
-                            <td className="p-2 text-center">
+                            <td className={`p-2 ${isFromReport ? 'bg-yellow-50' : ''}`}>${totalWithMarkup.toFixed(2)}</td>
+                            <td className={`p-2 text-center ${isFromReport ? 'bg-yellow-50' : ''}`}>
                               <input type="checkbox" checked={it.taxable!==false} 
                                 onChange={e=>{
                                   if (!canEdit) return;
@@ -1606,8 +1715,8 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
                             </td>
                           </>
                         )}
-                        {canEdit && (
-                          <td className="p-2">
+                        {canEdit ? (
+                          <td className={`p-2 ${isFromReport ? 'bg-yellow-50' : ''}`}>
                             <button 
                               onClick={()=> handleRemoveItem(originalIdx, it.name || it.description || 'this item')} 
                               className="px-2 py-1 rounded text-gray-500 hover:text-red-600" 
@@ -1617,6 +1726,9 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
                               </svg>
                             </button>
                           </td>
+                        ) : (
+                          // Keep table column alignment consistent with header even when read-only
+                          <td className={`p-2 ${isFromReport ? 'bg-yellow-50' : ''}`}></td>
                         )}
                       </tr>
                     );
@@ -1625,7 +1737,42 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
                 </tbody>
                 <tfoot className="bg-gray-50">
                   <tr>
-                    <td colSpan={!isLabourSection ? 10 : 7} className="p-2 text-right font-semibold">Section Subtotal:</td>
+                    <td colSpan={!isLabourSection ? 10 : 7} className="p-2 text-right font-semibold">
+                      <div className="flex items-center justify-end gap-2">
+                        {(() => {
+                          const estimateChangesItems = sectionItems.filter(it => !!it.added_via_report_id);
+                          const estimateChangesTotal = estimateChangesItems.reduce((acc, it) => {
+                            const m = it.markup !== undefined && it.markup !== null ? it.markup : markup;
+                            let itemTotal = 0;
+                            if (!isLabourSection) {
+                              itemTotal = it.quantity * it.unit_price;
+                            } else {
+                              if (it.item_type === 'labour' && it.labour_journey_type) {
+                                if (it.labour_journey_type === 'contract') {
+                                  itemTotal = it.labour_journey! * it.unit_price;
+                                } else {
+                                  itemTotal = it.labour_journey! * it.labour_men! * it.unit_price;
+                                }
+                              } else {
+                                itemTotal = it.quantity * it.unit_price;
+                              }
+                            }
+                            return acc + (itemTotal * (1 + (m/100)));
+                          }, 0);
+                          
+                          return estimateChangesTotal > 0 ? (
+                            <div className="relative group/alert inline-flex items-center">
+                              <EstimateChangesAlertIcon className="w-4 h-4" />
+                              <div className="absolute right-0 bottom-full mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg whitespace-nowrap opacity-0 group-hover/alert:opacity-100 transition-opacity pointer-events-none z-50 shadow-lg">
+                              Amount for items added via Report (Estimate Changes): ${estimateChangesTotal.toFixed(2)}
+                                <div className="absolute -bottom-1 right-4 w-2 h-2 bg-gray-900 rotate-45"></div>
+                              </div>
+                            </div>
+                          ) : null;
+                        })()}
+                        <span>Section Subtotal:</span>
+                      </div>
+                    </td>
                     <td className="p-2 text-right font-bold">${sectionItems.reduce((acc, it)=> {
                       const m = it.markup !== undefined && it.markup !== null ? it.markup : markup;
                       let itemTotal = 0;
@@ -1671,11 +1818,81 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
               {/* Left Card */}
               <div className="rounded-xl border bg-white p-4">
                 <div className="space-y-1 text-sm">
-                  <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span>Total Products Costs</span><span>${totalProductsCosts.toFixed(2)}</span></div>
-                  <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span>Total Labour Costs</span><span>${totalLabourCosts.toFixed(2)}</span></div>
-                  <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span>Total Sub-Contractors Costs</span><span>${totalSubContractorsCosts.toFixed(2)}</span></div>
-                  <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span>Total Shop Costs</span><span>${totalShopCosts.toFixed(2)}</span></div>
-                  <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span>Total Miscellaneous Costs</span><span>${totalMiscellaneousCosts.toFixed(2)}</span></div>
+                  <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1">
+                    <span>Total Products Costs</span>
+                    <span className="flex items-center gap-2">
+                      {estimateChangesProductsTotal > 0 && (
+                        <div className="relative group/alert inline-flex items-center">
+                          <EstimateChangesAlertIcon className="w-4 h-4" />
+                          <div className="absolute right-0 bottom-full mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg whitespace-nowrap opacity-0 group-hover/alert:opacity-100 transition-opacity pointer-events-none z-50 shadow-lg">
+                          Amount for items added via Report (Estimate Changes): ${estimateChangesProductsTotal.toFixed(2)}
+                            <div className="absolute -bottom-1 right-4 w-2 h-2 bg-gray-900 rotate-45"></div>
+                          </div>
+                        </div>
+                      )}
+                      <span>${totalProductsCosts.toFixed(2)}</span>
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1">
+                    <span>Total Labour Costs</span>
+                    <span className="flex items-center gap-2">
+                      {estimateChangesLabourTotal > 0 && (
+                        <div className="relative group/alert inline-flex items-center">
+                          <EstimateChangesAlertIcon className="w-4 h-4" />
+                          <div className="absolute right-0 bottom-full mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg whitespace-nowrap opacity-0 group-hover/alert:opacity-100 transition-opacity pointer-events-none z-50 shadow-lg">
+                          Amount for items added via Report (Estimate Changes): ${estimateChangesLabourTotal.toFixed(2)}
+                            <div className="absolute -bottom-1 right-4 w-2 h-2 bg-gray-900 rotate-45"></div>
+                          </div>
+                        </div>
+                      )}
+                      <span>${totalLabourCosts.toFixed(2)}</span>
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1">
+                    <span>Total Sub-Contractors Costs</span>
+                    <span className="flex items-center gap-2">
+                      {estimateChangesSubContractorsTotal > 0 && (
+                        <div className="relative group/alert inline-flex items-center">
+                          <EstimateChangesAlertIcon className="w-4 h-4" />
+                          <div className="absolute right-0 bottom-full mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg whitespace-nowrap opacity-0 group-hover/alert:opacity-100 transition-opacity pointer-events-none z-50 shadow-lg">
+                          Amount for items added via Report (Estimate Changes): ${estimateChangesSubContractorsTotal.toFixed(2)}
+                            <div className="absolute -bottom-1 right-4 w-2 h-2 bg-gray-900 rotate-45"></div>
+                          </div>
+                        </div>
+                      )}
+                      <span>${totalSubContractorsCosts.toFixed(2)}</span>
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1">
+                    <span>Total Shop Costs</span>
+                    <span className="flex items-center gap-2">
+                      {estimateChangesShopTotal > 0 && (
+                        <div className="relative group/alert inline-flex items-center">
+                          <EstimateChangesAlertIcon className="w-4 h-4" />
+                          <div className="absolute right-0 bottom-full mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg whitespace-nowrap opacity-0 group-hover/alert:opacity-100 transition-opacity pointer-events-none z-50 shadow-lg">
+                          Amount for items added via Report (Estimate Changes): ${estimateChangesShopTotal.toFixed(2)}
+                            <div className="absolute -bottom-1 right-4 w-2 h-2 bg-gray-900 rotate-45"></div>
+                          </div>
+                        </div>
+                      )}
+                      <span>${totalShopCosts.toFixed(2)}</span>
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1">
+                    <span>Total Miscellaneous Costs</span>
+                    <span className="flex items-center gap-2">
+                      {estimateChangesMiscellaneousTotal > 0 && (
+                        <div className="relative group/alert inline-flex items-center">
+                          <EstimateChangesAlertIcon className="w-4 h-4" />
+                          <div className="absolute right-0 bottom-full mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg whitespace-nowrap opacity-0 group-hover/alert:opacity-100 transition-opacity pointer-events-none z-50 shadow-lg">
+                          Amount for items added via Report (Estimate Changes): ${estimateChangesMiscellaneousTotal.toFixed(2)}
+                            <div className="absolute -bottom-1 right-4 w-2 h-2 bg-gray-900 rotate-45"></div>
+                          </div>
+                        </div>
+                      )}
+                      <span>${totalMiscellaneousCosts.toFixed(2)}</span>
+                    </span>
+                  </div>
                   <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span className="font-bold">Total Direct Costs</span><span className="font-bold">${totalDirectProjectCosts.toFixed(2)}</span></div>
                   <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span>PST ({pstRate}%)</span><span>${pst.toFixed(2)}</span></div>
                   <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span className="font-bold">Sub-total</span><span className="font-bold">${subtotal.toFixed(2)}</span></div>
@@ -1694,12 +1911,30 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
                       min={0} 
                       step={1}
                       onChange={e=>setProfitRate(Number(e.target.value||0))} 
+                      disabled={!canEdit}
                     />
                   </div>
                   <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span className="font-bold">Total Profit</span><span className="font-bold">${profitValue.toFixed(2)}</span></div>
                   <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span className="font-bold">Total Estimate</span><span className="font-bold">${finalTotal.toFixed(2)}</span></div>
                   <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span>GST ({gstRate}%)</span><span>${gst.toFixed(2)}</span></div>
-                  <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1 text-lg"><span className="font-bold">Final Total (with GST)</span><span className="font-bold">${grandTotal.toFixed(2)}</span></div>
+                  {(() => {
+                    const additionalIncome = financialTotals?.additional_income || 0;
+                    const additionalExpense = financialTotals?.additional_expense || 0;
+                    if (additionalIncome > 0 || additionalExpense > 0) {
+                      return (
+                        <>
+                          {additionalIncome > 0 && (
+                            <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span>Additional Income</span><span>${additionalIncome.toFixed(2)}</span></div>
+                          )}
+                          {additionalExpense > 0 && (
+                            <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span>Additional Expense</span><span>${additionalExpense.toFixed(2)}</span></div>
+                          )}
+                        </>
+                      );
+                    }
+                    return null;
+                  })()}
+                  <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1 text-lg"><span className="font-bold">Final Total (with GST)</span><span className="font-bold">${(grandTotal + (financialTotals?.additional_income || 0) - (financialTotals?.additional_expense || 0)).toFixed(2)}</span></div>
                 </div>
               </div>
             </div>
@@ -1813,38 +2048,9 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
                 </button>
               </div>
               
-              {/* Right: Generate Orders (only for Projects, not Opportunities) and Save */}
+              {/* Right: Save */}
               {canEdit ? (
                 <div className="flex items-center gap-2">
-                  {!isBidding && (
-                    <>
-                      <button 
-                        onClick={async () => {
-                          if (!currentEstimateId) {
-                            toast.error('Please save the estimate first');
-                            return;
-                          }
-                          try {
-                            setIsLoading(true);
-                            const response = await api('POST', `/orders/projects/${projectId}/generate`, { estimate_id: currentEstimateId });
-                            toast.success(`Generated ${response.orders_created || 0} orders successfully`);
-                            // Invalidate orders query so they appear immediately in the orders tab
-                            queryClient.invalidateQueries({ queryKey: ['projectOrders', projectId] });
-                            // Navigate to orders tab would be handled by parent
-                          } catch (error: any) {
-                            const errorMsg = error.response?.data?.detail || error.message || 'Failed to generate orders';
-                            toast.error(errorMsg);
-                          } finally {
-                            setIsLoading(false);
-                          }
-                        }}
-                        disabled={isLoading || !currentEstimateId || items.length === 0}
-                        className="px-4 py-2 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium disabled:opacity-60 disabled:cursor-not-allowed transition-colors">
-                        {isLoading ? 'Generating...' : 'Generate Orders'}
-                      </button>
-                      <div className="w-px h-5 bg-gray-300"></div>
-                    </>
-                  )}
                   <button 
                     disabled={!dirty} 
                     onClick={handleManualSave}
@@ -1869,7 +2075,14 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
 
 export default EstimateBuilder;
 
-function SummaryModal({ open, onClose, items, pstRate, gstRate, markup, profitRate, sectionNames, sectionOrder }: { open:boolean, onClose:()=>void, items:Item[], pstRate:number, gstRate:number, markup:number, profitRate:number, sectionNames:Record<string, string>, sectionOrder:string[] }){
+function SummaryModal({ open, onClose, items, pstRate, gstRate, markup, profitRate, sectionNames, sectionOrder, projectId }: { open:boolean, onClose:()=>void, items:Item[], pstRate:number, gstRate:number, markup:number, profitRate:number, sectionNames:Record<string, string>, sectionOrder:string[], projectId?:string }){
+  // Load financial totals for Additional Income/Expense
+  const { data: financialTotals } = useQuery({
+    queryKey: ['projectFinancialTotals', projectId],
+    queryFn: () => projectId ? api<any>('GET', `/projects/${projectId}/financial-totals`) : Promise.resolve({ additional_income: 0, additional_expense: 0 }),
+    enabled: !!projectId && !!open
+  });
+  
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
@@ -2223,8 +2436,25 @@ function SummaryModal({ open, onClose, items, pstRate, gstRate, markup, profitRa
               </div>
               <div className="flex items-center justify-between"><span>Total Profit:</span><span className="font-medium">${profitValue.toFixed(2)}</span></div>
               <div className="flex items-center justify-between"><span>Total Estimate:</span><span className="font-medium">${totalEstimate.toFixed(2)}</span></div>
-              <div className="flex items-center justify-between"><span>GST:</span><span className="font-medium">${gst.toFixed(2)}</span></div>
-              <div className="flex items-center justify-between font-semibold text-lg border-t pt-2"><span>Grand Total:</span><span className="font-semibold">${finalTotal.toFixed(2)}</span></div>
+                  <div className="flex items-center justify-between"><span>GST:</span><span className="font-medium">${gst.toFixed(2)}</span></div>
+                  {(() => {
+                    const additionalIncome = financialTotals?.additional_income || 0;
+                    const additionalExpense = financialTotals?.additional_expense || 0;
+                    if (additionalIncome > 0 || additionalExpense > 0) {
+                      return (
+                        <>
+                          {additionalIncome > 0 && (
+                            <div className="flex items-center justify-between"><span>Additional Income:</span><span className="font-medium">${additionalIncome.toFixed(2)}</span></div>
+                          )}
+                          {additionalExpense > 0 && (
+                            <div className="flex items-center justify-between"><span>Additional Expense:</span><span className="font-medium">${additionalExpense.toFixed(2)}</span></div>
+                          )}
+                        </>
+                      );
+                    }
+                    return null;
+                  })()}
+                  <div className="flex items-center justify-between font-semibold text-lg border-t pt-2"><span>Grand Total:</span><span className="font-semibold">${(finalTotal + (financialTotals?.additional_income || 0) - (financialTotals?.additional_expense || 0)).toFixed(2)}</span></div>
             </div>
           </div>
         </div>
@@ -2333,6 +2563,7 @@ function ProductViewModal({ product, onClose }: { product: Material, onClose: ()
 }
 
 function AddProductModal({ onAdd, disabled, defaultMarkup, open: openProp, onClose: onCloseProp, section: sectionProp }: { onAdd:(it: Item)=>void, disabled?: boolean, defaultMarkup?: number, open?: boolean, onClose?: ()=>void, section?: string }){
+  const queryClient = useQueryClient();
   const [internalOpen, setInternalOpen] = useState(false);
   const open = openProp !== undefined ? openProp : internalOpen;
   const setOpen = onCloseProp ? (val: boolean) => { if (!val && onCloseProp) onCloseProp(); if (openProp === undefined) setInternalOpen(val); } : setInternalOpen;
@@ -2341,8 +2572,9 @@ function AddProductModal({ onAdd, disabled, defaultMarkup, open: openProp, onClo
   const [selection, setSelection] = useState<Material|null>(null);
   const [supplierModalOpen, setSupplierModalOpen] = useState(false);
   const [compareModalOpen, setCompareModalOpen] = useState(false);
+  const [newProductModalOpen, setNewProductModalOpen] = useState(false);
   const [displayedCount, setDisplayedCount] = useState(5);
-  const { data } = useQuery({ 
+  const { data, isLoading } = useQuery({ 
     queryKey:['mat-search', q], 
     queryFn: async()=>{
       if (!q.trim()) return [];
@@ -2355,6 +2587,7 @@ function AddProductModal({ onAdd, disabled, defaultMarkup, open: openProp, onClo
   const allResults = data||[];
   const list = allResults.slice(0, displayedCount);
   const hasMore = allResults.length > displayedCount;
+  const hasNoResults = q.trim().length >= 2 && !isLoading && allResults.length === 0;
 
   useEffect(() => {
     if (sectionProp) {
@@ -2418,6 +2651,19 @@ function AddProductModal({ onAdd, disabled, defaultMarkup, open: openProp, onClo
                       Load more ({allResults.length - displayedCount} remaining)
                     </button>
                   )}
+                </div>
+              )}
+              {hasNoResults && (
+                <div className="border rounded p-4 bg-gray-50">
+                  <div className="text-sm text-gray-600 mb-3">
+                    No products found matching "{q}"
+                  </div>
+                  <button
+                    onClick={() => setNewProductModalOpen(true)}
+                    className="w-full px-4 py-2 rounded bg-blue-50 hover:bg-blue-100 text-blue-700 font-medium text-sm"
+                  >
+                    + Create new product: "{q}"
+                  </button>
                 </div>
               )}
               {selection && (
@@ -2525,13 +2771,31 @@ function AddProductModal({ onAdd, disabled, defaultMarkup, open: openProp, onClo
           }}
         />
       )}
+      {newProductModalOpen && (
+        <NewProductModal
+          open={true}
+          onClose={() => setNewProductModalOpen(false)}
+          initialSupplier={''}
+          queryClient={queryClient}
+          onProductCreated={(product: Material) => {
+            setSelection(product);
+            setNewProductModalOpen(false);
+            // Pre-fill the search query with the new product name
+            setQ(product.name);
+            // Automatically select the product so user can click "Add Item"
+            // The product is already set in selection, so it will show in the preview
+          }}
+        />
+      )}
     </>
   );
 }
 
 function SupplierProductModal({ open, onClose, onSelect }: { open: boolean, onClose: ()=>void, onSelect: (product: Material)=>void }){
+  const queryClient = useQueryClient();
   const [selectedSupplier, setSelectedSupplier] = useState<string | null>(null);
   const [displayedProductCount, setDisplayedProductCount] = useState(20);
+  const [newProductModalOpen, setNewProductModalOpen] = useState(false);
   const { data: suppliers } = useQuery({ 
     queryKey: ['suppliers'], 
     queryFn: async () => {
@@ -2620,6 +2884,14 @@ function SupplierProductModal({ open, onClose, onSelect }: { open: boolean, onCl
                 {products && products.length > 0 ? (
                   <>
                     <div className="grid grid-cols-4 gap-3">
+                      {/* New Product Card - First position */}
+                      <button
+                        onClick={() => setNewProductModalOpen(true)}
+                        className="border-2 border-dashed border-gray-300 rounded-lg p-3 hover:border-brand-red hover:bg-gray-50 transition-all text-center bg-white flex flex-col items-center justify-center min-h-[200px]">
+                        <div className="text-4xl text-gray-400 mb-2">+</div>
+                        <div className="font-medium text-sm text-gray-700">New Product</div>
+                        <div className="text-xs text-gray-500 mt-1">Add new product to {suppliers?.find(s => s.id === selectedSupplier)?.name || 'supplier'}</div>
+                      </button>
                       {products.map(product => (
                       <button
                         key={product.id}
@@ -2659,8 +2931,15 @@ function SupplierProductModal({ open, onClose, onSelect }: { open: boolean, onCl
                     )}
                   </>
                 ) : (
-                  <div className="text-center text-gray-500 py-8">
-                    No products found for this supplier
+                  <div className="text-center py-8">
+                    <div className="text-gray-500 mb-4">No products found for this supplier</div>
+                    <button
+                      onClick={() => setNewProductModalOpen(true)}
+                      className="border-2 border-dashed border-gray-300 rounded-lg p-6 hover:border-brand-red hover:bg-gray-50 transition-all text-center bg-white flex flex-col items-center justify-center mx-auto w-64">
+                      <div className="text-4xl text-gray-400 mb-2">+</div>
+                      <div className="font-medium text-sm text-gray-700">New Product</div>
+                      <div className="text-xs text-gray-500 mt-1">Add new product to {suppliers?.find(s => s.id === selectedSupplier)?.name || 'supplier'}</div>
+                    </button>
                   </div>
                 )}
               </div>
@@ -2668,6 +2947,18 @@ function SupplierProductModal({ open, onClose, onSelect }: { open: boolean, onCl
           </div>
         </div>
       </div>
+      {newProductModalOpen && selectedSupplier && (
+        <NewProductModal
+          open={true}
+          onClose={() => setNewProductModalOpen(false)}
+          initialSupplier={suppliers?.find(s => s.id === selectedSupplier)?.name || ''}
+          queryClient={queryClient}
+          onProductCreated={(product: Material) => {
+            onSelect(product);
+            setNewProductModalOpen(false);
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -2793,6 +3084,441 @@ function CompareProductsModal({ open, onClose, selectedProduct, onSelect }: { op
     </div>
   );
 }
+
+// New Product Modal for EstimateBuilder
+function NewProductModal({ open, onClose, onProductCreated, initialSupplier, queryClient }: { open: boolean, onClose: () => void, onProductCreated: (product: Material) => void, initialSupplier?: string, queryClient: any }) {
+  const [name, setName] = useState('');
+  const [nameError, setNameError] = useState(false);
+  const [duplicateError, setDuplicateError] = useState(false);
+  const [newSupplier, setNewSupplier] = useState('');
+  const [supplierError, setSupplierError] = useState(false);
+  const [newSupplierModalOpen, setNewSupplierModalOpen] = useState(false);
+  const [newCategory, setNewCategory] = useState('');
+  const [unit, setUnit] = useState('');
+  const [price, setPrice] = useState<string>('');
+  const [priceDisplay, setPriceDisplay] = useState<string>('');
+  const [priceFocused, setPriceFocused] = useState(false);
+  const [priceError, setPriceError] = useState(false);
+  const [desc, setDesc] = useState('');
+  const [unitType, setUnitType] = useState<'unitary'|'multiple'|'coverage'>('unitary');
+  const [unitsPerPackage, setUnitsPerPackage] = useState<string>('');
+  const [covSqs, setCovSqs] = useState<string>('');
+  const [covFt2, setCovFt2] = useState<string>('');
+  const [covM2, setCovM2] = useState<string>('');
+  const [imageDataUrl, setImageDataUrl] = useState<string>('');
+  const [imagePickerOpen, setImagePickerOpen] = useState(false);
+  const [isSavingProduct, setIsSavingProduct] = useState(false);
+  const [technicalManualUrl, setTechnicalManualUrl] = useState<string>('');
+
+  const { data: supplierOptions } = useQuery({ queryKey:['invSuppliersOptions'], queryFn: ()=> api<any[]>('GET','/inventory/suppliers') });
+  
+  // Check for duplicate products (same name and supplier)
+  const { data: existingProducts, isLoading: checkingDuplicate } = useQuery({
+    queryKey: ['product-duplicate-check', name.trim(), newSupplier],
+    queryFn: async () => {
+      if (!name.trim()) return [];
+      const params = new URLSearchParams();
+      params.set('q', name.trim());
+      if (newSupplier) {
+        params.set('supplier', newSupplier);
+      }
+      return await api<Material[]>('GET', `/estimate/products/search?${params.toString()}`);
+    },
+    enabled: !!name.trim() && !!newSupplier && open,
+  });
+
+  // Check for duplicates when name or supplier changes
+  useEffect(() => {
+    if (name.trim() && newSupplier && existingProducts) {
+      // Check if any product has the exact same name and supplier (case-insensitive)
+      const duplicate = existingProducts.find(
+        (p: Material) => 
+          p.name.toLowerCase().trim() === name.toLowerCase().trim() && 
+          p.supplier_name?.toLowerCase().trim() === newSupplier.toLowerCase().trim()
+      );
+      if (duplicate) {
+        setDuplicateError(true);
+      } else {
+        setDuplicateError(false);
+      }
+    } else {
+      setDuplicateError(false);
+    }
+  }, [name, newSupplier, existingProducts]);
+
+  const formatCurrency = (value: string): string => {
+    if (!value) return '';
+    const numericValue = value.replace(/[^0-9.]/g, '');
+    if (!numericValue) return '';
+    const num = parseFloat(numericValue);
+    if (isNaN(num)) return numericValue;
+    return new Intl.NumberFormat('en-CA', {
+      style: 'currency',
+      currency: 'CAD',
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(num);
+  };
+
+  const parseCurrency = (value: string): string => {
+    const parsed = value.replace(/[^0-9.]/g, '');
+    const parts = parsed.split('.');
+    if (parts.length > 2) {
+      return parts[0] + '.' + parts.slice(1).join('');
+    }
+    return parsed;
+  };
+
+  const onCoverageChange = (which: 'sqs'|'ft2'|'m2', val: string) => {
+    if (!val) { setCovSqs(''); setCovFt2(''); setCovM2(''); return; }
+    const num = parseFloat(val) || 0;
+    if (which === 'sqs') {
+      setCovSqs(val);
+      setCovFt2(String((num * 100).toFixed(2)));
+      setCovM2(String((num * 9.29).toFixed(2)));
+    } else if (which === 'ft2') {
+      setCovFt2(val);
+      setCovSqs(String((num / 100).toFixed(2)));
+      setCovM2(String((num * 0.0929).toFixed(2)));
+    } else if (which === 'm2') {
+      setCovM2(val);
+      setCovSqs(String((num / 9.29).toFixed(2)));
+      setCovFt2(String((num * 10.764).toFixed(2)));
+    }
+  };
+
+  useEffect(() => {
+    if (!open) {
+      setName('');
+      setNameError(false);
+      setDuplicateError(false);
+      setNewSupplier(initialSupplier || '');
+      setSupplierError(false);
+      setNewCategory('');
+      setUnit('');
+      setPrice('');
+      setPriceDisplay('');
+      setPriceFocused(false);
+      setPriceError(false);
+      setDesc('');
+      setUnitsPerPackage('');
+      setCovSqs('');
+      setCovFt2('');
+      setCovM2('');
+      setUnitType('unitary');
+      setImageDataUrl('');
+      setTechnicalManualUrl('');
+    } else if (open && initialSupplier) {
+      setNewSupplier(initialSupplier);
+    }
+  }, [open, initialSupplier]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => { 
+      if (e.key === 'Escape') onClose(); 
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open, onClose]);
+
+  if (!open) return null;
+
+  return (
+    <>
+      <div className="fixed inset-0 z-[80] bg-black/60 flex items-center justify-center p-4">
+        <div className="w-[800px] max-w-[95vw] bg-white rounded-xl overflow-hidden max-h-[90vh] flex flex-col">
+          <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] p-6 flex items-center gap-6 relative flex-shrink-0">
+            <div className="font-semibold text-lg text-white">New Product</div>
+            <button 
+              onClick={onClose} 
+              className="ml-auto text-white hover:text-gray-200 text-2xl font-bold w-8 h-8 flex items-center justify-center rounded hover:bg-white/20" 
+              title="Close"
+            >
+              ×
+            </button>
+          </div>
+          <div className="p-6 overflow-y-auto flex-1">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="col-span-2">
+                <label className="text-xs font-semibold text-gray-700">
+                  Name <span className="text-red-600">*</span>
+                </label>
+                <input 
+                  className={`w-full border rounded px-3 py-2 mt-1 ${(nameError && !name.trim()) || duplicateError ? 'border-red-500' : ''}`}
+                  value={name} 
+                  onChange={e=>{
+                    setName(e.target.value);
+                    if (nameError) setNameError(false);
+                    // Clear duplicate error when user starts typing
+                    if (duplicateError) setDuplicateError(false);
+                  }} 
+                />
+                {nameError && !name.trim() && (
+                  <div className="text-[11px] text-red-600 mt-1">This field is required</div>
+                )}
+                {duplicateError && (
+                  <div className="text-[11px] text-red-600 mt-1">
+                    A product with this name already exists for supplier "{newSupplier}". Please use a different name or select a different supplier.
+                  </div>
+                )}
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-gray-700">
+                  Supplier <span className="text-red-600">*</span>
+                </label>
+                <div className="mt-1">
+                  <SupplierSelect
+                    value={newSupplier}
+                    onChange={(value) => {
+                      setNewSupplier(value);
+                      if (supplierError) setSupplierError(false);
+                      // Clear duplicate error when supplier changes
+                      if (duplicateError) setDuplicateError(false);
+                    }}
+                    onOpenNewSupplierModal={() => setNewSupplierModalOpen(true)}
+                    error={(supplierError && !newSupplier.trim()) || duplicateError}
+                    placeholder="Select a supplier"
+                  />
+                </div>
+                {supplierError && !newSupplier.trim() && (
+                  <div className="text-[11px] text-red-600 mt-1">This field is required</div>
+                )}
+              </div>
+              <div><label className="text-xs font-semibold text-gray-700">Category</label><input className="w-full border rounded px-3 py-2 mt-1" value={newCategory} onChange={e=>setNewCategory(e.target.value)} /></div>
+              <div><label className="text-xs font-semibold text-gray-700">Sell Unit</label><input className="w-full border rounded px-3 py-2 mt-1" placeholder="e.g., Roll, Pail (20L), Box" value={unit} onChange={e=>setUnit(e.target.value)} /></div>
+              <div>
+                <label className="text-xs font-semibold text-gray-700">
+                  Price ($) <span className="text-red-600">*</span>
+                </label>
+                <input 
+                  type="text" 
+                  className={`w-full border rounded px-3 py-2 mt-1 ${priceError && (!price || !price.trim() || Number(parseCurrency(price)) <= 0) ? 'border-red-500' : ''}`}
+                  placeholder="$0.00"
+                  value={priceFocused ? priceDisplay : (price ? formatCurrency(price) : '')}
+                  onFocus={() => {
+                    setPriceFocused(true);
+                    setPriceDisplay(price || '');
+                  }}
+                  onBlur={() => {
+                    setPriceFocused(false);
+                    const parsed = parseCurrency(priceDisplay);
+                    setPrice(parsed);
+                    setPriceDisplay(parsed);
+                    if (priceError && parsed && Number(parsed) > 0) setPriceError(false);
+                  }}
+                  onChange={e => {
+                    const raw = e.target.value;
+                    setPriceDisplay(raw);
+                  }}
+                />
+                {priceError && (!price || !price.trim() || Number(parseCurrency(price)) <= 0) && (
+                  <div className="text-[11px] text-red-600 mt-1">This field is required</div>
+                )}
+              </div>
+              <div className="col-span-2">
+                <label className="text-xs font-semibold text-gray-700">Unit Type</label>
+                <div className="flex items-center gap-6 mt-1">
+                  <label className="flex items-center gap-2 text-sm"><input type="radio" name="unit-type-estimate" checked={unitType==='unitary'} onChange={()=>{ setUnitType('unitary'); setUnitsPerPackage(''); setCovSqs(''); setCovFt2(''); setCovM2(''); }} /> Unitary</label>
+                  <label className="flex items-center gap-2 text-sm"><input type="radio" name="unit-type-estimate" checked={unitType==='multiple'} onChange={()=>{ setUnitType('multiple'); setCovSqs(''); setCovFt2(''); setCovM2(''); }} /> Multiple</label>
+                  <label className="flex items-center gap-2 text-sm"><input type="radio" name="unit-type-estimate" checked={unitType==='coverage'} onChange={()=>{ setUnitType('coverage'); setUnitsPerPackage(''); }} /> Coverage</label>
+                </div>
+              </div>
+              {unitType==='multiple' && (
+                <div className="col-span-2">
+                  <label className="text-xs font-semibold text-gray-700">Units per Package</label>
+                  <input type="number" step="0.01" className="w-full border rounded px-3 py-2 mt-1" value={unitsPerPackage} onChange={e=>setUnitsPerPackage(e.target.value)} />
+                </div>
+              )}
+              {unitType==='coverage' && (
+                <div className="col-span-2">
+                  <label className="text-xs font-semibold text-gray-700">Coverage Area</label>
+                  <div className="flex items-center gap-2 mt-1">
+                    <div className="flex-1 flex items-center gap-1">
+                      <input 
+                        className="w-full border rounded px-3 py-2" 
+                        placeholder="0" 
+                        value={covSqs} 
+                        onChange={e=> onCoverageChange('sqs', e.target.value)} 
+                      />
+                      <span className="text-sm text-gray-600 whitespace-nowrap">SQS</span>
+                    </div>
+                    <span className="text-gray-400">=</span>
+                    <div className="flex-1 flex items-center gap-1">
+                      <input 
+                        className="w-full border rounded px-3 py-2" 
+                        placeholder="0" 
+                        value={covFt2} 
+                        onChange={e=> onCoverageChange('ft2', e.target.value)} 
+                      />
+                      <span className="text-sm text-gray-600 whitespace-nowrap">ft²</span>
+                    </div>
+                    <span className="text-gray-400">=</span>
+                    <div className="flex-1 flex items-center gap-1">
+                      <input 
+                        className="w-full border rounded px-3 py-2" 
+                        placeholder="0" 
+                        value={covM2} 
+                        onChange={e=> onCoverageChange('m2', e.target.value)} 
+                      />
+                      <span className="text-sm text-gray-600 whitespace-nowrap">m²</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+              <div className="col-span-2"><label className="text-xs font-semibold text-gray-700">Description / Notes</label><textarea className="w-full border rounded px-3 py-2 mt-1" rows={3} value={desc} onChange={e=>setDesc(e.target.value)} /></div>
+              <div className="col-span-2">
+                <label className="text-xs font-semibold text-gray-700">Technical Manual URL</label>
+                <input 
+                  className="w-full border rounded px-3 py-2 mt-1" 
+                  type="url"
+                  placeholder="https://supplier.com/manual/product"
+                  value={technicalManualUrl} 
+                  onChange={e=>setTechnicalManualUrl(e.target.value)} 
+                />
+              </div>
+              <div className="col-span-2">
+                <label className="text-xs font-semibold text-gray-700">Product Image</label>
+                <div className="mt-1 space-y-2">
+                  <button
+                    type="button"
+                    onClick={() => setImagePickerOpen(true)}
+                    className="px-3 py-2 rounded bg-gray-100 hover:bg-gray-200 text-sm">
+                    {imageDataUrl ? 'Change Image' : 'Select Image'}
+                  </button>
+                  {imageDataUrl && (
+                    <div className="mt-2">
+                      <img src={imageDataUrl} className="w-32 h-32 object-contain border rounded" alt="Preview" />
+                      <button
+                        type="button"
+                        onClick={() => setImageDataUrl('')}
+                        className="mt-2 px-2 py-1 text-xs rounded bg-red-100 text-red-700 hover:bg-red-200">
+                        Remove Image
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+          <div className="px-4 py-3 border-t bg-gray-50 flex justify-end gap-2">
+            <button onClick={onClose} className="px-4 py-2 rounded bg-gray-200 hover:bg-gray-300">Cancel</button>
+            <button 
+              onClick={async()=>{
+                if(isSavingProduct) return;
+                
+                if(!name.trim()){
+                  setNameError(true);
+                  toast.error('Name is required');
+                  return;
+                }
+                
+                if(!newSupplier.trim()){
+                  setSupplierError(true);
+                  toast.error('Supplier is required');
+                  return;
+                }
+                
+                // Check for duplicate before creating
+                if (name.trim() && newSupplier) {
+                  try {
+                    const params = new URLSearchParams();
+                    params.set('q', name.trim());
+                    params.set('supplier', newSupplier);
+                    const duplicateCheck = await api<Material[]>('GET', `/estimate/products/search?${params.toString()}`);
+                    const duplicate = duplicateCheck.find(
+                      (p: Material) => 
+                        p.name.toLowerCase().trim() === name.toLowerCase().trim() && 
+                        p.supplier_name?.toLowerCase().trim() === newSupplier.toLowerCase().trim()
+                    );
+                    if (duplicate) {
+                      setDuplicateError(true);
+                      toast.error(`A product with the name "${name.trim()}" already exists for supplier "${newSupplier}". Please use a different name or select a different supplier.`);
+                      return;
+                    }
+                  } catch (e) {
+                    // If check fails, continue (server will validate anyway)
+                    console.error('Error checking for duplicate:', e);
+                  }
+                }
+                
+                const priceValue = parseCurrency(price);
+                if(!priceValue || !priceValue.trim() || Number(priceValue) <= 0){
+                  setPriceError(true);
+                  toast.error('Price is required');
+                  return;
+                }
+                
+                try{
+                  setIsSavingProduct(true);
+                  const payload = {
+                    name: name.trim(),
+                    supplier_name: newSupplier||null,
+                    category: newCategory||null,
+                    unit: unit||null,
+                    price: Number(parseCurrency(price)),
+                    description: desc||null,
+                    unit_type: unitType,
+                    units_per_package: unitType==='multiple'? (unitsPerPackage? Number(unitsPerPackage): null) : null,
+                    coverage_sqs: unitType==='coverage'? (covSqs? Number(covSqs): null) : null,
+                    coverage_ft2: unitType==='coverage'? (covFt2? Number(covFt2): null) : null,
+                    coverage_m2: unitType==='coverage'? (covM2? Number(covM2): null) : null,
+                    image_base64: imageDataUrl || null,
+                    technical_manual_url: technicalManualUrl || null,
+                  };
+                  const created = await api<Material>('POST','/estimate/products', payload);
+                  toast.success('Product created');
+                  // Invalidate product caches
+                  queryClient.invalidateQueries({ queryKey: ['mat-search'] });
+                  queryClient.invalidateQueries({ queryKey: ['all-products'] });
+                  onProductCreated(created);
+                }catch(_e){ 
+                  toast.error('Failed to create product'); 
+                }
+                finally{ 
+                  setIsSavingProduct(false); 
+                }
+              }} 
+              disabled={isSavingProduct} 
+              className="px-4 py-2 rounded bg-brand-red text-white disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isSavingProduct ? 'Creating...' : 'Create Product'}
+            </button>
+          </div>
+        </div>
+      </div>
+      {imagePickerOpen && (
+        <ImagePicker
+          isOpen={true}
+          onClose={() => setImagePickerOpen(false)}
+          onConfirm={(blob) => {
+            const reader = new FileReader();
+            reader.onload = () => {
+              setImageDataUrl(String(reader.result || ''));
+              setImagePickerOpen(false);
+            };
+            reader.readAsDataURL(blob);
+          }}
+          targetWidth={800}
+          targetHeight={800}
+        />
+      )}
+      {newSupplierModalOpen && (
+        <NewSupplierModal
+          open={true}
+          onClose={() => setNewSupplierModalOpen(false)}
+          onSupplierCreated={(supplierName: string) => {
+            setNewSupplier(supplierName);
+            setNewSupplierModalOpen(false);
+            // Invalidate supplier options to refresh the list
+            queryClient.invalidateQueries({ queryKey: ['invSuppliersOptions'] });
+          }}
+        />
+      )}
+    </>
+  );
+}
+
 
 function AddLabourModal({ onAdd, disabled, defaultMarkup, open: openProp, onClose: onCloseProp, section: sectionProp }: { onAdd:(it: Item)=>void, disabled?: boolean, defaultMarkup?: number, open?: boolean, onClose?: ()=>void, section?: string }){
   const [internalOpen, setInternalOpen] = useState(false);
@@ -3059,7 +3785,7 @@ function AddSubContractorModal({ onAdd, disabled, defaultMarkup, open: openProp,
                       </div>
                       <div>
                         <label className="text-xs text-gray-600">SQS/Load:</label>
-                        <input type="number" className="w-full border rounded px-3 py-2" placeholdeer="Enter area per load in SQS/Load" value={debrisSqsPerLoad} min={0} step={1} onChange={e=>setDebrisSqsPerLoad(e.target.value)} />
+                        <input type="number" className="w-full border rounded px-3 py-2" placeholder="Enter area per load in SQS/Load" value={debrisSqsPerLoad} min={0} step={1} onChange={e=>setDebrisSqsPerLoad(e.target.value)} />
                       </div>
                     </>
                   )}

@@ -19,4 +19,16 @@ body{font-family:theme(fontFamily.sans);background:#f6f7f9}
   box-shadow: 0 6px 16px rgba(209, 22, 22, 0.25) !important;
 }
 
+/* Filter Builder Modal Animation */
+@keyframes fadeInSlideUp {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 

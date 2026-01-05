@@ -212,75 +212,73 @@ export default function TaskRequestsPage() {
   return (
     <div className="space-y-6">
       {/* Page Header */}
-      <div className="bg-slate-200/50 rounded-[12px] border border-slate-200 py-4 px-6 mb-6">
-        <h1 className="text-2xl font-bold text-gray-900 tracking-tight mb-1.5">Requests</h1>
-        <p className="text-sm text-gray-600 font-medium">Conversations that may become tasks</p>
-      </div>
-      
-      {/* Tabs and Action Button */}
-      <div className="flex items-center justify-between gap-4 flex-wrap">
-        <div className="flex items-center gap-1 border-b border-gray-200">
-          <button
-            onClick={() => setActiveTab('all')}
-            className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-[1px] ${
-              activeTab === 'all'
-                ? 'border-brand-red text-brand-red'
-                : 'border-transparent text-gray-600 hover:text-gray-900'
-            }`}
-          >
-            All
-          </button>
-          <button
-            onClick={() => setActiveTab('received')}
-            className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-[1px] ${
-              activeTab === 'received'
-                ? 'border-brand-red text-brand-red'
-                : 'border-transparent text-gray-600 hover:text-gray-900'
-            }`}
-          >
-            Received
-          </button>
-          <button
-            onClick={() => setActiveTab('sent')}
-            className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-[1px] ${
-              activeTab === 'sent'
-                ? 'border-brand-red text-brand-red'
-                : 'border-transparent text-gray-600 hover:text-gray-900'
-            }`}
-          >
-            Sent
-          </button>
-          <button
-            onClick={() => setActiveTab('needs_info')}
-            className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-[1px] ${
-              activeTab === 'needs_info'
-                ? 'border-brand-red text-brand-red'
-                : 'border-transparent text-gray-600 hover:text-gray-900'
-            }`}
-          >
-            Awaiting Info
-          </button>
-          <button
-            onClick={() => setActiveTab('completed')}
-            className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-[1px] ${
-              activeTab === 'completed'
-                ? 'border-brand-red text-brand-red'
-                : 'border-transparent text-gray-600 hover:text-gray-900'
-            }`}
-          >
-            Completed
-          </button>
+      <div className="bg-slate-200/50 rounded-[12px] border border-slate-200 flex items-center justify-between py-4 px-6 mb-6">
+        <div>
+          <div className="text-xl font-bold text-gray-900 tracking-tight mb-0.5">Requests</div>
+          <div className="text-sm text-gray-500 font-medium">Conversations that may become tasks</div>
         </div>
         <button
           onClick={() => setShowCreateModal(true)}
-          className="px-4 py-2 bg-brand-red text-white rounded-lg hover:bg-red-700 transition-colors font-medium text-sm shadow-sm flex items-center gap-2"
+          className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[#bc1414] text-white text-sm font-medium transition-all duration-200 hover:bg-[#aa1212] hover:shadow-md active:translate-y-[1px] active:shadow-sm"
         >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-            </svg>
+          <span className="text-base leading-none">+</span>
           New Request
-          </button>
-        </div>
+        </button>
+      </div>
+      
+      {/* Tabs */}
+      <div className="flex items-center gap-1 border-b border-gray-200">
+        <button
+          onClick={() => setActiveTab('all')}
+          className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-[1px] ${
+            activeTab === 'all'
+              ? 'border-brand-red text-brand-red'
+              : 'border-transparent text-gray-600 hover:text-gray-900'
+          }`}
+        >
+          All
+        </button>
+        <button
+          onClick={() => setActiveTab('received')}
+          className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-[1px] ${
+            activeTab === 'received'
+              ? 'border-brand-red text-brand-red'
+              : 'border-transparent text-gray-600 hover:text-gray-900'
+          }`}
+        >
+          Received
+        </button>
+        <button
+          onClick={() => setActiveTab('sent')}
+          className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-[1px] ${
+            activeTab === 'sent'
+              ? 'border-brand-red text-brand-red'
+              : 'border-transparent text-gray-600 hover:text-gray-900'
+          }`}
+        >
+          Sent
+        </button>
+        <button
+          onClick={() => setActiveTab('needs_info')}
+          className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-[1px] ${
+            activeTab === 'needs_info'
+              ? 'border-brand-red text-brand-red'
+              : 'border-transparent text-gray-600 hover:text-gray-900'
+          }`}
+        >
+          Awaiting Info
+        </button>
+        <button
+          onClick={() => setActiveTab('completed')}
+          className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-[1px] ${
+            activeTab === 'completed'
+              ? 'border-brand-red text-brand-red'
+              : 'border-transparent text-gray-600 hover:text-gray-900'
+          }`}
+        >
+          Completed
+        </button>
+      </div>
 
       {/* Two-Column Layout */}
       <div className="grid grid-cols-[1fr_1.5fr] gap-6">

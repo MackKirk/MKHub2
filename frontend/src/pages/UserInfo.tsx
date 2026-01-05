@@ -8,6 +8,7 @@ import GeoSelect from '@/components/GeoSelect';
 import { useConfirm } from '@/components/ConfirmProvider';
 import NationalitySelect from '@/components/NationalitySelect';
 import AddressAutocomplete from '@/components/AddressAutocomplete';
+import ClothSizeSelect from '@/components/ClothSizeSelect';
 import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard';
 import UserLoans from '@/components/UserLoans';
 import UserReports from '@/components/UserReports';
@@ -2070,7 +2071,7 @@ export default function UserInfo(){
           <div className="relative z-10">
             <div className="flex gap-4 items-stretch min-h-[210px]">
               <div className="w-[220px]">
-                <img className="w-full h-full object-cover rounded-xl border-2 border-brand-red" src={p.profile_photo_file_id? `/files/${p.profile_photo_file_id}/thumbnail?w=240`:'/ui/assets/login/logo-light.svg'} />
+                <img className="w-full h-full object-cover rounded-xl border-2 border-brand-red" src={p.profile_photo_file_id? `/files/${p.profile_photo_file_id}/thumbnail?w=240`:'/ui/assets/placeholders/user.png'} />
               </div>
               <div className="flex-1 flex flex-col justify-start">
                 <div className="text-3xl font-extrabold">{p.first_name||u?.username} {p.last_name||''}</div>
@@ -2139,6 +2140,9 @@ export default function UserInfo(){
                     </div>
                     <div className="text-xs text-gray-500 mt-0.5 mb-2">Core personal details.</div>
                     <EditableGrid p={p} editable={isEditingPersonal && (canEditGeneral || !!canSelfEdit)} selfEdit={false} userId={String(userId)} collectChanges={collectChanges} inlineSave={false} fields={[['First name','first_name'],['Last name','last_name'],['Middle name','middle_name'],['Prefered name','preferred_name'],['Gender','gender'],['Marital status','marital_status'],['Date of birth','date_of_birth'],['Nationality','nationality']]} />
+                    <div className="mt-4 grid md:grid-cols-2 gap-4">
+                      <ClothSizeField p={p} editable={isEditingPersonal && (canEditGeneral || !!canSelfEdit)} userId={String(userId)} collectChanges={collectChanges} profileData={data} />
+                    </div>
                   </div>
                   <div>
                     <div className="flex items-center gap-2"><h4 className="font-semibold">Address</h4></div>
@@ -2381,6 +2385,77 @@ function EditableGrid({p, fields, editable, selfEdit, userId, collectChanges, in
             {isSaving ? 'Saving...' : 'Save'}
           </button>
         </div>
+      )}
+    </div>
+  );
+}
+
+function ClothSizeField({ p, editable, userId, collectChanges, profileData }: { p: any; editable: boolean; userId: string; collectChanges?: (kv: Record<string, any>) => void; profileData?: any }) {
+  const queryClient = useQueryClient();
+  // Use refetched data if available, otherwise use p prop
+  const currentProfile = profileData?.profile || p;
+  const [form, setForm] = useState<any>(() => ({ cloth_size: currentProfile.cloth_size || '' }));
+  const [customSizes, setCustomSizes] = useState<string[]>(() => {
+    // Initialize custom sizes from profile if available (now global)
+    const custom = currentProfile.cloth_sizes_custom;
+    if (custom && Array.isArray(custom)) {
+      return custom;
+    }
+    return [];
+  });
+  const prevEditableRef = useRef(editable);
+  
+  // Update custom sizes when profile data changes (after refetch)
+  useEffect(() => {
+    const custom = currentProfile.cloth_sizes_custom;
+    if (custom && Array.isArray(custom)) {
+      setCustomSizes(custom);
+    } else {
+      setCustomSizes([]);
+    }
+  }, [currentProfile.cloth_sizes_custom]);
+  
+  useEffect(() => {
+    if (editable && !prevEditableRef.current) {
+      setForm({ cloth_size: currentProfile.cloth_size || '' });
+    }
+    if (!editable && prevEditableRef.current) {
+      setForm({ cloth_size: currentProfile.cloth_size || '' });
+    }
+    prevEditableRef.current = editable;
+  }, [editable, currentProfile.cloth_size]);
+  
+  // Refresh custom sizes from backend
+  const handleRefreshCustomSizes = async () => {
+    // Invalidate both user profile and my profile queries to refetch custom sizes
+    await queryClient.invalidateQueries({ queryKey: ['userProfile', userId] });
+    await queryClient.invalidateQueries({ queryKey: ['meProfile'] });
+    // Refetch and wait for completion
+    await Promise.all([
+      queryClient.refetchQueries({ queryKey: ['userProfile', userId] }),
+      queryClient.refetchQueries({ queryKey: ['meProfile'] })
+    ]);
+  };
+  
+  const isEditable = !!editable;
+  
+  return (
+    <div>
+      <div className="text-sm text-gray-600">Cloth Size</div>
+      {isEditable ? (
+        <ClothSizeSelect
+          value={form.cloth_size || ''}
+          onChange={(value) => {
+            setForm((s: any) => ({ ...s, cloth_size: value }));
+            collectChanges && collectChanges({ cloth_size: value });
+          }}
+          allowCustom={true}
+          customSizes={customSizes}
+          useGlobalCustomSizes={true}
+          onRefreshCustomSizes={handleRefreshCustomSizes}
+        />
+      ) : (
+        <div className="text-gray-900 font-medium py-1 break-words">{String(p.cloth_size || '') || '—'}</div>
       )}
     </div>
   );

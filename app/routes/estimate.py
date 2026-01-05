@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.orm import Session, defer
 from sqlalchemy.exc import ProgrammingError
+from sqlalchemy import func
 
 from ..auth.security import require_permissions
 from ..db import get_db
@@ -43,10 +44,13 @@ def list_products(db: Session = Depends(get_db), _=Depends(require_permissions("
 def search_products(
     q: str = Query(""),
     supplier: Optional[str] = Query(None),
+    supplier_not: Optional[str] = Query(None),
     category: Optional[str] = Query(None),
+    category_not: Optional[str] = Query(None),
     price_min: Optional[float] = Query(None),
     price_max: Optional[float] = Query(None),
     unit_type: Optional[str] = Query(None),
+    unit_type_not: Optional[str] = Query(None),
     db: Session = Depends(get_db),
     _=Depends(require_permissions("inventory:products:read")),
 ):
@@ -56,23 +60,56 @@ def search_products(
         query = query.filter(Material.name.ilike(like))
     if supplier:
         query = query.filter(Material.supplier_name == supplier)
+    
+    # Filter by supplier (exclusion)
+    if supplier_not:
+        query = query.filter(Material.supplier_name != supplier_not)
+    
     if category:
         query = query.filter(Material.category == category)
+    
+    # Filter by category (exclusion)
+    if category_not:
+        query = query.filter(Material.category != category_not)
+    
     if price_min is not None:
         query = query.filter(Material.price >= price_min)
     if price_max is not None:
         query = query.filter(Material.price <= price_max)
     if unit_type:
         query = query.filter(Material.unit_type == unit_type)
+    
+    # Filter by unit_type (exclusion)
+    if unit_type_not:
+        query = query.filter(Material.unit_type != unit_type_not)
+    
     return query.order_by(Material.name.asc()).limit(50).all()
 
 
 @router.post("/products")
 def create_product(body: MaterialIn, db: Session = Depends(get_db), _=Depends(require_permissions("inventory:products:write"))):
+    # Enforce required supplier and uniqueness (name + supplier), case-insensitive
+    name = (body.name or "").strip()
+    supplier_name = (body.supplier_name or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Name is required")
+    if not supplier_name:
+        raise HTTPException(status_code=400, detail="Supplier is required")
+
+    existing = (
+        db.query(Material)
+        .filter(Material.supplier_name.isnot(None))
+        .filter(func.lower(Material.name) == name.lower())
+        .filter(func.lower(Material.supplier_name) == supplier_name.lower())
+        .first()
+    )
+    if existing:
+        raise HTTPException(status_code=400, detail="A product with this name already exists for this supplier")
+
     row = Material(
-        name=body.name,
+        name=name,
         category=body.category,
-        supplier_name=body.supplier_name,
+        supplier_name=supplier_name,
         unit=body.unit,
         price=body.price or 0.0,
         description=body.description,
@@ -518,10 +555,18 @@ def _update_estimate_internal(estimate_id: int, body: EstimateIn, db: Session):
             pass
     
     # Map old items by material_id + section + description for matching
+    # Also preserve report tracking fields
     old_items_map = {}
+    old_items_report_tracking = {}  # Map item_id -> (added_via_report_id, added_via_report_date)
     for old_item in old_items:
         key = f"{old_item.material_id}_{old_item.section}_{old_item.description}"
         old_items_map[key] = old_item
+        # Preserve report tracking fields
+        if getattr(old_item, 'added_via_report_id', None):
+            old_items_report_tracking[old_item.id] = (
+                old_item.added_via_report_id,
+                getattr(old_item, 'added_via_report_date', None)
+            )
     
     db.query(EstimateItem).filter(EstimateItem.estimate_id == estimate_id).delete()
     
@@ -537,6 +582,16 @@ def _update_estimate_internal(estimate_id: int, body: EstimateIn, db: Session):
             price = 0.0
         line_total = (it.quantity or 0.0) * (price or 0.0)
         total += line_total
+        
+        # Try to preserve report tracking from old item
+        added_via_report_id = None
+        added_via_report_date = None
+        key = f"{it.material_id}_{it.section or ''}_{it.description or ''}"
+        if key in old_items_map:
+            old_item_id = old_items_map[key].id
+            if old_item_id in old_items_report_tracking:
+                added_via_report_id, added_via_report_date = old_items_report_tracking[old_item_id]
+        
         estimate_item = EstimateItem(
             estimate_id=est.id,
             material_id=it.material_id,
@@ -545,7 +600,9 @@ def _update_estimate_internal(estimate_id: int, body: EstimateIn, db: Session):
             total_price=line_total,
             section=it.section or None,
             description=it.description or None,
-            item_type=it.item_type or 'product'
+            item_type=it.item_type or 'product',
+            added_via_report_id=added_via_report_id,
+            added_via_report_date=added_via_report_date
         )
         db.add(estimate_item)
         db.flush()  # Flush to get the ID
@@ -722,7 +779,9 @@ def get_estimate(estimate_id: int, db: Session = Depends(get_db), _=Depends(requ
             "total_price": item.total_price,
             "section": item.section,
             "description": item.description,
-            "item_type": item.item_type or 'product'
+            "item_type": item.item_type or 'product',
+            "added_via_report_id": str(item.added_via_report_id) if getattr(item, 'added_via_report_id', None) else None,
+            "added_via_report_date": item.added_via_report_date.isoformat() if getattr(item, 'added_via_report_date', None) else None,
         }
         
         # Get extras for this item (by item ID)

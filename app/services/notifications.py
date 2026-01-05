@@ -198,19 +198,19 @@ def send_shift_notification(
             except:
                 if start_time and end_time:
                     message += f" from {start_time} to {end_time}"
-        link = f"/projects/{project_id}?tab=dispatch" if project_id else None
+        link = "/schedule" if project_id else None
     elif notification_type == "updated":
         title = "Shift Updated"
         message = f"Your shift for {project_name} has been updated"
-        link = f"/projects/{project_id}?tab=dispatch" if project_id else None
+        link = "/schedule" if project_id else None
     elif notification_type == "cancelled":
         title = "Shift Cancelled"
         message = f"Your shift for {project_name} has been cancelled"
-        link = f"/projects/{project_id}?tab=dispatch" if project_id else None
+        link = "/schedule" if project_id else None
     else:
         title = "Shift Notification"
         message = f"You have a shift notification for {project_name}"
-        link = f"/projects/{project_id}?tab=dispatch" if project_id else None
+        link = "/schedule" if project_id else None
     
     payload = {
         "title": title,

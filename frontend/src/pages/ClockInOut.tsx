@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { useSearchParams, useNavigate, useLocation } from 'react-router-dom';
 import { api } from '@/lib/api';
@@ -19,29 +19,29 @@ function formatTime12h(timeStr: string | null | undefined): string {
   return `${hours12}:${minutes} ${period}`;
 }
 
-// Helper function to format date as YYYY-MM-DD in local timezone (not UTC)
-function formatDateLocal(date: Date): string {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-}
-
-// Helper to format date to Portuguese day name
+// Helper to format day name in English (Mon, Tue, ...)
 function formatDayName(dateStr: string): string {
-  const days = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sab'];
   const date = new Date(dateStr + 'T00:00:00');
-  const dayIndex = date.getDay();
-  return days[dayIndex] || dateStr;
+  return date.toLocaleDateString('en-US', { weekday: 'short' });
 }
 
-// Helper to format date as "day, month dd"
+// Helper to format date as "Mon dd" (e.g., "Dec 23")
 function formatDate(dateStr: string): string {
   const date = new Date(dateStr + 'T00:00:00');
-  const months = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
-  const month = months[date.getMonth()];
-  const day = date.getDate();
-  return `${month} ${day}`;
+  return date.toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+  });
+}
+
+// Helper to format date with year as "month dd, yyyy"
+function formatDateWithYear(dateStr: string): string {
+  const date = new Date(dateStr + 'T00:00:00');
+  return date.toLocaleDateString('en-US', {
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric',
+  });
 }
 
 type Shift = {
@@ -120,7 +120,21 @@ export default function ClockInOut() {
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const location = useLocation();
+  const dateInputRef = useRef<HTMLInputElement>(null);
   const fromHome = location.state?.fromHome === true;
+
+  const openDatePicker = () => {
+    const el = dateInputRef.current;
+    if (!el) return;
+    const anyEl = el as any;
+    // Chrome/Edge support showPicker(); fallback to focus+click for others
+    if (typeof anyEl.showPicker === 'function') {
+      anyEl.showPicker();
+      return;
+    }
+    el.focus();
+    el.click();
+  };
   
   // Get query params for auto-opening modal from Schedule page
   const shiftIdFromUrl = searchParams.get('shift_id');
@@ -137,6 +151,10 @@ export default function ClockInOut() {
     return formatDateLocal(today);
   });
   const [selectedJob, setSelectedJob] = useState<string>('');
+  const [jobTouched, setJobTouched] = useState<boolean>(false);
+  const [shiftPickOpen, setShiftPickOpen] = useState<boolean>(false);
+  const [shiftPickOptions, setShiftPickOptions] = useState<Shift[]>([]);
+  const [shiftPickSelectedId, setShiftPickSelectedId] = useState<string>('');
   const [selectedHour12, setSelectedHour12] = useState<string>('');
   const [selectedMinute, setSelectedMinute] = useState<string>('');
   const [selectedAmPm, setSelectedAmPm] = useState<'AM' | 'PM'>('AM');
@@ -259,10 +277,11 @@ export default function ClockInOut() {
   });
 
   // Fetch all attendances for selected date (scheduled + direct)
-  const { data: allAttendancesForDate = [], refetch: refetchAllAttendances } = useQuery({
+  // Also store shifts for mapping shift_id to project
+  const { data: allAttendancesData, refetch: refetchAllAttendances } = useQuery({
     queryKey: ['clock-in-out-all-attendances', selectedDate, currentUser?.id],
     queryFn: async () => {
-      if (!currentUser?.id) return [];
+      if (!currentUser?.id) return { attendances: [], shifts: [] };
       
       const allAttendances: Attendance[] = [];
       
@@ -287,10 +306,31 @@ export default function ClockInOut() {
         // If endpoint doesn't exist yet, continue without direct attendances
       }
       
-      return allAttendances;
+      return { attendances: allAttendances, shifts: shifts || [] };
     },
     enabled: !!currentUser?.id,
   });
+
+  const allAttendancesForDate = allAttendancesData?.attendances || [];
+  const allShiftsForDate = allAttendancesData?.shifts || [];
+
+  // Create a map of shift_id to shift for quick lookup
+  const shiftsMap = useMemo(() => {
+    const map = new Map<string, Shift>();
+    // Add shifts from shiftsForSelectedDate
+    shiftsForSelectedDate.forEach(shift => {
+      map.set(shift.id, shift);
+    });
+    // Add shifts from allShiftsForDate (from allAttendancesData)
+    allShiftsForDate.forEach(shift => {
+      map.set(shift.id, shift);
+    });
+    // Add shiftById if available
+    if (shiftById) {
+      map.set(shiftById.id, shiftById);
+    }
+    return map;
+  }, [shiftsForSelectedDate, allShiftsForDate, shiftById]);
 
   // Fetch project details when a shift is selected
   const { data: project } = useQuery({
@@ -349,23 +389,27 @@ export default function ClockInOut() {
     return attendance.reason_text.includes("HOURS_WORKED:");
   };
 
-  // Find the most recent complete attendance (with both clock in and clock out) from today
-  const completeAttendanceToday = useMemo(() => {
-    const today = formatDateLocal(new Date());
+  // Find all complete attendances (with both clock in and clock out) from selected date
+  const completeAttendancesToday = useMemo(() => {
     return allAttendancesForDate
       .filter(a => a.clock_in_time && a.clock_out_time && !isHoursWorked(a))
       .filter(a => {
         const attendanceDate = a.clock_in_time || a.clock_out_time || a.time_selected_utc;
         if (!attendanceDate) return false;
         const attDate = new Date(attendanceDate);
-        return formatDateLocal(attDate) === today;
+        return formatDateLocal(attDate) === selectedDate;
       })
       .sort((a, b) => {
-        const aTime = a.clock_out_time || a.time_selected_utc || '';
-        const bTime = b.clock_out_time || b.time_selected_utc || '';
-        return new Date(bTime).getTime() - new Date(aTime).getTime();
-      })[0] || null;
-  }, [allAttendancesForDate]);
+        const aTime = a.clock_in_time || a.time_selected_utc || '';
+        const bTime = b.clock_in_time || b.time_selected_utc || '';
+        return new Date(aTime).getTime() - new Date(bTime).getTime();
+      });
+  }, [allAttendancesForDate, selectedDate]);
+
+  // Keep the most recent complete attendance for backward compatibility
+  const completeAttendanceToday = useMemo(() => {
+    return completeAttendancesToday[completeAttendancesToday.length - 1] || null;
+  }, [completeAttendancesToday]);
   
   // Helper to check if a clock-in/out pair forms a complete "hours worked" event
   // This is different from checking a single attendance record
@@ -374,82 +418,49 @@ export default function ClockInOut() {
     return isHoursWorked(clockIn) && isHoursWorked(clockOut);
   };
 
-  // NEW MODEL: Check if there's an open clock-in (one with clock_in_time but no clock_out_time)
-  // IMPORTANT: "hours worked" entries are always complete (both clock_in_time and clock_out_time exist)
-  // and should never be treated as "open"
-  // The backend uses a single record model where clock_in_time and clock_out_time can be in the same record
-  // OR separate records (one with clock_in_time, another with clock_out_time)
-  const hasOpenClockIn = useMemo(() => {
-    // Get the most recent clock-in and clock-out
-    const mostRecentClockIn = clockIns[0];
-    const mostRecentClockOut = clockOuts[0];
-    
-    // If there's no clock-in at all, there's no open clock-in
-    if (!mostRecentClockIn || !mostRecentClockIn.clock_in_time) return false;
-    
-    // If it's a "hours worked" entry, it should have clock_out_time (complete event)
-    if (isHoursWorked(mostRecentClockIn)) {
-      return false;
-    }
-    
-    // If the clock-in record itself has clock_out_time, it's complete (not open)
-    if (mostRecentClockIn.clock_out_time) {
-      return false;
-    }
-    
-    // Check if there's a clock-out that comes AFTER the most recent clock-in
-    // This handles the case where backend creates separate records
-    // IMPORTANT: We need to check if the clock-in is MORE RECENT than any clock-out
-    if (mostRecentClockOut && mostRecentClockOut.clock_out_time) {
-      const clockInTime = new Date(mostRecentClockIn.clock_in_time).getTime();
-      const clockOutTime = new Date(mostRecentClockOut.clock_out_time).getTime();
-      
-      // If clock-in time is MORE RECENT than clock-out time, there's an open clock-in
-      // If clock-out time is more recent than or equal to clock-in time, the period is closed
-      if (clockInTime > clockOutTime) {
-        // Clock-in is more recent than clock-out, so there's an open clock-in
-        return true;
-      } else {
-        // Clock-out is more recent than or equal to clock-in, so the period is closed
-        return false;
-      }
-    }
-    
-    // If we get here, there's a clock-in without a matching clock-out (open)
-    return true;
-  }, [allAttendancesForDate, clockIns, clockOuts]);
+  // Robust open-clock-in detection:
+  // Pair clock-outs to the latest unmatched clock-in chronologically.
+  // This avoids missing open attendances after edits or out-of-order times.
+  const { openClockIn, hasOpenClockIn } = useMemo(() => {
+    const events = (allAttendancesForDate || [])
+      .filter(a => !!(a.clock_in_time || a.clock_out_time || a.time_selected_utc))
+      .map(a => {
+        const t = a.clock_in_time || a.clock_out_time || a.time_selected_utc || '';
+        return { a, tMs: new Date(t).getTime() };
+      })
+      .sort((x, y) => x.tMs - y.tMs);
 
-  // Find the most recent open clock-in for canClockOut and isJobLocked
-  // IMPORTANT: Backend may create separate records for clock-in and clock-out
-  // So we need to check if there's a clock-out that comes after the clock-in
-  const openClockIn = useMemo(() => {
-    if (!hasOpenClockIn) return null;
-    
-    // Get the most recent clock-in
-    const mostRecentClockIn = clockIns[0];
-    if (!mostRecentClockIn || !mostRecentClockIn.clock_in_time) return null;
-    
-    // If it's a "hours worked" entry, it's not open
-    if (isHoursWorked(mostRecentClockIn)) return null;
-    
-    // If it has clock_out_time, it's not open
-    if (mostRecentClockIn.clock_out_time) return null;
-    
-    // Check if there's a clock-out that comes after this clock-in
-    const clockInTime = new Date(mostRecentClockIn.clock_in_time).getTime();
-    const mostRecentClockOut = clockOuts[0];
-    
-    if (mostRecentClockOut && mostRecentClockOut.clock_out_time) {
-      const clockOutTime = new Date(mostRecentClockOut.clock_out_time).getTime();
-      // If clock-out is after or equal to clock-in, the period is closed
-      // If clock-in is more recent than clock-out, there's an open clock-in
-      if (clockOutTime >= clockInTime) {
-        return null; // Clock-out closes the period
+    const openStack: { att: Attendance; inMs: number }[] = [];
+
+    for (const { a } of events) {
+      // Ignore hours worked marker records for open/close logic
+      if (isHoursWorked(a)) continue;
+
+      // Single-record complete attendance
+      if (a.clock_in_time && a.clock_out_time) {
+        continue;
+      }
+
+      if (a.clock_in_time && !a.clock_out_time) {
+        openStack.push({ att: a, inMs: new Date(a.clock_in_time).getTime() });
+        continue;
+      }
+
+      if (a.clock_out_time && !a.clock_in_time) {
+        const outMs = new Date(a.clock_out_time).getTime();
+        // Close the most recent unmatched clock-in that occurred before this clock-out
+        for (let i = openStack.length - 1; i >= 0; i--) {
+          if (openStack[i].inMs <= outMs) {
+            openStack.splice(i, 1);
+            break;
+          }
+        }
       }
     }
-    
-    return mostRecentClockIn;
-  }, [allAttendancesForDate, clockIns, clockOuts, hasOpenClockIn]);
+
+    const open = openStack.length ? openStack[openStack.length - 1].att : null;
+    return { openClockIn: open, hasOpenClockIn: !!open };
+  }, [allAttendancesForDate]);
 
   // Get the job type from the open clock-in (for direct attendance, it's stored in reason_text)
   const clockInJobType = useMemo(() => {
@@ -475,9 +486,11 @@ export default function ClockInOut() {
     return selectedDateShift?.job_name || null;
   }, [openClockIn, selectedDateShift]);
   
+  // (kept previously) hasCompleteAttendanceForDate / hasMultipleShifts no longer gate clock-in enablement
+
   // Can clock in ONLY if:
   // 1. There's NO open clock-in (must close current event first)
-  // Multiple clock ins/outs per day are allowed as long as previous ones are closed
+  // NOTE: Multiple attendances per day are allowed; only block when there is an open clock-in
   const canClockIn = !hasOpenClockIn;
   
   // Can clock out if there's an open clock-in (one with clock_in_time but no clock_out_time)
@@ -502,6 +515,95 @@ export default function ClockInOut() {
       // Don't clear immediately to avoid flickering
     }
   }, [isJobLocked, clockInJobType, hasOpenClockIn, openClockIn]);
+
+  // --- Prefill job for Clock In based on the next pending scheduled shift (earliest not completed) ---
+  const shiftCompletionById = useMemo(() => {
+    const map = new Map<string, { completed: boolean }>();
+
+    // Group attendances by shift_id and mark completed when there is any clock-out >= clock-in for that shift
+    const byShift = new Map<string, Attendance[]>();
+    for (const a of allAttendancesForDate) {
+      if (!a.shift_id) continue;
+      const arr = byShift.get(a.shift_id) || [];
+      arr.push(a);
+      byShift.set(a.shift_id, arr);
+    }
+
+    for (const [shiftId, arr] of byShift.entries()) {
+      // Completed if any record has both times
+      const hasSingleRecordComplete = arr.some(x => !!x.clock_in_time && !!x.clock_out_time);
+      if (hasSingleRecordComplete) {
+        map.set(shiftId, { completed: true });
+        continue;
+      }
+
+      // Or completed if there exists a clock_out_time that is after the latest clock_in_time
+      const clockInTimes = arr
+        .map(x => (x.clock_in_time ? new Date(x.clock_in_time).getTime() : null))
+        .filter((t): t is number => typeof t === 'number');
+      const clockOutTimes = arr
+        .map(x => (x.clock_out_time ? new Date(x.clock_out_time).getTime() : null))
+        .filter((t): t is number => typeof t === 'number');
+
+      const latestIn = clockInTimes.length ? Math.max(...clockInTimes) : null;
+      const latestOut = clockOutTimes.length ? Math.max(...clockOutTimes) : null;
+      const completed = latestIn !== null && latestOut !== null && latestOut >= latestIn;
+      map.set(shiftId, { completed });
+    }
+
+    return map;
+  }, [allAttendancesForDate]);
+
+  const allScheduledShiftsForDate = useMemo(() => {
+    const seen = new Set<string>();
+    const out: Shift[] = [];
+
+    for (const s of scheduledShifts) {
+      if (seen.has(s.id)) continue;
+      seen.add(s.id);
+      out.push(s);
+    }
+
+    if (shiftById && shiftById.date === selectedDate) {
+      if (!seen.has(shiftById.id)) {
+        seen.add(shiftById.id);
+        out.push(shiftById);
+      }
+    }
+
+    // Sort by start_time (HH:MM or HH:MM:SS)
+    const toMins = (t: string) => {
+      const [h, m] = String(t || '0:0').split(':').map(Number);
+      return (h || 0) * 60 + (m || 0);
+    };
+    out.sort((a, b) => toMins(a.start_time) - toMins(b.start_time));
+    return out;
+  }, [scheduledShifts, shiftById, selectedDate]);
+
+  const nextPendingShift = useMemo(() => {
+    for (const s of allScheduledShiftsForDate) {
+      const completion = shiftCompletionById.get(s.id);
+      if (!completion?.completed) return s;
+    }
+    return null;
+  }, [allScheduledShiftsForDate, shiftCompletionById]);
+
+  // Reset jobTouched when opening the clock-in modal
+  useEffect(() => {
+    if (clockType === 'in') {
+      setJobTouched(false);
+    }
+  }, [clockType]);
+
+  // Prefill selectedJob only when opening clock-in and user hasn't manually changed it
+  useEffect(() => {
+    if (clockType !== 'in') return;
+    if (isJobLocked || hasOpenClockIn) return;
+    if (jobTouched) return;
+    if (nextPendingShift?.project_id) {
+      setSelectedJob(nextPendingShift.project_id);
+    }
+  }, [clockType, isJobLocked, hasOpenClockIn, jobTouched, nextPendingShift?.project_id]);
   
 
   // Fetch weekly summary - always for current user only (Personal > Clock in/out)
@@ -534,6 +636,65 @@ export default function ClockInOut() {
     }));
     return [...PREDEFINED_JOBS, ...projectJobs];
   }, [projects]);
+
+  // Get the job name for display from the open clock-in
+  const clockInJobName = useMemo(() => {
+    if (!openClockIn || !clockInJobType) return null;
+    
+    // If it's a scheduled shift, use project name
+    if (openClockIn.shift_id && project) {
+      return project.name || project.code || 'Unknown Project';
+    }
+    
+    // For direct attendance, find job in jobOptions
+    const jobOption = jobOptions.find(j => j.id === clockInJobType);
+    if (jobOption) {
+      return `${jobOption.code} - ${jobOption.name}`;
+    }
+    
+    return clockInJobType;
+  }, [openClockIn, clockInJobType, project, jobOptions]);
+
+  // Get the job type from complete attendance
+  const completeAttendanceJobType = useMemo(() => {
+    if (!completeAttendanceToday) return null;
+    
+    // For direct attendance (no shift), extract job_type from reason_text
+    if (!completeAttendanceToday.shift_id) {
+      if (completeAttendanceToday.job_type) {
+        return completeAttendanceToday.job_type;
+      }
+      if (completeAttendanceToday.reason_text) {
+        const reason = completeAttendanceToday.reason_text;
+        if (reason.startsWith("JOB_TYPE:")) {
+          const parts = reason.split("|");
+          const job_marker = parts[0];
+          return job_marker.replace("JOB_TYPE:", "");
+        }
+      }
+    }
+    
+    // For scheduled attendance, get from shift
+    return selectedDateShift?.job_name || null;
+  }, [completeAttendanceToday, selectedDateShift]);
+
+  // Get the job name for display from complete attendance
+  const completeAttendanceJobName = useMemo(() => {
+    if (!completeAttendanceToday || !completeAttendanceJobType) return null;
+    
+    // If it's a scheduled shift, use project name
+    if (completeAttendanceToday.shift_id && project) {
+      return project.name || project.code || 'Unknown Project';
+    }
+    
+    // For direct attendance, find job in jobOptions
+    const jobOption = jobOptions.find(j => j.id === completeAttendanceJobType);
+    if (jobOption) {
+      return `${jobOption.code} - ${jobOption.name}`;
+    }
+    
+    return completeAttendanceJobType;
+  }, [completeAttendanceToday, completeAttendanceJobType, project, jobOptions]);
 
   // Initialize time to current time
   useEffect(() => {
@@ -624,14 +785,13 @@ export default function ClockInOut() {
     }
   }, [shiftIdFromUrl, typeFromUrl, dateFromUrl, shiftById, searchParams, setSearchParams]);
 
-  // Helper function to check if an attendance is from today
+  // Helper function to check if an attendance is from selected date
   const isAttendanceFromToday = (attendance: Attendance | null): boolean => {
     if (!attendance) return false;
     const attendanceDate = attendance.clock_in_time || attendance.clock_out_time || attendance.time_selected_utc;
     if (!attendanceDate) return false;
     const attDate = new Date(attendanceDate);
-    const today = new Date();
-    return formatDateLocal(attDate) === formatDateLocal(today);
+    return formatDateLocal(attDate) === selectedDate;
   };
 
   // Helper function to convert 12h time to 24h format
@@ -669,19 +829,6 @@ export default function ClockInOut() {
       updateEditTimeFrom12h(String(hour12), String(finalMinute).padStart(2, '0'), amPm);
     }
 
-    // Initialize break time if attendance has break_minutes
-    if (attendance.break_minutes && attendance.break_minutes > 0) {
-      const breakTotalMinutes = attendance.break_minutes;
-      const breakHours = Math.floor(breakTotalMinutes / 60);
-      const breakMins = breakTotalMinutes % 60;
-      setEditInsertBreakTime(true);
-      setEditBreakHours(String(breakHours));
-      setEditBreakMinutes(String(breakMins).padStart(2, '0'));
-    } else {
-      setEditInsertBreakTime(false);
-      setEditBreakHours('0');
-      setEditBreakMinutes('0');
-    }
   };
 
   // Function to open edit break time only modal
@@ -693,11 +840,9 @@ export default function ClockInOut() {
       const breakTotalMinutes = attendance.break_minutes;
       const breakHours = Math.floor(breakTotalMinutes / 60);
       const breakMins = breakTotalMinutes % 60;
-      setEditBreakTimeOnly(true);
       setEditBreakTimeHours(String(breakHours));
       setEditBreakTimeMinutes(String(breakMins).padStart(2, '0'));
     } else {
-      setEditBreakTimeOnly(false);
       setEditBreakTimeHours('0');
       setEditBreakTimeMinutes('0');
     }
@@ -724,33 +869,23 @@ export default function ClockInOut() {
       const clockOutTime = new Date(editingBreakTimeAttendance.clock_out_time);
       const totalMinutes = Math.floor((clockOutTime.getTime() - clockInTime.getTime()) / (1000 * 60));
 
-      // Validate break time if enabled
-      if (editBreakTimeOnly) {
-        const breakTotalMinutes = parseInt(editBreakTimeHours) * 60 + parseInt(editBreakTimeMinutes);
-        
-        if (breakTotalMinutes >= totalMinutes) {
-          toast.error('Break time cannot be greater than or equal to the total attendance time. Please adjust the break time.');
-          setEditingBreakTimeSubmitting(false);
-          return;
-        }
+      // Validate break time
+      const breakTotalMinutes = parseInt(editBreakTimeHours) * 60 + parseInt(editBreakTimeMinutes);
+      
+      if (breakTotalMinutes >= totalMinutes) {
+        toast.error('Break time cannot be greater than or equal to the total attendance time. Please adjust the break time.');
+        setEditingBreakTimeSubmitting(false);
+        return;
       }
 
-      const updatePayload: any = {};
-      if (editBreakTimeOnly) {
-        const breakTotalMinutes = parseInt(editBreakTimeHours) * 60 + parseInt(editBreakTimeMinutes);
-        if (breakTotalMinutes > 0) {
-          updatePayload.manual_break_minutes = breakTotalMinutes;
-        } else {
-          updatePayload.manual_break_minutes = 0;
-        }
-      } else {
-        updatePayload.manual_break_minutes = 0;
-      }
+      const updatePayload: any = {
+        manual_break_minutes: breakTotalMinutes > 0 ? breakTotalMinutes : 0
+      };
 
       await api('PUT', `/settings/attendance/${editingBreakTimeAttendance.id}`, updatePayload);
       
-      const breakMsg = editBreakTimeOnly
-        ? `Break time updated to ${parseInt(editBreakTimeHours) * 60 + parseInt(editBreakTimeMinutes)} minutes`
+      const breakMsg = breakTotalMinutes > 0
+        ? `Break time updated to ${breakTotalMinutes} minutes`
         : 'Break time removed';
       toast.success(breakMsg);
       
@@ -761,7 +896,6 @@ export default function ClockInOut() {
       
       // Close modal
       setEditingBreakTimeAttendance(null);
-      setEditBreakTimeOnly(false);
       setEditBreakTimeHours('0');
       setEditBreakTimeMinutes('0');
     } catch (error: any) {
@@ -820,18 +954,6 @@ export default function ClockInOut() {
         return;
       }
 
-      // Validate break time if enabled
-      if (editInsertBreakTime && clockInTime && clockOutTime) {
-        const breakTotalMinutes = parseInt(editBreakHours) * 60 + parseInt(editBreakMinutes);
-        const totalMinutes = Math.floor((clockOutTime.getTime() - clockInTime.getTime()) / (1000 * 60));
-        
-        if (breakTotalMinutes >= totalMinutes) {
-          toast.error('Break time cannot be greater than or equal to the total attendance time. Please adjust the break or clock-out time.');
-          setEditingSubmitting(false);
-          return;
-        }
-      }
-
       const updatePayload: any = {};
       if (editingType === 'in') {
         updatePayload.clock_in_time = dateTimeUtc;
@@ -839,28 +961,9 @@ export default function ClockInOut() {
         updatePayload.clock_out_time = dateTimeUtc;
       }
 
-      // Add break time if editing clock-out and break time is enabled
-      // Also allow editing break time when editing clock-in if attendance is complete
-      if (editingType === 'out' || (editingType === 'in' && editingAttendance.clock_out_time)) {
-        if (editInsertBreakTime) {
-          const breakTotalMinutes = parseInt(editBreakHours) * 60 + parseInt(editBreakMinutes);
-          if (breakTotalMinutes > 0) {
-            updatePayload.manual_break_minutes = breakTotalMinutes;
-          } else {
-            updatePayload.manual_break_minutes = 0;
-          }
-        } else {
-          // If break time is disabled, set to 0
-          updatePayload.manual_break_minutes = 0;
-        }
-      }
-
       await api('PUT', `/settings/attendance/${editingAttendance.id}`, updatePayload);
       
-      const breakMsg = (editingType === 'out' || (editingType === 'in' && editingAttendance.clock_out_time)) && editInsertBreakTime
-        ? ` with ${parseInt(editBreakHours) * 60 + parseInt(editBreakMinutes)} minutes break`
-        : '';
-      toast.success(`Clock ${editingType === 'in' ? 'in' : 'out'} time updated successfully${breakMsg}`);
+      toast.success(`Clock ${editingType === 'in' ? 'in' : 'out'} time updated successfully`);
       
       // Refetch data
       await refetchAllAttendances();
@@ -906,10 +1009,45 @@ export default function ClockInOut() {
     setSelectedTime(timeStr);
   };
 
-  const handleClockInOut = async () => {
+  const performClockInOut = async (overrideShiftId?: string | null) => {
     if (!clockType) {
       toast.error('Please select clock in or out');
       return;
+    }
+
+    // Validate: Job is required for clock-in (always tied to a job/project)
+    if (clockType === 'in' && !selectedJob) {
+      toast.error('Please select a Job to clock in');
+      return;
+    }
+
+    // Validate: Cannot clock in if already completed attendance for this date (unless multiple shifts)
+    // Multiple attendances per day are allowed; only block if there is an open clock-in (handled by canClockIn/hasOpenClockIn)
+
+    // Resolve which shift (if any) this clock-in should be associated with based on selectedJob
+    // Rule:
+    // - If selectedJob matches a project that has pending shift(s) today, associate to that shift
+    // - If there are 2+ pending shifts for that project today, require user selection via modal
+    // - If there are no pending shifts for that project today, record as direct attendance (JOB_TYPE:<project_id>)
+    let targetShiftId: string | null = null;
+    if (clockType === 'in') {
+      if (overrideShiftId) {
+        targetShiftId = overrideShiftId;
+      } else {
+        const matchingShifts = allScheduledShiftsForDate.filter(s => String(s.project_id) === String(selectedJob));
+        const pendingShifts = matchingShifts.filter(s => !shiftCompletionById.get(s.id)?.completed);
+
+        if (pendingShifts.length > 1) {
+          setShiftPickOptions(pendingShifts);
+          setShiftPickSelectedId(pendingShifts[0]?.id || '');
+          setShiftPickOpen(true);
+          return;
+        }
+
+        if (pendingShifts.length === 1) {
+          targetShiftId = pendingShifts[0].id;
+        }
+      }
     }
 
     // If user doesn't have permission to edit time, use current time automatically
@@ -936,18 +1074,13 @@ export default function ClockInOut() {
     const now = new Date();
     const maxFutureMs = 4 * 60 * 1000; // 4 minutes buffer for future times
     if (selectedDateTime.getTime() > (now.getTime() + maxFutureMs)) {
-      toast.error('Clock-in/out cannot be more than 4 minutes in the future. Please select a valid time.');
+      toast.error('Clock-in/out cannot be in the future. Please select a valid time.');
       setSubmitting(false);
       return;
     }
 
     // Validate: If clocking out, check that clock-out time is not before or equal to clock-in time
     if (clockType === 'out') {
-      // Find the most recent open clock-in (one without clock-out)
-      const openClockIn = allAttendancesForDate.find(
-        a => a.clock_in_time && !a.clock_out_time
-      );
-      
       if (openClockIn && openClockIn.clock_in_time) {
         const clockInDate = new Date(openClockIn.clock_in_time);
         if (selectedDateTime <= clockInDate) {
@@ -975,13 +1108,13 @@ export default function ClockInOut() {
     const time12h = formatTime12h(timeStr);
     const dateFormatted = formatDate(selectedDate);
     
-    // Get project/job name
+    // Get project/job name (for confirmation message)
     let projectJobName = '';
-    if (selectedDateShift && project) {
-      projectJobName = project.name || project.code || 'Unknown Project';
+    if (clockType === 'out' && clockInJobName) {
+      projectJobName = clockInJobName;
     } else if (selectedJob) {
       const jobOption = jobOptions.find(j => j.id === selectedJob);
-      projectJobName = jobOption?.name || selectedJob;
+      projectJobName = jobOption ? `${jobOption.code} - ${jobOption.name}` : selectedJob;
     }
     
     // Build confirmation message
@@ -1074,24 +1207,42 @@ export default function ClockInOut() {
 
       let result;
 
-      // If there's a scheduled shift (from URL or selected date), use normal attendance route
-      if (selectedDateShift) {
-        payload.shift_id = selectedDateShift.id;
-        result = await api('POST', '/dispatch/attendance', payload);
-      } else {
-        // If no scheduled shift, use direct attendance route (without creating shift/project)
-        // Use locked job type if clock-in exists, otherwise use selected job
-        // For clock-out, always use clockInJobType if locked (to match the open clock-in)
-        const jobTypeToUse = (clockType === 'out' && isJobLocked && clockInJobType) 
-          ? clockInJobType 
-          : (isJobLocked && clockInJobType ? clockInJobType : selectedJob);
-        if (!jobTypeToUse) {
-          toast.error('Please select a Job');
+      if (clockType === 'out') {
+        // Clock-out always closes the currently open attendance period
+        if (!openClockIn) {
+          toast.error('No open clock-in found to clock out');
           setSubmitting(false);
           return;
         }
-        payload.job_type = jobTypeToUse;
-        result = await api('POST', '/dispatch/attendance/direct', payload);
+
+        if (openClockIn.shift_id) {
+          payload.shift_id = openClockIn.shift_id;
+          result = await api('POST', '/dispatch/attendance', payload);
+        } else {
+          const jobTypeToUse = clockInJobType;
+          if (!jobTypeToUse) {
+            toast.error('Missing job information for clock-out');
+            setSubmitting(false);
+            return;
+          }
+          payload.job_type = jobTypeToUse;
+          result = await api('POST', '/dispatch/attendance/direct', payload);
+        }
+      } else {
+        // Clock-in: associate to chosen/pending shift if available, otherwise direct attendance
+        if (targetShiftId) {
+          payload.shift_id = targetShiftId;
+          result = await api('POST', '/dispatch/attendance', payload);
+        } else {
+          const jobTypeToUse = selectedJob;
+          if (!jobTypeToUse) {
+            toast.error('Please select a Job');
+            setSubmitting(false);
+            return;
+          }
+          payload.job_type = jobTypeToUse;
+          result = await api('POST', '/dispatch/attendance/direct', payload);
+        }
       }
 
       if (result.status === 'approved') {
@@ -1134,6 +1285,14 @@ export default function ClockInOut() {
       await refetchWeeklySummary();
       queryClient.invalidateQueries({ queryKey: ['timesheet'] });
       queryClient.invalidateQueries({ queryKey: ['clock-in-out-shifts'] });
+      
+      // Invalidate Schedule page queries to update shift status automatically
+      queryClient.invalidateQueries({ queryKey: ['schedule-shifts'] });
+      queryClient.invalidateQueries({ queryKey: ['schedule-attendances'] });
+      queryClient.invalidateQueries({ queryKey: ['shift-attendances'] });
+      
+      // Invalidate Home page queries to update clock-in/out status automatically
+      queryClient.invalidateQueries({ queryKey: ['attendance-today'] });
     } catch (error: any) {
       console.error('Error submitting attendance:', error);
       const errorMsg = error.response?.data?.detail || error.message || 'Failed to submit attendance';
@@ -1154,6 +1313,10 @@ export default function ClockInOut() {
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const handleClockInOut = async () => {
+    return performClockInOut(null);
   };
 
   // Navigation for week summary
@@ -1222,223 +1385,104 @@ export default function ClockInOut() {
       : `${diffMinutes}m`;
   }, [hasOpenClockIn, openClockIn, currentTime]);
 
+  const todayLabel = useMemo(() => {
+    return new Date().toLocaleDateString('en-CA', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+    });
+  }, []);
+
   return (
-    <div className="w-full min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-50/50">
+    <div className="w-full min-h-screen">
       {/* Standardized Page Header */}
-      <div className="bg-slate-200/50 rounded-[12px] border border-slate-200 py-4 px-6 mb-6">
-        <h1 className="text-2xl font-bold text-gray-900 tracking-tight mb-1.5">Clock In / Out</h1>
-        <p className="text-sm text-gray-600 font-medium">Track your work hours and manage your attendance</p>
+      <div className="bg-slate-200/50 rounded-[12px] border border-slate-200 flex items-center justify-between py-4 px-6 mb-6">
+        <div>
+          <div className="text-xl font-bold text-gray-900 tracking-tight mb-0.5">Clock In / Out</div>
+          <div className="text-sm text-gray-500 font-medium">Track your work hours and manage your attendance</div>
+        </div>
+        <div className="text-right">
+          <div className="text-xs text-gray-400 mb-1.5 font-medium uppercase tracking-wide">Today</div>
+          <div className="text-sm font-semibold text-gray-700">{todayLabel}</div>
+        </div>
       </div>
 
       <div className="grid grid-cols-[1.2fr_1fr] gap-8">
         {/* Left Column - Two Stacked Cards */}
         <div className="space-y-4">
-          {/* CARD 1 — Today Status (Informational Only) */}
+          {/* CARD 1 — Clock Actions (Action-Focused) */}
           <div className="rounded-[12px] border border-gray-200/60 bg-white shadow-sm p-5 space-y-4">
-            <h3 className="text-base font-semibold text-gray-900 tracking-tight">Today Status</h3>
-            
-            <div className="space-y-4">
-              {/* Clock Status */}
-              <div className="flex items-center gap-3">
-                <svg 
-                  className={`w-5 h-5 ${hasOpenClockIn ? 'text-green-600' : 'text-gray-400'}`} 
-                  fill="none" 
-                  stroke="currentColor" 
-                  strokeWidth={2} 
-                  viewBox="0 0 24 24"
+            <div className="flex items-center justify-between gap-3">
+              <h3 className="text-base font-semibold text-gray-900 tracking-tight">Clock Actions</h3>
+
+              {/* Date selector (compact, right-aligned) */}
+              <div className="relative">
+                <label htmlFor="clock-actions-date" className="sr-only">Date</label>
+                <div
+                  className="relative w-[220px] max-w-[60vw] rounded-lg border border-gray-200/60 bg-white px-3 py-2 shadow-sm hover:shadow-md hover:border-gray-300 transition-all duration-200 cursor-pointer"
+                  onClick={openDatePicker}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      openDatePicker();
+                    }
+                  }}
+                  aria-label="Select date"
                 >
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                <div>
-                  <div className="text-xs text-gray-500 mb-0.5 font-medium uppercase tracking-wide">Status</div>
-                  <div className={`text-sm font-semibold ${hasOpenClockIn ? 'text-green-600' : 'text-gray-600'}`}>
-                    {hasOpenClockIn ? 'Clocked In' :
-                     (clockOut && !hasOpenClockIn) ? 'Completed' :
-                     'Not Clocked In'}
-                  </div>
-                </div>
-              </div>
-
-              {/* Working Time */}
-              {hasOpenClockIn && openClockIn && workingDurationLive && (
-                <div>
-                  <div className="text-xs text-gray-500 mb-1 font-medium uppercase tracking-wide">Working Time</div>
-                  <div className="text-sm text-gray-900 font-semibold">Working for {workingDurationLive}</div>
-                </div>
-              )}
-
-              {/* Break Time (if completed - shown above clock times) */}
-              {!hasOpenClockIn && completeAttendanceToday && completeAttendanceToday.clock_in_time && completeAttendanceToday.clock_out_time && (
-                <div>
-                  <div className="text-xs text-gray-500 mb-1 font-medium uppercase tracking-wide">Break Time</div>
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="text-sm text-gray-900 font-semibold">
-                      {completeAttendanceToday.break_minutes && completeAttendanceToday.break_minutes > 0
-                        ? `${Math.floor(completeAttendanceToday.break_minutes / 60)}h ${String(completeAttendanceToday.break_minutes % 60).padStart(2, '0')}m`
-                        : '0h 00m'}
+                  <div className="flex items-center gap-2">
+                    <div className="w-7 h-7 rounded-md bg-gray-100 flex items-center justify-center flex-shrink-0">
+                      <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                      </svg>
                     </div>
-                    {isAttendanceFromToday(completeAttendanceToday) && (
-                      <button
-                        onClick={() => openEditBreakTimeModal(completeAttendanceToday)}
-                        className="p-1.5 rounded-lg border border-gray-200 hover:bg-gray-50 active:scale-95 transition-all"
-                        title="Edit break time"
-                      >
-                        <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                        </svg>
-                      </button>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {/* Clock-in Time */}
-              {hasOpenClockIn && openClockIn && (
-                <div>
-                  <div className="text-xs text-gray-500 mb-1 font-medium uppercase tracking-wide">Clock-in Time</div>
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="text-sm text-gray-900 font-semibold">
-                      {new Date(openClockIn.clock_in_time).toLocaleTimeString('en-US', {
-                        hour: 'numeric',
-                        minute: '2-digit',
-                        hour12: true,
-                      })}
+                    <div className="min-w-0 flex-1">
+                      <div className="text-[14px] font-semibold text-gray-500 uppercase tracking-wide leading-tight">
+                        {selectedDate === todayStr ? 'Today' : formatDayName(selectedDate)}
+                      </div>
+                      <div className="text-sm font-semibold text-gray-900 leading-tight truncate">
+                        {formatDateWithYear(selectedDate)}
+                      </div>
                     </div>
-                    {isAttendanceFromToday(openClockIn) && (
-                      <button
-                        onClick={() => openEditModal(openClockIn, 'in')}
-                        className="p-1.5 rounded-lg border border-gray-200 hover:bg-gray-50 active:scale-95 transition-all"
-                        title="Edit clock-in time"
-                      >
-                        <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                        </svg>
-                      </button>
-                    )}
                   </div>
-                </div>
-              )}
 
-              {/* Clock-out Time (if completed) */}
-              {!hasOpenClockIn && completeAttendanceToday && completeAttendanceToday.clock_out_time && (
-                <div>
-                  <div className="text-xs text-gray-500 mb-1 font-medium uppercase tracking-wide">Clock-out Time</div>
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="text-sm text-gray-900 font-semibold">
-                      {new Date(completeAttendanceToday.clock_out_time).toLocaleTimeString('en-US', {
-                        hour: 'numeric',
-                        minute: '2-digit',
-                        hour12: true,
-                      })}
-                    </div>
-                    {isAttendanceFromToday(completeAttendanceToday) && (
-                      <button
-                        onClick={() => openEditModal(completeAttendanceToday, 'out')}
-                        className="p-1.5 rounded-lg border border-gray-200 hover:bg-gray-50 active:scale-95 transition-all"
-                        title="Edit clock-out time"
-                      >
-                        <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                        </svg>
-                      </button>
-                    )}
-                  </div>
+                  {/* Transparent native input kept in the DOM to allow the picker to open */}
+                  <input
+                    ref={dateInputRef}
+                    id="clock-actions-date"
+                    type="date"
+                    value={selectedDate}
+                    onChange={(e) => setSelectedDate(e.target.value)}
+                    className="absolute inset-0 opacity-0 cursor-pointer"
+                    aria-hidden="true"
+                    tabIndex={-1}
+                    required
+                  />
                 </div>
-              )}
-
-              {/* Clock-in Time (if completed, show the clock-in from the complete attendance) */}
-              {!hasOpenClockIn && completeAttendanceToday && completeAttendanceToday.clock_in_time && (
-                <div>
-                  <div className="text-xs text-gray-500 mb-1 font-medium uppercase tracking-wide">Clock-in Time</div>
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="text-sm text-gray-900 font-semibold">
-                      {new Date(completeAttendanceToday.clock_in_time).toLocaleTimeString('en-US', {
-                        hour: 'numeric',
-                        minute: '2-digit',
-                        hour12: true,
-                      })}
-                    </div>
-                    {isAttendanceFromToday(completeAttendanceToday) && (
-                      <button
-                        onClick={() => openEditModal(completeAttendanceToday, 'in')}
-                        className="p-1.5 rounded-lg border border-gray-200 hover:bg-gray-50 active:scale-95 transition-all"
-                        title="Edit clock-in time"
-                      >
-                        <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                        </svg>
-                      </button>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {/* Approval Status */}
-              {hasOpenClockIn && openClockIn && openClockIn.status && (
-                <div>
-                  <div className="text-xs text-gray-500 mb-1 font-medium uppercase tracking-wide">Approval Status</div>
-                  <span className={`inline-block text-xs px-2.5 py-1 rounded font-medium ${
-                    openClockIn.status === 'approved' ? 'bg-green-50 text-green-700' :
-                    openClockIn.status === 'pending' ? 'bg-yellow-50 text-yellow-700' :
-                    'bg-red-50 text-red-700'
-                  }`}>
-                    {openClockIn.status}
-                  </span>
-                </div>
-              )}
-
-              {/* Contextual Notices */}
-              <div className="pt-3 border-t border-gray-200/40 space-y-2">
-                {selectedDateShift && (
-                  <div className="flex items-start gap-2 text-xs text-gray-600">
-                    <svg className="w-4 h-4 text-blue-500 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                    <span>Assigned to project: {selectedDateShift.project_name || 'Unknown'}</span>
-                  </div>
-                )}
-                {!selectedDateShift && selectedDate === todayStr && (
-                  <div className="flex items-start gap-2 text-xs text-gray-600">
-                    <svg className="w-4 h-4 text-gray-500 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                    <span>Not assigned to any specific project today</span>
-                  </div>
-                )}
-                {hasOpenClockIn && (
-                  <div className="flex items-start gap-2 text-xs text-gray-600">
-                    <svg className="w-4 h-4 text-blue-500 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                    <span>You have an open clock-in. Clock out to close this period.</span>
-                  </div>
-                )}
               </div>
             </div>
-          </div>
-
-          {/* CARD 2 — Clock Actions (Action-Focused) */}
-          <div className="rounded-[12px] border border-gray-200/60 bg-white shadow-sm p-5 space-y-4">
-            <h3 className="text-base font-semibold text-gray-900 tracking-tight">Clock Actions</h3>
             
             <div className="space-y-3">
               {/* Clock In Action Tile */}
               <button
                 onClick={() => setClockType('in')}
-                disabled={hasOpenClockIn || !canClockIn || submitting || (!selectedDateShift && !selectedJob)}
+                disabled={hasOpenClockIn || !canClockIn || submitting}
                 className={`w-full rounded-[12px] border-2 p-4 text-left transition-all duration-200 ${
-                  !hasOpenClockIn && canClockIn && (selectedDateShift || selectedJob) && !submitting
+                  !hasOpenClockIn && canClockIn && !submitting
                     ? 'border-green-200 bg-green-50/50 hover:border-green-300 hover:bg-green-50 hover:shadow-md hover:-translate-y-0.5 active:scale-[0.98] cursor-pointer'
                     : 'border-gray-200 bg-gray-50/50 cursor-not-allowed opacity-60'
                 }`}
                 title={
                   hasOpenClockIn ? 'You must clock out first' : 
-                  !selectedDateShift && !selectedJob ? 'Please select a job' : ''
+                  !canClockIn && hasOpenClockIn ? 'You have an open clock-in. Please clock out first.' :
+                  !canClockIn ? 'Cannot clock in' : ''
                 }
               >
                 <div className="flex items-start gap-3">
                   <div className={`flex-shrink-0 w-10 h-10 rounded-lg flex items-center justify-center ${
-                    !hasOpenClockIn && canClockIn && (selectedDateShift || selectedJob) && !submitting
+                    !hasOpenClockIn && canClockIn && !submitting
                       ? 'bg-green-600 text-white'
                       : 'bg-gray-300 text-gray-500'
                   }`}>
@@ -1453,14 +1497,14 @@ export default function ClockInOut() {
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className={`text-base font-semibold mb-1 ${
-                      !hasOpenClockIn && canClockIn && (selectedDateShift || selectedJob) && !submitting
+                      !hasOpenClockIn && canClockIn && !submitting
                         ? 'text-gray-900'
                         : 'text-gray-400'
                     }`}>
                       Clock In
                     </div>
                     <div className={`text-xs ${
-                      !hasOpenClockIn && canClockIn && (selectedDateShift || selectedJob) && !submitting
+                      !hasOpenClockIn && canClockIn && !submitting
                         ? 'text-gray-600'
                         : 'text-gray-400'
                     }`}>
@@ -1521,6 +1565,280 @@ export default function ClockInOut() {
               </button>
             </div>
           </div>
+
+          {/* CARD 2 — Today Status (Informational Only) */}
+          <div className="rounded-[12px] border border-gray-200/60 bg-white shadow-sm p-5 space-y-4">
+            <h3 className="text-base font-semibold text-gray-900 tracking-tight">
+              {selectedDate === todayStr ? 'Today Status' : `Status - ${formatDate(selectedDate)}`}
+            </h3>
+            
+            <div className="space-y-4">
+              {/* Show all attendances for the selected date */}
+              {(() => {
+                // Combine open clock-ins and complete attendances
+                const allAttendancesToShow: Attendance[] = [];
+                
+                // Add open clock-in if exists
+                if (hasOpenClockIn && openClockIn) {
+                  allAttendancesToShow.push(openClockIn);
+                }
+                
+                // Add all complete attendances
+                completeAttendancesToday.forEach(att => {
+                  // Don't add if it's already the open clock-in
+                  if (!hasOpenClockIn || !openClockIn || att.id !== openClockIn.id) {
+                    allAttendancesToShow.push(att);
+                  }
+                });
+                
+                // Sort by clock-in time (earliest first)
+                allAttendancesToShow.sort((a, b) => {
+                  const aTime = a.clock_in_time || a.time_selected_utc || '';
+                  const bTime = b.clock_in_time || b.time_selected_utc || '';
+                  return new Date(aTime).getTime() - new Date(bTime).getTime();
+                });
+                
+                if (allAttendancesToShow.length === 0) {
+                  return (
+                    <div className="text-sm text-gray-500">No attendance records for this date</div>
+                  );
+                }
+                
+                return allAttendancesToShow.map((attendance, index) => {
+                  const isOpen = !attendance.clock_out_time;
+                  const isComplete = attendance.clock_in_time && attendance.clock_out_time;
+                  
+                  // Get job name for this attendance
+                  let attendanceJobName: string | null = null;
+                  if (attendance.shift_id) {
+                    // Get shift for this attendance
+                    const attendanceShift = shiftsMap.get(attendance.shift_id);
+                    if (attendanceShift) {
+                      attendanceJobName = attendanceShift.project_name || 'Unknown Project';
+                    }
+                  } else if (attendance.reason_text) {
+                    const reason = attendance.reason_text;
+                    if (reason.startsWith("JOB_TYPE:")) {
+                      const parts = reason.split("|");
+                      const job_marker = parts[0];
+                      const jobType = job_marker.replace("JOB_TYPE:", "");
+                      const jobOption = jobOptions.find(j => j.id === jobType);
+                      if (jobOption) {
+                        attendanceJobName = `${jobOption.code} - ${jobOption.name}`;
+                      }
+                    }
+                  }
+                  
+                  return (
+                    <div key={attendance.id || index} className={`${index > 0 ? 'pt-4 border-t border-gray-200/40' : ''}`}>
+                      {allAttendancesToShow.length > 1 && (
+                        <div className="text-xs font-medium text-gray-700 mb-3">
+                          Attendance {index + 1} {isOpen ? '(Open)' : '(Completed)'}
+                        </div>
+                      )}
+                      
+                      {/* Clock Status */}
+                      <div className="flex items-center gap-3 mb-3">
+                        <svg 
+                          className={`w-5 h-5 ${isOpen ? 'text-green-600' : 'text-gray-400'}`} 
+                          fill="none" 
+                          stroke="currentColor" 
+                          strokeWidth={2} 
+                          viewBox="0 0 24 24"
+                        >
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        <div>
+                          <div className="text-xs text-gray-500 mb-0.5 font-medium uppercase tracking-wide">Status</div>
+                          <div className={`text-sm font-semibold ${isOpen ? 'text-green-600' : 'text-gray-600'}`}>
+                            {isOpen ? 'Clocked In' : 'Completed'}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Clock-in Time */}
+                      {attendance.clock_in_time && (
+                        <div className="mb-3">
+                          <div className="text-xs text-gray-500 mb-1 font-medium uppercase tracking-wide">Clock-in Time</div>
+                          <div className="flex items-center gap-2">
+                            <div className="text-sm text-gray-900 font-semibold">
+                              {new Date(attendance.clock_in_time).toLocaleTimeString('en-US', {
+                                hour: 'numeric',
+                                minute: '2-digit',
+                                hour12: true,
+                              })}
+                            </div>
+                            {isAttendanceFromToday(attendance) && (
+                              <button
+                                onClick={() => openEditModal(attendance, 'in')}
+                                className="active:scale-95 transition-all hover:opacity-70"
+                                title="Edit clock-in time"
+                              >
+                                <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                </svg>
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Clock-out Time */}
+                      {isComplete && attendance.clock_out_time && (
+                        <div className="mb-3">
+                          <div className="text-xs text-gray-500 mb-1 font-medium uppercase tracking-wide">Clock-out Time</div>
+                          <div className="flex items-center gap-2">
+                            <div className="text-sm text-gray-900 font-semibold">
+                              {new Date(attendance.clock_out_time).toLocaleTimeString('en-US', {
+                                hour: 'numeric',
+                                minute: '2-digit',
+                                hour12: true,
+                              })}
+                            </div>
+                            {isAttendanceFromToday(attendance) && (
+                              <button
+                                onClick={() => openEditModal(attendance, 'out')}
+                                className="active:scale-95 transition-all hover:opacity-70"
+                                title="Edit clock-out time"
+                              >
+                                <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                </svg>
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Break Time */}
+                      {isComplete && attendance.clock_in_time && attendance.clock_out_time && (
+                        <div className="mb-3">
+                          <div className="text-xs text-gray-500 mb-1 font-medium uppercase tracking-wide">Break Time</div>
+                          <div className="flex items-center gap-2">
+                            <div className="text-sm text-gray-900 font-semibold">
+                              {attendance.break_minutes && attendance.break_minutes > 0
+                                ? `${Math.floor(attendance.break_minutes / 60)}h ${String(attendance.break_minutes % 60).padStart(2, '0')}m`
+                                : '0h 00m'}
+                            </div>
+                            {isAttendanceFromToday(attendance) && (
+                              <button
+                                onClick={() => openEditBreakTimeModal(attendance)}
+                                className="active:scale-95 transition-all hover:opacity-70"
+                                title="Edit break time"
+                              >
+                                <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                </svg>
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Worked Hours */}
+                      {isComplete && attendance.clock_in_time && attendance.clock_out_time && (() => {
+                        const clockInTime = new Date(attendance.clock_in_time);
+                        const clockOutTime = new Date(attendance.clock_out_time);
+                        const totalMinutes = Math.floor((clockOutTime.getTime() - clockInTime.getTime()) / (1000 * 60));
+                        const breakMinutes = attendance.break_minutes || 0;
+                        const workedMinutes = Math.max(0, totalMinutes - breakMinutes);
+                        const workedHours = Math.floor(workedMinutes / 60);
+                        const workedMins = workedMinutes % 60;
+                        return (
+                          <div className="mb-3">
+                            <div className="text-xs text-gray-500 mb-1 font-medium uppercase tracking-wide">Worked Hours</div>
+                            <div className="text-sm text-gray-900 font-semibold">
+                              {workedMins > 0 ? `${workedHours}h ${String(workedMins).padStart(2, '0')}m` : `${workedHours}h`}
+                            </div>
+                          </div>
+                        );
+                      })()}
+
+                      {/* Working Time (for open clock-in - only show for the most recent open clock-in) */}
+                      {isOpen && attendance.id === openClockIn?.id && workingDurationLive && (
+                        <div className="mb-3">
+                          <div className="text-xs text-gray-500 mb-1 font-medium uppercase tracking-wide">Working Time</div>
+                          <div className="text-sm text-gray-900 font-semibold">Working for {workingDurationLive}</div>
+                        </div>
+                      )}
+
+                      {/* Approval Status */}
+                      {attendance.status && (
+                        <div className="mb-3">
+                          <div className="text-xs text-gray-500 mb-1 font-medium uppercase tracking-wide">Approval Status</div>
+                          <span className={`inline-block text-xs px-2.5 py-1 rounded font-medium ${
+                            attendance.status === 'approved' ? 'bg-green-50 text-green-700' :
+                            attendance.status === 'pending' ? 'bg-yellow-50 text-yellow-700' :
+                            'bg-red-50 text-red-700'
+                          }`}>
+                            {attendance.status}
+                          </span>
+                        </div>
+                      )}
+
+                      {/* Job Information */}
+                      {attendanceJobName && (
+                        <div className="flex items-start gap-2 text-xs text-gray-600">
+                          <svg className="w-4 h-4 text-blue-500 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                          </svg>
+                          <span>Job: {attendanceJobName}</span>
+                        </div>
+                      )}
+                    </div>
+                  );
+                });
+              })()}
+
+              {/* Contextual Notices */}
+              <div className="pt-3 border-t border-gray-200/40 space-y-2">
+                {hasOpenClockIn ? (
+                  <>
+                    <div className="flex items-start gap-2 text-xs text-gray-600">
+                      <svg className="w-4 h-4 text-blue-500 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      <span>You have an open clock-in. Clock out to close this period.</span>
+                    </div>
+                    {clockInJobName && (
+                      <div className="flex items-start gap-2 text-xs text-gray-600">
+                        <svg className="w-4 h-4 text-blue-500 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                        </svg>
+                        <span>Job: {clockInJobName}</span>
+                      </div>
+                    )}
+                  </>
+                ) : allScheduledShiftsForDate.length > 0 ? (
+                  nextPendingShift ? (
+                    <div className="flex items-start gap-2 text-xs text-gray-600">
+                      <svg className="w-4 h-4 text-blue-500 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      <span>
+                        Next scheduled shift: {nextPendingShift.project_name || 'Unknown'} ({formatTime12h(nextPendingShift.start_time)} - {formatTime12h(nextPendingShift.end_time)})
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="flex items-start gap-2 text-xs text-gray-600">
+                      <svg className="w-4 h-4 text-green-600 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      </svg>
+                      <span>All scheduled shifts are completed for this date.</span>
+                    </div>
+                  )
+                ) : (
+                  <div className="flex items-start gap-2 text-xs text-gray-600">
+                    <svg className="w-4 h-4 text-gray-500 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <span>No scheduled shifts for this date.</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
         </div>
 
         {/* Right Column - Weekly Summary Panel */}
@@ -1629,7 +1947,7 @@ export default function ClockInOut() {
                                   className="text-yellow-600"
                                   title={
                                     day.shift_deleted_by
-                                      ? `The shift related to this attendance was deleted by ${day.shift_deleted_by}${day.shift_deleted_at ? ` on ${new Date(day.shift_deleted_at).toLocaleDateString()}` : ''}`
+                                      ? `The shift related to this attendance was deleted by ${day.shift_deleted_by}${day.shift_deleted_at ? ` on ${new Date(day.shift_deleted_at).toLocaleDateString('en-US')}` : ''}`
                                       : 'The shift related to this attendance was deleted'
                                   }
                                 >
@@ -1766,6 +2084,34 @@ export default function ClockInOut() {
                 )}
               </div>
 
+              {/* Job selector - only show for clock-in, not for clock-out */}
+              {clockType === 'in' && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Job *</label>
+                  <select
+                    value={selectedJob}
+                    onChange={(e) => {
+                      setJobTouched(true);
+                      setSelectedJob(e.target.value);
+                    }}
+                    className="w-full border border-gray-200/60 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-brand-red/40 focus:border-brand-red/60 transition-colors"
+                    required
+                  >
+                    <option value="">Select a job...</option>
+                    {jobOptions.map((job) => (
+                      <option key={job.id} value={job.id}>
+                        {job.code} - {job.name}
+                      </option>
+                    ))}
+                  </select>
+                  {selectedDateShift && project && (
+                    <p className="text-xs text-gray-500 mt-1">
+                      Pre-filled from your scheduled shift
+                    </p>
+                  )}
+                </div>
+              )}
+
               {/* Manual Break Time (only for Clock Out) */}
               {clockType === 'out' && (
                 <div>
@@ -1885,6 +2231,91 @@ export default function ClockInOut() {
         </div>
       )}
 
+      {/* Shift Picker Modal (when multiple shifts exist for the selected project/job on the same day) */}
+      {shiftPickOpen && (
+        <div
+          className="fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setShiftPickOpen(false);
+              setShiftPickOptions([]);
+              setShiftPickSelectedId('');
+            }
+          }}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-xl max-w-2xl w-full border border-gray-200/60 flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-6 border-b border-gray-200/60">
+              <h3 className="text-xl font-semibold text-gray-900">Select Shift</h3>
+              <p className="text-sm text-gray-600 mt-1">
+                You have multiple shifts for this project on {formatDate(selectedDate)}. Choose which shift you are clocking in for.
+              </p>
+            </div>
+
+            <div className="p-6 space-y-3 overflow-y-auto max-h-[60vh]">
+              {shiftPickOptions.map((s) => (
+                <button
+                  key={s.id}
+                  type="button"
+                  onClick={() => setShiftPickSelectedId(s.id)}
+                  className={`w-full text-left rounded-xl border p-4 hover:bg-gray-50 transition-colors ${
+                    shiftPickSelectedId === s.id ? 'border-brand-red ring-2 ring-brand-red/30' : 'border-gray-200/60'
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-4">
+                    <div className="min-w-0">
+                      <div className="text-sm font-semibold text-gray-900 truncate">
+                        {s.project_name || 'Project'}{' '}
+                        <span className="text-gray-400 font-medium">•</span>{' '}
+                        {formatTime12h(s.start_time)} - {formatTime12h(s.end_time)}
+                      </div>
+                    </div>
+                    <div
+                      className={`w-4 h-4 rounded-full border flex-shrink-0 ${
+                        shiftPickSelectedId === s.id ? 'border-brand-red bg-brand-red' : 'border-gray-300'
+                      }`}
+                    />
+                  </div>
+                </button>
+              ))}
+            </div>
+
+            <div className="p-6 border-t border-gray-200/60 bg-gray-50/50 flex items-center justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setShiftPickOpen(false);
+                  setShiftPickOptions([]);
+                  setShiftPickSelectedId('');
+                }}
+                className="px-4 py-2.5 rounded-lg border border-gray-200/60 hover:bg-gray-50 transition-colors text-sm font-medium"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  if (!shiftPickSelectedId) {
+                    toast.error('Please select a shift');
+                    return;
+                  }
+                  const selected = shiftPickSelectedId;
+                  setShiftPickOpen(false);
+                  setShiftPickOptions([]);
+                  setShiftPickSelectedId('');
+                  await performClockInOut(selected);
+                }}
+                className="px-4 py-2.5 rounded-lg bg-brand-red text-white hover:bg-red-700 transition-colors text-sm font-medium"
+              >
+                Confirm Shift
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Edit Attendance Modal */}
       {editingAttendance && editingType && (
         <div 
@@ -1971,53 +2402,6 @@ export default function ClockInOut() {
                 </div>
               </div>
 
-              {/* Break Time (only for clock-out or complete attendance) */}
-              {(editingType === 'out' || (editingType === 'in' && editingAttendance.clock_out_time)) && (
-                <div>
-                  <label className="flex items-center gap-3 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={editInsertBreakTime}
-                      onChange={(e) => setEditInsertBreakTime(e.target.checked)}
-                      className="w-4 h-4 rounded border-gray-300 text-brand-red focus:ring-brand-red focus:ring-2"
-                    />
-                    <span className="text-sm font-medium text-gray-700">Insert Break Time</span>
-                  </label>
-                  {editInsertBreakTime && (
-                    <div className="mt-3 ml-7 space-y-3">
-                      <div className="flex gap-3 items-center">
-                        <label className="text-sm text-gray-600 w-16">Hours:</label>
-                        <select
-                          value={editBreakHours}
-                          onChange={(e) => setEditBreakHours(e.target.value)}
-                          className="flex-1 border border-gray-200/60 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-brand-red/40 focus:border-brand-red/60 transition-colors"
-                        >
-                          {Array.from({ length: 3 }, (_, i) => (
-                            <option key={i} value={String(i)}>
-                              {i}
-                            </option>
-                          ))}
-                        </select>
-                        <label className="text-sm text-gray-600 w-16">Minutes:</label>
-                        <select
-                          value={editBreakMinutes}
-                          onChange={(e) => setEditBreakMinutes(e.target.value)}
-                          className="flex-1 border border-gray-200/60 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-brand-red/40 focus:border-brand-red/60 transition-colors"
-                        >
-                          {Array.from({ length: 12 }, (_, i) => {
-                            const m = i * 5;
-                            return (
-                              <option key={m} value={String(m).padStart(2, '0')}>
-                                {String(m).padStart(2, '0')}
-                              </option>
-                            );
-                          })}
-                        </select>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
             </div>
 
             {/* Footer */}
@@ -2030,9 +2414,6 @@ export default function ClockInOut() {
                   setEditHour12('');
                   setEditMinute('');
                   setEditAmPm('AM');
-                  setEditInsertBreakTime(false);
-                  setEditBreakHours('0');
-                  setEditBreakMinutes('0');
                 }}
                 className="px-4 py-2.5 rounded-lg border border-gray-200/60 hover:bg-gray-50 transition-colors text-sm font-medium"
               >
@@ -2057,7 +2438,6 @@ export default function ClockInOut() {
           onClick={(e) => {
             if (e.target === e.currentTarget) {
               setEditingBreakTimeAttendance(null);
-              setEditBreakTimeOnly(false);
               setEditBreakTimeHours('0');
               setEditBreakTimeMinutes('0');
             }
@@ -2076,50 +2456,38 @@ export default function ClockInOut() {
 
             {/* Body */}
             <div className="p-6 space-y-5 flex-1 overflow-y-auto">
-              {/* Break Time Toggle */}
+              {/* Break Time */}
               <div>
-                <label className="flex items-center gap-3 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={editBreakTimeOnly}
-                    onChange={(e) => setEditBreakTimeOnly(e.target.checked)}
-                    className="w-4 h-4 rounded border-gray-300 text-brand-red focus:ring-brand-red focus:ring-2"
-                  />
-                  <span className="text-sm font-medium text-gray-700">Insert Break Time</span>
-                </label>
-                {editBreakTimeOnly && (
-                  <div className="mt-3 ml-7 space-y-3">
-                    <div className="flex gap-3 items-center">
-                      <label className="text-sm text-gray-600 w-16">Hours:</label>
-                      <select
-                        value={editBreakTimeHours}
-                        onChange={(e) => setEditBreakTimeHours(e.target.value)}
-                        className="flex-1 border border-gray-200/60 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-brand-red/40 focus:border-brand-red/60 transition-colors"
-                      >
-                        {Array.from({ length: 3 }, (_, i) => (
-                          <option key={i} value={String(i)}>
-                            {i}
-                          </option>
-                        ))}
-                      </select>
-                      <label className="text-sm text-gray-600 w-16">Minutes:</label>
-                      <select
-                        value={editBreakTimeMinutes}
-                        onChange={(e) => setEditBreakTimeMinutes(e.target.value)}
-                        className="flex-1 border border-gray-200/60 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-brand-red/40 focus:border-brand-red/60 transition-colors"
-                      >
-                        {Array.from({ length: 12 }, (_, i) => {
-                          const m = i * 5;
-                          return (
-                            <option key={m} value={String(m).padStart(2, '0')}>
-                              {String(m).padStart(2, '0')}
-                            </option>
-                          );
-                        })}
-                      </select>
-                    </div>
-                  </div>
-                )}
+                <label className="block text-sm font-medium text-gray-700 mb-2">Break Time</label>
+                <div className="flex gap-3 items-center">
+                  <label className="text-sm text-gray-600 w-16">Hours:</label>
+                  <select
+                    value={editBreakTimeHours}
+                    onChange={(e) => setEditBreakTimeHours(e.target.value)}
+                    className="flex-1 border border-gray-200/60 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-brand-red/40 focus:border-brand-red/60 transition-colors"
+                  >
+                    {Array.from({ length: 3 }, (_, i) => (
+                      <option key={i} value={String(i)}>
+                        {i}
+                      </option>
+                    ))}
+                  </select>
+                  <label className="text-sm text-gray-600 w-16">Minutes:</label>
+                  <select
+                    value={editBreakTimeMinutes}
+                    onChange={(e) => setEditBreakTimeMinutes(e.target.value)}
+                    className="flex-1 border border-gray-200/60 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-brand-red/40 focus:border-brand-red/60 transition-colors"
+                  >
+                    {Array.from({ length: 12 }, (_, i) => {
+                      const m = i * 5;
+                      return (
+                        <option key={m} value={String(m).padStart(2, '0')}>
+                          {String(m).padStart(2, '0')}
+                        </option>
+                      );
+                    })}
+                  </select>
+                </div>
               </div>
             </div>
 
@@ -2128,7 +2496,6 @@ export default function ClockInOut() {
               <button
                 onClick={() => {
                   setEditingBreakTimeAttendance(null);
-                  setEditBreakTimeOnly(false);
                   setEditBreakTimeHours('0');
                   setEditBreakTimeMinutes('0');
                 }}

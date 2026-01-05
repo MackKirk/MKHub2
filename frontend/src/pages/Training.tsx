@@ -35,9 +35,9 @@ export default function Training() {
 
   return (
     <div>
-      <div className="mb-3 rounded-xl border bg-gradient-to-br from-[#7f1010] to-[#a31414] text-white p-4">
-        <div className="text-2xl font-extrabold">Training & Learning</div>
-        <div className="text-sm opacity-90">Complete your required training and earn certificates.</div>
+      <div className="bg-slate-200/50 rounded-[12px] border border-slate-200 py-4 px-6 mb-6">
+        <div className="text-xl font-bold text-gray-900 tracking-tight mb-0.5">Training & Learning</div>
+        <div className="text-sm text-gray-500 font-medium">Complete your required training and earn certificates</div>
       </div>
 
       {/* Tabs */}
