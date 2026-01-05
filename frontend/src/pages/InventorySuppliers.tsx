@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
@@ -170,6 +170,7 @@ export default function InventorySuppliers() {
   const [q, setQ] = useState('');
   const [hasAnimated, setHasAnimated] = useState(false);
   const [animationComplete, setAnimationComplete] = useState(false);
+  const hasLoadedDataRef = useRef(false);
 
   // Get current date formatted (same as Dashboard)
   const todayLabel = useMemo(() => {
@@ -834,8 +835,15 @@ export default function InventorySuppliers() {
 
   const rows = sortedRows;
 
-  // Check if we're still loading initial data (only show overlay if no data yet)
-  const isInitialLoading = isLoading && !data;
+  // Track if we've loaded data at least once
+  useEffect(() => {
+    if (data) {
+      hasLoadedDataRef.current = true;
+    }
+  }, [data]);
+
+  // Check if we're still loading initial data (only show overlay if no data yet and we haven't loaded before)
+  const isInitialLoading = (isLoading && !data) && !hasLoadedDataRef.current;
 
   // Track when animation completes to remove inline styles for hover to work
   useEffect(() => {
@@ -860,7 +868,6 @@ export default function InventorySuppliers() {
   }
 
   return (
-    <LoadingOverlay isLoading={isInitialLoading} text="Loading suppliers...">
     <div>
       <div 
         className="bg-slate-200/50 rounded-[12px] border border-slate-200 flex items-center justify-between py-4 px-6 mb-6"
@@ -945,6 +952,7 @@ export default function InventorySuppliers() {
         </div>
       )}
 
+      <LoadingOverlay isLoading={isInitialLoading} text="Loading suppliers...">
       <div className="rounded-xl border bg-white">
         {isLoading ? (
           <div className="p-4">
@@ -1014,6 +1022,7 @@ export default function InventorySuppliers() {
           </div>
         )}
       </div>
+      </LoadingOverlay>
 
       {open && (
         <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center">
@@ -2961,6 +2970,5 @@ export default function InventorySuppliers() {
         }}
       />
     </div>
-    </LoadingOverlay>
   );
 }

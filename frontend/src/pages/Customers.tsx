@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo, useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useConfirm } from '@/components/ConfirmProvider';
 import LoadingOverlay from '@/components/LoadingOverlay';
@@ -126,6 +126,7 @@ export default function Customers(){
   const limit = 10;
   const [hasAnimated, setHasAnimated] = useState(false);
   const [animationComplete, setAnimationComplete] = useState(false);
+  const hasLoadedDataRef = useRef(false);
   
   // Get current date formatted (same as Dashboard)
   const todayLabel = useMemo(() => {
@@ -198,8 +199,15 @@ export default function Customers(){
   
   const { data:settings, isLoading: settingsLoading } = useQuery({ queryKey:['settings'], queryFn: ()=>api<any>('GET','/settings') });
   
-  // Check if we're still loading initial data (only show overlay if no data yet)
-  const isInitialLoading = (isLoading && !data) || (settingsLoading && !settings);
+  // Track if we've loaded data at least once
+  useEffect(() => {
+    if (data) {
+      hasLoadedDataRef.current = true;
+    }
+  }, [data]);
+  
+  // Check if we're still loading initial data (only show overlay if no data yet and we haven't loaded before)
+  const isInitialLoading = ((isLoading && !data) || (settingsLoading && !settings)) && !hasLoadedDataRef.current;
   
   // Track when animation completes to remove inline styles for hover to work
   useEffect(() => {

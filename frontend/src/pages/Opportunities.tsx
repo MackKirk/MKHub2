@@ -771,7 +771,6 @@ export default function Opportunities(){
   // Build query string from URL params (filters are managed through modal)
   const qs = useMemo(()=> {
     const params = new URLSearchParams(searchParams);
-    params.delete('q'); // Remove search from API query string
     return params.toString() ? '?' + params.toString() : '';
   }, [searchParams]);
   
