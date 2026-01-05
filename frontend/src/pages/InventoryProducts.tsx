@@ -7,6 +7,10 @@ import ImagePicker from '@/components/ImagePicker';
 import { useNavigate } from 'react-router-dom';
 import SupplierSelect from '@/components/SupplierSelect';
 import NewSupplierModal from '@/components/NewSupplierModal';
+import FilterBuilderModal from '@/components/FilterBuilder/FilterBuilderModal';
+import FilterChip from '@/components/FilterBuilder/FilterChip';
+import { FilterRule, FieldConfig } from '@/components/FilterBuilder/types';
+import LoadingOverlay from '@/components/LoadingOverlay';
 
 type Material = { id:number, name:string, supplier_name?:string, category?:string, unit?:string, price?:number, last_updated?:string, unit_type?:string, units_per_package?:number, coverage_sqs?:number, coverage_ft2?:number, coverage_m2?:number, description?:string, image_base64?:string, technical_manual_url?:string };
 
@@ -40,7 +44,129 @@ const parseCurrency = (value: string): string => {
   return parsed;
 };
 
+// Helper: Convert filter rules to URL parameters
+function convertRulesToParams(rules: FilterRule[]): URLSearchParams {
+  const params = new URLSearchParams();
+  
+  // Clear all potential conflicting parameters first
+  params.delete('supplier');
+  params.delete('supplier_not');
+  params.delete('category');
+  params.delete('category_not');
+  params.delete('price_min');
+  params.delete('price_max');
+  params.delete('unit_type');
+  params.delete('unit_type_not');
+  
+  for (const rule of rules) {
+    if (!rule.value || (Array.isArray(rule.value) && (!rule.value[0] || !rule.value[1]))) {
+      continue; // Skip empty rules
+    }
+    
+    switch (rule.field) {
+      case 'supplier':
+        if (typeof rule.value === 'string') {
+          if (rule.operator === 'is') {
+            params.set('supplier', rule.value);
+          } else if (rule.operator === 'is_not') {
+            params.set('supplier_not', rule.value);
+          }
+        }
+        break;
+      
+      case 'category':
+        if (typeof rule.value === 'string') {
+          if (rule.operator === 'is') {
+            params.set('category', rule.value);
+          } else if (rule.operator === 'is_not') {
+            params.set('category_not', rule.value);
+          }
+        }
+        break;
+      
+      case 'price':
+        if (typeof rule.value === 'string') {
+          if (rule.operator === 'greater_than') {
+            params.set('price_min', rule.value);
+          } else if (rule.operator === 'less_than') {
+            params.set('price_max', rule.value);
+          } else if (rule.operator === 'is_equal_to') {
+            params.set('price_min', rule.value);
+            params.set('price_max', rule.value);
+          }
+        } else if (Array.isArray(rule.value) && rule.operator === 'between') {
+          params.set('price_min', rule.value[0]);
+          params.set('price_max', rule.value[1]);
+        }
+        break;
+      
+      case 'unit_type':
+        if (typeof rule.value === 'string') {
+          if (rule.operator === 'is') {
+            params.set('unit_type', rule.value);
+          } else if (rule.operator === 'is_not') {
+            params.set('unit_type_not', rule.value);
+          }
+        }
+        break;
+    }
+  }
+  
+  return params;
+}
+
+// Helper: Convert URL parameters to filter rules
+function convertParamsToRules(params: URLSearchParams): FilterRule[] {
+  const rules: FilterRule[] = [];
+  let idCounter = 1;
+  
+  // Supplier
+  const supplier = params.get('supplier');
+  const supplierNot = params.get('supplier_not');
+  if (supplier) {
+    rules.push({ id: `rule-${idCounter++}`, field: 'supplier', operator: 'is', value: supplier });
+  } else if (supplierNot) {
+    rules.push({ id: `rule-${idCounter++}`, field: 'supplier', operator: 'is_not', value: supplierNot });
+  }
+  
+  // Category
+  const category = params.get('category');
+  const categoryNot = params.get('category_not');
+  if (category) {
+    rules.push({ id: `rule-${idCounter++}`, field: 'category', operator: 'is', value: category });
+  } else if (categoryNot) {
+    rules.push({ id: `rule-${idCounter++}`, field: 'category', operator: 'is_not', value: categoryNot });
+  }
+  
+  // Price range
+  const priceMin = params.get('price_min');
+  const priceMax = params.get('price_max');
+  if (priceMin && priceMax) {
+    if (priceMin === priceMax) {
+      rules.push({ id: `rule-${idCounter++}`, field: 'price', operator: 'is_equal_to', value: priceMin });
+    } else {
+      rules.push({ id: `rule-${idCounter++}`, field: 'price', operator: 'between', value: [priceMin, priceMax] });
+    }
+  } else if (priceMin) {
+    rules.push({ id: `rule-${idCounter++}`, field: 'price', operator: 'greater_than', value: priceMin });
+  } else if (priceMax) {
+    rules.push({ id: `rule-${idCounter++}`, field: 'price', operator: 'less_than', value: priceMax });
+  }
+  
+  // Unit Type
+  const unitType = params.get('unit_type');
+  const unitTypeNot = params.get('unit_type_not');
+  if (unitType) {
+    rules.push({ id: `rule-${idCounter++}`, field: 'unit_type', operator: 'is', value: unitType });
+  } else if (unitTypeNot) {
+    rules.push({ id: `rule-${idCounter++}`, field: 'unit_type', operator: 'is_not', value: unitTypeNot });
+  }
+  
+  return rules;
+}
+
 export default function InventoryProducts(){
+  const queryClient = useQueryClient();
   const confirm = useConfirm();
   const navigate = useNavigate();
   const { data: me, isLoading: meLoading } = useQuery({ queryKey: ['me'], queryFn: () => api<any>('GET', '/auth/me') });
@@ -49,6 +175,18 @@ export default function InventoryProducts(){
   const canViewProducts = isAdmin || permissions.has('inventory:products:read');
   const canEditProducts = isAdmin || permissions.has('inventory:products:write');
   const [q, setQ] = useState('');
+  const [hasAnimated, setHasAnimated] = useState(false);
+  const [animationComplete, setAnimationComplete] = useState(false);
+
+  // Get current date formatted (same as Dashboard)
+  const todayLabel = useMemo(() => {
+    return new Date().toLocaleDateString('en-CA', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+    });
+  }, []);
 
   // Redirect if user doesn't have permission
   useEffect(() => {
@@ -57,30 +195,42 @@ export default function InventoryProducts(){
       navigate('/home');
     }
   }, [meLoading, me, canViewProducts, navigate]);
-  const [supplier, setSupplier] = useState('');
-  const [category, setCategory] = useState('');
-  const [showAdvanced, setShowAdvanced] = useState(false);
-  const [isFiltersCollapsed, setIsFiltersCollapsed] = useState(false);
-  const [priceMin, setPriceMin] = useState<string>('');
-  const [priceMinDisplay, setPriceMinDisplay] = useState<string>('');
-  const [priceMinFocused, setPriceMinFocused] = useState(false);
-  const [priceMax, setPriceMax] = useState<string>('');
-  const [priceMaxDisplay, setPriceMaxDisplay] = useState<string>('');
-  const [priceMaxFocused, setPriceMaxFocused] = useState(false);
-  const [unitTypeFilter, setUnitTypeFilter] = useState<string>('');
   const [sortColumn, setSortColumn] = useState<string>('name');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
+  const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
+  
+  // Get filter params from URL
+  const [searchParams, setSearchParams] = useState(() => {
+    const params = new URLSearchParams();
+    // Initialize from current URL if available
+    if (typeof window !== 'undefined') {
+      const urlParams = new URLSearchParams(window.location.search);
+      urlParams.forEach((value, key) => {
+        if (key !== 'q') params.set(key, value);
+      });
+    }
+    return params;
+  });
+  
+  // Convert current URL params to rules for modal
+  const currentRules = useMemo(() => {
+    return convertParamsToRules(searchParams);
+  }, [searchParams]);
+  
+  // Build query params from searchParams
+  const queryParams = useMemo(() => {
+    const params = new URLSearchParams();
+    if (q) params.set('q', q);
+    searchParams.forEach((value, key) => {
+      if (key !== 'q') params.set(key, value);
+    });
+    return params;
+  }, [q, searchParams]);
+  
   const { data, refetch, isLoading, isFetching } = useQuery({
-    queryKey:['estimateProducts', q, supplier, category, priceMin, priceMax, unitTypeFilter],
+    queryKey:['estimateProducts', queryParams.toString()],
     queryFn: async ()=>{
-      const params = new URLSearchParams(); 
-      if(q) params.set('q', q); 
-      if(supplier) params.set('supplier', supplier); 
-      if(category) params.set('category', category);
-      if(priceMin) params.set('price_min', priceMin);
-      if(priceMax) params.set('price_max', priceMax);
-      if(unitTypeFilter) params.set('unit_type', unitTypeFilter);
-      const path = params.toString()? `/estimate/products/search?${params.toString()}` : '/estimate/products';
+      const path = queryParams.toString()? `/estimate/products/search?${queryParams.toString()}` : '/estimate/products';
       return await api<Material[]>('GET', path);
     }
   });
@@ -89,10 +239,95 @@ export default function InventoryProducts(){
   useEffect(() => {
     refetch();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [q, supplier, category, priceMin, priceMax, unitTypeFilter]);
+  }, [queryParams]);
   const rawRows = data||[];
   const suppliers = useMemo(()=> Array.from(new Set(rawRows.map(r=> r.supplier_name||'').filter(Boolean))), [rawRows]);
   const categories = useMemo(()=> Array.from(new Set(rawRows.map(r=> r.category||'').filter(Boolean))), [rawRows]);
+  
+  // Get all suppliers from API for filter options
+  const { data: supplierOptions } = useQuery({ 
+    queryKey:['invSuppliersOptions'], 
+    queryFn: ()=> api<any[]>('GET','/inventory/suppliers') 
+  });
+  
+  // Filter Builder Configuration
+  const filterFields: FieldConfig[] = useMemo(() => [
+    {
+      id: 'supplier',
+      label: 'Supplier',
+      type: 'select',
+      operators: ['is', 'is_not'],
+      getOptions: () => {
+        // Use supplier names from current data, or from API
+        const supplierNames = suppliers.length > 0 ? suppliers : (supplierOptions?.map((s: any) => s.name) || []);
+        return supplierNames.map((name: string) => ({ value: name, label: name }));
+      },
+    },
+    {
+      id: 'category',
+      label: 'Category',
+      type: 'select',
+      operators: ['is', 'is_not'],
+      getOptions: () => categories.map((cat: string) => ({ value: cat, label: cat })),
+    },
+    {
+      id: 'price',
+      label: 'Price',
+      type: 'number',
+      operators: ['greater_than', 'less_than', 'is_equal_to', 'between'],
+    },
+    {
+      id: 'unit_type',
+      label: 'Unit Type',
+      type: 'select',
+      operators: ['is', 'is_not'],
+      getOptions: () => [
+        { value: 'unitary', label: 'Unitary' },
+        { value: 'multiple', label: 'Multiple' },
+        { value: 'coverage', label: 'Coverage' },
+      ],
+    },
+  ], [suppliers, categories, supplierOptions]);
+
+  const handleApplyFilters = (rules: FilterRule[]) => {
+    const params = convertRulesToParams(rules);
+    if (q) params.set('q', q);
+    setSearchParams(params);
+    refetch();
+  };
+
+  const hasActiveFilters = currentRules.length > 0;
+
+  // Helper to format rule value for display
+  const formatRuleValue = (rule: FilterRule): string => {
+    if (rule.field === 'supplier') {
+      return String(rule.value);
+    }
+    if (rule.field === 'category') {
+      return String(rule.value);
+    }
+    if (rule.field === 'price') {
+      if (Array.isArray(rule.value)) {
+        return `$${Number(rule.value[0]).toLocaleString()} → $${Number(rule.value[1]).toLocaleString()}`;
+      }
+      return `$${Number(rule.value).toLocaleString()}`;
+    }
+    if (rule.field === 'unit_type') {
+      const labels: Record<string, string> = {
+        'unitary': 'Unitary',
+        'multiple': 'Multiple',
+        'coverage': 'Coverage',
+      };
+      return labels[String(rule.value)] || String(rule.value);
+    }
+    return String(rule.value);
+  };
+
+  // Helper to get field label
+  const getFieldLabel = (fieldId: string): string => {
+    const field = filterFields.find(f => f.id === fieldId);
+    return field?.label || fieldId;
+  };
 
   const sortedRows = useMemo(() => {
     const sorted = [...rawRows];
@@ -166,8 +401,6 @@ export default function InventoryProducts(){
   const [productTab, setProductTab] = useState<'details'|'usage'|'related'>('details');
   const [productUsage, setProductUsage] = useState<any[]>([]);
   const [loadingUsage, setLoadingUsage] = useState(false);
-
-  const { data: supplierOptions } = useQuery({ queryKey:['invSuppliersOptions'], queryFn: ()=> api<any[]>('GET','/inventory/suppliers') });
 
   const qc = useQueryClient();
   const productIds = useMemo(()=> rows.map(p=> p.id).join(','), [rows]);
@@ -382,212 +615,118 @@ export default function InventoryProducts(){
     }catch(_e){ toast.error('Failed'); }
   };
 
+  // Check if we're still loading initial data (only show overlay if no data yet)
+  const isInitialLoading = isLoading && !data;
+
+  // Track when animation completes to remove inline styles for hover to work
+  useEffect(() => {
+    if (hasAnimated) {
+      const timer = setTimeout(() => setAnimationComplete(true), 400);
+      return () => clearTimeout(timer);
+    }
+  }, [hasAnimated]);
+
+  // Track when initial data is loaded to trigger entry animations
+  useEffect(() => {
+    if (!isInitialLoading && !hasAnimated) {
+      // Small delay to ensure DOM is ready
+      const timer = setTimeout(() => setHasAnimated(true), 50);
+      return () => clearTimeout(timer);
+    }
+  }, [isInitialLoading, hasAnimated]);
+
   // Don't render if still loading or user doesn't have permission
   if (meLoading || !canViewProducts) {
     return null;
   }
 
   return (
+    <LoadingOverlay isLoading={isInitialLoading} text="Loading products...">
     <div>
-      <div className="bg-slate-200/50 rounded-[12px] border border-slate-200 flex items-center justify-between py-4 px-6 mb-6">
+      <div 
+        className="bg-slate-200/50 rounded-[12px] border border-slate-200 flex items-center justify-between py-4 px-6 mb-6"
+        style={animationComplete ? {} : {
+          opacity: hasAnimated ? 1 : 0,
+          transform: hasAnimated ? 'translateY(0) scale(1)' : 'translateY(-8px) scale(0.98)',
+          transition: 'opacity 400ms ease-out, transform 400ms ease-out'
+        }}
+      >
         <div>
           <div className="text-xl font-bold text-gray-900 tracking-tight mb-0.5">Products</div>
           <div className="text-sm text-gray-500 font-medium">Catalog of materials and pricing</div>
         </div>
-        {canEditProducts && (
-          <button 
-            onClick={()=>{ resetModal(); setOpen(true); }} 
-            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[#bc1414] text-white text-sm font-medium transition-all duration-200 hover:bg-[#aa1212] hover:shadow-md active:translate-y-[1px] active:shadow-sm"
-          >
-            <span className="text-base leading-none">+</span>
-            New Product
-          </button>
-        )}
+        <div className="text-right">
+          <div className="text-xs text-gray-400 mb-1.5 font-medium uppercase tracking-wide">Today</div>
+          <div className="text-sm font-semibold text-gray-700">{todayLabel}</div>
+        </div>
       </div>
-      {/* Advanced Search Panel */}
-      <div className="mb-3 rounded-xl border bg-white shadow-sm overflow-hidden relative">
-        {/* Main Search Bar */}
-        {isFiltersCollapsed ? (
-          <div className="p-4 bg-gradient-to-r from-gray-50 to-white">
-            <div className="flex items-center justify-between">
-              <div className="text-lg font-semibold text-gray-700">Show Filters</div>
-            </div>
-          </div>
-        ) : (
-          <div className="p-4 bg-gradient-to-r from-gray-50 to-white border-b">
-            <div className="flex items-center gap-3">
-              <div className="flex-1">
-                <label className="block text-xs font-medium text-gray-700 mb-1.5">Search Products</label>
-                <div className="relative">
-                  <input 
-                    className="w-full border border-gray-300 rounded-lg px-4 py-2.5 pl-10 focus:outline-none focus:ring-2 focus:ring-brand-red focus:border-transparent text-gray-900" 
-                    placeholder="Search by product name, supplier, or category..." 
-                    value={q} 
-                    onChange={e=>setQ(e.target.value)} 
-                    onKeyDown={e=>{ if(e.key==='Enter') refetch(); }} 
-                  />
-                  <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                  </svg>
-                </div>
-              </div>
-              <div className="flex items-end gap-2 pt-6">
-                <button 
-                  onClick={()=>setShowAdvanced(!showAdvanced)}
-                  className="px-4 py-2.5 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors flex items-center gap-2 text-sm font-medium"
-                >
-                  <svg className={`w-4 h-4 transition-transform ${showAdvanced ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                  </svg>
-                  Advanced Filters
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Advanced Filters */}
-        {!isFiltersCollapsed && showAdvanced && (
-          <div className="p-4 bg-gray-50 border-t animate-in slide-in-from-top duration-200">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1.5">Min Price ($)</label>
-                <input
-                  type="text"
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-red focus:border-transparent bg-white"
-                  placeholder="$0.00"
-                  value={priceMinFocused ? priceMinDisplay : (priceMin ? formatCurrency(priceMin) : '')}
-                  onFocus={() => {
-                    setPriceMinFocused(true);
-                    setPriceMinDisplay(priceMin || '');
-                  }}
-                  onBlur={() => {
-                    setPriceMinFocused(false);
-                    const parsed = parseCurrency(priceMinDisplay);
-                    setPriceMin(parsed);
-                    setPriceMinDisplay(parsed);
-                  }}
-                  onChange={e => {
-                    const raw = e.target.value;
-                    setPriceMinDisplay(raw);
-                  }}
+      {/* Filter Bar */}
+      <div className="mb-3 rounded-lg border border-gray-200 bg-white shadow-sm overflow-hidden">
+        {/* Primary Row: Global Search + Actions */}
+        <div className="px-6 py-4 bg-white">
+          <div className="flex items-center gap-4">
+            {/* Global Search - Dominant, large */}
+            <div className="flex-1">
+              <div className="relative">
+                <input 
+                  className="w-full border border-gray-200 rounded-md px-4 py-2.5 pl-10 text-sm bg-gray-50/50 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300 focus:bg-white transition-all duration-150" 
+                  placeholder="Search by product name, supplier, or category..." 
+                  value={q} 
+                  onChange={e=>setQ(e.target.value)} 
                 />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1.5">Max Price ($)</label>
-                <input
-                  type="text"
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-red focus:border-transparent bg-white"
-                  placeholder="$0.00"
-                  value={priceMaxFocused ? priceMaxDisplay : (priceMax ? formatCurrency(priceMax) : '')}
-                  onFocus={() => {
-                    setPriceMaxFocused(true);
-                    setPriceMaxDisplay(priceMax || '');
-                  }}
-                  onBlur={() => {
-                    setPriceMaxFocused(false);
-                    const parsed = parseCurrency(priceMaxDisplay);
-                    setPriceMax(parsed);
-                    setPriceMaxDisplay(parsed);
-                  }}
-                  onChange={e => {
-                    const raw = e.target.value;
-                    setPriceMaxDisplay(raw);
-                  }}
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1.5">Unit Type</label>
-                <select
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-red focus:border-transparent bg-white"
-                  value={unitTypeFilter}
-                  onChange={e => setUnitTypeFilter(e.target.value)}
-                >
-                  <option value="">All Types</option>
-                  <option value="unitary">Unitary</option>
-                  <option value="multiple">Multiple</option>
-                  <option value="coverage">Coverage</option>
-                </select>
+                <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
               </div>
             </div>
-          </div>
-        )}
 
-        {/* Quick Filters Row */}
-        {!isFiltersCollapsed && (
-          <div className="p-4 border-b bg-gray-50/50">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1.5">Supplier</label>
-                <select 
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-red focus:border-transparent bg-white"
-                  value={supplier}
-                  onChange={e=>setSupplier(e.target.value)}
-                >
-                  <option value="">All Suppliers</option>
-                  {suppliers.map(s=> <option key={s} value={s}>{s}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1.5">Category</label>
-                <select 
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-red focus:border-transparent bg-white"
-                  value={category}
-                  onChange={e=>setCategory(e.target.value)}
-                >
-                  <option value="">All Categories</option>
-                  {categories.map(c=> <option key={c} value={c}>{c}</option>)}
-                </select>
-              </div>
-            </div>
-          </div>
-        )}
+            {/* + Filters Button - Opens Modal */}
+            <button 
+              onClick={()=>setIsFilterModalOpen(true)}
+              className="px-3 py-2.5 text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors duration-150 whitespace-nowrap"
+            >
+              + Filters
+            </button>
 
-        {/* Action Buttons */}
-        {!isFiltersCollapsed && (
-          <div className="p-4 bg-white border-t flex items-center justify-between">
-            <div className="text-sm text-gray-600">
-              {Array.isArray(data) && data.length > 0 && (
-                <span>Found {data.length} product{data.length !== 1 ? 's' : ''}</span>
-              )}
-            </div>
-            <div className="flex items-center gap-2 pr-10">
+            {/* Clear Filters - Only when active */}
+            {hasActiveFilters && (
               <button 
                 onClick={()=>{
                   setQ('');
-                  setSupplier('');
-                  setCategory('');
-                  setPriceMin('');
-                  setPriceMax('');
-                  setUnitTypeFilter('');
+                  setSearchParams(new URLSearchParams());
                   refetch();
                 }} 
-                className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors font-medium"
+                className="px-3 py-2.5 text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors duration-150 whitespace-nowrap"
               >
-                Clear All
+                Clear Filters
               </button>
-            </div>
+            )}
           </div>
-        )}
-
-        {/* Collapse/Expand button - bottom right corner */}
-        <button
-          onClick={() => setIsFiltersCollapsed(!isFiltersCollapsed)}
-          className="absolute bottom-0 right-0 w-8 h-8 rounded-tl-lg border-t border-l bg-white hover:bg-gray-50 transition-colors flex items-center justify-center shadow-sm"
-          title={isFiltersCollapsed ? "Expand filters" : "Collapse filters"}
-        >
-          <svg 
-            className={`w-4 h-4 text-gray-600 transition-transform ${!isFiltersCollapsed ? 'rotate-180' : ''}`}
-            fill="none" 
-            stroke="currentColor" 
-            viewBox="0 0 24 24"
-          >
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-          </svg>
-        </button>
+        </div>
       </div>
 
-      <div className="rounded-xl border bg-white">
+      {/* Filter Chips */}
+      {hasActiveFilters && (
+        <div className="mb-4 flex items-center gap-2 flex-wrap">
+          {currentRules.map((rule) => (
+            <FilterChip
+              key={rule.id}
+              rule={rule}
+              onRemove={() => {
+                const updatedRules = currentRules.filter(r => r.id !== rule.id);
+                const params = convertRulesToParams(updatedRules);
+                if (q) params.set('q', q);
+                setSearchParams(params);
+                refetch();
+              }}
+              getValueLabel={formatRuleValue}
+              getFieldLabel={getFieldLabel}
+            />
+          ))}
+        </div>
+      )}
+
+      <div className="rounded-xl border bg-white p-4">
         {isLoading ? (
           <div className="p-4">
             <div className="h-6 bg-gray-100 animate-pulse rounded" />
@@ -597,67 +736,54 @@ export default function InventoryProducts(){
             No products found
           </div>
         ) : (
-          <div className="divide-y">
-            {rows.map(p => (
-              <div
-                key={p.id}
-                className="p-3 flex items-center justify-between hover:bg-gray-50 cursor-pointer"
-                onClick={() => openViewModal(p)}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-4 gap-4">
+            {canEditProducts && (
+              <button
+                onClick={() => { resetModal(); setOpen(true); }}
+                className="border-2 border-dashed border-gray-300 rounded-lg p-3 hover:border-brand-red hover:bg-gray-50 transition-all text-center bg-white flex flex-col items-center justify-center min-h-[200px]"
               >
-                <div className="flex items-center gap-3 min-w-0">
-                  <img
-                    src={p.image_base64 || '/ui/assets/placeholders/product.png'}
-                    className="w-12 h-12 rounded-lg border object-cover"
-                    alt={p.name}
-                  />
-                  <div className="min-w-0">
-                    <div className="font-medium text-base">{p.name}</div>
-                    <div className="text-xs text-gray-700">
-                      {p.supplier_name && <span className="font-medium">{p.supplier_name}</span>}
-                      {p.category && (
-                        <>
-                          {p.supplier_name && ' · '}
-                          <span>{p.category}</span>
-                        </>
-                      )}
-                    </div>
-                    <div className="text-xs text-gray-600">
-                      {p.unit && <span>{p.unit}</span>}
-                      {typeof p.price === 'number' && (
-                        <>
-                          {p.unit && ' · '}
-                          <span className="font-medium text-brand-red">${p.price.toFixed(2)}</span>
-                        </>
-                      )}
-                    </div>
+                <div className="text-4xl text-gray-400 mb-2">+</div>
+                <div className="font-medium text-sm text-gray-700">New Product</div>
+                <div className="text-xs text-gray-500 mt-1">Add new product to inventory</div>
+              </button>
+            )}
+            {rows.map(p => (
+              <button
+                key={p.id}
+                onClick={() => openViewModal(p)}
+                className="border rounded-lg p-3 hover:border-brand-red hover:shadow-md transition-all bg-white flex flex-col text-left"
+              >
+                <div className="w-full h-24 mb-2 relative">
+                  {p.image_base64 ? (
+                    <img 
+                      src={p.image_base64.startsWith('data:') ? p.image_base64 : `data:image/jpeg;base64,${p.image_base64}`}
+                      alt={p.name}
+                      className="w-full h-full object-contain rounded"
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).style.display = 'none';
+                        const placeholder = (e.target as HTMLImageElement).nextElementSibling as HTMLElement;
+                        if (placeholder) placeholder.style.display = 'flex';
+                      }}
+                    />
+                  ) : null}
+                  <div className={`w-full h-full bg-gray-200 rounded flex items-center justify-center text-gray-400 text-xs ${p.image_base64 ? 'hidden' : ''}`} style={{ display: p.image_base64 ? 'none' : 'flex' }}>
+                    No Image
                   </div>
                 </div>
-                <div className="flex items-center gap-2 text-sm" onClick={(e) => e.stopPropagation()}>
-                  {p.technical_manual_url && (() => {
-                    const url = p.technical_manual_url.trim();
-                    const absoluteUrl = url.match(/^https?:\/\//i) ? url : `https://${url}`;
-                    return (
-                      <a
-                        href={absoluteUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (!absoluteUrl || absoluteUrl === 'https://') {
-                            e.preventDefault();
-                          }
-                        }}
-                        className="p-2 rounded hover:bg-gray-100 transition-colors"
-                        title="View Technical Manual"
-                      >
-                        <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
-                        </svg>
-                      </a>
-                    );
-                  })()}
+                <div className="font-medium text-sm mb-1 line-clamp-2">{p.name}</div>
+                {p.description && (
+                  <div className="text-xs text-gray-500 mb-1 line-clamp-2">{p.description}</div>
+                )}
+                {p.category && (
+                  <div className="text-xs text-gray-500 mb-1">{p.category}</div>
+                )}
+                <div className="text-xs text-red-600 font-semibold mt-auto">
+                  {typeof p.price === 'number' ? `$${Number(p.price || 0).toFixed(2)}` : '—'}
                 </div>
-              </div>
+                {p.unit && (
+                  <div className="text-xs text-gray-500">Unit: {p.unit}</div>
+                )}
+              </button>
             ))}
           </div>
         )}
@@ -818,10 +944,10 @@ export default function InventoryProducts(){
                               </svg>
                               View Manual
                             </a>
-                          </div>
-                        </div>
-                      );
-                    })()}
+      </div>
+    </div>
+  );
+})()}
                   </div>
                   ) : productTab === 'usage' ? (
                     <div className="px-6 pb-6">
@@ -1310,7 +1436,21 @@ export default function InventoryProducts(){
           }}
         />
       )}
+      
+      {/* Filter Builder Modal */}
+      <FilterBuilderModal
+        isOpen={isFilterModalOpen}
+        onClose={() => setIsFilterModalOpen(false)}
+        onApply={handleApplyFilters}
+        initialRules={currentRules}
+        fields={filterFields}
+        getFieldData={(fieldId) => {
+          // Return data for field if needed
+          return null;
+        }}
+      />
     </div>
+    </LoadingOverlay>
   );
 }
 

@@ -2229,11 +2229,20 @@ def business_dashboard(
 @router.get("/business/opportunities")
 def business_opportunities(
     division_id: Optional[str] = None,
+    division_id_not: Optional[str] = None,
     subdivision_id: Optional[str] = None,
     status: Optional[str] = None,
+    status_not: Optional[str] = None,
     client_id: Optional[str] = None,
+    client_id_not: Optional[str] = None,
     date_start: Optional[str] = None,
     date_end: Optional[str] = None,
+    estimator_id: Optional[str] = None,
+    estimator_id_not: Optional[str] = None,
+    eta_start: Optional[str] = None,
+    eta_end: Optional[str] = None,
+    value_min: Optional[int] = None,
+    value_max: Optional[int] = None,
     q: Optional[str] = None,
     limit: int = 100,
     db: Session = Depends(get_db),
@@ -2247,6 +2256,14 @@ def business_opportunities(
         try:
             client_uuid = uuid.UUID(client_id)
             query = query.filter(Project.client_id == client_uuid)
+        except ValueError:
+            pass
+    
+    # Filter by client (exclusion)
+    if client_id_not:
+        try:
+            client_uuid = uuid.UUID(client_id_not)
+            query = query.filter(Project.client_id != client_uuid)
         except ValueError:
             pass
     
@@ -2327,6 +2344,80 @@ def business_opportunities(
         except ValueError:
             pass
     
+    # Filter by division (exclusion)
+    if division_id_not and not subdivision_id:
+        # For exclusion, we need to exclude projects that have this division or any of its subdivisions
+        try:
+            div_uuid = uuid.UUID(division_id_not)
+            from ..models.models import SettingList, SettingItem
+            divisions_list = db.query(SettingList).filter(SettingList.name == "project_divisions").first()
+            
+            excluded_division_ids = []
+            
+            if divisions_list:
+                # Get division and all its subdivisions
+                division_items = db.query(SettingItem).filter(
+                    SettingItem.list_id == divisions_list.id,
+                    or_(
+                        SettingItem.id == div_uuid,
+                        SettingItem.parent_id == div_uuid
+                    )
+                ).all()
+                excluded_division_ids = [str(item.id) for item in division_items]
+            
+            # Always include the main division_id in the exclusion list
+            if str(div_uuid) not in excluded_division_ids:
+                excluded_division_ids.append(str(div_uuid))
+            
+            # Build exclusion: project is excluded if it has ANY of these divisions
+            # We'll use NOT to exclude projects that match the inclusion pattern
+            exclusion_or_conditions = []
+            for div_id_str in excluded_division_ids:
+                try:
+                    div_id_uuid = uuid.UUID(div_id_str)
+                    # Project HAS this division if any of these conditions are true:
+                    has_division = or_(
+                        Project.division_id == div_id_uuid,
+                        cast(Project.project_division_ids, String).like(f'%{div_id_str}%'),
+                        cast(Project.division_ids, String).like(f'%{div_id_str}%')
+                    )
+                    exclusion_or_conditions.append(has_division)
+                except ValueError:
+                    pass
+            
+            # Exclude projects that have ANY of the excluded divisions
+            # Using De Morgan: NOT (A OR B) = (NOT A) AND (NOT B)
+            # So we need: project does NOT have div1 AND does NOT have div2 AND ...
+            exclusion_and_conditions = []
+            for div_id_str in excluded_division_ids:
+                try:
+                    div_id_uuid = uuid.UUID(div_id_str)
+                    # Project does NOT have this division if ALL of these are true:
+                    not_has_division = and_(
+                        or_(
+                            Project.division_id != div_id_uuid,
+                            Project.division_id.is_(None)
+                        ),
+                        or_(
+                            cast(Project.project_division_ids, String).notlike(f'%{div_id_str}%'),
+                            Project.project_division_ids.is_(None)
+                        ),
+                        or_(
+                            cast(Project.division_ids, String).notlike(f'%{div_id_str}%'),
+                            Project.division_ids.is_(None)
+                        )
+                    )
+                    exclusion_and_conditions.append(not_has_division)
+                except ValueError:
+                    pass
+            
+            # Apply exclusion: project must NOT have ANY of the excluded divisions
+            # Combine with AND: project must not have div1 AND not have div2 AND ...
+            if exclusion_and_conditions:
+                query = query.filter(and_(*exclusion_and_conditions))
+        except ValueError:
+            pass
+    
     # Filter by status - support both UUID and string label
     if status:
         try:
@@ -2348,6 +2439,79 @@ def business_opportunities(
         except (ValueError, AttributeError):
             # If status is not a valid UUID, try matching by status_label string
             query = query.filter(Project.status_label == status)
+    
+    # Filter by status (exclusion)
+    if status_not:
+        try:
+            status_uuid = uuid.UUID(str(status_not))
+            # Get the label from SettingItem to also match by status_label
+            from ..models.models import SettingItem
+            status_item = db.query(SettingItem).filter(SettingItem.id == status_uuid).first()
+            status_label = status_item.label if status_item else None
+            
+            # Exclude: NOT ((status_id == status_uuid) OR (status_id is None AND status_label == status_label))
+            # Using De Morgan: (status_id != status_uuid) AND (status_id is not None OR status_label != status_label)
+            if status_label:
+                # Case 1: status_id is not None -> exclude if status_id != status_uuid
+                # Case 2: status_id is None -> exclude if status_label != status_label
+                query = query.filter(
+                    or_(
+                        and_(
+                            Project.status_id.isnot(None),
+                            Project.status_id != status_uuid
+                        ),
+                        and_(
+                            Project.status_id.is_(None),
+                            Project.status_label != status_label
+                        )
+                    )
+                )
+            else:
+                # If we can't find the SettingItem, just exclude by status_id
+                query = query.filter(Project.status_id != status_uuid)
+        except (ValueError, AttributeError):
+            # If status is not a valid UUID, try excluding by status_label string
+            query = query.filter(Project.status_label != status_not)
+    
+    # Filter by estimator
+    if estimator_id:
+        try:
+            estimator_uuid = uuid.UUID(estimator_id)
+            query = query.filter(Project.estimator_id == estimator_uuid)
+        except ValueError:
+            pass
+    
+    # Filter by estimator (exclusion)
+    if estimator_id_not:
+        try:
+            estimator_uuid = uuid.UUID(estimator_id_not)
+            query = query.filter(Project.estimator_id != estimator_uuid)
+        except ValueError:
+            pass
+    
+    # Filter by ETA date range
+    if eta_start:
+        try:
+            from datetime import datetime
+            eta_start_d = datetime.strptime(eta_start, "%Y-%m-%d").date()
+            query = query.filter(cast(Project.date_eta, Date) >= eta_start_d)
+        except Exception:
+            pass
+    
+    if eta_end:
+        try:
+            from datetime import datetime
+            eta_end_d = datetime.strptime(eta_end, "%Y-%m-%d").date()
+            query = query.filter(cast(Project.date_eta, Date) <= eta_end_d)
+        except Exception:
+            pass
+    
+    # Filter by cost_estimated range
+    if value_min is not None:
+        query = query.filter(Project.cost_estimated >= value_min)
+    
+    if value_max is not None:
+        query = query.filter(Project.cost_estimated <= value_max)
     
     # Search - include client name if client relation exists
     if q:
@@ -2470,13 +2634,22 @@ def business_opportunities(
 @router.get("/business/projects")
 def business_projects(
     division_id: Optional[str] = None,
+    division_id_not: Optional[str] = None,
     subdivision_id: Optional[str] = None,
     status: Optional[str] = None,
+    status_not: Optional[str] = None,
     q: Optional[str] = None,
     min_value: Optional[float] = None,
     client_id: Optional[str] = None,
+    client_id_not: Optional[str] = None,
     date_start: Optional[str] = None,
     date_end: Optional[str] = None,
+    estimator_id: Optional[str] = None,
+    estimator_id_not: Optional[str] = None,
+    eta_start: Optional[str] = None,
+    eta_end: Optional[str] = None,
+    value_min: Optional[int] = None,
+    value_max: Optional[int] = None,
     limit: int = 100,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user)
@@ -2489,6 +2662,14 @@ def business_projects(
         try:
             client_uuid = uuid.UUID(client_id)
             query = query.filter(Project.client_id == client_uuid)
+        except ValueError:
+            pass
+    
+    # Filter by client (exclusion)
+    if client_id_not:
+        try:
+            client_uuid = uuid.UUID(client_id_not)
+            query = query.filter(Project.client_id != client_uuid)
         except ValueError:
             pass
     
@@ -2569,9 +2750,121 @@ def business_projects(
         except ValueError:
             pass
     
+    # Filter by division (exclusion)
+    if division_id_not:
+        try:
+            div_uuid = uuid.UUID(division_id_not)
+            from ..models.models import SettingList, SettingItem
+            divisions_list = db.query(SettingList).filter(SettingList.name == "project_divisions").first()
+            
+            exclusion_and_conditions = []
+            
+            if divisions_list:
+                division_items = db.query(SettingItem).filter(
+                    SettingItem.list_id == divisions_list.id,
+                    or_(
+                        SettingItem.id == div_uuid,
+                        SettingItem.parent_id == div_uuid
+                    )
+                ).all()
+                division_ids_to_exclude = [str(item.id) for item in division_items]
+                
+                for ex_div_id_str in division_ids_to_exclude:
+                    try:
+                        # NOT (has division in any format)
+                        not_has_division = and_(
+                            Project.division_id != uuid.UUID(ex_div_id_str),
+                            or_(
+                                cast(Project.project_division_ids, String).notlike(f'%{ex_div_id_str}%'),
+                                Project.project_division_ids.is_(None)
+                            ),
+                            or_(
+                                cast(Project.division_ids, String).notlike(f'%{ex_div_id_str}%'),
+                                Project.division_ids.is_(None)
+                            )
+                        )
+                        exclusion_and_conditions.append(not_has_division)
+                    except ValueError:
+                        pass
+            
+            if exclusion_and_conditions:
+                query = query.filter(and_(*exclusion_and_conditions))
+        except ValueError:
+            pass
+    
     # Filter by status
     if status:
-        query = query.filter(Project.status_id == status)
+        try:
+            status_uuid = uuid.UUID(str(status))
+            query = query.filter(Project.status_id == status_uuid)
+        except ValueError:
+            query = query.filter(Project.status_label == status)
+    
+    # Filter by status (exclusion)
+    if status_not:
+        try:
+            status_uuid = uuid.UUID(str(status_not))
+            from ..models.models import SettingItem
+            status_item = db.query(SettingItem).filter(SettingItem.id == status_uuid).first()
+            status_label = status_item.label if status_item else None
+            
+            if status_label:
+                query = query.filter(
+                    or_(
+                        and_(
+                            Project.status_id.isnot(None),
+                            Project.status_id != status_uuid
+                        ),
+                        and_(
+                            Project.status_id.is_(None),
+                            Project.status_label != status_label
+                        )
+                    )
+                )
+            else:
+                query = query.filter(Project.status_id != status_uuid)
+        except (ValueError, AttributeError):
+            query = query.filter(Project.status_label != status_not)
+    
+    # Filter by estimator
+    if estimator_id:
+        try:
+            estimator_uuid = uuid.UUID(estimator_id)
+            query = query.filter(Project.estimator_id == estimator_uuid)
+        except ValueError:
+            pass
+    
+    # Filter by estimator (exclusion)
+    if estimator_id_not:
+        try:
+            estimator_uuid = uuid.UUID(estimator_id_not)
+            query = query.filter(Project.estimator_id != estimator_uuid)
+        except ValueError:
+            pass
+    
+    # Filter by ETA date range
+    if eta_start:
+        try:
+            from datetime import datetime
+            eta_start_d = datetime.strptime(eta_start, "%Y-%m-%d").date()
+            query = query.filter(cast(Project.date_eta, Date) >= eta_start_d)
+        except Exception:
+            pass
+    
+    if eta_end:
+        try:
+            from datetime import datetime
+            eta_end_d = datetime.strptime(eta_end, "%Y-%m-%d").date()
+            query = query.filter(cast(Project.date_eta, Date) <= eta_end_d)
+        except Exception:
+            pass
+    
+    # Filter by cost_estimated range (value_min/value_max)
+    if value_min is not None:
+        query = query.filter(Project.cost_estimated >= value_min)
+    
+    if value_max is not None:
+        query = query.filter(Project.cost_estimated <= value_max)
     
     # Search (by name, code, or client name)
     if q:

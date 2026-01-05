@@ -6,6 +6,10 @@ import { useConfirm } from '@/components/ConfirmProvider';
 import ImagePicker from '@/components/ImagePicker';
 import AddressAutocomplete from '@/components/AddressAutocomplete';
 import { useNavigate } from 'react-router-dom';
+import FilterBuilderModal from '@/components/FilterBuilder/FilterBuilderModal';
+import FilterChip from '@/components/FilterBuilder/FilterChip';
+import { FilterRule, FieldConfig } from '@/components/FilterBuilder/types';
+import LoadingOverlay from '@/components/LoadingOverlay';
 
 type Supplier = {
   id: string;
@@ -65,6 +69,94 @@ const parseCurrency = (value: string): string => {
   return parsed;
 };
 
+// Helper: Convert filter rules to URL parameters
+function convertRulesToParams(rules: FilterRule[]): URLSearchParams {
+  const params = new URLSearchParams();
+  
+  // Clear all potential conflicting parameters first
+  params.delete('country');
+  params.delete('country_not');
+  params.delete('province');
+  params.delete('province_not');
+  params.delete('city');
+  params.delete('city_not');
+  
+  for (const rule of rules) {
+    if (!rule.value || (Array.isArray(rule.value) && (!rule.value[0] || !rule.value[1]))) {
+      continue; // Skip empty rules
+    }
+    
+    switch (rule.field) {
+      case 'country':
+        if (typeof rule.value === 'string') {
+          if (rule.operator === 'is') {
+            params.set('country', rule.value);
+          } else if (rule.operator === 'is_not') {
+            params.set('country_not', rule.value);
+          }
+        }
+        break;
+      
+      case 'province':
+        if (typeof rule.value === 'string') {
+          if (rule.operator === 'is') {
+            params.set('province', rule.value);
+          } else if (rule.operator === 'is_not') {
+            params.set('province_not', rule.value);
+          }
+        }
+        break;
+      
+      case 'city':
+        if (typeof rule.value === 'string') {
+          if (rule.operator === 'is') {
+            params.set('city', rule.value);
+          } else if (rule.operator === 'is_not') {
+            params.set('city_not', rule.value);
+          }
+        }
+        break;
+    }
+  }
+  
+  return params;
+}
+
+// Helper: Convert URL parameters to filter rules
+function convertParamsToRules(params: URLSearchParams): FilterRule[] {
+  const rules: FilterRule[] = [];
+  let idCounter = 1;
+  
+  // Country
+  const country = params.get('country');
+  const countryNot = params.get('country_not');
+  if (country) {
+    rules.push({ id: `rule-${idCounter++}`, field: 'country', operator: 'is', value: country });
+  } else if (countryNot) {
+    rules.push({ id: `rule-${idCounter++}`, field: 'country', operator: 'is_not', value: countryNot });
+  }
+  
+  // Province
+  const province = params.get('province');
+  const provinceNot = params.get('province_not');
+  if (province) {
+    rules.push({ id: `rule-${idCounter++}`, field: 'province', operator: 'is', value: province });
+  } else if (provinceNot) {
+    rules.push({ id: `rule-${idCounter++}`, field: 'province', operator: 'is_not', value: provinceNot });
+  }
+  
+  // City
+  const city = params.get('city');
+  const cityNot = params.get('city_not');
+  if (city) {
+    rules.push({ id: `rule-${idCounter++}`, field: 'city', operator: 'is', value: city });
+  } else if (cityNot) {
+    rules.push({ id: `rule-${idCounter++}`, field: 'city', operator: 'is_not', value: cityNot });
+  }
+  
+  return rules;
+}
+
 export default function InventorySuppliers() {
   const queryClient = useQueryClient();
   const confirm = useConfirm();
@@ -76,6 +168,18 @@ export default function InventorySuppliers() {
   const canEditSuppliers = isAdmin || permissions.has('inventory:suppliers:write');
   const canEditProducts = isAdmin || permissions.has('inventory:products:write');
   const [q, setQ] = useState('');
+  const [hasAnimated, setHasAnimated] = useState(false);
+  const [animationComplete, setAnimationComplete] = useState(false);
+
+  // Get current date formatted (same as Dashboard)
+  const todayLabel = useMemo(() => {
+    return new Date().toLocaleDateString('en-CA', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+    });
+  }, []);
 
   // Redirect if user doesn't have permission
   useEffect(() => {
@@ -84,11 +188,25 @@ export default function InventorySuppliers() {
       navigate('/home');
     }
   }, [meLoading, me, canViewSuppliers, navigate]);
-  const [showAdvanced, setShowAdvanced] = useState(false);
-  const [isFiltersCollapsed, setIsFiltersCollapsed] = useState(false);
-  const [countryFilter, setCountryFilter] = useState('');
-  const [provinceFilter, setProvinceFilter] = useState('');
-  const [cityFilter, setCityFilter] = useState('');
+  const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
+  
+  // Get filter params from URL
+  const [searchParams, setSearchParams] = useState(() => {
+    const params = new URLSearchParams();
+    // Initialize from current URL if available
+    if (typeof window !== 'undefined') {
+      const urlParams = new URLSearchParams(window.location.search);
+      urlParams.forEach((value, key) => {
+        if (key !== 'q') params.set(key, value);
+      });
+    }
+    return params;
+  });
+  
+  // Convert current URL params to rules for modal
+  const currentRules = useMemo(() => {
+    return convertParamsToRules(searchParams);
+  }, [searchParams]);
   const [open, setOpen] = useState(false);
   const [viewing, setViewing] = useState<Supplier | null>(null);
   const [editing, setEditing] = useState<Supplier | null>(null);
@@ -215,12 +333,20 @@ export default function InventorySuppliers() {
     return () => window.removeEventListener('keydown', onKey);
   }, [open, contactModalOpen, productsModalOpen, newProductModalOpen, productModalOpen, addRelatedOpen, editProductImagePickerOpen, editingProduct]);
 
+  // Build query params from searchParams
+  const queryParams = useMemo(() => {
+    const params = new URLSearchParams();
+    if (q) params.set('q', q);
+    searchParams.forEach((value, key) => {
+      if (key !== 'q') params.set(key, value);
+    });
+    return params;
+  }, [q, searchParams]);
+  
   const { data, isLoading, isFetching, refetch: refetchSuppliers } = useQuery({
-    queryKey: ['suppliers', q],
+    queryKey: ['suppliers', queryParams.toString()],
     queryFn: async () => {
-      const params = new URLSearchParams();
-      if (q) params.set('q', q);
-      const path = params.toString() ? `/inventory/suppliers?${params.toString()}` : '/inventory/suppliers';
+      const path = queryParams.toString() ? `/inventory/suppliers?${queryParams.toString()}` : '/inventory/suppliers';
       return await api<Supplier[]>('GET', path);
     },
   });
@@ -229,7 +355,77 @@ export default function InventorySuppliers() {
   useEffect(() => {
     refetchSuppliers();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [q]);
+  }, [queryParams]);
+  
+  // Extract unique countries, provinces, and cities from suppliers data
+  const allCountries = useMemo(() => {
+    const countriesSet = new Set<string>();
+    (data || []).forEach((s: Supplier) => {
+      if (s.country) countriesSet.add(s.country);
+    });
+    return Array.from(countriesSet).sort();
+  }, [data]);
+  
+  const allProvinces = useMemo(() => {
+    const provincesSet = new Set<string>();
+    (data || []).forEach((s: Supplier) => {
+      if (s.province) provincesSet.add(s.province);
+    });
+    return Array.from(provincesSet).sort();
+  }, [data]);
+  
+  const allCities = useMemo(() => {
+    const citiesSet = new Set<string>();
+    (data || []).forEach((s: Supplier) => {
+      if (s.city) citiesSet.add(s.city);
+    });
+    return Array.from(citiesSet).sort();
+  }, [data]);
+  
+  // Filter Builder Configuration
+  const filterFields: FieldConfig[] = useMemo(() => [
+    {
+      id: 'country',
+      label: 'Country',
+      type: 'select',
+      operators: ['is', 'is_not'],
+      getOptions: () => allCountries.map(country => ({ value: country, label: country })),
+    },
+    {
+      id: 'province',
+      label: 'Province',
+      type: 'select',
+      operators: ['is', 'is_not'],
+      getOptions: () => allProvinces.map(province => ({ value: province, label: province })),
+    },
+    {
+      id: 'city',
+      label: 'City',
+      type: 'select',
+      operators: ['is', 'is_not'],
+      getOptions: () => allCities.map(city => ({ value: city, label: city })),
+    },
+  ], [allCountries, allProvinces, allCities]);
+
+  const handleApplyFilters = (rules: FilterRule[]) => {
+    const params = convertRulesToParams(rules);
+    if (q) params.set('q', q);
+    setSearchParams(params);
+    refetchSuppliers();
+  };
+
+  const hasActiveFilters = currentRules.length > 0;
+
+  // Helper to format rule value for display
+  const formatRuleValue = (rule: FilterRule): string => {
+    return String(rule.value);
+  };
+
+  // Helper to get field label
+  const getFieldLabel = (fieldId: string): string => {
+    const field = filterFields.find(f => f.id === fieldId);
+    return field?.label || fieldId;
+  };
 
   const { data: contactsData, refetch: refetchContacts } = useQuery({
     queryKey: ['supplierContacts', viewing?.id],
@@ -599,19 +795,9 @@ export default function InventorySuppliers() {
     }
   };
 
-  const filteredRows = useMemo(() => {
-    if (!data) return [];
-    return data.filter((s) => {
-      if (countryFilter && (s.country || '').toLowerCase() !== countryFilter.toLowerCase()) return false;
-      if (provinceFilter && (s.province || '').toLowerCase() !== provinceFilter.toLowerCase()) return false;
-      if (cityFilter && (s.city || '').toLowerCase() !== cityFilter.toLowerCase()) return false;
-      return true;
-    });
-  }, [data, countryFilter, provinceFilter, cityFilter]);
-
   const sortedRows = useMemo(() => {
-    if (!filteredRows) return [];
-    const sorted = [...filteredRows];
+    if (!data) return [];
+    const sorted = [...data];
     
     sorted.sort((a, b) => {
       let aVal: any = a[sortColumn as keyof Supplier];
@@ -648,9 +834,25 @@ export default function InventorySuppliers() {
 
   const rows = sortedRows;
 
-  const countries = useMemo(() => Array.from(new Set((data || []).map(s => (s.country || '').trim()).filter(Boolean))), [data]);
-  const provinces = useMemo(() => Array.from(new Set((data || []).map(s => (s.province || '').trim()).filter(Boolean))), [data]);
-  const cities = useMemo(() => Array.from(new Set((data || []).map(s => (s.city || '').trim()).filter(Boolean))), [data]);
+  // Check if we're still loading initial data (only show overlay if no data yet)
+  const isInitialLoading = isLoading && !data;
+
+  // Track when animation completes to remove inline styles for hover to work
+  useEffect(() => {
+    if (hasAnimated) {
+      const timer = setTimeout(() => setAnimationComplete(true), 400);
+      return () => clearTimeout(timer);
+    }
+  }, [hasAnimated]);
+
+  // Track when initial data is loaded to trigger entry animations
+  useEffect(() => {
+    if (!isInitialLoading && !hasAnimated) {
+      // Small delay to ensure DOM is ready
+      const timer = setTimeout(() => setHasAnimated(true), 50);
+      return () => clearTimeout(timer);
+    }
+  }, [isInitialLoading, hasAnimated]);
 
   // Don't render if still loading or user doesn't have permission
   if (meLoading || !canViewSuppliers) {
@@ -658,151 +860,90 @@ export default function InventorySuppliers() {
   }
 
   return (
+    <LoadingOverlay isLoading={isInitialLoading} text="Loading suppliers...">
     <div>
-      <div className="bg-slate-200/50 rounded-[12px] border border-slate-200 flex items-center justify-between py-4 px-6 mb-6">
+      <div 
+        className="bg-slate-200/50 rounded-[12px] border border-slate-200 flex items-center justify-between py-4 px-6 mb-6"
+        style={animationComplete ? {} : {
+          opacity: hasAnimated ? 1 : 0,
+          transform: hasAnimated ? 'translateY(0) scale(1)' : 'translateY(-8px) scale(0.98)',
+          transition: 'opacity 400ms ease-out, transform 400ms ease-out'
+        }}
+      >
         <div>
           <div className="text-xl font-bold text-gray-900 tracking-tight mb-0.5">Suppliers</div>
           <div className="text-sm text-gray-500 font-medium">Manage vendors and contact information</div>
         </div>
-        {canEditSuppliers && (
-          <button
-            onClick={() => {
-              resetForm();
-              setOpen(true);
-            }}
-            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[#bc1414] text-white text-sm font-medium transition-all duration-200 hover:bg-[#aa1212] hover:shadow-md active:translate-y-[1px] active:shadow-sm"
-          >
-            <span className="text-base leading-none">+</span>
-            New Supplier
-          </button>
-        )}
+        <div className="text-right">
+          <div className="text-xs text-gray-400 mb-1.5 font-medium uppercase tracking-wide">Today</div>
+          <div className="text-sm font-semibold text-gray-700">{todayLabel}</div>
+        </div>
       </div>
-      {/* Advanced Search Panel */}
-      <div className="mb-3 rounded-xl border bg-white shadow-sm overflow-hidden relative">
-        {/* Main Search Bar */}
-        {isFiltersCollapsed ? (
-          <div className="p-4 bg-gradient-to-r from-gray-50 to-white">
-            <div className="flex items-center justify-between">
-              <div className="text-lg font-semibold text-gray-700">Show Filters</div>
-            </div>
-          </div>
-        ) : (
-          <div className="p-4 bg-gradient-to-r from-gray-50 to-white border-b">
-            <div className="flex items-center gap-3">
-              <div className="flex-1">
-                <label className="block text-xs font-medium text-gray-700 mb-1.5">Search Suppliers</label>
-                <div className="relative">
-                  <input 
-                    className="w-full border border-gray-300 rounded-lg px-4 py-2.5 pl-10 focus:outline-none focus:ring-2 focus:ring-brand-red focus:border-transparent text-gray-900" 
-                    placeholder="Search by supplier name, email, or phone..." 
-                    value={q} 
-                    onChange={e=>setQ(e.target.value)} 
-                    onKeyDown={e=>{ if(e.key==='Enter') refetchSuppliers(); }} 
-                  />
-                  <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                  </svg>
-                </div>
-              </div>
-              <div className="flex items-end gap-2 pt-6">
-                <button 
-                  onClick={()=>setShowAdvanced(!showAdvanced)}
-                  className="px-4 py-2.5 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors flex items-center gap-2 text-sm font-medium"
-                >
-                  <svg className={`w-4 h-4 transition-transform ${showAdvanced ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                  </svg>
-                  Advanced Filters
-                </button>
+      {/* Filter Bar */}
+      <div className="mb-3 rounded-lg border border-gray-200 bg-white shadow-sm overflow-hidden">
+        {/* Primary Row: Global Search + Actions */}
+        <div className="px-6 py-4 bg-white">
+          <div className="flex items-center gap-4">
+            {/* Global Search - Dominant, large */}
+            <div className="flex-1">
+              <div className="relative">
+                <input 
+                  className="w-full border border-gray-200 rounded-md px-4 py-2.5 pl-10 text-sm bg-gray-50/50 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300 focus:bg-white transition-all duration-150" 
+                  placeholder="Search by supplier name, email, or phone..." 
+                  value={q} 
+                  onChange={e=>setQ(e.target.value)} 
+                />
+                <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
               </div>
             </div>
-          </div>
-        )}
 
-        {/* Advanced Filters */}
-        {!isFiltersCollapsed && showAdvanced && (
-          <div className="p-4 bg-gray-50 border-t animate-in slide-in-from-top duration-200">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1.5">Country</label>
-                <select
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-red focus:border-transparent bg-white"
-                  value={countryFilter}
-                  onChange={e => { setCountryFilter(e.target.value); setProvinceFilter(''); setCityFilter(''); }}
-                >
-                  <option value="">All Countries</option>
-                  {countries.map(c => <option key={c} value={c}>{c}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1.5">Province / State</label>
-                <select
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-red focus:border-transparent bg-white"
-                  value={provinceFilter}
-                  onChange={e => { setProvinceFilter(e.target.value); setCityFilter(''); }}
-                  disabled={countries.length === 0}
-                >
-                  <option value="">All Provinces</option>
-                  {provinces.map(p => <option key={p} value={p}>{p}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1.5">City</label>
-                <select
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-red focus:border-transparent bg-white"
-                  value={cityFilter}
-                  onChange={e => setCityFilter(e.target.value)}
-                  disabled={provinces.length === 0 && !provinceFilter}
-                >
-                  <option value="">All Cities</option>
-                  {cities.map(c => <option key={c} value={c}>{c}</option>)}
-                </select>
-              </div>
-            </div>
-          </div>
-        )}
+            {/* + Filters Button - Opens Modal */}
+            <button 
+              onClick={()=>setIsFilterModalOpen(true)}
+              className="px-3 py-2.5 text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors duration-150 whitespace-nowrap"
+            >
+              + Filters
+            </button>
 
-        {/* Action Buttons */}
-        {!isFiltersCollapsed && (
-          <div className="p-4 bg-white border-t flex items-center justify-between">
-            <div className="text-sm text-gray-600">
-              {Array.isArray(rows) && rows.length > 0 && (
-                <span>Found {rows.length} supplier{rows.length !== 1 ? 's' : ''}</span>
-              )}
-            </div>
-            <div className="flex items-center gap-2 pr-10">
+            {/* Clear Filters - Only when active */}
+            {hasActiveFilters && (
               <button 
                 onClick={()=>{
                   setQ('');
-                  setCountryFilter('');
-                  setProvinceFilter('');
-                  setCityFilter('');
+                  setSearchParams(new URLSearchParams());
                   refetchSuppliers();
                 }} 
-                className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors font-medium"
+                className="px-3 py-2.5 text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors duration-150 whitespace-nowrap"
               >
-                Clear All
+                Clear Filters
               </button>
-            </div>
+            )}
           </div>
-        )}
-
-        {/* Collapse/Expand button - bottom right corner */}
-        <button
-          onClick={() => setIsFiltersCollapsed(!isFiltersCollapsed)}
-          className="absolute bottom-0 right-0 w-8 h-8 rounded-tl-lg border-t border-l bg-white hover:bg-gray-50 transition-colors flex items-center justify-center shadow-sm"
-          title={isFiltersCollapsed ? "Expand filters" : "Collapse filters"}
-        >
-          <svg 
-            className={`w-4 h-4 text-gray-600 transition-transform ${!isFiltersCollapsed ? 'rotate-180' : ''}`}
-            fill="none" 
-            stroke="currentColor" 
-            viewBox="0 0 24 24"
-          >
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-          </svg>
-        </button>
+        </div>
       </div>
+
+      {/* Filter Chips */}
+      {hasActiveFilters && (
+        <div className="mb-4 flex items-center gap-2 flex-wrap">
+          {currentRules.map((rule) => (
+            <FilterChip
+              key={rule.id}
+              rule={rule}
+              onRemove={() => {
+                const updatedRules = currentRules.filter(r => r.id !== rule.id);
+                const params = convertRulesToParams(updatedRules);
+                if (q) params.set('q', q);
+                setSearchParams(params);
+                refetchSuppliers();
+              }}
+              getValueLabel={formatRuleValue}
+              getFieldLabel={getFieldLabel}
+            />
+          ))}
+        </div>
+      )}
 
       <div className="rounded-xl border bg-white">
         {isLoading ? (
@@ -815,6 +956,23 @@ export default function InventorySuppliers() {
           </div>
         ) : (
           <div className="divide-y">
+            {canEditSuppliers && (
+              <button
+                onClick={() => {
+                  resetForm();
+                  setOpen(true);
+                }}
+                className="w-full p-3 flex items-center justify-center border-2 border-dashed border-gray-300 hover:border-brand-red hover:bg-gray-50 transition-all cursor-pointer"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="text-3xl text-gray-400">+</div>
+                  <div>
+                    <div className="font-medium text-sm text-gray-700">New Supplier</div>
+                    <div className="text-xs text-gray-500">Add new supplier</div>
+                  </div>
+                </div>
+              </button>
+            )}
             {rows.map((s) => (
               <div
                 key={s.id}
@@ -2079,10 +2237,10 @@ export default function InventorySuppliers() {
                               </svg>
                               View Manual
                             </a>
-                          </div>
                         </div>
-                      );
-                    })()}
+                      </div>
+                    );
+                  })()}
                   </div>
                 ) : productTab === 'usage' ? (
                   <div className="px-6 pb-6">
@@ -2789,6 +2947,20 @@ export default function InventorySuppliers() {
           </div>
         </div>
       )}
+      
+      {/* Filter Builder Modal */}
+      <FilterBuilderModal
+        isOpen={isFilterModalOpen}
+        onClose={() => setIsFilterModalOpen(false)}
+        onApply={handleApplyFilters}
+        initialRules={currentRules}
+        fields={filterFields}
+        getFieldData={(fieldId) => {
+          // Return data for field if needed
+          return null;
+        }}
+      />
     </div>
+    </LoadingOverlay>
   );
 }

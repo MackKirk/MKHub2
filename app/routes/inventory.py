@@ -80,12 +80,46 @@ def low_stock_products(db: Session = Depends(get_db), _=Depends(require_permissi
 
 # ---------- SUPPLIERS ----------
 @router.get("/suppliers", response_model=List[SupplierResponse])
-def list_suppliers(q: str | None = None, db: Session = Depends(get_db)):
+def list_suppliers(
+    q: str | None = None,
+    country: str | None = None,
+    country_not: str | None = None,
+    province: str | None = None,
+    province_not: str | None = None,
+    city: str | None = None,
+    city_not: str | None = None,
+    db: Session = Depends(get_db)
+):
     try:
         query = db.query(Supplier)
         if q:
             like = f"%{q}%"
             query = query.filter((Supplier.name.ilike(like)) | (Supplier.legal_name.ilike(like)))
+        
+        # Filter by country
+        if country:
+            query = query.filter(Supplier.country == country)
+        
+        # Filter by country (exclusion)
+        if country_not:
+            query = query.filter(Supplier.country != country_not)
+        
+        # Filter by province
+        if province:
+            query = query.filter(Supplier.province == province)
+        
+        # Filter by province (exclusion)
+        if province_not:
+            query = query.filter(Supplier.province != province_not)
+        
+        # Filter by city
+        if city:
+            query = query.filter(Supplier.city == city)
+        
+        # Filter by city (exclusion)
+        if city_not:
+            query = query.filter(Supplier.city != city_not)
+        
         # Order by created_at if column exists, otherwise just return
         try:
             return query.order_by(Supplier.created_at.desc()).limit(500).all()

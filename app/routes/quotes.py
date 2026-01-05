@@ -422,16 +422,20 @@ def save_quote(payload: dict = Body(...), db: Session = Depends(get_db), user=De
 @router.get("")
 def list_quotes(
     client_id: Optional[str] = Query(None),
-    division_id: Optional[str] = Query(None),
-    status: Optional[str] = Query(None),
-    min_value: Optional[str] = Query(None),
+    client_id_not: Optional[str] = Query(None),
+    creation_date_start: Optional[str] = Query(None),
+    creation_date_end: Optional[str] = Query(None),
+    update_date_start: Optional[str] = Query(None),
+    update_date_end: Optional[str] = Query(None),
+    estimator_id: Optional[str] = Query(None),
+    estimator_id_not: Optional[str] = Query(None),
+    value_min: Optional[float] = Query(None),
+    value_max: Optional[float] = Query(None),
     q: Optional[str] = Query(None),
-    date_start: Optional[str] = Query(None),
-    date_end: Optional[str] = Query(None),
     db: Session = Depends(get_db)
 ):
     from ..models.models import Client
-    from sqlalchemy import or_, cast, String, Date, func
+    from sqlalchemy import or_, cast, String, Date, func, and_
     
     query = db.query(Quote)
     
@@ -442,35 +446,65 @@ def list_quotes(
         except ValueError:
             pass
     
-    # Filter by project division
-    if division_id:
+    # Filter by client (exclusion)
+    if client_id_not:
         try:
-            div_uuid = uuid.UUID(division_id)
-            query = query.filter(
-                cast(Quote.project_division_ids, String).like(f'%{division_id}%')
-            )
+            client_uuid = uuid.UUID(client_id_not)
+            query = query.filter(Quote.client_id != client_uuid)
         except ValueError:
             pass
     
-    # Filter by date range
-    if date_start:
+    # Filter by creation date range
+    if creation_date_start:
         try:
             from datetime import datetime
-            start_d = datetime.strptime(date_start, "%Y-%m-%d").date()
-            effective_start_dt = func.coalesce(Quote.created_at, Quote.updated_at)
-            query = query.filter(cast(effective_start_dt, Date) >= start_d)
+            start_d = datetime.strptime(creation_date_start, "%Y-%m-%d").date()
+            query = query.filter(cast(Quote.created_at, Date) >= start_d)
         except Exception:
             pass
 
-    if date_end:
+    if creation_date_end:
         try:
             from datetime import datetime
-            end_d = datetime.strptime(date_end, "%Y-%m-%d").date()
-            effective_start_dt = func.coalesce(Quote.created_at, Quote.updated_at)
-            query = query.filter(cast(effective_start_dt, Date) <= end_d)
+            end_d = datetime.strptime(creation_date_end, "%Y-%m-%d").date()
+            query = query.filter(cast(Quote.created_at, Date) <= end_d)
         except Exception:
             pass
     
+    # Filter by update date range
+    if update_date_start:
+        try:
+            from datetime import datetime
+            start_d = datetime.strptime(update_date_start, "%Y-%m-%d").date()
+            query = query.filter(cast(Quote.updated_at, Date) >= start_d)
+        except Exception:
+            pass
+
+    if update_date_end:
+        try:
+            from datetime import datetime
+            end_d = datetime.strptime(update_date_end, "%Y-%m-%d").date()
+            query = query.filter(cast(Quote.updated_at, Date) <= end_d)
+        except Exception:
+            pass
+    
+    # Filter by estimator
+    if estimator_id:
+        try:
+            estimator_uuid = uuid.UUID(estimator_id)
+            query = query.filter(Quote.estimator_id == estimator_uuid)
+        except ValueError:
+            pass
+    
+    # Filter by estimator (exclusion)
+    if estimator_id_not:
+        try:
+            estimator_uuid = uuid.UUID(estimator_id_not)
+            query = query.filter(Quote.estimator_id != estimator_uuid)
+        except ValueError:
+            pass
+    
+    # Note: Value filtering is done after fetching rows because estimated_value is computed from data field
     # Search - include client name if client relation exists
     if q:
         query = query.outerjoin(Client, Quote.client_id == Client.id)
@@ -513,9 +547,8 @@ def list_quotes(
         except Exception:
             return 0.0
 
-    min_value_num = _num(min_value)
-    if min_value_num <= 0:
-        min_value_num = 0.0
+    value_min_num = _num(value_min) if value_min is not None else None
+    value_max_num = _num(value_max) if value_max is not None else None
 
     def _compute_estimated_value(data: dict) -> float:
         """
@@ -572,7 +605,10 @@ def list_quotes(
         # "Document Type" displayed on cover page; stored as cover_title in data
         document_type = (data.get("cover_title") or r.title or "Quotation")
         estimated_value = _compute_estimated_value(data)
-        if min_value_num and estimated_value < min_value_num:
+        # Filter by value range (computed from data)
+        if value_min_num is not None and estimated_value < value_min_num:
+            continue
+        if value_max_num is not None and estimated_value > value_max_num:
             continue
 
         quote_dict = {

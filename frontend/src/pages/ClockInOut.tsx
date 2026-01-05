@@ -1386,7 +1386,7 @@ export default function ClockInOut() {
   }, [hasOpenClockIn, openClockIn, currentTime]);
 
   const todayLabel = useMemo(() => {
-    return new Date().toLocaleDateString('pt-BR', {
+    return new Date().toLocaleDateString('en-CA', {
       weekday: 'long',
       year: 'numeric',
       month: 'short',

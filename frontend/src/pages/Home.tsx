@@ -37,7 +37,7 @@ export default function Home(){
   
   // Get current date formatted (same as Business Dashboard)
   const todayLabel = useMemo(() => {
-    return new Date().toLocaleDateString('pt-BR', {
+    return new Date().toLocaleDateString('en-CA', {
       weekday: 'long',
       year: 'numeric',
       month: 'short',

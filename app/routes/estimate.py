@@ -44,10 +44,13 @@ def list_products(db: Session = Depends(get_db), _=Depends(require_permissions("
 def search_products(
     q: str = Query(""),
     supplier: Optional[str] = Query(None),
+    supplier_not: Optional[str] = Query(None),
     category: Optional[str] = Query(None),
+    category_not: Optional[str] = Query(None),
     price_min: Optional[float] = Query(None),
     price_max: Optional[float] = Query(None),
     unit_type: Optional[str] = Query(None),
+    unit_type_not: Optional[str] = Query(None),
     db: Session = Depends(get_db),
     _=Depends(require_permissions("inventory:products:read")),
 ):
@@ -57,14 +60,29 @@ def search_products(
         query = query.filter(Material.name.ilike(like))
     if supplier:
         query = query.filter(Material.supplier_name == supplier)
+    
+    # Filter by supplier (exclusion)
+    if supplier_not:
+        query = query.filter(Material.supplier_name != supplier_not)
+    
     if category:
         query = query.filter(Material.category == category)
+    
+    # Filter by category (exclusion)
+    if category_not:
+        query = query.filter(Material.category != category_not)
+    
     if price_min is not None:
         query = query.filter(Material.price >= price_min)
     if price_max is not None:
         query = query.filter(Material.price <= price_max)
     if unit_type:
         query = query.filter(Material.unit_type == unit_type)
+    
+    # Filter by unit_type (exclusion)
+    if unit_type_not:
+        query = query.filter(Material.unit_type != unit_type_not)
+    
     return query.order_by(Material.name.asc()).limit(50).all()
 
 

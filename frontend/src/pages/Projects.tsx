@@ -5,6 +5,10 @@ import ImagePicker from '@/components/ImagePicker';
 import toast from 'react-hot-toast';
 import { Link, useSearchParams, useNavigate, useLocation } from 'react-router-dom';
 import LoadingOverlay from '@/components/LoadingOverlay';
+import FilterBuilderModal from '@/components/FilterBuilder/FilterBuilderModal';
+import FilterChip from '@/components/FilterBuilder/FilterChip';
+import { FilterRule, FieldConfig } from '@/components/FilterBuilder/types';
+import { isRangeOperator } from '@/components/FilterBuilder/utils';
 
 type Project = { 
   id:string, 
@@ -58,75 +62,251 @@ const parseCurrency = (value: string): string => {
   return parsed;
 };
 
+// Helper: Convert filter rules to URL parameters
+function convertRulesToParams(rules: FilterRule[]): URLSearchParams {
+  const params = new URLSearchParams();
+  
+  // Clear all potential conflicting parameters first
+  const fieldsToClear: Record<string, string[]> = {
+    'status': ['status', 'status_not'],
+    'division': ['division_id', 'division_id_not'],
+    'client': ['client_id', 'client_id_not'],
+    'estimator': ['estimator_id', 'estimator_id_not'],
+    'start_date': ['date_start', 'date_end'],
+    'eta': ['eta_start', 'eta_end'],
+    'value': ['value_min', 'value_max'],
+  };
+  
+  Object.values(fieldsToClear).flat().forEach(param => {
+    params.delete(param);
+  });
+  
+  for (const rule of rules) {
+    if (!rule.value || (Array.isArray(rule.value) && (!rule.value[0] || !rule.value[1]))) {
+      continue; // Skip empty rules
+    }
+    
+    switch (rule.field) {
+      case 'status':
+        if (typeof rule.value === 'string') {
+          if (rule.operator === 'is') {
+            params.set('status', rule.value);
+          } else if (rule.operator === 'is_not') {
+            params.set('status_not', rule.value);
+          }
+        }
+        break;
+      
+      case 'division':
+        if (typeof rule.value === 'string') {
+          if (rule.operator === 'is') {
+            params.set('division_id', rule.value);
+          } else if (rule.operator === 'is_not') {
+            params.set('division_id_not', rule.value);
+          }
+        }
+        break;
+      
+      case 'client':
+        if (typeof rule.value === 'string') {
+          if (rule.operator === 'is') {
+            params.set('client_id', rule.value);
+          } else if (rule.operator === 'is_not') {
+            params.set('client_id_not', rule.value);
+          }
+        }
+        break;
+      
+      case 'estimator':
+        if (typeof rule.value === 'string') {
+          if (rule.operator === 'is') {
+            params.set('estimator_id', rule.value);
+          } else if (rule.operator === 'is_not') {
+            params.set('estimator_id_not', rule.value);
+          }
+        }
+        break;
+      
+      case 'start_date':
+        if (typeof rule.value === 'string') {
+          if (rule.operator === 'is_before') {
+            params.set('date_end', rule.value);
+          } else if (rule.operator === 'is_after') {
+            params.set('date_start', rule.value);
+          } else if (rule.operator === 'is' && rule.value) {
+            params.set('date_start', rule.value);
+            params.set('date_end', rule.value);
+          }
+        } else if (Array.isArray(rule.value) && rule.operator === 'is_between') {
+          params.set('date_start', rule.value[0]);
+          params.set('date_end', rule.value[1]);
+        }
+        break;
+      
+      case 'eta':
+        if (typeof rule.value === 'string') {
+          if (rule.operator === 'is_before') {
+            params.set('eta_end', rule.value);
+          } else if (rule.operator === 'is_after') {
+            params.set('eta_start', rule.value);
+          } else if (rule.operator === 'is' && rule.value) {
+            params.set('eta_start', rule.value);
+            params.set('eta_end', rule.value);
+          }
+        } else if (Array.isArray(rule.value) && rule.operator === 'is_between') {
+          params.set('eta_start', rule.value[0]);
+          params.set('eta_end', rule.value[1]);
+        }
+        break;
+      
+      case 'value':
+        if (typeof rule.value === 'string') {
+          if (rule.operator === 'greater_than') {
+            params.set('value_min', rule.value);
+          } else if (rule.operator === 'less_than') {
+            params.set('value_max', rule.value);
+          } else if (rule.operator === 'is_equal_to') {
+            params.set('value_min', rule.value);
+            params.set('value_max', rule.value);
+          }
+        } else if (Array.isArray(rule.value) && rule.operator === 'between') {
+          params.set('value_min', rule.value[0]);
+          params.set('value_max', rule.value[1]);
+        }
+        break;
+    }
+  }
+  
+  return params;
+}
+
+// Helper: Convert URL parameters to filter rules
+function convertParamsToRules(params: URLSearchParams): FilterRule[] {
+  const rules: FilterRule[] = [];
+  let idCounter = 1;
+  
+  // Status
+  const status = params.get('status');
+  const statusNot = params.get('status_not');
+  if (status) {
+    rules.push({ id: `rule-${idCounter++}`, field: 'status', operator: 'is', value: status });
+  } else if (statusNot) {
+    rules.push({ id: `rule-${idCounter++}`, field: 'status', operator: 'is_not', value: statusNot });
+  }
+  
+  // Division
+  const division = params.get('division_id');
+  const divisionNot = params.get('division_id_not');
+  if (division) {
+    rules.push({ id: `rule-${idCounter++}`, field: 'division', operator: 'is', value: division });
+  } else if (divisionNot) {
+    rules.push({ id: `rule-${idCounter++}`, field: 'division', operator: 'is_not', value: divisionNot });
+  }
+  
+  // Client
+  const client = params.get('client_id');
+  const clientNot = params.get('client_id_not');
+  if (client) {
+    rules.push({ id: `rule-${idCounter++}`, field: 'client', operator: 'is', value: client });
+  } else if (clientNot) {
+    rules.push({ id: `rule-${idCounter++}`, field: 'client', operator: 'is_not', value: clientNot });
+  }
+  
+  // Estimator
+  const estimator = params.get('estimator_id');
+  const estimatorNot = params.get('estimator_id_not');
+  if (estimator) {
+    rules.push({ id: `rule-${idCounter++}`, field: 'estimator', operator: 'is', value: estimator });
+  } else if (estimatorNot) {
+    rules.push({ id: `rule-${idCounter++}`, field: 'estimator', operator: 'is_not', value: estimatorNot });
+  }
+  
+  // Date range (start_date)
+  const dateStart = params.get('date_start');
+  const dateEnd = params.get('date_end');
+  if (dateStart && dateEnd) {
+    if (dateStart === dateEnd) {
+      rules.push({ id: `rule-${idCounter++}`, field: 'start_date', operator: 'is', value: dateStart });
+    } else {
+      rules.push({ id: `rule-${idCounter++}`, field: 'start_date', operator: 'is_between', value: [dateStart, dateEnd] });
+    }
+  } else if (dateStart) {
+    rules.push({ id: `rule-${idCounter++}`, field: 'start_date', operator: 'is_after', value: dateStart });
+  } else if (dateEnd) {
+    rules.push({ id: `rule-${idCounter++}`, field: 'start_date', operator: 'is_before', value: dateEnd });
+  }
+  
+  // ETA range (eta)
+  const etaStart = params.get('eta_start');
+  const etaEnd = params.get('eta_end');
+  if (etaStart && etaEnd) {
+    if (etaStart === etaEnd) {
+      rules.push({ id: `rule-${idCounter++}`, field: 'eta', operator: 'is', value: etaStart });
+    } else {
+      rules.push({ id: `rule-${idCounter++}`, field: 'eta', operator: 'is_between', value: [etaStart, etaEnd] });
+    }
+  } else if (etaStart) {
+    rules.push({ id: `rule-${idCounter++}`, field: 'eta', operator: 'is_after', value: etaStart });
+  } else if (etaEnd) {
+    rules.push({ id: `rule-${idCounter++}`, field: 'eta', operator: 'is_before', value: etaEnd });
+  }
+  
+  // Value range (value)
+  const valueMin = params.get('value_min');
+  const valueMax = params.get('value_max');
+  if (valueMin && valueMax) {
+    if (valueMin === valueMax) {
+      rules.push({ id: `rule-${idCounter++}`, field: 'value', operator: 'is_equal_to', value: valueMin });
+    } else {
+      rules.push({ id: `rule-${idCounter++}`, field: 'value', operator: 'between', value: [valueMin, valueMax] });
+    }
+  } else if (valueMin) {
+    rules.push({ id: `rule-${idCounter++}`, field: 'value', operator: 'greater_than', value: valueMin });
+  } else if (valueMax) {
+    rules.push({ id: `rule-${idCounter++}`, field: 'value', operator: 'less_than', value: valueMax });
+  }
+  
+  return rules;
+}
+
 export default function Projects(){
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
-  const divisionId = searchParams.get('division_id') || '';
-  const statusId = searchParams.get('status') || '';
-  const minValue = searchParams.get('min_value') || '';
   const queryParam = searchParams.get('q') || '';
-  const clientIdParam = searchParams.get('client_id') || '';
-  const dateStartParam = searchParams.get('date_start') || '';
-  const dateEndParam = searchParams.get('date_end') || '';
   
   const [q, setQ] = useState(queryParam);
-  const [selectedDivision, setSelectedDivision] = useState(divisionId);
-  const [selectedStatus, setSelectedStatus] = useState(statusId);
-  const [minValueInput, setMinValueInput] = useState(minValue);
-  const [minValueDisplay, setMinValueDisplay] = useState(minValue ? formatCurrency(minValue) : '');
-  const [minValueFocused, setMinValueFocused] = useState(false);
-  const [selectedClient, setSelectedClient] = useState(clientIdParam);
-  const [dateStart, setDateStart] = useState(dateStartParam);
-  const [dateEnd, setDateEnd] = useState(dateEndParam);
-  const [showAdvanced, setShowAdvanced] = useState(false);
-  const [isFiltersCollapsed, setIsFiltersCollapsed] = useState(false);
+  const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
+  const [hasAnimated, setHasAnimated] = useState(false);
+  const [animationComplete, setAnimationComplete] = useState(false);
   
-  // Sync URL params with state when URL changes (e.g., from dashboard navigation)
+  // Convert current URL params to rules for modal
+  const currentRules = useMemo(() => {
+    return convertParamsToRules(searchParams);
+  }, [searchParams]);
+  
+  // Sync search query with URL when it changes
   useEffect(() => {
-    const urlDivision = searchParams.get('division_id') || '';
-    const urlStatus = searchParams.get('status') || '';
-    const urlMinValue = searchParams.get('min_value') || '';
+    const params = new URLSearchParams(searchParams);
+    if (q) {
+      params.set('q', q);
+    } else {
+      params.delete('q');
+    }
+    setSearchParams(params, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [q]);
+  
+  // Sync q state when URL changes
+  useEffect(() => {
     const urlQ = searchParams.get('q') || '';
-    const urlClient = searchParams.get('client_id') || '';
-    const urlDateStart = searchParams.get('date_start') || '';
-    const urlDateEnd = searchParams.get('date_end') || '';
-    
-    if (urlDivision !== selectedDivision) setSelectedDivision(urlDivision);
-    if (urlStatus !== selectedStatus) setSelectedStatus(urlStatus);
-    if (urlMinValue !== minValueInput) setMinValueInput(urlMinValue);
     if (urlQ !== q) setQ(urlQ);
-    if (urlClient !== selectedClient) setSelectedClient(urlClient);
-    if (urlDateStart !== dateStart) setDateStart(urlDateStart);
-    if (urlDateEnd !== dateEnd) setDateEnd(urlDateEnd);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
-
-  // Auto-apply filters when they change
-  useEffect(() => {
-    const params = new URLSearchParams();
-    if (q) params.set('q', q);
-    if (selectedDivision) params.set('division_id', selectedDivision);
-    if (selectedStatus) params.set('status', selectedStatus);
-    if (minValueInput) params.set('min_value', minValueInput);
-    if (selectedClient) params.set('client_id', selectedClient);
-    if (dateStart) params.set('date_start', dateStart);
-    if (dateEnd) params.set('date_end', dateEnd);
-    setSearchParams(params);
-    refetch();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [q, selectedDivision, selectedStatus, minValueInput, selectedClient, dateStart, dateEnd]);
   
   const qs = useMemo(()=> {
-    const params = new URLSearchParams();
-    if (q) params.set('q', q);
-    if (selectedDivision) params.set('division_id', selectedDivision);
-    if (selectedStatus) params.set('status', selectedStatus);
-    if (minValueInput) params.set('min_value', minValueInput);
-    if (selectedClient) params.set('client_id', selectedClient);
-    if (dateStart) params.set('date_start', dateStart);
-    if (dateEnd) params.set('date_end', dateEnd);
+    const params = new URLSearchParams(searchParams);
     return params.toString() ? '?' + params.toString() : '';
-  }, [q, selectedDivision, selectedStatus, minValueInput, selectedClient, dateStart, dateEnd]);
+  }, [searchParams]);
   
   const { data, isLoading, refetch } = useQuery({ 
     queryKey:['projects', qs], 
@@ -143,6 +323,23 @@ export default function Projects(){
   // Show loading until both projects and divisions are loaded
   const isInitialLoading = (isLoading && !data) || (divisionsLoading && !projectDivisions);
   
+  // Track when animation completes to remove inline styles for hover to work
+  useEffect(() => {
+    if (hasAnimated) {
+      const timer = setTimeout(() => setAnimationComplete(true), 400);
+      return () => clearTimeout(timer);
+    }
+  }, [hasAnimated]);
+  
+  // Track when initial data is loaded to trigger entry animations
+  useEffect(() => {
+    if (!isInitialLoading && !hasAnimated) {
+      // Small delay to ensure DOM is ready
+      const timer = setTimeout(() => setHasAnimated(true), 50);
+      return () => clearTimeout(timer);
+    }
+  }, [isInitialLoading, hasAnimated]);
+  
   const { data: settings } = useQuery({ 
     queryKey:['settings'], 
     queryFn: ()=> api<any>('GET','/settings'), 
@@ -156,6 +353,13 @@ export default function Projects(){
     staleTime: 300_000
   });
   
+  // Get employees for estimator filter
+  const { data: employees } = useQuery({ 
+    queryKey:['employees'], 
+    queryFn: ()=> api<any[]>('GET','/employees'), 
+    staleTime: 300_000
+  });
+  
   const projectStatuses = settings?.project_statuses || [];
   const clients = clientsData?.items || clientsData || [];
   const arr = data||[];
@@ -165,8 +369,129 @@ export default function Projects(){
   const { data: me } = useQuery({ queryKey:['me'], queryFn: ()=>api<any>('GET','/auth/me') });
   const hasEditPermission = (me?.roles||[]).includes('admin') || (me?.permissions||[]).includes('business:projects:write');
 
+  // Filter Builder Configuration
+  const filterFields: FieldConfig[] = useMemo(() => [
+    {
+      id: 'status',
+      label: 'Status',
+      type: 'select',
+      operators: ['is', 'is_not'],
+      getOptions: () => projectStatuses.map((s: any) => ({ value: s.id, label: s.label })),
+    },
+    {
+      id: 'division',
+      label: 'Division',
+      type: 'select',
+      operators: ['is', 'is_not'],
+      getGroupedOptions: () => {
+        const groups: Array<{ label: string; options: Array<{ value: string; label: string }> }> = [];
+        projectDivisions?.forEach((div: any) => {
+          const options: Array<{ value: string; label: string }> = [
+            { value: div.id, label: div.label }
+          ];
+          div.subdivisions?.forEach((sub: any) => {
+            options.push({ value: sub.id, label: sub.label });
+          });
+          groups.push({ label: div.label, options });
+        });
+        return groups;
+      },
+    },
+    {
+      id: 'client',
+      label: 'Client',
+      type: 'select',
+      operators: ['is', 'is_not'],
+      getOptions: () => clients.map((c: any) => ({ 
+        value: c.id, 
+        label: c.display_name || c.name || c.code || c.id 
+      })),
+    },
+    {
+      id: 'estimator',
+      label: 'Estimator',
+      type: 'select',
+      operators: ['is', 'is_not'],
+      getOptions: () => (employees || []).map((emp: any) => ({ 
+        value: emp.id, 
+        label: emp.name || emp.username || emp.id 
+      })),
+    },
+    {
+      id: 'start_date',
+      label: 'Start Date',
+      type: 'date',
+      operators: ['is', 'is_before', 'is_after', 'is_between'],
+    },
+    {
+      id: 'eta',
+      label: 'ETA',
+      type: 'date',
+      operators: ['is', 'is_before', 'is_after', 'is_between'],
+    },
+    {
+      id: 'value',
+      label: 'Value',
+      type: 'number',
+      operators: ['is_equal_to', 'greater_than', 'less_than', 'between'],
+    },
+  ], [projectStatuses, projectDivisions, clients, employees]);
+
+  const handleApplyFilters = (rules: FilterRule[]) => {
+    const params = convertRulesToParams(rules);
+    if (q) params.set('q', q);
+    setSearchParams(params);
+    refetch();
+  };
+
+  const hasActiveFilters = currentRules.length > 0;
+
+  // Helper to format rule value for display
+  const formatRuleValue = (rule: FilterRule): string => {
+    if (rule.field === 'status') {
+      const status = projectStatuses.find((s: any) => String(s.id) === rule.value);
+      return status?.label || String(rule.value);
+    }
+    if (rule.field === 'division') {
+      for (const div of (projectDivisions || [])) {
+        if (String(div.id) === rule.value) return div.label;
+        for (const sub of (div.subdivisions || [])) {
+          if (String(sub.id) === rule.value) return `${div.label} - ${sub.label}`;
+        }
+      }
+      return String(rule.value);
+    }
+    if (rule.field === 'client') {
+      const client = clients.find((c: any) => String(c.id) === rule.value);
+      return client?.display_name || client?.name || String(rule.value);
+    }
+    if (rule.field === 'estimator') {
+      const emp = (employees || []).find((e: any) => String(e.id) === rule.value);
+      return emp?.name || emp?.username || String(rule.value);
+    }
+    if (rule.field === 'start_date' || rule.field === 'eta') {
+      if (Array.isArray(rule.value)) {
+        return `${rule.value[0]} → ${rule.value[1]}`;
+      }
+      return String(rule.value);
+    }
+    if (rule.field === 'value') {
+      if (Array.isArray(rule.value)) {
+        return `$${Number(rule.value[0]).toLocaleString()} → $${Number(rule.value[1]).toLocaleString()}`;
+      }
+      return `$${Number(rule.value).toLocaleString()}`;
+    }
+    return String(rule.value);
+  };
+
+  // Helper to get field label
+  const getFieldLabel = (fieldId: string): string => {
+    const field = filterFields.find(f => f.id === fieldId);
+    return field?.label || fieldId;
+  };
+
   const todayLabel = useMemo(() => {
-    return new Date().toLocaleDateString('pt-BR', {
+    return new Date().toLocaleDateString('en-CA', {
       weekday: 'long',
       year: 'numeric',
       month: 'short',
@@ -186,199 +511,81 @@ export default function Projects(){
           <div className="text-sm font-semibold text-gray-700">{todayLabel}</div>
         </div>
       </div>
-      {/* Advanced Search Panel */}
-      <div className="mb-3 rounded-xl border bg-white shadow-sm overflow-hidden relative">
-        {/* Main Search Bar */}
-        {isFiltersCollapsed ? (
-          <div className="p-4 bg-gradient-to-r from-gray-50 to-white">
-            <div className="flex items-center justify-between">
-              <div className="text-lg font-semibold text-gray-700">Show Filters</div>
-            </div>
-          </div>
-        ) : (
-          <div className="p-4 bg-gradient-to-r from-gray-50 to-white border-b">
-            <div className="flex items-center gap-3">
-              <div className="flex-1">
-                <label className="block text-xs font-medium text-gray-700 mb-1.5">Search Projects</label>
-                <div className="relative">
-                  <input 
-                    className="w-full border border-gray-300 rounded-lg px-4 py-2.5 pl-10 focus:outline-none focus:ring-2 focus:ring-brand-red focus:border-transparent text-gray-900" 
-                    placeholder="Search by project name, code, or client name..." 
-                    value={q} 
-                    onChange={e=>setQ(e.target.value)} 
-                    onKeyDown={e=>{ if(e.key==='Enter') refetch(); }} 
-                  />
-                  <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                  </svg>
-                </div>
-              </div>
-              <div className="flex items-end gap-2 pt-6">
-                <button 
-                  onClick={()=>setShowAdvanced(!showAdvanced)}
-                  className="px-4 py-2.5 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors flex items-center gap-2 text-sm font-medium"
-                >
-                  <svg className={`w-4 h-4 transition-transform ${showAdvanced ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                  </svg>
-                  Advanced Filters
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Quick Filters Row */}
-        {!isFiltersCollapsed && (
-          <div className="p-4 border-b bg-gray-50/50">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1.5">Division</label>
-                <select 
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-red focus:border-transparent bg-white"
-                  value={selectedDivision}
-                  onChange={e=>setSelectedDivision(e.target.value)}
-                >
-                  <option value="">All Divisions</option>
-                  {projectDivisions?.map((div: any) => (
-                    <optgroup key={div.id} label={div.label}>
-                      <option value={div.id}>{div.label}</option>
-                      {div.subdivisions?.map((sub: any) => (
-                        <option key={sub.id} value={sub.id}>{sub.label}</option>
-                      ))}
-                    </optgroup>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1.5">Status</label>
-                <select 
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-red focus:border-transparent bg-white"
-                  value={selectedStatus}
-                  onChange={e=>setSelectedStatus(e.target.value)}
-                >
-                  <option value="">All Statuses</option>
-                  {projectStatuses.map((status: any) => (
-                    <option key={status.id} value={status.id}>{status.label}</option>
-                  ))}
-                </select>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Advanced Filters (Collapsible) */}
-        {!isFiltersCollapsed && showAdvanced && (
-          <div className="p-4 bg-gray-50 border-t animate-in slide-in-from-top duration-200">
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1.5">Client</label>
-                <select 
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-red focus:border-transparent bg-white"
-                  value={selectedClient}
-                  onChange={e=>setSelectedClient(e.target.value)}
-                >
-                  <option value="">All Clients</option>
-                  {clients.map((client: any) => (
-                    <option key={client.id} value={client.id}>
-                      {client.display_name || client.name || client.code || client.id}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1.5">Min Value ($)</label>
+      {/* Filter Bar */}
+      <div className="mb-3 rounded-lg border border-gray-200 bg-white shadow-sm overflow-hidden">
+        {/* Primary Row: Global Search + Actions */}
+        <div className="px-6 py-4 bg-white">
+          <div className="flex items-center gap-4">
+            {/* Global Search - Dominant, large */}
+            <div className="flex-1">
+              <div className="relative">
                 <input 
-                  type="text"
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-red focus:border-transparent bg-white" 
-                  placeholder="$0.00" 
-                  value={minValueFocused ? minValueDisplay : (minValueInput ? formatCurrency(minValueInput) : '')}
-                  onFocus={() => {
-                    setMinValueFocused(true);
-                    setMinValueDisplay(minValueInput || '');
-                  }}
-                  onBlur={() => {
-                    setMinValueFocused(false);
-                    const parsed = parseCurrency(minValueDisplay);
-                    setMinValueInput(parsed);
-                    setMinValueDisplay(parsed);
-                  }}
-                  onChange={e=>{
-                    const raw = e.target.value;
-                    setMinValueDisplay(raw);
-                  }}
-                  onKeyDown={e=>{ if(e.key==='Enter') { e.currentTarget.blur(); refetch(); } }} 
+                  className="w-full border border-gray-200 rounded-md px-4 py-2.5 pl-10 text-sm bg-gray-50/50 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300 focus:bg-white transition-all duration-150" 
+                  placeholder="Search by project name, code, or client name..." 
+                  value={q} 
+                  onChange={e=>setQ(e.target.value)} 
                 />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1.5">Start Date (From)</label>
-                <input 
-                  type="date"
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-red focus:border-transparent bg-white" 
-                  value={dateStart} 
-                  onChange={e=>setDateStart(e.target.value)} 
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1.5">End Date (To)</label>
-                <input 
-                  type="date"
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-red focus:border-transparent bg-white" 
-                  value={dateEnd} 
-                  onChange={e=>setDateEnd(e.target.value)} 
-                />
+                <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
               </div>
             </div>
-          </div>
-        )}
 
-        {/* Action Buttons */}
-        {!isFiltersCollapsed && (
-          <div className="p-4 bg-white border-t flex items-center justify-between">
-            <div className="text-sm text-gray-600">
-              {arr.length > 0 && (
-                <span>Found {arr.length} project{arr.length !== 1 ? 's' : ''}</span>
-              )}
-            </div>
-            <div className="flex items-center gap-2 pr-10">
+            {/* + Filters Button - Opens Modal */}
+            <button 
+              onClick={()=>setIsFilterModalOpen(true)}
+              className="px-3 py-2.5 text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors duration-150 whitespace-nowrap"
+            >
+              + Filters
+            </button>
+
+            {/* Clear Filters - Only when active */}
+            {hasActiveFilters && (
               <button 
                 onClick={()=>{
-                  setQ('');
-                  setSelectedDivision('');
-                  setSelectedStatus('');
-                  setMinValueInput('');
-                  setSelectedClient('');
-                  setDateStart('');
-                  setDateEnd('');
-                  setSearchParams({});
+                  const params = new URLSearchParams();
+                  if (q) params.set('q', q);
+                  setSearchParams(params);
                   refetch();
                 }} 
-                className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors font-medium"
+                className="px-3 py-2.5 text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors duration-150 whitespace-nowrap"
               >
-                Clear All
+                Clear Filters
               </button>
-            </div>
+            )}
           </div>
-        )}
-
-        {/* Collapse/Expand button - bottom right corner */}
-        <button
-          onClick={() => setIsFiltersCollapsed(!isFiltersCollapsed)}
-          className="absolute bottom-0 right-0 w-8 h-8 rounded-tl-lg border-t border-l bg-white hover:bg-gray-50 transition-colors flex items-center justify-center shadow-sm"
-          title={isFiltersCollapsed ? "Expand filters" : "Collapse filters"}
-        >
-          <svg 
-            className={`w-4 h-4 text-gray-600 transition-transform ${!isFiltersCollapsed ? 'rotate-180' : ''}`}
-            fill="none" 
-            stroke="currentColor" 
-            viewBox="0 0 24 24"
-          >
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-          </svg>
-        </button>
+        </div>
       </div>
+
+      {/* Filter Chips */}
+      {hasActiveFilters && (
+        <div className="mb-4 flex items-center gap-2 flex-wrap">
+          {currentRules.map((rule) => (
+            <FilterChip
+              key={rule.id}
+              rule={rule}
+              onRemove={() => {
+                const updatedRules = currentRules.filter(r => r.id !== rule.id);
+                const params = convertRulesToParams(updatedRules);
+                if (q) params.set('q', q);
+                setSearchParams(params);
+                refetch();
+              }}
+              getValueLabel={formatRuleValue}
+              getFieldLabel={getFieldLabel}
+            />
+          ))}
+        </div>
+      )}
       <LoadingOverlay isLoading={isInitialLoading} text="Loading projects...">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-3 gap-4">
+        <div 
+          className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-3 gap-4"
+          style={animationComplete ? {} : {
+            opacity: hasAnimated ? 1 : 0,
+            transform: hasAnimated ? 'translateY(0) scale(1)' : 'translateY(-8px) scale(0.98)',
+            transition: 'opacity 400ms ease-out, transform 400ms ease-out'
+          }}
+        >
           {isLoading && !arr.length ? (
             <>
               {[1, 2, 3, 4, 5, 6].map(i => (
@@ -406,9 +613,22 @@ export default function Projects(){
             if (pickerOpen?.clientId){ await api('POST', `/clients/${pickerOpen.clientId}/files?file_object_id=${encodeURIComponent(conf.id)}&category=project-cover-derived&original_name=project-cover.jpg`); }
             toast.success('Cover updated');
             setPickerOpen(null);
-          }catch(e){ toast.error('Failed to update cover'); setPickerOpen(null); }
+          }catch(e){           toast.error('Failed to update cover'); setPickerOpen(null); }
         }} />
       )}
+      
+      {/* Filter Builder Modal */}
+      <FilterBuilderModal
+        isOpen={isFilterModalOpen}
+        onClose={() => setIsFilterModalOpen(false)}
+        onApply={handleApplyFilters}
+        initialRules={currentRules}
+        fields={filterFields}
+        getFieldData={(fieldId) => {
+          // Return data for field if needed
+          return null;
+        }}
+      />
     </div>
   );
 }

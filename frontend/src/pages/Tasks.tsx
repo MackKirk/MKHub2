@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { api } from '@/lib/api';
 import { useNavigate, useLocation } from 'react-router-dom';
+import LoadingOverlay from '@/components/LoadingOverlay';
 
 type TaskBasic = {
   id: string;
@@ -290,8 +291,30 @@ export default function TasksPage() {
 
   const currentDetail = selectedTask;
 
+  // Check if we're still loading initial data (only show overlay if no data yet)
+  const isInitialLoading = isLoading && !data;
+  const [hasAnimated, setHasAnimated] = useState(false);
+  const [animationComplete, setAnimationComplete] = useState(false);
+
+  // Track when animation completes to remove inline styles for hover to work
+  useEffect(() => {
+    if (hasAnimated) {
+      const timer = setTimeout(() => setAnimationComplete(true), 400);
+      return () => clearTimeout(timer);
+    }
+  }, [hasAnimated]);
+
+  // Track when initial data is loaded to trigger entry animations
+  useEffect(() => {
+    if (!isInitialLoading && !hasAnimated) {
+      // Small delay to ensure DOM is ready
+      const timer = setTimeout(() => setHasAnimated(true), 50);
+      return () => clearTimeout(timer);
+    }
+  }, [isInitialLoading, hasAnimated]);
+
   const todayLabel = useMemo(() => {
-    return new Date().toLocaleDateString('pt-BR', {
+    return new Date().toLocaleDateString('en-CA', {
       weekday: 'long',
       year: 'numeric',
       month: 'short',
@@ -300,6 +323,7 @@ export default function TasksPage() {
   }, []);
 
   return (
+    <LoadingOverlay isLoading={isInitialLoading} text="Loading tasks...">
     <div className="space-y-4">
       <div className="bg-slate-200/50 rounded-[12px] border border-slate-200 flex items-center justify-between py-4 px-6 mb-6">
         <div>
@@ -569,6 +593,7 @@ export default function TasksPage() {
         </div>
       </div>
     </div>
+    </LoadingOverlay>
   );
 }
 

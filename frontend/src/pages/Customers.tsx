@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { useMemo, useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
@@ -6,6 +6,10 @@ import { useConfirm } from '@/components/ConfirmProvider';
 import LoadingOverlay from '@/components/LoadingOverlay';
 import LoadingSpinner from '@/components/LoadingSpinner';
 import { useSearchParams } from 'react-router-dom';
+import FilterBuilderModal from '@/components/FilterBuilder/FilterBuilderModal';
+import FilterChip from '@/components/FilterBuilder/FilterChip';
+import { FilterRule, FieldConfig } from '@/components/FilterBuilder/types';
+import NewCustomerModal from '@/components/NewCustomerModal';
 
 type Client = { id:string, name?:string, display_name?:string, code?:string, city?:string, province?:string, client_status?:string, client_type?:string, address_line1?:string, created_at?:string, logo_url?:string };
 
@@ -17,28 +21,126 @@ type ClientsResponse = {
   total_pages: number;
 };
 
+// Helper: Convert filter rules to URL parameters
+function convertRulesToParams(rules: FilterRule[]): URLSearchParams {
+  const params = new URLSearchParams();
+  
+  // Clear all potential conflicting parameters first
+  params.delete('status');
+  params.delete('status_not');
+  params.delete('type');
+  params.delete('type_not');
+  params.delete('city');
+  params.delete('city_not');
+  
+  for (const rule of rules) {
+    if (!rule.value || (Array.isArray(rule.value) && (!rule.value[0] || !rule.value[1]))) {
+      continue; // Skip empty rules
+    }
+    
+    switch (rule.field) {
+      case 'status':
+        if (typeof rule.value === 'string') {
+          if (rule.operator === 'is') {
+            params.set('status', rule.value);
+          } else if (rule.operator === 'is_not') {
+            params.set('status_not', rule.value);
+          }
+        }
+        break;
+      
+      case 'type':
+        if (typeof rule.value === 'string') {
+          if (rule.operator === 'is') {
+            params.set('type', rule.value);
+          } else if (rule.operator === 'is_not') {
+            params.set('type_not', rule.value);
+          }
+        }
+        break;
+      
+      case 'city':
+        if (typeof rule.value === 'string') {
+          if (rule.operator === 'is') {
+            params.set('city', rule.value);
+          } else if (rule.operator === 'is_not') {
+            params.set('city_not', rule.value);
+          }
+        }
+        break;
+    }
+  }
+  
+  return params;
+}
+
+// Helper: Convert URL parameters to filter rules
+function convertParamsToRules(params: URLSearchParams): FilterRule[] {
+  const rules: FilterRule[] = [];
+  let idCounter = 1;
+  
+  // Status
+  const status = params.get('status');
+  const statusNot = params.get('status_not');
+  if (status) {
+    rules.push({ id: `rule-${idCounter++}`, field: 'status', operator: 'is', value: status });
+  } else if (statusNot) {
+    rules.push({ id: `rule-${idCounter++}`, field: 'status', operator: 'is_not', value: statusNot });
+  }
+  
+  // Type
+  const type = params.get('type');
+  const typeNot = params.get('type_not');
+  if (type) {
+    rules.push({ id: `rule-${idCounter++}`, field: 'type', operator: 'is', value: type });
+  } else if (typeNot) {
+    rules.push({ id: `rule-${idCounter++}`, field: 'type', operator: 'is_not', value: typeNot });
+  }
+  
+  // City
+  const city = params.get('city');
+  const cityNot = params.get('city_not');
+  if (city) {
+    rules.push({ id: `rule-${idCounter++}`, field: 'city', operator: 'is', value: city });
+  } else if (cityNot) {
+    rules.push({ id: `rule-${idCounter++}`, field: 'city', operator: 'is_not', value: cityNot });
+  }
+  
+  return rules;
+}
+
 export default function Customers(){
   const nav = useNavigate();
   const confirm = useConfirm();
+  const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
+  const [newCustomerModalOpen, setNewCustomerModalOpen] = useState(false);
   
   // Get initial values from URL params
   const queryParam = searchParams.get('q') || '';
-  const cityParam = searchParams.get('city') || '';
-  const statusParam = searchParams.get('status') || '';
-  const typeParam = searchParams.get('type') || '';
   const pageParam = parseInt(searchParams.get('page') || '1', 10);
   
   const [q, setQ] = useState(queryParam);
-  const [city, setCity] = useState(cityParam);
-  const [status, setStatus] = useState(statusParam);
-  const [ctype, setCtype] = useState(typeParam);
   const [page, setPage] = useState(pageParam);
-  const [showAdvanced, setShowAdvanced] = useState(false);
-  const [isFiltersCollapsed, setIsFiltersCollapsed] = useState(false);
-  const [selectedCountry, setSelectedCountry] = useState('Canada');
-  const [selectedProvince, setSelectedProvince] = useState('BC');
+  const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
   const limit = 10;
+  const [hasAnimated, setHasAnimated] = useState(false);
+  const [animationComplete, setAnimationComplete] = useState(false);
+  
+  // Get current date formatted (same as Dashboard)
+  const todayLabel = useMemo(() => {
+    return new Date().toLocaleDateString('en-CA', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+    });
+  }, []);
+  
+  // Convert current URL params to rules for modal
+  const currentRules = useMemo(() => {
+    return convertParamsToRules(searchParams);
+  }, [searchParams]);
   
   // Load available locations from clients (for all filters - countries, provinces, cities)
   const { data: locationsData } = useQuery({ 
@@ -47,34 +149,12 @@ export default function Customers(){
     staleTime: 300_000
   });
   
-  // Initialize country/province from city if city is set
-  useEffect(() => {
-    if (city && locationsData) {
-      // Try to find the country and province for the selected city
-      for (const country in locationsData) {
-        for (const province in locationsData[country]) {
-          if (locationsData[country][province].includes(city)) {
-            setSelectedCountry(country);
-            setSelectedProvince(province);
-            return;
-          }
-        }
-      }
-    }
-  }, [city, locationsData]);
-  
   // Sync URL params with state when URL changes
   useEffect(() => {
     const urlQ = searchParams.get('q') || '';
-    const urlCity = searchParams.get('city') || '';
-    const urlStatus = searchParams.get('status') || '';
-    const urlType = searchParams.get('type') || '';
     const urlPage = parseInt(searchParams.get('page') || '1', 10);
     
     if (urlQ !== q) setQ(urlQ);
-    if (urlCity !== city) setCity(urlCity);
-    if (urlStatus !== status) setStatus(urlStatus);
-    if (urlType !== ctype) setCtype(urlType);
     if (urlPage !== page) setPage(urlPage);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
@@ -89,45 +169,27 @@ export default function Customers(){
     params.set('page', '1');
     setSearchParams(params);
   };
-  const handleCityChange = (value: string) => {
-    setCity(value);
-    setPage(1);
-    const params = new URLSearchParams(searchParams);
-    if (value) params.set('city', value);
-    else params.delete('city');
-    params.set('page', '1');
-    setSearchParams(params);
-  };
-  const handleStatusChange = (value: string) => {
-    setStatus(value);
-    setPage(1);
-    const params = new URLSearchParams(searchParams);
-    if (value) params.set('status', value);
-    else params.delete('status');
-    params.set('page', '1');
-    setSearchParams(params);
-  };
-  const handleCtypeChange = (value: string) => {
-    setCtype(value);
-    setPage(1);
-    const params = new URLSearchParams(searchParams);
-    if (value) params.set('type', value);
-    else params.delete('type');
-    params.set('page', '1');
-    setSearchParams(params);
-  };
   
   const queryString = useMemo(()=>{
-    const p = new URLSearchParams();
-    if (q) p.set('q', q);
-    // Only apply city filter when advanced filters is open
-    if (showAdvanced && city) p.set('city', city);
-    if (status) p.set('status', status);
-    if (ctype) p.set('type', ctype);
-    p.set('page', String(page));
-    p.set('limit', String(limit));
-    return p.toString();
-  }, [q, city, status, ctype, page, limit, showAdvanced]);
+    const p = new URLSearchParams(searchParams);
+    // Remove 'q' and 'page' from params for query string (they're handled separately)
+    const qParam = p.get('q');
+    const pageParam = p.get('page');
+    p.delete('q');
+    p.delete('page');
+    const filterString = p.toString();
+    const finalParams = new URLSearchParams();
+    if (qParam) finalParams.set('q', qParam);
+    if (filterString) {
+      filterString.split('&').forEach(param => {
+        const [key, value] = param.split('=');
+        if (key && value) finalParams.set(key, decodeURIComponent(value));
+      });
+    }
+    finalParams.set('page', String(page));
+    finalParams.set('limit', String(limit));
+    return finalParams.toString();
+  }, [searchParams, page, limit]);
   
   const { data, isLoading, refetch, isFetching } = useQuery({ 
     queryKey:['clients', queryString], 
@@ -138,6 +200,24 @@ export default function Customers(){
   
   // Check if we're still loading initial data (only show overlay if no data yet)
   const isInitialLoading = (isLoading && !data) || (settingsLoading && !settings);
+  
+  // Track when animation completes to remove inline styles for hover to work
+  useEffect(() => {
+    if (hasAnimated) {
+      const timer = setTimeout(() => setAnimationComplete(true), 400);
+      return () => clearTimeout(timer);
+    }
+  }, [hasAnimated]);
+  
+  // Track when initial data is loaded to trigger entry animations
+  useEffect(() => {
+    if (!isInitialLoading && !hasAnimated) {
+      // Small delay to ensure DOM is ready
+      const timer = setTimeout(() => setHasAnimated(true), 50);
+      return () => clearTimeout(timer);
+    }
+  }, [isInitialLoading, hasAnimated]);
+  
   const statusColorMap: Record<string,string> = useMemo(()=>{
     const list = (settings||{}).client_statuses as {label?:string, value?:string, id?:string}[]|undefined;
     const m: Record<string,string> = {};
@@ -159,73 +239,82 @@ export default function Customers(){
   // Organize locations data (countries, provinces, cities from actual clients only)
   const locations = locationsData || {};
   
-  // Extract unique countries from locations data
-  const allCountries = useMemo(() => {
-    return Object.keys(locations).sort();
+  // Extract all cities from all locations
+  const allCities = useMemo(() => {
+    const citiesSet = new Set<string>();
+    Object.values(locations).forEach((provinces: any) => {
+      Object.values(provinces).forEach((cities: any) => {
+        if (Array.isArray(cities)) {
+          cities.forEach((city: string) => citiesSet.add(city));
+        }
+      });
+    });
+    return Array.from(citiesSet).sort();
   }, [locations]);
   
-  // Extract provinces for selected country
-  const allProvinces = useMemo(() => {
-    if (!selectedCountry || !locations[selectedCountry]) return [];
-    return Object.keys(locations[selectedCountry]).sort();
-  }, [selectedCountry, locations]);
-  
-  // Extract cities for selected country and province
-  const cities = useMemo(() => {
-    if (!selectedCountry || !selectedProvince || !locations[selectedCountry]?.[selectedProvince]) return [];
-    return locations[selectedCountry][selectedProvince].sort();
-  }, [selectedCountry, selectedProvince, locations]);
-  
-  // Initialize default values when advanced filters is opened and locations data is loaded
-  useEffect(() => {
-    if (showAdvanced && locationsData && Object.keys(locationsData).length > 0 && !city) {
-      // Set default to Canada/BC if available
-      if ('Canada' in locationsData) {
-        if (selectedCountry !== 'Canada') {
-          setSelectedCountry('Canada');
-        }
-        if (locationsData['Canada'] && 'BC' in locationsData['Canada']) {
-          if (selectedProvince !== 'BC') {
-            setSelectedProvince('BC');
-          }
-        } else if (locationsData['Canada']) {
-          const firstProvince = Object.keys(locationsData['Canada']).sort()[0];
-          if (firstProvince && selectedProvince !== firstProvince) {
-            setSelectedProvince(firstProvince);
-          }
-        }
-      } else {
-        const firstCountry = Object.keys(locationsData).sort()[0];
-        if (firstCountry && selectedCountry !== firstCountry) {
-          setSelectedCountry(firstCountry);
-          if (locationsData[firstCountry]) {
-            const firstProvince = Object.keys(locationsData[firstCountry]).sort()[0];
-            if (firstProvince) setSelectedProvince(firstProvince);
-          }
-        }
-      }
+  // Filter Builder Configuration
+  const filterFields: FieldConfig[] = useMemo(() => [
+    {
+      id: 'status',
+      label: 'Status',
+      type: 'select',
+      operators: ['is', 'is_not'],
+      getOptions: () => clientStatuses.map((s: any) => ({ 
+        value: s.id || s.value || '', 
+        label: s.label || s.value || s.id || '' 
+      })),
+    },
+    {
+      id: 'type',
+      label: 'Type',
+      type: 'select',
+      operators: ['is', 'is_not'],
+      getOptions: () => clientTypes.map((t: any) => ({ 
+        value: t.id || t.value || '', 
+        label: t.label || t.value || t.id || '' 
+      })),
+    },
+    {
+      id: 'city',
+      label: 'City',
+      type: 'select',
+      operators: ['is', 'is_not'],
+      getOptions: () => allCities.map(city => ({ value: city, label: city })),
+    },
+  ], [clientStatuses, clientTypes, allCities]);
+
+  const handleApplyFilters = (rules: FilterRule[]) => {
+    const params = convertRulesToParams(rules);
+    if (q) params.set('q', q);
+    params.set('page', '1');
+    setPage(1);
+    setSearchParams(params);
+    refetch();
+  };
+
+  const hasActiveFilters = currentRules.length > 0;
+
+  // Helper to format rule value for display
+  const formatRuleValue = (rule: FilterRule): string => {
+    if (rule.field === 'status') {
+      const status = clientStatuses.find((s: any) => String(s.id || s.value) === rule.value);
+      return status?.label || status?.value || String(rule.value);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showAdvanced, locationsData]);
-  
-  // Reset province and city when country changes (only if not already set from city)
-  useEffect(() => {
-    if (selectedCountry && locations[selectedCountry] && !city) {
-      const firstProvince = Object.keys(locations[selectedCountry]).sort()[0];
-      if (firstProvince && firstProvince !== selectedProvince) {
-        setSelectedProvince(firstProvince);
-      }
+    if (rule.field === 'type') {
+      const type = clientTypes.find((t: any) => String(t.id || t.value) === rule.value);
+      return type?.label || type?.value || String(rule.value);
     }
-  }, [selectedCountry, locations, city]);
-  
-  // Reset city when province changes (only if city is not in the new province)
-  useEffect(() => {
-    if (selectedProvince && city && locations[selectedCountry]?.[selectedProvince]) {
-      if (!locations[selectedCountry][selectedProvince].includes(city)) {
-        setCity('');
-      }
+    if (rule.field === 'city') {
+      return String(rule.value);
     }
-  }, [selectedProvince, selectedCountry, locations]);
+    return String(rule.value);
+  };
+
+  // Helper to get field label
+  const getFieldLabel = (fieldId: string): string => {
+    const field = filterFields.find(f => f.id === fieldId);
+    return field?.label || fieldId;
+  };
 
   return (
     <div>
@@ -234,235 +323,105 @@ export default function Customers(){
           <div className="text-xl font-bold text-gray-900 tracking-tight mb-0.5">Customers</div>
           <div className="text-sm text-gray-500 font-medium">Manage your customer list and sites</div>
         </div>
-        {hasEditPermission && (
-          <Link 
-            to="/customers/new" 
-            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[#bc1414] text-white text-sm font-medium transition-all duration-200 hover:bg-[#aa1212] hover:shadow-md active:translate-y-[1px] active:shadow-sm"
-          >
-            <span className="text-base leading-none">+</span>
-            New Customer
-          </Link>
-        )}
+        <div className="text-right">
+          <div className="text-xs text-gray-400 mb-1.5 font-medium uppercase tracking-wide">Today</div>
+          <div className="text-sm font-semibold text-gray-700">{todayLabel}</div>
+        </div>
       </div>
-      {/* Advanced Search Panel */}
-      <div className="mb-3 rounded-xl border bg-white shadow-sm overflow-hidden relative">
-        {/* Main Search Bar */}
-        {isFiltersCollapsed ? (
-          <div className="p-4 bg-gradient-to-r from-gray-50 to-white">
-            <div className="flex items-center justify-between">
-              <div className="text-lg font-semibold text-gray-700">Show Filters</div>
-            </div>
-          </div>
-        ) : (
-          <div className="p-4 bg-gradient-to-r from-gray-50 to-white border-b">
-            <div className="flex items-center gap-3">
-              <div className="flex-1">
-                <label className="block text-xs font-medium text-gray-700 mb-1.5">Search Customers</label>
-                <div className="relative">
-                  <input 
-                    className="w-full border border-gray-300 rounded-lg px-4 py-2.5 pl-10 focus:outline-none focus:ring-2 focus:ring-brand-red focus:border-transparent text-gray-900" 
-                    placeholder="Search by name, display name, or code..." 
-                    value={q} 
-                    onChange={e=>handleQChange(e.target.value)} 
-                    onKeyDown={e=>{ if(e.key==='Enter') refetch(); }} 
-                  />
-                  <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                  </svg>
-                </div>
+      {/* Filter Bar */}
+      <div className="mb-3 rounded-lg border border-gray-200 bg-white shadow-sm overflow-hidden">
+        {/* Primary Row: Global Search + Actions */}
+        <div className="px-6 py-4 bg-white">
+          <div className="flex items-center gap-4">
+            {/* Global Search - Dominant, large */}
+            <div className="flex-1">
+              <div className="relative">
+                <input 
+                  className="w-full border border-gray-200 rounded-md px-4 py-2.5 pl-10 text-sm bg-gray-50/50 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300 focus:bg-white transition-all duration-150" 
+                  placeholder="Search by name, display name, code, address, city, province..." 
+                  value={q} 
+                  onChange={e=>handleQChange(e.target.value)} 
+                />
+                <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
               </div>
-              {!isFiltersCollapsed && (
-                <div className="flex items-end gap-2 pt-6">
-                  <button 
-                    onClick={()=>{
-                      const newValue = !showAdvanced;
-                      setShowAdvanced(newValue);
-                      // Clear city filter when closing advanced filters
-                      if (!newValue && city) {
-                        setCity('');
-                        const params = new URLSearchParams(searchParams);
-                        params.delete('city');
-                        setSearchParams(params);
-                      }
-                    }}
-                    className="px-4 py-2.5 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors flex items-center gap-2 text-sm font-medium"
-                  >
-                    <svg className={`w-4 h-4 transition-transform ${showAdvanced ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                    </svg>
-                    Advanced Filters
-                  </button>
-                </div>
-              )}
             </div>
-          </div>
-        )}
 
-        {/* Quick Filters Row */}
-        {!isFiltersCollapsed && (
-          <div className="p-4 border-b bg-gray-50/50">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1.5">Status</label>
-                <select 
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-red focus:border-transparent bg-white"
-                  value={status}
-                  onChange={e=>handleStatusChange(e.target.value)}
-                >
-                  <option value="">All Statuses</option>
-                  {clientStatuses.map((s: any) => (
-                    <option key={s.id || s.value || s.label} value={s.id || s.value || ''}>
-                      {s.label || s.value || s.id}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1.5">Type</label>
-                <select 
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-red focus:border-transparent bg-white"
-                  value={ctype}
-                  onChange={e=>handleCtypeChange(e.target.value)}
-                >
-                  <option value="">All Types</option>
-                  {clientTypes.map((t: any) => (
-                    <option key={t.id || t.value || t.label} value={t.id || t.value || ''}>
-                      {t.label || t.value || t.id}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-          </div>
-        )}
+            {/* + Filters Button - Opens Modal */}
+            <button 
+              onClick={()=>setIsFilterModalOpen(true)}
+              className="px-3 py-2.5 text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors duration-150 whitespace-nowrap"
+            >
+              + Filters
+            </button>
 
-        {/* Advanced Filters (Collapsible) */}
-        {!isFiltersCollapsed && showAdvanced && (
-          <div className="p-4 bg-gray-50 border-t animate-in slide-in-from-top duration-200">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1.5">Country</label>
-                <select 
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-red focus:border-transparent bg-white"
-                  value={selectedCountry}
-                  onChange={e=>{
-                    setSelectedCountry(e.target.value);
-                    setCity(''); // Reset city when country changes
-                    const params = new URLSearchParams(searchParams);
-                    params.delete('city');
-                    setSearchParams(params);
-                  }}
-                  disabled={!locationsData || allCountries.length === 0}
-                >
-                  {!locationsData ? (
-                    <option value="">Loading...</option>
-                  ) : allCountries.length === 0 ? (
-                    <option value="">No countries available</option>
-                  ) : (
-                    allCountries.map(country => (
-                      <option key={country} value={country}>{country}</option>
-                    ))
-                  )}
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1.5">Province / State</label>
-                <select 
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-red focus:border-transparent bg-white disabled:bg-gray-100 disabled:text-gray-500"
-                  value={selectedProvince}
-                  onChange={e=>{
-                    setSelectedProvince(e.target.value);
-                    setCity(''); // Reset city when province changes
-                    const params = new URLSearchParams(searchParams);
-                    params.delete('city');
-                    setSearchParams(params);
-                  }}
-                  disabled={!selectedCountry || allProvinces.length === 0}
-                >
-                  {allProvinces.length === 0 ? (
-                    <option value="">{selectedCountry ? 'No provinces available' : 'Select Province...'}</option>
-                  ) : (
-                    <>
-                      <option value="">Select Province...</option>
-                      {allProvinces.map(province => (
-                        <option key={province} value={province}>{province}</option>
-                      ))}
-                    </>
-                  )}
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1.5">City</label>
-                <select 
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-red focus:border-transparent bg-white disabled:bg-gray-100 disabled:text-gray-500"
-                  value={city}
-                  onChange={e=>handleCityChange(e.target.value)}
-                  disabled={!selectedProvince || cities.length === 0}
-                >
-                  <option value="">All Cities</option>
-                  {cities.map(cityName => (
-                    <option key={cityName} value={cityName}>{cityName}</option>
-                  ))}
-                </select>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Action Buttons */}
-        {!isFiltersCollapsed && (
-          <div className="p-4 bg-white border-t flex items-center justify-between">
-            <div className="text-sm text-gray-600">
-              {data && data.total > 0 && (
-                <span>Found {data.total} customer{data.total !== 1 ? 's' : ''}</span>
-              )}
-            </div>
-            <div className="flex items-center gap-2 pr-10">
-              {isFetching && (
-                <div className="flex items-center gap-2">
-                  <LoadingSpinner size="sm" />
-                  <span className="text-sm text-gray-600">Loading...</span>
-                </div>
-              )}
+            {/* Clear Filters - Only when active */}
+            {hasActiveFilters && (
               <button 
                 onClick={()=>{
-                  setQ('');
-                  setStatus('');
-                  setCtype('');
-                  setCity('');
                   const params = new URLSearchParams();
+                  if (q) params.set('q', q);
                   params.set('page', '1');
-                  setSearchParams(params);
                   setPage(1);
+                  setSearchParams(params);
+                  refetch();
                 }} 
-                className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors font-medium"
+                className="px-3 py-2.5 text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors duration-150 whitespace-nowrap"
               >
-                Clear All
+                Clear Filters
               </button>
-            </div>
+            )}
           </div>
-        )}
-
-        {/* Collapse/Expand button - bottom right corner */}
-        <button
-          onClick={() => setIsFiltersCollapsed(!isFiltersCollapsed)}
-          className="absolute bottom-0 right-0 w-8 h-8 rounded-tl-lg border-t border-l bg-white hover:bg-gray-50 transition-colors flex items-center justify-center shadow-sm"
-          title={isFiltersCollapsed ? "Expand filters" : "Collapse filters"}
-        >
-          <svg 
-            className={`w-4 h-4 text-gray-600 transition-transform ${!isFiltersCollapsed ? 'rotate-180' : ''}`}
-            fill="none" 
-            stroke="currentColor" 
-            viewBox="0 0 24 24"
-          >
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-          </svg>
-        </button>
+        </div>
       </div>
 
+      {/* Filter Chips */}
+      {hasActiveFilters && (
+        <div className="mb-4 flex items-center gap-2 flex-wrap">
+          {currentRules.map((rule) => (
+            <FilterChip
+              key={rule.id}
+              rule={rule}
+              onRemove={() => {
+                const updatedRules = currentRules.filter(r => r.id !== rule.id);
+                const params = convertRulesToParams(updatedRules);
+                if (q) params.set('q', q);
+                params.set('page', String(page));
+                setSearchParams(params);
+                refetch();
+              }}
+              getValueLabel={formatRuleValue}
+              getFieldLabel={getFieldLabel}
+            />
+          ))}
+        </div>
+      )}
+
       <LoadingOverlay isLoading={isInitialLoading} text="Loading customers...">
-        <div className="rounded-xl border bg-white">
+        <div 
+          className="rounded-xl border bg-white"
+          style={animationComplete ? {} : {
+            opacity: hasAnimated ? 1 : 0,
+            transform: hasAnimated ? 'translateY(0) scale(1)' : 'translateY(-8px) scale(0.98)',
+            transition: 'opacity 400ms ease-out, transform 400ms ease-out'
+          }}
+        >
           <div className="divide-y">
+            {hasEditPermission && (
+              <button
+                onClick={() => setNewCustomerModalOpen(true)}
+                className="w-full p-3 flex items-center justify-center border-2 border-dashed border-gray-300 hover:border-brand-red hover:bg-gray-50 transition-all cursor-pointer"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="text-3xl text-gray-400">+</div>
+                  <div>
+                    <div className="font-medium text-sm text-gray-700">New Customer</div>
+                    <div className="text-xs text-gray-500">Add new customer</div>
+                  </div>
+                </div>
+              </button>
+            )}
             {(data?.items || []).map(c => (
               <ClientRow key={c.id} c={c} statusColorMap={statusColorMap} hasEditPermission={hasEditPermission} onOpen={()=> nav(`/customers/${encodeURIComponent(c.id)}`)} onDeleted={()=> refetch()} />
             ))}
@@ -515,6 +474,34 @@ export default function Customers(){
           )}
         </div>
       </LoadingOverlay>
+      
+      {/* Filter Builder Modal */}
+      <FilterBuilderModal
+        isOpen={isFilterModalOpen}
+        onClose={() => setIsFilterModalOpen(false)}
+        onApply={handleApplyFilters}
+        initialRules={currentRules}
+        fields={filterFields}
+        getFieldData={(fieldId) => {
+          // Return data for field if needed
+          return null;
+        }}
+      />
+      
+      {/* New Customer Modal */}
+      {newCustomerModalOpen && (
+        <NewCustomerModal
+          onClose={() => setNewCustomerModalOpen(false)}
+          onSuccess={(customerId) => {
+            setNewCustomerModalOpen(false);
+            queryClient.invalidateQueries({ queryKey: ['clients'] });
+            refetch();
+            if (customerId) {
+              nav(`/customers/${encodeURIComponent(customerId)}`);
+            }
+          }}
+        />
+      )}
     </div>
   );
 }

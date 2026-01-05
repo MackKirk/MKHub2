@@ -8,7 +8,7 @@ export default function Schedule() {
   const fromHome = location.state?.fromHome === true;
   
   const todayLabel = useMemo(() => {
-    return new Date().toLocaleDateString('pt-BR', {
+    return new Date().toLocaleDateString('en-CA', {
       weekday: 'long',
       year: 'numeric',
       month: 'short',
