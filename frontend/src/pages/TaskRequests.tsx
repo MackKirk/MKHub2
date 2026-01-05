@@ -77,6 +77,7 @@ export default function TaskRequestsPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const fromHome = location.state?.fromHome === true;
+  const deepLinkRequestId = (location.state as any)?.requestId as string | undefined;
   const queryClient = useQueryClient();
   const { data, isLoading } = useQuery({
     queryKey: ['task-requests'],
@@ -189,10 +190,23 @@ export default function TaskRequestsPage() {
     return updated.toLocaleDateString();
   };
 
-  // Handle request click - open modal
+  useEffect(() => {
+    if (deepLinkRequestId) {
+      setSelectedRequestId(deepLinkRequestId);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deepLinkRequestId]);
+
+  // Handle request click - select in right panel; open modal on small screens only
   const handleRequestClick = (requestId: string) => {
-    setViewModalRequestId(requestId);
-    setShowViewModal(true);
+    setSelectedRequestId(requestId);
+    if (window.innerWidth < 1024) {
+      setViewModalRequestId(requestId);
+      setShowViewModal(true);
+    } else {
+      setShowViewModal(false);
+      setViewModalRequestId(null);
+    }
   };
 
   return (

@@ -414,37 +414,457 @@ class BambooHRClient:
         """
         return self._request("GET", f"/reports/{report_id}?format={format}")
     
-    def get_time_off_requests(self, employee_id: Optional[str] = None) -> List[Dict[str, Any]]:
+    def get_time_off_requests(self, employee_id: Optional[str] = None, start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict[str, Any]]:
         """Get time off requests"""
-        endpoint = "/time_off/requests"
+        import logging
+        from datetime import datetime, timedelta
+        logger = logging.getLogger(__name__)
+        
+        # If no dates provided, use current year
+        if not start_date or not end_date:
+            now = datetime.now()
+            start_date = f"{now.year}-01-01"
+            end_date = f"{now.year}-12-31"
+        
+        # Try different endpoint formats
+        endpoints = []
         if employee_id:
-            endpoint += f"?employeeId={employee_id}"
-        return self._request("GET", endpoint)
+            endpoints = [
+                f"/time_off/requests?employeeId={employee_id}&start={start_date}&end={end_date}",
+                f"/time_off/requests?employeeId={employee_id}",
+                f"/employees/{employee_id}/time_off/requests?start={start_date}&end={end_date}",
+                f"/employees/{employee_id}/time_off/requests",
+                f"/time_off/requests?employee={employee_id}&start={start_date}&end={end_date}",
+            ]
+        else:
+            endpoints = [
+                f"/time_off/requests?start={start_date}&end={end_date}",
+                "/time_off/requests"
+            ]
+        
+        last_error = None
+        for endpoint in endpoints:
+            try:
+                result = self._request("GET", endpoint)
+                if result:
+                    # Handle different response formats
+                    if isinstance(result, list):
+                        return result
+                    elif isinstance(result, dict):
+                        if "requests" in result:
+                            requests = result["requests"]
+                            return requests if isinstance(requests, list) else [requests]
+                        elif "data" in result:
+                            data = result["data"]
+                            return data if isinstance(data, list) else [data]
+                        else:
+                            return [result]
+                    return result if result else []
+            except httpx.HTTPStatusError as e:
+                if e.response.status_code == 404:
+                    logger.debug(f"Endpoint {endpoint} returned 404")
+                elif e.response.status_code == 400:
+                    logger.debug(f"Endpoint {endpoint} returned 400: {e.response.text}")
+                else:
+                    logger.debug(f"Endpoint {endpoint} returned {e.response.status_code}")
+                last_error = e
+                continue
+            except Exception as e:
+                last_error = e
+                logger.debug(f"Failed to get time off requests from {endpoint}: {str(e)}")
+                continue
+        
+        # If all endpoints fail and we have employee_id, try getting all requests and filtering
+        if employee_id and last_error:
+            try:
+                logger.info(f"Trying to get all time off requests and filter by employee {employee_id}")
+                all_requests = self._request("GET", "/time_off/requests")
+                if all_requests:
+                    if isinstance(all_requests, list):
+                        # Filter by employee_id
+                        filtered = [req for req in all_requests if isinstance(req, dict) and str(req.get("employeeId", "")) == str(employee_id)]
+                        if filtered:
+                            return filtered
+                    elif isinstance(all_requests, dict):
+                        requests_list = all_requests.get("requests", []) if isinstance(all_requests.get("requests"), list) else []
+                        if requests_list:
+                            filtered = [req for req in requests_list if isinstance(req, dict) and str(req.get("employeeId", "")) == str(employee_id)]
+                            if filtered:
+                                return filtered
+            except Exception as e:
+                logger.debug(f"Failed to get all requests: {str(e)}")
+        
+        logger.warning(f"Could not retrieve time off requests for employee {employee_id}. Last error: {str(last_error) if last_error else 'Unknown'}")
+        return []
     
     def get_time_off_policies(self) -> List[Dict[str, Any]]:
         """Get time off policies"""
         return self._request("GET", "/time_off/policies")
     
-    def get_time_off_balance(self, employee_id: str) -> Optional[Dict[str, Any]]:
+    def get_time_off_balance(self, employee_id: str, year: Optional[int] = None) -> Optional[Dict[str, Any]]:
         """Get time off balance for an employee"""
+        import logging
+        from datetime import datetime
+        logger = logging.getLogger(__name__)
+        
+        if year is None:
+            year = datetime.now().year
+        
         try:
-            # Try different possible endpoints
+            # Try different possible endpoints (including plural forms and with year parameter)
             endpoints = [
-                f"/time_off/balance?employeeId={employee_id}",
+                f"/employees/{employee_id}/time_off/balances",  # Most common format
+                f"/employees/{employee_id}/time_off/balances?year={year}",
                 f"/employees/{employee_id}/time_off/balance",
+                f"/employees/{employee_id}/time_off/balance?year={year}",
                 f"/time_off/balances?employeeId={employee_id}",
+                f"/time_off/balances?employeeId={employee_id}&year={year}",
+                f"/time_off/balance?employeeId={employee_id}",
+                f"/time_off/balance?employeeId={employee_id}&year={year}",
             ]
             
+            last_error = None
             for endpoint in endpoints:
                 try:
                     result = self._request("GET", endpoint)
                     if result:
+                        logger.info(f"Successfully retrieved time off balance from {endpoint}")
                         return result
-                except Exception:
+                except httpx.HTTPStatusError as e:
+                    # Log 404 specifically but continue trying other endpoints
+                    if e.response.status_code == 404:
+                        logger.debug(f"Endpoint {endpoint} returned 404 (not found)")
+                    else:
+                        logger.debug(f"Endpoint {endpoint} returned {e.response.status_code}: {str(e)}")
+                    last_error = e
+                    continue
+                except Exception as e:
+                    last_error = e
+                    logger.debug(f"Failed to get time off balance from {endpoint}: {str(e)}")
                     continue
             
+            # If all balance endpoints fail, try alternative approach using time off requests
+            logger.info(f"All balance endpoints failed for employee {employee_id}, trying alternative approach with time off requests")
+            try:
+                # Try to get balance from time off requests with date range for the year
+                start_date = f"{year}-01-01"
+                end_date = f"{year}-12-31"
+                requests = self.get_time_off_requests(employee_id, start_date=start_date, end_date=end_date)
+                if requests and isinstance(requests, list):
+                    # Log schema hints (once) to help map fields for this Bamboo tenant
+                    try:
+                        sample = next((r for r in requests if isinstance(r, dict)), None)
+                        if sample:
+                            interesting = {}
+                            for k, v in sample.items():
+                                lk = str(k).lower()
+                                if any(s in lk for s in ["balance", "remain", "available", "accrual", "earned", "note", "comment", "reason", "unit"]):
+                                    interesting[k] = v
+                            logger.info(
+                                f"[BambooHR] time_off/requests sample keys (filtered) for employee {employee_id}: {interesting}"
+                            )
+                    except Exception:
+                        pass
+
+                    def _to_float(val: Any) -> Optional[float]:
+                        try:
+                            if val is None:
+                                return None
+                            if isinstance(val, (int, float)):
+                                return float(val)
+                            if isinstance(val, str) and val.strip() != "":
+                                return float(val)
+                            if isinstance(val, dict):
+                                # common patterns: {"value": "1.0"} or {"amount": 1}
+                                for kk in ["value", "amount", "hours", "days"]:
+                                    if kk in val:
+                                        return _to_float(val.get(kk))
+                        except Exception:
+                            return None
+                        return None
+
+                    def _extract_balance_days(req: Dict[str, Any]) -> Optional[float]:
+                        # Prefer explicit known names
+                        candidates = [
+                            "balanceAfter", "balance_after", "balance", "balanceRemaining", "balance_remaining",
+                            "remainingBalance", "remaining_balance", "availableBalance", "available_balance",
+                            "available", "remaining", "balanceInDays", "balance_days"
+                        ]
+                        for key in candidates:
+                            if key in req:
+                                v = _to_float(req.get(key))
+                                if v is not None:
+                                    # determine unit hints
+                                    lk = key.lower()
+                                    unit_hint = (req.get("balanceUnit") or req.get("unit") or "").lower()
+                                    if "hour" in unit_hint or "hours" in lk or "hour" in lk:
+                                        return v / 8.0
+                                    return v
+                        # Fallback: scan any numeric field that looks like a balance
+                        for k, v in req.items():
+                            lk = str(k).lower()
+                            if "balance" in lk or "remain" in lk or "available" in lk:
+                                vv = _to_float(v)
+                                if vv is None:
+                                    continue
+                                unit_hint = (req.get("balanceUnit") or req.get("unit") or "").lower()
+                                if "hour" in unit_hint or "hours" in lk or "hour" in lk:
+                                    return vv / 8.0
+                                return vv
+                        return None
+                    # Calculate balance from approved requests for current year
+                    current_year = datetime.now().year
+                    
+                    # Group by policy and calculate used hours.
+                    # If the requests payload contains any balance-like field, use it to set current balance too.
+                    policies = {}
+                    for req in requests:
+                        if isinstance(req, dict):
+                            # Check if request is for current year
+                            start_date = req.get("start", "") or req.get("startDate", "")
+                            if start_date:
+                                try:
+                                    req_year = datetime.strptime(start_date.split("T")[0], "%Y-%m-%d").year
+                                    if req_year != current_year:
+                                        continue
+                                except:
+                                    pass  # If we can't parse date, include it anyway
+                            
+                            status = req.get("status", "").lower()
+                            if status in ["approved", "taken", "approvedpaid", "approvedunpaid"]:
+                                policy_name = req.get("policyName") or req.get("policy") or req.get("type") or req.get("name") or "Time Off"
+                                
+                                # Log the request to understand the structure
+                                logger.debug(f"Processing time off request: {req}")
+                                
+                                # Try to get hours/days from different fields
+                                # Note: BambooHR API typically returns "amount" in days, not hours
+                                hours = 0.0
+                                
+                                # Check for explicit hours field first
+                                if "hours" in req and req["hours"] is not None:
+                                    try:
+                                        hours = abs(float(req["hours"]))
+                                    except (ValueError, TypeError):
+                                        pass
+                                
+                                # Check for amount field (usually in days for BambooHR)
+                                elif "amount" in req and req["amount"] is not None:
+                                    try:
+                                        amount = float(req["amount"])
+                                        # Check if there's a unit field to determine if it's days or hours
+                                        unit = req.get("unit", "").lower()
+                                        if unit == "hours" or "hour" in unit:
+                                            hours = abs(amount)
+                                        else:
+                                            # Default assumption: amount is in days
+                                            hours = abs(amount) * 8.0
+                                    except (ValueError, TypeError):
+                                        pass
+                                
+                                # Check for days field
+                                elif "days" in req and req["days"] is not None:
+                                    try:
+                                        days = float(req["days"])
+                                        hours = abs(days) * 8.0
+                                    except (ValueError, TypeError):
+                                        pass
+                                
+                                # Check for other possible fields
+                                elif "timeOffAmount" in req and req["timeOffAmount"] is not None:
+                                    try:
+                                        amount = float(req["timeOffAmount"])
+                                        hours = abs(amount) * 8.0  # Assume days
+                                    except (ValueError, TypeError):
+                                        pass
+                                
+                                if hours > 0:
+                                    if policy_name not in policies:
+                                        policies[policy_name] = {
+                                            "name": policy_name,
+                                            "used": 0.0,
+                                            "usedHours": 0.0,
+                                            # We might be able to infer these from request payload (balanceAfter/balance)
+                                            "balance": None,       # in days (when available)
+                                            "balanceHours": None,  # in hours (when available)
+                                            "accrued": None,       # in days (when inferrable)
+                                            "accruedHours": None,  # in hours (when inferrable)
+                                            "_lastBalanceDate": None,
+                                        }
+                                    
+                                    policies[policy_name]["used"] += hours
+                                    policies[policy_name]["usedHours"] += hours
+                                    logger.debug(f"Added {hours} hours to policy {policy_name} (total: {policies[policy_name]['usedHours']})")
+
+                                    bal_days = _extract_balance_days(req)
+                                    bal_date = req.get("end") or req.get("endDate") or req.get("start") or req.get("startDate")
+                                    try:
+                                        if bal_days is not None:
+                                            # Keep the most recent balance snapshot
+                                            prev_date = policies[policy_name].get("_lastBalanceDate")
+                                            if prev_date is None or (isinstance(bal_date, str) and isinstance(prev_date, str) and bal_date > prev_date):
+                                                policies[policy_name]["balance"] = bal_days
+                                                policies[policy_name]["balanceHours"] = bal_days * 8.0
+                                                policies[policy_name]["_lastBalanceDate"] = bal_date
+                                    except Exception:
+                                        pass
+                    
+                    if policies:
+                        # If we still couldn't infer balance from request payload, try to approximate using policy rules.
+                        # Many BambooHR tenants don't return balance fields on /time_off/requests.
+                        try:
+                            policies_payload = self.get_time_off_policies()
+                            # Log policy schema hints (once) to help map fields for this Bamboo tenant
+                            sample_pol = None
+                            if isinstance(policies_payload, list):
+                                sample_pol = next((p for p in policies_payload if isinstance(p, dict)), None)
+                            elif isinstance(policies_payload, dict):
+                                # common wrappers
+                                for key in ["policies", "data", "policy"]:
+                                    if key in policies_payload and isinstance(policies_payload[key], list):
+                                        sample_pol = next((p for p in policies_payload[key] if isinstance(p, dict)), None)
+                                        break
+                            if sample_pol:
+                                interesting = {}
+                                for k, v in sample_pol.items():
+                                    lk = str(k).lower()
+                                    if any(s in lk for s in ["accrual", "annual", "year", "amount", "days", "hours", "unit", "balance"]):
+                                        interesting[k] = v
+                                logger.info(f"[BambooHR] time_off/policies sample keys (filtered): {interesting}")
+
+                            def _walk_numbers(obj: Any, path: str = "") -> List[tuple]:
+                                out: List[tuple] = []
+                                if isinstance(obj, dict):
+                                    for kk, vv in obj.items():
+                                        out.extend(_walk_numbers(vv, f"{path}.{kk}" if path else str(kk)))
+                                elif isinstance(obj, list):
+                                    for idx, vv in enumerate(obj):
+                                        out.extend(_walk_numbers(vv, f"{path}[{idx}]"))
+                                else:
+                                    vv = _to_float(obj)
+                                    if vv is not None:
+                                        out.append((path, vv))
+                                return out
+
+                            def _infer_annual_days(policy_obj: Dict[str, Any]) -> Optional[float]:
+                                # Heuristic scoring: prefer paths that look like annual accrual/amount
+                                candidates = _walk_numbers(policy_obj)
+                                best = None
+                                best_score = -1
+                                for pth, val in candidates:
+                                    if val <= 0 or val > 365:
+                                        continue
+                                    lp = pth.lower()
+                                    # skip caps/limits/carryover which can look like days
+                                    if any(x in lp for x in ["max", "cap", "carry", "limit", "roll", "unused", "exceed"]):
+                                        continue
+                                    score = 0
+                                    if "annual" in lp or "year" in lp or "peryear" in lp:
+                                        score += 5
+                                    if "accrual" in lp:
+                                        score += 4
+                                    if "amount" in lp or "days" in lp:
+                                        score += 2
+                                    if "hours" in lp:
+                                        score -= 1
+                                    if score > best_score:
+                                        best_score = score
+                                        best = val
+                                return best
+
+                            # Normalize policies list
+                            pol_list: List[Dict[str, Any]] = []
+                            if isinstance(policies_payload, list):
+                                pol_list = [p for p in policies_payload if isinstance(p, dict)]
+                            elif isinstance(policies_payload, dict):
+                                for key in ["policies", "data"]:
+                                    if key in policies_payload:
+                                        vv = policies_payload[key]
+                                        if isinstance(vv, list):
+                                            pol_list = [p for p in vv if isinstance(p, dict)]
+                                        elif isinstance(vv, dict):
+                                            pol_list = [vv]
+                                        break
+
+                            # Build name->policy map
+                            name_map = {}
+                            for p in pol_list:
+                                nm = p.get("name") or p.get("policyName") or p.get("title")
+                                if nm:
+                                    name_map[str(nm).strip().lower()] = p
+
+                            for p in policies.values():
+                                if p.get("balanceHours") is None:
+                                    nm = str(p.get("name") or "").strip().lower()
+                                    pol_obj = name_map.get(nm)
+                                    if pol_obj:
+                                        annual_days = _infer_annual_days(pol_obj)
+                                        if annual_days is not None:
+                                            used_h = float(p.get("usedHours") or 0.0)
+                                            used_days = used_h / 8.0
+                                            balance_days = annual_days - used_days
+                                            p["balance"] = balance_days
+                                            p["balanceHours"] = balance_days * 8.0
+                                            p["accrued"] = annual_days
+                                            p["accruedHours"] = annual_days * 8.0
+                                            logger.info(f"[BambooHR] Approximated balance for '{p.get('name')}' using policy accrual: annual_days={annual_days}, used_days={used_days}, balance_days={balance_days}")
+                        except Exception:
+                            pass
+
+                        # Infer accrued when we have both used + current balance (accrued ~= used + balance)
+                        for p in policies.values():
+                            try:
+                                if p.get("balanceHours") is not None:
+                                    used_h = float(p.get("usedHours") or 0.0)
+                                    bal_h = float(p.get("balanceHours") or 0.0)
+                                    p["accruedHours"] = used_h + bal_h
+                                    p["accrued"] = (used_h + bal_h) / 8.0
+                            except Exception:
+                                pass
+                            # remove internal helper
+                            p.pop("_lastBalanceDate", None)
+                        # Return as list of policies (note: we only have used hours, not the full balance)
+                        logger.info(f"Retrieved time off usage from requests for {len(policies)} policies")
+                        return {"policies": list(policies.values()), "_source": "requests"}
+            except Exception as e:
+                logger.debug(f"Alternative approach with requests also failed: {str(e)}")
+            
+            # Try one more alternative: use whos_out endpoint to get time off information
+            try:
+                logger.info(f"Trying whos_out endpoint as last resort for employee {employee_id}")
+                start_date = f"{year}-01-01"
+                end_date = f"{year}-12-31"
+                whos_out = self.get_time_off_whos_out(start_date=start_date, end_date=end_date)
+                if whos_out and isinstance(whos_out, list):
+                    # Filter by employee_id and extract time off info
+                    employee_time_off = [entry for entry in whos_out if isinstance(entry, dict) and str(entry.get("employeeId", "")) == str(employee_id)]
+                    if employee_time_off:
+                        # Group by policy
+                        policies = {}
+                        for entry in employee_time_off:
+                            policy_name = entry.get("policyName") or entry.get("policy") or entry.get("type") or "Time Off"
+                            hours = float(entry.get("hours", 0) or entry.get("amount", 0) or 0)
+                            
+                            if policy_name not in policies:
+                                policies[policy_name] = {
+                                    "name": policy_name,
+                                    "used": 0.0,
+                                    "usedHours": 0.0
+                                }
+                            
+                            policies[policy_name]["used"] += hours
+                            policies[policy_name]["usedHours"] += hours
+                        
+                        if policies:
+                            logger.info(f"Retrieved time off usage from whos_out for {len(policies)} policies")
+                            return {"policies": list(policies.values()), "_source": "whos_out"}
+            except Exception as e:
+                logger.debug(f"Alternative approach with whos_out also failed: {str(e)}")
+            
+            logger.warning(f"Could not retrieve time off balance for employee {employee_id}. Last error: {str(last_error) if last_error else 'Unknown'}")
             return None
-        except Exception:
+        except Exception as e:
+            logger.error(f"Error getting time off balance: {str(e)}")
             return None
     
     def get_time_off_whos_out(self, start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict[str, Any]]:

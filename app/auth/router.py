@@ -1006,12 +1006,35 @@ def update_my_profile(payload: EmployeeProfileInput, user: User = Depends(get_cu
 
 @router.get("/users/options")
 def users_options(q: Optional[str] = None, limit: int = 100, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    query = db.query(User)
+    query = db.query(User, EmployeeProfile).outerjoin(EmployeeProfile, EmployeeProfile.user_id == User.id).filter(User.is_active == True)
     if q:
         like = f"%{q}%"
-        query = query.filter((User.username.ilike(like)) | (User.email_personal.ilike(like)))
+        query = query.filter(
+            (User.username.ilike(like)) 
+            | (User.email_personal.ilike(like))
+            | (EmployeeProfile.first_name.ilike(like))
+            | (EmployeeProfile.last_name.ilike(like))
+            | (EmployeeProfile.preferred_name.ilike(like))
+        )
     rows = query.limit(limit).all()
-    return [{"id": str(u.id), "username": u.username, "email": u.email_personal} for u in rows]
+    
+    result = []
+    for u, ep in rows:
+        name = None
+        if ep:
+            if ep.preferred_name:
+                name = ep.preferred_name
+            elif ep.first_name or ep.last_name:
+                name = " ".join([ep.first_name or "", ep.last_name or ""]).strip()
+        
+        result.append({
+            "id": str(u.id),
+            "username": u.username,
+            "email": u.email_personal,
+            "name": name or u.username
+        })
+    
+    return result
 
 
 @router.get("/users")

@@ -1419,6 +1419,8 @@ class TaskItem(Base):
     concluded_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
     concluded_by_name: Mapped[Optional[str]] = mapped_column(String(255))
 
+    archived_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), index=True)
+
     request = relationship("TaskRequest", back_populates="task")
 
 

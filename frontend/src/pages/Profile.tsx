@@ -947,10 +947,10 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
               <tbody>
                 {history.map((h: any) => (
                   <tr key={h.id} className="border-b">
-                    <td className="py-2 px-2">{new Date(h.transaction_date).toLocaleDateString()}</td>
-                    <td className="py-2 px-2">{h.description || 'Time off transaction'}</td>
+                    <td className="py-2 px-2">{new Date(h.transaction_date).toLocaleDateString(undefined, { timeZone: 'UTC' })}</td>
+                    <td className="py-2 px-2 whitespace-pre-line">{h.description || 'Time off transaction'}</td>
                     <td className="py-2 px-2 text-right">
-                      {h.used_days ? `-${parseFloat(h.used_days).toFixed(2)}` : '—'}
+                      {h.used_days ? (h.used_days < 0 ? parseFloat(h.used_days).toFixed(2) : `-${parseFloat(h.used_days).toFixed(2)}`) : '—'}
                     </td>
                     <td className="py-2 px-2 text-right">
                       {h.earned_days ? `+${parseFloat(h.earned_days).toFixed(2)}` : '—'}
