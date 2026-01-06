@@ -93,7 +93,7 @@ export default function CreateTaskModal({ open, onClose, onCreated }: Props) {
         className="bg-white rounded-xl max-w-xl w-full max-h-[90vh] overflow-hidden flex flex-col shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="px-6 py-4 border-b border-gray-200/60 flex items-start justify-between gap-4">
+        <div className="flex-shrink-0 px-6 py-4 border-b border-gray-200/60 flex items-start justify-between gap-4">
           <div>
             <h2 className="text-lg font-semibold text-gray-900">New task</h2>
             <p className="text-sm text-gray-600">
@@ -113,7 +113,7 @@ export default function CreateTaskModal({ open, onClose, onCreated }: Props) {
           </button>
         </div>
 
-        <div className="px-6 py-5 space-y-4 overflow-y-auto">
+        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Title *</label>
             <input
@@ -277,7 +277,7 @@ export default function CreateTaskModal({ open, onClose, onCreated }: Props) {
           </div>
         </div>
 
-        <div className="border-t border-gray-200/60 px-6 py-4 bg-white flex items-center justify-end gap-2">
+        <div className="flex-shrink-0 border-t border-gray-200/60 px-6 py-4 bg-white flex items-center justify-end gap-2">
           <button
             type="button"
             onClick={onClose}

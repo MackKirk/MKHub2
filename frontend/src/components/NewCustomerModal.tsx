@@ -298,7 +298,7 @@ export default function NewCustomerModal({ onClose, onSuccess }: NewCustomerModa
             ×
           </button>
         </div>
-        <div className="overflow-y-auto flex-1 p-6">
+        <div className="flex-1 overflow-y-auto p-6">
           <div className="mb-4 flex items-center gap-2 text-sm">
             {[1, 2].map(i => (
               <div key={i} className={`flex-1 h-2 rounded ${step >= i ? 'bg-brand-red' : 'bg-gray-200'}`} title={`Step ${i}`}></div>
@@ -610,12 +610,12 @@ export default function NewCustomerModal({ onClose, onSuccess }: NewCustomerModa
       </div>
       {contactModalOpen && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60">
-          <div className="w-[800px] max-w-[95vw] bg-white rounded-xl overflow-hidden">
-            <div className="px-4 py-3 border-b flex items-center justify-between">
+          <div className="w-[800px] max-w-[95vw] bg-white rounded-xl overflow-hidden flex flex-col max-h-[90vh]">
+            <div className="flex-shrink-0 px-4 py-3 border-b flex items-center justify-between">
               <div className="font-semibold">New Contact</div>
               <button onClick={() => { setContactModalOpen(false); setCPhotoBlob(null); setCPhotoPreview(''); }} className="text-gray-500 hover:text-gray-700 text-2xl font-bold w-8 h-8 flex items-center justify-center rounded hover:bg-gray-100" title="Close">×</button>
             </div>
-            <div className="p-4 grid md:grid-cols-5 gap-3 items-start">
+            <div className="flex-1 overflow-y-auto p-4 grid md:grid-cols-5 gap-3 items-start">
               <div className="md:col-span-2">
                 <div className="text-[11px] uppercase text-gray-500 mb-1">Contact Photo</div>
                 <button onClick={() => setCPickerOpen(true)} className="w-full h-40 border rounded grid place-items-center bg-gray-50 relative overflow-hidden">

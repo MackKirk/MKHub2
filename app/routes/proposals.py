@@ -22,6 +22,7 @@ from ..models import models
 from ..schemas import files as file_schemas
 
 from ..proposals.pdf_merge import generate_pdf
+from ..proposals.pdf_image_optimizer import optimize_image_bytes
 import httpx
 from PIL import Image as PILImage
 try:
@@ -106,7 +107,7 @@ async def generate_proposal(
     cover_path, page2_path = None, None
 
     if cover_image and getattr(cover_image, "filename", ""):
-        # Normalize to PNG using PIL (handles HEIC via pillow-heif)
+        # Normalize and optimize image using PIL (handles HEIC via pillow-heif)
         tmp_ext = mimetypes.guess_extension(getattr(cover_image, "content_type", "") or "") or ".bin"
         tmp_in = os.path.join(UPLOAD_DIR, f"cover_in_{file_id}{tmp_ext}")
         with open(tmp_in, "wb") as buffer:
@@ -114,10 +115,17 @@ async def generate_proposal(
         try:
             # Skip empty uploads
             if os.path.getsize(tmp_in) > 0:
-                with PILImage.open(tmp_in) as im:
-                    im = im.convert("RGB")
-                    cover_path = os.path.join(UPLOAD_DIR, f"cover_{file_id}.png")
-                    im.save(cover_path, format="PNG", optimize=True)
+                # Read image bytes and optimize
+                with open(tmp_in, "rb") as f:
+                    image_bytes = f.read()
+                
+                # Optimize image before saving
+                optimized_bytes = optimize_image_bytes(image_bytes, preset="cover")
+                
+                # Save optimized image as JPEG (optimizer already converted to JPEG)
+                cover_path = os.path.join(UPLOAD_DIR, f"cover_{file_id}.jpg")
+                with open(cover_path, "wb") as f:
+                    f.write(optimized_bytes)
         except Exception:
             # Ignore invalid image; proceed without cover
             cover_path = None
@@ -135,10 +143,17 @@ async def generate_proposal(
             shutil.copyfileobj(page2_image.file, buffer)
         try:
             if os.path.getsize(tmp_in) > 0:
-                with PILImage.open(tmp_in) as im:
-                    im = im.convert("RGB")
-                    page2_path = os.path.join(UPLOAD_DIR, f"page2_{file_id}.png")
-                    im.save(page2_path, format="PNG", optimize=True)
+                # Read image bytes and optimize
+                with open(tmp_in, "rb") as f:
+                    image_bytes = f.read()
+                
+                # Optimize image before saving
+                optimized_bytes = optimize_image_bytes(image_bytes, preset="section")
+                
+                # Save optimized image as JPEG (optimizer already converted to JPEG)
+                page2_path = os.path.join(UPLOAD_DIR, f"page2_{file_id}.jpg")
+                with open(page2_path, "wb") as f:
+                    f.write(optimized_bytes)
         except Exception:
             page2_path = None
         finally:
@@ -158,21 +173,28 @@ async def generate_proposal(
             url = storage.get_download_url(fo.key, expires_s=300)
             if not url:
                 return None
-            # Download original then normalize to PNG
+            # Download original then optimize
             in_ext = mimetypes.guess_extension(fo.content_type or "") or ".bin"
             tmp_in = os.path.join(UPLOAD_DIR, f"{prefix}_in_{file_id}{in_ext}")
-            tmp_path = os.path.join(UPLOAD_DIR, f"{prefix}_{file_id}.png")
+            tmp_path = os.path.join(UPLOAD_DIR, f"{prefix}_{file_id}.jpg")
             async with httpx.AsyncClient(timeout=30.0) as client:
                 async with client.stream("GET", url) as r:
                     r.raise_for_status()
                     with open(tmp_in, "wb") as out:
                         async for chunk in r.aiter_bytes():
                             out.write(chunk)
-            # Convert to PNG for consistent downstream handling
+            # Optimize image before saving
             try:
-                with PILImage.open(tmp_in) as im:
-                    im = im.convert("RGB")
-                    im.save(tmp_path, format="PNG", optimize=True)
+                with open(tmp_in, "rb") as f:
+                    image_bytes = f.read()
+                
+                # Determine preset based on prefix
+                preset = "cover" if prefix == "cover" else "section"
+                optimized_bytes = optimize_image_bytes(image_bytes, preset=preset)
+                
+                # Save optimized image as JPEG (optimizer already converted to JPEG)
+                with open(tmp_path, "wb") as f:
+                    f.write(optimized_bytes)
             finally:
                 try:
                     os.remove(tmp_in)
@@ -228,11 +250,18 @@ async def generate_proposal(
                         with open(tmp_in, "wb") as buffer:
                             shutil.copyfileobj(found.file, buffer)
                         try:
-                            with PILImage.open(tmp_in) as im:
-                                im = im.convert("RGB")
-                                tmp_out = os.path.join(UPLOAD_DIR, f"{field_name}_{uuid.uuid4()}.png")
-                                im.save(tmp_out, format="PNG", optimize=True)
-                                img["path"] = tmp_out
+                            # Read image bytes and optimize
+                            with open(tmp_in, "rb") as f:
+                                image_bytes = f.read()
+                            
+                            # Optimize image before saving
+                            optimized_bytes = optimize_image_bytes(image_bytes, preset="section")
+                            
+                            # Save optimized image as JPEG (optimizer already converted to JPEG)
+                            tmp_out = os.path.join(UPLOAD_DIR, f"{field_name}_{uuid.uuid4()}.jpg")
+                            with open(tmp_out, "wb") as f:
+                                f.write(optimized_bytes)
+                            img["path"] = tmp_out
                         finally:
                             try:
                                 os.remove(tmp_in)

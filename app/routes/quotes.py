@@ -24,6 +24,7 @@ from ..models import models
 from ..schemas import files as file_schemas
 
 from ..proposals.pdf_merge import generate_pdf
+from ..proposals.pdf_image_optimizer import optimize_image_bytes
 import httpx
 from PIL import Image as PILImage
 try:
@@ -93,7 +94,8 @@ async def generate_quote(
     estimate_total_estimate: float = Form(0.0),
     pricing_type: str = Form("pricing"),
     terms_text: str = Form(""),
-    additional_costs: str = Form("[]"),
+    pricing_sections: str = Form("[]"),  # New format: multiple pricing sections
+    additional_costs: str = Form("[]"),  # Legacy format: kept for backward compatibility
     optional_services: str = Form("[]"),
     cover_image: UploadFile = None,
     page2_image: UploadFile = None,
@@ -108,7 +110,7 @@ async def generate_quote(
     cover_path, page2_path = None, None
 
     if cover_image and getattr(cover_image, "filename", ""):
-        # Normalize to PNG using PIL (handles HEIC via pillow-heif)
+        # Normalize and optimize image using PIL (handles HEIC via pillow-heif)
         tmp_ext = mimetypes.guess_extension(getattr(cover_image, "content_type", "") or "") or ".bin"
         tmp_in = os.path.join(UPLOAD_DIR, f"cover_in_{file_id}{tmp_ext}")
         with open(tmp_in, "wb") as buffer:
@@ -116,10 +118,17 @@ async def generate_quote(
         try:
             # Skip empty uploads
             if os.path.getsize(tmp_in) > 0:
-                with PILImage.open(tmp_in) as im:
-                    im = im.convert("RGB")
-                    cover_path = os.path.join(UPLOAD_DIR, f"cover_{file_id}.png")
-                    im.save(cover_path, format="PNG", optimize=True)
+                # Read image bytes and optimize
+                with open(tmp_in, "rb") as f:
+                    image_bytes = f.read()
+                
+                # Optimize image before saving
+                optimized_bytes = optimize_image_bytes(image_bytes, preset="cover")
+                
+                # Save optimized image as JPEG (optimizer already converted to JPEG)
+                cover_path = os.path.join(UPLOAD_DIR, f"cover_{file_id}.jpg")
+                with open(cover_path, "wb") as f:
+                    f.write(optimized_bytes)
         except Exception:
             # Ignore invalid image; proceed without cover
             cover_path = None
@@ -137,10 +146,17 @@ async def generate_quote(
             shutil.copyfileobj(page2_image.file, buffer)
         try:
             if os.path.getsize(tmp_in) > 0:
-                with PILImage.open(tmp_in) as im:
-                    im = im.convert("RGB")
-                    page2_path = os.path.join(UPLOAD_DIR, f"page2_{file_id}.png")
-                    im.save(page2_path, format="PNG", optimize=True)
+                # Read image bytes and optimize
+                with open(tmp_in, "rb") as f:
+                    image_bytes = f.read()
+                
+                # Optimize image before saving
+                optimized_bytes = optimize_image_bytes(image_bytes, preset="section")
+                
+                # Save optimized image as JPEG (optimizer already converted to JPEG)
+                page2_path = os.path.join(UPLOAD_DIR, f"page2_{file_id}.jpg")
+                with open(page2_path, "wb") as f:
+                    f.write(optimized_bytes)
         except Exception:
             page2_path = None
         finally:
@@ -160,21 +176,28 @@ async def generate_quote(
             url = storage.get_download_url(fo.key, expires_s=300)
             if not url:
                 return None
-            # Download original then normalize to PNG
+            # Download original then optimize
             in_ext = mimetypes.guess_extension(fo.content_type or "") or ".bin"
             tmp_in = os.path.join(UPLOAD_DIR, f"{prefix}_in_{file_id}{in_ext}")
-            tmp_path = os.path.join(UPLOAD_DIR, f"{prefix}_{file_id}.png")
+            tmp_path = os.path.join(UPLOAD_DIR, f"{prefix}_{file_id}.jpg")
             async with httpx.AsyncClient(timeout=30.0) as client:
                 async with client.stream("GET", url) as r:
                     r.raise_for_status()
                     with open(tmp_in, "wb") as out:
                         async for chunk in r.aiter_bytes():
                             out.write(chunk)
-            # Convert to PNG for consistent downstream handling
+            # Optimize image before saving
             try:
-                with PILImage.open(tmp_in) as im:
-                    im = im.convert("RGB")
-                    im.save(tmp_path, format="PNG", optimize=True)
+                with open(tmp_in, "rb") as f:
+                    image_bytes = f.read()
+                
+                # Determine preset based on prefix
+                preset = "cover" if prefix == "cover" else "section"
+                optimized_bytes = optimize_image_bytes(image_bytes, preset=preset)
+                
+                # Save optimized image as JPEG (optimizer already converted to JPEG)
+                with open(tmp_path, "wb") as f:
+                    f.write(optimized_bytes)
             finally:
                 try:
                     os.remove(tmp_in)
@@ -189,6 +212,12 @@ async def generate_quote(
     if (not page2_path) and page2_file_object_id:
         page2_path = await _download_fileobject_to_tmp(page2_file_object_id, "page2")
 
+    # Parse pricing_sections (new format) or fallback to additional_costs (legacy)
+    try:
+        parsed_pricing_sections = json.loads(pricing_sections)
+    except Exception:
+        parsed_pricing_sections = []
+    
     try:
         parsed_costs = json.loads(additional_costs)
     except Exception:
@@ -230,11 +259,18 @@ async def generate_quote(
                         with open(tmp_in, "wb") as buffer:
                             shutil.copyfileobj(found.file, buffer)
                         try:
-                            with PILImage.open(tmp_in) as im:
-                                im = im.convert("RGB")
-                                tmp_out = os.path.join(UPLOAD_DIR, f"{field_name}_{uuid.uuid4()}.png")
-                                im.save(tmp_out, format="PNG", optimize=True)
-                                img["path"] = tmp_out
+                            # Read image bytes and optimize
+                            with open(tmp_in, "rb") as f:
+                                image_bytes = f.read()
+                            
+                            # Optimize image before saving
+                            optimized_bytes = optimize_image_bytes(image_bytes, preset="section")
+                            
+                            # Save optimized image as JPEG (optimizer already converted to JPEG)
+                            tmp_out = os.path.join(UPLOAD_DIR, f"{field_name}_{uuid.uuid4()}.jpg")
+                            with open(tmp_out, "wb") as f:
+                                f.write(optimized_bytes)
+                            img["path"] = tmp_out
                         finally:
                             try:
                                 os.remove(tmp_in)
@@ -272,7 +308,8 @@ async def generate_quote(
         "terms_text": terms_text,
         "cover_image": cover_path,
         "page2_image": page2_path,
-        "additional_costs": parsed_costs,
+        "pricing_sections": parsed_pricing_sections if parsed_pricing_sections else None,  # New format
+        "additional_costs": parsed_costs,  # Legacy format - kept for backward compatibility
         "optional_services": parsed_optional_services,
         "sections": parsed_sections,
         "is_quote": True,  # Flag to identify quotes vs proposals
@@ -552,22 +589,76 @@ def list_quotes(
 
     def _compute_estimated_value(data: dict) -> float:
         """
-        Compute the same "Total" shown in QuoteForm -> Pricing (displayTotal / grandTotal).
+        Compute the Estimated Value shown on quote cards.
+        If multiple pricing sections exist, use the MAX Final Total (with GST) among them.
         Mirrors frontend logic:
-          totalNum = sum(additional_costs values) (stored as data.total)
-          pst = sum(pst-marked items) * pst_rate/100
-          gst = sum(gst-marked items) * gst_rate/100
-          grandTotal = totalNum + pst + gst
+          - New format: max of computed grand totals per pricing_sections[] (prefer section.total if present)
+          - Legacy format: totalNum + pst + gst
         """
         if not data:
             return 0.0
+
+        # Check for pricing_sections (new format with multiple sections)
+        pricing_sections = data.get("pricing_sections")
+        if pricing_sections and isinstance(pricing_sections, list) and len(pricing_sections) > 0:
+            # Get the maximum Final Total (with GST) from all sections.
+            # Prefer section["total"] if present; otherwise compute from items + rates.
+            max_total = 0.0
+            for section in pricing_sections:
+                if not isinstance(section, dict):
+                    continue
+
+                # 1) Prefer persisted total (grandTotal)
+                section_total = _num(section.get("total"))
+                if section_total > max_total:
+                    max_total = section_total
+                    continue
+
+                # 2) Compute from items if total isn't present
+                items = section.get("items") or []
+                if isinstance(items, str):
+                    try:
+                        import json as _json
+                        items = _json.loads(items) or []
+                    except Exception:
+                        items = []
+                if not isinstance(items, list) or not items:
+                    continue
+
+                # Rates are stored as pstRate/gstRate in new format; keep fallbacks.
+                section_pst_rate = _num(section.get("pstRate") or section.get("pst_rate") or data.get("pst_rate"))
+                section_gst_rate = _num(section.get("gstRate") or section.get("gst_rate") or data.get("gst_rate"))
+
+                total_num = 0.0
+                total_for_pst = 0.0
+                total_for_gst = 0.0
+                for item in items:
+                    if not isinstance(item, dict):
+                        continue
+                    price = _num(item.get("price"))
+                    qty = _num(item.get("quantity", 1))
+                    line_total = price * qty
+                    total_num += line_total
+                    if item.get("pst") is True:
+                        total_for_pst += line_total
+                    if item.get("gst") is True:
+                        total_for_gst += line_total
+
+                pst_val = total_for_pst * (section_pst_rate / 100.0)
+                gst_val = total_for_gst * (section_gst_rate / 100.0)
+                grand_total = total_num + pst_val + gst_val
+                if grand_total > max_total:
+                    max_total = grand_total
+
+            if max_total > 0:
+                return max_total
 
         # Prefer explicit display_total if present (newer saves)
         display_total = _num(data.get("display_total"))
         if display_total > 0:
             return display_total
 
-        total_num = _num(data.get("total"))
+        # Legacy format: Calculate from additional_costs
         pst_rate = _num(data.get("pst_rate"))
         gst_rate = _num(data.get("gst_rate"))
 
@@ -582,16 +673,28 @@ def list_quotes(
         if not isinstance(additional_costs, list):
             additional_costs = []
 
+        # Calculate total_num from items (price * quantity), or use stored total if items are empty
+        total_num = 0.0
         total_for_pst = 0.0
         total_for_gst = 0.0
-        for item in additional_costs:
-            if not isinstance(item, dict):
-                continue
-            val = _num(item.get("value"))
-            if item.get("pst") is True:
-                total_for_pst += val
-            if item.get("gst") is True:
-                total_for_gst += val
+        
+        if additional_costs:
+            # Calculate from items
+            for item in additional_costs:
+                if not isinstance(item, dict):
+                    continue
+                # For legacy format, need to account for quantity
+                val = _num(item.get("value"))
+                quantity = _num(item.get("quantity", 1))
+                line_total = val * quantity
+                total_num += line_total
+                if item.get("pst") is True:
+                    total_for_pst += line_total
+                if item.get("gst") is True:
+                    total_for_gst += line_total
+        else:
+            # No items, use stored total
+            total_num = _num(data.get("total"))
 
         pst_val = total_for_pst * (pst_rate / 100.0)
         gst_val = total_for_gst * (gst_rate / 100.0)

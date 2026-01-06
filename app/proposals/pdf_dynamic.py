@@ -1,5 +1,6 @@
 import os
 import uuid
+import hashlib
 from datetime import datetime
 from reportlab.lib.pagesizes import A4
 from reportlab.platypus import (
@@ -18,12 +19,60 @@ from reportlab.lib import colors
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfbase.pdfmetrics import stringWidth
+from .pdf_image_optimizer import optimize_image_bytes
 
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 fonts_path = os.path.join(BASE_DIR, "assets", "fonts")
 pdfmetrics.registerFont(TTFont("Montserrat", os.path.join(fonts_path, "Montserrat-Regular.ttf")))
 pdfmetrics.registerFont(TTFont("Montserrat-Bold", os.path.join(fonts_path, "Montserrat-Bold.ttf")))
+
+_bg_reader_cache: dict[str, ImageReader] = {}
+_bg_jpg_path_cache: dict[str, str] = {}
+_BG_CACHE_DIR = os.path.join("var", "uploads", "pdf_template_cache")
+
+
+def _png_to_cached_jpg_path(png_path: str) -> str:
+    os.makedirs(_BG_CACHE_DIR, exist_ok=True)
+    abs_path = os.path.abspath(png_path)
+    key = hashlib.md5(abs_path.encode("utf-8")).hexdigest()
+    jpg_name = f"{os.path.splitext(os.path.basename(png_path))[0]}_{key}.jpg"
+    return os.path.join(_BG_CACHE_DIR, jpg_name)
+
+
+def _get_cached_bg_reader(png_path: str) -> ImageReader:
+    cached = _bg_reader_cache.get(png_path)
+    if cached is not None:
+        return cached
+
+    try:
+        jpg_path = _bg_jpg_path_cache.get(png_path)
+        if not jpg_path:
+            jpg_path = _png_to_cached_jpg_path(png_path)
+            _bg_jpg_path_cache[png_path] = jpg_path
+
+        if not os.path.exists(jpg_path):
+            with PILImage.open(png_path) as im:
+                if im.mode in ("RGBA", "LA", "P"):
+                    if im.mode == "P":
+                        im = im.convert("RGBA")
+                    rgb = PILImage.new("RGB", im.size, (255, 255, 255))
+                    if im.mode in ("RGBA", "LA"):
+                        rgb.paste(im, mask=im.split()[-1])
+                    else:
+                        rgb.paste(im)
+                    im = rgb
+                elif im.mode != "RGB":
+                    im = im.convert("RGB")
+                im.save(jpg_path, format="JPEG", quality=85, optimize=True, progressive=True, subsampling=2)
+
+        reader = ImageReader(jpg_path)
+        _bg_reader_cache[png_path] = reader
+        return reader
+    except Exception:
+        reader = ImageReader(png_path)
+        _bg_reader_cache[png_path] = reader
+        return reader
 
 
 def draw_template_page3(c, doc, data):
@@ -37,7 +86,7 @@ def draw_template_page3(c, doc, data):
         else:
             bg_path = os.path.join(BASE_DIR, "assets", "templates", "page_MK_template.png")
         if os.path.exists(bg_path):
-            bg = ImageReader(bg_path)
+            bg = _get_cached_bg_reader(bg_path)
             c.drawImage(bg, 0, 0, width=page_width, height=page_height)
     except Exception:
         # Fail gracefully – if background can't be drawn, continue with text only
@@ -215,7 +264,13 @@ class PricingTable(Flowable):
 
         c.setFont("Montserrat-Bold", 11.5)
         c.setFillColor(colors.HexColor("#d62028"))
-        c.drawString(x_left, y, "Pricing Table")
+        # Show section number if provided (for multiple pricing sections)
+        section_index = self.data.get("section_index")
+        if section_index is not None and section_index >= 0:
+            title = f"Pricing Table #{section_index + 1}"
+        else:
+            title = "Pricing Table"
+        c.drawString(x_left, y, title)
 
         y -= 30
 
@@ -343,33 +398,43 @@ class PricingTable(Flowable):
                     # Move y down by the total height of this item (all lines)
                     y -= len(wrapped_lines) * 16 + (len(wrapped_lines) - 1) * 2
 
-            # Show PST if enabled
+            # Show PST if enabled and value > 0
             show_pst = self.data.get('show_pst_in_pdf', True)
-            if show_pst:
-                pst_value = self.data.get('pst_value', 0.0)
+            pst_value = self.data.get('pst_value', 0.0)
+            try:
+                pst_value = float(pst_value)
+            except Exception:
+                pst_value = 0.0
+            if show_pst and pst_value > 0:
+                pst_rate = self.data.get('pst_rate', 7)
                 try:
-                    pst_value = float(pst_value)
+                    pst_rate = float(pst_rate)
                 except Exception:
-                    pst_value = 0.0
+                    pst_rate = 7.0
                 c.setFont("Montserrat-Bold", 11.5)
                 c.setFillColor(colors.black)
-                c.drawString(x_left, y, "PST")
+                c.drawString(x_left, y, f"PST ({pst_rate:.0f}%)")
                 c.setFont("Montserrat-Bold", 11.5)
                 c.setFillColor(colors.grey)
                 c.drawRightString(x_right, y, f"${pst_value:,.2f}")
                 y -= 16
 
-            # Show GST if enabled
+            # Show GST if enabled and value > 0
             show_gst = self.data.get('show_gst_in_pdf', True)
-            if show_gst:
-                gst_value = self.data.get('gst_value', 0.0)
+            gst_value = self.data.get('gst_value', 0.0)
+            try:
+                gst_value = float(gst_value)
+            except Exception:
+                gst_value = 0.0
+            if show_gst and gst_value > 0:
+                gst_rate = self.data.get('gst_rate', 5)
                 try:
-                    gst_value = float(gst_value)
+                    gst_rate = float(gst_rate)
                 except Exception:
-                    gst_value = 0.0
+                    gst_rate = 5.0
                 c.setFont("Montserrat-Bold", 11.5)
                 c.setFillColor(colors.black)
-                c.drawString(x_left, y, "GST")
+                c.drawString(x_left, y, f"GST ({gst_rate:.0f}%)")
                 c.setFont("Montserrat-Bold", 11.5)
                 c.setFillColor(colors.grey)
                 c.drawRightString(x_right, y, f"${gst_value:,.2f}")
@@ -738,18 +803,51 @@ def build_dynamic_pages(data, output_path):
             for i, img in enumerate(sec.get("images", [])):
                 flow = []
                 # Prefer direct path from uploaded temp; future: support direct blob fetch for file_object_id
-                img_path = img.get("path", "")
-                if img_path and os.path.exists(img_path):
+                original_img_path = img.get("path", "")
+                if original_img_path and os.path.exists(original_img_path):
+                    optimized_path = None
                     try:
-                        with PILImage.open(img_path) as im:
-                            im = im.convert("RGB")
-                            tmp_path = os.path.join(BASE_DIR, f"tmp_img_{uuid.uuid4().hex}.png")
-                            im.save(tmp_path, format="PNG", optimize=True)
-                            flow.append(Image(tmp_path, width=260, height=150))
-                            flow.append(YellowLine2(width=260))
+                        # Optimize image before processing
+                        try:
+                            with open(original_img_path, "rb") as f:
+                                image_bytes = f.read()
+                            
+                            optimized_bytes = optimize_image_bytes(image_bytes, preset="section")
+                            
+                            # Create temporary file for optimized image
+                            optimized_path = os.path.join(BASE_DIR, f"tmp_img_opt_{uuid.uuid4().hex}.jpg")
+                            with open(optimized_path, "wb") as f:
+                                f.write(optimized_bytes)
+                            
+                            # Use optimized image for PDF generation
+                            img_path = optimized_path
+                        except Exception:
+                            # Fallback to original if optimization fails
+                            img_path = original_img_path
+                            optimized_path = None
+                        
+                        # Use optimized JPEG directly if available, otherwise process original
+                        if optimized_path and os.path.exists(optimized_path):
+                            # Already optimized JPEG - use directly without re-saving to preserve optimization
+                            tmp_path = optimized_path
+                            # Mark that we shouldn't delete this file yet (it's in temp_images)
                             temp_images.append(tmp_path)
+                        else:
+                            # Fallback: process original image
+                            with PILImage.open(img_path) as im:
+                                # Ensure RGB mode
+                                if im.mode != "RGB":
+                                    im = im.convert("RGB")
+                                # Save as JPEG
+                                tmp_path = os.path.join(BASE_DIR, f"tmp_img_{uuid.uuid4().hex}.jpg")
+                                im.save(tmp_path, format="JPEG", quality=85, optimize=True)
+                                temp_images.append(tmp_path)
+                        
+                        flow.append(Image(tmp_path, width=260, height=150))
+                        flow.append(YellowLine2(width=260))
                     except Exception:
                         pass
+                    # Note: optimized_path is now in temp_images list and will be cleaned up at end of PDF generation
                 caption = img.get("caption", "")
                 caption_text = caption[:90] if caption else None
 
@@ -903,10 +1001,83 @@ def build_dynamic_pages(data, output_path):
         total_val = 0.0
         valid_costs = []
 
-    if show_pricing:
+    # Check for pricing_sections (new format) or fallback to additional_costs (legacy)
+    pricing_sections = data.get("pricing_sections")
+    if pricing_sections and isinstance(pricing_sections, list) and len(pricing_sections) > 0:
+        # New format: multiple pricing sections
+        for section_idx, section in enumerate(pricing_sections):
+            section_items = section.get("items") or []
+            # Filter out empty items
+            valid_items = [item for item in section_items if item.get("name") and str(item.get("name", "")).strip()]
+            if valid_items:
+                # Convert items to additional_costs format for PricingTable
+                section_costs = []
+                for item in valid_items:
+                    section_costs.append({
+                        "label": item.get("name", ""),
+                        "value": item.get("price", 0),
+                        "quantity": item.get("quantity", "1"),
+                        "pst": item.get("pst", False),
+                        "gst": item.get("gst", False)
+                    })
+                
+                # Calculate section totals from items
+                section_total_direct = sum(float(item.get("price", 0)) * float(item.get("quantity", 1)) for item in valid_items)
+                
+                # Get section-specific rates and settings
+                section_pst_rate = section.get("pstRate", data.get("pst_rate", 7))
+                section_gst_rate = section.get("gstRate", data.get("gst_rate", 5))
+                section_show_total = section.get("showTotalInPdf", True)
+                section_show_pst = section.get("showPstInPdf", any(item.get("pst") for item in valid_items))
+                section_show_gst = section.get("showGstInPdf", any(item.get("gst") for item in valid_items))
+                
+                # Get pre-calculated values from section data (if provided)
+                section_pst_value = section.get("pstValue")
+                section_gst_value = section.get("gstValue")
+                section_final_total = section.get("total")  # Final total with GST
+                
+                # If values not provided, calculate them
+                if section_pst_value is None:
+                    # Calculate PST: sum of items marked for PST * PST rate
+                    total_for_pst = sum(
+                        float(item.get("price", 0)) * float(item.get("quantity", 1))
+                        for item in valid_items if item.get("pst", False)
+                    )
+                    section_pst_value = total_for_pst * (section_pst_rate / 100.0)
+                
+                if section_gst_value is None:
+                    # Calculate GST: sum of items marked for GST * GST rate
+                    total_for_gst = sum(
+                        float(item.get("price", 0)) * float(item.get("quantity", 1))
+                        for item in valid_items if item.get("gst", False)
+                    )
+                    section_gst_value = total_for_gst * (section_gst_rate / 100.0)
+                
+                if section_final_total is None:
+                    # Calculate final total: direct costs + PST + GST
+                    section_final_total = section_total_direct + section_pst_value + section_gst_value
+                
+                story.append(YellowLine())
+                story.append(Spacer(1, 20))
+                story.append(PricingTable({
+                    **data,
+                    "total": section_final_total,  # Final total with GST
+                    "additional_costs": section_costs,
+                    "pst_rate": section_pst_rate,
+                    "gst_rate": section_gst_rate,
+                    "pst_value": section_pst_value,  # Actual PST amount
+                    "gst_value": section_gst_value,  # Actual GST amount
+                    "show_total_in_pdf": section_show_total,
+                    "show_pst_in_pdf": section_show_pst,
+                    "show_gst_in_pdf": section_show_gst,
+                    "section_index": section_idx,  # Add section index for title numbering
+                    "is_quote": data.get("is_quote", False)
+                }))
+    elif show_pricing:
+        # Legacy format: single pricing table from additional_costs
         story.append(YellowLine())
         story.append(Spacer(1, 20))
-        story.append(PricingTable({ **data, "total": total_val, "additional_costs": valid_costs }))
+        story.append(PricingTable({ **data, "total": total_val, "additional_costs": valid_costs, "section_index": None }))
 
     # Optional Services Table (only if there are optional services)
     optional_services = data.get("optional_services") or []

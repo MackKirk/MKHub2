@@ -1031,7 +1031,7 @@ export default function InventorySuppliers() {
                 // View mode - display supplier details
                 <>
                   {/* Profile Header */}
-                  <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] p-6 flex items-center gap-6 relative">
+                  <div className="flex-shrink-0 bg-gradient-to-br from-[#7f1010] to-[#a31414] p-6 flex items-center gap-6 relative">
                     <button
                       onClick={() => {
                         setOpen(false);
@@ -1109,7 +1109,7 @@ export default function InventorySuppliers() {
                   </div>
 
                   {/* Tab Content */}
-                  <div className="overflow-y-auto flex-1">
+                  <div className="flex-1 overflow-y-auto">
                     {supplierTab === 'overview' ? (
                       <div className="px-6 pt-6 pb-6 space-y-4">
                       <div className="grid grid-cols-2 gap-4">
@@ -1269,7 +1269,7 @@ export default function InventorySuppliers() {
                 // Edit/Create mode - form inputs
                 <>
                   {/* Edit Header */}
-                  <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] p-6 relative">
+                  <div className="flex-shrink-0 bg-gradient-to-br from-[#7f1010] to-[#a31414] p-6 relative">
                     <button
                       onClick={() => {
                         setOpen(false);
@@ -1299,7 +1299,7 @@ export default function InventorySuppliers() {
                     </div>
                   </div>
                   
-                  <div className="overflow-y-auto flex-1">
+                  <div className="flex-1 overflow-y-auto">
                     <div className="p-6 grid grid-cols-2 gap-4">
                 <div className="col-span-2">
                   <label className="text-xs font-semibold text-gray-700">Name *</label>
@@ -1543,7 +1543,7 @@ export default function InventorySuppliers() {
                   </div>
                 </>
               )}
-            <div className="px-6 py-4 border-t bg-gray-50 flex justify-end gap-2">
+            <div className="flex-shrink-0 px-6 py-4 border-t bg-gray-50 flex justify-end gap-2">
               {viewing && !editing ? (
                 // View mode buttons
                 <>
@@ -1779,7 +1779,7 @@ export default function InventorySuppliers() {
                   ×
                 </button>
               </div>
-              <div className="p-6 overflow-y-auto flex-1">
+              <div className="flex-1 overflow-y-auto p-6">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="col-span-2">
                     <label className="text-xs font-semibold text-gray-700">
@@ -1990,7 +1990,7 @@ export default function InventorySuppliers() {
                   </div>
                 </div>
               </div>
-              <div className="px-4 py-3 border-t bg-gray-50 flex justify-end gap-2">
+              <div className="flex-shrink-0 px-4 py-3 border-t bg-gray-50 flex justify-end gap-2">
                 <button 
                   onClick={() => setNewProductModalOpen(false)} 
                   className="px-4 py-2 rounded bg-gray-200 hover:bg-gray-300"
@@ -2095,12 +2095,11 @@ export default function InventorySuppliers() {
       {productModalOpen && (viewingProduct || editingProduct) && (
         <div className="fixed inset-0 z-[110] bg-black/60 flex items-center justify-center">
           <div className="w-[900px] max-w-[95vw] max-h-[90vh] bg-white rounded-xl overflow-hidden flex flex-col">
-            <div className="overflow-y-auto">
               {viewingProduct && !editingProduct ? (
                 // View mode - display product details
-                <div className="space-y-6">
+                <>
                 {/* Product Header */}
-                <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] p-6 flex items-center gap-6 relative">
+                <div className="flex-shrink-0 bg-gradient-to-br from-[#7f1010] to-[#a31414] p-6 flex items-center gap-6 relative">
                   <button
                     onClick={() => {
                       setProductModalOpen(false);
@@ -2138,7 +2137,7 @@ export default function InventorySuppliers() {
                 </div>
 
                 {/* Tabs */}
-                <div className="px-6 border-b">
+                <div className="flex-shrink-0 px-6 border-b">
                   <div className="flex gap-1">
                     <button
                       onClick={() => setProductTab('details')}
@@ -2181,6 +2180,7 @@ export default function InventorySuppliers() {
                 </div>
 
                 {/* Product Details, Usage, or Related */}
+                <div className="flex-1 overflow-y-auto">
                 {productTab === 'details' ? (
                   <div className="px-6 pb-6 space-y-4">
                     <div className="grid grid-cols-2 gap-4">
@@ -2393,11 +2393,12 @@ export default function InventorySuppliers() {
                   </div>
                 ) : null}
                 </div>
+                </>
               ) : (
                 // Edit mode - form inputs
-                <div className="space-y-6">
+                <>
                   {/* Edit Header */}
-                  <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] p-6 relative">
+                  <div className="flex-shrink-0 bg-gradient-to-br from-[#7f1010] to-[#a31414] p-6 relative">
                     <button
                       onClick={() => {
                         setEditingProduct(null);
@@ -2433,7 +2434,7 @@ export default function InventorySuppliers() {
                     </div>
                   </div>
                   
-                  <div className="p-6 grid grid-cols-2 gap-4">
+                  <div className="flex-1 overflow-y-auto p-6 grid grid-cols-2 gap-4">
                     <div className="col-span-2">
                       <label className="text-xs font-semibold text-gray-700">
                         Name <span className="text-red-600">*</span>
@@ -2642,10 +2643,9 @@ export default function InventorySuppliers() {
                       </div>
                     </div>
                   </div>
-                </div>
+                </>
               )}
-            </div>
-            <div className="px-6 py-4 border-t bg-gray-50 flex justify-end gap-2">
+            <div className="flex-shrink-0 px-6 py-4 border-t bg-gray-50 flex justify-end gap-2">
               {viewingProduct && !editingProduct ? (
                 // View mode buttons
                 <>
@@ -2788,8 +2788,8 @@ export default function InventorySuppliers() {
 
       {addRelatedOpen && (
         <div className="fixed inset-0 z-[120] bg-black/60 flex items-center justify-center">
-          <div className="w-[600px] max-w-[95vw] bg-white rounded-xl overflow-hidden">
-            <div className="px-6 py-4 border-b flex items-center justify-between bg-gray-50">
+          <div className="w-[600px] max-w-[95vw] bg-white rounded-xl overflow-hidden flex flex-col max-h-[90vh]">
+            <div className="flex-shrink-0 px-6 py-4 border-b flex items-center justify-between bg-gray-50">
               <div className="font-semibold text-lg">Add Related Product</div>
               <button
                 onClick={() => setAddRelatedOpen(false)}
@@ -2799,7 +2799,7 @@ export default function InventorySuppliers() {
                 ×
               </button>
             </div>
-            <div className="p-4">
+            <div className="flex-1 overflow-y-auto p-4">
               <input
                 type="text"
                 className="w-full border rounded px-3 py-2 mb-4"
@@ -2807,7 +2807,7 @@ export default function InventorySuppliers() {
                 value={addRelatedSearch}
                 onChange={e => searchRelatedProducts(e.target.value)}
               />
-              <div className="max-h-[50vh] overflow-y-auto">
+              <div>
                 {Array.isArray(addRelatedResults) && addRelatedResults.length > 0 ? (
                   addRelatedResults.map(r => (
                     <button
@@ -2840,7 +2840,7 @@ export default function InventorySuppliers() {
       {contactModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center">
           <div className="w-[600px] max-w-[95vw] bg-white rounded-xl overflow-hidden flex flex-col max-h-[90vh]">
-            <div className="px-6 py-4 border-b bg-gray-50 flex items-center justify-between">
+            <div className="flex-shrink-0 px-6 py-4 border-b bg-gray-50 flex items-center justify-between">
               <div className="font-semibold text-lg">
                 {editingContact ? 'Edit Contact' : 'New Contact'}
               </div>
@@ -2855,7 +2855,7 @@ export default function InventorySuppliers() {
                 ×
               </button>
             </div>
-            <div className="p-6 overflow-y-auto space-y-4">
+            <div className="flex-1 overflow-y-auto p-6 space-y-4">
               <div>
                 <label className="text-xs font-semibold text-gray-700">Name *</label>
                 <input
@@ -2907,7 +2907,7 @@ export default function InventorySuppliers() {
                 />
               </div>
             </div>
-            <div className="px-6 py-4 border-t bg-gray-50 flex justify-end gap-2">
+            <div className="flex-shrink-0 px-6 py-4 border-t bg-gray-50 flex justify-end gap-2">
               <button
                 onClick={() => {
                   setContactModalOpen(false);

@@ -448,7 +448,7 @@ export default function OrdersTab({ projectId, project, statusLabel }: { project
                 ×
               </button>
             </div>
-            <div className="p-6 space-y-4 overflow-y-auto flex-1">
+            <div className="flex-1 overflow-y-auto p-6 space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   To: {reviewingOrder.order_type === 'supplier' && <span className="text-xs text-gray-500">(auto-filled from supplier)</span>}
@@ -554,7 +554,7 @@ export default function OrdersTab({ projectId, project, statusLabel }: { project
                 ×
               </button>
             </div>
-            <div className="p-6 overflow-y-auto flex-1">
+            <div className="flex-1 overflow-y-auto p-6">
               <div className="mb-4">
                 <div className="flex items-center justify-between mb-2">
                   <h3 className="font-semibold text-gray-900">
@@ -914,7 +914,7 @@ function AddExtraOrderWizard({
           </button>
         </div>
         
-        <div className="p-6 overflow-y-auto flex-1">
+        <div className="flex-1 overflow-y-auto p-6">
           {step === 1 ? (
             // Step 1: Select Order Type
             <div className="space-y-4">
@@ -1565,7 +1565,7 @@ function AddProductModalForOrder({
           <div className="font-semibold text-lg text-white">Add Product</div>
           <button onClick={onClose} className="ml-auto text-white hover:text-gray-200 text-2xl font-bold w-8 h-8 flex items-center justify-center rounded hover:bg-white/20" title="Close">×</button>
         </div>
-        <div className="p-4 space-y-3 overflow-y-auto flex-1">
+        <div className="flex-1 overflow-y-auto p-4 space-y-3">
           <div className="flex-1">
             <label className="text-xs text-gray-600">Search Product:</label>
             <input className="w-full border rounded px-3 py-2" placeholder="Type product name..." value={q} onChange={e => setQ(e.target.value)} />

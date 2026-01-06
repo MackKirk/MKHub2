@@ -892,7 +892,7 @@ export default function ProjectDetail(){
               )}
 
               {tab==='proposal' && (
-                <ProjectProposalTab projectId={String(id)} clientId={String(proj?.client_id||'')} siteId={String(proj?.site_id||'')} proposals={proposals||[]} statusLabel={proj?.status_label||''} settings={settings||{}} />
+                <ProjectProposalTab projectId={String(id)} clientId={String(proj?.client_id||'')} siteId={String(proj?.site_id||'')} proposals={proposals||[]} statusLabel={proj?.status_label||''} settings={settings||{}} isBidding={proj?.is_bidding} />
               )}
 
               {tab==='estimate' && (
@@ -2874,7 +2874,7 @@ function ProjectFilesTabEnhanced({ projectId, files, onRefresh }:{ projectId:str
   );
 }
 
-function ProjectProposalTab({ projectId, clientId, siteId, proposals, statusLabel, settings }:{ projectId:string, clientId:string, siteId?:string, proposals: Proposal[], statusLabel:string, settings:any }){
+function ProjectProposalTab({ projectId, clientId, siteId, proposals, statusLabel, settings, isBidding }:{ projectId:string, clientId:string, siteId?:string, proposals: Proposal[], statusLabel:string, settings:any, isBidding?:boolean }){
   const queryClient = useQueryClient();
   
   // Check permissions for proposals
@@ -2900,13 +2900,29 @@ function ProjectProposalTab({ projectId, clientId, siteId, proposals, statusLabe
   });
   
   // Check if editing is allowed based on status and permissions
-  // Only allow editing if status is "prospecting" AND user has edit permission
+  // For opportunities (is_bidding = true): only allow editing if status is "prospecting"
+  // Restrict editing for "Sent to Customer" and "Refused" statuses
+  // For projects (is_bidding = false): use similar logic but check settings
   const canEdit = useMemo(()=>{
     if (!hasEditProposalPermission) return false; // No permission = no edit
     if (!statusLabel) return true; // Default to allow if no status
+    
+    const statusLabelLower = statusLabel.toLowerCase().trim();
+    
+    // For opportunities (is_bidding = true)
+    if (isBidding) {
+      // Only allow editing if status is "prospecting"
+      // Restrict for "Sent to Customer" and "Refused"
+      if (statusLabelLower === 'prospecting') return true;
+      if (statusLabelLower === 'sent to customer' || statusLabelLower === 'refused') return false;
+      // Default to allow for other statuses (backward compatibility)
+      return true;
+    }
+    
+    // For projects (is_bidding = false), use existing logic
     // Only allow editing if status is "prospecting"
-    return statusLabel.toLowerCase() === 'prospecting';
-  }, [statusLabel, hasEditProposalPermission]);
+    return statusLabelLower === 'prospecting';
+  }, [statusLabel, hasEditProposalPermission, isBidding]);
   
   const location = useLocation();
   const nav = useNavigate();

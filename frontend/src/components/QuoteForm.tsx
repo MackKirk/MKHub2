@@ -38,16 +38,30 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
   const [otherNotes, setOtherNotes] = useState<string>('');
   const [projectDescription, setProjectDescription] = useState<string>('');
   const [additionalNotes, setAdditionalNotes] = useState<string>('');
-  const [pricingItems, setPricingItems] = useState<{ name:string, price:string, quantity?:string, pst?:boolean, gst?:boolean, productId?:number }[]>([]);
-  const [productSearchModalOpen, setProductSearchModalOpen] = useState<number | null>(null);
+  // Pricing sections structure: array of sections, each with its own items and rates
+  type PricingSection = {
+    id: string;
+    items: { name:string, price:string, quantity?:string, pst?:boolean, gst?:boolean, productId?:number }[];
+    pstRate: number;
+    gstRate: number;
+    markup: number;
+    showTotalInPdf: boolean;
+  };
+  const [pricingSections, setPricingSections] = useState<PricingSection[]>([
+    { id: 'section_1', items: [], pstRate: 7, gstRate: 5, markup: 0, showTotalInPdf: true }
+  ]);
+  const [productSearchModalOpen, setProductSearchModalOpen] = useState<{ sectionIndex: number, itemIndex: number } | null>(null);
   const [optionalServices, setOptionalServices] = useState<{ service:string, price:string }[]>([]);
-  const [showTotalInPdf, setShowTotalInPdf] = useState<boolean>(true);
   // Pricing type is always 'pricing' (manual) for quotations
   const [pricingType] = useState<'pricing'|'estimate'>('pricing');
-  const [markup, setMarkup] = useState<number>(0);
-  const [pstRate, setPstRate] = useState<number>(7);
-  const [gstRate, setGstRate] = useState<number>(5);
   const [profitRate, setProfitRate] = useState<number>(0);
+  
+  // Legacy state for backward compatibility (will be removed after migration)
+  const [pricingItems] = useState<{ name:string, price:string, quantity?:string, pst?:boolean, gst?:boolean, productId?:number }[]>([]);
+  const [showTotalInPdf] = useState<boolean>(true);
+  const [markup] = useState<number>(0);
+  const [pstRate] = useState<number>(7);
+  const [gstRate] = useState<number>(5);
   
   // Estimate values are not used for quotations (only manual pricing is supported)
   const defaultTermsText = '';
@@ -93,6 +107,7 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
   const isAutoSavingRef = useRef<boolean>(false);
   const lastAutoSaveRef = useRef<number>(0);
   const quoteIdRef = useRef<string | undefined>(mode === 'edit' ? initial?.id : undefined);
+  const lastPrefilledQuoteIdRef = useRef<string | null>(null);
   const handleSaveRef = useRef<() => Promise<void>>();
   const estimateBuilderRef = useRef<EstimateBuilderRef | null>(null);
 
@@ -135,7 +150,47 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
     return cleaned;
   };
 
-  // Total Direct Costs = sum of all line totals (price × quantity)
+  // Helper function to calculate section totals
+  const calculateSectionTotals = (section: PricingSection) => {
+    const totalNum = section.items.reduce((a, c) => {
+      const price = Number(parseAccounting(c.price)||'0');
+      const qty = Number(c.quantity || '1');
+      return a + (price * qty);
+    }, 0);
+    
+    const totalForPst = section.items
+      .filter(c => c.pst === true)
+      .reduce((a, c) => {
+        const price = Number(parseAccounting(c.price)||'0');
+        const qty = Number(c.quantity || '1');
+        return a + (price * qty);
+      }, 0);
+    
+    const totalForGst = section.items
+      .filter(c => c.gst === true)
+      .reduce((a, c) => {
+        const price = Number(parseAccounting(c.price)||'0');
+        const qty = Number(c.quantity || '1');
+        return a + (price * qty);
+      }, 0);
+    
+    const pst = totalForPst * (section.pstRate / 100);
+    const subtotal = totalNum + pst;
+    const gst = totalForGst * (section.gstRate / 100);
+    const grandTotal = subtotal + gst;
+    
+    const showPstInPdf = section.items.some(item => item.pst === true);
+    const showGstInPdf = section.items.some(item => item.gst === true);
+    
+    return { totalNum, totalForPst, totalForGst, pst, subtotal, gst, grandTotal, showPstInPdf, showGstInPdf };
+  };
+
+  // Calculate totals for all sections (for overall display if needed)
+  const allSectionsTotals = useMemo(() => {
+    return pricingSections.map(section => calculateSectionTotals(section));
+  }, [pricingSections]);
+
+  // Legacy calculations (kept for backward compatibility during transition)
   const totalNum = useMemo(()=>{ 
     return pricingItems.reduce((a,c)=> {
       const price = Number(parseAccounting(c.price)||'0');
@@ -144,7 +199,6 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
     }, 0); 
   }, [pricingItems]);
 
-  // Calculate PST only on items marked for PST (based on line totals: price × quantity)
   const totalForPst = useMemo(() => {
     return pricingItems
       .filter(c => c.pst === true)
@@ -155,7 +209,6 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
       }, 0);
   }, [pricingItems]);
 
-  // Calculate GST only on items marked for GST (based on line totals: price × quantity)
   const totalForGst = useMemo(() => {
     return pricingItems
       .filter(c => c.gst === true)
@@ -166,7 +219,6 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
       }, 0);
   }, [pricingItems]);
 
-  // Calculate Summary values for manual pricing
   const totalWithMarkup = useMemo(() => {
     return totalNum * (1 + (markup / 100));
   }, [totalNum, markup]);
@@ -176,26 +228,21 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
   }, [totalWithMarkup, totalNum]);
 
   const pst = useMemo(() => {
-    // PST is calculated on line totals (price × quantity) of items marked for PST
     return totalForPst * (pstRate / 100);
   }, [totalForPst, pstRate]);
 
   const subtotal = useMemo(() => {
-    // Sub-total = Total Direct Costs + PST
     return totalNum + pst;
   }, [totalNum, pst]);
 
   const gst = useMemo(() => {
-    // GST is calculated on line totals (price × quantity) of items marked for GST
     return totalForGst * (gstRate / 100);
   }, [totalForGst, gstRate]);
 
   const grandTotal = useMemo(() => {
-    // Final Total = Sub-total + GST
     return subtotal + gst;
   }, [subtotal, gst]);
 
-  // Always use manual pricing values for quotations
   const displayTotal = useMemo(() => {
     return grandTotal;
   }, [grandTotal]);
@@ -208,7 +255,6 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
     return gst;
   }, [gst]);
 
-  // Calculate if PST/GST should be shown in PDF based on items
   const showPstInPdf = useMemo(() => {
     return pricingItems.some(item => item.pst === true);
   }, [pricingItems]);
@@ -230,7 +276,8 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
         otherNotes,
         projectDescription,
         additionalNotes,
-        pricingItems,
+        pricingSections, // New structure
+        pricingItems, // Legacy - kept for backward compatibility
         optionalServices,
         showTotalInPdf,
         showPstInPdf,
@@ -253,6 +300,10 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
   // prefill from initial (edit)
   useEffect(()=>{
     if (!initial || !initial.id) return;
+    const incomingId = String(initial.id);
+    // Avoid clobbering local edits when React Query refetches the same quote.
+    // Only prefill once per quote id, or when not ready yet.
+    if (isReady && lastPrefilledQuoteIdRef.current === incomingId) return;
     const d = initial?.data || {};
     setCoverTitle(String(d.cover_title || initial.title || 'Quotation'));
     // Template style is always 'Mack Kirk Metals' for quotations
@@ -265,36 +316,59 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
     setOtherNotes(String(d.other_notes||''));
     setProjectDescription(String(d.project_description||''));
     setAdditionalNotes(String(d.additional_project_notes||''));
-    // Load pricing items from bid_price and additional_costs (legacy support)
-    const legacyBidPrice = d.bid_price ?? 0;
-    const dc = Array.isArray(d.additional_costs)? d.additional_costs : [];
-    const loadedItems: { name:string, price:string, quantity?:string, pst?:boolean, gst?:boolean, productId?:number }[] = [];
-    if (legacyBidPrice && Number(legacyBidPrice) > 0) {
-      loadedItems.push({ name: 'Bid Price', price: formatAccounting(legacyBidPrice), quantity: '1', pst: false, gst: false });
-    }
-    dc.forEach((c:any)=> {
-      const label = String(c.label||'');
-      const value = c.value ?? c.amount ?? '';
-      // Load items even if value is 0 or empty, as long as there's a label
-      if (label) {
-        loadedItems.push({ 
-          name: label, 
-          price: formatAccounting(value || '0'),
-          quantity: c.quantity || '1',
-          pst: c.pst === true || c.pst === 'true' || c.pst === 1,
-          gst: c.gst === true || c.gst === 'true' || c.gst === 1,
-          productId: c.product_id || c.productId || undefined
-        });
+    // Load pricing sections - check for new format first, then fallback to legacy
+    if (d.pricing_sections && Array.isArray(d.pricing_sections) && d.pricing_sections.length > 0) {
+      // New format: multiple pricing sections
+      const loadedSections: PricingSection[] = d.pricing_sections.map((sec: any, idx: number) => ({
+        id: sec.id || `section_${idx + 1}`,
+        items: (sec.items || []).map((item: any) => ({
+          name: String(item.name || ''),
+          price: formatAccounting(item.price || '0'),
+          quantity: item.quantity || '1',
+          pst: item.pst === true || item.pst === 'true' || item.pst === 1,
+          gst: item.gst === true || item.gst === 'true' || item.gst === 1,
+          productId: item.productId || item.product_id || undefined
+        })),
+        pstRate: sec.pstRate !== undefined && sec.pstRate !== null ? Number(sec.pstRate) : (d.pst_rate !== undefined && d.pst_rate !== null ? Number(d.pst_rate) : 7),
+        gstRate: sec.gstRate !== undefined && sec.gstRate !== null ? Number(sec.gstRate) : (d.gst_rate !== undefined && d.gst_rate !== null ? Number(d.gst_rate) : 5),
+        markup: sec.markup !== undefined && sec.markup !== null ? Number(sec.markup) : (d.markup !== undefined && d.markup !== null ? Number(d.markup) : 0),
+        showTotalInPdf: sec.showTotalInPdf !== undefined ? Boolean(sec.showTotalInPdf) : (d.show_total_in_pdf !== undefined ? Boolean(d.show_total_in_pdf) : true)
+      }));
+      setPricingSections(loadedSections);
+    } else {
+      // Legacy format: convert single pricing section from pricingItems/additional_costs
+      const legacyBidPrice = d.bid_price ?? 0;
+      const dc = Array.isArray(d.additional_costs)? d.additional_costs : [];
+      const loadedItems: { name:string, price:string, quantity?:string, pst?:boolean, gst?:boolean, productId?:number }[] = [];
+      if (legacyBidPrice && Number(legacyBidPrice) > 0) {
+        loadedItems.push({ name: 'Bid Price', price: formatAccounting(legacyBidPrice), quantity: '1', pst: false, gst: false });
       }
-    });
-    setPricingItems(loadedItems);
+      dc.forEach((c:any)=> {
+        const label = String(c.label||'');
+        const value = c.value ?? c.amount ?? '';
+        if (label) {
+          loadedItems.push({ 
+            name: label, 
+            price: formatAccounting(value || '0'),
+            quantity: c.quantity || '1',
+            pst: c.pst === true || c.pst === 'true' || c.pst === 1,
+            gst: c.gst === true || c.gst === 'true' || c.gst === 1,
+            productId: c.product_id || c.productId || undefined
+          });
+        }
+      });
+      // Convert to single section format
+      setPricingSections([{
+        id: 'section_1',
+        items: loadedItems,
+        pstRate: d.pst_rate !== undefined && d.pst_rate !== null ? Number(d.pst_rate) : 7,
+        gstRate: d.gst_rate !== undefined && d.gst_rate !== null ? Number(d.gst_rate) : 5,
+        markup: d.markup !== undefined && d.markup !== null ? Number(d.markup) : 0,
+        showTotalInPdf: d.show_total_in_pdf !== undefined ? Boolean(d.show_total_in_pdf) : true
+      }]);
+    }
     const os = Array.isArray(d.optional_services)? d.optional_services : [];
     setOptionalServices(os.map((s:any)=> ({ service: String(s.service||''), price: formatAccounting(s.price ?? '') })));
-    setShowTotalInPdf(d.show_total_in_pdf !== undefined ? Boolean(d.show_total_in_pdf) : true);
-    // Pricing type is always 'pricing' (manual) for quotations - ignore saved pricing_type
-    setMarkup(d.markup !== undefined && d.markup !== null ? Number(d.markup) : 5);
-    setPstRate(d.pst_rate !== undefined && d.pst_rate !== null ? Number(d.pst_rate) : 7);
-    setGstRate(d.gst_rate !== undefined && d.gst_rate !== null ? Number(d.gst_rate) : 5);
     setProfitRate(d.profit_rate !== undefined && d.profit_rate !== null ? Number(d.profit_rate) : 0);
     setTerms(String(d.terms_text||defaultTermsText));
     const loaded = Array.isArray(d.sections)? JSON.parse(JSON.stringify(d.sections)) : [];
@@ -315,8 +389,9 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
     if (initial?.id) {
       quoteIdRef.current = initial.id;
     }
+    lastPrefilledQuoteIdRef.current = incomingId;
     setIsReady(true);
-  }, [initial]);
+  }, [initial?.id, isReady]);
 
   // When creating new (no initial), mark ready on mount
   useEffect(()=>{ if (mode==='new') setIsReady(true); }, [mode]);
@@ -349,7 +424,7 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
     if (!isReady) return false;
     const fp = computeFingerprint();
     return fp !== lastSavedHash;
-  }, [isReady, lastSavedHash, coverTitle, templateStyle, orderNumber, date, createdFor, primary, typeOfProject, otherNotes, projectDescription, additionalNotes, pricingItems, optionalServices, showTotalInPdf, showPstInPdf, showGstInPdf, markup, pstRate, gstRate, profitRate, terms, sections, coverFoId, clientId, computeFingerprint]);
+  }, [isReady, lastSavedHash, coverTitle, templateStyle, orderNumber, date, createdFor, primary, typeOfProject, otherNotes, projectDescription, additionalNotes, pricingSections, pricingItems, optionalServices, showTotalInPdf, showPstInPdf, showGstInPdf, markup, pstRate, gstRate, profitRate, terms, sections, coverFoId, clientId, computeFingerprint]);
   
   // Sync selected contact when contacts are loaded or createdFor changes (only on initial load)
   useEffect(() => {
@@ -610,7 +685,7 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
       // Update lastAutoSaveRef when quote is loaded to prevent immediate auto-save
       lastAutoSaveRef.current = Date.now();
     }
-      }, [isReady, lastSavedHash, coverTitle, orderNumber, date, createdFor, primary, typeOfProject, otherNotes, projectDescription, additionalNotes, pricingItems, optionalServices, showTotalInPdf, terms, sections, coverFoId, clientId, computeFingerprint]);
+      }, [isReady, lastSavedHash, coverTitle, orderNumber, date, createdFor, primary, typeOfProject, otherNotes, projectDescription, additionalNotes, pricingSections, pricingItems, optionalServices, showTotalInPdf, terms, sections, coverFoId, clientId, computeFingerprint]);
 
   const handleSave = useCallback(async()=>{
     if (disabled || isSaving) {
@@ -639,18 +714,35 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
         project_description: projectDescription||null,
         additional_project_notes: additionalNotes||null,
         bid_price: 0, // Legacy field
-        total: totalNum,
+        total: totalNum, // Legacy - kept for backward compatibility
         display_total: displayTotal, // Save the final total (grandTotal) for display in cards
         terms_text: terms||'',
-        show_total_in_pdf: showTotalInPdf,
-        show_pst_in_pdf: showPstInPdf,
-        show_gst_in_pdf: showGstInPdf,
+        show_total_in_pdf: showTotalInPdf, // Legacy
+        show_pst_in_pdf: showPstInPdf, // Legacy
+        show_gst_in_pdf: showGstInPdf, // Legacy
+        // New format: pricing sections
+        pricing_sections: pricingSections.map(section => ({
+          id: section.id,
+          items: section.items.map(c => ({ 
+            name: c.name, 
+            price: Number(parseAccounting(c.price)||'0'), 
+            quantity: c.quantity || '1', 
+            pst: c.pst === true, 
+            gst: c.gst === true, 
+            productId: c.productId 
+          })),
+          pstRate: section.pstRate,
+          gstRate: section.gstRate,
+          markup: section.markup,
+          showTotalInPdf: section.showTotalInPdf
+        })),
+        // Legacy format: kept for backward compatibility
         additional_costs: pricingItems.map(c=> ({ label: c.name, value: Number(parseAccounting(c.price)||'0'), quantity: c.quantity || '1', pst: c.pst === true, gst: c.gst === true, product_id: c.productId })),
         optional_services: optionalServices.map(s=> ({ service: s.service, price: Number(parseAccounting(s.price)||'0') })),
         pricing_type: pricingType,
-        markup: markup,
-        pst_rate: pstRate,
-        gst_rate: gstRate,
+        markup: markup, // Legacy
+        pst_rate: pstRate, // Legacy
+        gst_rate: gstRate, // Legacy
         profit_rate: profitRate,
         sections: sanitizeSections(sections),
         cover_file_object_id: coverFoId||null,
@@ -674,7 +766,7 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
       lastAutoSaveRef.current = Date.now();
     }catch(e){ toast.error('Save failed'); }
     finally{ setIsSaving(false); }
-  }, [disabled, isSaving, mode, initial?.id, clientId, coverTitle, templateStyle, orderNumber, date, createdFor, primary, typeOfProject, otherNotes, projectDescription, additionalNotes, totalNum, showTotalInPdf, showPstInPdf, showGstInPdf, markup, pstRate, gstRate, profitRate, terms, pricingItems, optionalServices, sections, coverFoId, nav, queryClient, onSave, computeFingerprint, sanitizeSections, parseAccounting]);
+  }, [disabled, isSaving, mode, initial?.id, clientId, coverTitle, templateStyle, orderNumber, date, createdFor, primary, typeOfProject, otherNotes, projectDescription, additionalNotes, totalNum, displayTotal, showTotalInPdf, showPstInPdf, showGstInPdf, markup, pstRate, gstRate, profitRate, terms, pricingSections, pricingItems, optionalServices, sections, coverFoId, nav, queryClient, onSave, computeFingerprint, sanitizeSections, parseAccounting]);
 
   // Update ref when handleSave changes
   useEffect(() => {
@@ -705,12 +797,8 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
       setOtherNotes('');
       setProjectDescription('');
       setAdditionalNotes('');
-      setPricingItems([]);
+      setPricingSections([{ id: 'section_1', items: [], pstRate: 7, gstRate: 5, markup: 0, showTotalInPdf: true }]);
       setOptionalServices([]);
-      setShowTotalInPdf(true);
-      setMarkup(5);
-      setPstRate(7);
-      setGstRate(5);
       setProfitRate(0);
       setTerms('');
       setSections([]);
@@ -728,7 +816,9 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
   // Auto-save function (silent save without toast)
   const autoSave = useCallback(async () => {
     // Don't auto-save if already saving or if no clientId
-    if (isAutoSavingRef.current || !clientId) return;
+    if (disabled || isAutoSavingRef.current || !clientId) return;
+    // Don't auto-save if nothing changed
+    if (!hasUnsavedChanges) return;
     
     // Don't auto-save if less than 3 seconds since last save
     const now = Date.now();
@@ -754,18 +844,35 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
         project_description: projectDescription||null,
         additional_project_notes: additionalNotes||null,
         bid_price: 0, // Legacy field
-        total: totalNum,
+        total: totalNum, // Legacy
         display_total: displayTotal, // Save the final total (grandTotal) for display in cards
         terms_text: terms||'',
-        show_total_in_pdf: showTotalInPdf,
-        show_pst_in_pdf: showPstInPdf,
-        show_gst_in_pdf: showGstInPdf,
+        show_total_in_pdf: showTotalInPdf, // Legacy
+        show_pst_in_pdf: showPstInPdf, // Legacy
+        show_gst_in_pdf: showGstInPdf, // Legacy
+        // New format: pricing sections
+        pricing_sections: pricingSections.map(section => ({
+          id: section.id,
+          items: section.items.map(c => ({ 
+            name: c.name, 
+            price: Number(parseAccounting(c.price)||'0'), 
+            quantity: c.quantity || '1', 
+            pst: c.pst === true, 
+            gst: c.gst === true, 
+            productId: c.productId 
+          })),
+          pstRate: section.pstRate,
+          gstRate: section.gstRate,
+          markup: section.markup,
+          showTotalInPdf: section.showTotalInPdf
+        })),
+        // Legacy format: kept for backward compatibility
         additional_costs: pricingItems.map(c=> ({ label: c.name, value: Number(parseAccounting(c.price)||'0'), quantity: c.quantity || '1', pst: c.pst === true, gst: c.gst === true, product_id: c.productId })),
         optional_services: optionalServices.map(s=> ({ service: s.service, price: Number(parseAccounting(s.price)||'0') })),
         pricing_type: pricingType,
-        markup: markup,
-        pst_rate: pstRate,
-        gst_rate: gstRate,
+        markup: markup, // Legacy
+        pst_rate: pstRate, // Legacy
+        gst_rate: gstRate, // Legacy
         profit_rate: profitRate,
         sections: sanitizeSections(sections),
         cover_file_object_id: coverFoId||null,
@@ -788,12 +895,13 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
     } finally {
       isAutoSavingRef.current = false;
     }
-    }, [clientId, coverTitle, templateStyle, orderNumber, date, createdFor, primary, typeOfProject, otherNotes, projectDescription, additionalNotes, pricingItems, optionalServices, showTotalInPdf, showPstInPdf, showGstInPdf, markup, pstRate, gstRate, profitRate, totalNum, terms, sections, coverFoId, mode, initial, queryClient, sanitizeSections, computeFingerprint, parseAccounting]);
+    }, [disabled, hasUnsavedChanges, clientId, coverTitle, templateStyle, orderNumber, date, createdFor, primary, typeOfProject, otherNotes, projectDescription, additionalNotes, pricingSections, pricingItems, optionalServices, showTotalInPdf, showPstInPdf, showGstInPdf, markup, pstRate, gstRate, profitRate, totalNum, displayTotal, terms, sections, coverFoId, mode, initial, queryClient, sanitizeSections, computeFingerprint, parseAccounting]);
 
   // Auto-save on changes (debounced)
   useEffect(() => {
     // Only auto-save if quote is ready
     if (!isReady || !clientId) return;
+    if (!hasUnsavedChanges) return;
 
     // Clear existing timeout
     if (autoSaveTimeoutRef.current) {
@@ -810,18 +918,19 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
         clearTimeout(autoSaveTimeoutRef.current);
       }
     };
-    }, [isReady, clientId, coverTitle, templateStyle, orderNumber, date, createdFor, primary, typeOfProject, otherNotes, projectDescription, additionalNotes, pricingItems, optionalServices, showTotalInPdf, showPstInPdf, showGstInPdf, terms, sections, coverFoId, pricingType, displayTotal, autoSave]);
+    }, [isReady, clientId, hasUnsavedChanges, coverTitle, templateStyle, orderNumber, date, createdFor, primary, typeOfProject, otherNotes, projectDescription, additionalNotes, pricingSections, pricingItems, optionalServices, showTotalInPdf, showPstInPdf, showGstInPdf, terms, sections, coverFoId, pricingType, displayTotal, autoSave]);
 
   // Periodic auto-save (every 30 seconds)
   useEffect(() => {
     if (!isReady || !clientId) return;
 
     const interval = setInterval(() => {
-      autoSave();
+      // Only attempt periodic saves if there are unsaved changes.
+      if (hasUnsavedChanges) autoSave();
     }, 30000); // 30 seconds
 
     return () => clearInterval(interval);
-  }, [isReady, clientId, autoSave]);
+  }, [isReady, clientId, hasUnsavedChanges, autoSave]);
 
   const handleGenerate = async()=>{
     try{
@@ -856,20 +965,77 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
       form.append('other_notes', otherNotes||'');
       form.append('additional_project_notes', additionalNotes||'');
       form.append('bid_price', String(0)); // Legacy field
-      form.append('total', String(displayTotal));
-      form.append('show_total_in_pdf', String(showTotalInPdf));
-      form.append('show_pst_in_pdf', String(showPstInPdf));
-      form.append('show_gst_in_pdf', String(showGstInPdf));
-      form.append('pst_value', String(displayPst));
-      form.append('gst_value', String(displayGst));
+      form.append('total', String(displayTotal)); // Legacy
+      form.append('show_total_in_pdf', String(showTotalInPdf)); // Legacy
+      form.append('show_pst_in_pdf', String(showPstInPdf)); // Legacy
+      form.append('show_gst_in_pdf', String(showGstInPdf)); // Legacy
+      form.append('pst_value', String(displayPst)); // Legacy
+      form.append('gst_value', String(displayGst)); // Legacy
       // Estimate total is not used for quotations (only manual pricing)
       form.append('estimate_total_estimate', '0');
       form.append('terms_text', terms||'');
       form.append('pricing_type', pricingType);
-      form.append('markup', String(markup));
-      form.append('pst_rate', String(pstRate));
-      form.append('gst_rate', String(gstRate));
+      form.append('markup', String(markup)); // Legacy
+      form.append('pst_rate', String(pstRate)); // Legacy
+      form.append('gst_rate', String(gstRate)); // Legacy
       form.append('profit_rate', String(profitRate));
+      // New format: pricing sections
+      form.append('pricing_sections', JSON.stringify(pricingSections.map(section => {
+        // Calculate section totals for PST and GST inline
+        const totalNum = section.items.reduce((a, c) => {
+          const price = Number(parseAccounting(c.price)||'0');
+          const qty = Number(c.quantity || '1');
+          return a + (price * qty);
+        }, 0);
+        
+        const totalForPst = section.items
+          .filter(c => c.pst === true)
+          .reduce((a, c) => {
+            const price = Number(parseAccounting(c.price)||'0');
+            const qty = Number(c.quantity || '1');
+            return a + (price * qty);
+          }, 0);
+        
+        const totalForGst = section.items
+          .filter(c => c.gst === true)
+          .reduce((a, c) => {
+            const price = Number(parseAccounting(c.price)||'0');
+            const qty = Number(c.quantity || '1');
+            return a + (price * qty);
+          }, 0);
+        
+        const pst = totalForPst * (section.pstRate / 100);
+        const gst = totalForGst * (section.gstRate / 100);
+        const subtotal = totalNum + pst;
+        const grandTotal = subtotal + gst;
+        
+        const showPstInPdf = section.items.some(item => item.pst === true);
+        const showGstInPdf = section.items.some(item => item.gst === true);
+        
+        return {
+          id: section.id,
+          items: section.items.map(c => ({ 
+            name: c.name, 
+            price: Number(parseAccounting(c.price)||'0'), 
+            quantity: c.quantity || '1', 
+            pst: c.pst === true, 
+            gst: c.gst === true, 
+            productId: c.productId 
+          })),
+          pstRate: section.pstRate,
+          gstRate: section.gstRate,
+          markup: section.markup,
+          showTotalInPdf: section.showTotalInPdf,
+          showPstInPdf: showPstInPdf,
+          showGstInPdf: showGstInPdf,
+          // Calculate and include actual PST and GST values for PDF
+          pstValue: pst,
+          gstValue: gst,
+          total: grandTotal, // Final total with GST
+          totalDirectCosts: totalNum // Total before taxes
+        };
+      })));
+      // Legacy format: kept for backward compatibility
       form.append('additional_costs', JSON.stringify(pricingItems.map(c=> ({ label: c.name, value: Number(parseAccounting(c.price)||'0'), quantity: c.quantity || '1', pst: c.pst === true, gst: c.gst === true, product_id: c.productId }))));
       form.append('optional_services', JSON.stringify(optionalServices.map(s=> ({ service: s.service, price: Number(parseAccounting(s.price)||'0') }))));
       form.append('sections', JSON.stringify(sanitizeSections(sections)));
@@ -1225,247 +1391,312 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
           </div>
         </div>
 
-        {/* Pricing Block */}
-        <div className="rounded-xl border bg-white overflow-hidden">
-          <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] p-3 text-white font-semibold">
-            Pricing
-          </div>
-          <div className="p-4">
-          <div className="text-[12px] text-gray-600 mb-2">If no pricing items are added, the "Pricing Table" section will be hidden in the PDF.</div>
-          {(
-            <>
-              {!disabled && (
-                <div className="sticky top-0 z-30 bg-white/95 backdrop-blur mb-3 py-3 border-b">
-                  <div className="flex items-center gap-2">
-                    <button 
-                      onClick={()=> setProductSearchModalOpen(-1)}
-                      disabled={disabled}
-                      className="px-3 py-2 rounded bg-gray-100 hover:bg-gray-200 disabled:opacity-60 text-base">
-                      + Add Pricing Item
+        {/* Pricing Block - Multiple Sections */}
+        {pricingSections.map((section, sectionIndex) => {
+          const sectionTotals = calculateSectionTotals(section);
+          const sectionNumber = pricingSections.length > 1 ? ` #${sectionIndex + 1}` : '';
+          
+          return (
+            <div key={section.id} className="rounded-xl border bg-white overflow-hidden mb-4">
+              <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] p-3 text-white font-semibold flex items-center justify-between">
+                <span>Pricing{sectionNumber}</span>
+                <div className="flex items-center gap-2">
+                  {!disabled && sectionIndex === 0 && (
+                    <button
+                      onClick={() => {
+                        if (pricingSections.length < 5) {
+                          const newSection: PricingSection = {
+                            id: `section_${Date.now()}`,
+                            items: [],
+                            pstRate: section.pstRate,
+                            gstRate: section.gstRate,
+                            markup: section.markup,
+                            showTotalInPdf: section.showTotalInPdf
+                          };
+                          setPricingSections([...pricingSections, newSection]);
+                        }
+                      }}
+                      disabled={pricingSections.length >= 5}
+                      className="p-1.5 rounded hover:bg-white/20 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                      title="Click here to add another Pricing section"
+                    >
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <line x1="12" y1="5" x2="12" y2="19"></line>
+                        <line x1="5" y1="12" x2="19" y2="12"></line>
+                      </svg>
                     </button>
-                    <div className="ml-auto flex items-center gap-3 text-sm">
-                      <label className="text-sm">PST (%)</label>
-                      <input 
-                        type="number" 
-                        className="border rounded px-2 py-1 w-20" 
-                        value={pstRate} 
-                        min={0} 
-                        step={1} 
-                        onChange={e=>setPstRate(Number(e.target.value||0))} 
-                        disabled={disabled}
-                      />
-                      <label className="text-sm">GST (%)</label>
-                      <input 
-                        type="number" 
-                        className="border rounded px-2 py-1 w-20" 
-                        value={gstRate} 
-                        min={0} 
-                        step={1} 
-                        onChange={e=>setGstRate(Number(e.target.value||0))} 
-                        disabled={disabled}
-                      />
-                    </div>
-                  </div>
+                  )}
+                  {!disabled && sectionIndex > 0 && (
+                    <button
+                      onClick={async () => {
+                        const result = await confirm({ title: 'Remove Pricing Section', message: 'Are you sure you want to remove this pricing section?' });
+                        if (result === 'confirm') {
+                          setPricingSections(arr => arr.filter((_, idx) => idx !== sectionIndex));
+                        }
+                      }}
+                      className="p-1.5 rounded hover:bg-white/20 transition-colors"
+                      title="Remove this Pricing section"
+                    >
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <line x1="5" y1="12" x2="19" y2="12"></line>
+                      </svg>
+                    </button>
+                  )}
                 </div>
-              )}
-              
-              {/* Pricing items list - below the gray line */}
-              <div className="space-y-2">
-                {pricingItems.map((c, i)=> {
-                  // Calculate line total: price × quantity
-                  const priceNum = parseFloat(parseAccounting(c.price || '0').replace(/,/g, '')) || 0;
-                  const qtyNum = parseFloat(c.quantity || '1') || 1;
-                  const lineTotal = priceNum * qtyNum;
-                  
-                  return (
-                    <div key={i} className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-center">
-                      <div className="col-span-1 sm:col-span-6 flex items-center gap-2 relative">
-                        <input 
-                          className={`w-full border rounded px-3 py-2 ${disabled || c.productId ? 'bg-gray-50 cursor-not-allowed' : ''}`} 
-                          placeholder="Name" 
-                          value={c.name} 
-                          onChange={e=>{ 
-                            const v=e.target.value; 
-                            setPricingItems(arr=> arr.map((x,j)=> j===i? { ...x, name:v }: x)); 
-                          }}
-                          disabled={disabled || !!c.productId} 
-                          readOnly={disabled || !!c.productId} 
-                        />
-                        {!disabled && (
-                          <button
-                            onClick={() => setProductSearchModalOpen(i)}
-                            className="p-1 text-gray-500 hover:text-gray-700 flex-shrink-0"
-                            title="Browse Products by Supplier"
-                          >
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                              <circle cx="11" cy="11" r="8"></circle>
-                              <path d="M21 21l-4.35-4.35"></path>
-                            </svg>
-                          </button>
-                        )}
-                      </div>
-                      <input type="text" className={`col-span-1 sm:col-span-1 border rounded px-2 sm:px-3 py-2 text-sm ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} placeholder="Price" value={c.price} onChange={e=>{ const v = parseAccounting(e.target.value); setPricingItems(arr=> arr.map((x,j)=> j===i? { ...x, price:v }: x)); }} onBlur={!disabled ? ()=> setPricingItems(arr=> arr.map((x,j)=> j===i? { ...x, price: formatAccounting(x.price) }: x)) : undefined} disabled={disabled} readOnly={disabled} />
-                      <div className="col-span-1 sm:col-span-1 flex items-center border rounded overflow-hidden">
+              </div>
+              <div className="p-4">
+                <div className="text-[12px] text-gray-600 mb-2">If no pricing items are added, the "Pricing Table{sectionNumber}" section will be hidden in the PDF.</div>
+                {!disabled && (
+                  <div className="sticky top-0 z-30 bg-white/95 backdrop-blur mb-3 py-3 border-b">
+                    <div className="flex items-center gap-2">
+                      <button 
+                        onClick={()=> setProductSearchModalOpen({ sectionIndex, itemIndex: -1 })}
+                        disabled={disabled}
+                        className="px-3 py-2 rounded bg-gray-100 hover:bg-gray-200 disabled:opacity-60 text-base">
+                        + Add Pricing Item
+                      </button>
+                      <div className="ml-auto flex items-center gap-3 text-sm">
+                        <label className="text-sm">PST (%)</label>
                         <input 
                           type="number" 
-                          min="1"
-                          step="1"
-                          className={`flex-1 min-w-0 border-0 rounded-none px-2 sm:px-3 py-2 text-sm appearance-none [-moz-appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} 
-                          placeholder="Qty" 
-                          value={c.quantity || '1'} 
-                          onChange={e=>{ 
-                            const v = e.target.value;
-                            const num = parseInt(v) || 1;
-                            const finalValue = num < 1 ? '1' : String(num);
-                            setPricingItems(arr=> arr.map((x,j)=> j===i? { ...x, quantity: finalValue }: x)); 
-                          }} 
-                          disabled={disabled} 
-                          readOnly={disabled} 
+                          className="border rounded px-2 py-1 w-20" 
+                          value={section.pstRate} 
+                          min={0} 
+                          step={1} 
+                          onChange={e=>setPricingSections(arr=> arr.map((s,idx)=> idx===sectionIndex? { ...s, pstRate: Number(e.target.value||0) }: s))} 
+                          disabled={disabled}
                         />
-                        {!disabled && (
-                          <div className="flex flex-col flex-none border-l bg-white w-6">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                const currentQty = parseInt(c.quantity || '1') || 1;
-                                const newQty = currentQty + 1;
-                                setPricingItems(arr=> arr.map((x,j)=> j===i? { ...x, quantity: String(newQty) }: x));
-                              }}
-                              className="px-0.5 py-0 text-[9px] leading-tight border-b hover:bg-gray-100 flex items-center justify-center flex-1"
-                              title="Increase"
-                            >
-                              ▲
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                const currentQty = parseInt(c.quantity || '1') || 1;
-                                const newQty = Math.max(1, currentQty - 1);
-                                setPricingItems(arr=> arr.map((x,j)=> j===i? { ...x, quantity: String(newQty) }: x));
-                              }}
-                              className="px-0.5 py-0 text-[9px] leading-tight hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center flex-1"
-                              title="Decrease"
-                              disabled={parseInt(c.quantity || '1') <= 1}
-                            >
-                              ▼
-                            </button>
-                          </div>
-                        )}
+                        <label className="text-sm">GST (%)</label>
+                        <input 
+                          type="number" 
+                          className="border rounded px-2 py-1 w-20" 
+                          value={section.gstRate} 
+                          min={0} 
+                          step={1} 
+                          onChange={e=>setPricingSections(arr=> arr.map((s,idx)=> idx===sectionIndex? { ...s, gstRate: Number(e.target.value||0) }: s))} 
+                          disabled={disabled}
+                        />
                       </div>
-                      <div className={`col-span-1 sm:col-span-1 border rounded px-2 sm:px-3 py-2 bg-gray-50 ${disabled ? 'cursor-not-allowed' : ''}`}>
-                        <div className="text-xs sm:text-sm font-medium text-gray-700 text-right">
-                          ${formatAccounting(lineTotal)}
-                        </div>
-                      </div>
-                      <div className="col-span-1 sm:col-span-2 flex items-center gap-2 sm:gap-3 flex-wrap">
-                        <span className="text-xs sm:text-sm text-gray-600 whitespace-nowrap">Apply for this item:</span>
-                        <label className={`flex items-center gap-1 text-xs sm:text-sm ${disabled ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
-                          <input 
-                            type="checkbox" 
-                            checked={c.pst === true}
-                            onChange={e=> setPricingItems(arr=> arr.map((x,j)=> j===i? { ...x, pst: e.target.checked }: x))}
-                            className={disabled ? 'cursor-not-allowed' : 'cursor-pointer'}
-                            disabled={disabled}
-                          />
-                          <span className="text-gray-700">PST</span>
-                        </label>
-                        <label className={`flex items-center gap-1 text-xs sm:text-sm ${disabled ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
-                          <input 
-                            type="checkbox" 
-                            checked={c.gst === true}
-                            onChange={e=> setPricingItems(arr=> arr.map((x,j)=> j===i? { ...x, gst: e.target.checked }: x))}
-                            className={disabled ? 'cursor-not-allowed' : 'cursor-pointer'}
-                            disabled={disabled}
-                          />
-                          <span className="text-gray-700">GST</span>
-                        </label>
-                      </div>
-                      {!disabled && (
-                        <button className="col-span-1 sm:col-span-1 px-2 py-2 rounded bg-gray-100 text-xs sm:text-sm whitespace-nowrap" onClick={()=> setPricingItems(arr=> arr.filter((_,j)=> j!==i))}>Remove</button>
+                      {pricingSections.length > 1 && !disabled && (
+                        <button
+                          onClick={async () => {
+                            const result = await confirm({ title: 'Remove Pricing Section', message: 'Are you sure you want to remove this pricing section?' });
+                            if (result === 'confirm') {
+                              setPricingSections(arr => arr.filter((_, idx) => idx !== sectionIndex));
+                            }
+                          }}
+                          className="px-2 py-1 rounded text-gray-500 hover:text-red-600"
+                          title="Remove section"
+                        >
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M9 3h6a1 1 0 0 1 1 1v2h4v2h-1l-1 13a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 8H4V6h4V4a1 1 0 0 1 1-1Zm1 3h4V5h-4v1Zm-2 2 1 12h8l1-12H8Z"></path>
+                          </svg>
+                        </button>
                       )}
                     </div>
-                  );
-                })}
-              </div>
-              
-              {/* Show PST, GST fields even when disabled (read-only view) */}
-              {disabled && (
-                <div className="mt-4 flex items-center gap-4">
-                  <label className="flex items-center gap-2 text-sm">
-                    <span>PST (%)</span>
-                    <input 
-                      type="number" 
-                      className="border rounded px-2 py-1 w-20 bg-gray-100 cursor-not-allowed" 
-                      value={pstRate} 
-                      disabled={true}
-                      readOnly={true}
-                    />
-                  </label>
-                  <label className="flex items-center gap-2 text-sm">
-                    <span>GST (%)</span>
-                    <input 
-                      type="number" 
-                      className="border rounded px-2 py-1 w-20 bg-gray-100 cursor-not-allowed" 
-                      value={gstRate} 
-                      disabled={true}
-                      readOnly={true}
-                    />
-                  </label>
-                </div>
-              )}
-
-              {/* Summary Section */}
-              <div className="mt-6">
-                <div className="rounded-xl border bg-white overflow-hidden">
-                  {/* Summary Header - Gray */}
-                  <div className="bg-gray-500 p-3 text-white font-semibold">
-                    Summary
                   </div>
-                  
-                  {/* Two Cards Grid - inside Summary card */}
-                  <div className="p-4">
-                    <div className="grid md:grid-cols-2 gap-4">
-                      {/* Left Card */}
-                      <div className="rounded-xl border bg-white p-4">
-                        <div className="space-y-1 text-sm">
-                          <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span className="font-bold">Total Direct Costs</span><span className="font-bold">${totalNum.toFixed(2)}</span></div>
-                          <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span>PST ({pstRate}%)</span><span>${pst.toFixed(2)}</span></div>
-                          <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span className="font-bold">Sub-total</span><span className="font-bold">${subtotal.toFixed(2)}</span></div>
+                )}
+                
+                {/* Pricing items list */}
+                <div className="space-y-2">
+                  {section.items.map((c, i)=> {
+                    // Calculate line total: price × quantity
+                    const priceNum = parseFloat(parseAccounting(c.price || '0').replace(/,/g, '')) || 0;
+                    const qtyNum = parseFloat(c.quantity || '1') || 1;
+                    const lineTotal = priceNum * qtyNum;
+                    
+                    return (
+                      <div key={i} className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-center">
+                        <div className="col-span-1 sm:col-span-6 flex items-center gap-2 relative">
+                          <input 
+                            className={`w-full border rounded px-3 py-2 ${disabled || c.productId ? 'bg-gray-50 cursor-not-allowed' : ''}`} 
+                            placeholder="Name" 
+                            value={c.name} 
+                            onChange={e=>{ 
+                              const v=e.target.value; 
+                              setPricingSections(arr=> arr.map((s,idx)=> idx===sectionIndex? { ...s, items: s.items.map((x,j)=> j===i? { ...x, name:v }: x) }: s)); 
+                            }}
+                            disabled={disabled || !!c.productId} 
+                            readOnly={disabled || !!c.productId} 
+                          />
+                          {!disabled && (
+                            <button
+                              onClick={() => setProductSearchModalOpen({ sectionIndex, itemIndex: i })}
+                              className="p-1 text-gray-500 hover:text-gray-700 flex-shrink-0"
+                              title="Browse Products by Supplier"
+                            >
+                              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <circle cx="11" cy="11" r="8"></circle>
+                                <path d="M21 21l-4.35-4.35"></path>
+                              </svg>
+                            </button>
+                          )}
                         </div>
+                        <input type="text" className={`col-span-1 sm:col-span-1 border rounded px-2 sm:px-3 py-2 text-sm ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} placeholder="Price" value={c.price} onChange={e=>{ const v = parseAccounting(e.target.value); setPricingSections(arr=> arr.map((s,idx)=> idx===sectionIndex? { ...s, items: s.items.map((x,j)=> j===i? { ...x, price:v }: x) }: s)); }} onBlur={!disabled ? ()=> setPricingSections(arr=> arr.map((s,idx)=> idx===sectionIndex? { ...s, items: s.items.map((x,j)=> j===i? { ...x, price: formatAccounting(x.price) }: x) }: s)) : undefined} disabled={disabled} readOnly={disabled} />
+                        <div className="col-span-1 sm:col-span-1 flex items-center border rounded overflow-hidden">
+                          <input 
+                            type="number" 
+                            min="1"
+                            step="1"
+                            className={`flex-1 min-w-0 border-0 rounded-none px-2 sm:px-3 py-2 text-sm appearance-none [-moz-appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} 
+                            placeholder="Qty" 
+                            value={c.quantity || '1'} 
+                            onChange={e=>{ 
+                              const v = e.target.value;
+                              const num = parseInt(v) || 1;
+                              const finalValue = num < 1 ? '1' : String(num);
+                              setPricingSections(arr=> arr.map((s,idx)=> idx===sectionIndex? { ...s, items: s.items.map((x,j)=> j===i? { ...x, quantity: finalValue }: x) }: s)); 
+                            }} 
+                            disabled={disabled} 
+                            readOnly={disabled} 
+                          />
+                          {!disabled && (
+                            <div className="flex flex-col flex-none border-l bg-white w-6">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const currentQty = parseInt(c.quantity || '1') || 1;
+                                  const newQty = currentQty + 1;
+                                  setPricingSections(arr=> arr.map((s,idx)=> idx===sectionIndex? { ...s, items: s.items.map((x,j)=> j===i? { ...x, quantity: String(newQty) }: x) }: s));
+                                }}
+                                className="px-0.5 py-0 text-[9px] leading-tight border-b hover:bg-gray-100 flex items-center justify-center flex-1"
+                                title="Increase"
+                              >
+                                ▲
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const currentQty = parseInt(c.quantity || '1') || 1;
+                                  const newQty = Math.max(1, currentQty - 1);
+                                  setPricingSections(arr=> arr.map((s,idx)=> idx===sectionIndex? { ...s, items: s.items.map((x,j)=> j===i? { ...x, quantity: String(newQty) }: x) }: s));
+                                }}
+                                className="px-0.5 py-0 text-[9px] leading-tight hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center flex-1"
+                                title="Decrease"
+                                disabled={parseInt(c.quantity || '1') <= 1}
+                              >
+                                ▼
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                        <div className={`col-span-1 sm:col-span-1 border rounded px-2 sm:px-3 py-2 bg-gray-50 ${disabled ? 'cursor-not-allowed' : ''}`}>
+                          <div className="text-xs sm:text-sm font-medium text-gray-700 text-right">
+                            ${formatAccounting(lineTotal)}
+                          </div>
+                        </div>
+                        <div className="col-span-1 sm:col-span-2 flex items-center gap-2 sm:gap-3 flex-wrap">
+                          <span className="text-xs sm:text-sm text-gray-600 whitespace-nowrap">Apply for this item:</span>
+                          <label className={`flex items-center gap-1 text-xs sm:text-sm ${disabled ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
+                            <input 
+                              type="checkbox" 
+                              checked={c.pst === true}
+                              onChange={e=> setPricingSections(arr=> arr.map((s,idx)=> idx===sectionIndex? { ...s, items: s.items.map((x,j)=> j===i? { ...x, pst: e.target.checked }: x) }: s))}
+                              className={disabled ? 'cursor-not-allowed' : 'cursor-pointer'}
+                              disabled={disabled}
+                            />
+                            <span className="text-gray-700">PST</span>
+                          </label>
+                          <label className={`flex items-center gap-1 text-xs sm:text-sm ${disabled ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
+                            <input 
+                              type="checkbox" 
+                              checked={c.gst === true}
+                              onChange={e=> setPricingSections(arr=> arr.map((s,idx)=> idx===sectionIndex? { ...s, items: s.items.map((x,j)=> j===i? { ...x, gst: e.target.checked }: x) }: s))}
+                              className={disabled ? 'cursor-not-allowed' : 'cursor-pointer'}
+                              disabled={disabled}
+                            />
+                            <span className="text-gray-700">GST</span>
+                          </label>
+                        </div>
+                        {!disabled && (
+                          <button className="col-span-1 sm:col-span-1 px-2 py-2 rounded bg-gray-100 text-xs sm:text-sm whitespace-nowrap" onClick={()=> setPricingSections(arr=> arr.map((s,idx)=> idx===sectionIndex? { ...s, items: s.items.filter((_,j)=> j!==i) }: s))}>Remove</button>
+                        )}
                       </div>
-                      {/* Right Card */}
-                      <div className="rounded-xl border bg-white p-4">
-                        <div className="space-y-1 text-sm">
-                          <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span>GST ({gstRate}%)</span><span>${gst.toFixed(2)}</span></div>
-                          <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1 text-lg"><span className="font-bold">Final Total (with GST)</span><span className="font-bold">${grandTotal.toFixed(2)}</span></div>
+                    );
+                  })}
+                </div>
+                
+                {/* Show PST, GST fields even when disabled (read-only view) */}
+                {disabled && (
+                  <div className="mt-4 flex items-center gap-4">
+                    <label className="flex items-center gap-2 text-sm">
+                      <span>PST (%)</span>
+                      <input 
+                        type="number" 
+                        className="border rounded px-2 py-1 w-20 bg-gray-100 cursor-not-allowed" 
+                        value={section.pstRate} 
+                        disabled={true}
+                        readOnly={true}
+                      />
+                    </label>
+                    <label className="flex items-center gap-2 text-sm">
+                      <span>GST (%)</span>
+                      <input 
+                        type="number" 
+                        className="border rounded px-2 py-1 w-20 bg-gray-100 cursor-not-allowed" 
+                        value={section.gstRate} 
+                        disabled={true}
+                        readOnly={true}
+                      />
+                    </label>
+                  </div>
+                )}
+
+                {/* Summary Section */}
+                <div className="mt-6">
+                  <div className="rounded-xl border bg-white overflow-hidden">
+                    {/* Summary Header - Gray */}
+                    <div className="bg-gray-500 p-3 text-white font-semibold">
+                      Summary
+                    </div>
+                    
+                    {/* Two Cards Grid - inside Summary card */}
+                    <div className="p-4">
+                      <div className="grid md:grid-cols-2 gap-4">
+                        {/* Left Card */}
+                        <div className="rounded-xl border bg-white p-4">
+                          <div className="space-y-1 text-sm">
+                            <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span className="font-bold">Total Direct Costs</span><span className="font-bold">${sectionTotals.totalNum.toFixed(2)}</span></div>
+                            {sectionTotals.showPstInPdf && sectionTotals.pst > 0 && (
+                              <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span>PST ({section.pstRate}%)</span><span>${sectionTotals.pst.toFixed(2)}</span></div>
+                            )}
+                            <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span className="font-bold">Sub-total</span><span className="font-bold">${sectionTotals.subtotal.toFixed(2)}</span></div>
+                          </div>
+                        </div>
+                        {/* Right Card */}
+                        <div className="rounded-xl border bg-white p-4">
+                          <div className="space-y-1 text-sm">
+                            {sectionTotals.showGstInPdf && sectionTotals.gst > 0 && (
+                              <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span>GST ({section.gstRate}%)</span><span>${sectionTotals.gst.toFixed(2)}</span></div>
+                            )}
+                            <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1 text-lg"><span className="font-bold">Final Total (with GST)</span><span className="font-bold">${sectionTotals.grandTotal.toFixed(2)}</span></div>
+                          </div>
                         </div>
                       </div>
                     </div>
                   </div>
                 </div>
+
+                {/* Total with Show in PDF checkbox */}
+                <div className="mt-3 space-y-2">
+                  <div className="flex items-center gap-2">
+                    <div className="text-sm font-semibold">Total: <span className="text-gray-600">${formatAccounting(sectionTotals.grandTotal)}</span></div>
+                    <label className={`flex items-center gap-1 text-sm text-gray-600 ${disabled ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
+                      <input 
+                        type="checkbox" 
+                        checked={section.showTotalInPdf} 
+                        onChange={e=> setPricingSections(arr=> arr.map((s,idx)=> idx===sectionIndex? { ...s, showTotalInPdf: e.target.checked }: s))}
+                        className={disabled ? 'cursor-not-allowed' : 'cursor-pointer'}
+                        disabled={disabled}
+                      />
+                      <span>Show Total in PDF</span>
+                    </label>
+                  </div>
+                </div>
               </div>
-
-            </>
-          )}
-
-          {/* Total with Show in PDF checkbox - PST/GST shown in PDF automatically based on items marked */}
-          <div className="mt-3 space-y-2">
-            <div className="flex items-center gap-2">
-              <div className="text-sm font-semibold">Total: <span className="text-gray-600">${formatAccounting(displayTotal)}</span></div>
-              <label className={`flex items-center gap-1 text-sm text-gray-600 ${disabled ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
-                <input 
-                  type="checkbox" 
-                  checked={showTotalInPdf} 
-                  onChange={e=> setShowTotalInPdf(e.target.checked)}
-                  className={disabled ? 'cursor-not-allowed' : 'cursor-pointer'}
-                  disabled={disabled}
-                />
-                <span>Show Total in PDF</span>
-              </label>
             </div>
-          </div>
-          </div>
-        </div>
+          );
+        })}
 
         {/* Optional Services Block */}
         <div className="rounded-xl border bg-white overflow-hidden">
@@ -1941,29 +2172,43 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
           open={true}
           onClose={() => setProductSearchModalOpen(null)}
           onSelect={(product: Material) => {
-            const index = productSearchModalOpen;
-            if (index === -1) {
-              // Adding new item - append to the end
-              setPricingItems(arr => [...arr, {
-                name: product.name,
-                price: formatAccounting(String(product.price || 0)),
-                quantity: '1',
-                pst: false,
-                gst: false,
-                productId: product.id
-              }]);
+            const { sectionIndex, itemIndex } = productSearchModalOpen;
+            if (itemIndex === -1) {
+              // Adding new item - append to the end of the section
+              setPricingSections(arr => arr.map((s, idx) => 
+                idx === sectionIndex
+                  ? {
+                      ...s,
+                      items: [...s.items, {
+                        name: product.name,
+                        price: formatAccounting(String(product.price || 0)),
+                        quantity: '1',
+                        pst: false,
+                        gst: false,
+                        productId: product.id
+                      }]
+                    }
+                  : s
+              ));
             } else {
               // Updating existing item
-              setPricingItems(arr => arr.map((x, j) => 
-                j === index 
-                  ? { 
-                      ...x, 
-                      name: product.name, 
-                      price: formatAccounting(String(product.price || 0)),
-                      quantity: x.quantity || '1',
-                      productId: product.id
-                    } 
-                  : x
+              setPricingSections(arr => arr.map((s, idx) => 
+                idx === sectionIndex
+                  ? {
+                      ...s,
+                      items: s.items.map((x, j) => 
+                        j === itemIndex 
+                          ? { 
+                              ...x, 
+                              name: product.name, 
+                              price: formatAccounting(String(product.price || 0)),
+                              quantity: x.quantity || '1',
+                              productId: product.id
+                            }
+                          : x
+                      )
+                    }
+                  : s
               ));
             }
             setProductSearchModalOpen(null);
@@ -2033,7 +2278,7 @@ function AddProductModalForQuote({ open, onClose, onSelect }: { open: boolean, o
               ×
             </button>
           </div>
-          <div className="p-4 space-y-3 overflow-y-auto flex-1">
+          <div className="flex-1 overflow-y-auto p-4 space-y-3">
             <div className="flex items-center gap-2">
               <div className="flex-1">
                 <label className="text-xs text-gray-600">Search Product:</label>
@@ -2359,7 +2604,7 @@ function NewProductModalForQuote({ open, onClose, onProductCreated, initialSuppl
               ×
             </button>
           </div>
-          <div className="p-6 overflow-y-auto flex-1">
+          <div className="flex-1 overflow-y-auto p-6">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="col-span-2">
                 <label className="text-xs font-semibold text-gray-700">
@@ -2836,7 +3081,7 @@ function CompareProductsModalForQuote({ open, onClose, selectedProduct, onSelect
           <div className="font-semibold text-lg text-white">Compare Products</div>
           <button onClick={onClose} className="ml-auto text-white hover:text-gray-200 text-2xl font-bold w-8 h-8 flex items-center justify-center rounded hover:bg-white/20">×</button>
         </div>
-        <div className="p-4 space-y-3 overflow-y-auto flex-1">
+        <div className="flex-1 overflow-y-auto p-4 space-y-3">
           <div className="border rounded p-3 bg-gray-50">
             <div className="font-medium mb-2">Selected: {selectedProduct.name}</div>
             <div className="text-sm text-gray-600">${Number(selectedProduct.price || 0).toFixed(2)} · {selectedProduct.supplier_name || 'N/A'}</div>
