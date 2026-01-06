@@ -952,7 +952,7 @@ function ProjectMiniCard({ project, coverSrc, clientName }:{ project:any, coverS
   const status = (project.status_label || details?.status_label || '') as string;
   const progress = Math.max(0, Math.min(100, Number(project.progress ?? details?.progress ?? 0)));
   const start = (project.date_start || details?.date_start || project.created_at || '').slice(0,10);
-  const eta = (details?.date_eta || project.date_end || '').slice(0,10);
+  const eta = (details?.date_eta || project.date_eta || project.date_end || '').slice(0,10);
   const est = details?.estimator_id || '';
   const lead = details?.onsite_lead_id || '';
   return (

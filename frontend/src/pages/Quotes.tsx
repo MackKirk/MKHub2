@@ -708,7 +708,7 @@ function QuoteListCard({ quote, employees, clientFiles }:{ quote: Quote, employe
           </div>
           <div className="min-w-0">
             <div className="text-xs text-gray-500">Estimated Value</div>
-            <div className="font-medium text-gray-900 truncate">
+            <div className="font-semibold text-[#7f1010] truncate">
               {estimatedValue > 0 ? `$${estimatedValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—'}
             </div>
           </div>

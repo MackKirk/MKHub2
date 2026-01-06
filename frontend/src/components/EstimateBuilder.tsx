@@ -2659,7 +2659,9 @@ function AddProductModal({ onAdd, disabled, defaultMarkup, open: openProp, onClo
                     No products found matching "{q}"
                   </div>
                   <button
-                    onClick={() => setNewProductModalOpen(true)}
+                    onClick={() => {
+                      setNewProductModalOpen(true);
+                    }}
                     className="w-full px-4 py-2 rounded bg-blue-50 hover:bg-blue-100 text-blue-700 font-medium text-sm"
                   >
                     + Create new product: "{q}"
@@ -2776,6 +2778,7 @@ function AddProductModal({ onAdd, disabled, defaultMarkup, open: openProp, onClo
           open={true}
           onClose={() => setNewProductModalOpen(false)}
           initialSupplier={''}
+          initialName={q.trim()}
           queryClient={queryClient}
           onProductCreated={(product: Material) => {
             setSelection(product);
@@ -3086,7 +3089,7 @@ function CompareProductsModal({ open, onClose, selectedProduct, onSelect }: { op
 }
 
 // New Product Modal for EstimateBuilder
-function NewProductModal({ open, onClose, onProductCreated, initialSupplier, queryClient }: { open: boolean, onClose: () => void, onProductCreated: (product: Material) => void, initialSupplier?: string, queryClient: any }) {
+function NewProductModal({ open, onClose, onProductCreated, initialSupplier, initialName, queryClient }: { open: boolean, onClose: () => void, onProductCreated: (product: Material) => void, initialSupplier?: string, initialName?: string, queryClient: any }) {
   const [name, setName] = useState('');
   const [nameError, setNameError] = useState(false);
   const [duplicateError, setDuplicateError] = useState(false);
@@ -3208,10 +3211,15 @@ function NewProductModal({ open, onClose, onProductCreated, initialSupplier, que
       setUnitType('unitary');
       setImageDataUrl('');
       setTechnicalManualUrl('');
-    } else if (open && initialSupplier) {
-      setNewSupplier(initialSupplier);
+    } else if (open) {
+      if (initialSupplier) {
+        setNewSupplier(initialSupplier);
+      }
+      if (initialName) {
+        setName(initialName);
+      }
     }
-  }, [open, initialSupplier]);
+  }, [open, initialSupplier, initialName]);
 
   useEffect(() => {
     if (!open) return;

@@ -653,7 +653,7 @@ def _update_estimate_internal(estimate_id: int, body: EstimateIn, db: Session):
 
 
 @router.post("/estimates")
-def create_estimate(body: EstimateIn, db: Session = Depends(get_db), _=Depends(require_permissions("inventory:write"))):
+def create_estimate(body: EstimateIn, db: Session = Depends(get_db), _=Depends(require_permissions("business:projects:estimate:write", "inventory:write"))):
     # Check if estimate already exists for this project
     existing_est = db.query(Estimate).filter(Estimate.project_id == body.project_id).first()
     
@@ -842,12 +842,12 @@ def get_estimate(estimate_id: int, db: Session = Depends(get_db), _=Depends(requ
 
 
 @router.put("/estimates/{estimate_id}")
-def update_estimate(estimate_id: int, body: EstimateIn, db: Session = Depends(get_db), _=Depends(require_permissions("inventory:write"))):
+def update_estimate(estimate_id: int, body: EstimateIn, db: Session = Depends(get_db), _=Depends(require_permissions("business:projects:estimate:write", "inventory:write"))):
     return _update_estimate_internal(estimate_id, body, db)
 
 
 @router.delete("/estimates/{estimate_id}")
-def delete_estimate(estimate_id: int, db: Session = Depends(get_db), _=Depends(require_permissions("inventory:write"))):
+def delete_estimate(estimate_id: int, db: Session = Depends(get_db), _=Depends(require_permissions("business:projects:estimate:write", "inventory:write"))):
     est = db.query(Estimate).filter(Estimate.id == estimate_id).first()
     if not est:
         raise HTTPException(status_code=404, detail="Estimate not found")

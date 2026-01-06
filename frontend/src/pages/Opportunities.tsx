@@ -6,7 +6,7 @@ import toast from 'react-hot-toast';
 import { Link, useLocation, useSearchParams, useNavigate } from 'react-router-dom';
 import LoadingOverlay from '@/components/LoadingOverlay';
 
-type Opportunity = { id:string, code?:string, name?:string, slug?:string, client_id?:string, created_at?:string, date_start?:string, date_end?:string, is_bidding?:boolean, project_division_ids?:string[], cover_image_url?:string };
+type Opportunity = { id:string, code?:string, name?:string, slug?:string, client_id?:string, created_at?:string, date_start?:string, date_eta?:string, date_end?:string, is_bidding?:boolean, project_division_ids?:string[], cover_image_url?:string, estimator_id?:string, estimator_name?:string, cost_estimated?:number };
 type ClientFile = { id:string, file_object_id:string, is_image?:boolean, content_type?:string };
 
 // Filter Builder Types
@@ -395,9 +395,11 @@ function FilterRuleRow({
             onChange={(e) => handleValueChange(e.target.value)}
           >
             <option value="">Select status...</option>
-            {projectStatuses.map((status: any) => (
-              <option key={status.id} value={status.id}>{status.label}</option>
-            ))}
+            {projectStatuses
+              .filter((status: any) => ['Prospecting', 'Sent to Customer', 'Refused'].includes(status.label))
+              .map((status: any) => (
+                <option key={status.id} value={status.id}>{status.label}</option>
+              ))}
           </select>
         );
       }
@@ -1032,7 +1034,8 @@ export default function Opportunities(){
             <OpportunityListCard 
               key={p.id} 
               opportunity={p} 
-              onOpenReportModal={(projectId) => setReportModalOpen({ open: true, projectId })} 
+              onOpenReportModal={(projectId) => setReportModalOpen({ open: true, projectId })}
+              projectStatuses={projectStatuses}
             />
           ))}
         </div>
@@ -1342,9 +1345,10 @@ function CreateReportModal({ projectId, reportCategories, onClose, onSuccess }: 
   );
 }
 
-function OpportunityListCard({ opportunity, onOpenReportModal }: { 
+function OpportunityListCard({ opportunity, onOpenReportModal, projectStatuses }: { 
   opportunity: Opportunity;
   onOpenReportModal: (projectId: string) => void;
+  projectStatuses: any[];
 }){
   const navigate = useNavigate();
   // Card cover should match General Information: backend now provides cover_image_url with correct priority
@@ -1353,9 +1357,13 @@ function OpportunityListCard({ opportunity, onOpenReportModal }: {
   const { data:client } = useQuery({ queryKey:['opportunity-client', opportunity.client_id], queryFn: ()=> opportunity.client_id? api<any>('GET', `/clients/${encodeURIComponent(String(opportunity.client_id||''))}`): Promise.resolve(null), enabled: !!opportunity.client_id, staleTime: 300_000 });
   const { data:projectDivisions } = useQuery({ queryKey:['project-divisions'], queryFn: ()=> api<any[]>('GET','/settings/project-divisions'), staleTime: 300_000 });
   const status = (opportunity as any).status_label || details?.status_label || '';
+  const statusLabel = String(status || '').trim();
+  const statusColor = (projectStatuses || []).find((s: any) => String(s?.label || '').trim() === statusLabel)?.value || '#e5e7eb';
   const start = (opportunity.date_start || details?.date_start || opportunity.created_at || '').slice(0,10);
-  const eta = (opportunity.date_end || details?.date_end || '').slice(0, 10);
-  const estimatedValue = details?.cost_estimated || (opportunity as any).cost_estimated || 0;
+  const eta = (opportunity.date_eta || details?.date_eta || '').slice(0, 10);
+  const estimatedValue = (opportunity as any).cost_estimated || details?.cost_estimated || 0;
+  const estimatorName = (opportunity as any).estimator_name || details?.estimator_name || '';
+  const estimatorId = (opportunity as any).estimator_id || details?.estimator_id;
   const clientName = client?.display_name || client?.name || '';
   const projectDivIds = (opportunity as any).project_division_ids || details?.project_division_ids || [];
   
@@ -1363,7 +1371,6 @@ function OpportunityListCard({ opportunity, onOpenReportModal }: {
   const missingFields = useMemo(() => {
     const missing: string[] = [];
     // Use details if available, otherwise fallback to opportunity data
-    const estimatorId = details?.estimator_id;
     const siteId = details?.site_id;
     const hasDivisions = Array.isArray(projectDivIds) && projectDivIds.length > 0;
     
@@ -1372,7 +1379,7 @@ function OpportunityListCard({ opportunity, onOpenReportModal }: {
     if (!hasDivisions) missing.push('Division');
     
     return missing;
-  }, [details, projectDivIds]);
+  }, [details, projectDivIds, estimatorId]);
   
   const hasPendingData = missingFields.length > 0;
   
@@ -1455,7 +1462,7 @@ function OpportunityListCard({ opportunity, onOpenReportModal }: {
           </div>
 
           <div className="flex-1 min-w-0">
-            {/* Customer + Status on the same row */}
+            {/* Customer + name + code (as before) */}
             <div className="flex items-start justify-between gap-2">
               <div className="text-xs text-gray-500 truncate min-w-0">{clientName || 'No client'}</div>
             </div>
@@ -1500,7 +1507,7 @@ function OpportunityListCard({ opportunity, onOpenReportModal }: {
         {/* Fields (simple text, no boxed grid) */}
         <div className="grid grid-cols-2 gap-3 text-sm">
           <div className="min-w-0">
-            <div className="text-xs text-gray-500">Start</div>
+            <div className="text-xs text-gray-500">Start Date</div>
             <div className="font-medium text-gray-900 truncate">{start || '—'}</div>
           </div>
           <div className="min-w-0">
@@ -1509,14 +1516,14 @@ function OpportunityListCard({ opportunity, onOpenReportModal }: {
           </div>
           <div className="min-w-0">
             <div className="text-xs text-gray-500">Estimator</div>
-            <div className={`font-medium truncate ${details?.estimator_id ? 'text-gray-900' : 'text-gray-400'}`}>
-              {details?.estimator_id ? (details?.estimator_name || '—') : '—'}
+            <div className={`font-medium truncate ${estimatorId ? 'text-gray-900' : 'text-gray-400'}`}>
+              {estimatorName || '—'}
             </div>
           </div>
           <div className="min-w-0">
             <div className="text-xs text-gray-500">Estimated Value</div>
             <div className="font-semibold text-[#7f1010] truncate">
-              {estimatedValue > 0 ? `$${estimatedValue.toLocaleString()}` : '—'}
+              {estimatedValue > 0 ? `$${estimatedValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—'}
             </div>
           </div>
         </div>
@@ -1561,9 +1568,10 @@ function OpportunityListCard({ opportunity, onOpenReportModal }: {
             <span
               className={[
                 'inline-flex items-center gap-1 px-2 py-1 rounded-full text-[11px] leading-4 font-medium border shadow-sm',
-                'bg-white/90 backdrop-blur-sm border-gray-200 text-gray-800',
+                'backdrop-blur-sm border-gray-200 text-gray-800',
               ].join(' ')}
               title={status}
+              style={{ backgroundColor: statusColor, color: '#000' }}
             >
               <span className="truncate max-w-[10rem]">{status || '—'}</span>
             </span>
