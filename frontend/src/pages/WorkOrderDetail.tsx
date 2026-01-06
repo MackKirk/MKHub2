@@ -1,5 +1,5 @@
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
@@ -142,6 +142,15 @@ export default function WorkOrderDetail() {
     return { before: [], after: [] };
   };
 
+  const todayLabel = useMemo(() => {
+    return new Date().toLocaleDateString('en-CA', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+    });
+  }, []);
+
   if (!isValidId) {
     return <div className="p-4">Invalid work order ID</div>;
   }
@@ -163,18 +172,25 @@ export default function WorkOrderDetail() {
 
   return (
     <div className="space-y-4">
-      <div className="mb-3 rounded-xl border bg-gradient-to-br from-[#7f1010] to-[#a31414] text-white p-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <div className="text-2xl font-extrabold">{workOrder.work_order_number}</div>
-            <div className="text-sm opacity-90 capitalize">{workOrder.entity_type}</div>
-          </div>
+      <div className="bg-slate-200/50 rounded-[12px] border border-slate-200 flex items-center justify-between py-4 px-6 mb-6">
+        <div className="flex items-center gap-4 flex-1">
           <button
             onClick={() => nav(`/fleet/${workOrder.entity_type === 'fleet' ? 'assets' : 'equipment'}/${workOrder.entity_id}`)}
-            className="px-4 py-2 bg-white/20 hover:bg-white/30 rounded-lg text-sm"
+            className="p-2 rounded-lg hover:bg-gray-200 transition-colors flex items-center justify-center"
+            title={`Back to ${workOrder.entity_type === 'fleet' ? 'Asset' : 'Equipment'}`}
           >
-            ← Back to {workOrder.entity_type === 'fleet' ? 'Asset' : 'Equipment'}
+            <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+            </svg>
           </button>
+          <div>
+            <div className="text-xl font-bold text-gray-900 tracking-tight mb-0.5">{workOrder.work_order_number}</div>
+            <div className="text-sm text-gray-500 font-medium capitalize">{workOrder.entity_type}</div>
+          </div>
+        </div>
+        <div className="text-right">
+          <div className="text-xs text-gray-400 mb-1.5 font-medium uppercase tracking-wide">Today</div>
+          <div className="text-sm font-semibold text-gray-700">{todayLabel}</div>
         </div>
       </div>
 

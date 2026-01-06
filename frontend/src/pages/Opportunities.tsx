@@ -1416,7 +1416,7 @@ function OpportunityListCard({ opportunity, onOpenReportModal, projectStatuses }
   return (
     <Link 
       to={`/opportunities/${encodeURIComponent(String(opportunity.id))}`} 
-      className="group rounded-xl border bg-white hover:border-gray-200 hover:shadow-md block h-full transition-all relative"
+      className="group rounded-xl border bg-white hover:border-gray-200 hover:shadow-md hover:-translate-y-0.5 block h-full transition-all duration-200 relative"
     >
       {/* Pending data alert icon (separate, top-left) */}
       {hasPendingData && (

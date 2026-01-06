@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.orm import Session, defer
 from sqlalchemy.exc import ProgrammingError
-from sqlalchemy import func
+from sqlalchemy import func, or_
 
 from ..auth.security import require_permissions
 from ..db import get_db
@@ -57,7 +57,13 @@ def search_products(
     query = db.query(Material)
     if q:
         like = f"%{q}%"
-        query = query.filter(Material.name.ilike(like))
+        query = query.filter(
+            or_(
+                Material.name.ilike(like),
+                Material.supplier_name.ilike(like),
+                Material.category.ilike(like)
+            )
+        )
     if supplier:
         query = query.filter(Material.supplier_name == supplier)
     

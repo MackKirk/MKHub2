@@ -61,6 +61,15 @@ export default function QuoteDetail(){
     return '/ui/assets/placeholders/customer.png';
   }, [clientFiles]);
 
+  const todayLabel = useMemo(() => {
+    return new Date().toLocaleDateString('en-CA', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+    });
+  }, []);
+
   if (isLoading) {
     return <div className="h-24 bg-gray-100 animate-pulse rounded"/>;
   }
@@ -72,35 +81,38 @@ export default function QuoteDetail(){
   return (
     <div>
       {/* Title Bar */}
-      <div className="mb-4 rounded-xl border bg-gradient-to-br from-[#7f1010] to-[#a31414] text-white p-4">
-        <div className="text-2xl font-extrabold">Quote Information</div>
-        <div className="text-sm opacity-90">Quote details and proposal builder.</div>
-      </div>
-      <div className="mb-3">
-        <button
-          onClick={() => {
-            // Check if we came from customer page
-            const state = location.state as any;
-            const cameFromCustomer = state?.fromCustomer || false;
-            
-            if (cameFromCustomer && quote?.client_id) {
-              // Redirect to customer's quotes tab
-              nav(`/customers/${encodeURIComponent(String(quote.client_id))}?tab=quotes`);
-            } else {
-              // Redirect to main quotations page
-              nav('/quotes');
-            }
-          }}
-          className="p-2 rounded-lg border hover:bg-gray-50 transition-colors flex items-center gap-2"
-          title={(location.state as any)?.fromCustomer ? "Back to Customer" : "Back to Quotations"}
-        >
-          <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-          </svg>
-          <span className="text-sm text-gray-700 font-medium">
-            {(location.state as any)?.fromCustomer ? 'Back to Customer' : 'Back to Quotations'}
-          </span>
-        </button>
+      <div className="bg-slate-200/50 rounded-[12px] border border-slate-200 flex items-center justify-between py-4 px-6 mb-6">
+        <div className="flex items-center gap-4 flex-1">
+          <button
+            onClick={() => {
+              // Check if we came from customer page
+              const state = location.state as any;
+              const cameFromCustomer = state?.fromCustomer || false;
+              
+              if (cameFromCustomer && quote?.client_id) {
+                // Redirect to customer's quotes tab
+                nav(`/customers/${encodeURIComponent(String(quote.client_id))}?tab=quotes`);
+              } else {
+                // Redirect to main quotations page
+                nav('/quotes');
+              }
+            }}
+            className="p-2 rounded-lg hover:bg-gray-200 transition-colors flex items-center justify-center"
+            title={(location.state as any)?.fromCustomer ? "Back to Customer" : "Back to Quotations"}
+          >
+            <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+            </svg>
+          </button>
+          <div>
+            <div className="text-xl font-bold text-gray-900 tracking-tight mb-0.5">Quote Information</div>
+            <div className="text-sm text-gray-500 font-medium">Quote details and proposal builder.</div>
+          </div>
+        </div>
+        <div className="text-right">
+          <div className="text-xs text-gray-400 mb-1.5 font-medium uppercase tracking-wide">Today</div>
+          <div className="text-sm font-semibold text-gray-700">{todayLabel}</div>
+        </div>
       </div>
 
       {/* Hero Section - Based on ProjectDetail */}

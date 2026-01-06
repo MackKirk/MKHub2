@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import toast from 'react-hot-toast';
 
 export default function ReviewsAdmin(){
@@ -13,11 +13,26 @@ export default function ReviewsAdmin(){
   const [periodEnd, setPeriodEnd] = useState('');
   const [templateId, setTemplateId] = useState('');
 
+  const todayLabel = useMemo(() => {
+    return new Date().toLocaleDateString('en-CA', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+    });
+  }, []);
+
   return (
     <div className="max-w-5xl">
-      <div className="mb-3 rounded-xl border bg-gradient-to-br from-[#7f1010] to-[#a31414] text-white p-4">
-        <div className="text-2xl font-extrabold">Reviews Admin</div>
-        <div className="text-sm opacity-90">Templates, cycles and assignments.</div>
+      <div className="bg-slate-200/50 rounded-[12px] border border-slate-200 flex items-center justify-between py-4 px-6 mb-6">
+        <div>
+          <div className="text-xl font-bold text-gray-900 tracking-tight mb-0.5">Reviews Admin</div>
+          <div className="text-sm text-gray-500 font-medium">Templates, cycles and assignments.</div>
+        </div>
+        <div className="text-right">
+          <div className="text-xs text-gray-400 mb-1.5 font-medium uppercase tracking-wide">Today</div>
+          <div className="text-sm font-semibold text-gray-700">{todayLabel}</div>
+        </div>
       </div>
       <div className="grid md:grid-cols-2 gap-6">
         <div className="rounded-xl border bg-white p-4">

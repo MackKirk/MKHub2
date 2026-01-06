@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
@@ -42,11 +42,26 @@ export default function Community() {
   // Ensure myPosts is always an array
   const myPosts: any[] = Array.isArray(myPostsData) ? myPostsData : [];
 
+  const todayLabel = useMemo(() => {
+    return new Date().toLocaleDateString('en-CA', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+    });
+  }, []);
+
   return (
     <div className="space-y-4">
-      <div className="mb-3 rounded-xl border bg-gradient-to-br from-[#7f1010] to-[#a31414] text-white p-4">
-        <div className="text-2xl font-extrabold">Community</div>
-        <div className="text-sm opacity-90">Manage groups, view insights, and create posts.</div>
+      <div className="bg-slate-200/50 rounded-[12px] border border-slate-200 flex items-center justify-between py-4 px-6 mb-6">
+        <div>
+          <div className="text-xl font-bold text-gray-900 tracking-tight mb-0.5">Community</div>
+          <div className="text-sm text-gray-500 font-medium">Manage groups, view insights, and create posts.</div>
+        </div>
+        <div className="text-right">
+          <div className="text-xs text-gray-400 mb-1.5 font-medium uppercase tracking-wide">Today</div>
+          <div className="text-sm font-semibold text-gray-700">{todayLabel}</div>
+        </div>
       </div>
 
       {/* Community Cards */}

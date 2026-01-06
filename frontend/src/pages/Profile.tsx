@@ -80,7 +80,7 @@ export default function Profile(){
   });
   const hasVisas = visasData && visasData.length > 0;
   
-  useMemo(()=>{ if (data){ 
+  useEffect(()=>{ if (data){ 
     const initial = {
       first_name: p.first_name||'',
       last_name: p.last_name||'',
@@ -208,28 +208,41 @@ export default function Profile(){
     sin_number:'SIN/SSN',
     emergency_contact:'At least one emergency contact'
   };
+  const todayLabel = useMemo(() => {
+    return new Date().toLocaleDateString('en-CA', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+    });
+  }, []);
+
   return (
     <div>
       {/* Title above hero */}
-      <div className="mb-3 rounded-xl border bg-gradient-to-br from-[#7f1010] to-[#a31414] text-white p-4">
-        <div className="text-2xl font-extrabold">My Information</div>
-        <div className="text-sm opacity-90">Personal details, employment, and documents.{totalMissing>0 && <span className="ml-2">Missing {totalMissing} required fields.</span>}</div>
-      </div>
-      
-      {fromHome && (
-        <div className="mb-3 flex items-center justify-between">
-          <button
-            onClick={() => navigate('/home')}
-            className="p-2 rounded-lg border hover:bg-gray-50 transition-colors flex items-center gap-2"
-            title="Back to Home"
-          >
-            <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-            </svg>
-            <span className="text-sm text-gray-700 font-medium">Back to Home</span>
-          </button>
+      <div className="bg-slate-200/50 rounded-[12px] border border-slate-200 flex items-center justify-between py-4 px-6 mb-6">
+        <div className="flex items-center gap-4 flex-1">
+          {fromHome && (
+            <button
+              onClick={() => navigate('/home')}
+              className="p-2 rounded-lg hover:bg-gray-200 transition-colors flex items-center justify-center"
+              title="Back to Home"
+            >
+              <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+              </svg>
+            </button>
+          )}
+          <div>
+            <div className="text-xl font-bold text-gray-900 tracking-tight mb-0.5">My Information</div>
+            <div className="text-sm text-gray-500 font-medium">Personal details, employment, and documents.{totalMissing>0 && <span className="ml-2">Missing {totalMissing} required fields.</span>}</div>
+          </div>
         </div>
-      )}
+        <div className="text-right">
+          <div className="text-xs text-gray-400 mb-1.5 font-medium uppercase tracking-wide">Today</div>
+          <div className="text-sm font-semibold text-gray-700">{todayLabel}</div>
+        </div>
+      </div>
       
       <motion.div initial={{opacity:0, y:10}} animate={{opacity:1, y:0}} className="rounded-xl border shadow-hero bg-white pb-24">
         <div className="rounded-t-xl p-5 text-white relative overflow-hidden" style={{ backgroundImage: `url(${heroResolvedUrl||'/ui/assets/login/background.jpg'})`, backgroundSize: 'cover', backgroundPosition: 'center' }}>

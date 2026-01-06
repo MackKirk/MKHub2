@@ -779,11 +779,11 @@ export default function InventoryProducts(){
                   </div>
                 </div>
                 <div className="font-medium text-sm mb-1 line-clamp-2">{p.name}</div>
-                {p.description && (
-                  <div className="text-xs text-gray-500 mb-1 line-clamp-2">{p.description}</div>
+                {p.supplier_name && (
+                  <div className="text-xs text-gray-500 mb-1">Supplier: {p.supplier_name}</div>
                 )}
                 {p.category && (
-                  <div className="text-xs text-gray-500 mb-1">{p.category}</div>
+                  <div className="text-xs text-gray-500 mb-1">Category: {p.category}</div>
                 )}
                 <div className="text-xs text-red-600 font-semibold mt-auto">
                   {typeof p.price === 'number' ? `$${Number(p.price || 0).toFixed(2)}` : '—'}

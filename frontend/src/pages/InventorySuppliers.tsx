@@ -2071,21 +2071,23 @@ export default function InventorySuppliers() {
             </div>
           </div>
           {productImagePickerOpen && (
-            <ImagePicker 
-              isOpen={true} 
-              onClose={() => setProductImagePickerOpen(false)} 
-              targetWidth={800} 
-              targetHeight={800} 
-              allowEdit={true}
-              onConfirm={async (blob) => {
-                const reader = new FileReader();
-                reader.onload = () => {
-                  setProductImageDataUrl(String(reader.result || ''));
-                  setProductImagePickerOpen(false);
-                };
-                reader.readAsDataURL(blob);
-              }} 
-            />
+            <div className="fixed inset-0 z-[130]">
+              <ImagePicker 
+                isOpen={true} 
+                onClose={() => setProductImagePickerOpen(false)} 
+                targetWidth={800} 
+                targetHeight={800} 
+                allowEdit={true}
+                onConfirm={async (blob) => {
+                  const reader = new FileReader();
+                  reader.onload = () => {
+                    setProductImageDataUrl(String(reader.result || ''));
+                    setProductImagePickerOpen(false);
+                  };
+                  reader.readAsDataURL(blob);
+                }} 
+              />
+            </div>
           )}
         </>
       )}
@@ -2764,21 +2766,23 @@ export default function InventorySuppliers() {
       )}
 
       {editProductImagePickerOpen && (
-        <ImagePicker 
-          isOpen={true} 
-          onClose={() => setEditProductImagePickerOpen(false)} 
-          targetWidth={800} 
-          targetHeight={800} 
-          allowEdit={true}
-          onConfirm={async (blob) => {
-            const reader = new FileReader();
-            reader.onload = () => {
-              setEditProductImageDataUrl(String(reader.result || ''));
-              setEditProductImagePickerOpen(false);
-            };
-            reader.readAsDataURL(blob);
-          }} 
-        />
+        <div className="fixed inset-0 z-[130]">
+          <ImagePicker 
+            isOpen={true} 
+            onClose={() => setEditProductImagePickerOpen(false)} 
+            targetWidth={800} 
+            targetHeight={800} 
+            allowEdit={true}
+            onConfirm={async (blob) => {
+              const reader = new FileReader();
+              reader.onload = () => {
+                setEditProductImageDataUrl(String(reader.result || ''));
+                setEditProductImagePickerOpen(false);
+              };
+              reader.readAsDataURL(blob);
+            }} 
+          />
+        </div>
       )}
 
 

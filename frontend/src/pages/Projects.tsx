@@ -727,7 +727,7 @@ function ProjectListCard({ project, projectDivisions, projectStatuses }:{ projec
   return (
     <Link 
       to={`/projects/${encodeURIComponent(String(project.id))}`} 
-      className="group rounded-xl border bg-white hover:border-gray-200 hover:shadow-md block h-full transition-all relative"
+      className="group rounded-xl border bg-white hover:border-gray-200 hover:shadow-md hover:-translate-y-0.5 block h-full transition-all duration-200 relative"
     >
       <div className="p-4 flex flex-col gap-3">
         {/* Top row: thumb + title */}

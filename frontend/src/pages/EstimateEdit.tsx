@@ -2,10 +2,20 @@ import { useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import EstimateBuilder from '@/components/EstimateBuilder';
+import { useMemo } from 'react';
 
 export default function EstimateEdit(){
   const { id } = useParams();
   const estimateId = id ? parseInt(id, 10) : undefined;
+  
+  const todayLabel = useMemo(() => {
+    return new Date().toLocaleDateString('en-CA', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+    });
+  }, []);
   
   const { data: estimateData, isLoading } = useQuery({
     queryKey: ['estimate', estimateId],
@@ -20,9 +30,15 @@ export default function EstimateEdit(){
   if (isLoading) {
     return (
       <div>
-        <div className="mb-3 rounded-xl border bg-gradient-to-br from-[#7f1010] to-[#a31414] text-white p-4">
-          <div className="text-2xl font-extrabold">Edit Estimate</div>
-          <div className="text-sm opacity-90">Loading...</div>
+        <div className="bg-slate-200/50 rounded-[12px] border border-slate-200 flex items-center justify-between py-4 px-6 mb-6">
+          <div>
+            <div className="text-xl font-bold text-gray-900 tracking-tight mb-0.5">Edit Estimate</div>
+            <div className="text-sm text-gray-500 font-medium">Loading...</div>
+          </div>
+          <div className="text-right">
+            <div className="text-xs text-gray-400 mb-1.5 font-medium uppercase tracking-wide">Today</div>
+            <div className="text-sm font-semibold text-gray-700">{todayLabel}</div>
+          </div>
         </div>
       </div>
     );
@@ -31,9 +47,15 @@ export default function EstimateEdit(){
   if (!estimateData || !estimateData.estimate) {
     return (
       <div>
-        <div className="mb-3 rounded-xl border bg-gradient-to-br from-[#7f1010] to-[#a31414] text-white p-4">
-          <div className="text-2xl font-extrabold">Edit Estimate</div>
-          <div className="text-sm opacity-90">Estimate not found</div>
+        <div className="bg-slate-200/50 rounded-[12px] border border-slate-200 flex items-center justify-between py-4 px-6 mb-6">
+          <div>
+            <div className="text-xl font-bold text-gray-900 tracking-tight mb-0.5">Edit Estimate</div>
+            <div className="text-sm text-gray-500 font-medium">Estimate not found</div>
+          </div>
+          <div className="text-right">
+            <div className="text-xs text-gray-400 mb-1.5 font-medium uppercase tracking-wide">Today</div>
+            <div className="text-sm font-semibold text-gray-700">{todayLabel}</div>
+          </div>
         </div>
       </div>
     );
@@ -41,9 +63,15 @@ export default function EstimateEdit(){
   
   return (
     <div>
-      <div className="mb-3 rounded-xl border bg-gradient-to-br from-[#7f1010] to-[#a31414] text-white p-4">
-        <div className="text-2xl font-extrabold">Edit Estimate</div>
-        <div className="text-sm opacity-90">Continue editing your estimate.</div>
+      <div className="bg-slate-200/50 rounded-[12px] border border-slate-200 flex items-center justify-between py-4 px-6 mb-6">
+        <div>
+          <div className="text-xl font-bold text-gray-900 tracking-tight mb-0.5">Edit Estimate</div>
+          <div className="text-sm text-gray-500 font-medium">Continue editing your estimate.</div>
+        </div>
+        <div className="text-right">
+          <div className="text-xs text-gray-400 mb-1.5 font-medium uppercase tracking-wide">Today</div>
+          <div className="text-sm font-semibold text-gray-700">{todayLabel}</div>
+        </div>
       </div>
       <div className="rounded-xl border bg-white p-4">
         {estimateId && projectId ? (
