@@ -1701,7 +1701,7 @@ export default function InventorySuppliers() {
                   Loading products...
                 </div>
               ) : supplierProducts && supplierProducts.length > 0 ? (
-                <div className="grid grid-cols-4 gap-3">
+                <div className="grid grid-cols-6 gap-3">
                   {/* New Product Card - First position */}
                   <button
                     onClick={() => setNewProductModalOpen(true)}
