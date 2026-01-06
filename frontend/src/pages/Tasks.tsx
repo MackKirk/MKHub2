@@ -1,14 +1,11 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { useNavigate, useLocation } from 'react-router-dom';
-<<<<<<< HEAD
 import TaskCard from '@/components/tasks/TaskCard';
 import TaskModal from '@/components/tasks/TaskModal';
 import CreateTaskModal from '@/components/tasks/CreateTaskModal';
 import ArchivedTasksModal from '@/components/tasks/ArchivedTasksModal';
-import type { TaskBuckets } from '@/components/tasks/types';
-=======
 import LoadingOverlay from '@/components/LoadingOverlay';
 
 type TaskBasic = {
@@ -227,7 +224,6 @@ function BugReportDescription({ description }: { description: string }) {
     </div>
   );
 }
->>>>>>> 27f6cca52d79e0977ac06e0e7f2719c6d86b9a15
 
 export default function TasksPage() {
   const navigate = useNavigate();
@@ -284,37 +280,30 @@ export default function TasksPage() {
   }, []);
 
   return (
-<<<<<<< HEAD
-    <div className="space-y-6">
-      <div className="bg-slate-200/50 rounded-[12px] border border-slate-200 py-4 px-6 flex items-start justify-between gap-4 flex-wrap">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900 tracking-tight mb-1.5">Tasks</h1>
-          <p className="text-sm text-gray-600 font-medium">A simple checklist of what to do next.</p>
-        </div>
-        <button
-          type="button"
-          onClick={() => setCreateOpen(true)}
-          className="px-4 py-2 bg-brand-red text-white rounded-lg hover:bg-red-700 transition-colors font-medium text-sm shadow-sm flex items-center gap-2"
-        >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-          </svg>
-          New task
-        </button>
-=======
     <LoadingOverlay isLoading={isInitialLoading} text="Loading tasks...">
-    <div className="space-y-4">
-      <div className="bg-slate-200/50 rounded-[12px] border border-slate-200 flex items-center justify-between py-4 px-6 mb-6">
-        <div>
-          <div className="text-xl font-bold text-gray-900 tracking-tight mb-0.5">Tasks</div>
-          <div className="text-sm text-gray-500 font-medium">Track everything that has been accepted and needs action</div>
+      <div className="space-y-4">
+        <div className="bg-slate-200/50 rounded-[12px] border border-slate-200 py-4 px-6 flex items-center justify-between gap-4 flex-wrap mb-6">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900 tracking-tight mb-1.5">Tasks</h1>
+            <p className="text-sm text-gray-600 font-medium">A simple checklist of what to do next.</p>
+          </div>
+          <div className="flex items-center gap-4">
+            <div className="text-right">
+              <div className="text-xs text-gray-400 mb-1.5 font-medium uppercase tracking-wide">Today</div>
+              <div className="text-sm font-semibold text-gray-700">{todayLabel}</div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setCreateOpen(true)}
+              className="px-4 py-2 bg-brand-red text-white rounded-lg hover:bg-red-700 transition-colors font-medium text-sm shadow-sm flex items-center gap-2"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+              New task
+            </button>
+          </div>
         </div>
-        <div className="text-right">
-          <div className="text-xs text-gray-400 mb-1.5 font-medium uppercase tracking-wide">Today</div>
-          <div className="text-sm font-semibold text-gray-700">{todayLabel}</div>
-        </div>
->>>>>>> 27f6cca52d79e0977ac06e0e7f2719c6d86b9a15
-      </div>
       
       {fromHome && (
         <div className="flex items-center justify-between">
