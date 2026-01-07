@@ -1519,7 +1519,7 @@ function ReportsTabEnhanced({ projectId, items, onRefresh }:{ projectId:string, 
                 </optgroup>
               )}
               {financialCategories.length > 0 && (
-                <optgroup label="📌 Financial">
+                <optgroup label="📌 Financial (Update Project Values)">
                   {financialCategories.map(cat => {
                     const count = categoryCounts[cat.value || ''] || 0;
                     return (
@@ -1658,8 +1658,8 @@ function ReportsTabEnhanced({ projectId, items, onRefresh }:{ projectId:string, 
                         <button
                           onClick={async () => {
                             const result = await confirm({
-                              title: 'Approve Estimate Changes',
-                              message: `Are you sure you want to approve this Estimate Changes report? The items will be added to the project's estimate.`,
+                              title: 'Approve Change Order',
+                              message: `Are you sure you want to approve this Change Order report? The items will be added to the project's estimate.`,
                               confirmText: 'Approve',
                               cancelText: 'Cancel'
                             });
@@ -1728,7 +1728,7 @@ function ReportsTabEnhanced({ projectId, items, onRefresh }:{ projectId:string, 
                         : 'bg-blue-50 border-blue-200'
                     }`}>
                       <div className="text-sm font-semibold text-gray-700 mb-1">
-                        {selectedReport.financial_type === 'additional-income' ? 'Additional Income' : 'Additional Expense'}
+                        {selectedReport.financial_type === 'additional-income' ? 'Additional Income' : 'Expense'}
                       </div>
                       <div className="text-2xl font-bold text-gray-900">
                         ${(selectedReport.financial_value || 0).toFixed(2)}
@@ -1782,7 +1782,7 @@ function ReportsTabEnhanced({ projectId, items, onRefresh }:{ projectId:string, 
                     return (
                       <div className="mb-4 p-4 bg-gray-50 border border-gray-200 rounded-lg">
                         <div className="flex items-center justify-between mb-3">
-                          <div className="text-sm font-semibold text-gray-700">Estimate Changes Summary</div>
+                          <div className="text-sm font-semibold text-gray-700">Change Order Summary</div>
                           {selectedReport.approval_status === 'approved' && (
                             <span className="text-xs text-green-600 font-medium">✓ Items have been added to the project estimate</span>
                           )}
@@ -2183,7 +2183,7 @@ function CreateReportModal({ projectId, reportCategories, onClose, onSuccess }: 
                   </optgroup>
                 )}
                 {!isBidding && financialCategories.length > 0 && (
-                  <optgroup label="Financial">
+                  <optgroup label="Financial (Update Project Values)">
                     {financialCategories.map(cat => (
                       <option key={cat.id || cat.value || cat.label} value={cat.value || cat.label}>{cat.label}</option>
                     ))}
@@ -2214,7 +2214,7 @@ function CreateReportModal({ projectId, reportCategories, onClose, onSuccess }: 
             ) : null}
             {category === 'estimate-changes' ? (
               <div className="border rounded p-4">
-                <label className="text-xs text-gray-600 block mb-2">Estimate Changes</label>
+                <label className="text-xs text-gray-600 block mb-2">Change Order</label>
                 <div className="max-h-[400px] overflow-y-auto">
                   <EstimateBuilder
                     ref={estimateBuilderRef}
@@ -2246,7 +2246,7 @@ function CreateReportModal({ projectId, reportCategories, onClose, onSuccess }: 
                 <textarea
                   className="w-full border rounded px-3 py-2 text-sm"
                   rows={4}
-                  placeholder="Additional notes about these estimate changes..."
+                  placeholder="Additional notes about this change order..."
                   value={desc}
                   onChange={e => setDesc(e.target.value)}
                 />
