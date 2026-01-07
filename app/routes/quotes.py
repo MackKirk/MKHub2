@@ -11,7 +11,7 @@ from fastapi.responses import FileResponse
 from ..config import settings
 from ..logging import RequestIdMiddleware
 from ..db import get_db
-from ..models.models import FileObject, Quote, Client
+from ..models.models import FileObject, Quote, Client, Material
 from ..auth.security import get_current_user
 from sqlalchemy.orm import Session
 from sqlalchemy import or_, cast, String, Date, func
@@ -223,6 +223,55 @@ async def generate_quote(
     except Exception:
         parsed_costs = []
 
+    # Helper function to process product images
+    async def _process_product_image(product_id: int) -> Optional[str]:
+        """Fetch product image and save it temporarily for PDF generation"""
+        try:
+            product = db.query(Material).filter(Material.id == product_id).first()
+            if not product or not product.image_base64:
+                return None
+            
+            # Decode base64 image
+            import base64
+            image_data = base64.b64decode(product.image_base64.split(',')[-1] if ',' in product.image_base64 else product.image_base64)
+            
+            # Optimize image
+            optimized_bytes = optimize_image_bytes(image_data, preset="section")
+            
+            # Save to temporary file
+            tmp_path = os.path.join(UPLOAD_DIR, f"product_{product_id}_{uuid.uuid4().hex}.jpg")
+            with open(tmp_path, "wb") as f:
+                f.write(optimized_bytes)
+            
+            return tmp_path
+        except Exception:
+            return None
+
+    # Process product images for pricing sections (new format)
+    if parsed_pricing_sections:
+        for section in parsed_pricing_sections:
+            if not isinstance(section, dict) or "items" not in section:
+                continue
+            items = section.get("items", [])
+            for item in items:
+                if not isinstance(item, dict):
+                    continue
+                product_id = item.get("product_id") or item.get("productId")
+                if product_id and not item.get("image_path"):
+                    image_path = await _process_product_image(int(product_id))
+                    if image_path:
+                        item["image_path"] = image_path
+
+    # Process product images for additional_costs (legacy format)
+    for cost in parsed_costs:
+        if not isinstance(cost, dict):
+            continue
+        product_id = cost.get("product_id")
+        if product_id and not cost.get("image_path"):
+            image_path = await _process_product_image(int(product_id))
+            if image_path:
+                cost["image_path"] = image_path
+
     try:
         parsed_optional_services = json.loads(optional_services)
     except Exception:
@@ -317,6 +366,7 @@ async def generate_quote(
 
     await generate_pdf(quote_data, output_path)
 
+    # Clean up temporary files
     if cover_path and os.path.exists(cover_path):
         try:
             os.remove(cover_path)
@@ -327,6 +377,25 @@ async def generate_quote(
             os.remove(page2_path)
         except Exception:
             pass
+    
+    # Clean up product image temporary files
+    all_product_images = []
+    if parsed_pricing_sections:
+        for section in parsed_pricing_sections:
+            if isinstance(section, dict) and "items" in section:
+                for item in section.get("items", []):
+                    if isinstance(item, dict) and item.get("image_path"):
+                        all_product_images.append(item["image_path"])
+    for cost in parsed_costs:
+        if isinstance(cost, dict) and cost.get("image_path"):
+            all_product_images.append(cost["image_path"])
+    
+    for img_path in all_product_images:
+        if img_path and os.path.exists(img_path):
+            try:
+                os.remove(img_path)
+            except Exception:
+                pass
 
     return FileResponse(output_path, media_type="application/pdf", filename="Quote.pdf")
 

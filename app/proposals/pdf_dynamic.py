@@ -233,9 +233,16 @@ class PricingTable(Flowable):
             # Check if this is a quotation - affects label width calculation
             is_quote = data.get("is_quote", False)
             
+            # Always reserve space for images (product images or placeholders)
+            # Since we always show an image (product or placeholder), always reserve space
+            has_images = True  # Always true since we show placeholder when no image
+            image_width = 40  # Image width in points
+            image_space = image_width + 8  # 8 points spacing
+            
             # Calculate height considering wrapped text for each cost item
             # Reserve space for quantity and total on right (about 150px width if showing Qty, otherwise less)
-            max_label_width = (A4[0] - 80) - 150 if is_quote else (A4[0] - 80) - 80
+            # Also reserve space for images
+            max_label_width = (A4[0] - 80) - 150 - image_space if is_quote else (A4[0] - 80) - 80 - image_space
             font_name = "Montserrat-Bold"
             font_size = 11.5
             additional_height = 0
@@ -243,7 +250,10 @@ class PricingTable(Flowable):
                 label = cost.get("label", "")
                 wrapped_lines = wrap_text(label, font_name, font_size, max_label_width)
                 # Each line takes 16px, with 2px spacing between lines
-                additional_height += len(wrapped_lines) * 16 + (len(wrapped_lines) - 1) * 2
+                item_height = len(wrapped_lines) * 16 + (len(wrapped_lines) - 1) * 2
+                # Always ensure minimum height to accommodate image (product or placeholder)
+                item_height = max(item_height, image_width + 4)  # Add small padding
+                additional_height += item_height
             
             # Add height for PST and GST lines if they should be shown
             pst_gst_height = 0
@@ -334,12 +344,23 @@ class PricingTable(Flowable):
         else:
             # For manual pricing, show the full format
             additional_costs = self.data.get("additional_costs") or []
+            # Check if this is a quotation (quote) - only show Qty for quotations
+            is_quote = self.data.get("is_quote", False)
+            
+            # Image width - reserve space for product images
+            image_width = 40  # 40 points for product image
+            image_spacing = 8  # 8 points spacing between image and text
+            
+            # Reserve space for quantity and total on right (about 150px width if showing Qty, otherwise less)
+            # Also reserve space for image if any item has an image
+            has_images = any(cost.get("image_path") for cost in additional_costs) if additional_costs else False
+            image_space = (image_width + image_spacing) if has_images else 0
+            
+            # Store the text start position for PST/GST alignment (available in outer scope)
+            text_start_x = x_left + image_space if has_images else x_left
+            
             if additional_costs:
-                # Check if this is a quotation (quote) - only show Qty for quotations
-                is_quote = self.data.get("is_quote", False)
-                
-                # Reserve space for quantity and total on right (about 150px width if showing Qty, otherwise less)
-                max_label_width = width - 150 if is_quote else width - 80
+                max_label_width = width - 150 - image_space if is_quote else width - 80 - image_space
                 font_name = "Montserrat-Bold"
                 font_size = 11.5
                 
@@ -373,13 +394,59 @@ class PricingTable(Flowable):
                         else:
                             quantity_str = f"Qty: {quantity:.2f}"
                     
-                    # Wrap text into multiple lines
+                    # Draw product image - use placeholder if no image
+                    image_path = cost.get("image_path")
+                    image_x = x_left
+                    text_x = text_start_x
+                    
+                    # Determine which image to use (product image or placeholder)
+                    final_image_path = None
+                    if image_path and os.path.exists(image_path):
+                        final_image_path = image_path
+                    else:
+                        # Use placeholder image
+                        # BASE_DIR is app/proposals, so go up one level to app/, then to ui/assets
+                        placeholder_path = os.path.join(os.path.dirname(BASE_DIR), "ui", "assets", "image placeholders", "no_image.png")
+                        if os.path.exists(placeholder_path):
+                            final_image_path = placeholder_path
+                        else:
+                            # Fallback: try relative path from project root
+                            placeholder_path = os.path.join("app", "ui", "assets", "image placeholders", "no_image.png")
+                            if os.path.exists(placeholder_path):
+                                final_image_path = placeholder_path
+                    
+                    # Always draw an image (product image or placeholder)
+                    if final_image_path:
+                        try:
+                            # Draw product image or placeholder (40x40 points)
+                            img = Image(final_image_path, width=image_width, height=image_width)
+                            # Image bottom is at y - image_width, so center is at y - image_width/2
+                            image_bottom_y = y - image_width
+                            img.drawOn(c, image_x, image_bottom_y)
+                            text_x = x_left + image_width + image_spacing
+                        except Exception:
+                            # If image fails to load, continue without it
+                            pass
+                    
+                    # Wrap text into multiple lines (adjusted for image space)
                     wrapped_lines = wrap_text(label, font_name, font_size, max_label_width)
                     
+                    # Calculate text starting position - align first line with center of image (always show image/placeholder)
+                    if final_image_path:
+                        # Center of image is at y - image_width/2
+                        # Align first line of text with the center of the image
+                        # The baseline of text is typically at the bottom of the font, so we adjust
+                        # to align the visual center of the first line with the image center
+                        image_center_y = y - image_width / 2
+                        # For proper visual alignment, place baseline at center minus half of line height
+                        # Line height is approximately font_size * 1.2, but we use 16 points as standard
+                        line_y = image_center_y - (16 / 2)  # Center first line with image center
+                    else:
+                        line_y = y
+                    
                     # Draw each line of the label
-                    line_y = y
                     for i, line in enumerate(wrapped_lines):
-                        c.drawString(x_left, line_y, line)
+                        c.drawString(text_x, line_y, line)
                         if i < len(wrapped_lines) - 1:
                             line_y -= 16 + 2  # 16px line height + 2px spacing
                     
@@ -396,7 +463,17 @@ class PricingTable(Flowable):
                     c.drawRightString(x_right, line_y, line_total_str)
                     
                     # Move y down by the total height of this item (all lines)
-                    y -= len(wrapped_lines) * 16 + (len(wrapped_lines) - 1) * 2
+                    # Ensure minimum height to accommodate image (always present now)
+                    item_height = len(wrapped_lines) * 16 + (len(wrapped_lines) - 1) * 2
+                    if final_image_path:
+                        item_height = max(item_height, image_width + 4)  # Add small padding
+                    y -= item_height
+                
+                # Add spacing before PST/GST equivalent to spacing between items
+                # This spacing is typically the same as the item_height calculation
+                # We'll use a standard spacing of ~20 points (similar to item spacing)
+                if additional_costs:
+                    y -= 20  # Spacing equivalent to item spacing
 
             # Show PST if enabled and value > 0
             show_pst = self.data.get('show_pst_in_pdf', True)
@@ -413,7 +490,8 @@ class PricingTable(Flowable):
                     pst_rate = 7.0
                 c.setFont("Montserrat-Bold", 11.5)
                 c.setFillColor(colors.black)
-                c.drawString(x_left, y, f"PST ({pst_rate:.0f}%)")
+                # Align PST with text column (same as product names)
+                c.drawString(text_start_x, y, f"PST ({pst_rate:.0f}%)")
                 c.setFont("Montserrat-Bold", 11.5)
                 c.setFillColor(colors.grey)
                 c.drawRightString(x_right, y, f"${pst_value:,.2f}")
@@ -434,7 +512,8 @@ class PricingTable(Flowable):
                     gst_rate = 5.0
                 c.setFont("Montserrat-Bold", 11.5)
                 c.setFillColor(colors.black)
-                c.drawString(x_left, y, f"GST ({gst_rate:.0f}%)")
+                # Align GST with text column (same as product names)
+                c.drawString(text_start_x, y, f"GST ({gst_rate:.0f}%)")
                 c.setFont("Montserrat-Bold", 11.5)
                 c.setFillColor(colors.grey)
                 c.drawRightString(x_right, y, f"${gst_value:,.2f}")
@@ -1018,7 +1097,8 @@ def build_dynamic_pages(data, output_path):
                         "value": item.get("price", 0),
                         "quantity": item.get("quantity", "1"),
                         "pst": item.get("pst", False),
-                        "gst": item.get("gst", False)
+                        "gst": item.get("gst", False),
+                        "image_path": item.get("image_path")  # Preserve image path for product images
                     })
                 
                 # Calculate section totals from items

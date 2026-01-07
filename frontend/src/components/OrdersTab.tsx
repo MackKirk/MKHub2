@@ -1603,9 +1603,12 @@ function AddProductModalForOrder({
                       }}
                     />
                   ) : null}
-                  <div className={`w-full h-full bg-gray-200 rounded flex items-center justify-center text-gray-400 text-xs ${selection.image_base64 ? 'hidden' : ''}`} style={{ display: selection.image_base64 ? 'none' : 'flex' }}>
-                    No Image
-                  </div>
+                  <img 
+                    src="/ui/assets/image placeholders/no_image.png" 
+                    alt="No image"
+                    className={`w-full h-full object-contain rounded ${selection.image_base64 ? 'hidden' : ''}`}
+                    style={{ display: selection.image_base64 ? 'none' : 'block' }}
+                  />
                 </div>
                 <div className="flex-1 space-y-2">
                   <div className="font-medium">{selection.name}</div>
@@ -1785,9 +1788,12 @@ function SupplierProductModalForOrder({
                                 }}
                               />
                             ) : null}
-                            <div className={`w-full h-full bg-gray-200 rounded flex items-center justify-center text-gray-400 text-xs ${product.image_base64 ? 'hidden' : ''}`} style={{ display: product.image_base64 ? 'none' : 'flex' }}>
-                              No Image
-                            </div>
+                            <img 
+                              src="/ui/assets/image placeholders/no_image.png" 
+                              alt="No image"
+                              className={`w-full h-full object-contain rounded ${product.image_base64 ? 'hidden' : ''}`}
+                              style={{ display: product.image_base64 ? 'none' : 'block' }}
+                            />
                           </div>
                           <div className="font-medium text-sm mb-1 line-clamp-2">{product.name}</div>
                           {product.category && (

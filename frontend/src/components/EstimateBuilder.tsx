@@ -2704,9 +2704,12 @@ function AddProductModal({ onAdd, disabled, defaultMarkup, open: openProp, onClo
                           }}
                         />
                       ) : null}
-                      <div className={`w-full h-full bg-gray-200 rounded flex items-center justify-center text-gray-400 text-xs ${selection.image_base64 ? 'hidden' : ''}`} style={{ display: selection.image_base64 ? 'none' : 'flex' }}>
-                        No Image
-                      </div>
+                      <img 
+                        src="/ui/assets/image placeholders/no_image.png" 
+                        alt="No image"
+                        className={`w-full h-full object-contain rounded ${selection.image_base64 ? 'hidden' : ''}`}
+                        style={{ display: selection.image_base64 ? 'none' : 'block' }}
+                      />
                     </div>
                     <div className="flex-1 space-y-2">
                       <div className="flex items-center justify-between">
@@ -2933,9 +2936,12 @@ function SupplierProductModal({ open, onClose, onSelect }: { open: boolean, onCl
                               }}
                             />
                           ) : null}
-                          <div className={`w-full h-full bg-gray-200 rounded flex items-center justify-center text-gray-400 text-xs ${product.image_base64 ? 'hidden' : ''}`} style={{ display: product.image_base64 ? 'none' : 'flex' }}>
-                            No Image
-                          </div>
+                          <img 
+                            src="/ui/assets/image placeholders/no_image.png" 
+                            alt="No image"
+                            className={`w-full h-full object-contain rounded ${product.image_base64 ? 'hidden' : ''}`}
+                            style={{ display: product.image_base64 ? 'none' : 'block' }}
+                          />
                         </div>
                         <div className="font-medium text-sm mb-1 line-clamp-2">{product.name}</div>
                         {product.category && (
@@ -3034,9 +3040,11 @@ function CompareProductsModal({ open, onClose, selectedProduct, onSelect }: { op
                       }}
                     />
                   ) : null}
-                  <div className={`w-full h-32 bg-gray-200 rounded flex items-center justify-center text-gray-400 text-xs ${selectedProduct.image_base64 ? 'hidden image-placeholder' : ''}`}>
-                    No Image
-                  </div>
+                  <img 
+                    src="/ui/assets/image placeholders/no_image.png" 
+                    alt="No image"
+                    className={`w-full h-32 object-contain rounded ${selectedProduct.image_base64 ? 'hidden image-placeholder' : ''}`}
+                  />
                 </div>
                 <div>
                   <div className="font-semibold text-lg mb-2">{selectedProduct.name}</div>
@@ -3082,9 +3090,11 @@ function CompareProductsModal({ open, onClose, selectedProduct, onSelect }: { op
                             }}
                           />
                         ) : null}
-                        <div className={`w-full h-24 bg-gray-200 rounded flex items-center justify-center text-gray-400 text-xs ${product.image_base64 ? 'hidden image-placeholder' : ''}`}>
-                          No Image
-                        </div>
+                        <img 
+                          src="/ui/assets/image placeholders/no_image.png" 
+                          alt="No image"
+                          className={`w-full h-24 object-contain rounded ${product.image_base64 ? 'hidden image-placeholder' : ''}`}
+                        />
                       </div>
                       <div>
                         <div className="font-medium text-sm mb-1 line-clamp-2">{product.name}</div>
