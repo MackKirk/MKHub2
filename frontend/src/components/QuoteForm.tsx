@@ -41,7 +41,7 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
   // Pricing sections structure: array of sections, each with its own items and rates
   type PricingSection = {
     id: string;
-    items: { name:string, price:string, quantity?:string, pst?:boolean, gst?:boolean, productId?:number }[];
+    items: { name:string, price:string, quantity?:string, pst?:boolean, gst?:boolean, productId?:number, productImage?:string }[];
     pstRate: number;
     gstRate: number;
     markup: number;
@@ -190,6 +190,7 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
     return pricingSections.map(section => calculateSectionTotals(section));
   }, [pricingSections]);
 
+
   // Legacy calculations (kept for backward compatibility during transition)
   const totalNum = useMemo(()=>{ 
     return pricingItems.reduce((a,c)=> {
@@ -327,7 +328,8 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
           quantity: item.quantity || '1',
           pst: item.pst === true || item.pst === 'true' || item.pst === 1,
           gst: item.gst === true || item.gst === 'true' || item.gst === 1,
-          productId: item.productId || item.product_id || undefined
+          productId: item.productId || item.product_id || undefined,
+          productImage: item.productImage || undefined
         })),
         pstRate: sec.pstRate !== undefined && sec.pstRate !== null ? Number(sec.pstRate) : (d.pst_rate !== undefined && d.pst_rate !== null ? Number(d.pst_rate) : 7),
         gstRate: sec.gstRate !== undefined && sec.gstRate !== null ? Number(sec.gstRate) : (d.gst_rate !== undefined && d.gst_rate !== null ? Number(d.gst_rate) : 5),
@@ -339,7 +341,7 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
       // Legacy format: convert single pricing section from pricingItems/additional_costs
       const legacyBidPrice = d.bid_price ?? 0;
       const dc = Array.isArray(d.additional_costs)? d.additional_costs : [];
-      const loadedItems: { name:string, price:string, quantity?:string, pst?:boolean, gst?:boolean, productId?:number }[] = [];
+      const loadedItems: { name:string, price:string, quantity?:string, pst?:boolean, gst?:boolean, productId?:number, productImage?:string }[] = [];
       if (legacyBidPrice && Number(legacyBidPrice) > 0) {
         loadedItems.push({ name: 'Bid Price', price: formatAccounting(legacyBidPrice), quantity: '1', pst: false, gst: false });
       }
@@ -353,7 +355,8 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
             quantity: c.quantity || '1',
             pst: c.pst === true || c.pst === 'true' || c.pst === 1,
             gst: c.gst === true || c.gst === 'true' || c.gst === 1,
-            productId: c.product_id || c.productId || undefined
+            productId: c.product_id || c.productId || undefined,
+            productImage: c.productImage || undefined
           });
         }
       });
@@ -395,6 +398,64 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
 
   // When creating new (no initial), mark ready on mount
   useEffect(()=>{ if (mode==='new') setIsReady(true); }, [mode]);
+
+  // Fetch product images for items that have productId but no productImage
+  useEffect(() => {
+    if (!isReady || pricingSections.length === 0) return;
+    
+    const itemsNeedingImages = pricingSections.flatMap((section, sectionIdx) =>
+      section.items
+        .map((item, itemIdx) => ({ item, sectionIdx, itemIdx }))
+        .filter(({ item }) => item.productId && !item.productImage)
+    );
+
+    if (itemsNeedingImages.length === 0) return;
+
+    // Fetch products for items that need images by searching with product name
+    const fetchProductImages = async () => {
+      const updates: Array<{ sectionIdx: number; itemIdx: number; image: string }> = [];
+      
+      await Promise.all(
+        itemsNeedingImages.map(async ({ item, sectionIdx, itemIdx }) => {
+          if (!item.productId || !item.name) return;
+          
+          try {
+            // Search for the product by name to get its image
+            const results = await api<Material[]>(`GET`, `/estimate/products/search?q=${encodeURIComponent(item.name)}`);
+            const product = results.find(p => p.id === item.productId);
+            if (product && product.image_base64) {
+              const productImage = product.image_base64.startsWith('data:') 
+                ? product.image_base64 
+                : `data:image/jpeg;base64,${product.image_base64}`;
+              updates.push({ sectionIdx, itemIdx, image: productImage });
+            }
+          } catch (e) {
+            // Ignore errors
+          }
+        })
+      );
+
+      // Apply updates if any
+      if (updates.length > 0) {
+        setPricingSections(arr =>
+          arr.map((s, sectionIdx) => {
+            const sectionUpdates = updates.filter(u => u.sectionIdx === sectionIdx);
+            if (sectionUpdates.length === 0) return s;
+            
+            return {
+              ...s,
+              items: s.items.map((item, itemIdx) => {
+                const update = sectionUpdates.find(u => u.itemIdx === itemIdx);
+                return update ? { ...item, productImage: update.image } : item;
+              })
+            };
+          })
+        );
+      }
+    };
+
+    fetchProductImages();
+  }, [isReady, pricingSections]);
 
   // Focus management
   useEffect(()=>{
@@ -729,7 +790,8 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
             quantity: c.quantity || '1', 
             pst: c.pst === true, 
             gst: c.gst === true, 
-            productId: c.productId 
+            productId: c.productId,
+            productImage: c.productImage // Save product image
           })),
           pstRate: section.pstRate,
           gstRate: section.gstRate,
@@ -859,7 +921,8 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
             quantity: c.quantity || '1', 
             pst: c.pst === true, 
             gst: c.gst === true, 
-            productId: c.productId 
+            productId: c.productId,
+            productImage: c.productImage // Save product image
           })),
           pstRate: section.pstRate,
           gstRate: section.gstRate,
@@ -1020,7 +1083,9 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
             quantity: c.quantity || '1', 
             pst: c.pst === true, 
             gst: c.gst === true, 
-            productId: c.productId 
+            product_id: c.productId, // Use product_id for backend compatibility
+            productId: c.productId, // Keep both for compatibility
+            productImage: c.productImage // Include product image for PDF generation
           })),
           pstRate: section.pstRate,
           gstRate: section.gstRate,
@@ -1508,8 +1573,28 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
                     return (
                       <div key={i} className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-center">
                         <div className="col-span-1 sm:col-span-6 flex items-center gap-2 relative">
+                          {/* Product Image - show placeholder if no image */}
+                          <div className="flex-shrink-0 w-10 h-10 rounded border overflow-hidden bg-gray-100">
+                            {c.productImage ? (
+                              <img 
+                                src={c.productImage} 
+                                alt={c.name}
+                                className="w-full h-full object-cover"
+                                onError={(e) => {
+                                  // Fallback to placeholder on error
+                                  (e.target as HTMLImageElement).src = '/ui/assets/image placeholders/no_image.png';
+                                }}
+                              />
+                            ) : (
+                              <img 
+                                src="/ui/assets/image placeholders/no_image.png" 
+                                alt="No image"
+                                className="w-full h-full object-cover"
+                              />
+                            )}
+                          </div>
                           <input 
-                            className={`w-full border rounded px-3 py-2 ${disabled || c.productId ? 'bg-gray-50 cursor-not-allowed' : ''}`} 
+                            className={`flex-1 border rounded px-3 py-2 ${disabled || c.productId ? 'bg-gray-50 cursor-not-allowed' : ''}`} 
                             placeholder="Name" 
                             value={c.name} 
                             onChange={e=>{ 
@@ -2173,6 +2258,14 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
           onClose={() => setProductSearchModalOpen(null)}
           onSelect={(product: Material) => {
             const { sectionIndex, itemIndex } = productSearchModalOpen;
+            // Prepare product image URL from base64
+            let productImage: string | undefined = undefined;
+            if (product.image_base64) {
+              productImage = product.image_base64.startsWith('data:') 
+                ? product.image_base64 
+                : `data:image/jpeg;base64,${product.image_base64}`;
+            }
+            
             if (itemIndex === -1) {
               // Adding new item - append to the end of the section
               setPricingSections(arr => arr.map((s, idx) => 
@@ -2185,7 +2278,8 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
                         quantity: '1',
                         pst: false,
                         gst: false,
-                        productId: product.id
+                        productId: product.id,
+                        productImage: productImage
                       }]
                     }
                   : s
@@ -2203,7 +2297,8 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
                               name: product.name, 
                               price: formatAccounting(String(product.price || 0)),
                               quantity: x.quantity || '1',
-                              productId: product.id
+                              productId: product.id,
+                              productImage: productImage
                             }
                           : x
                       )
@@ -2356,12 +2451,12 @@ function AddProductModalForQuote({ open, onClose, onSelect }: { open: boolean, o
                         }}
                       />
                     ) : null}
-                    <div 
-                      className={`w-full h-full bg-gray-200 rounded flex items-center justify-center text-gray-400 text-xs ${selection.image_base64 ? 'hidden' : ''}`} 
-                      style={{ display: selection.image_base64 ? 'none' : 'flex' }}
-                    >
-                      No Image
-                    </div>
+                    <img 
+                      src="/ui/assets/image placeholders/no_image.png" 
+                      alt="No image"
+                      className={`w-full h-full object-contain rounded ${selection.image_base64 ? 'hidden' : ''}`}
+                      style={{ display: selection.image_base64 ? 'none' : 'block' }}
+                    />
                   </div>
                   <div className="flex-1 space-y-2">
                     <div className="flex items-center justify-between">
@@ -3005,9 +3100,12 @@ function SupplierProductModalForQuote({ open, onClose, onSelect }: { open: boole
                               }}
                             />
                           ) : null}
-                          <div className={`w-full h-full bg-gray-200 rounded flex items-center justify-center text-gray-400 text-xs ${product.image_base64 ? 'hidden' : ''}`} style={{ display: product.image_base64 ? 'none' : 'flex' }}>
-                            No Image
-                          </div>
+                          <img 
+                            src="/ui/assets/image placeholders/no_image.png" 
+                            alt="No image"
+                            className={`w-full h-full object-contain rounded ${product.image_base64 ? 'hidden' : ''}`}
+                            style={{ display: product.image_base64 ? 'none' : 'block' }}
+                          />
                         </div>
                         <div className="font-medium text-sm mb-1 line-clamp-2">{product.name}</div>
                         {product.category && (
