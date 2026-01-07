@@ -118,6 +118,125 @@ export type UserPermissionsRef = {
   save: () => Promise<void>;
 };
 
+type ProjectFilesCategoriesMode = 'read' | 'write';
+
+function ProjectFilesCategoriesModal({
+  mode,
+  open,
+  value,
+  onClose,
+  onSave,
+}: {
+  mode: ProjectFilesCategoriesMode;
+  open: boolean;
+  value: string[] | null; // null => all categories allowed
+  onClose: () => void;
+  onSave: (next: string[] | null) => void;
+}) {
+  const { data: categories } = useQuery({
+    queryKey: ['file-categories'],
+    queryFn: () => api<any[]>('GET', '/clients/file-categories'),
+    enabled: open,
+  });
+
+  const visibleCategories = useMemo(() => {
+    return (categories || []).filter((c: any) => String(c?.id || '') !== 'photos');
+  }, [categories]);
+
+  const [allowAll, setAllowAll] = useState<boolean>(value === null);
+  const [selected, setSelected] = useState<string[]>(Array.isArray(value) ? value : []);
+
+  useEffect(() => {
+    if (!open) return;
+    setAllowAll(value === null);
+    setSelected(Array.isArray(value) ? value : []);
+  }, [open, value]);
+
+  if (!open) return null;
+
+  const title = mode === 'read' ? 'View Files Categories' : 'Edit Files Categories';
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
+      <div className="bg-white rounded-xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
+        <div className="p-4 border-b flex items-center justify-between">
+          <div className="font-semibold">{title}</div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="w-8 h-8 rounded hover:bg-gray-100 grid place-items-center text-xl"
+            aria-label="Close"
+          >
+            ×
+          </button>
+        </div>
+
+        <div className="p-4 overflow-y-auto flex-1 space-y-4">
+          <label className="flex items-start gap-3 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={allowAll}
+              onChange={() => setAllowAll((v) => !v)}
+              className="mt-1 w-4 h-4 rounded border-gray-300 text-brand-red focus:ring-brand-red"
+            />
+            <div className="min-w-0">
+              <div className="font-medium text-sm">Allow all categories</div>
+              <div className="text-xs text-gray-500">If enabled, this user can access all file categories.</div>
+            </div>
+          </label>
+
+          <div className={`${allowAll ? 'opacity-50 pointer-events-none' : ''}`}>
+            <div className="text-xs font-semibold text-gray-600 mb-2 uppercase tracking-wide">Allowed categories</div>
+            <div className="grid sm:grid-cols-2 gap-2">
+              {visibleCategories.map((cat: any) => {
+                const checked = selected.includes(cat.id);
+                return (
+                  <label key={cat.id} className="flex items-center gap-2 p-2 rounded border hover:bg-gray-50 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => {
+                        setSelected((prev) => (checked ? prev.filter((x) => x !== cat.id) : [...prev, cat.id]));
+                      }}
+                      className="w-4 h-4 rounded border-gray-300 text-brand-red focus:ring-brand-red"
+                    />
+                    <span className="text-lg">{cat.icon || '📁'}</span>
+                    <span className="text-sm">{cat.name}</span>
+                  </label>
+                );
+              })}
+            </div>
+            {!allowAll && selected.length === 0 && (
+              <div className="mt-2 text-xs text-red-600">Select at least 1 category or enable “Allow all categories”.</div>
+            )}
+          </div>
+        </div>
+
+        <div className="p-4 border-t bg-gray-50 flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-4 py-2 rounded border bg-white hover:bg-gray-50 text-gray-700 text-sm font-medium"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              if (!allowAll && selected.length === 0) return;
+              onSave(allowAll ? null : selected);
+              onClose();
+            }}
+            className="px-4 py-2 rounded bg-brand-red hover:bg-red-700 text-white text-sm font-medium"
+          >
+            Save
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirtyChange?: (dirty: boolean) => void; canEdit?: boolean }>(({ userId, onDirtyChange, canEdit = true }, ref) => {
   const queryClient = useQueryClient();
   const { data:user, refetch: refetchUser } = useQuery({ queryKey:['user', userId], queryFn: ()=> api<any>('GET', `/users/${userId}`) });
@@ -132,6 +251,14 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
   const [initialIsAdmin, setInitialIsAdmin] = useState<boolean>(false);
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
 
+  // Project > Files per-category config (null means "all categories")
+  const [projectFilesReadCategories, setProjectFilesReadCategories] = useState<string[] | null>(null);
+  const [projectFilesWriteCategories, setProjectFilesWriteCategories] = useState<string[] | null>(null);
+  const [initialProjectFilesReadCategories, setInitialProjectFilesReadCategories] = useState<string[] | null>(null);
+  const [initialProjectFilesWriteCategories, setInitialProjectFilesWriteCategories] = useState<string[] | null>(null);
+  const [projectFilesCategoriesModalOpen, setProjectFilesCategoriesModalOpen] = useState(false);
+  const [projectFilesCategoriesMode, setProjectFilesCategoriesMode] = useState<ProjectFilesCategoriesMode>('read');
+
   // Initialize permissions from API data
   useEffect(() => {
     if (permissionsData?.permissions_by_category) {
@@ -144,6 +271,15 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
       setPermissions(perms);
       setInitialPermissions({ ...perms });
     }
+
+    // Initialize configs from API data (null => allow all)
+    const cfg = permissionsData?.configs || {};
+    const readCfg = Array.isArray(cfg['business:projects:files:categories:read']) ? cfg['business:projects:files:categories:read'] : null;
+    const writeCfg = Array.isArray(cfg['business:projects:files:categories:write']) ? cfg['business:projects:files:categories:write'] : null;
+    setProjectFilesReadCategories(readCfg);
+    setProjectFilesWriteCategories(writeCfg);
+    setInitialProjectFilesReadCategories(readCfg);
+    setInitialProjectFilesWriteCategories(writeCfg);
   }, [permissionsData]);
 
   // Initialize admin state from user data
@@ -174,8 +310,33 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
       if (permissions[key] !== initialPermissions[key]) return true;
     }
     
+    const norm = (v: string[] | null) => {
+      if (v === null) return null;
+      return Array.from(new Set(v.map(String))).sort();
+    };
+    const aRead = norm(projectFilesReadCategories);
+    const bRead = norm(initialProjectFilesReadCategories);
+    const aWrite = norm(projectFilesWriteCategories);
+    const bWrite = norm(initialProjectFilesWriteCategories);
+    if (JSON.stringify(aRead) !== JSON.stringify(bRead)) return true;
+    if (JSON.stringify(aWrite) !== JSON.stringify(bWrite)) return true;
+
     return false;
-  }, [permissions, initialPermissions, isAdminLocal, initialIsAdmin]);
+  }, [
+    permissions,
+    initialPermissions,
+    isAdminLocal,
+    initialIsAdmin,
+    projectFilesReadCategories,
+    initialProjectFilesReadCategories,
+    projectFilesWriteCategories,
+    initialProjectFilesWriteCategories,
+  ]);
+
+  const openProjectFilesCategoriesModal = (mode: ProjectFilesCategoriesMode) => {
+    setProjectFilesCategoriesMode(mode);
+    setProjectFilesCategoriesModalOpen(true);
+  };
 
   // Notify parent of dirty state changes
   useEffect(() => {
@@ -426,13 +587,21 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
         }
       }
       // Save permissions
-      await api('PUT', `/permissions/users/${userId}`, permissions);
+      const payload: any = {
+        ...permissions,
+        // Config keys: null means "all categories" => send [] to clear override
+        'business:projects:files:categories:read': projectFilesReadCategories ?? [],
+        'business:projects:files:categories:write': projectFilesWriteCategories ?? [],
+      };
+      await api('PUT', `/permissions/users/${userId}`, payload);
       toast.success('Permissions saved');
       await refetch();
       
       // Update initial state to reflect saved state
       setInitialPermissions({ ...permissions });
       setInitialIsAdmin(isAdminLocal);
+      setInitialProjectFilesReadCategories(projectFilesReadCategories);
+      setInitialProjectFilesWriteCategories(projectFilesWriteCategories);
       
       // If editing own permissions, invalidate /auth/me cache to refresh permissions
       if (currentUser && currentUser.id === userId) {
@@ -442,7 +611,18 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
       toast.error(e?.detail || 'Failed to save permissions');
       throw e;
     }
-  }, [user, isAdminLocal, userId, permissions, currentUser, queryClient, refetchUser, refetch]);
+  }, [
+    user,
+    isAdminLocal,
+    userId,
+    permissions,
+    projectFilesReadCategories,
+    projectFilesWriteCategories,
+    currentUser,
+    queryClient,
+    refetchUser,
+    refetch,
+  ]);
 
   // Expose methods to parent via ref
   useImperativeHandle(ref, () => ({
@@ -457,6 +637,16 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
 
   return (
     <div className="space-y-6 pb-24">
+      <ProjectFilesCategoriesModal
+        mode={projectFilesCategoriesMode}
+        open={projectFilesCategoriesModalOpen}
+        value={projectFilesCategoriesMode === 'read' ? projectFilesReadCategories : projectFilesWriteCategories}
+        onClose={() => setProjectFilesCategoriesModalOpen(false)}
+        onSave={(next) => {
+          if (projectFilesCategoriesMode === 'read') setProjectFilesReadCategories(next);
+          else setProjectFilesWriteCategories(next);
+        }}
+      />
       <div className="rounded-xl border bg-white p-4">
         <div className="mb-4">
           <h3 className="text-lg font-semibold mb-1">User Permissions</h3>
@@ -1110,6 +1300,24 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
                                               [WIP]
                                             </span>
                                           )}
+                                          {perm.key === 'business:projects:files:read' && !!permissions[perm.key] && canEdit && (
+                                            <button
+                                              type="button"
+                                              onClick={(e) => {
+                                                e.preventDefault();
+                                                e.stopPropagation();
+                                                openProjectFilesCategoriesModal('read');
+                                              }}
+                                              className="ml-auto w-7 h-7 rounded hover:bg-gray-100 grid place-items-center text-gray-500 hover:text-gray-800"
+                                              title="Configure allowed file categories"
+                                              aria-label="Configure allowed file categories"
+                                            >
+                                              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                              </svg>
+                                            </button>
+                                          )}
                                         </div>
                                         {perm.description && (
                                           <div className="text-xs text-gray-500 mt-0.5 line-clamp-1">{perm.description}</div>
@@ -1175,6 +1383,24 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
                                             <span className="text-xs px-1.5 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300 flex-shrink-0">
                                               [WIP]
                                             </span>
+                                          )}
+                                          {perm.key === 'business:projects:files:write' && !!permissions[perm.key] && canEdit && (
+                                            <button
+                                              type="button"
+                                              onClick={(e) => {
+                                                e.preventDefault();
+                                                e.stopPropagation();
+                                                openProjectFilesCategoriesModal('write');
+                                              }}
+                                              className="ml-auto w-7 h-7 rounded hover:bg-gray-100 grid place-items-center text-gray-500 hover:text-gray-800"
+                                              title="Configure allowed file categories"
+                                              aria-label="Configure allowed file categories"
+                                            >
+                                              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                              </svg>
+                                            </button>
                                           )}
                                         </div>
                                         {perm.description && (

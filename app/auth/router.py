@@ -867,6 +867,25 @@ def me(user: User = Depends(get_current_user)):
     )
 
 
+@router.get("/me/project-files-category-permissions")
+def my_project_files_category_permissions(user: User = Depends(get_current_user)):
+    """
+    Returns the configured per-category permissions for Project > Files.
+
+    Semantics:
+    - If a list is missing, it means "all categories allowed" (compatibility / default behavior).
+    - If present, it is an allow-list of category IDs.
+    """
+    overrides = getattr(user, "permissions_override", None) or {}
+    read_val = overrides.get("business:projects:files:categories:read", None)
+    write_val = overrides.get("business:projects:files:categories:write", None)
+
+    return {
+        "read_categories": read_val if isinstance(read_val, list) else None,
+        "write_categories": write_val if isinstance(write_val, list) else None,
+    }
+
+
 @router.post("/link-corporate")
 def link_corporate(email_corporate: str, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     user.email_corporate = email_corporate

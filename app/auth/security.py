@@ -1,7 +1,7 @@
 import uuid
 import time
 from datetime import datetime, timedelta, timezone
-from typing import Optional, List
+from typing import Optional, List, Literal
 
 import jwt
 from fastapi import Depends, HTTPException, status
@@ -185,6 +185,46 @@ def _has_permission(user: User, perm: str) -> bool:
     
     # Check the specific permission
     return bool(perm_map.get(perm))
+
+
+def has_project_files_category_permission(
+    user: User,
+    category_id: Optional[str],
+    action: Literal["read", "write"] = "read",
+) -> bool:
+    """
+    Category-level access control for Project > Files.
+
+    Rules:
+    - Requires macro permission:
+      - read: business:projects:files:read OR business:projects:files:write
+      - write: business:projects:files:write
+    - If allow-list config exists in permissions_override, category must be included.
+    - If allow-list config is missing, it means "all categories allowed" (default / compatibility).
+
+    Notes:
+    - Uncategorized files use `None` category; we treat it as "uncategorized" when comparing.
+    """
+    if action not in ("read", "write"):
+        return False
+
+    if action == "write":
+        if not _has_permission(user, "business:projects:files:write"):
+            return False
+    else:
+        if not (_has_permission(user, "business:projects:files:read") or _has_permission(user, "business:projects:files:write")):
+            return False
+
+    perm_map = _get_user_permission_map(user)
+    cfg_key = f"business:projects:files:categories:{action}"
+    allow_list = perm_map.get(cfg_key, None)
+
+    # Missing config => allow all categories
+    if not isinstance(allow_list, list):
+        return True
+
+    cat = (category_id or "uncategorized").strip() or "uncategorized"
+    return cat in [str(x) for x in allow_list if isinstance(x, str)]
 
 
 def can_approve_timesheet(approver: User, target_user_id: str, db: Session) -> bool:
