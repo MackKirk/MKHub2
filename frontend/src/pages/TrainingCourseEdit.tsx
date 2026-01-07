@@ -197,24 +197,39 @@ export default function TrainingCourseEdit() {
     return <div className="p-4">Loading course...</div>;
   }
 
+  const todayLabel = useMemo(() => {
+    return new Date().toLocaleDateString('en-CA', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+    });
+  }, []);
+
   return (
     <div>
-      <div className="mb-3 rounded-xl border bg-gradient-to-br from-[#7f1010] to-[#a31414] text-white p-4">
-        <div className="flex items-center justify-between">
+      <div className="bg-slate-200/50 rounded-[12px] border border-slate-200 flex items-center justify-between py-4 px-6 mb-6">
+        <div className="flex items-center justify-between flex-1">
           <div>
-            <div className="text-2xl font-extrabold">
+            <div className="text-xl font-bold text-gray-900 tracking-tight mb-0.5">
               {isNew ? 'Create New Course' : `Edit: ${course?.title || 'Course'}`}
             </div>
-            <div className="text-sm opacity-90">
+            <div className="text-sm text-gray-500 font-medium">
               {isNew ? 'Set up your training course' : 'Manage course content and settings'}
             </div>
           </div>
-          <button
-            onClick={() => navigate('/training/admin')}
-            className="px-4 py-2 bg-white text-[#d11616] rounded-lg font-semibold hover:bg-gray-100 transition-colors"
-          >
-            ← Back
-          </button>
+          <div className="flex items-center gap-4">
+            <div className="text-right">
+              <div className="text-xs text-gray-400 mb-1.5 font-medium uppercase tracking-wide">Today</div>
+              <div className="text-sm font-semibold text-gray-700">{todayLabel}</div>
+            </div>
+            <button
+              onClick={() => navigate('/training/admin')}
+              className="px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-sm text-gray-700"
+            >
+              ← Back
+            </button>
+          </div>
         </div>
       </div>
 

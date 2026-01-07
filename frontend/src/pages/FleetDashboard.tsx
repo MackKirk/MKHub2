@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { api } from '@/lib/api';
+import { useMemo } from 'react';
 
 type DashboardData = {
   total_fleet_assets: number;
@@ -23,12 +24,27 @@ export default function FleetDashboard() {
     queryFn: () => api<DashboardData>('GET', '/fleet/dashboard'),
   });
 
+  const todayLabel = useMemo(() => {
+    return new Date().toLocaleDateString('en-CA', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+    });
+  }, []);
+
   if (isLoading) {
     return (
       <div className="space-y-4">
-        <div className="mb-3 rounded-xl border bg-gradient-to-br from-[#7f1010] to-[#a31414] text-white p-4">
-          <div className="text-2xl font-extrabold">Fleet & Equipment Management</div>
-          <div className="text-sm opacity-90">Dashboard overview</div>
+        <div className="bg-slate-200/50 rounded-[12px] border border-slate-200 flex items-center justify-between py-4 px-6 mb-6">
+          <div>
+            <div className="text-xl font-bold text-gray-900 tracking-tight mb-0.5">Fleet & Equipment Management</div>
+            <div className="text-sm text-gray-500 font-medium">Dashboard overview</div>
+          </div>
+          <div className="text-right">
+            <div className="text-xs text-gray-400 mb-1.5 font-medium uppercase tracking-wide">Today</div>
+            <div className="text-sm font-semibold text-gray-700">{todayLabel}</div>
+          </div>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           {[1, 2, 3, 4].map(i => (
@@ -57,9 +73,15 @@ export default function FleetDashboard() {
 
   return (
     <div className="space-y-4">
-      <div className="mb-3 rounded-xl border bg-gradient-to-br from-[#7f1010] to-[#a31414] text-white p-4">
-        <div className="text-2xl font-extrabold">Fleet & Equipment Management</div>
-        <div className="text-sm opacity-90">Dashboard overview</div>
+      <div className="bg-slate-200/50 rounded-[12px] border border-slate-200 flex items-center justify-between py-4 px-6 mb-6">
+        <div>
+          <div className="text-xl font-bold text-gray-900 tracking-tight mb-0.5">Fleet & Equipment Management</div>
+          <div className="text-sm text-gray-500 font-medium">Dashboard overview</div>
+        </div>
+        <div className="text-right">
+          <div className="text-xs text-gray-400 mb-1.5 font-medium uppercase tracking-wide">Today</div>
+          <div className="text-sm font-semibold text-gray-700">{todayLabel}</div>
+        </div>
       </div>
 
       {/* Stats Cards */}

@@ -195,7 +195,7 @@ export default function ProjectDetail(){
     
     const searchParams = new URLSearchParams(location.search);
     const tabParam = searchParams.get('tab') as 'overview'|'general'|'reports'|'dispatch'|'timesheet'|'files'|'photos'|'proposal'|'estimate'|'orders'|null;
-    if (tabParam && ['overview','general','reports','dispatch','timesheet','files','photos','proposal','estimate','orders'].includes(tabParam)) {
+    if (tabParam && ['overview','general','reports','dispatch','timesheet','files','photos','proposal','orders'].includes(tabParam)) {
       // Check permission before setting tab
       if (tabParam === 'overview' || hasTabPermission(tabParam)) {
         setTab(tabParam);
@@ -256,6 +256,8 @@ export default function ProjectDetail(){
   const [editProjectNameModal, setEditProjectNameModal] = useState(false);
   const [editSiteModal, setEditSiteModal] = useState(false);
   const [editEstimatorModal, setEditEstimatorModal] = useState(false);
+  const [editEtaModal, setEditEtaModal] = useState(false);
+  const [editStartDateModal, setEditStartDateModal] = useState(false);
   useEffect(()=>{
     (async()=>{
       try{
@@ -272,8 +274,8 @@ export default function ProjectDetail(){
 
   // Base available tabs
   const baseAvailableTabs = proj?.is_bidding 
-    ? (['overview','reports','files','proposal','estimate'] as const)
-    : (['overview','reports','dispatch','timesheet','files','proposal','estimate','orders'] as const);
+    ? (['overview','reports','files','proposal'] as const)
+    : (['overview','reports','dispatch','timesheet','files','proposal','orders'] as const);
   
   // Filter tabs based on permissions (only when user data is loaded)
   const availableTabs = useMemo(() => {
@@ -333,24 +335,40 @@ export default function ProjectDetail(){
   const statusLabel = String((proj as any)?.status_label||'').trim();
   const statusColor = ((settings||{}).project_statuses||[]).find((s:any)=>s.label===statusLabel)?.value || '#e5e7eb';
 
+  const todayLabel = useMemo(() => {
+    return new Date().toLocaleDateString('en-CA', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+    });
+  }, []);
+
   return (
     <div>
       {/* Title Bar */}
-      <div className="mb-4 rounded-xl border bg-gradient-to-br from-[#7f1010] to-[#a31414] text-white p-4">
-        <div className="text-2xl font-extrabold">{proj?.is_bidding ? 'Opportunity Information' : 'Project Information'}</div>
-        <div className="text-sm opacity-90">{proj?.is_bidding ? 'Overview, files, proposal and estimate.' : 'Overview, files, schedule and contacts.'}</div>
-      </div>
-      <div className="mb-3">
-        <button
-          onClick={() => nav(proj?.is_bidding ? '/opportunities' : '/projects')}
-          className="p-2 rounded-lg border hover:bg-gray-50 transition-colors flex items-center gap-2"
-          title={proj?.is_bidding ? 'Back to Opportunities' : 'Back to Projects'}
-        >
-          <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-          </svg>
-          <span className="text-sm text-gray-700 font-medium">{proj?.is_bidding ? 'Back to Opportunities' : 'Back to Projects'}</span>
-        </button>
+      <div className="bg-slate-200/50 rounded-[12px] border border-slate-200 flex items-center justify-between py-4 px-6 mb-6">
+        <div className="flex items-center gap-4 flex-1">
+          <button
+            onClick={() => nav(proj?.is_bidding ? '/opportunities' : '/projects')}
+            className="p-2 rounded-lg hover:bg-gray-200 transition-colors flex items-center justify-center"
+            title={proj?.is_bidding ? 'Back to Opportunities' : 'Back to Projects'}
+          >
+            <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+            </svg>
+          </button>
+          <div>
+            <div className="text-xl font-bold text-gray-900 tracking-tight mb-0.5">
+              {proj?.is_bidding ? 'Opportunity Information' : 'Project Information'}
+            </div>
+            <div className="text-sm text-gray-500 font-medium">{proj?.is_bidding ? 'Overview, files, proposal and estimate.' : 'Overview, files, schedule and contacts.'}</div>
+          </div>
+        </div>
+        <div className="text-right">
+          <div className="text-xs text-gray-400 mb-1.5 font-medium uppercase tracking-wide">Today</div>
+          <div className="text-sm font-semibold text-gray-700">{todayLabel}</div>
+        </div>
       </div>
 
       {/* Hero Section - Based on Mockup */}
@@ -408,144 +426,48 @@ export default function ProjectDetail(){
         <div className="mb-4 rounded-xl border bg-white overflow-hidden relative">
           <div className="p-6">
             <div className="flex gap-6 items-start">
-              {/* Left Section - Image (not square) */}
-              <div className="w-64 h-48 rounded-xl border overflow-hidden flex-shrink-0 group relative">
-                <img src={cover} className="w-full h-full object-cover" />
-                <button onClick={()=>setPickerOpen(true)} className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white transition-opacity">✏️ Change</button>
+              {/* Left Section - Image (centered within its column) */}
+              <div className="w-64 flex-shrink-0 self-stretch flex items-center justify-center">
+                <div className="w-64 h-48 rounded-xl border overflow-hidden group relative">
+                  <img src={cover} className="w-full h-full object-cover" />
+                  <button onClick={()=>setPickerOpen(true)} className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white transition-opacity">✏️ Change</button>
+                </div>
               </div>
               
               {/* Middle Section - General Information */}
               <div className="flex-1 min-w-0">
                 <div className="mb-4">
-                  <h3 className="font-semibold text-lg mb-2">General Information</h3>
-                  {proj?.client_id && (
-                    <div className="text-sm">
-                      <span className="text-gray-600">Customer: </span>
-                      <Link 
-                        to={`/customers/${encodeURIComponent(String(proj.client_id))}`}
-                        className="text-[#7f1010] hover:text-[#a31414] hover:underline font-medium"
-                      >
-                        {proj?.client_display_name || proj?.client_name || 'View Customer'}
-                      </Link>
-                    </div>
-                  )}
+                  <h3 className="font-semibold text-lg">General Information</h3>
                 </div>
-                <div className="grid grid-cols-2 gap-4 mb-4">
-                  <div>
-                    <div className="flex items-center gap-1.5 mb-1">
-                      <label className="text-xs text-gray-600 block">Project Name</label>
-                      {hasEditPermission && (
-                        <button
-                          onClick={() => setEditProjectNameModal(true)}
-                          className="text-gray-400 hover:text-[#7f1010] transition-colors"
-                          title="Edit Project Name"
+
+                {/* Align by columns, using the Customer row as the top reference */}
+                <div className="grid grid-cols-3 gap-6">
+                  {/* Column 1 */}
+                  <div className="min-w-0">
+                    {/* Customer */}
+                    <div className="mb-4">
+                      <div className="text-xs text-gray-600 mb-1">Customer</div>
+                      {proj?.client_id ? (
+                        <Link
+                          to={`/customers/${encodeURIComponent(String(proj.client_id))}`}
+                          className="text-sm font-medium text-[#7f1010] hover:text-[#a31414] hover:underline break-words"
                         >
-                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                          </svg>
-                        </button>
+                          {proj?.client_display_name || proj?.client_name || 'View Customer'}
+                        </Link>
+                      ) : (
+                        <div className="text-sm font-medium text-gray-400">—</div>
                       )}
                     </div>
-                    <div className="text-sm font-medium break-words">{proj?.name||'—'}</div>
-                  </div>
-                  <div>
-                    <label className="text-xs text-gray-600 block mb-1">Code</label>
-                    <div className="text-sm font-medium">{proj?.code||'—'}</div>
-                  </div>
-                  <div className="col-span-2">
-                    <div className="flex items-center gap-1.5 mb-1">
-                      <label className="text-xs text-gray-600 block">Site</label>
-                      {hasEditPermission && (
-                        <button
-                          onClick={() => setEditSiteModal(true)}
-                          className="text-gray-400 hover:text-[#7f1010] transition-colors"
-                          title="Edit Site"
-                        >
-                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                          </svg>
-                        </button>
-                      )}
-                    </div>
-                    <div className="text-sm font-medium">
-                      {(() => {
-                        const siteName = proj?.site_name;
-                        const addressLine1 = proj?.site_address_line1 || proj?.address;
-                        const addressLine2 = proj?.site_address_line2;
-                        const city = proj?.address_city||proj?.site_city;
-                        const province = proj?.address_province||proj?.site_province;
-                        const postal = proj?.address_postal_code||proj?.site_postal_code;
-                        const country = proj?.address_country||proj?.site_country;
-                        
-                        // Build full address for tooltip
-                        const addressParts = [];
-                        if (addressLine1) addressParts.push(addressLine1);
-                        if (addressLine2) addressParts.push(addressLine2);
-                        if (city) addressParts.push(city);
-                        if (province) addressParts.push(province);
-                        if (postal) addressParts.push(postal);
-                        if (country) addressParts.push(country);
-                        const fullAddress = addressParts.length > 0 ? addressParts.join(', ') : null;
-                        
-                        // Display name (just site name or fallback)
-                        const displayName = siteName || (city && province ? `${city}, ${province}` : city || province || '—');
-                        
-                        // If we have a full address, show tooltip on hover
-                        if (fullAddress && displayName !== '—') {
-                          return (
-                            <div className="relative group inline-block">
-                              <span className="cursor-help underline decoration-dotted decoration-gray-400 hover:decoration-gray-600 transition-colors">
-                                {displayName}
-                              </span>
-                              {/* Tooltip overlay */}
-                              <div className="absolute left-0 bottom-full mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg shadow-xl whitespace-normal max-w-xs opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 pointer-events-none z-50">
-                                {siteName && (
-                                  <div className="font-semibold mb-1.5 text-white">{siteName}</div>
-                                )}
-                                <div className="text-gray-200 leading-relaxed">{fullAddress}</div>
-                                {/* Arrow */}
-                                <div className="absolute -bottom-1 left-4 w-2 h-2 bg-gray-900 rotate-45"></div>
-                              </div>
-                            </div>
-                          );
-                        }
-                        
-                        return displayName;
-                      })()}
-                    </div>
-                  </div>
-                </div>
-                
-                {/* Progress and Status moved here */}
-                <div className={proj?.is_bidding ? "grid grid-cols-1 gap-4" : "grid grid-cols-2 gap-4"}>
-                  <div>
-                    <div className="flex items-center gap-1.5 mb-2">
-                      <label className="text-xs text-gray-600 block">Status</label>
-                      {hasEditPermission && (
-                        <button
-                          onClick={() => setEditStatusModal(true)}
-                          className="text-gray-400 hover:text-[#7f1010] transition-colors"
-                          title="Edit Status"
-                        >
-                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                          </svg>
-                        </button>
-                      )}
-                    </div>
-                    <span className="px-3 py-1.5 rounded text-sm font-medium inline-block" style={{ backgroundColor: statusColor, color: '#000' }}>{statusLabel||'—'}</span>
-                    {statusLabel && <StatusTimer project={proj} />}
-                  </div>
-                  {/* Progress - only show for projects, not opportunities */}
-                  {!proj?.is_bidding && (
-                    <div>
-                      <div className="flex items-center gap-1.5 mb-2">
-                        <label className="text-xs text-gray-600 block">Progress</label>
+
+                    {/* Project Name */}
+                    <div className="mb-4">
+                      <div className="flex items-center gap-1.5 mb-1">
+                        <label className="text-xs text-gray-600 block">Project Name</label>
                         {hasEditPermission && (
                           <button
-                            onClick={() => setEditProgressModal(true)}
+                            onClick={() => setEditProjectNameModal(true)}
                             className="text-gray-400 hover:text-[#7f1010] transition-colors"
-                            title="Edit Progress"
+                            title="Edit Project Name"
                           >
                             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
@@ -553,74 +475,219 @@ export default function ProjectDetail(){
                           </button>
                         )}
                       </div>
-                      <div className="flex items-center gap-3">
-                        <div className="flex-1 h-3 bg-gray-200 rounded-full overflow-hidden">
-                          <div className="h-full bg-brand-red rounded-full transition-all" style={{ width: `${Math.max(0,Math.min(100,Number(proj?.progress||0)))}%` }} />
-                        </div>
-                        <span className="text-sm font-semibold text-gray-700 w-12 text-right">{Math.max(0,Math.min(100,Number(proj?.progress||0)))}%</span>
+                      <div className="text-sm font-medium break-words">{proj?.name || '—'}</div>
+                    </div>
+
+                    {/* Site */}
+                    <div className="mb-4">
+                      <div className="flex items-center gap-1.5 mb-1">
+                        <label className="text-xs text-gray-600 block">Site</label>
+                        {hasEditPermission && (
+                          <button
+                            onClick={() => setEditSiteModal(true)}
+                            className="text-gray-400 hover:text-[#7f1010] transition-colors"
+                            title="Edit Site"
+                          >
+                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                            </svg>
+                          </button>
+                        )}
+                      </div>
+                      <div className="text-sm font-medium">
+                        {(() => {
+                          const siteName = proj?.site_name;
+                          const addressLine1 = proj?.site_address_line1 || proj?.address;
+                          const addressLine2 = (proj as any)?.site_address_line2;
+                          const city = proj?.address_city || proj?.site_city;
+                          const province = proj?.address_province || proj?.site_province;
+                          const postal = proj?.address_postal_code || proj?.site_postal_code;
+                          const country = proj?.address_country || proj?.site_country;
+
+                          const addressParts = [];
+                          if (addressLine1) addressParts.push(addressLine1);
+                          if (addressLine2) addressParts.push(addressLine2);
+                          if (city) addressParts.push(city);
+                          if (province) addressParts.push(province);
+                          if (postal) addressParts.push(postal);
+                          if (country) addressParts.push(country);
+                          const fullAddress = addressParts.length > 0 ? addressParts.join(', ') : null;
+
+                          const displayName = siteName || (city && province ? `${city}, ${province}` : city || province || '—');
+
+                          if (fullAddress && displayName !== '—') {
+                            return (
+                              <div className="relative group inline-block">
+                                <span className="cursor-help underline decoration-dotted decoration-gray-400 hover:decoration-gray-600 transition-colors">
+                                  {displayName}
+                                </span>
+                                <div className="absolute left-0 bottom-full mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg shadow-xl whitespace-normal max-w-xs opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 pointer-events-none z-50">
+                                  {siteName && <div className="font-semibold mb-1.5 text-white">{siteName}</div>}
+                                  <div className="text-gray-200 leading-relaxed">{fullAddress}</div>
+                                  <div className="absolute -bottom-1 left-4 w-2 h-2 bg-gray-900 rotate-45"></div>
+                                </div>
+                              </div>
+                            );
+                          }
+
+                          return displayName;
+                        })()}
                       </div>
                     </div>
-                  )}
-                </div>
-              </div>
-              
-              {/* Right Section - Estimator, On-site Leads, ETA */}
-              <div className="w-80 flex-shrink-0">
-                <div className="mb-6">
-                  <div className="flex items-center gap-1.5 mb-2">
-                    <label className="text-xs text-gray-600 block">Estimator</label>
-                    {hasEditPermission && (
-                      <button
-                        onClick={() => setEditEstimatorModal(true)}
-                        className="text-gray-400 hover:text-[#7f1010] transition-colors"
-                        title="Edit Estimator"
-                      >
-                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                        </svg>
-                      </button>
+
+                    {/* Status */}
+                    <div>
+                      <div className="flex items-center gap-1.5 mb-2">
+                        <label className="text-xs text-gray-600 block">Status</label>
+                        {hasEditPermission && (
+                          <button
+                            onClick={() => setEditStatusModal(true)}
+                            className="text-gray-400 hover:text-[#7f1010] transition-colors"
+                            title="Edit Status"
+                          >
+                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                            </svg>
+                          </button>
+                        )}
+                      </div>
+                      <span className="px-3 py-1.5 rounded text-sm font-medium inline-block" style={{ backgroundColor: statusColor, color: '#000' }}>
+                        {statusLabel || '—'}
+                      </span>
+                      {statusLabel && <StatusTimer project={proj} />}
+                    </div>
+                  </div>
+
+                  {/* Column 2 */}
+                  <div className="min-w-0">
+                    {/* Code */}
+                    <div className="mb-4">
+                      <label className="text-xs text-gray-600 block mb-1">Code</label>
+                      <div className="text-sm font-medium">{proj?.code || '—'}</div>
+                    </div>
+
+                    {/* Start Date */}
+                    <div className="mb-4">
+                      <div className="flex items-center gap-1.5 mb-1">
+                        <label className="text-xs text-gray-600 block">Start Date</label>
+                        {hasEditPermission && (
+                          <button
+                            onClick={() => setEditStartDateModal(true)}
+                            className="text-gray-400 hover:text-[#7f1010] transition-colors"
+                            title="Edit Start Date"
+                          >
+                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                            </svg>
+                          </button>
+                        )}
+                      </div>
+                      <div className="text-sm font-medium">{proj?.date_start ? proj.date_start.slice(0, 10) : '—'}</div>
+                    </div>
+
+                    {/* ETA */}
+                    <div className="mb-4">
+                      <div className="flex items-center gap-1.5 mb-1">
+                        <label className="text-xs text-gray-600 block">ETA</label>
+                        {hasEditPermission && (
+                          <button
+                            onClick={() => setEditEtaModal(true)}
+                            className="text-gray-400 hover:text-[#7f1010] transition-colors"
+                            title="Edit ETA"
+                          >
+                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                            </svg>
+                          </button>
+                        )}
+                      </div>
+                      <div className="text-sm font-medium">{proj?.date_eta ? proj.date_eta.slice(0, 10) : '—'}</div>
+                    </div>
+
+                    {/* Progress - only show for projects, not opportunities */}
+                    {!proj?.is_bidding && (
+                      <div>
+                        <div className="flex items-center gap-1.5 mb-2">
+                          <label className="text-xs text-gray-600 block">Progress</label>
+                          {hasEditPermission && (
+                            <button
+                              onClick={() => setEditProgressModal(true)}
+                              className="text-gray-400 hover:text-[#7f1010] transition-colors"
+                              title="Edit Progress"
+                            >
+                              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                              </svg>
+                            </button>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-3">
+                          {/* smaller bar */}
+                          <div className="flex-1 max-w-[280px] h-2 bg-gray-200 rounded-full overflow-hidden">
+                            <div
+                              className="h-full bg-brand-red rounded-full transition-all"
+                              style={{ width: String(Math.max(0, Math.min(100, Number(proj?.progress || 0)))) + '%' }}
+                            />
+                          </div>
+                          <span className="text-sm font-semibold text-gray-700 w-12 text-right">
+                            {Math.max(0, Math.min(100, Number(proj?.progress || 0)))}%
+                          </span>
+                        </div>
+                      </div>
                     )}
                   </div>
-                  {estimator ? (
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-full bg-indigo-600 flex items-center justify-center text-white font-semibold">
-                        {(estimator.name||estimator.username||'E')[0].toUpperCase()}
+                  
+                  {/* Column 3 */}
+                  <div className="min-w-0">
+                    <div className="mb-6">
+                      <div className="flex items-center gap-1.5 mb-2">
+                        <label className="text-xs text-gray-600 block">Estimator</label>
+                        {hasEditPermission && (
+                          <button
+                            onClick={() => setEditEstimatorModal(true)}
+                            className="text-gray-400 hover:text-[#7f1010] transition-colors"
+                            title="Edit Estimator"
+                          >
+                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                            </svg>
+                          </button>
+                        )}
                       </div>
-                      <div className="flex-1">
-                        <div className="text-sm font-medium">{estimator.name||estimator.username}</div>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="text-sm text-gray-400">—</div>
-                  )}
-                </div>
-
-                {!proj?.is_bidding && (
-                  <div className="mb-6">
-                    <label className="text-xs text-gray-600 block mb-2">On-site Leads</label>
-                    <button
-                      onClick={() => setShowOnSiteLeadsModal(true)}
-                      className="px-4 py-2 rounded border bg-white hover:bg-gray-50 text-sm font-medium text-gray-700 flex items-center gap-2"
-                    >
-                      <span>Manage On-site Leads</span>
-                      {proj?.division_onsite_leads && Object.keys(proj.division_onsite_leads).length > 0 && (
-                        <span className="px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 text-xs font-semibold">
-                          {Object.keys(proj.division_onsite_leads).length}
-                        </span>
+                      {estimator ? (
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-full bg-indigo-600 flex items-center justify-center text-white font-semibold">
+                            {(estimator.name || estimator.username || 'E')[0].toUpperCase()}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="text-sm font-medium truncate">{estimator.name || estimator.username}</div>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="text-sm text-gray-400">—</div>
                       )}
-                    </button>
-                  </div>
-                )}
+                    </div>
 
-                {/* Project Divisions */}
-                <ProjectDivisionsHeroSection projectId={String(id)} proj={proj} hasEditPermission={hasEditPermission} />
-                
-                {proj?.date_eta && (
-                  <div>
-                    <label className="text-xs text-gray-600 block mb-2">ETA</label>
-                    <div className="text-sm font-medium text-gray-900">{proj.date_eta.slice(0,10)}</div>
+                    {!proj?.is_bidding && (
+                      <div className="mb-6">
+                        <label className="text-xs text-gray-600 block mb-2">On-site Leads</label>
+                        <button
+                          onClick={() => setShowOnSiteLeadsModal(true)}
+                          className="px-4 py-2 rounded border bg-white hover:bg-gray-50 text-sm font-medium text-gray-700 flex items-center gap-2"
+                        >
+                          <span>Manage On-site Leads</span>
+                          {proj?.division_onsite_leads && Object.keys(proj.division_onsite_leads).length > 0 && (
+                            <span className="px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 text-xs font-semibold">
+                              {Object.keys(proj.division_onsite_leads).length}
+                            </span>
+                          )}
+                        </button>
+                      </div>
+                    )}
+
+                    <ProjectDivisionsHeroSection projectId={String(id)} proj={proj} hasEditPermission={hasEditPermission} />
                   </div>
-                )}
+                </div>
               </div>
             </div>
           </div>
@@ -791,7 +858,7 @@ export default function ProjectDetail(){
             <>
               {tab==='overview' && (
                 <div className="grid md:grid-cols-3 gap-4">
-                  <ProjectGeneralInfoCard projectId={String(id)} proj={proj||{}} files={files||[]} />
+                  <ProjectGeneralInfoCard projectId={String(id)} proj={proj||{}} files={files||[]} hasEditPermission={hasEditPermission} />
                   <ProjectQuickEdit projectId={String(id)} proj={proj||{}} settings={settings||{}} />
                   <ProjectContactCard projectId={String(id)} proj={proj||{}} clientId={proj?.client_id ? String(proj.client_id) : undefined} clientFiles={clientFiles||[]} />
                   <div className="rounded-xl border bg-white p-4">
@@ -825,7 +892,7 @@ export default function ProjectDetail(){
               )}
 
               {tab==='proposal' && (
-                <ProjectProposalTab projectId={String(id)} clientId={String(proj?.client_id||'')} siteId={String(proj?.site_id||'')} proposals={proposals||[]} statusLabel={proj?.status_label||''} settings={settings||{}} />
+                <ProjectProposalTab projectId={String(id)} clientId={String(proj?.client_id||'')} siteId={String(proj?.site_id||'')} proposals={proposals||[]} statusLabel={proj?.status_label||''} settings={settings||{}} isBidding={proj?.is_bidding} />
               )}
 
               {tab==='estimate' && (
@@ -1045,6 +1112,184 @@ export default function ProjectDetail(){
           }}
         />
       )}
+
+      {/* Edit Start Date Modal */}
+      {editStartDateModal && (
+        <EditStartDateModal
+          projectId={String(id)}
+          currentStartDate={proj?.date_start ? proj.date_start.slice(0,10) : ''}
+          onClose={() => setEditStartDateModal(false)}
+          onSave={async () => {
+            await queryClient.invalidateQueries({ queryKey: ['project', id] });
+            setEditStartDateModal(false);
+          }}
+        />
+      )}
+
+      {/* Edit ETA Modal */}
+      {editEtaModal && (
+        <EditEtaModal
+          projectId={String(id)}
+          currentEta={proj?.date_eta ? proj.date_eta.slice(0,10) : ''}
+          onClose={() => setEditEtaModal(false)}
+          onSave={async () => {
+            await queryClient.invalidateQueries({ queryKey: ['project', id] });
+            setEditEtaModal(false);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function EditStartDateModal({ projectId, currentStartDate, onClose, onSave }: {
+  projectId: string;
+  currentStartDate: string;
+  onClose: () => void;
+  onSave: () => Promise<void>;
+}) {
+  const [startDate, setStartDate] = useState(currentStartDate);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    setStartDate(currentStartDate);
+  }, [currentStartDate]);
+
+  const handleSave = async () => {
+    if (startDate === currentStartDate) {
+      onClose();
+      return;
+    }
+
+    try {
+      setSaving(true);
+      await api('PATCH', `/projects/${projectId}`, {
+        date_start: startDate || null
+      });
+      toast.success('Start date updated');
+      await onSave();
+    } catch (e: any) {
+      toast.error(e?.response?.data?.detail || 'Failed to update start date');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-xl w-full max-w-md shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="p-4 border-b flex items-center justify-between">
+          <h3 className="text-lg font-semibold">Edit Start Date</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+        <div className="p-4 space-y-4">
+          <div>
+            <label className="text-sm font-medium text-gray-700 mb-2 block">Start Date</label>
+            <input
+              type="date"
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+              className="w-full border rounded px-3 py-2"
+            />
+          </div>
+        </div>
+        <div className="p-4 border-t flex justify-end gap-2">
+          <button
+            onClick={onClose}
+            disabled={saving}
+            className="px-4 py-2 rounded border bg-white hover:bg-gray-50 text-gray-700 font-medium disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="px-4 py-2 rounded bg-brand-red text-white font-medium disabled:opacity-50"
+          >
+            {saving ? 'Saving...' : 'Save'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function EditEtaModal({ projectId, currentEta, onClose, onSave }: {
+  projectId: string;
+  currentEta: string;
+  onClose: () => void;
+  onSave: () => Promise<void>;
+}) {
+  const [eta, setEta] = useState(currentEta);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    setEta(currentEta);
+  }, [currentEta]);
+
+  const handleSave = async () => {
+    if (eta === currentEta) {
+      onClose();
+      return;
+    }
+
+    try {
+      setSaving(true);
+      await api('PATCH', `/projects/${projectId}`, {
+        date_eta: eta || null
+      });
+      toast.success('ETA updated');
+      await onSave();
+    } catch (e: any) {
+      toast.error(e?.response?.data?.detail || 'Failed to update ETA');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-xl w-full max-w-md shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="p-4 border-b flex items-center justify-between">
+          <h3 className="text-lg font-semibold">Edit ETA</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+        <div className="p-4 space-y-4">
+          <div>
+            <label className="text-sm font-medium text-gray-700 mb-2 block">ETA Date</label>
+            <input
+              type="date"
+              value={eta}
+              onChange={(e) => setEta(e.target.value)}
+              className="w-full border rounded px-3 py-2"
+            />
+          </div>
+        </div>
+        <div className="p-4 border-t flex justify-end gap-2">
+          <button
+            onClick={onClose}
+            disabled={saving}
+            className="px-4 py-2 rounded border bg-white hover:bg-gray-50 text-gray-700 font-medium disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="px-4 py-2 rounded bg-brand-red text-white font-medium disabled:opacity-50"
+          >
+            {saving ? 'Saving...' : 'Save'}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -2629,7 +2874,7 @@ function ProjectFilesTabEnhanced({ projectId, files, onRefresh }:{ projectId:str
   );
 }
 
-function ProjectProposalTab({ projectId, clientId, siteId, proposals, statusLabel, settings }:{ projectId:string, clientId:string, siteId?:string, proposals: Proposal[], statusLabel:string, settings:any }){
+function ProjectProposalTab({ projectId, clientId, siteId, proposals, statusLabel, settings, isBidding }:{ projectId:string, clientId:string, siteId?:string, proposals: Proposal[], statusLabel:string, settings:any, isBidding?:boolean }){
   const queryClient = useQueryClient();
   
   // Check permissions for proposals
@@ -2655,13 +2900,29 @@ function ProjectProposalTab({ projectId, clientId, siteId, proposals, statusLabe
   });
   
   // Check if editing is allowed based on status and permissions
-  // Only allow editing if status is "prospecting" AND user has edit permission
+  // For opportunities (is_bidding = true): only allow editing if status is "prospecting"
+  // Restrict editing for "Sent to Customer" and "Refused" statuses
+  // For projects (is_bidding = false): use similar logic but check settings
   const canEdit = useMemo(()=>{
     if (!hasEditProposalPermission) return false; // No permission = no edit
     if (!statusLabel) return true; // Default to allow if no status
+    
+    const statusLabelLower = statusLabel.toLowerCase().trim();
+    
+    // For opportunities (is_bidding = true)
+    if (isBidding) {
+      // Only allow editing if status is "prospecting"
+      // Restrict for "Sent to Customer" and "Refused"
+      if (statusLabelLower === 'prospecting') return true;
+      if (statusLabelLower === 'sent to customer' || statusLabelLower === 'refused') return false;
+      // Default to allow for other statuses (backward compatibility)
+      return true;
+    }
+    
+    // For projects (is_bidding = false), use existing logic
     // Only allow editing if status is "prospecting"
-    return statusLabel.toLowerCase() === 'prospecting';
-  }, [statusLabel, hasEditProposalPermission]);
+    return statusLabelLower === 'prospecting';
+  }, [statusLabel, hasEditProposalPermission, isBidding]);
   
   const location = useLocation();
   const nav = useNavigate();
@@ -5703,7 +5964,7 @@ function ProjectDivisionsHeroSection({ projectId, proj, hasEditPermission }: { p
   return (
     <>
       <div className="mb-6">
-        <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center gap-1.5 mb-2">
           <label className="text-xs text-gray-600 block">Project Divisions</label>
           {hasEditPermission && (
             <button
@@ -5711,7 +5972,7 @@ function ProjectDivisionsHeroSection({ projectId, proj, hasEditPermission }: { p
               className="text-gray-400 hover:text-[#7f1010] transition-colors"
               title="Edit Divisions"
             >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
               </svg>
             </button>
@@ -5869,13 +6130,15 @@ function EditDivisionsModal({ projectId, currentDivisions, projectDivisions, onC
   );
 }
 
-function ProjectGeneralInfoCard({ projectId, proj, files }:{ projectId:string, proj:any, files: ProjectFile[] }){
+function ProjectGeneralInfoCard({ projectId, proj, files, hasEditPermission }:{ projectId:string, proj:any, files: ProjectFile[], hasEditPermission?: boolean }){
   const queryClient = useQueryClient();
   const [description, setDescription] = useState<string>(proj?.description || '');
   const [projectName, setProjectName] = useState<string>(proj?.name || '');
   const [saving, setSaving] = useState(false);
   const [editingDivisions, setEditingDivisions] = useState(false);
   const [editingName, setEditingName] = useState(false);
+  const [editingEta, setEditingEta] = useState(false);
+  const [eta, setEta] = useState<string>((proj?.date_eta||'').slice(0,10));
   const [projectDivs, setProjectDivs] = useState<string[]>(Array.isArray(proj?.project_division_ids) ? proj.project_division_ids : []);
   const [pickerOpen, setPickerOpen] = useState(false);
   const { data:projectDivisions } = useQuery({ queryKey:['project-divisions'], queryFn: ()=>api<any[]>('GET','/settings/project-divisions'), staleTime: 300_000 });
@@ -5885,7 +6148,8 @@ function ProjectGeneralInfoCard({ projectId, proj, files }:{ projectId:string, p
     setDescription(proj?.description || '');
     setProjectName(proj?.name || '');
     setProjectDivs(Array.isArray(proj?.project_division_ids) ? proj.project_division_ids : []);
-  }, [proj?.description, proj?.name, proj?.project_division_ids]);
+    setEta((proj?.date_eta||'').slice(0,10));
+  }, [proj?.description, proj?.name, proj?.project_division_ids, proj?.date_eta]);
 
   const handleSave = useCallback(async()=>{
     try{
@@ -5898,17 +6162,22 @@ function ProjectGeneralInfoCard({ projectId, proj, files }:{ projectId:string, p
       if (editingName && projectName.trim() !== (proj?.name || '')) {
         payload.name = projectName.trim();
       }
+      // Include ETA if it was edited
+      if (editingEta) {
+        payload.date_eta = eta || null;
+      }
       await api('PATCH', `/projects/${projectId}`, payload);
       toast.success('Saved');
       queryClient.invalidateQueries({ queryKey: ['project', projectId] });
       setEditingDivisions(false);
       setEditingName(false);
+      setEditingEta(false);
     }catch(_e){
       toast.error('Failed to save');
     }finally{
       setSaving(false);
     }
-  }, [projectId, description, projectDivs, projectName, editingName, proj?.name, queryClient]);
+  }, [projectId, description, projectDivs, projectName, editingName, editingEta, eta, proj?.name, queryClient]);
 
   // Get image URL priority:
   // 1) Manual image set by user (image_manually_set + image_file_object_id)
@@ -6085,14 +6354,17 @@ function ProjectGeneralInfoCard({ projectId, proj, files }:{ projectId:string, p
 
         {/* Project Name - Editable */}
         <div>
-          <div className="flex items-center justify-between mb-2">
-            <label className="text-xs text-gray-600">Project Name</label>
-            {!editingName && (
+          <div className="flex items-center gap-1.5 mb-1">
+            <label className="text-xs text-gray-600 block">Project Name</label>
+            {!editingName && hasEditPermission && (
               <button
                 onClick={() => setEditingName(true)}
-                className="text-xs text-[#7f1010] hover:text-[#a31414] font-medium"
+                className="text-gray-400 hover:text-[#7f1010] transition-colors"
+                title="Edit Project Name"
               >
-                Edit
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                </svg>
               </button>
             )}
           </div>
@@ -6130,7 +6402,57 @@ function ProjectGeneralInfoCard({ projectId, proj, files }:{ projectId:string, p
               </div>
             </div>
           ) : (
-            <div className="mt-1 text-gray-800 font-medium">{proj?.name || proj?.site_name || '—'}</div>
+            <div className="text-sm font-medium text-gray-800">{proj?.name || proj?.site_name || '—'}</div>
+          )}
+        </div>
+
+        {/* ETA - Editable */}
+        <div>
+          <div className="flex items-center gap-1.5 mb-1">
+            <label className="text-xs text-gray-600 block">ETA</label>
+            {!editingEta && hasEditPermission && (
+              <button
+                onClick={() => setEditingEta(true)}
+                className="text-gray-400 hover:text-[#7f1010] transition-colors"
+                title="Edit ETA"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                </svg>
+              </button>
+            )}
+          </div>
+          {editingEta ? (
+            <div className="space-y-2">
+              <input
+                type="date"
+                value={eta}
+                onChange={e => setEta(e.target.value)}
+                className="w-full border rounded px-3 py-2 text-sm"
+                autoFocus
+              />
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleSave}
+                  disabled={saving}
+                  className="px-3 py-1.5 rounded bg-brand-red text-white text-xs font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {saving ? 'Saving...' : 'Save'}
+                </button>
+                <button
+                  onClick={() => {
+                    setEditingEta(false);
+                    setEta((proj?.date_eta||'').slice(0,10));
+                  }}
+                  disabled={saving}
+                  className="px-3 py-1.5 rounded bg-gray-100 text-gray-700 text-xs font-medium disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="text-sm font-medium text-gray-800">{eta || '—'}</div>
           )}
         </div>
         
@@ -6145,62 +6467,88 @@ function ProjectGeneralInfoCard({ projectId, proj, files }:{ projectId:string, p
         
         {/* Project Divisions Section */}
         <div>
-          <div className="flex items-center justify-between mb-2">
-            <label className="text-xs text-gray-600">Project Divisions</label>
-            <button
-              onClick={() => setEditingDivisions(!editingDivisions)}
-              className="text-xs text-[#7f1010] hover:text-[#a31414] font-medium"
-            >
-              {editingDivisions ? 'Cancel' : projectDivIds.length > 0 ? 'Edit' : 'Add Divisions'}
-            </button>
+          <div className="flex items-center gap-1.5 mb-1">
+            <label className="text-xs text-gray-600 block">Project Divisions</label>
+            {!editingDivisions && hasEditPermission && (
+              <button
+                onClick={() => setEditingDivisions(true)}
+                className="text-gray-400 hover:text-[#7f1010] transition-colors"
+                title="Edit Project Divisions"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                </svg>
+              </button>
+            )}
           </div>
           
           {editingDivisions ? (
-            <div className="space-y-2 max-h-64 overflow-y-auto border rounded p-3 bg-gray-50">
-              {(projectDivisions||[]).map((div:any)=>{
-                const divId = String(div.id);
-                const divSelected = projectDivs.includes(divId);
-                const subdivisions = div.subdivisions || [];
-                
-                return (
-                  <div key={divId} className="border rounded p-2 bg-white">
-                    <button
-                      type="button"
-                      onClick={()=> setProjectDivs(prev=> prev.includes(divId)? prev.filter(x=>x!==divId) : [...prev, divId])}
-                      className={`w-full text-left px-2 py-1 rounded text-sm font-medium flex items-center gap-2 ${
-                        divSelected? 'bg-[#7f1010] text-white': 'bg-gray-50 hover:bg-gray-100'
-                      }`}
-                    >
-                      <span className="text-lg">{getDivisionIcon(div.label)}</span>
-                      <span>{div.label}</span>
-                    </button>
-                    {subdivisions.length > 0 && (
-                      <div className="mt-1 pl-6 space-y-1">
-                        {subdivisions.map((sub:any)=>{
-                          const subId = String(sub.id);
-                          const subSelected = projectDivs.includes(subId);
-                          return (
-                            <button
-                              key={subId}
-                              type="button"
-                              onClick={()=> setProjectDivs(prev=> prev.includes(subId)? prev.filter(x=>x!==subId) : [...prev, subId])}
-                              className={`w-full text-left px-2 py-1 rounded text-xs flex items-center gap-2 ${
-                                subSelected? 'bg-[#a31414] text-white': 'bg-gray-50 hover:bg-gray-100'
-                              }`}
-                            >
-                              <span className="text-base">{getDivisionIcon(div.label)}</span>
-                              <span>• {sub.label}</span>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-              {(!projectDivisions || projectDivisions.length === 0) && (
-                <div className="text-xs text-gray-500 text-center py-4">No project divisions available.</div>
-              )}
+            <div className="space-y-2">
+              <div className="max-h-64 overflow-y-auto border rounded p-3 bg-gray-50">
+                {(projectDivisions||[]).map((div:any)=>{
+                  const divId = String(div.id);
+                  const divSelected = projectDivs.includes(divId);
+                  const subdivisions = div.subdivisions || [];
+                  
+                  return (
+                    <div key={divId} className="border rounded p-2 bg-white">
+                      <button
+                        type="button"
+                        onClick={()=> setProjectDivs(prev=> prev.includes(divId)? prev.filter(x=>x!==divId) : [...prev, divId])}
+                        className={`w-full text-left px-2 py-1 rounded text-sm font-medium flex items-center gap-2 ${
+                          divSelected? 'bg-[#7f1010] text-white': 'bg-gray-50 hover:bg-gray-100'
+                        }`}
+                      >
+                        <span className="text-lg">{getDivisionIcon(div.label)}</span>
+                        <span>{div.label}</span>
+                      </button>
+                      {subdivisions.length > 0 && (
+                        <div className="mt-1 pl-6 space-y-1">
+                          {subdivisions.map((sub:any)=>{
+                            const subId = String(sub.id);
+                            const subSelected = projectDivs.includes(subId);
+                            return (
+                              <button
+                                key={subId}
+                                type="button"
+                                onClick={()=> setProjectDivs(prev=> prev.includes(subId)? prev.filter(x=>x!==subId) : [...prev, subId])}
+                                className={`w-full text-left px-2 py-1 rounded text-xs flex items-center gap-2 ${
+                                  subSelected? 'bg-[#a31414] text-white': 'bg-gray-50 hover:bg-gray-100'
+                                }`}
+                              >
+                                <span className="text-base">{getDivisionIcon(div.label)}</span>
+                                <span>• {sub.label}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+                {(!projectDivisions || projectDivisions.length === 0) && (
+                  <div className="text-xs text-gray-500 text-center py-4">No project divisions available.</div>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleSave}
+                  disabled={saving}
+                  className="px-3 py-1.5 rounded bg-brand-red text-white text-xs font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {saving ? 'Saving...' : 'Save'}
+                </button>
+                <button
+                  onClick={() => {
+                    setEditingDivisions(false);
+                    setProjectDivs(Array.isArray(proj?.project_division_ids) ? proj.project_division_ids : []);
+                  }}
+                  disabled={saving}
+                  className="px-3 py-1.5 rounded bg-gray-100 text-gray-700 text-xs font-medium disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+              </div>
             </div>
           ) : projectDivIds.length > 0 && projectDivisions ? (
             <div className="flex flex-wrap gap-2">

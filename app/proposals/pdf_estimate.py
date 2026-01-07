@@ -1,5 +1,6 @@
 import os
 import copy
+import uuid
 from reportlab.lib.pagesizes import A4
 from reportlab.platypus import (
     BaseDocTemplate, Paragraph, Spacer, Frame, PageTemplate, PageBreak, Flowable, KeepTogether,
@@ -11,6 +12,7 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfgen import canvas
 from reportlab.pdfbase.pdfmetrics import stringWidth
+from .pdf_image_optimizer import optimize_image_bytes
 
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -69,24 +71,51 @@ def build_estimate_fixed_pages(data, output_path):
     from reportlab.lib.utils import ImageReader
     from PIL import Image, ImageOps
     
-    c = canvas.Canvas(output_path, pagesize=A4)
+    c = canvas.Canvas(output_path, pagesize=A4, pageCompression=1)
     page_width, page_height = A4
 
     # Cover page - similar to proposals
     cover_img_path = data.get("cover_image")
     if cover_img_path and os.path.exists(cover_img_path):
-        bw_path = os.path.join(BASE_DIR, "assets", "cover_bw_tmp.png")
+        # Optimize image before processing
+        optimized_path = None
+        try:
+            with open(cover_img_path, "rb") as f:
+                image_bytes = f.read()
+            
+            optimized_bytes = optimize_image_bytes(image_bytes, preset="cover")
+            
+            # Create temporary file for optimized image
+            optimized_path = os.path.join(BASE_DIR, f"cover_optimized_{uuid.uuid4().hex}.jpg")
+            with open(optimized_path, "wb") as f:
+                f.write(optimized_bytes)
+            
+            # Use optimized image
+            cover_img_path = optimized_path
+        except Exception:
+            # Fallback to original if optimization fails
+            pass
+        
+        bw_path = os.path.join(BASE_DIR, f"cover_bw_{uuid.uuid4().hex}.jpg")
         try:
             with Image.open(cover_img_path) as img:
                 bw = ImageOps.grayscale(img)
                 bw = ImageOps.autocontrast(bw)
-                bw.save(bw_path)
+                bw = bw.convert("RGB")
+                bw.save(bw_path, format="JPEG", quality=80, optimize=True, progressive=True)
             img = ImageReader(bw_path)
             c.drawImage(img, 14, 285, 566, 537, mask="auto")
             if os.path.exists(bw_path):
                 os.remove(bw_path)
         except:
             pass
+        finally:
+            # Cleanup optimized temp file if created
+            if optimized_path and optimized_path != data.get("cover_image") and os.path.exists(optimized_path):
+                try:
+                    os.remove(optimized_path)
+                except Exception:
+                    pass
 
     logo_path = os.path.join(BASE_DIR, "assets", "logo.png")
     if os.path.exists(logo_path):
@@ -136,8 +165,35 @@ def build_estimate_fixed_pages(data, output_path):
     # Page 2 - Project details
     page2_img = data.get("page2_image")
     if page2_img and os.path.exists(page2_img):
-        img = ImageReader(page2_img)
-        c.drawImage(img, 28, 380, 540, 340, mask="auto")
+        # Optimize image before processing
+        optimized_path = None
+        try:
+            with open(page2_img, "rb") as f:
+                image_bytes = f.read()
+            
+            optimized_bytes = optimize_image_bytes(image_bytes, preset="section")
+            
+            # Create temporary file for optimized image
+            optimized_path = os.path.join(BASE_DIR, f"page2_optimized_{uuid.uuid4().hex}.jpg")
+            with open(optimized_path, "wb") as f:
+                f.write(optimized_bytes)
+            
+            # Use optimized image
+            page2_img = optimized_path
+        except Exception:
+            # Fallback to original if optimization fails
+            pass
+        
+        try:
+            img = ImageReader(page2_img)
+            c.drawImage(img, 28, 380, 540, 340, mask="auto")
+        finally:
+            # Cleanup optimized temp file if created
+            if optimized_path and optimized_path != data.get("page2_image") and os.path.exists(optimized_path):
+                try:
+                    os.remove(optimized_path)
+                except Exception:
+                    pass
 
     c.showPage()
     c.save()
@@ -465,6 +521,10 @@ def build_estimate_dynamic_pages(data, output_path):
 async def generate_estimate_pdf(data: dict, output_path: str) -> None:
     """Generate estimate PDF starting directly with sections (no cover or page 2)"""
     from PyPDF2 import PdfWriter, PdfReader
+    import structlog
+    from .pdf_image_optimizer import get_optimization_stats
+    
+    logger = structlog.get_logger(__name__)
     
     # Only build dynamic pages with sections (skip fixed pages - cover and page 2)
     dynamic_pdf = os.path.join(BASE_DIR, "tmp_estimate_dynamic.pdf")
@@ -486,6 +546,22 @@ async def generate_estimate_pdf(data: dict, output_path: str) -> None:
 
     with open(output_path, "wb") as f:
         writer.write(f)
+
+    # Log optimization statistics
+    stats = get_optimization_stats()
+    if stats["image_count"] > 0:
+        total_reduction_pct = (
+            ((stats["total_original_size"] - stats["total_optimized_size"]) / stats["total_original_size"] * 100)
+            if stats["total_original_size"] > 0 else 0
+        )
+        logger.info(
+            "Estimate PDF image optimization summary",
+            image_count=stats["image_count"],
+            total_original_size=stats["total_original_size"],
+            total_optimized_size=stats["total_optimized_size"],
+            total_reduction_pct=f"{total_reduction_pct:.1f}%",
+            total_reduction_bytes=stats["total_original_size"] - stats["total_optimized_size"],
+        )
 
     # Clean up temporary files
     if os.path.exists(dynamic_pdf):

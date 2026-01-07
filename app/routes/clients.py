@@ -454,7 +454,7 @@ def get_client(client_id: str, db: Session = Depends(get_db), _=Depends(require_
 
 
 @router.patch("/{client_id}")
-def update_client(client_id: str, payload: dict, db: Session = Depends(get_db), _=Depends(require_permissions("clients:write"))):
+def update_client(client_id: str, payload: dict, db: Session = Depends(get_db), _=Depends(require_permissions("business:customers:write"))):
     try:
         c = db.query(Client).filter(Client.id == client_id).first()
     except ProgrammingError as e:
@@ -485,7 +485,7 @@ def update_client(client_id: str, payload: dict, db: Session = Depends(get_db), 
 
 
 @router.delete("/{client_id}")
-def delete_client(client_id: str, db: Session = Depends(get_db), _=Depends(require_permissions("clients:write"))):
+def delete_client(client_id: str, db: Session = Depends(get_db), _=Depends(require_permissions("business:customers:write"))):
     try:
         c = db.query(Client).filter(Client.id == client_id).first()
     except ProgrammingError as e:
@@ -517,7 +517,7 @@ def delete_client(client_id: str, db: Session = Depends(get_db), _=Depends(requi
 
 
 @router.post("/{client_id}/contacts", response_model=ClientContactResponse)
-def add_contact(client_id: str, payload: ClientContactCreate, db: Session = Depends(get_db), _=Depends(require_permissions("clients:write"))):
+def add_contact(client_id: str, payload: ClientContactCreate, db: Session = Depends(get_db), _=Depends(require_permissions("business:customers:write"))):
     try:
         # Validate client exists and coerce UUID
         try:
@@ -555,7 +555,7 @@ def list_contacts(client_id: str, db: Session = Depends(get_db), _=Depends(requi
 
 
 @router.patch("/{client_id}/contacts/{contact_id}")
-def update_contact(client_id: str, contact_id: str, payload: dict, db: Session = Depends(get_db), _=Depends(require_permissions("clients:write"))):
+def update_contact(client_id: str, contact_id: str, payload: dict, db: Session = Depends(get_db), _=Depends(require_permissions("business:customers:write"))):
     c = db.query(ClientContact).filter(ClientContact.id == contact_id, ClientContact.client_id == client_id).first()
     if not c:
         raise HTTPException(status_code=404, detail="Not found")
@@ -566,7 +566,7 @@ def update_contact(client_id: str, contact_id: str, payload: dict, db: Session =
 
 
 @router.delete("/{client_id}/contacts/{contact_id}")
-def delete_contact(client_id: str, contact_id: str, db: Session = Depends(get_db), _=Depends(require_permissions("clients:write"))):
+def delete_contact(client_id: str, contact_id: str, db: Session = Depends(get_db), _=Depends(require_permissions("business:customers:write"))):
     c = db.query(ClientContact).filter(ClientContact.id == contact_id, ClientContact.client_id == client_id).first()
     if not c:
         return {"status": "ok"}
@@ -825,7 +825,7 @@ def list_files(
 
 
 @router.delete("/{client_id}/files/{client_file_id}")
-def delete_client_file(client_id: str, client_file_id: str, db: Session = Depends(get_db), _=Depends(require_permissions("clients:write"))):
+def delete_client_file(client_id: str, client_file_id: str, db: Session = Depends(get_db), _=Depends(require_permissions("business:customers:write"))):
     row = db.query(ClientFile).filter(ClientFile.id == client_file_id, ClientFile.client_id == client_id).first()
     if not row:
         return {"status":"ok"}
@@ -835,7 +835,7 @@ def delete_client_file(client_id: str, client_file_id: str, db: Session = Depend
 
 
 @router.post("/{client_id}/files/reorder")
-def reorder_client_files(client_id: str, order: list[str], db: Session = Depends(get_db), _=Depends(require_permissions("clients:write"))):
+def reorder_client_files(client_id: str, order: list[str], db: Session = Depends(get_db), _=Depends(require_permissions("business:customers:write"))):
     # Persist per-client order using FileObject.tags.client_sort[client_id] = index
     cfiles = db.query(ClientFile).filter(ClientFile.client_id == client_id).all()
     index = {str(cid): i for i, cid in enumerate(order or [])}
@@ -856,7 +856,7 @@ def reorder_client_files(client_id: str, order: list[str], db: Session = Depends
 
 
 @router.post("/{client_id}/files")
-def attach_file(client_id: str, file_object_id: str, category: Optional[str] = None, original_name: Optional[str] = None, site_id: Optional[str] = None, db: Session = Depends(get_db), _=Depends(require_permissions("clients:write"))):
+def attach_file(client_id: str, file_object_id: str, category: Optional[str] = None, original_name: Optional[str] = None, site_id: Optional[str] = None, db: Session = Depends(get_db), _=Depends(require_permissions("business:customers:write"))):
     fo = db.query(FileObject).filter(FileObject.id == file_object_id).first()
     if not fo:
         raise HTTPException(status_code=404, detail="File not found")
@@ -1034,7 +1034,7 @@ def initialize_default_folders(
 
 
 @router.put("/{client_id}/folders/{folder_id}")
-def update_client_folder(client_id: str, folder_id: str, name: Optional[str] = Body(None), parent_id: Optional[str] = Body(None), db: Session = Depends(get_db), _=Depends(require_permissions("clients:write"))):
+def update_client_folder(client_id: str, folder_id: str, name: Optional[str] = Body(None), parent_id: Optional[str] = Body(None), db: Session = Depends(get_db), _=Depends(require_permissions("business:customers:write"))):
     try:
         fid = uuid.UUID(str(folder_id))
     except Exception:
@@ -1056,7 +1056,7 @@ def update_client_folder(client_id: str, folder_id: str, name: Optional[str] = B
 
 
 @router.delete("/{client_id}/folders/{folder_id}")
-def delete_client_folder(client_id: str, folder_id: str, db: Session = Depends(get_db), _=Depends(require_permissions("clients:write"))):
+def delete_client_folder(client_id: str, folder_id: str, db: Session = Depends(get_db), _=Depends(require_permissions("business:customers:write"))):
     try:
         fid = uuid.UUID(str(folder_id))
     except Exception:
@@ -1097,7 +1097,7 @@ def list_client_documents(client_id: str, folder_id: Optional[str] = None, db: S
 
 
 @router.post("/{client_id}/documents")
-def create_client_document(client_id: str, payload: dict = Body(...), db: Session = Depends(get_db), _=Depends(require_permissions("clients:write"))):
+def create_client_document(client_id: str, payload: dict = Body(...), db: Session = Depends(get_db), _=Depends(require_permissions("business:customers:write"))):
     folder_id = payload.get("folder_id")
     d = ClientDocument(
         client_id=client_id,
@@ -1112,7 +1112,7 @@ def create_client_document(client_id: str, payload: dict = Body(...), db: Sessio
 
 
 @router.put("/{client_id}/documents/{doc_id}")
-def update_client_document(client_id: str, doc_id: str, payload: dict = Body(...), db: Session = Depends(get_db), _=Depends(require_permissions("clients:write"))):
+def update_client_document(client_id: str, doc_id: str, payload: dict = Body(...), db: Session = Depends(get_db), _=Depends(require_permissions("business:customers:write"))):
     d = db.query(ClientDocument).filter(ClientDocument.client_id == client_id, ClientDocument.id == doc_id).first()
     if not d:
         raise HTTPException(status_code=404, detail="Not found")
@@ -1128,7 +1128,7 @@ def update_client_document(client_id: str, doc_id: str, payload: dict = Body(...
 
 
 @router.delete("/{client_id}/documents/{doc_id}")
-def delete_client_document(client_id: str, doc_id: str, db: Session = Depends(get_db), _=Depends(require_permissions("clients:write"))):
+def delete_client_document(client_id: str, doc_id: str, db: Session = Depends(get_db), _=Depends(require_permissions("business:customers:write"))):
     db.query(ClientDocument).filter(ClientDocument.client_id == client_id, ClientDocument.id == doc_id).delete()
     db.commit()
     return {"status":"ok"}

@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { Link } from 'react-router-dom';
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 
 type Course = {
   id: string;
@@ -37,19 +37,36 @@ export default function TrainingAdmin() {
     queryFn: () => api<StatusData>('GET', '/training/admin/status'),
   });
 
+  const todayLabel = useMemo(() => {
+    return new Date().toLocaleDateString('en-CA', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+    });
+  }, []);
+
   return (
     <div>
-      <div className="mb-3 rounded-xl border bg-gradient-to-br from-[#7f1010] to-[#a31414] text-white p-4 flex items-center justify-between">
-        <div>
-          <div className="text-2xl font-extrabold">Training Administration</div>
-          <div className="text-sm opacity-90">Manage courses, modules, and training content.</div>
+      <div className="bg-slate-200/50 rounded-[12px] border border-slate-200 flex items-center justify-between py-4 px-6 mb-6">
+        <div className="flex items-center justify-between flex-1">
+          <div>
+            <div className="text-xl font-bold text-gray-900 tracking-tight mb-0.5">Training Administration</div>
+            <div className="text-sm text-gray-500 font-medium">Manage courses, modules, and training content.</div>
+          </div>
+          <div className="flex items-center gap-4">
+            <div className="text-right">
+              <div className="text-xs text-gray-400 mb-1.5 font-medium uppercase tracking-wide">Today</div>
+              <div className="text-sm font-semibold text-gray-700">{todayLabel}</div>
+            </div>
+            <Link
+              to="/training/admin/new"
+              className="px-4 py-2 bg-brand-red text-white rounded-lg font-semibold hover:bg-red-700 transition-colors"
+            >
+              + Create Course
+            </Link>
+          </div>
         </div>
-        <Link
-          to="/training/admin/new"
-          className="px-4 py-2 bg-white text-[#d11616] rounded-lg font-semibold hover:bg-gray-100 transition-colors"
-        >
-          + Create Course
-        </Link>
       </div>
 
       {/* Statistics Cards */}

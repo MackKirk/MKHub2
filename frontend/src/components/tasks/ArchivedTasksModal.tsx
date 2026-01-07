@@ -59,7 +59,7 @@ export default function ArchivedTasksModal({ open, onClose }: Props) {
           onClick={(e) => e.stopPropagation()}
         >
           {/* Header */}
-          <div className="px-6 py-4 border-b border-gray-200/60 flex items-center justify-between">
+          <div className="flex-shrink-0 px-6 py-4 border-b border-gray-200/60 flex items-center justify-between">
             <div>
               <h2 className="text-xl font-semibold text-gray-900">Archived Tasks</h2>
               <p className="text-sm text-gray-500 mt-1">

@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.orm import Session, defer
 from sqlalchemy.exc import ProgrammingError
-from sqlalchemy import func
+from sqlalchemy import func, or_
 
 from ..auth.security import require_permissions
 from ..db import get_db
@@ -57,7 +57,13 @@ def search_products(
     query = db.query(Material)
     if q:
         like = f"%{q}%"
-        query = query.filter(Material.name.ilike(like))
+        query = query.filter(
+            or_(
+                Material.name.ilike(like),
+                Material.supplier_name.ilike(like),
+                Material.category.ilike(like)
+            )
+        )
     if supplier:
         query = query.filter(Material.supplier_name == supplier)
     
@@ -653,7 +659,7 @@ def _update_estimate_internal(estimate_id: int, body: EstimateIn, db: Session):
 
 
 @router.post("/estimates")
-def create_estimate(body: EstimateIn, db: Session = Depends(get_db), _=Depends(require_permissions("inventory:write"))):
+def create_estimate(body: EstimateIn, db: Session = Depends(get_db), _=Depends(require_permissions("business:projects:estimate:write", "inventory:write"))):
     # Check if estimate already exists for this project
     existing_est = db.query(Estimate).filter(Estimate.project_id == body.project_id).first()
     
@@ -842,12 +848,12 @@ def get_estimate(estimate_id: int, db: Session = Depends(get_db), _=Depends(requ
 
 
 @router.put("/estimates/{estimate_id}")
-def update_estimate(estimate_id: int, body: EstimateIn, db: Session = Depends(get_db), _=Depends(require_permissions("inventory:write"))):
+def update_estimate(estimate_id: int, body: EstimateIn, db: Session = Depends(get_db), _=Depends(require_permissions("business:projects:estimate:write", "inventory:write"))):
     return _update_estimate_internal(estimate_id, body, db)
 
 
 @router.delete("/estimates/{estimate_id}")
-def delete_estimate(estimate_id: int, db: Session = Depends(get_db), _=Depends(require_permissions("inventory:write"))):
+def delete_estimate(estimate_id: int, db: Session = Depends(get_db), _=Depends(require_permissions("business:projects:estimate:write", "inventory:write"))):
     est = db.query(Estimate).filter(Estimate.id == estimate_id).first()
     if not est:
         raise HTTPException(status_code=404, detail="Estimate not found")

@@ -66,6 +66,17 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
       
       const statusLabelStr = String(statusLabel).trim().toLowerCase();
       
+      // For opportunities (isBidding = true), apply specific restrictions
+      if (isBidding) {
+        // Always allow "prospecting" status
+        if (statusLabelStr === 'prospecting') return true;
+        // Restrict "Sent to Customer" and "Refused" statuses
+        if (statusLabelStr === 'sent to customer' || statusLabelStr === 'refused') return false;
+        // Default to allow for other statuses (backward compatibility)
+        return true;
+      }
+      
+      // For projects (isBidding = false), use existing logic
       // Always allow "estimating" and "prospecting" status
       if (statusLabelStr === 'estimating' || statusLabelStr === 'prospecting') return true;
       
@@ -96,6 +107,17 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
     
     const statusLabelStr = String(statusLabel).trim().toLowerCase();
     
+    // For opportunities (isBidding = true), apply specific restrictions
+    if (isBidding) {
+      // Always allow "prospecting" status
+      if (statusLabelStr === 'prospecting') return true;
+      // Restrict "Sent to Customer" and "Refused" statuses
+      if (statusLabelStr === 'sent to customer' || statusLabelStr === 'refused') return false;
+      // Default to allow for other statuses (backward compatibility)
+      return true;
+    }
+    
+    // For projects (isBidding = false), use existing logic
     // Always allow "estimating" and "prospecting" status
     if (statusLabelStr === 'estimating' || statusLabelStr === 'prospecting') return true;
     
@@ -118,7 +140,7 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
     
     // Otherwise allow editing (default behavior)
     return true;
-  }, [statusLabel, settings, canEditProp]);
+  }, [statusLabel, settings, canEditProp, isBidding]);
 
   // Fetch estimate by project_id if only projectId is provided
   const { data: projectEstimates } = useQuery({
@@ -2473,10 +2495,8 @@ function ProductViewModal({ product, onClose }: { product: Material, onClose: ()
   return (
     <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center">
       <div className="w-[900px] max-w-[95vw] max-h-[90vh] bg-white rounded-xl overflow-hidden flex flex-col">
-        <div className="overflow-y-auto">
-          <div className="space-y-6">
-            {/* Product Header */}
-            <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] p-6 flex items-center gap-6 relative">
+        {/* Product Header */}
+        <div className="flex-shrink-0 bg-gradient-to-br from-[#7f1010] to-[#a31414] p-6 flex items-center gap-6 relative">
               <button
                 onClick={onClose}
                 className="absolute top-4 right-4 text-white/80 hover:text-white text-2xl font-bold w-8 h-8 flex items-center justify-center rounded hover:bg-white/10"
@@ -2508,10 +2528,11 @@ function ProductViewModal({ product, onClose }: { product: Material, onClose: ()
                   )}
                 </div>
               </div>
-            </div>
+        </div>
 
-            {/* Product Details */}
-            <div className="px-6 pb-6 space-y-4">
+        {/* Product Details */}
+        <div className="flex-1 overflow-y-auto">
+          <div className="px-6 pb-6 space-y-4">
             <div className="grid grid-cols-2 gap-4">
               {product.unit && (
                 <div className="bg-white border rounded-lg p-4">
@@ -2542,9 +2563,9 @@ function ProductViewModal({ product, onClose }: { product: Material, onClose: ()
               <div className="bg-white border rounded-lg p-4">
                 <div className="text-sm font-semibold text-gray-900 mb-3">📍 Coverage Area</div>
                 <div className="grid grid-cols-3 gap-2">
-                  <div className="text-gray-700">SQS: {product.coverage_sqs||'-'}</div>
-                  <div className="text-gray-700">ft²: {product.coverage_ft2||'-'}</div>
-                  <div className="text-gray-700">m²: {product.coverage_m2||'-'}</div>
+                  <div className="text-gray-700">SQS: {product.coverage_sqs || '-'}</div>
+                  <div className="text-gray-700">ft²: {product.coverage_ft2 || '-'}</div>
+                  <div className="text-gray-700">m²: {product.coverage_m2 || '-'}</div>
                 </div>
               </div>
             )}
@@ -2554,7 +2575,6 @@ function ProductViewModal({ product, onClose }: { product: Material, onClose: ()
                 <div className="text-gray-700 whitespace-pre-wrap">{product.description}</div>
               </div>
             )}
-            </div>
           </div>
         </div>
       </div>
@@ -2659,7 +2679,9 @@ function AddProductModal({ onAdd, disabled, defaultMarkup, open: openProp, onClo
                     No products found matching "{q}"
                   </div>
                   <button
-                    onClick={() => setNewProductModalOpen(true)}
+                    onClick={() => {
+                      setNewProductModalOpen(true);
+                    }}
                     className="w-full px-4 py-2 rounded bg-blue-50 hover:bg-blue-100 text-blue-700 font-medium text-sm"
                   >
                     + Create new product: "{q}"
@@ -2776,6 +2798,7 @@ function AddProductModal({ onAdd, disabled, defaultMarkup, open: openProp, onClo
           open={true}
           onClose={() => setNewProductModalOpen(false)}
           initialSupplier={''}
+          initialName={q.trim()}
           queryClient={queryClient}
           onProductCreated={(product: Material) => {
             setSelection(product);
@@ -2993,7 +3016,7 @@ function CompareProductsModal({ open, onClose, selectedProduct, onSelect }: { op
           <div className="font-semibold text-lg text-white">Compare Products</div>
           <button onClick={onClose} className="ml-auto text-white hover:text-gray-200 text-2xl font-bold w-8 h-8 flex items-center justify-center rounded hover:bg-white/20" title="Close">×</button>
         </div>
-        <div className="p-6 overflow-y-auto flex-1">
+        <div className="flex-1 overflow-y-auto p-6">
           {/* Selected Product (Highlighted) */}
           <div className="mb-6">
             <div className="text-sm font-semibold text-gray-700 mb-3">Selected Product</div>
@@ -3086,7 +3109,7 @@ function CompareProductsModal({ open, onClose, selectedProduct, onSelect }: { op
 }
 
 // New Product Modal for EstimateBuilder
-function NewProductModal({ open, onClose, onProductCreated, initialSupplier, queryClient }: { open: boolean, onClose: () => void, onProductCreated: (product: Material) => void, initialSupplier?: string, queryClient: any }) {
+function NewProductModal({ open, onClose, onProductCreated, initialSupplier, initialName, queryClient }: { open: boolean, onClose: () => void, onProductCreated: (product: Material) => void, initialSupplier?: string, initialName?: string, queryClient: any }) {
   const [name, setName] = useState('');
   const [nameError, setNameError] = useState(false);
   const [duplicateError, setDuplicateError] = useState(false);
@@ -3208,10 +3231,15 @@ function NewProductModal({ open, onClose, onProductCreated, initialSupplier, que
       setUnitType('unitary');
       setImageDataUrl('');
       setTechnicalManualUrl('');
-    } else if (open && initialSupplier) {
-      setNewSupplier(initialSupplier);
+    } else if (open) {
+      if (initialSupplier) {
+        setNewSupplier(initialSupplier);
+      }
+      if (initialName) {
+        setName(initialName);
+      }
     }
-  }, [open, initialSupplier]);
+  }, [open, initialSupplier, initialName]);
 
   useEffect(() => {
     if (!open) return;
@@ -3238,7 +3266,7 @@ function NewProductModal({ open, onClose, onProductCreated, initialSupplier, que
               ×
             </button>
           </div>
-          <div className="p-6 overflow-y-auto flex-1">
+          <div className="flex-1 overflow-y-auto p-6">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="col-span-2">
                 <label className="text-xs font-semibold text-gray-700">
@@ -3585,7 +3613,7 @@ function AddLabourModal({ onAdd, disabled, defaultMarkup, open: openProp, onClos
               <div className="font-semibold text-lg text-white">Add Labour</div>
               <button onClick={()=>setOpen(false)} className="ml-auto text-white hover:text-gray-200 text-2xl font-bold w-8 h-8 flex items-center justify-center rounded hover:bg-white/20" title="Close">×</button>
             </div>
-            <div className="p-4 space-y-3 overflow-y-auto flex-1">
+            <div className="flex-1 overflow-y-auto p-4 space-y-3">
               <div>
                 <label className="text-xs text-gray-600">Labour:</label>
                 <input type="text" className="w-full border rounded px-3 py-2" placeholder="Enter labour function name..." value={labour} onChange={e=>setLabour(e.target.value)} />
@@ -3753,7 +3781,7 @@ function AddSubContractorModal({ onAdd, disabled, defaultMarkup, open: openProp,
               <div className="font-semibold text-lg text-white">Add Sub-Contractors</div>
               <button onClick={()=>setOpen(false)} className="ml-auto text-white hover:text-gray-200 text-2xl font-bold w-8 h-8 flex items-center justify-center rounded hover:bg-white/20" title="Close">×</button>
             </div>
-            <div className="p-4 space-y-3 overflow-y-auto flex-1">
+            <div className="flex-1 overflow-y-auto p-4 space-y-3">
               <div>
                 <label className="text-xs text-gray-600">Sub-Contractor Type:</label>
                 <select className="w-full border rounded px-3 py-2" value={type} onChange={e=>setType(e.target.value as any)}>
@@ -3917,7 +3945,7 @@ function AddMiscellaneousModal({ onAdd, disabled, defaultMarkup, open: openProp,
               <div className="font-semibold text-lg text-white">Add Miscellaneous</div>
               <button onClick={()=>setOpen(false)} className="ml-auto text-white hover:text-gray-200 text-2xl font-bold w-8 h-8 flex items-center justify-center rounded hover:bg-white/20" title="Close">×</button>
             </div>
-            <div className="p-4 space-y-3 overflow-y-auto flex-1">
+            <div className="flex-1 overflow-y-auto p-4 space-y-3">
               <div>
                 <label className="text-xs text-gray-600">Name/Description:</label>
                 <input type="text" className="w-full border rounded px-3 py-2" placeholder="Enter miscellaneous name or description..." value={name} onChange={e=>setName(e.target.value)} />

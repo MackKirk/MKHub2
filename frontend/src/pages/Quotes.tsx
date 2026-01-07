@@ -597,8 +597,8 @@ function QuoteListCard({ quote, employees, clientFiles }:{ quote: Quote, employe
   const estimator = employees?.find((e: any) => String(e.id) === String(quote.estimator_id));
   const estimatorName = estimator?.name || estimator?.username || '—';
   
-  // Get estimated value from quote data - use the displayTotal (grandTotal) from Pricing section
-  // This is the "Total" shown in the Pricing section of the form
+  // Get estimated value from quote data - sum of all pricing sections' Final Total (with GST)
+  // If multiple pricing sections exist, sum all their grandTotals
   const estimatedValue = useMemo(() => {
     if (quote.estimated_value !== undefined && quote.estimated_value !== null) {
       const v = Number(quote.estimated_value);
@@ -606,6 +606,23 @@ function QuoteListCard({ quote, employees, clientFiles }:{ quote: Quote, employe
     }
     if (!quote.data) return 0;
     const data = quote.data;
+    
+    // Check for pricing_sections (new format with multiple sections)
+    const pricingSections = data.pricing_sections;
+    if (pricingSections && Array.isArray(pricingSections) && pricingSections.length > 0) {
+      // Get the maximum Final Total (with GST) from all sections - use the "total" field which is grandTotal
+      const maxTotal = pricingSections.reduce((max: number, section: any) => {
+        const sectionTotal = Number(section.total || 0);
+        if (!isNaN(sectionTotal) && sectionTotal > max) {
+          return sectionTotal;
+        }
+        return max;
+      }, 0);
+      
+      if (maxTotal > 0) {
+        return maxTotal;
+      }
+    }
     
     // First, try to use display_total if it was saved (new quotes will have this)
     if (data.display_total !== undefined && data.display_total !== null && data.display_total !== '') {
@@ -615,7 +632,7 @@ function QuoteListCard({ quote, employees, clientFiles }:{ quote: Quote, employe
       }
     }
     
-    // Fallback: Calculate the grandTotal (displayTotal) from Pricing section
+    // Fallback: Calculate the grandTotal (displayTotal) from Pricing section (legacy format)
     // This matches the "Total" shown in the Pricing section of the form
     const totalNum = Number(data.total || 0);
     const pstRate = Number(data.pst_rate || 0);
@@ -662,7 +679,7 @@ function QuoteListCard({ quote, employees, clientFiles }:{ quote: Quote, employe
     
     // Final fallback to other fields
     return Number(data.bid_price || data.estimate_total_estimate || 0);
-  }, [quote.data]);
+  }, [quote.data, quote.estimated_value]);
   
   // Get document type from data.cover_title or title, default to 'Quotation'
   const documentType = useMemo(() => {
@@ -675,7 +692,7 @@ function QuoteListCard({ quote, employees, clientFiles }:{ quote: Quote, employe
   return (
     <Link 
       to={`/quotes/${encodeURIComponent(String(quote.id))}`} 
-      className="group rounded-xl border bg-white hover:border-gray-200 hover:shadow-md block h-full transition-all relative"
+      className="group rounded-xl border bg-white hover:border-gray-200 hover:shadow-md hover:-translate-y-0.5 block h-full transition-all duration-200 relative"
     >
       <div className="p-4 flex flex-col gap-3">
         {/* Header (no image) */}
@@ -708,7 +725,7 @@ function QuoteListCard({ quote, employees, clientFiles }:{ quote: Quote, employe
           </div>
           <div className="min-w-0">
             <div className="text-xs text-gray-500">Estimated Value</div>
-            <div className="font-medium text-gray-900 truncate">
+            <div className="font-semibold text-[#7f1010] truncate">
               {estimatedValue > 0 ? `$${estimatedValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—'}
             </div>
           </div>

@@ -18,6 +18,7 @@ type Project = {
   client_id?:string, 
   created_at?:string, 
   date_start?:string, 
+  date_eta?:string,
   date_end?:string, 
   project_division_ids?:string[],
   cover_image_url?:string,
@@ -26,6 +27,7 @@ type Project = {
   progress?:number,
   status_label?:string,
   estimator_id?:string,
+  estimator_name?:string,
   onsite_lead_id?:string,
   cost_actual?:number,
   service_value?:number,
@@ -376,7 +378,16 @@ export default function Projects(){
       label: 'Status',
       type: 'select',
       operators: ['is', 'is_not'],
-      getOptions: () => projectStatuses.map((s: any) => ({ value: s.id, label: s.label })),
+      getOptions: () => {
+        // Allowed statuses for projects (case-insensitive matching)
+        const allowedStatuses = ['in progress', 'on progress', 'on hold', 'finished'];
+        return projectStatuses
+          .filter((s: any) => {
+            const label = (s.label || '').trim().toLowerCase();
+            return allowedStatuses.includes(label);
+          })
+          .map((s: any) => ({ value: s.id, label: s.label }));
+      },
     },
     {
       id: 'division',
@@ -594,7 +605,12 @@ export default function Projects(){
             </>
           ) : arr.length > 0 ? (
             arr.map(p => (
-              <ProjectListCard key={p.id} project={p} projectDivisions={projectDivisions} />
+              <ProjectListCard
+                key={p.id}
+                project={p}
+                projectDivisions={projectDivisions}
+                projectStatuses={projectStatuses}
+              />
             ))
           ) : (
             <div className="col-span-2 p-8 text-center text-gray-500 rounded-xl border bg-white">
@@ -652,7 +668,7 @@ const getDivisionIcon = (label: string): string => {
   return iconMap[label] || '📦';
 };
 
-function ProjectListCard({ project, projectDivisions }:{ project: Project, projectDivisions?: any[] }){
+function ProjectListCard({ project, projectDivisions, projectStatuses }:{ project: Project, projectDivisions?: any[], projectStatuses: any[] }){
   const navigate = useNavigate();
   
   // Use cover image URL from project data (same image as General Information)
@@ -660,16 +676,17 @@ function ProjectListCard({ project, projectDivisions }:{ project: Project, proje
   
   // Use client name from project data
   const clientName = project.client_display_name || project.client_name || '';
-  
+
   // Use project divisions from parent (passed as prop, no individual loading)
   // This prevents "popping" updates after initial render
   // Use only data from backend - no additional queries to prevent "popping"
   const status = project.status_label || '';
+  const statusLabel = String(status || '').trim();
+  const statusColor = (projectStatuses || []).find((s: any) => String(s?.label || '').trim() === statusLabel)?.value || '#e5e7eb';
   const progress = Math.max(0, Math.min(100, Number(project.progress ?? 0)));
   const start = (project.date_start || project.created_at || '').slice(0,10);
-  const eta = (project.date_end || '').slice(0,10);
-  const est = project.estimator_id || '';
-  const lead = project.onsite_lead_id || '';
+  const eta = (project.date_eta || '').slice(0,10);
+  const est = project.estimator_name || '';
   const actualValue = project.cost_actual || 0;
   const estimatedValue = project.service_value || 0;
   const projectDivIds = project.project_division_ids || [];
@@ -703,14 +720,13 @@ function ProjectListCard({ project, projectDivisions }:{ project: Project, proje
     { key: 'timesheet', icon: '⏰', label: 'Timesheet', tab: 'timesheet' },
     { key: 'files', icon: '📁', label: 'Files', tab: 'files' },
     { key: 'proposal', icon: '📄', label: 'Proposal', tab: 'proposal' },
-    { key: 'estimate', icon: '💰', label: 'Estimate', tab: 'estimate' },
     { key: 'orders', icon: '🛒', label: 'Orders', tab: 'orders' },
   ];
 
   return (
     <Link 
       to={`/projects/${encodeURIComponent(String(project.id))}`} 
-      className="group rounded-xl border bg-white hover:border-gray-200 hover:shadow-md block h-full transition-all relative"
+      className="group rounded-xl border bg-white hover:border-gray-200 hover:shadow-md hover:-translate-y-0.5 block h-full transition-all duration-200 relative"
     >
       <div className="p-4 flex flex-col gap-3">
         {/* Top row: thumb + title */}
@@ -781,12 +797,12 @@ function ProjectListCard({ project, projectDivisions }:{ project: Project, proje
           </div>
           <div className="min-w-0 truncate" title={est}>
             <div className="text-xs text-gray-500">Estimator</div>
-            <div className="font-medium text-gray-900 text-xs">{est ? <UserInline id={est} /> : '—'}</div>
+            <div className="font-medium text-gray-900 text-xs">{est || '—'}</div>
           </div>
           <div className="min-w-0">
             <div className="text-xs text-gray-500">Estimated Value</div>
-            <div className="font-medium text-gray-900 truncate">
-              {estimatedValue > 0 ? `$${estimatedValue.toLocaleString()}` : '—'}
+            <div className="font-semibold text-[#7f1010] truncate">
+              {estimatedValue > 0 ? `$${estimatedValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—'}
             </div>
           </div>
         </div>
@@ -837,9 +853,10 @@ function ProjectListCard({ project, projectDivisions }:{ project: Project, proje
             <span
               className={[
                 'inline-flex items-center gap-1 px-2 py-1 rounded-full text-[11px] leading-4 font-medium border shadow-sm',
-                'bg-white/90 backdrop-blur-sm border-gray-200 text-gray-800',
+                'backdrop-blur-sm border-gray-200 text-gray-800',
               ].join(' ')}
               title={status}
+              style={{ backgroundColor: statusColor, color: '#000' }}
             >
               <span className="truncate max-w-[10rem]">{status || '—'}</span>
             </span>

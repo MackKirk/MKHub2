@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
@@ -173,24 +173,37 @@ export default function CommunityNewPost() {
     );
   };
 
+  const todayLabel = useMemo(() => {
+    return new Date().toLocaleDateString('en-CA', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+    });
+  }, []);
+
   return (
     <div className="space-y-4">
-      <div className="mb-3 rounded-xl border bg-gradient-to-br from-[#7f1010] to-[#a31414] text-white p-4">
-        <div className="text-2xl font-extrabold">New Post</div>
-        <div className="text-sm opacity-90">Create announcements and share updates with your team.</div>
-      </div>
-
-      <div className="mb-3 flex items-center justify-between">
-        <button
-          onClick={() => navigate('/community')}
-          className="p-2 rounded-lg border hover:bg-gray-50 transition-colors flex items-center gap-2"
-          title="Back to Community"
-        >
-          <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-          </svg>
-          <span className="text-sm text-gray-700 font-medium">Back to Community</span>
-        </button>
+      <div className="bg-slate-200/50 rounded-[12px] border border-slate-200 flex items-center justify-between py-4 px-6 mb-6">
+        <div className="flex items-center gap-4 flex-1">
+          <button
+            onClick={() => navigate('/community')}
+            className="p-2 rounded-lg hover:bg-gray-200 transition-colors flex items-center justify-center"
+            title="Back to Community"
+          >
+            <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+            </svg>
+          </button>
+          <div>
+            <div className="text-xl font-bold text-gray-900 tracking-tight mb-0.5">New Post</div>
+            <div className="text-sm text-gray-500 font-medium">Create announcements and share updates with your team.</div>
+          </div>
+        </div>
+        <div className="text-right">
+          <div className="text-xs text-gray-400 mb-1.5 font-medium uppercase tracking-wide">Today</div>
+          <div className="text-sm font-semibold text-gray-700">{todayLabel}</div>
+        </div>
       </div>
 
       <div className="rounded-xl border bg-white">

@@ -744,7 +744,7 @@ export default function InventoryProducts(){
             No products found
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6 2xl:grid-cols-7 gap-4">
             {canEditProducts && (
               <button
                 onClick={() => { resetModal(); setOpen(true); }}
@@ -779,11 +779,11 @@ export default function InventoryProducts(){
                   </div>
                 </div>
                 <div className="font-medium text-sm mb-1 line-clamp-2">{p.name}</div>
-                {p.description && (
-                  <div className="text-xs text-gray-500 mb-1 line-clamp-2">{p.description}</div>
+                {p.supplier_name && (
+                  <div className="text-xs text-gray-500 mb-1">Supplier: {p.supplier_name}</div>
                 )}
                 {p.category && (
-                  <div className="text-xs text-gray-500 mb-1">{p.category}</div>
+                  <div className="text-xs text-gray-500 mb-1">Category: {p.category}</div>
                 )}
                 <div className="text-xs text-red-600 font-semibold mt-auto">
                   {typeof p.price === 'number' ? `$${Number(p.price || 0).toFixed(2)}` : '—'}
@@ -801,12 +801,11 @@ export default function InventoryProducts(){
       {open && (
         <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center">
           <div className="w-[900px] max-w-[95vw] max-h-[90vh] bg-white rounded-xl overflow-hidden flex flex-col">
-            <div className="overflow-y-auto">
               {viewing && !editing ? (
                 // View mode - display product details
-                <div className="space-y-6">
+                <>
                   {/* Product Header */}
-                  <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] p-6 flex items-center gap-6 relative">
+                  <div className="flex-shrink-0 bg-gradient-to-br from-[#7f1010] to-[#a31414] p-6 flex items-center gap-6 relative">
                     <button
                       onClick={resetModal}
                       className="absolute top-4 right-4 text-white/80 hover:text-white text-2xl font-bold w-8 h-8 flex items-center justify-center rounded hover:bg-white/10"
@@ -841,7 +840,7 @@ export default function InventoryProducts(){
                   </div>
 
                   {/* Tabs */}
-                  <div className="px-6 border-b">
+                  <div className="flex-shrink-0 px-6 border-b">
                     <div className="flex gap-1">
                       <button
                         onClick={() => setProductTab('details')}
@@ -884,6 +883,7 @@ export default function InventoryProducts(){
                   </div>
 
                   {/* Product Details or Usage */}
+                  <div className="flex-1 overflow-y-auto">
                   {productTab === 'details' ? (
                   <div className="px-6 pb-6 space-y-4">
                     <div className="grid grid-cols-2 gap-4">
@@ -1096,12 +1096,13 @@ export default function InventoryProducts(){
                       )}
                     </div>
                   ) : null}
-                </div>
+                  </div>
+                </>
               ) : (
                 // Edit/Create mode - form inputs
-                <div className="space-y-6">
+                <>
                   {/* Edit Header */}
-                  <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] p-6 relative">
+                  <div className="flex-shrink-0 bg-gradient-to-br from-[#7f1010] to-[#a31414] p-6 relative">
                     <button
                       onClick={resetModal}
                       className="absolute top-4 right-4 text-white/80 hover:text-white text-2xl font-bold w-8 h-8 flex items-center justify-center rounded hover:bg-white/10"
@@ -1128,7 +1129,7 @@ export default function InventoryProducts(){
                     </div>
                   </div>
                   
-                  <div className="p-6 grid grid-cols-2 gap-4">
+                  <div className="flex-1 overflow-y-auto p-6 grid grid-cols-2 gap-4">
               <div className="col-span-2">
                 <label className="text-xs font-semibold text-gray-700">
                   Name <span className="text-red-600">*</span>
@@ -1287,10 +1288,9 @@ export default function InventoryProducts(){
                 </div>
               </div>
                   </div>
-                </div>
+                </>
               )}
-            </div>
-            <div className="px-4 py-3 border-t bg-gray-50 flex justify-end gap-2">
+            <div className="flex-shrink-0 px-4 py-3 border-t bg-gray-50 flex justify-end gap-2">
               {viewing && !editing ? (
                 // View mode buttons
                 <>

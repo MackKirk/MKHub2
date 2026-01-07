@@ -71,6 +71,15 @@ class Settings(BaseSettings):
     enable_push: bool = Field(default=True, alias="ENABLE_PUSH")
     enable_email: bool = Field(default=True, alias="ENABLE_EMAIL")
 
+    # PDF Image Optimization
+    pdf_image_optimize_enabled: bool = Field(default=True, alias="PDF_IMAGE_OPTIMIZE_ENABLED")
+    pdf_image_max_dim_cover: int = Field(default=1600, alias="PDF_IMAGE_MAX_DIM_COVER")
+    pdf_image_max_dim_section: int = Field(default=1400, alias="PDF_IMAGE_MAX_DIM_SECTION")
+    pdf_image_max_dim_thumb: int = Field(default=900, alias="PDF_IMAGE_MAX_DIM_THUMB")
+    pdf_image_jpeg_quality_cover: int = Field(default=80, alias="PDF_IMAGE_JPEG_QUALITY_COVER")
+    pdf_image_jpeg_quality_section: int = Field(default=75, alias="PDF_IMAGE_JPEG_QUALITY_SECTION")
+    pdf_image_jpeg_quality_thumb: int = Field(default=70, alias="PDF_IMAGE_JPEG_QUALITY_THUMB")
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"

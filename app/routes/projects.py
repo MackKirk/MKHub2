@@ -165,6 +165,7 @@ def list_projects(client: Optional[str] = None, site: Optional[str] = None, stat
             "client_id": str(p.client_id) if getattr(p, 'client_id', None) else None,
             "created_at": p.created_at.isoformat() if getattr(p, 'created_at', None) else None,
             "date_start": p.date_start.isoformat() if getattr(p, 'date_start', None) else None,
+            "date_eta": getattr(p, 'date_eta', None).isoformat() if getattr(p, 'date_eta', None) else None,
             "date_end": p.date_end.isoformat() if getattr(p, 'date_end', None) else None,
             "progress": getattr(p, 'progress', None),
             "status_label": getattr(p, 'status_label', None),
@@ -2586,6 +2587,99 @@ def business_opportunities(
                 if foid:
                     proposal_cover_by_project[pid] = str(foid)
 
+    # Fetch estimator and onsite lead names in batch
+    estimator_ids = list(set([getattr(p, 'estimator_id', None) for p in projects if getattr(p, 'estimator_id', None)]))
+    onsite_lead_ids = list(set([getattr(p, 'onsite_lead_id', None) for p in projects if getattr(p, 'onsite_lead_id', None)]))
+    all_user_ids = list(set(estimator_ids + onsite_lead_ids))
+    
+    users_map = {}
+    if all_user_ids:
+        users = db.query(User).filter(User.id.in_(all_user_ids)).all()
+        for user in users:
+            ep = db.query(EmployeeProfile).filter(EmployeeProfile.user_id == user.id).first()
+            name = (getattr(ep, 'preferred_name', None) or '').strip() if ep else ''
+            if not name:
+                first = (getattr(ep, 'first_name', None) or '').strip() if ep else ''
+                last = (getattr(ep, 'last_name', None) or '').strip() if ep else ''
+                name = ' '.join([x for x in [first, last] if x])
+            users_map[str(user.id)] = name or None
+    
+    # Fetch latest estimates and calculate Grand Total (Final Total with GST) for each project
+    estimated_values_map = {}
+    if project_ids:
+        import json
+        # Get latest estimate for each project
+        estimates = db.query(Estimate).filter(Estimate.project_id.in_(project_ids)).order_by(Estimate.created_at.desc()).all()
+        for est in estimates:
+            pid_str = str(est.project_id)
+            if pid_str not in estimated_values_map:
+                # Calculate Grand Total (Final Total with GST) - matching estimate.py logic exactly
+                if est.notes:
+                    try:
+                        ui_state = json.loads(est.notes)
+                        pst_rate = ui_state.get('pst_rate', 7.0)
+                        gst_rate = ui_state.get('gst_rate', 5.0)
+                        profit_rate = ui_state.get('profit_rate', 20.0)
+                        global_markup = ui_state.get('markup', est.markup or 0.0)
+                        
+                        items = db.query(EstimateItem).filter(EstimateItem.estimate_id == est.id).all()
+                        item_extras_map = ui_state.get('item_extras', {})
+                        
+                        # Calculate totals considering item types and markups (matching estimate.py logic exactly)
+                        total = 0.0
+                        total_with_markup = 0.0
+                        taxable_total_with_markup = 0.0
+                        
+                        for item in items:
+                            item_key = f'item_{item.id}'
+                            extras = item_extras_map.get(item_key, {})
+                            item_type = item.item_type or 'product'
+                            taxable = extras.get('taxable', True)  # Default to True if not specified
+                            item_markup = extras.get('markup')  # Individual item markup (can be None)
+                            
+                            # Calculate item total without markup
+                            if item_type == 'labour' and extras.get('labour_journey_type'):
+                                if extras['labour_journey_type'] == 'contract':
+                                    item_total = (extras.get('labour_journey', 0) or 0) * (item.unit_price or 0.0)
+                                else:
+                                    item_total = (extras.get('labour_journey', 0) or 0) * (extras.get('labour_men', 0) or 0) * (item.unit_price or 0.0)
+                            else:
+                                item_total = (item.quantity or 0.0) * (item.unit_price or 0.0)
+                            
+                            # Apply markup (individual or global)
+                            markup_percent = item_markup if item_markup is not None else global_markup
+                            item_total_with_markup = item_total * (1 + (markup_percent / 100))
+                            
+                            total += item_total
+                            total_with_markup += item_total_with_markup
+                            
+                            # PST only applies to taxable items (with markup)
+                            if taxable:
+                                taxable_total_with_markup += item_total_with_markup
+                        
+                        # Calculate PST on taxable items with markup
+                        pst = taxable_total_with_markup * (pst_rate / 100)
+                        
+                        # Subtotal = total with markup + PST
+                        subtotal = total_with_markup + pst
+                        
+                        # Profit is calculated on subtotal
+                        profit_value = subtotal * (profit_rate / 100)
+                        
+                        # Final total = subtotal + profit
+                        final_total = subtotal + profit_value
+                        
+                        # GST is calculated on final total
+                        gst = final_total * (gst_rate / 100)
+                        
+                        # Grand total = final total + GST
+                        grand_total = final_total + gst
+                        
+                        estimated_values_map[pid_str] = grand_total
+                    except Exception:
+                        # If calculation fails, use total_cost as fallback
+                        estimated_values_map[pid_str] = est.total_cost
+
     out = []
     for p in projects:
         pid = str(p.id)
@@ -2610,7 +2704,7 @@ def business_opportunities(
         if not cover_url:
             cover_url = "/ui/assets/placeholders/project.png"
 
-        out.append({
+        opp_dict = {
             "id": str(p.id),
             "code": p.code,
             "name": p.name,
@@ -2618,6 +2712,7 @@ def business_opportunities(
             "client_id": str(p.client_id) if getattr(p, 'client_id', None) else None,
             "created_at": p.created_at.isoformat() if getattr(p, 'created_at', None) else None,
             "date_start": p.date_start.isoformat() if getattr(p, 'date_start', None) else None,
+            "date_eta": getattr(p, 'date_eta', None).isoformat() if getattr(p, 'date_eta', None) else None,
             "date_end": p.date_end.isoformat() if getattr(p, 'date_end', None) else None,
             "progress": getattr(p, 'progress', None),
             "status_label": getattr(p, 'status_label', None),
@@ -2626,7 +2721,25 @@ def business_opportunities(
             "cost_estimated": getattr(p, 'cost_estimated', None),
             "is_bidding": True,
             "cover_image_url": cover_url,
-        })
+            "estimator_id": getattr(p, 'estimator_id', None),
+            "onsite_lead_id": getattr(p, 'onsite_lead_id', None),
+        }
+        
+        # Add estimator name if found
+        estimator_id_str = str(getattr(p, 'estimator_id', None)) if getattr(p, 'estimator_id', None) else None
+        if estimator_id_str and estimator_id_str in users_map:
+            opp_dict["estimator_name"] = users_map[estimator_id_str]
+        
+        # Add onsite lead name if found
+        onsite_lead_id_str = str(getattr(p, 'onsite_lead_id', None)) if getattr(p, 'onsite_lead_id', None) else None
+        if onsite_lead_id_str and onsite_lead_id_str in users_map:
+            opp_dict["onsite_lead_name"] = users_map[onsite_lead_id_str]
+        
+        # Add estimated value from estimate (Final Total with GST) if available, otherwise use cost_estimated
+        if pid in estimated_values_map:
+            opp_dict["cost_estimated"] = estimated_values_map[pid]
+        
+        out.append(opp_dict)
 
     return out
 
@@ -2905,7 +3018,6 @@ def business_projects(
     if min_value is not None:
         try:
             min_val = float(min_value)
-            from ..models.models import Estimate, EstimateItem
             import json
             
             filtered_projects = []
@@ -3037,6 +3149,101 @@ def business_projects(
                 "display_name": client.display_name,
             }
     
+    # Fetch estimator and onsite lead names in batch
+    estimator_ids = list(set([getattr(p, 'estimator_id', None) for p in projects[:limit] if getattr(p, 'estimator_id', None)]))
+    onsite_lead_ids = list(set([getattr(p, 'onsite_lead_id', None) for p in projects[:limit] if getattr(p, 'onsite_lead_id', None)]))
+    all_user_ids = list(set(estimator_ids + onsite_lead_ids))
+    
+    users_map = {}
+    if all_user_ids:
+        users = db.query(User).filter(User.id.in_(all_user_ids)).all()
+        for user in users:
+            ep = db.query(EmployeeProfile).filter(EmployeeProfile.user_id == user.id).first()
+            name = (getattr(ep, 'preferred_name', None) or '').strip() if ep else ''
+            if not name:
+                first = (getattr(ep, 'first_name', None) or '').strip() if ep else ''
+                last = (getattr(ep, 'last_name', None) or '').strip() if ep else ''
+                name = ' '.join([x for x in [first, last] if x])
+            users_map[str(user.id)] = name or None
+    
+    # Fetch latest estimates and calculate Grand Total (Final Total with GST) for each project
+    estimates_map = {}
+    estimated_values_map = {}
+    if project_ids:
+        import json
+        # Get latest estimate for each project
+        estimates = db.query(Estimate).filter(Estimate.project_id.in_(project_ids)).order_by(Estimate.created_at.desc()).all()
+        for est in estimates:
+            pid_str = str(est.project_id)
+            if pid_str not in estimates_map:
+                estimates_map[pid_str] = est
+                # Calculate Grand Total (Final Total with GST) - matching estimate.py logic exactly
+                if est.notes:
+                    try:
+                        ui_state = json.loads(est.notes)
+                        pst_rate = ui_state.get('pst_rate', 7.0)
+                        gst_rate = ui_state.get('gst_rate', 5.0)
+                        profit_rate = ui_state.get('profit_rate', 20.0)
+                        global_markup = ui_state.get('markup', est.markup or 0.0)
+                        
+                        items = db.query(EstimateItem).filter(EstimateItem.estimate_id == est.id).all()
+                        item_extras_map = ui_state.get('item_extras', {})
+                        
+                        # Calculate totals considering item types and markups (matching estimate.py logic exactly)
+                        total = 0.0
+                        total_with_markup = 0.0
+                        taxable_total_with_markup = 0.0
+                        
+                        for item in items:
+                            item_key = f'item_{item.id}'
+                            extras = item_extras_map.get(item_key, {})
+                            item_type = item.item_type or 'product'
+                            taxable = extras.get('taxable', True)  # Default to True if not specified
+                            item_markup = extras.get('markup')  # Individual item markup (can be None)
+                            
+                            # Calculate item total without markup
+                            if item_type == 'labour' and extras.get('labour_journey_type'):
+                                if extras['labour_journey_type'] == 'contract':
+                                    item_total = (extras.get('labour_journey', 0) or 0) * (item.unit_price or 0.0)
+                                else:
+                                    item_total = (extras.get('labour_journey', 0) or 0) * (extras.get('labour_men', 0) or 0) * (item.unit_price or 0.0)
+                            else:
+                                item_total = (item.quantity or 0.0) * (item.unit_price or 0.0)
+                            
+                            # Apply markup (individual or global)
+                            markup_percent = item_markup if item_markup is not None else global_markup
+                            item_total_with_markup = item_total * (1 + (markup_percent / 100))
+                            
+                            total += item_total
+                            total_with_markup += item_total_with_markup
+                            
+                            # PST only applies to taxable items (with markup)
+                            if taxable:
+                                taxable_total_with_markup += item_total_with_markup
+                        
+                        # Calculate PST on taxable items with markup
+                        pst = taxable_total_with_markup * (pst_rate / 100)
+                        
+                        # Subtotal = total with markup + PST
+                        subtotal = total_with_markup + pst
+                        
+                        # Profit is calculated on subtotal
+                        profit_value = subtotal * (profit_rate / 100)
+                        
+                        # Final total = subtotal + profit
+                        final_total = subtotal + profit_value
+                        
+                        # GST is calculated on final total
+                        gst = final_total * (gst_rate / 100)
+                        
+                        # Grand total = final total + GST
+                        grand_total = final_total + gst
+                        
+                        estimated_values_map[pid_str] = grand_total
+                    except Exception:
+                        # If calculation fails, use total_cost as fallback
+                        estimated_values_map[pid_str] = est.total_cost
+    
     # Latest proposal cover per project (batch) - used if cover isn't already present
     proposal_cover_by_project: dict[str, str] = {}
     if project_ids:
@@ -3062,6 +3269,7 @@ def business_projects(
             "client_id": str(p.client_id) if getattr(p, 'client_id', None) else None,
             "created_at": p.created_at.isoformat() if getattr(p, 'created_at', None) else None,
             "date_start": p.date_start.isoformat() if getattr(p, 'date_start', None) else None,
+            "date_eta": getattr(p, 'date_eta', None).isoformat() if getattr(p, 'date_eta', None) else None,
             "date_end": p.date_end.isoformat() if getattr(p, 'date_end', None) else None,
             "progress": getattr(p, 'progress', None),
             "status_label": getattr(p, 'status_label', None),
@@ -3104,6 +3312,20 @@ def business_projects(
             client_info = clients_map[client_id_str]
             project_dict["client_name"] = client_info.get("name")
             project_dict["client_display_name"] = client_info.get("display_name")
+        
+        # Add estimator name if found
+        estimator_id_str = str(getattr(p, 'estimator_id', None)) if getattr(p, 'estimator_id', None) else None
+        if estimator_id_str and estimator_id_str in users_map:
+            project_dict["estimator_name"] = users_map[estimator_id_str]
+        
+        # Add onsite lead name if found
+        onsite_lead_id_str = str(getattr(p, 'onsite_lead_id', None)) if getattr(p, 'onsite_lead_id', None) else None
+        if onsite_lead_id_str and onsite_lead_id_str in users_map:
+            project_dict["onsite_lead_name"] = users_map[onsite_lead_id_str]
+        
+        # Add estimated value from estimate (Final Total with GST) if available, otherwise use service_value
+        if project_id_str in estimated_values_map:
+            project_dict["service_value"] = estimated_values_map[project_id_str]
         
         result.append(project_dict)
     
