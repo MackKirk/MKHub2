@@ -12,11 +12,10 @@ import uuid
 
 # Structure: division_name -> [subdivision_names]
 PROJECT_DIVISIONS = {
-    "Roofing": ["SBS", "Shingles", "Single Ply", "Standing Seam Metal", "Hot Asphalt", "Cedar"],
+    "Roofing": ["SBS", "Shingles", "Single Ply", "Standing Seam Metal", "Hot Asphalt", "Cedar", "Cladding"],
     "Concrete Restoration & Waterproofing": ["SBS", "Liquid Membranes", "Concrete Surface Prep/Repair", "Expansion Joints", "Traffic Membranes"],
     "Cladding & Exterior Finishes": ["Steel Cladding", "ACM Panels", "Fibre Cement", "Phenolic", "Custom"],
     "Repairs & Maintenance": [],  # No subdivisions
-    "Mack Kirk Metals": ["Flashing", "Custom Fabrication", "S-5 Mounting Hardware"],
     "Mechanical": [],  # No subdivisions
     "Electrical": [],  # No subdivisions
     "Carpentry": [],  # No subdivisions

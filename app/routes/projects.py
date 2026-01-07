@@ -172,6 +172,7 @@ def list_projects(client: Optional[str] = None, site: Optional[str] = None, stat
             "status_changed_at": getattr(p, 'status_changed_at', None).isoformat() if getattr(p, 'status_changed_at', None) else None,
             "division_ids": getattr(p, 'division_ids', None),  # Legacy
             "project_division_ids": getattr(p, 'project_division_ids', None),
+            "project_division_percentages": getattr(p, 'project_division_percentages', None),
             "is_bidding": getattr(p, 'is_bidding', False),
         }
         for p in query.order_by(Project.created_at.desc()).limit(100).all()
@@ -225,6 +226,7 @@ def get_project(project_id: str, db: Session = Depends(get_db)):
         "status_changed_at": getattr(p, 'status_changed_at', None).isoformat() if getattr(p, 'status_changed_at', None) else None,
         "division_ids": getattr(p, 'division_ids', None),  # Legacy
         "project_division_ids": getattr(p, 'project_division_ids', None),
+        "project_division_percentages": getattr(p, 'project_division_percentages', None),
         "site_id": str(getattr(p,'site_id', None)) if getattr(p,'site_id', None) else None,
         "site_name": getattr(site, 'site_name', None),
         "site_address_line1": getattr(site, 'site_address_line1', None),
@@ -337,6 +339,18 @@ def update_project(project_id: str, payload: dict, db: Session = Depends(get_db)
         else:
             # If clearing the image, also clear the manually_set flag
             payload['image_manually_set'] = False
+    
+    # Validate project_division_percentages if provided
+    if 'project_division_percentages' in payload:
+        percentages = payload.get('project_division_percentages')
+        if percentages is not None:
+            if not isinstance(percentages, dict):
+                raise HTTPException(status_code=400, detail="project_division_percentages must be a dictionary")
+            # Calculate sum of percentages
+            total = sum(float(v) for v in percentages.values() if v is not None)
+            # Allow small tolerance for floating point (0.01%)
+            if abs(total - 100.0) > 0.01:
+                raise HTTPException(status_code=400, detail=f"Division percentages must total exactly 100%. Current total: {total:.2f}%")
     
     # Update project
     for k, v in payload.items():
@@ -3462,12 +3476,7 @@ def get_bid_types():
             "Phenolic": [],
             "Custom": [],
         },
-        "Repairs & Maintenance": {
-            "Mack Kirk Metals": [],
-            "Flashing": [],
-            "Custom Fabrication": [],
-            "S-5 Mounting Hardware": [],
-        },
+        "Repairs & Maintenance": {},
         "Additional Services": {
             "Mechanical": [],
             "Electrical": [],

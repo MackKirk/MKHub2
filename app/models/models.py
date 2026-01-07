@@ -178,6 +178,7 @@ class Project(Base):
     status_label: Mapped[Optional[str]] = mapped_column(String(100))
     division_ids: Mapped[Optional[list]] = mapped_column(JSON)  # Legacy: kept for backward compatibility
     project_division_ids: Mapped[Optional[list]] = mapped_column(JSON)  # Array of project division/subdivision UUIDs (from project_divisions SettingList)
+    project_division_percentages: Mapped[Optional[dict]] = mapped_column(JSON)  # Maps division_id -> percentage (0-100), must sum to 100
     estimator_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
     onsite_lead_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))  # Legacy field, kept for backward compatibility
     division_onsite_leads: Mapped[Optional[dict]] = mapped_column(JSON)  # Maps division_id -> onsite_lead_id

@@ -274,6 +274,32 @@ def create_app() -> FastAPI:
                     
                     db.commit()
                 
+                # Check for project_division_percentages column in projects
+                if dialect == "sqlite":
+                    rows = db.execute(text("PRAGMA table_info(projects)")).fetchall()
+                    col_names = {str(r[1]) for r in rows}
+                    if "project_division_percentages" not in col_names:
+                        db.execute(text("ALTER TABLE projects ADD COLUMN project_division_percentages TEXT NULL"))
+                        db.commit()
+                        print("[startup] Added project_division_percentages column to projects table")
+                else:
+                    # PostgreSQL / other dialects
+                    rows = db.execute(
+                        text(
+                            """
+                            SELECT 1
+                            FROM information_schema.columns
+                            WHERE table_name = 'projects'
+                              AND column_name = 'project_division_percentages'
+                            LIMIT 1
+                            """
+                        )
+                    ).fetchall()
+                    if not rows:
+                        db.execute(text("ALTER TABLE projects ADD COLUMN project_division_percentages JSON NULL"))
+                        db.commit()
+                        print("[startup] Added project_division_percentages column to projects table")
+                
                 print("[startup] Schema migrations check completed")
             except Exception as e:
                 print(f"[startup] Schema migrations check error (non-critical): {e}")
