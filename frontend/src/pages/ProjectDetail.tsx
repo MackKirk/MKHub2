@@ -195,7 +195,7 @@ export default function ProjectDetail(){
     
     const searchParams = new URLSearchParams(location.search);
     const tabParam = searchParams.get('tab') as 'overview'|'general'|'reports'|'dispatch'|'timesheet'|'files'|'photos'|'proposal'|'estimate'|'orders'|null;
-    if (tabParam && ['overview','general','reports','dispatch','timesheet','files','photos','proposal','estimate','orders'].includes(tabParam)) {
+    if (tabParam && ['overview','general','reports','dispatch','timesheet','files','photos','proposal','orders'].includes(tabParam)) {
       // Check permission before setting tab
       if (tabParam === 'overview' || hasTabPermission(tabParam)) {
         setTab(tabParam);
@@ -274,8 +274,8 @@ export default function ProjectDetail(){
 
   // Base available tabs
   const baseAvailableTabs = proj?.is_bidding 
-    ? (['overview','reports','files','proposal','estimate'] as const)
-    : (['overview','reports','dispatch','timesheet','files','proposal','estimate','orders'] as const);
+    ? (['overview','reports','files','proposal'] as const)
+    : (['overview','reports','dispatch','timesheet','files','proposal','orders'] as const);
   
   // Filter tabs based on permissions (only when user data is loaded)
   const availableTabs = useMemo(() => {

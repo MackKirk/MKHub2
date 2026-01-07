@@ -1405,11 +1405,10 @@ function OpportunityListCard({ opportunity, onOpenReportModal, projectStatuses }
     return icons;
   }, [projectDivIds, projectDivisions]);
 
-  // Tab icons and navigation (for opportunities: files, proposal, estimate, reports)
+  // Tab icons and navigation (for opportunities: files, proposal, reports)
   const tabButtons = [
     { key: 'files', icon: '📁', label: 'Files', tab: 'files' },
     { key: 'proposal', icon: '📄', label: 'Proposal', tab: 'proposal' },
-    { key: 'estimate', icon: '💰', label: 'Estimate', tab: 'estimate' },
     { key: 'reports', icon: '📋', label: 'Report', tab: 'reports' },
   ];
 

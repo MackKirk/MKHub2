@@ -720,7 +720,6 @@ function ProjectListCard({ project, projectDivisions, projectStatuses }:{ projec
     { key: 'timesheet', icon: '⏰', label: 'Timesheet', tab: 'timesheet' },
     { key: 'files', icon: '📁', label: 'Files', tab: 'files' },
     { key: 'proposal', icon: '📄', label: 'Proposal', tab: 'proposal' },
-    { key: 'estimate', icon: '💰', label: 'Estimate', tab: 'estimate' },
     { key: 'orders', icon: '🛒', label: 'Orders', tab: 'orders' },
   ];
 
