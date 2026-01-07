@@ -7,6 +7,7 @@ import { useUnsavedChanges } from '@/components/UnsavedChangesProvider';
 import { useConfirm } from '@/components/ConfirmProvider';
 import FixedBugReportButton from '@/components/FixedBugReportButton';
 import InstallPrompt from '@/components/InstallPrompt';
+import GlobalSearch, { GlobalSearchSection, GlobalSearchItem } from '@/components/GlobalSearch';
 
 type MenuItem = {
   id: string;
@@ -337,8 +338,8 @@ export default function AppShell({ children }: PropsWithChildren){
     },
     {
       id: 'services',
-      label: 'Services',
-      icon: <IconServices />,
+      label: 'Sales',
+      icon: <IconSales />,
       items: [
         { id: 'business-dashboard', label: 'Dashboard', path: '/business', icon: <IconDashboard />, requiredPermission: 'business:projects:read' },
         { id: 'opportunities', label: 'Opportunities', path: '/opportunities', icon: <IconOpportunities />, requiredPermission: 'business:projects:read' },
@@ -358,7 +359,7 @@ export default function AppShell({ children }: PropsWithChildren){
     },
     {
       id: 'sales',
-      label: 'Sales - MK Metals',
+      label: '2B Removed',
       icon: <IconSales />,
       items: [
         { id: 'quotations', label: 'Quotations', path: '/quotes', icon: <IconQuotations />, requiredPermission: 'sales:quotations:read' },
@@ -422,6 +423,57 @@ export default function AppShell({ children }: PropsWithChildren){
     },
   ];
   }, [me, isProfileComplete]);
+
+  const globalSearchLocalSections: GlobalSearchSection[] = useMemo(() => {
+    // Pages built from the same menu config (respecting permissions).
+    const items: GlobalSearchItem[] = [];
+    for (const cat of menuCategories) {
+      for (const it of cat.items || []) {
+        if (hasPermission(it.requiredPermission)) {
+          items.push({
+            type: 'page',
+            id: it.id,
+            title: it.label,
+            subtitle: cat.label,
+            href: it.path,
+          });
+        }
+        for (const child of it.children || []) {
+          if (hasPermission(child.requiredPermission)) {
+            items.push({
+              type: 'page',
+              id: child.id,
+              title: child.label,
+              subtitle: `${cat.label} / ${it.label}`,
+              href: child.path,
+            });
+          }
+        }
+      }
+    }
+    const seen = new Set<string>();
+    const unique = items.filter((x) => {
+      if (!x.href || seen.has(x.href)) return false;
+      seen.add(x.href);
+      return true;
+    });
+    return unique.length ? [{ id: 'pages', label: 'Pages', items: unique }] : [];
+  }, [menuCategories, permissionsSet, isAdmin]);
+
+  const canSeeGlobalSearchItem = useMemo(() => {
+    return (item: GlobalSearchItem) => {
+      // Pages already filtered, but keep it safe.
+      if (item.type === 'page') return true;
+      if (item.type === 'project' || item.type === 'opportunity') return hasPermission('business:projects:read');
+      if (item.type === 'customer') return hasPermission('business:customers:read');
+      if (item.type === 'quote') return hasPermission('sales:quotations:read');
+      if (item.type === 'user') return hasPermission('hr:users:read') || hasPermission('users:read');
+      if (item.type === 'fleet_asset' || item.type === 'equipment' || item.type === 'work_order') return hasPermission('fleet:access') || hasPermission('fleet:read');
+      // Unknown types: default allow (backend should still enforce on data fetch)
+      return true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [permissionsSet, isAdmin]);
 
   // Check if current route is a project that is an opportunity
   const projectIdMatch = location.pathname.match(/^\/projects\/([^\/]+)$/);
@@ -832,17 +884,12 @@ export default function AppShell({ children }: PropsWithChildren){
       </aside>
       <main className={`flex-1 min-w-0 transition-all duration-300 ${sidebarCollapsed ? 'ml-16' : 'ml-64'}`} style={{ height: '100vh', overflowY: 'auto' }}>
         <div className="h-14 border-b border-gray-700/40 shadow-sm text-white flex items-center justify-between px-6 bg-gradient-to-r from-gray-700 via-gray-700 to-gray-800">
-          <div className="relative w-80">
-            <div className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none z-10">
-              <svg className="w-4 h-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-              </svg>
-            </div>
-            <input 
-              placeholder="Search" 
-              className="w-full rounded-lg pl-10 pr-3 py-2 text-sm bg-gray-800/80 border border-gray-600/50 text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-red/40 focus:border-brand-red/60 focus:bg-gray-800 transition-all duration-200"
-            />
-          </div>
+          <GlobalSearch
+            widthClassName="w-[760px] max-w-[70vw]"
+            maxRecents={4}
+            isItemAllowed={canSeeGlobalSearchItem}
+            getLocalSections={() => globalSearchLocalSections}
+          />
           <div className="flex items-center gap-4">
             <NotificationBell />
             <div className="relative flex items-center gap-3">
