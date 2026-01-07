@@ -656,7 +656,6 @@ const getDivisionIcon = (label: string): string => {
     'Concrete Restoration & Waterproofing': '🏗️',
     'Cladding & Exterior Finishes': '🧱',
     'Repairs & Maintenance': '🔧',
-    'Mack Kirk Metals': '⚙️',
     'Mechanical': '🔩',
     'Electrical': '⚡',
     'Carpentry': '🪵',
@@ -690,20 +689,46 @@ function ProjectListCard({ project, projectDivisions, projectStatuses }:{ projec
   const actualValue = project.cost_actual || 0;
   const estimatedValue = project.service_value || 0;
   const projectDivIds = project.project_division_ids || [];
+  const percentages = project.project_division_percentages || {};
   
-  // Get division icons and labels (only if projectDivisions is already loaded)
+  // Calculate percentages if not set (auto-initialize)
+  const calculatedPercentages = useMemo(() => {
+    if (projectDivIds.length === 0) return {};
+    // If percentages exist and cover all divisions, use them
+    const hasPercentages = projectDivIds.every(id => percentages[String(id)] !== undefined);
+    if (hasPercentages && Object.keys(percentages).length > 0) {
+      return percentages;
+    }
+    // Otherwise, calculate equal distribution
+    const equalPercent = projectDivIds.length === 1 ? 100 : 100 / projectDivIds.length;
+    const result: { [key: string]: number } = {};
+    projectDivIds.forEach(id => {
+      result[String(id)] = equalPercent;
+    });
+    return result;
+  }, [projectDivIds, percentages]);
+  
+  // Get division icons and labels with percentages (only if projectDivisions is already loaded)
   const divisionIcons = useMemo(() => {
     if (!Array.isArray(projectDivIds) || projectDivIds.length === 0 || !projectDivisions) return [];
-    const icons: Array<{ icon: string; label: string }> = [];
+    const icons: Array<{ icon: string; label: string; percentage: number }> = [];
     for (const divId of projectDivIds.slice(0, 5)) {
       for (const div of (projectDivisions || [])) {
         if (String(div.id) === String(divId)) {
-          icons.push({ icon: getDivisionIcon(div.label), label: div.label });
+          icons.push({ 
+            icon: getDivisionIcon(div.label), 
+            label: div.label,
+            percentage: calculatedPercentages[String(divId)] || 0
+          });
           break;
         }
         for (const sub of (div.subdivisions || [])) {
           if (String(sub.id) === String(divId)) {
-            icons.push({ icon: getDivisionIcon(div.label), label: `${div.label} - ${sub.label}` });
+            icons.push({ 
+              icon: getDivisionIcon(div.label), 
+              label: `${div.label} - ${sub.label}`,
+              percentage: calculatedPercentages[String(divId)] || 0
+            });
             break;
           }
         }
@@ -711,7 +736,7 @@ function ProjectListCard({ project, projectDivisions, projectStatuses }:{ projec
       }
     }
     return icons;
-  }, [projectDivIds, projectDivisions]);
+  }, [projectDivIds, projectDivisions, calculatedPercentages]);
 
   // Tab icons and navigation
   const tabButtons = [
@@ -822,9 +847,12 @@ function ProjectListCard({ project, projectDivisions, projectStatuses }:{ projec
             {divisionIcons.length > 0 ? (
               <div className="flex items-center gap-2 flex-wrap">
                 {divisionIcons.map((div, idx) => (
-                  <div key={idx} className="relative group/icon" title={div.label}>
+                  <div key={idx} className="relative group/icon flex flex-col items-center" title={div.label}>
                     <div className="text-xl cursor-pointer hover:scale-110 transition-transform">
                       {div.icon}
+                    </div>
+                    <div className="text-xs text-gray-600 font-bold mt-0.5">
+                      {Math.round(div.percentage || 0)}%
                     </div>
                     <div className="absolute left-0 bottom-full mb-1 px-2 py-1 bg-gray-900 text-white text-xs rounded whitespace-nowrap opacity-0 group-hover/icon:opacity-100 transition-opacity pointer-events-none z-10">
                       {div.label}

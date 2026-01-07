@@ -187,7 +187,6 @@ const getDivisionIcon = (label: string): string => {
     'Concrete Restoration & Waterproofing': '🏗️',
     'Cladding & Exterior Finishes': '🧱',
     'Repairs & Maintenance': '🔧',
-    'Mack Kirk Metals': '⚙️',
     'Mechanical': '🔩',
     'Electrical': '⚡',
     'Carpentry': '🪵',

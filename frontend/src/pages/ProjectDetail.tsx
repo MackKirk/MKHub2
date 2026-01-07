@@ -5379,7 +5379,6 @@ const getDivisionIcon = (label: string): string => {
     'Concrete Restoration & Waterproofing': '🏗️',
     'Cladding & Exterior Finishes': '🧱',
     'Repairs & Maintenance': '🔧',
-    'Mack Kirk Metals': '⚙️',
     'Mechanical': '🔩',
     'Electrical': '⚡',
     'Carpentry': '🪵',
@@ -5992,20 +5991,58 @@ function ProjectDivisionsHeroSection({ projectId, proj, hasEditPermission }: { p
   const { data:projectDivisions } = useQuery({ queryKey:['project-divisions'], queryFn: ()=>api<any[]>('GET','/settings/project-divisions'), staleTime: 300_000 });
 
   const projectDivIds = Array.isArray(proj?.project_division_ids) ? proj.project_division_ids : [];
+  const percentages = proj?.project_division_percentages || {};
 
-  // Get division icons and labels
+  // Calculate percentages if not set (auto-initialize)
+  const calculatedPercentages = useMemo(() => {
+    if (projectDivIds.length === 0) return {};
+    
+    // Filter percentages to only include valid division IDs (remove orphaned percentages)
+    const filteredPercentages: { [key: string]: number } = {};
+    projectDivIds.forEach(id => {
+      const idStr = String(id);
+      if (percentages[idStr] !== undefined) {
+        filteredPercentages[idStr] = percentages[idStr];
+      }
+    });
+    
+    // If percentages exist and cover all divisions, use them
+    const hasPercentages = projectDivIds.every(id => filteredPercentages[String(id)] !== undefined);
+    if (hasPercentages && Object.keys(filteredPercentages).length > 0) {
+      return filteredPercentages;
+    }
+    // Otherwise, calculate equal distribution
+    const equalPercent = projectDivIds.length === 1 ? 100 : 100 / projectDivIds.length;
+    const result: { [key: string]: number } = {};
+    projectDivIds.forEach(id => {
+      result[String(id)] = equalPercent;
+    });
+    return result;
+  }, [projectDivIds, percentages]);
+
+  // Get division icons and labels with percentages
   const divisionIcons = useMemo(() => {
     if (!Array.isArray(projectDivIds) || projectDivIds.length === 0 || !projectDivisions) return [];
-    const icons: Array<{ icon: string; label: string; id: string }> = [];
+    const icons: Array<{ icon: string; label: string; id: string; percentage: number }> = [];
     for (const divId of projectDivIds) {
       for (const div of (projectDivisions || [])) {
         if (String(div.id) === String(divId)) {
-          icons.push({ icon: getDivisionIcon(div.label), label: div.label, id: String(div.id) });
+          icons.push({ 
+            icon: getDivisionIcon(div.label), 
+            label: div.label, 
+            id: String(div.id),
+            percentage: calculatedPercentages[String(divId)] || 0
+          });
           break;
         }
         for (const sub of (div.subdivisions || [])) {
           if (String(sub.id) === String(divId)) {
-            icons.push({ icon: getDivisionIcon(div.label), label: `${div.label} - ${sub.label}`, id: String(sub.id) });
+            icons.push({ 
+              icon: getDivisionIcon(div.label), 
+              label: `${div.label} - ${sub.label}`, 
+              id: String(sub.id),
+              percentage: calculatedPercentages[String(divId)] || 0
+            });
             break;
           }
         }
@@ -6013,7 +6050,7 @@ function ProjectDivisionsHeroSection({ projectId, proj, hasEditPermission }: { p
       }
     }
     return icons;
-  }, [projectDivIds, projectDivisions]);
+  }, [projectDivIds, projectDivisions, calculatedPercentages]);
 
   return (
     <>
@@ -6038,11 +6075,14 @@ function ProjectDivisionsHeroSection({ projectId, proj, hasEditPermission }: { p
               {divisionIcons.map((div) => (
                 <div
                   key={div.id}
-                  className="relative group/icon"
+                  className="relative group/icon flex flex-col items-center"
                   title={div.label}
                 >
-                  <div className="text-2xl cursor-pointer hover:scale-110 transition-transform">
+                  <div className="text-2xl transition-transform hover:scale-110">
                     {div.icon}
+                  </div>
+                  <div className="text-xs font-bold mt-0.5 text-gray-600">
+                    {Math.round(div.percentage || 0)}%
                   </div>
                   {/* Tooltip */}
                   <div className="absolute right-0 top-full mt-1 px-2 py-1 bg-gray-900 text-white text-xs rounded whitespace-nowrap opacity-0 group-hover/icon:opacity-100 transition-opacity pointer-events-none z-10">
@@ -6063,6 +6103,7 @@ function ProjectDivisionsHeroSection({ projectId, proj, hasEditPermission }: { p
         <EditDivisionsModal
           projectId={projectId}
           currentDivisions={projectDivIds}
+          currentPercentages={calculatedPercentages}
           projectDivisions={projectDivisions || []}
           onClose={() => setShowEditModal(false)}
           onSave={async () => {
@@ -6071,118 +6112,367 @@ function ProjectDivisionsHeroSection({ projectId, proj, hasEditPermission }: { p
           }}
         />
       )}
+
     </>
   );
 }
 
 // Edit Divisions Modal Component
-function EditDivisionsModal({ projectId, currentDivisions, projectDivisions, onClose, onSave }: {
+function EditDivisionsModal({ projectId, currentDivisions, currentPercentages, projectDivisions, onClose, onSave }: {
   projectId: string;
   currentDivisions: string[];
+  currentPercentages: { [key: string]: number };
   projectDivisions: any[];
   onClose: () => void;
   onSave: () => Promise<void>;
 }) {
   const [projectDivs, setProjectDivs] = useState<string[]>(currentDivisions);
+  const [percentages, setPercentages] = useState<{ [key: string]: number }>(currentPercentages);
+  const [inputValues, setInputValues] = useState<{ [key: string]: string }>({});
   const [saving, setSaving] = useState(false);
+  const [expandedDivisions, setExpandedDivisions] = useState<Set<string>>(new Set());
 
+  const validDivisionIdSet = useMemo(() => {
+    const ids = new Set<string>();
+    for (const div of projectDivisions || []) {
+      ids.add(String(div.id));
+      for (const sub of div.subdivisions || []) {
+        ids.add(String(sub.id));
+      }
+    }
+    return ids;
+  }, [projectDivisions]);
+
+  // Always work with a de-duplicated list of selected division IDs.
+  // Old projects may contain duplicated IDs (e.g. after division removals/edits),
+  // which can break totals while React renders only one row per duplicated key.
+  const selectedDivIds = useMemo(() => {
+    return Array.from(new Set((projectDivs || []).map((x) => String(x)))).filter((id) => validDivisionIdSet.has(id));
+  }, [projectDivs, validDivisionIdSet]);
+
+  // Toggle expansion of a division
+  const toggleDivision = (divId: string) => {
+    setExpandedDivisions(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(divId)) {
+        newSet.delete(divId);
+      } else {
+        newSet.add(divId);
+      }
+      return newSet;
+    });
+  };
+
+  // Initialize from props when modal opens
   useEffect(() => {
-    setProjectDivs(currentDivisions);
-  }, [currentDivisions]);
+    // First, validate and remove main divisions that have subdivisions
+    const cleanedDivisions = currentDivisions.filter((divId) => {
+      // Drop IDs that no longer exist in settings (e.g. removed division)
+      if (!validDivisionIdSet.has(String(divId))) return false;
+
+      // Check if this division has subdivisions
+      for (const div of projectDivisions) {
+        if (String(div.id) === String(divId)) {
+          const subdivisions = div.subdivisions || [];
+          // If it has subdivisions, remove it from selection
+          return subdivisions.length === 0;
+        }
+      }
+      return true;
+    });
+    
+    // De-dupe as a safety net (handles legacy/buggy stored arrays)
+    setProjectDivs(Array.from(new Set(cleanedDivisions.map((x) => String(x)))));
+    setPercentages(currentPercentages);
+  }, [currentDivisions, currentPercentages, projectDivisions, validDivisionIdSet]);
+
+  // Update percentages when divisions change
+  useEffect(() => {
+    setPercentages(prev => {
+      const newPercentages: { [key: string]: number } = {};
+      selectedDivIds.forEach(divId => {
+        const existingPercentage = prev[String(divId)];
+        if (existingPercentage !== undefined) {
+          newPercentages[String(divId)] = existingPercentage;
+        } else {
+          // New division starts with 0%
+          newPercentages[String(divId)] = 0;
+        }
+      });
+      return newPercentages;
+    });
+  }, [selectedDivIds]);
+
+  // Calculate total percentage (only for selected divisions)
+  const totalPercentage = useMemo(() => {
+    if (selectedDivIds.length === 0) return 0;
+    return selectedDivIds.reduce((sum, divId) => {
+      return sum + (percentages[String(divId)] || 0);
+    }, 0);
+  }, [percentages, selectedDivIds]);
+
+  const isValid = selectedDivIds.length === 0 || Math.round(totalPercentage) === 100;
+
+  const updatePercentage = (divId: string, value: number) => {
+    // Round to integer
+    const intValue = Math.round(Math.max(0, Math.min(100, value)));
+    setPercentages(prev => ({
+      ...prev,
+      [String(divId)]: intValue
+    }));
+  };
 
   const handleSave = async () => {
+    if (selectedDivIds.length > 0 && !isValid) {
+      toast.error('Division percentages must total exactly 100%');
+      return;
+    }
     try {
       setSaving(true);
+      // Round all percentages to integers before saving
+      const roundedPercentages: { [key: string]: number } = {};
+      if (selectedDivIds.length > 0) {
+        selectedDivIds.forEach((id) => {
+          roundedPercentages[String(id)] = Math.round(percentages[String(id)] || 0);
+        });
+      }
+      const percentagesPayload = selectedDivIds.length > 0 ? roundedPercentages : null;
       await api('PATCH', `/projects/${projectId}`, { 
-        project_division_ids: projectDivs.length > 0 ? projectDivs : null
+        project_division_ids: selectedDivIds.length > 0 ? selectedDivIds : null,
+        project_division_percentages: percentagesPayload
       });
-      toast.success('Divisions saved');
+      toast.success('Divisions and percentages saved');
       await onSave();
-    } catch (_e) {
-      toast.error('Failed to save divisions');
+    } catch (e: any) {
+      toast.error(e?.response?.data?.detail || 'Failed to save divisions');
     } finally {
       setSaving(false);
     }
   };
 
+  // Helper function to find division info
+  const getDivisionInfo = (divId: string) => {
+    for (const div of projectDivisions) {
+      if (String(div.id) === String(divId)) {
+        return { ...div, isSubdivision: false };
+      }
+      for (const sub of (div.subdivisions || [])) {
+        if (String(sub.id) === String(divId)) {
+          return { ...sub, parentLabel: div.label, isSubdivision: true };
+        }
+      }
+    }
+    return null;
+  };
+
   return (
     <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white rounded-xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col shadow-xl" onClick={(e) => e.stopPropagation()}>
-        <div className="p-4 border-b flex items-center justify-between">
-          <h3 className="text-lg font-semibold">Edit Project Divisions</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+      <div className="bg-white rounded-xl w-full max-w-5xl max-h-[90vh] overflow-hidden flex flex-col shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="p-4 bg-[#7f1010] flex items-center justify-between">
+          <h3 className="text-lg font-semibold text-white">Edit Project Divisions</h3>
+          <button onClick={onClose} className="text-white hover:text-gray-200 transition-colors">
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
         </div>
-        <div className="flex-1 overflow-y-auto p-4">
-          <div className="space-y-2">
-            {projectDivisions.map((div: any) => {
-              const divId = String(div.id);
-              const divSelected = projectDivs.includes(divId);
-              const subdivisions = div.subdivisions || [];
-              
-              return (
-                <div key={divId} className="border rounded p-2 bg-white">
-                  <button
-                    type="button"
-                    onClick={() => setProjectDivs(prev => prev.includes(divId) ? prev.filter(x => x !== divId) : [...prev, divId])}
-                    className={`w-full text-left px-2 py-1 rounded text-sm font-medium flex items-center gap-2 ${
-                      divSelected ? 'bg-[#7f1010] text-white' : 'bg-gray-50 hover:bg-gray-100'
-                    }`}
-                  >
-                    <span className="text-lg">{getDivisionIcon(div.label)}</span>
-                    <span>{div.label}</span>
-                  </button>
-                  {subdivisions.length > 0 && (
-                    <div className="mt-1 pl-6 space-y-1">
-                      {subdivisions.map((sub: any) => {
-                        const subId = String(sub.id);
-                        const subSelected = projectDivs.includes(subId);
-                        return (
-                          <button
-                            key={subId}
-                            type="button"
-                            onClick={() => setProjectDivs(prev => prev.includes(subId) ? prev.filter(x => x !== subId) : [...prev, subId])}
-                            className={`w-full text-left px-2 py-1 rounded text-xs flex items-center gap-2 ${
-                              subSelected ? 'bg-[#a31414] text-white' : 'bg-gray-50 hover:bg-gray-100'
-                            }`}
-                          >
-                            <span className="text-base">{getDivisionIcon(div.label)}</span>
-                            <span>• {sub.label}</span>
-                          </button>
-                        );
-                      })}
+        <div className="flex-1 flex flex-row overflow-hidden">
+          {/* Left Column - Divisions */}
+          <div className="w-1/2 border-r overflow-y-auto p-4">
+            <div className="space-y-2">
+              <div className="text-sm font-semibold text-gray-700 mb-3">Available Divisions</div>
+              {projectDivisions.map((div: any) => {
+                const divId = String(div.id);
+                const subdivisions = div.subdivisions || [];
+                const hasSubdivisions = subdivisions.length > 0;
+                const isExpanded = expandedDivisions.has(divId);
+                
+                return (
+                  <div key={divId} className="border rounded p-2 bg-white">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (hasSubdivisions) {
+                          // If has subdivisions, only toggle expansion
+                          toggleDivision(divId);
+                        } else {
+                          // If no subdivisions, toggle selection normally
+                          setProjectDivs(prev => prev.includes(divId) ? prev.filter(x => x !== divId) : [...prev, divId]);
+                        }
+                      }}
+                      className={`w-full text-left px-2 py-1 rounded text-sm font-medium flex items-center gap-2 ${
+                        hasSubdivisions 
+                          ? 'bg-gray-50 hover:bg-gray-100 cursor-pointer' 
+                          : projectDivs.includes(divId)
+                            ? 'bg-[#7f1010] text-white'
+                            : 'bg-gray-50 hover:bg-gray-100'
+                      }`}
+                    >
+                      {hasSubdivisions && (
+                        <span className="text-gray-500 text-xs">
+                          {isExpanded ? '▼' : '▶'}
+                        </span>
+                      )}
+                      <span className="text-lg">{getDivisionIcon(div.label)}</span>
+                      <span>{div.label}</span>
+                    </button>
+                    {hasSubdivisions && isExpanded && (
+                      <div className="mt-1 pl-6 space-y-1 transition-all duration-200">
+                        {subdivisions.map((sub: any) => {
+                          const subId = String(sub.id);
+                          const subSelected = projectDivs.includes(subId);
+                          return (
+                            <button
+                              key={subId}
+                              type="button"
+                              onClick={() => setProjectDivs(prev => prev.includes(subId) ? prev.filter(x => x !== subId) : [...prev, subId])}
+                              className={`w-full text-left px-2 py-1 rounded text-xs flex items-center gap-2 transition-colors ${
+                                subSelected ? 'bg-[#a31414] text-white' : 'bg-gray-50 hover:bg-gray-100'
+                              }`}
+                            >
+                              <span className="text-base">{getDivisionIcon(div.label)}</span>
+                              <span>• {sub.label}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+              {projectDivisions.length === 0 && (
+                <div className="text-xs text-gray-500 text-center py-4">No project divisions available.</div>
+              )}
+            </div>
+          </div>
+
+          {/* Right Column - Percentages */}
+          <div className="w-1/2 overflow-y-auto p-4">
+            <div className="space-y-3">
+              <div className="text-sm font-semibold text-gray-700 mb-3">Division Percentages</div>
+              {selectedDivIds.length > 0 ? (
+                <>
+                  {selectedDivIds.map((divId) => {
+                    const divInfo = getDivisionInfo(divId);
+                    if (!divInfo) return null;
+                    
+                    const percentage = percentages[String(divId)] || 0;
+                    const label = divInfo.isSubdivision ? `${divInfo.parentLabel} - ${divInfo.label}` : divInfo.label;
+                    const icon = getDivisionIcon(divInfo.isSubdivision ? divInfo.parentLabel : divInfo.label);
+                    
+                    return (
+                      <div key={divId} className="border rounded-lg p-3 bg-gray-50">
+                        <div className="flex items-center gap-2 mb-3">
+                          <span className="text-lg">{icon}</span>
+                          <span className="text-sm font-medium text-gray-900">{label}</span>
+                        </div>
+                        <div className="space-y-2">
+                          <div className="flex items-center gap-3">
+                            <input
+                              type="range"
+                              min="0"
+                              max="100"
+                              step="1"
+                              value={percentage}
+                              onChange={(e) => {
+                                const val = parseInt(e.target.value, 10);
+                                if (!isNaN(val)) {
+                                  updatePercentage(divId, val);
+                                  setInputValues(prev => {
+                                    const newVals = { ...prev };
+                                    delete newVals[String(divId)];
+                                    return newVals;
+                                  });
+                                }
+                              }}
+                              className="flex-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                            />
+                            <input
+                              type="number"
+                              min="0"
+                              max="100"
+                              step="1"
+                              value={inputValues[String(divId)] !== undefined ? inputValues[String(divId)] : (percentage === undefined || percentage === null ? '' : String(Math.round(percentage)))}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                setInputValues(prev => ({
+                                  ...prev,
+                                  [String(divId)]: val
+                                }));
+                                if (val !== '' && val !== '-' && val !== '.') {
+                                  const numVal = parseInt(val, 10);
+                                  if (!isNaN(numVal)) {
+                                    updatePercentage(divId, numVal);
+                                  }
+                                }
+                              }}
+                              onBlur={(e) => {
+                                const val = e.target.value;
+                                if (val === '' || isNaN(parseInt(val, 10))) {
+                                  updatePercentage(divId, 0);
+                                  setInputValues(prev => {
+                                    const newVals = { ...prev };
+                                    delete newVals[String(divId)];
+                                    return newVals;
+                                  });
+                                } else {
+                                  const intVal = parseInt(val, 10);
+                                  if (!isNaN(intVal)) {
+                                    updatePercentage(divId, intVal);
+                                  }
+                                  setInputValues(prev => {
+                                    const newVals = { ...prev };
+                                    delete newVals[String(divId)];
+                                    return newVals;
+                                  });
+                                }
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  e.currentTarget.blur();
+                                }
+                              }}
+                              className="w-20 px-2 py-1 border rounded text-sm text-center"
+                            />
+                            <span className="text-sm text-gray-600 w-8">%</span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {/* Total percentage display */}
+                  {selectedDivIds.length > 0 && (
+                    <div className={`text-sm font-medium ${isValid ? 'text-gray-700' : 'text-red-600'}`}>
+                      Total: {Math.round(totalPercentage)}% {!isValid && '(Must equal 100%)'}
                     </div>
                   )}
-                </div>
-              );
-            })}
-            {projectDivisions.length === 0 && (
-              <div className="text-xs text-gray-500 text-center py-4">No project divisions available.</div>
-            )}
+                </>
+              ) : (
+                <div className="text-sm text-gray-500 text-center py-4">Select divisions to set percentages.</div>
+              )}
+            </div>
           </div>
         </div>
-        <div className="p-4 border-t flex gap-2">
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            className="flex-1 px-4 py-2 rounded bg-[#7f1010] text-white disabled:opacity-60 font-medium"
-          >
-            {saving ? 'Saving...' : 'Save'}
-          </button>
+        <div className="p-4 border-t flex items-center justify-end gap-2">
           <button
             onClick={onClose}
-            className="px-4 py-2 rounded border bg-white hover:bg-gray-50 text-gray-700 font-medium"
+            className="px-3 py-1.5 rounded border bg-white hover:bg-gray-50 text-gray-700 font-medium text-sm"
           >
             Cancel
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={saving || (selectedDivIds.length > 0 && !isValid)}
+            className="px-3 py-1.5 rounded bg-[#7f1010] text-white disabled:opacity-60 disabled:cursor-not-allowed font-medium text-sm"
+          >
+            {saving ? 'Saving...' : 'Save'}
           </button>
         </div>
       </div>
     </div>
   );
 }
+
 
 function ProjectGeneralInfoCard({ projectId, proj, files, hasEditPermission }:{ projectId:string, proj:any, files: ProjectFile[], hasEditPermission?: boolean }){
   const queryClient = useQueryClient();
