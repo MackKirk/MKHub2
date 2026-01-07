@@ -220,12 +220,12 @@ export default function TaskModal({ open, taskId, onClose, onUpdated }: Props) {
 
   const isBusy =
     isLoading ||
-    startMutation.isLoading ||
-    concludeMutation.isLoading ||
-    blockMutation.isLoading ||
-    unblockMutation.isLoading ||
-    archiveMutation.isLoading ||
-    sendRequestMessageMutation.isLoading ||
+    startMutation.isPending ||
+    concludeMutation.isPending ||
+    blockMutation.isPending ||
+    unblockMutation.isPending ||
+    archiveMutation.isPending ||
+    sendRequestMessageMutation.isPending ||
     savingTitle;
 
   const handleSaveTitle = async () => {
@@ -278,11 +278,7 @@ export default function TaskModal({ open, taskId, onClose, onUpdated }: Props) {
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-<<<<<<< HEAD
         <div className="sticky top-0 bg-gradient-to-br from-[#7f1010] to-[#a31414] px-6 py-5 flex items-start justify-between gap-4">
-=======
-        <div className="flex-shrink-0 bg-white border-b border-gray-200/60 px-6 py-4 flex items-start justify-between gap-4">
->>>>>>> abe260dc3406d447679083efa753c6e271b99c6e
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2 mb-2">
               <span className="text-xs font-semibold text-white/80 uppercase tracking-wide">Task</span>
@@ -552,10 +548,10 @@ export default function TaskModal({ open, taskId, onClose, onUpdated }: Props) {
                         <button
                           type="button"
                           onClick={() => sendRequestMessageMutation.mutate(commentText)}
-                          disabled={sendRequestMessageMutation.isLoading || !commentText.trim()}
+                          disabled={sendRequestMessageMutation.isPending || !commentText.trim()}
                           className="px-4 py-2 bg-brand-red text-white rounded-lg hover:bg-red-700 transition-colors text-sm font-medium disabled:opacity-60"
                         >
-                          {sendRequestMessageMutation.isLoading ? 'Sending…' : 'Send'}
+                          {sendRequestMessageMutation.isPending ? 'Sending…' : 'Send'}
                         </button>
                       </div>
                     )}
@@ -629,10 +625,10 @@ export default function TaskModal({ open, taskId, onClose, onUpdated }: Props) {
               <button
                 type="button"
                 onClick={() => archiveMutation.mutate()}
-                disabled={isBusy || archiveMutation.isLoading}
+                disabled={isBusy || archiveMutation.isPending}
                 className="px-4 py-2 border border-gray-200/60 rounded-lg hover:bg-gray-50 transition-colors text-sm font-medium"
               >
-                {archiveMutation.isLoading ? 'Archiving…' : 'Archive'}
+                {archiveMutation.isPending ? 'Archiving…' : 'Archive'}
               </button>
             )}
           </div>
