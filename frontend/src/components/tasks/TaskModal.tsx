@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { useNavigate } from 'react-router-dom';
@@ -47,6 +47,7 @@ function formatDateTime(dateStr?: string | null) {
 export default function TaskModal({ open, taskId, onClose, onUpdated }: Props) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const { data: task, isLoading } = useQuery({
     queryKey: ['task', taskId],
@@ -65,10 +66,40 @@ export default function TaskModal({ open, taskId, onClose, onUpdated }: Props) {
   const [savingTitle, setSavingTitle] = useState(false);
   const [metadataOpen, setMetadataOpen] = useState(false);
   const [commentText, setCommentText] = useState('');
+  const [uploadingImages, setUploadingImages] = useState(false);
 
   useEffect(() => {
     if (task?.title) setTitleDraft(task.title);
   }, [task?.title]);
+
+  const ATTACH_BEGIN = '[MKHUB_ATTACHMENTS]';
+  const ATTACH_END = '[/MKHUB_ATTACHMENTS]';
+
+  const parsed = useMemo(() => {
+    const raw = task?.description || '';
+    const startIdx = raw.indexOf(ATTACH_BEGIN);
+    const endIdx = raw.indexOf(ATTACH_END);
+    if (startIdx === -1 || endIdx === -1 || endIdx < startIdx) {
+      return { description: raw.trim(), fileIds: [] as string[] };
+    }
+    const before = raw.slice(0, startIdx).trim();
+    const block = raw.slice(startIdx + ATTACH_BEGIN.length, endIdx);
+    const fileIds = block
+      .split('\n')
+      .map((l) => l.trim())
+      .filter((l) => l.toLowerCase().startsWith('file_id:'))
+      .map((l) => l.split(':').slice(1).join(':').trim())
+      .filter(Boolean);
+    return { description: before, fileIds };
+  }, [task?.description]);
+
+  const setAttachments = async (fileIds: string[]) => {
+    if (!taskId || !task) return;
+    const base = parsed.description ? parsed.description + '\n\n' : '';
+    const block = `${ATTACH_BEGIN}\n${fileIds.map((id) => `file_id: ${id}`).join('\n')}\n${ATTACH_END}`;
+    const next = (base + block).trim() + '\n';
+    await api<Task>('PATCH', `/tasks/${taskId}/description`, { description: next });
+  };
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ['tasks'] });
@@ -85,6 +116,14 @@ export default function TaskModal({ open, taskId, onClose, onUpdated }: Props) {
     },
     onError: (err: any) => toast.error(err.message || 'Failed to update title'),
     onSettled: () => setSavingTitle(false),
+  });
+
+  const updateDescriptionMutation = useMutation({
+    mutationFn: (description: string) => api<Task>('PATCH', `/tasks/${taskId}/description`, { description }),
+    onSuccess: () => {
+      invalidate();
+    },
+    onError: (err: any) => toast.error(err.message || 'Failed to update task'),
   });
 
   const startMutation = useMutation({
@@ -197,6 +236,18 @@ export default function TaskModal({ open, taskId, onClose, onUpdated }: Props) {
     updateTitleMutation.mutate(next);
   };
 
+  const handleSaveDescription = async (nextDescription: string) => {
+    if (!taskId || !task) return;
+    const base = nextDescription.trim();
+    const fileIds = parsed.fileIds;
+    const final =
+      fileIds.length > 0
+        ? `${base}\n\n${ATTACH_BEGIN}\n${fileIds.map((id) => `file_id: ${id}`).join('\n')}\n${ATTACH_END}\n`
+        : (base ? base + '\n' : '');
+    if ((task.description || '').trim() === final.trim()) return;
+    updateDescriptionMutation.mutate(final);
+  };
+
   const setStatus = async (next: TaskStatus) => {
     if (!task) return;
     const current = task.status;
@@ -227,15 +278,13 @@ export default function TaskModal({ open, taskId, onClose, onUpdated }: Props) {
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="sticky top-0 bg-white border-b border-gray-200/60 px-6 py-4 flex items-start justify-between gap-4">
+        <div className="sticky top-0 bg-gradient-to-br from-[#7f1010] to-[#a31414] px-6 py-5 flex items-start justify-between gap-4">
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2 mb-2">
-              <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Task</span>
+              <span className="text-xs font-semibold text-white/80 uppercase tracking-wide">Task</span>
               {task?.status && (
                 <span
-                  className={`text-[10px] uppercase font-semibold tracking-wide px-2 py-0.5 rounded-full border ${getStatusBadgeClass(
-                    task.status
-                  )}`}
+                  className={`text-[10px] uppercase font-semibold tracking-wide px-2 py-0.5 rounded-full border bg-white/10 text-white border-white/20`}
                 >
                   {getStatusLabel(task.status)}
                 </span>
@@ -261,21 +310,21 @@ export default function TaskModal({ open, taskId, onClose, onUpdated }: Props) {
                 }
               }}
               disabled={!task || isBusy}
-              className="w-full text-lg font-semibold text-gray-900 bg-transparent border border-transparent focus:border-brand-red/40 focus:ring-2 focus:ring-brand-red/20 rounded-lg px-2 py-1 -ml-2"
+              className="w-full text-lg font-semibold text-white bg-white/10 border border-white/10 focus:border-white/30 focus:ring-2 focus:ring-white/20 rounded-lg px-3 py-2"
               placeholder={isLoading ? 'Loading…' : 'Task title'}
             />
           </div>
 
           <div className="flex items-center gap-3">
             <div className="min-w-[160px]">
-              <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1">
+              <label className="block text-[11px] font-semibold text-white/80 uppercase tracking-wide mb-1">
                 Status
               </label>
               <select
                 value={task?.status || 'accepted'}
                 onChange={(e) => setStatus(e.target.value as TaskStatus)}
                 disabled={!task || isBusy}
-                className="w-full rounded-lg border border-gray-200/60 px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-brand-red/40 focus:border-brand-red/60"
+                className="w-full rounded-lg border border-white/15 px-3 py-2 text-sm bg-white/10 text-white focus:ring-2 focus:ring-white/20 focus:border-white/30"
               >
                 {statusOptions.map((o) => (
                   <option key={o.value} value={o.value} disabled={o.disabled}>
@@ -288,7 +337,7 @@ export default function TaskModal({ open, taskId, onClose, onUpdated }: Props) {
             <button
               type="button"
               onClick={onClose}
-              className="text-2xl font-bold text-gray-400 hover:text-gray-600 leading-none px-2"
+              className="text-2xl font-bold text-white/80 hover:text-white leading-none w-9 h-9 flex items-center justify-center rounded-lg hover:bg-white/10"
               aria-label="Close"
               title="Close"
             >
@@ -298,37 +347,134 @@ export default function TaskModal({ open, taskId, onClose, onUpdated }: Props) {
         </div>
 
         {/* Body */}
-        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-6">
+        <div className="flex-1 overflow-y-auto px-6 py-6 space-y-6 bg-white">
           {isLoading ? (
-            <div className="text-sm text-gray-500">Loading task…</div>
+            <div className="space-y-3">
+              <div className="rounded-lg border border-gray-200 bg-white shadow-sm p-4 animate-pulse">
+                <div className="h-4 bg-gray-100 rounded w-2/3" />
+                <div className="mt-3 h-3 bg-gray-100 rounded w-1/3" />
+              </div>
+              <div className="rounded-lg border border-gray-200 bg-white shadow-sm p-4 animate-pulse">
+                <div className="h-4 bg-gray-100 rounded w-1/2" />
+                <div className="mt-3 h-3 bg-gray-100 rounded w-2/3" />
+              </div>
+            </div>
           ) : !task ? (
             <div className="text-sm text-gray-500">Task not found.</div>
           ) : (
             <>
-              {/* Description */}
-              {task.description ? (
-                <div className="rounded-xl border border-gray-200/60 bg-gray-50/50 p-4">
-                  {task.origin?.type === 'bug' ? (
-                    <BugReportDescription description={task.description} />
+              {/* Description + Images */}
+              <div className="rounded-lg border border-gray-200 bg-white shadow-sm p-4 space-y-4">
+                <div className="text-xs font-medium text-gray-500 uppercase tracking-wide">Description</div>
+                {task.origin?.type === 'bug' ? (
+                  <BugReportDescription description={task.description || ''} />
+                ) : (
+                  <textarea
+                    defaultValue={parsed.description}
+                    rows={5}
+                    placeholder="Add details…"
+                    className="w-full rounded-lg border border-gray-200/60 px-3 py-2 text-sm focus:ring-2 focus:ring-brand-red/30 focus:border-brand-red/50"
+                    onBlur={(e) => handleSaveDescription(e.target.value)}
+                    disabled={isBusy}
+                  />
+                )}
+
+                <div className="border-t pt-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="text-xs font-medium text-gray-500 uppercase tracking-wide">Images</div>
+                    <div className="flex items-center gap-2">
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept="image/*"
+                        multiple
+                        className="hidden"
+                        onChange={async (e) => {
+                          const files = Array.from(e.target.files || []);
+                          if (!taskId || files.length === 0) return;
+                          setUploadingImages(true);
+                          try {
+                            const newIds: string[] = [];
+                            for (const f of files) {
+                              const up: any = await api('POST', '/files/upload', {
+                                project_id: null,
+                                client_id: null,
+                                employee_id: null,
+                                category_id: 'tasks',
+                                original_name: f.name,
+                                content_type: f.type || 'application/octet-stream',
+                              });
+                              await fetch(up.upload_url, {
+                                method: 'PUT',
+                                headers: {
+                                  'Content-Type': f.type || 'application/octet-stream',
+                                  'x-ms-blob-type': 'BlockBlob',
+                                },
+                                body: f,
+                              });
+                              const conf: any = await api('POST', '/files/confirm', {
+                                key: up.key,
+                                size_bytes: f.size,
+                                checksum_sha256: 'na',
+                                content_type: f.type || 'application/octet-stream',
+                              });
+                              if (conf?.id) newIds.push(String(conf.id));
+                            }
+                            if (newIds.length > 0) {
+                              const merged = Array.from(new Set([...parsed.fileIds, ...newIds]));
+                              await setAttachments(merged);
+                              toast.success('Image(s) added');
+                              invalidate();
+                            }
+                          } catch (err: any) {
+                            toast.error(err.message || 'Failed to upload image');
+                          } finally {
+                            setUploadingImages(false);
+                            if (fileInputRef.current) fileInputRef.current.value = '';
+                          }
+                        }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        disabled={isBusy || uploadingImages}
+                        className="px-3 py-2 rounded-lg border border-gray-200/60 hover:bg-gray-50 text-sm font-medium disabled:opacity-60"
+                      >
+                        {uploadingImages ? 'Uploading…' : 'Add images'}
+                      </button>
+                    </div>
+                  </div>
+
+                  {parsed.fileIds.length === 0 ? (
+                    <div className="text-sm text-gray-500">No images yet.</div>
                   ) : (
-                    <>
-                      <div className="text-xs font-semibold text-gray-500 uppercase mb-2 tracking-wide">
-                        Description
-                      </div>
-                      <div className="text-sm text-gray-800 whitespace-pre-wrap">{task.description}</div>
-                    </>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                      {parsed.fileIds.map((fid) => (
+                        <a
+                          key={fid}
+                          href={`/files/${fid}/download`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="block rounded-lg border border-gray-200/60 overflow-hidden bg-gray-50 hover:shadow-sm transition"
+                          title="Open image"
+                        >
+                          <img
+                            src={`/files/${fid}/thumbnail?w=480`}
+                            className="w-full h-28 object-cover"
+                            alt="Task attachment"
+                            loading="lazy"
+                          />
+                        </a>
+                      ))}
+                    </div>
                   )}
                 </div>
-              ) : (
-                <div className="rounded-xl border border-gray-200/60 bg-gray-50/50 p-4 text-sm text-gray-600">
-                  No description.
-                </div>
-              )}
+              </div>
 
               {/* Activity */}
               <div className="space-y-3">
                 <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Activity</div>
-                <div className="rounded-xl border border-gray-200/60 bg-white divide-y">
+                <div className="rounded-lg border border-gray-200 bg-white shadow-sm divide-y">
                   <div className="p-4 text-sm flex items-center justify-between gap-3">
                     <span className="text-gray-800">Created</span>
                     <span className="text-gray-500">{formatDateTime(task.created_at)}</span>
@@ -414,7 +560,7 @@ export default function TaskModal({ open, taskId, onClose, onUpdated }: Props) {
               )}
 
               {/* Metadata */}
-              <div className="rounded-xl border border-gray-200/60 bg-white">
+              <div className="rounded-lg border border-gray-200 bg-white shadow-sm">
                 <button
                   type="button"
                   onClick={() => setMetadataOpen((v) => !v)}

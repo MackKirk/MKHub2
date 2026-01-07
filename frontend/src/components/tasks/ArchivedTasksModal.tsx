@@ -156,7 +156,7 @@ export default function ArchivedTasksModal({ open, onClose }: Props) {
               </div>
             ) : (
               filteredTasks.map((task) => (
-                <TaskCard key={task.id} task={task} onClick={() => setSelectedTaskId(task.id)} />
+                <TaskCard key={task.id} task={task} onClick={() => setSelectedTaskId(task.id)} showActions={false} />
               ))
             )}
           </div>

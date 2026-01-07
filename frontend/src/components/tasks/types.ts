@@ -13,6 +13,7 @@ export type Task = {
   origin?: { type?: string; reference?: string | null; id?: string | null } | null;
   request?: { id: string; title: string; status: string } | null;
   created_at: string;
+  updated_at?: string | null;
   started_at?: string | null;
   started_by?: { id?: string | null; name?: string | null } | null;
   concluded_at?: string | null;
@@ -24,6 +25,7 @@ export type Task = {
     can_block?: boolean;
     can_unblock?: boolean;
     can_archive?: boolean;
+    can_delete?: boolean;
   };
 };
 

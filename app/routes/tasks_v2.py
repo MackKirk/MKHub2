@@ -20,6 +20,10 @@ class TaskTitleUpdate(BaseModel):
     title: str
 
 
+class TaskDescriptionUpdate(BaseModel):
+    description: Optional[str] = None
+
+
 class TaskCreate(BaseModel):
     title: str
     description: Optional[str] = None
@@ -105,6 +109,7 @@ def _serialize_task(task: TaskItem, viewer_id: uuid.UUID, viewer_division: Optio
             "status": task.request.status,
         } if task.request else None,
         "created_at": task.created_at.isoformat(),
+        "updated_at": task.updated_at.isoformat() if task.updated_at else None,
         "started_at": task.started_at.isoformat() if task.started_at else None,
         "started_by": {
             "id": str(task.started_by_id) if task.started_by_id else None,
@@ -122,6 +127,7 @@ def _serialize_task(task: TaskItem, viewer_id: uuid.UUID, viewer_division: Optio
             "can_block": task.status == "in_progress" and (is_owner or (not task.assigned_to_id and is_division_member)),
             "can_unblock": task.status == "blocked" and (is_owner or (not task.assigned_to_id and is_division_member)),
             "can_archive": task.status == "done" and task.archived_at is None and (is_owner or (not task.assigned_to_id and is_division_member)),
+            "can_delete": task.requested_by_id == viewer_id,  # Only if user created the task
         },
     }
 
@@ -386,6 +392,25 @@ def update_task_title(
     return _serialize_task(task, viewer_id=me.id, viewer_division=viewer_division, viewer_divisions=viewer_divisions)
 
 
+@router.patch("/{task_id}/description")
+def update_task_description(
+    task_id: str,
+    payload: TaskDescriptionUpdate,
+    db: Session = Depends(get_db),
+    me: User = Depends(get_current_user),
+):
+    viewer_divisions = _get_viewer_divisions(db, me.id)
+    viewer_division = viewer_divisions[0] if viewer_divisions else None  # For backward compatibility
+    task = _get_task(task_id, db)
+    _ensure_view_permission(task, me, viewer_divisions)
+
+    task.description = payload.description or ""
+    task.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(task)
+    return _serialize_task(task, viewer_id=me.id, viewer_division=viewer_division, viewer_divisions=viewer_divisions)
+
+
 @router.post("/{task_id}/block")
 def block_task(task_id: str, db: Session = Depends(get_db), me: User = Depends(get_current_user)):
     viewer_divisions = _get_viewer_divisions(db, me.id)
@@ -501,4 +526,22 @@ def archive_task(task_id: str, db: Session = Depends(get_db), me: User = Depends
     db.commit()
     db.refresh(task)
     return _serialize_task(task, viewer_id=me.id, viewer_division=viewer_division, viewer_divisions=viewer_divisions)
+
+
+@router.delete("/{task_id}")
+def delete_task(task_id: str, db: Session = Depends(get_db), me: User = Depends(get_current_user)):
+    """
+    Delete a task. Only allowed if the current user created the task (requested_by_id == me.id).
+    """
+    task = db.query(TaskItem).filter(TaskItem.id == task_id).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    
+    # Only allow deletion if the user created the task
+    if task.requested_by_id != me.id:
+        raise HTTPException(status_code=403, detail="You can only delete tasks you created")
+    
+    db.delete(task)
+    db.commit()
+    return {"message": "Task deleted"}
 
