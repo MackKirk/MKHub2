@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from ..auth.security import get_current_user
 from ..db import get_db
-from ..models.models import EmployeeProfile, SettingItem, TaskItem, User, user_divisions
+from ..models.models import EmployeeProfile, SettingItem, TaskItem, TaskLogEntry, User, user_divisions
 from ..services.task_service import create_task_item, get_user_display
 
 
@@ -31,6 +31,10 @@ class TaskCreate(BaseModel):
     due_date: Optional[datetime] = None
     assigned_user_ids: Optional[list[str]] = None  # Array of user IDs
     assigned_division_ids: Optional[list[str]] = None  # Array of division (SettingItem) IDs
+
+
+class TaskLogCreate(BaseModel):
+    message: str
 
 
 def _get_viewer_divisions(db: Session, user_id: uuid.UUID) -> list[str]:
@@ -310,6 +314,7 @@ def create_task(payload: TaskCreate, db: Session = Depends(get_db), me: User = D
         # Explicitly set initial status
         task.status = "accepted"
         task.updated_at = datetime.utcnow()
+        _add_task_log(db, task, me, "created", f'Task created: "{title}"')
         created_tasks.append(task)
     
     if not created_tasks:
@@ -360,6 +365,43 @@ def _ensure_action_permission(task: TaskItem, me: User, viewer_divisions: list[s
         raise HTTPException(status_code=403, detail="Task is assigned to another user")
 
 
+def _serialize_log_entry(entry: TaskLogEntry) -> Dict[str, Any]:
+    return {
+        "id": str(entry.id),
+        "task_id": str(entry.task_id),
+        "type": entry.entry_type,
+        "message": entry.message,
+        "actor": {
+            "id": str(entry.actor_id) if entry.actor_id else None,
+            "name": entry.actor_name,
+        },
+        "created_at": entry.created_at.isoformat() if entry.created_at else None,
+    }
+
+
+def _add_task_log(
+    db: Session,
+    task: TaskItem,
+    me: Optional[User],
+    entry_type: str,
+    message: str,
+) -> None:
+    msg = (message or "").strip()
+    if not msg:
+        return
+    actor_id = me.id if me else None
+    actor_name = get_user_display(db, me.id) if me else "System"
+    db.add(
+        TaskLogEntry(
+            task_id=task.id,
+            entry_type=entry_type,
+            message=msg,
+            actor_id=actor_id,
+            actor_name=actor_name,
+        )
+    )
+
+
 @router.get("/{task_id}")
 def get_task(task_id: str, db: Session = Depends(get_db), me: User = Depends(get_current_user)):
     viewer_divisions = _get_viewer_divisions(db, me.id)
@@ -385,8 +427,11 @@ def update_task_title(
     if not title:
         raise HTTPException(status_code=400, detail="Title is required")
 
+    old_title = task.title or ""
     task.title = title
     task.updated_at = datetime.utcnow()
+    if old_title.strip() != title.strip():
+        _add_task_log(db, task, me, "title_changed", f'Title changed: "{old_title}" → "{title}"')
     db.commit()
     db.refresh(task)
     return _serialize_task(task, viewer_id=me.id, viewer_division=viewer_division, viewer_divisions=viewer_divisions)
@@ -404,8 +449,12 @@ def update_task_description(
     task = _get_task(task_id, db)
     _ensure_view_permission(task, me, viewer_divisions)
 
+    old_desc = (task.description or "").strip()
+    new_desc = (payload.description or "").strip()
     task.description = payload.description or ""
     task.updated_at = datetime.utcnow()
+    if old_desc != new_desc:
+        _add_task_log(db, task, me, "description_changed", "Description updated")
     db.commit()
     db.refresh(task)
     return _serialize_task(task, viewer_id=me.id, viewer_division=viewer_division, viewer_divisions=viewer_divisions)
@@ -425,6 +474,7 @@ def block_task(task_id: str, db: Session = Depends(get_db), me: User = Depends(g
     now = datetime.utcnow()
     task.status = "blocked"
     task.updated_at = now
+    _add_task_log(db, task, me, "status_changed", "Status changed: In progress → Blocked")
 
     db.commit()
     db.refresh(task)
@@ -445,6 +495,7 @@ def unblock_task(task_id: str, db: Session = Depends(get_db), me: User = Depends
     now = datetime.utcnow()
     task.status = "in_progress"
     task.updated_at = now
+    _add_task_log(db, task, me, "status_changed", "Status changed: Blocked → In progress")
 
     db.commit()
     db.refresh(task)
@@ -475,6 +526,7 @@ def start_task(task_id: str, db: Session = Depends(get_db), me: User = Depends(g
     task.started_by_id = me.id
     task.started_by_name = get_user_display(db, me.id)
     task.updated_at = now
+    _add_task_log(db, task, me, "status_changed", "Status changed: To do → In progress")
 
     db.commit()
     db.refresh(task)
@@ -499,6 +551,7 @@ def conclude_task(task_id: str, db: Session = Depends(get_db), me: User = Depend
     task.concluded_by_id = me.id
     task.concluded_by_name = get_user_display(db, me.id)
     task.updated_at = now
+    _add_task_log(db, task, me, "status_changed", "Status changed: In progress → Done")
 
     db.commit()
     db.refresh(task)
@@ -522,6 +575,7 @@ def archive_task(task_id: str, db: Session = Depends(get_db), me: User = Depends
     now = datetime.utcnow()
     task.archived_at = now
     task.updated_at = now
+    _add_task_log(db, task, me, "archived", "Task archived")
 
     db.commit()
     db.refresh(task)
@@ -544,4 +598,42 @@ def delete_task(task_id: str, db: Session = Depends(get_db), me: User = Depends(
     db.delete(task)
     db.commit()
     return {"message": "Task deleted"}
+
+
+@router.get("/{task_id}/log")
+def get_task_log(task_id: str, db: Session = Depends(get_db), me: User = Depends(get_current_user)):
+    viewer_divisions = _get_viewer_divisions(db, me.id)
+    task = _get_task(task_id, db)
+    _ensure_view_permission(task, me, viewer_divisions)
+
+    entries = (
+        db.query(TaskLogEntry)
+        .filter(TaskLogEntry.task_id == task.id)
+        .order_by(TaskLogEntry.created_at.asc())
+        .all()
+    )
+    return [_serialize_log_entry(e) for e in entries]
+
+
+@router.post("/{task_id}/log", status_code=status.HTTP_201_CREATED)
+def add_task_log(task_id: str, payload: TaskLogCreate, db: Session = Depends(get_db), me: User = Depends(get_current_user)):
+    viewer_divisions = _get_viewer_divisions(db, me.id)
+    task = _get_task(task_id, db)
+    _ensure_view_permission(task, me, viewer_divisions)
+
+    msg = (payload.message or "").strip()
+    if not msg:
+        raise HTTPException(status_code=400, detail="Message is required")
+
+    entry = TaskLogEntry(
+        task_id=task.id,
+        entry_type="comment",
+        message=msg,
+        actor_id=me.id,
+        actor_name=get_user_display(db, me.id),
+    )
+    db.add(entry)
+    db.commit()
+    db.refresh(entry)
+    return _serialize_log_entry(entry)
 

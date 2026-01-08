@@ -210,20 +210,13 @@ export default function TaskRequestsPage() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 min-w-0 overflow-x-hidden">
       {/* Page Header */}
       <div className="bg-slate-200/50 rounded-[12px] border border-slate-200 flex items-center justify-between py-4 px-6 mb-6">
         <div>
           <div className="text-xl font-bold text-gray-900 tracking-tight mb-0.5">Requests</div>
           <div className="text-sm text-gray-500 font-medium">Conversations that may become tasks</div>
         </div>
-        <button
-          onClick={() => setShowCreateModal(true)}
-          className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[#bc1414] text-white text-sm font-medium transition-all duration-200 hover:bg-[#aa1212] hover:shadow-md active:translate-y-[1px] active:shadow-sm"
-        >
-          <span className="text-base leading-none">+</span>
-          New Request
-        </button>
       </div>
       
       {/* Tabs */}
@@ -281,9 +274,9 @@ export default function TaskRequestsPage() {
       </div>
 
       {/* Two-Column Layout */}
-      <div className="grid grid-cols-[1fr_1.5fr] gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-[1fr_1.5fr] gap-6 min-w-0">
         {/* Left: Requests List */}
-        <div className="bg-white rounded-lg border border-gray-200/60 shadow-sm overflow-hidden">
+        <div className="bg-white rounded-lg border border-gray-200/60 shadow-sm overflow-hidden min-w-0">
           {isLoading ? (
             <div className="p-8 text-center text-sm text-gray-500">Loading requests...</div>
           ) : filteredRequests.length === 0 ? (
@@ -303,7 +296,19 @@ export default function TaskRequestsPage() {
               )}
             </div>
           ) : (
-            <div className="divide-y divide-gray-200/60 max-h-[calc(100vh-300px)] overflow-y-auto">
+            <div className="divide-y divide-gray-200/60 max-h-[calc(100vh-300px)] overflow-y-auto overflow-x-hidden">
+              {/* New Request Card - First position */}
+              <div className="p-4 border-b border-gray-200/60">
+                <button
+                  type="button"
+                  onClick={() => setShowCreateModal(true)}
+                  className="w-full border-2 border-dashed border-gray-300 rounded-lg p-4 hover:border-brand-red hover:bg-gray-50 transition-all text-center bg-white flex flex-col items-center justify-center min-h-[120px]"
+                >
+                  <div className="text-4xl text-gray-400 mb-2">+</div>
+                  <div className="font-medium text-sm text-gray-700">New Request</div>
+                  <div className="text-xs text-gray-500 mt-1">Create a new request</div>
+                </button>
+              </div>
               {filteredRequests.map((req) => {
                 const isReceived = data?.received?.some((r) => r.id === req.id);
                 const statusConfig = getStatusConfig(req.status);
@@ -497,12 +502,12 @@ function RequestDetailsPanel({
   const statusConfig = getStatusConfig(request.status);
 
   return (
-    <div className="bg-white rounded-lg border border-gray-200/60 shadow-sm flex flex-col" style={{ maxHeight: 'calc(100vh - 300px)' }}>
+    <div className="bg-white rounded-lg border border-gray-200/60 shadow-sm flex flex-col min-w-0" style={{ maxHeight: 'calc(100vh - 300px)' }}>
       {/* Header */}
-      <div className="p-6 border-b border-gray-200/60">
-        <div className="flex items-start justify-between gap-3 mb-3">
-          <h2 className="text-lg font-semibold text-gray-900">{request.title}</h2>
-          <div className="flex items-center gap-2 flex-wrap">
+      <div className="p-6 border-b border-gray-200/60 min-w-0">
+        <div className="flex items-start justify-between gap-3 mb-3 min-w-0">
+          <h2 className="text-lg font-semibold text-gray-900 truncate flex-1 min-w-0">{request.title}</h2>
+          <div className="flex items-center gap-2 flex-wrap flex-shrink-0">
             <span className={`text-xs uppercase tracking-wide rounded-full border px-2 py-1 font-semibold ${statusConfig.bg} ${statusConfig.text} ${statusConfig.border}`}>
               {statusConfig.label}
             </span>
@@ -533,7 +538,7 @@ function RequestDetailsPanel({
       </div>
 
       {/* Body: Conversation Timeline */}
-      <div className="flex-1 overflow-y-auto p-6 space-y-4">
+      <div className="flex-1 overflow-y-auto overflow-x-hidden p-6 space-y-4 min-w-0">
         {request.description && (
           <div className="rounded-lg border border-gray-200/60 bg-gray-50/50 p-4">
             <div className="text-xs text-gray-500 mb-1">Initial Request</div>

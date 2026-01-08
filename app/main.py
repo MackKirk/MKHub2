@@ -181,6 +181,81 @@ def create_app() -> FastAPI:
                         Base.metadata.create_all(bind=engine, tables=[Quote.__table__])
                         db.commit()
                         print("[startup] Created quotes table")
+
+                # Ensure task_log_entries table exists (Task modal activity log)
+                if dialect == "sqlite":
+                    try:
+                        db.execute(text("SELECT 1 FROM task_log_entries LIMIT 1")).fetchone()
+                    except Exception:
+                        from .models.models import TaskLogEntry
+                        Base.metadata.create_all(bind=engine, tables=[TaskLogEntry.__table__])
+                        db.commit()
+                        print("[startup] Created task_log_entries table")
+
+                    # Ensure required columns exist (schema drift safe-guard)
+                    try:
+                        cols = db.execute(text("PRAGMA table_info(task_log_entries)")).fetchall()
+                        col_names = {str(r[1]) for r in cols}
+                        if "message" not in col_names:
+                            db.execute(text("ALTER TABLE task_log_entries ADD COLUMN message TEXT NULL"))
+                        if "entry_type" not in col_names:
+                            db.execute(text("ALTER TABLE task_log_entries ADD COLUMN entry_type TEXT NULL"))
+                        if "actor_id" not in col_names:
+                            db.execute(text("ALTER TABLE task_log_entries ADD COLUMN actor_id TEXT NULL"))
+                        if "actor_name" not in col_names:
+                            db.execute(text("ALTER TABLE task_log_entries ADD COLUMN actor_name TEXT NULL"))
+                        if "created_at" not in col_names:
+                            db.execute(text("ALTER TABLE task_log_entries ADD COLUMN created_at TEXT NULL"))
+                        db.commit()
+                    except Exception:
+                        # Best-effort only
+                        pass
+                else:
+                    rows = db.execute(
+                        text(
+                            """
+                            SELECT 1
+                            FROM information_schema.tables
+                            WHERE table_name = 'task_log_entries'
+                            LIMIT 1
+                            """
+                        )
+                    ).fetchall()
+                    if not rows:
+                        from .models.models import TaskLogEntry
+                        Base.metadata.create_all(bind=engine, tables=[TaskLogEntry.__table__])
+                        db.commit()
+                        print("[startup] Created task_log_entries table")
+
+                    # Ensure required columns exist (schema drift safe-guard)
+                    try:
+                        # Add columns if missing (Postgres supports IF NOT EXISTS)
+                        db.execute(text("ALTER TABLE task_log_entries ADD COLUMN IF NOT EXISTS message TEXT NOT NULL DEFAULT ''"))
+                        db.execute(text("ALTER TABLE task_log_entries ADD COLUMN IF NOT EXISTS entry_type VARCHAR(50) NOT NULL DEFAULT 'comment'"))
+                        db.execute(text("ALTER TABLE task_log_entries ADD COLUMN IF NOT EXISTS actor_id UUID NULL"))
+                        db.execute(text("ALTER TABLE task_log_entries ADD COLUMN IF NOT EXISTS actor_name VARCHAR(255) NULL"))
+                        db.execute(text("ALTER TABLE task_log_entries ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()"))
+
+                        # If legacy schema used "body", migrate to "message" and make body nullable
+                        body_exists = db.execute(
+                            text(
+                                """
+                                SELECT 1
+                                FROM information_schema.columns
+                                WHERE table_name = 'task_log_entries'
+                                  AND column_name = 'body'
+                                LIMIT 1
+                                """
+                            )
+                        ).fetchall()
+                        if body_exists:
+                            # Migrate data from body to message
+                            db.execute(text("UPDATE task_log_entries SET message = body WHERE (message IS NULL OR message = '') AND body IS NOT NULL"))
+                            # Make body nullable to avoid constraint violations
+                            db.execute(text("ALTER TABLE task_log_entries ALTER COLUMN body DROP NOT NULL"))
+                        db.commit()
+                    except Exception as e:
+                        print(f"[startup] task_log_entries schema check error (non-critical): {e}")
                 
                 # Check for source_attendance_id column in project_time_entries
                 has_col = False

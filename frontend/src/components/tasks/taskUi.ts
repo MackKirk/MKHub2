@@ -37,3 +37,9 @@ export function getStatusBadgeClass(status: TaskStatus): string {
   return 'bg-slate-100 text-slate-600 border-slate-200';
 }
 
+export function getStatusBorderColor(status?: TaskStatus): string {
+  if (status === 'done') return 'bg-green-500';
+  if (status === 'in_progress') return 'bg-blue-500';
+  if (status === 'blocked') return 'bg-amber-500';
+  return 'bg-gray-300';
+}
