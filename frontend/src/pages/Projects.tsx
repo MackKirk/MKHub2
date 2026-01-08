@@ -78,6 +78,7 @@ type Project = {
   date_eta?:string,
   date_end?:string, 
   project_division_ids?:string[],
+  project_division_percentages?: Record<string, number> | null,
   cover_image_url?:string,
   client_name?:string,
   client_display_name?:string,
@@ -748,6 +749,7 @@ function ProjectListCard({ project, projectDivisions, projectStatuses }:{ projec
   const actualValue = project.cost_actual || 0;
   const estimatedValue = project.service_value || 0;
   const projectDivIds = project.project_division_ids || [];
+  // Matches ProjectDetail (General Information): `project_division_percentages`
   const percentages = project.project_division_percentages || {};
   
   // Get employees data for avatars
@@ -767,11 +769,22 @@ function ProjectListCard({ project, projectDivisions, projectStatuses }:{ projec
   // Calculate percentages if not set (auto-initialize)
   const calculatedPercentages = useMemo(() => {
     if (projectDivIds.length === 0) return {};
+
+    // Filter percentages to only include valid division IDs (remove orphaned percentages)
+    const filteredPercentages: { [key: string]: number } = {};
+    projectDivIds.forEach(id => {
+      const idStr = String(id);
+      if ((percentages as any)[idStr] !== undefined) {
+        filteredPercentages[idStr] = Number((percentages as any)[idStr]) || 0;
+      }
+    });
+
     // If percentages exist and cover all divisions, use them
-    const hasPercentages = projectDivIds.every(id => percentages[String(id)] !== undefined);
-    if (hasPercentages && Object.keys(percentages).length > 0) {
-      return percentages;
+    const hasPercentages = projectDivIds.every(id => filteredPercentages[String(id)] !== undefined);
+    if (hasPercentages && Object.keys(filteredPercentages).length > 0) {
+      return filteredPercentages;
     }
+
     // Otherwise, calculate equal distribution
     const equalPercent = projectDivIds.length === 1 ? 100 : 100 / projectDivIds.length;
     const result: { [key: string]: number } = {};
@@ -784,13 +797,14 @@ function ProjectListCard({ project, projectDivisions, projectStatuses }:{ projec
   // Get division icons and labels with percentages (only if projectDivisions is already loaded)
   const divisionIcons = useMemo(() => {
     if (!Array.isArray(projectDivIds) || projectDivIds.length === 0 || !projectDivisions) return [];
-    const icons: Array<{ icon: string; label: string; percentage: number }> = [];
+    const icons: Array<{ icon: string; label: string; id: string; percentage: number }> = [];
     for (const divId of projectDivIds.slice(0, 5)) {
       for (const div of (projectDivisions || [])) {
         if (String(div.id) === String(divId)) {
           icons.push({ 
             icon: getDivisionIcon(div.label), 
             label: div.label,
+            id: String(div.id),
             percentage: calculatedPercentages[String(divId)] || 0
           });
           break;
@@ -800,12 +814,13 @@ function ProjectListCard({ project, projectDivisions, projectStatuses }:{ projec
             icons.push({ 
               icon: getDivisionIcon(div.label), 
               label: `${div.label} - ${sub.label}`,
+              id: String(sub.id),
               percentage: calculatedPercentages[String(divId)] || 0
             });
             break;
           }
         }
-        if (icons.length > 0 && icons[icons.length - 1].label.includes(String(divId))) break;
+        if (icons.length > 0 && icons[icons.length - 1].id === String(divId)) break;
       }
     }
     return icons;
