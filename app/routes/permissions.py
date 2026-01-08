@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Body
 from sqlalchemy.orm import Session
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Any
 from datetime import datetime, timezone
 
 from ..db import get_db
@@ -11,6 +11,13 @@ from ..auth.security import require_permissions, get_current_user
 
 
 router = APIRouter(prefix="/permissions", tags=["permissions"])
+
+# Special (non PermissionDefinition) config keys stored in User.permissions_override.
+# These follow the same idea as other JSON-config blobs in the system (e.g. ClientFolder.access_permissions).
+FILE_CATEGORY_CONFIG_KEYS = {
+    "business:projects:files:categories:read",
+    "business:projects:files:categories:write",
+}
 
 
 # =====================
@@ -161,18 +168,27 @@ def get_user_permissions(
                 "permissions": cat_permissions,
             })
     
+    # Expose supported configs separately so the UI can drive modals without treating them as booleans
+    overrides = getattr(user, "permissions_override", None) or {}
+    configs: Dict[str, Any] = {}
+    for k in FILE_CATEGORY_CONFIG_KEYS:
+        v = overrides.get(k, None)
+        if isinstance(v, list):
+            configs[k] = v
+    
     return {
         "user_id": str(user.id),
         "username": user.username,
         "permissions_by_category": result,
         "permissions_map": {k: bool(v) for k, v in perm_map.items()},  # Simplified map for reference
+        "configs": configs,
     }
 
 
 @router.put("/users/{user_id}")
 def update_user_permissions(
     user_id: str,
-    permissions: Dict[str, bool] = Body(...),
+    permissions: Dict[str, Any] = Body(...),
     db: Session = Depends(get_db),
     _=Depends(require_permissions("hr:users:write", "hr:users:edit:permissions", "users:write"))
 ):
@@ -185,35 +201,61 @@ def update_user_permissions(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
-    # Validate that all permission keys exist
-    permission_keys = set(permissions.keys())
-    existing_perms = db.query(PermissionDefinition).filter(
-        PermissionDefinition.key.in_(permission_keys),
-        PermissionDefinition.is_active == True
-    ).all()
+    # Split payload between boolean permission toggles and special config keys.
+    bool_updates: Dict[str, bool] = {}
+    config_updates: Dict[str, List[str]] = {}
     
-    existing_keys = {p.key for p in existing_perms}
-    invalid_keys = permission_keys - existing_keys
+    for k, v in (permissions or {}).items():
+        if isinstance(v, bool):
+            bool_updates[k] = v
+        elif k in FILE_CATEGORY_CONFIG_KEYS:
+            if v is None:
+                config_updates[k] = []
+            elif isinstance(v, list) and all(isinstance(x, str) for x in v):
+                config_updates[k] = v
+            else:
+                raise HTTPException(status_code=400, detail=f"Invalid config value for {k}")
+        else:
+            raise HTTPException(status_code=400, detail=f"Invalid permission key or value type: {k}")
     
-    if invalid_keys:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Invalid permission keys: {', '.join(invalid_keys)}"
-        )
+    # Validate boolean permission keys exist (configs are not PermissionDefinitions)
+    permission_keys = set(bool_updates.keys())
+    if permission_keys:
+        existing_perms = db.query(PermissionDefinition).filter(
+            PermissionDefinition.key.in_(permission_keys),
+            PermissionDefinition.is_active == True
+        ).all()
+        
+        existing_keys = {p.key for p in existing_perms}
+        invalid_keys = permission_keys - existing_keys
+        
+        if invalid_keys:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid permission keys: {', '.join(invalid_keys)}"
+            )
     
     # Update user permissions_override
     # Start with existing overrides or empty dict
     current_overrides = user.permissions_override or {}
     
-    # Update with new permissions (only include truthy values)
-    new_overrides = {k: True for k, v in permissions.items() if v}
+    # Update with new boolean permissions (only include truthy values)
+    new_overrides = {k: True for k, v in bool_updates.items() if v}
     
     # Merge: new overrides take precedence, but keep existing ones that weren't updated
     updated_overrides = {**current_overrides, **new_overrides}
     
-    # Remove permissions that were explicitly set to False
+    # Remove boolean permissions that were explicitly set to False
     for key in permission_keys:
-        if not permissions.get(key, False):
+        if not bool_updates.get(key, False):
+            updated_overrides.pop(key, None)
+    
+    # Apply config updates
+    # Semantics: missing key => keep existing; empty list => remove (meaning: allow all categories)
+    for key, value in config_updates.items():
+        if value:
+            updated_overrides[key] = value
+        else:
             updated_overrides.pop(key, None)
     
     user.permissions_override = updated_overrides

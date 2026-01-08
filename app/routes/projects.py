@@ -8,7 +8,7 @@ import uuid
 from ..db import get_db
 from ..models.models import Project, ClientFile, FileObject, Proposal, ProjectUpdate, ProjectReport, ProjectEvent, ProjectTimeEntry, ProjectTimeEntryLog, User, EmployeeProfile, Client, ClientSite, ClientFolder, ClientContact, SettingList, SettingItem, Shift, AuditLog, Estimate, EstimateItem
 from datetime import datetime, timezone, time, timedelta
-from ..auth.security import get_current_user, require_permissions, can_approve_timesheet
+from ..auth.security import get_current_user, require_permissions, can_approve_timesheet, has_project_files_category_permission
 from sqlalchemy import or_, and_, cast, String, Date
 
 
@@ -476,13 +476,21 @@ def delete_project(project_id: str, db: Session = Depends(get_db)):
 
 # ---- Files scoped to Project ----
 @router.get("/{project_id}/files")
-def list_project_files(project_id: str, db: Session = Depends(get_db)):
+def list_project_files(
+    project_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    _=Depends(require_permissions("business:projects:files:read", "business:projects:files:write")),
+):
     proj = db.query(Project).filter(Project.id == project_id).first()
     if not proj:
         raise HTTPException(status_code=404, detail="Project not found")
     cfiles = db.query(ClientFile).filter(ClientFile.client_id == proj.client_id).order_by(ClientFile.uploaded_at.desc()).all()
     out = []
     for cf in cfiles:
+        # Category-level permission filter (default allow-all if config not set)
+        if not has_project_files_category_permission(user, getattr(cf, "category", None), action="read"):
+            continue
         fo = db.query(FileObject).filter(FileObject.id == cf.file_object_id).first()
         if not fo:
             continue
@@ -507,7 +515,17 @@ def list_project_files(project_id: str, db: Session = Depends(get_db)):
 
 
 @router.post("/{project_id}/files")
-def attach_project_file(project_id: str, file_object_id: str, category: Optional[str] = None, original_name: Optional[str] = None, db: Session = Depends(get_db)):
+def attach_project_file(
+    project_id: str,
+    file_object_id: str,
+    category: Optional[str] = None,
+    original_name: Optional[str] = None,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    _=Depends(require_permissions("business:projects:files:write")),
+):
+    if not has_project_files_category_permission(user, category, action="write"):
+        raise HTTPException(status_code=403, detail="Forbidden")
     proj = db.query(Project).filter(Project.id == project_id).first()
     if not proj:
         raise HTTPException(status_code=404, detail="Project not found")
@@ -523,7 +541,14 @@ def attach_project_file(project_id: str, file_object_id: str, category: Optional
 
 
 @router.put("/{project_id}/files/{file_id}")
-def update_project_file(project_id: str, file_id: str, payload: dict, db: Session = Depends(get_db)):
+def update_project_file(
+    project_id: str,
+    file_id: str,
+    payload: dict,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    _=Depends(require_permissions("business:projects:files:write")),
+):
     """Update a project file (e.g., change category)"""
     proj = db.query(Project).filter(Project.id == project_id).first()
     if not proj:
@@ -531,12 +556,18 @@ def update_project_file(project_id: str, file_id: str, payload: dict, db: Sessio
     cf = db.query(ClientFile).filter(ClientFile.id == file_id, ClientFile.client_id == proj.client_id).first()
     if not cf:
         raise HTTPException(status_code=404, detail="File not found")
+    # Must have write access to the current category
+    if not has_project_files_category_permission(user, getattr(cf, "category", None), action="write"):
+        raise HTTPException(status_code=403, detail="Forbidden")
     # Verify file belongs to this project
     fo = db.query(FileObject).filter(FileObject.id == cf.file_object_id).first()
     if not fo or str(getattr(fo, 'project_id', '') or '') != str(project_id):
         raise HTTPException(status_code=404, detail="File not found in project")
     # Update category if provided
     if "category" in payload:
+        # Must have write access to the destination category as well
+        if not has_project_files_category_permission(user, payload.get("category"), action="write"):
+            raise HTTPException(status_code=403, detail="Forbidden")
         cf.category = payload["category"]
     if "original_name" in payload:
         cf.original_name = payload["original_name"]
@@ -545,7 +576,13 @@ def update_project_file(project_id: str, file_id: str, payload: dict, db: Sessio
 
 
 @router.delete("/{project_id}/files/{file_id}")
-def delete_project_file(project_id: str, file_id: str, db: Session = Depends(get_db)):
+def delete_project_file(
+    project_id: str,
+    file_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    _=Depends(require_permissions("business:projects:files:write")),
+):
     """Delete a project file"""
     proj = db.query(Project).filter(Project.id == project_id).first()
     if not proj:
@@ -553,6 +590,8 @@ def delete_project_file(project_id: str, file_id: str, db: Session = Depends(get
     cf = db.query(ClientFile).filter(ClientFile.id == file_id, ClientFile.client_id == proj.client_id).first()
     if not cf:
         raise HTTPException(status_code=404, detail="File not found")
+    if not has_project_files_category_permission(user, getattr(cf, "category", None), action="write"):
+        raise HTTPException(status_code=403, detail="Forbidden")
     # Verify file belongs to this project
     fo = db.query(FileObject).filter(FileObject.id == cf.file_object_id).first()
     if not fo or str(getattr(fo, 'project_id', '') or '') != str(project_id):

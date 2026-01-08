@@ -2814,6 +2814,32 @@ function ProjectFilesTabEnhanced({ projectId, files, onRefresh }:{ projectId:str
     queryKey: ['file-categories'],
     queryFn: ()=>api<any[]>('GET', '/clients/file-categories')
   });
+
+  const { data: categoryPerms } = useQuery({
+    queryKey: ['project-files-category-perms'],
+    queryFn: ()=>api<any>('GET', '/auth/me/project-files-category-permissions'),
+  });
+
+  const readAllowList: string[] | null = Array.isArray(categoryPerms?.read_categories) ? categoryPerms.read_categories : null;
+  const writeAllowList: string[] | null = Array.isArray(categoryPerms?.write_categories) ? categoryPerms.write_categories : null;
+
+  const isReadCategoryAllowed = useCallback((categoryId: string) => {
+    return readAllowList === null ? true : readAllowList.includes(categoryId);
+  }, [readAllowList]);
+
+  const isWriteCategoryAllowed = useCallback((categoryId: string) => {
+    return writeAllowList === null ? true : writeAllowList.includes(categoryId);
+  }, [writeAllowList]);
+
+  // Hide legacy/duplicate category "photos" (Pictures already covers this use-case)
+  const visibleCategories = useMemo(() => {
+    const base = (categories || []).filter((c: any) => String(c?.id || '') !== 'photos');
+    // If a read allow-list is configured, only show allowed categories
+    if (readAllowList !== null) {
+      return base.filter((c: any) => readAllowList.includes(String(c?.id || '')));
+    }
+    return base;
+  }, [categories, readAllowList]);
   
   const { data: project } = useQuery({
     queryKey: ['project', projectId],
@@ -2829,12 +2855,21 @@ function ProjectFilesTabEnhanced({ projectId, files, onRefresh }:{ projectId:str
     const grouped: Record<string, ProjectFile[]> = { 'all': [], 'uncategorized': [] };
     files.forEach(f => {
       const cat = f.category || 'uncategorized';
+      if (!isReadCategoryAllowed(cat)) return;
       if (!grouped[cat]) grouped[cat] = [];
       grouped[cat].push(f);
       grouped['all'].push(f);
     });
     return grouped;
-  }, [files]);
+  }, [files, isReadCategoryAllowed]);
+
+  // If the currently selected category becomes unavailable due to permission filtering, reset to All.
+  useEffect(() => {
+    if (selectedCategory === 'all' || selectedCategory === 'uncategorized') return;
+    if (!visibleCategories.find((c: any) => c.id === selectedCategory)) {
+      setSelectedCategory('all');
+    }
+  }, [selectedCategory, visibleCategories]);
 
   const currentFiles = useMemo(() => {
     return filesByCategory[selectedCategory] || [];
@@ -2862,6 +2897,14 @@ function ProjectFilesTabEnhanced({ projectId, files, onRefresh }:{ projectId:str
     const category = targetCategory !== undefined 
       ? (targetCategory === 'uncategorized' ? null : targetCategory)
       : (selectedCategory === 'all' || selectedCategory === 'uncategorized' ? undefined : selectedCategory);
+
+    // Category-level write permission gating (UX; backend also enforces)
+    const categoryIdForCheck = (category === null || category === undefined || category === '') ? 'uncategorized' : String(category);
+    if (!canEditFiles || !isWriteCategoryAllowed(categoryIdForCheck)) {
+      toast.error('You do not have permission to upload files to this category');
+      return;
+    }
+
     const newQueue = Array.from(fileList).map((file, idx) => ({
       id: `${Date.now()}-${idx}`,
       file,
@@ -2915,6 +2958,10 @@ function ProjectFilesTabEnhanced({ projectId, files, onRefresh }:{ projectId:str
 
   const handleMoveFile = async (fileId: string, newCategory: string) => {
     try {
+      if (!canEditFiles || !isWriteCategoryAllowed(newCategory)) {
+        toast.error('You do not have permission to move files to this category');
+        return;
+      }
       await api('PUT', `/projects/${projectId}/files/${fileId}`, {
         category: newCategory === 'uncategorized' ? null : newCategory
       });
@@ -2928,6 +2975,12 @@ function ProjectFilesTabEnhanced({ projectId, files, onRefresh }:{ projectId:str
   const handleDeleteFile = async (fileId: string) => {
     if (!confirm('Delete this file?')) return;
     try {
+      const file = files.find(f => f.id === fileId);
+      const cat = (file?.category || 'uncategorized');
+      if (!canEditFiles || !isWriteCategoryAllowed(cat)) {
+        toast.error('You do not have permission to delete files in this category');
+        return;
+      }
       await api('DELETE', `/projects/${projectId}/files/${fileId}`);
       await onRefresh();
       toast.success('File deleted');
@@ -2977,23 +3030,24 @@ function ProjectFilesTabEnhanced({ projectId, files, onRefresh }:{ projectId:str
                   <span className="ml-auto text-xs text-gray-500">({filesByCategory['all']?.length || 0})</span>
                 </div>
               </button>
-              {(categories || []).map((cat: any) => {
+              {visibleCategories.map((cat: any) => {
                 const count = filesByCategory[cat.id]?.length || 0;
+                const canEditCategory = canEditFiles && isWriteCategoryAllowed(String(cat.id));
                 return (
                   <button
                     key={cat.id}
                     onClick={() => setSelectedCategory(cat.id)}
-                    onDragOver={canEditFiles ? (e) => {
+                    onDragOver={canEditCategory ? (e) => {
                       e.preventDefault();
                       e.stopPropagation();
                       setIsDragging(true);
                     } : undefined}
-                    onDragLeave={canEditFiles ? (e) => {
+                    onDragLeave={canEditCategory ? (e) => {
                       e.preventDefault();
                       e.stopPropagation();
                       setIsDragging(false);
                     } : undefined}
-                    onDrop={canEditFiles ? async (e) => {
+                    onDrop={canEditCategory ? async (e) => {
                       e.preventDefault();
                       e.stopPropagation();
                       setIsDragging(false);
@@ -3012,7 +3066,7 @@ function ProjectFilesTabEnhanced({ projectId, files, onRefresh }:{ projectId:str
                     } : undefined}
                     className={`w-full text-left px-4 py-3 border-b hover:bg-white transition-colors ${
                       selectedCategory === cat.id ? 'bg-white border-l-4 border-l-brand-red font-semibold' : 'text-gray-700'
-                    } ${isDragging ? 'bg-blue-50' : ''}`}
+                    } ${isDragging && canEditCategory ? 'bg-blue-50' : ''} ${!canEditCategory ? 'opacity-70' : ''}`}
                   >
                     <div className="flex items-center gap-2">
                       <span>{cat.icon || '📁'}</span>
@@ -3075,7 +3129,7 @@ function ProjectFilesTabEnhanced({ projectId, files, onRefresh }:{ projectId:str
               <div className="text-sm font-semibold">
                 {selectedCategory === 'all' ? 'All Files' : 
                  selectedCategory === 'uncategorized' ? 'Uncategorized Files' :
-                 categories?.find((c: any) => c.id === selectedCategory)?.name || 'Files'}
+                 visibleCategories.find((c: any) => c.id === selectedCategory)?.name || 'Files'}
                 <span className="ml-2 text-gray-500">({currentFiles.length})</span>
               </div>
               {canEditFiles && (
