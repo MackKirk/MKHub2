@@ -10,6 +10,63 @@ import FilterChip from '@/components/FilterBuilder/FilterChip';
 import { FilterRule, FieldConfig } from '@/components/FilterBuilder/types';
 import { isRangeOperator } from '@/components/FilterBuilder/utils';
 
+// Helper function to get user initials
+function getUserInitials(user: any): string {
+  const firstName = user?.first_name || user?.name || user?.username || '';
+  const lastName = user?.last_name || '';
+  const firstInitial = firstName ? firstName[0].toUpperCase() : '';
+  const lastInitial = lastName ? lastName[0].toUpperCase() : '';
+  if (firstInitial && lastInitial) {
+    return firstInitial + lastInitial;
+  }
+  return firstInitial || (user?.username ? user.username[0].toUpperCase() : '?');
+}
+
+// Helper function to get user display name
+function getUserDisplayName(user: any): string {
+  if (user?.first_name && user?.last_name) {
+    return `${user.first_name} ${user.last_name}`;
+  }
+  return user?.name || user?.username || 'Unknown';
+}
+
+// Component for user avatar with tooltip
+function UserAvatar({ user, size = 'w-6 h-6', showTooltip = true, tooltipText }: { 
+  user: any; 
+  size?: string; 
+  showTooltip?: boolean;
+  tooltipText?: string;
+}) {
+  const photoFileId = user?.profile_photo_file_id;
+  const initials = getUserInitials(user);
+  const displayName = tooltipText || getUserDisplayName(user);
+  const [imageError, setImageError] = useState(false);
+
+  return (
+    <div className="relative inline-flex group/avatar">
+      {photoFileId && !imageError ? (
+        <img
+          src={`/files/${photoFileId}/thumbnail?w=80`}
+          alt={displayName}
+          className={`${size} rounded-full object-cover border border-gray-300`}
+          onError={() => setImageError(true)}
+        />
+      ) : (
+        <div className={`${size} rounded-full bg-indigo-600 flex items-center justify-center text-white font-semibold text-xs`}>
+          {initials}
+        </div>
+      )}
+
+      {showTooltip && (
+        <div className="absolute left-0 bottom-full mb-1 px-2 py-1 bg-gray-900 text-white text-xs rounded whitespace-nowrap opacity-0 group-hover/avatar:opacity-100 transition-opacity pointer-events-none z-20 shadow-lg">
+          {displayName}
+          <div className="absolute -bottom-1 left-2 w-2 h-2 bg-gray-900 rotate-45"></div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 type Project = { 
   id:string, 
   code?:string, 
@@ -27,7 +84,9 @@ type Project = {
   progress?:number,
   status_label?:string,
   estimator_id?:string,
+  estimator_ids?:string[],
   estimator_name?:string,
+  project_admin_id?:string,
   onsite_lead_id?:string,
   cost_actual?:number,
   service_value?:number,
@@ -420,7 +479,7 @@ export default function Projects(){
     },
     {
       id: 'estimator',
-      label: 'Estimator',
+      label: 'Estimators',
       type: 'select',
       operators: ['is', 'is_not'],
       getOptions: () => (employees || []).map((emp: any) => ({ 
@@ -685,11 +744,25 @@ function ProjectListCard({ project, projectDivisions, projectStatuses }:{ projec
   const progress = Math.max(0, Math.min(100, Number(project.progress ?? 0)));
   const start = (project.date_start || project.created_at || '').slice(0,10);
   const eta = (project.date_eta || '').slice(0,10);
-  const est = project.estimator_name || '';
+  const projectAdminId = project.project_admin_id || null;
   const actualValue = project.cost_actual || 0;
   const estimatedValue = project.service_value || 0;
   const projectDivIds = project.project_division_ids || [];
   const percentages = project.project_division_percentages || {};
+  
+  // Get employees data for avatars
+  const { data: employeesData } = useQuery({ 
+    queryKey:['employees-for-projects-cards'], 
+    queryFn: ()=> api<any[]>('GET','/employees'), 
+    staleTime: 300_000
+  });
+  const employees = employeesData || [];
+  
+  // Resolve Project Admin employee for avatar
+  const projectAdmin = useMemo(() => {
+    if (!projectAdminId) return null;
+    return employees.find((e: any) => String(e.id) === String(projectAdminId)) || null;
+  }, [projectAdminId, employees]);
   
   // Calculate percentages if not set (auto-initialize)
   const calculatedPercentages = useMemo(() => {
@@ -820,14 +893,23 @@ function ProjectListCard({ project, projectDivisions, projectStatuses }:{ projec
             <div className="text-xs text-gray-500">ETA</div>
             <div className="font-medium text-gray-900 truncate">{eta || '—'}</div>
           </div>
-          <div className="min-w-0 truncate" title={est}>
-            <div className="text-xs text-gray-500">Estimator</div>
-            <div className="font-medium text-gray-900 text-xs">{est || '—'}</div>
+          <div className="min-w-0">
+            <div className="text-xs text-gray-500 mb-1.5">Project Admin</div>
+            {!projectAdmin ? (
+              <div className="text-gray-400 text-xs">—</div>
+            ) : (
+              <div className="flex items-center gap-2">
+                <UserAvatar user={projectAdmin} size="w-6 h-6" showTooltip={true} />
+                <div className="font-medium text-gray-900 text-xs truncate">{getUserDisplayName(projectAdmin)}</div>
+              </div>
+            )}
           </div>
           <div className="min-w-0">
-            <div className="text-xs text-gray-500">Estimated Value</div>
-            <div className="font-semibold text-[#7f1010] truncate">
-              {estimatedValue > 0 ? `$${estimatedValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—'}
+            <div className="text-xs text-gray-500 mb-1.5">Estimated Value</div>
+            <div className="h-6 flex items-center">
+              <div className="font-semibold text-[#7f1010] truncate w-full">
+                {estimatedValue > 0 ? `$${estimatedValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—'}
+              </div>
             </div>
           </div>
         </div>

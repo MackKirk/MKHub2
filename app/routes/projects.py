@@ -174,6 +174,9 @@ def list_projects(client: Optional[str] = None, site: Optional[str] = None, stat
             "project_division_ids": getattr(p, 'project_division_ids', None),
             "project_division_percentages": getattr(p, 'project_division_percentages', None),
             "is_bidding": getattr(p, 'is_bidding', False),
+            "estimator_id": str(getattr(p, 'estimator_id', None)) if getattr(p, 'estimator_id', None) else None,
+            "estimator_ids": [str(eid) for eid in (getattr(p, 'estimator_ids', None) or [])] if getattr(p, 'estimator_ids', None) else ([str(getattr(p, 'estimator_id', None))] if getattr(p, 'estimator_id', None) else []),
+            "project_admin_id": str(getattr(p, 'project_admin_id', None)) if getattr(p, 'project_admin_id', None) else None,
         }
         for p in query.order_by(Project.created_at.desc()).limit(100).all()
     ]
@@ -234,7 +237,9 @@ def get_project(project_id: str, db: Session = Depends(get_db)):
         "site_province": getattr(site, 'site_province', None),
         "site_country": getattr(site, 'site_country', None),
         "site_postal_code": getattr(site, 'site_postal_code', None),
-        "estimator_id": getattr(p, 'estimator_id', None),
+        "estimator_id": str(getattr(p, 'estimator_id', None)) if getattr(p, 'estimator_id', None) else None,
+        "estimator_ids": [str(eid) for eid in (getattr(p, 'estimator_ids', None) or [])] if getattr(p, 'estimator_ids', None) else ([str(getattr(p, 'estimator_id', None))] if getattr(p, 'estimator_id', None) else []),
+        "project_admin_id": str(getattr(p, 'project_admin_id', None)) if getattr(p, 'project_admin_id', None) else None,
         "onsite_lead_id": str(getattr(p, 'onsite_lead_id', None)) if getattr(p, 'onsite_lead_id', None) else None,
         "division_onsite_leads": getattr(p, 'division_onsite_leads', None) or {},
         "contact_id": getattr(p, 'contact_id', None),
@@ -351,6 +356,36 @@ def update_project(project_id: str, payload: dict, db: Session = Depends(get_db)
             # Allow small tolerance for floating point (0.01%)
             if abs(total - 100.0) > 0.01:
                 raise HTTPException(status_code=400, detail=f"Division percentages must total exactly 100%. Current total: {total:.2f}%")
+    
+    # Handle estimator_ids and backward compatibility with estimator_id
+    if 'estimator_ids' in payload:
+        estimator_ids = payload.get('estimator_ids')
+        # If estimator_ids is provided and is a list with at least one element, 
+        # also update estimator_id with the first element for backward compatibility
+        if isinstance(estimator_ids, list) and len(estimator_ids) > 0:
+            # Validate all IDs are valid UUIDs
+            try:
+                for eid in estimator_ids:
+                    if eid:  # Skip None/empty values
+                        uuid.UUID(str(eid))
+                payload['estimator_id'] = estimator_ids[0]  # Set first as estimator_id for backward compatibility
+            except (ValueError, AttributeError):
+                raise HTTPException(status_code=400, detail="estimator_ids must contain valid UUIDs")
+        elif estimator_ids is None or (isinstance(estimator_ids, list) and len(estimator_ids) == 0):
+            # Clear both fields if empty
+            payload['estimator_id'] = None
+    elif 'estimator_id' in payload and not hasattr(p, 'estimator_ids') or getattr(p, 'estimator_ids', None) is None:
+        # If only estimator_id is provided and estimator_ids doesn't exist, migrate it
+        estimator_id = payload.get('estimator_id')
+        if estimator_id:
+            payload['estimator_ids'] = [estimator_id]
+        else:
+            payload['estimator_ids'] = []
+    elif not hasattr(p, 'estimator_ids') or getattr(p, 'estimator_ids', None) is None:
+        # If estimator_ids doesn't exist on project but estimator_id does, migrate it
+        old_estimator_id = getattr(p, 'estimator_id', None)
+        if old_estimator_id:
+            payload['estimator_ids'] = [old_estimator_id]
     
     # Update project
     for k, v in payload.items():
@@ -2774,7 +2809,8 @@ def business_opportunities(
             "cost_estimated": getattr(p, 'cost_estimated', None),
             "is_bidding": True,
             "cover_image_url": cover_url,
-            "estimator_id": getattr(p, 'estimator_id', None),
+            "estimator_id": str(getattr(p, 'estimator_id', None)) if getattr(p, 'estimator_id', None) else None,
+            "estimator_ids": [str(eid) for eid in (getattr(p, 'estimator_ids', None) or [])] if getattr(p, 'estimator_ids', None) else ([str(getattr(p, 'estimator_id', None))] if getattr(p, 'estimator_id', None) else []),
             "onsite_lead_id": getattr(p, 'onsite_lead_id', None),
         }
         
@@ -3334,7 +3370,9 @@ def business_projects(
             "cover_image_url": None,
             "client_name": None,
             "client_display_name": None,
-            "estimator_id": getattr(p, 'estimator_id', None),
+            "estimator_id": str(getattr(p, 'estimator_id', None)) if getattr(p, 'estimator_id', None) else None,
+            "estimator_ids": [str(eid) for eid in (getattr(p, 'estimator_ids', None) or [])] if getattr(p, 'estimator_ids', None) else ([str(getattr(p, 'estimator_id', None))] if getattr(p, 'estimator_id', None) else []),
+            "project_admin_id": str(getattr(p, 'project_admin_id', None)) if getattr(p, 'project_admin_id', None) else None,
             "onsite_lead_id": getattr(p, 'onsite_lead_id', None),
         }
         

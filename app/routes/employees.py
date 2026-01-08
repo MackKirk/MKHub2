@@ -34,8 +34,13 @@ def list_employees(q: Optional[str] = None, db: Session = Depends(get_db), _=Dep
             "id": str(u.id),
             "username": u.username,
             "name": name,
+            "first_name": (getattr(ep, 'first_name', None) or '').strip() if ep else None,
+            "last_name": (getattr(ep, 'last_name', None) or '').strip() if ep else None,
+            "email": u.email_personal,
+            "phone": getattr(ep, 'phone', None) if ep else None,
             "job_title": getattr(ep, 'job_title', None) if ep else None,
             "profile_photo_file_id": str(getattr(ep, 'profile_photo_file_id')) if (ep and getattr(ep, 'profile_photo_file_id', None)) else None,
+            "roles": [r.name for r in getattr(u, 'roles', [])] if hasattr(u, 'roles') else [],
         })
     return out
 

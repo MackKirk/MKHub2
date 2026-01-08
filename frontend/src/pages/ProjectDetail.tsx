@@ -129,7 +129,147 @@ function formatHoursMinutes(totalMinutes: number): string {
   return `${hours}h${minutes}min`;
 }
 
-type Project = { id:string, code?:string, name?:string, client_id?:string, client_display_name?:string, client_name?:string, address?:string, address_city?:string, address_province?:string, address_country?:string, address_postal_code?:string, description?:string, status_id?:string, division_id?:string, division_ids?:string[], project_division_ids?:string[], estimator_id?:string, onsite_lead_id?:string, division_onsite_leads?:Record<string, string>, contact_id?:string, contact_name?:string, contact_email?:string, contact_phone?:string, date_start?:string, date_eta?:string, date_end?:string, cost_estimated?:number, cost_actual?:number, service_value?:number, progress?:number, site_id?:string, site_name?:string, site_address_line1?:string, site_address_line2?:string, site_city?:string, site_province?:string, site_country?:string, site_postal_code?:string, status_label?:string, status_changed_at?:string, is_bidding?:boolean };
+// Helper function to get user initials
+function getUserInitials(user: any): string {
+  const firstName = user?.first_name || user?.name || user?.username || '';
+  const lastName = user?.last_name || '';
+  const firstInitial = firstName ? firstName[0].toUpperCase() : '';
+  const lastInitial = lastName ? lastName[0].toUpperCase() : '';
+  if (firstInitial && lastInitial) {
+    return firstInitial + lastInitial;
+  }
+  return firstInitial || (user?.username ? user.username[0].toUpperCase() : '?');
+}
+
+// Helper function to get user display name
+function getUserDisplayName(user: any): string {
+  if (user?.first_name && user?.last_name) {
+    return `${user.first_name} ${user.last_name}`;
+  }
+  return user?.name || user?.username || 'Unknown';
+}
+
+// Tooltip component for on-site leads with multiple divisions - uses fixed positioning to appear above footer
+function LeadTooltip({ employee, divisions, children }: { employee: any; divisions: string[]; children: React.ReactElement }) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [position, setPosition] = useState<{ top: number; right: number; arrowClass: string } | null>(null);
+  const [isHovered, setIsHovered] = useState(false);
+
+  useEffect(() => {
+    if (!isHovered || !containerRef.current) {
+      setPosition(null);
+      return;
+    }
+
+    const updatePosition = () => {
+      if (containerRef.current) {
+        const rect = containerRef.current.getBoundingClientRect();
+        const tooltipHeight = 100 + (divisions.length * 20); // Estimate tooltip height
+        const spaceBelow = window.innerHeight - rect.bottom;
+        const spaceAbove = rect.top;
+        
+        // Show above if not enough space below, otherwise show below
+        const showAbove = spaceBelow < tooltipHeight && spaceAbove > spaceBelow;
+        
+        setPosition({
+          top: showAbove 
+            ? rect.top + window.scrollY - tooltipHeight - 8
+            : rect.bottom + window.scrollY + 4,
+          right: window.innerWidth - rect.right + window.scrollX,
+          arrowClass: showAbove ? 'bottom-0 top-auto rotate-45' : '-top-1'
+        });
+      }
+    };
+
+    updatePosition();
+    window.addEventListener('scroll', updatePosition, true);
+    window.addEventListener('resize', updatePosition);
+
+    return () => {
+      window.removeEventListener('scroll', updatePosition, true);
+      window.removeEventListener('resize', updatePosition);
+    };
+  }, [isHovered, divisions.length]);
+
+  return (
+    <>
+      <div
+        ref={containerRef}
+        onMouseEnter={() => setIsHovered(true)}
+        onMouseLeave={() => setIsHovered(false)}
+      >
+        {children}
+      </div>
+      {isHovered && position && (
+        <div
+          className="fixed px-2 py-1 bg-gray-900 text-white text-xs rounded pointer-events-none z-[100]"
+          style={{
+            top: `${position.top}px`,
+            right: `${position.right}px`,
+            maxWidth: '300px'
+          }}
+        >
+          <div className="font-semibold">{getUserDisplayName(employee)}</div>
+          {divisions.length > 0 && (
+            <div className="text-gray-300 mt-1">
+              {divisions.map((div, idx) => (
+                <div key={idx} className="whitespace-normal">{div}</div>
+              ))}
+            </div>
+          )}
+          <div className={`absolute ${position.arrowClass} right-2 w-2 h-2 bg-gray-900 rotate-45`}></div>
+        </div>
+      )}
+    </>
+  );
+}
+
+// Component for user avatar with tooltip
+
+function UserAvatar({ user, size = 'w-8 h-8', showTooltip = true, tooltipText }: { 
+  user: any; 
+  size?: string; 
+  showTooltip?: boolean;
+  tooltipText?: string;
+}) {
+  const photoFileId = user?.profile_photo_file_id;
+  const initials = getUserInitials(user);
+  const displayName = tooltipText || getUserDisplayName(user);
+  const [imageError, setImageError] = useState(false);
+  
+  if (photoFileId && !imageError) {
+    return (
+      <div className="relative group/avatar">
+        <img
+          src={`/files/${photoFileId}/thumbnail?w=80`}
+          alt={displayName}
+          className={`${size} rounded-full object-cover border border-gray-300`}
+          onError={() => setImageError(true)}
+        />
+        {showTooltip && (
+          <div className="absolute right-0 top-full mt-1 px-2 py-1 bg-gray-900 text-white text-xs rounded whitespace-nowrap opacity-0 group-hover/avatar:opacity-100 transition-opacity pointer-events-none z-10">
+            {displayName}
+            <div className="absolute -top-1 right-2 w-2 h-2 bg-gray-900 rotate-45"></div>
+          </div>
+        )}
+      </div>
+    );
+  }
+  
+  return (
+    <div className={`relative group/avatar ${size} rounded-full bg-indigo-600 flex items-center justify-center text-white font-semibold text-xs`}>
+      {initials}
+      {showTooltip && (
+        <div className="absolute right-0 top-full mt-1 px-2 py-1 bg-gray-900 text-white text-xs rounded whitespace-nowrap opacity-0 group-hover/avatar:opacity-100 transition-opacity pointer-events-none z-10">
+          {displayName}
+          <div className="absolute -top-1 right-2 w-2 h-2 bg-gray-900 rotate-45"></div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+type Project = { id:string, code?:string, name?:string, client_id?:string, client_display_name?:string, client_name?:string, address?:string, address_city?:string, address_province?:string, address_country?:string, address_postal_code?:string, description?:string, status_id?:string, division_id?:string, division_ids?:string[], project_division_ids?:string[], estimator_id?:string, estimator_ids?:string[], project_admin_id?:string, onsite_lead_id?:string, division_onsite_leads?:Record<string, string>, contact_id?:string, contact_name?:string, contact_email?:string, contact_phone?:string, date_start?:string, date_eta?:string, date_end?:string, cost_estimated?:number, cost_actual?:number, service_value?:number, progress?:number, site_id?:string, site_name?:string, site_address_line1?:string, site_address_line2?:string, site_city?:string, site_province?:string, site_country?:string, site_postal_code?:string, status_label?:string, status_changed_at?:string, is_bidding?:boolean };
 type ProjectFile = { id:string, file_object_id:string, is_image?:boolean, content_type?:string, category?:string, original_name?:string, uploaded_at?:string };
 type Update = { id:string, timestamp?:string, text?:string, images?:any };
 type Report = { id:string, title?:string, category_id?:string, division_id?:string, description?:string, images?:any, status?:string, created_at?:string, created_by?:string, financial_value?:number, financial_type?:string, estimate_data?:any, approval_status?:string, approved_by?:string, approved_at?:string };
@@ -256,6 +396,7 @@ export default function ProjectDetail(){
   const [editProjectNameModal, setEditProjectNameModal] = useState(false);
   const [editSiteModal, setEditSiteModal] = useState(false);
   const [editEstimatorModal, setEditEstimatorModal] = useState(false);
+  const [editProjectAdminModal, setEditProjectAdminModal] = useState(false);
   const [editEtaModal, setEditEtaModal] = useState(false);
   const [editStartDateModal, setEditStartDateModal] = useState(false);
   useEffect(()=>{
@@ -437,103 +578,112 @@ export default function ProjectDetail(){
               {/* Middle Section - General Information */}
               <div className="flex-1 min-w-0">
                 <div className="mb-4">
-                  <h3 className="font-semibold text-lg">General Information</h3>
+                  <div className="flex items-center gap-1.5">
+                    <h3 
+                      className="font-semibold text-lg cursor-text"
+                      onClick={() => hasEditPermission && setEditProjectNameModal(true)}
+                    >
+                      {proj?.name || 'Untitled Project'}
+                    </h3>
+                    {hasEditPermission && (
+                      <button
+                        onClick={() => setEditProjectNameModal(true)}
+                        className="text-gray-400 hover:text-[#7f1010] transition-colors"
+                        title="Edit Project Name"
+                      >
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                        </svg>
+                      </button>
+                    )}
+                  </div>
                 </div>
 
-                {/* Align by columns, using the Customer row as the top reference */}
+                {/* Align by columns */}
                 <div className="grid grid-cols-3 gap-6">
                   {/* Column 1 */}
                   <div className="min-w-0">
-                    {/* Customer */}
+                    {/* Code */}
                     <div className="mb-4">
-                      <div className="text-xs text-gray-600 mb-1">Customer</div>
-                      {proj?.client_id ? (
-                        <Link
-                          to={`/customers/${encodeURIComponent(String(proj.client_id))}`}
-                          className="text-sm font-medium text-[#7f1010] hover:text-[#a31414] hover:underline break-words"
-                        >
-                          {proj?.client_display_name || proj?.client_name || 'View Customer'}
-                        </Link>
-                      ) : (
-                        <div className="text-sm font-medium text-gray-400">—</div>
-                      )}
+                      <label className="text-xs text-gray-600 block mb-1">Code</label>
+                      <div className="text-sm font-medium">{proj?.code || '—'}</div>
                     </div>
 
-                    {/* Project Name */}
-                    <div className="mb-4">
-                      <div className="flex items-center gap-1.5 mb-1">
-                        <label className="text-xs text-gray-600 block">Project Name</label>
-                        {hasEditPermission && (
-                          <button
-                            onClick={() => setEditProjectNameModal(true)}
-                            className="text-gray-400 hover:text-[#7f1010] transition-colors"
-                            title="Edit Project Name"
+                    {/* Customer - only show for projects */}
+                    {!proj?.is_bidding && (
+                      <div className="mb-4">
+                        <div className="text-xs text-gray-600 mb-1">Customer</div>
+                        {proj?.client_id ? (
+                          <Link
+                            to={`/customers/${encodeURIComponent(String(proj.client_id))}`}
+                            className="text-sm font-medium text-[#7f1010] hover:text-[#a31414] hover:underline break-words"
                           >
-                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                            </svg>
-                          </button>
+                            {proj?.client_display_name || proj?.client_name || 'View Customer'}
+                          </Link>
+                        ) : (
+                          <div className="text-sm font-medium text-gray-400">—</div>
                         )}
                       </div>
-                      <div className="text-sm font-medium break-words">{proj?.name || '—'}</div>
-                    </div>
+                    )}
 
-                    {/* Site */}
-                    <div className="mb-4">
-                      <div className="flex items-center gap-1.5 mb-1">
-                        <label className="text-xs text-gray-600 block">Site</label>
-                        {hasEditPermission && (
-                          <button
-                            onClick={() => setEditSiteModal(true)}
-                            className="text-gray-400 hover:text-[#7f1010] transition-colors"
-                            title="Edit Site"
-                          >
-                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                            </svg>
-                          </button>
-                        )}
-                      </div>
-                      <div className="text-sm font-medium">
-                        {(() => {
-                          const siteName = proj?.site_name;
-                          const addressLine1 = proj?.site_address_line1 || proj?.address;
-                          const addressLine2 = (proj as any)?.site_address_line2;
-                          const city = proj?.address_city || proj?.site_city;
-                          const province = proj?.address_province || proj?.site_province;
-                          const postal = proj?.address_postal_code || proj?.site_postal_code;
-                          const country = proj?.address_country || proj?.site_country;
+                    {/* Site - only show for projects */}
+                    {!proj?.is_bidding && (
+                      <div className="mb-4">
+                        <div className="flex items-center gap-1.5 mb-1">
+                          <label className="text-xs text-gray-600 block">Site</label>
+                          {hasEditPermission && (
+                            <button
+                              onClick={() => setEditSiteModal(true)}
+                              className="text-gray-400 hover:text-[#7f1010] transition-colors"
+                              title="Edit Site"
+                            >
+                              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                              </svg>
+                            </button>
+                          )}
+                        </div>
+                        <div className="text-sm font-medium">
+                          {(() => {
+                            const siteName = proj?.site_name;
+                            const addressLine1 = proj?.site_address_line1 || proj?.address;
+                            const addressLine2 = (proj as any)?.site_address_line2;
+                            const city = proj?.address_city || proj?.site_city;
+                            const province = proj?.address_province || proj?.site_province;
+                            const postal = proj?.address_postal_code || proj?.site_postal_code;
+                            const country = proj?.address_country || proj?.site_country;
 
-                          const addressParts = [];
-                          if (addressLine1) addressParts.push(addressLine1);
-                          if (addressLine2) addressParts.push(addressLine2);
-                          if (city) addressParts.push(city);
-                          if (province) addressParts.push(province);
-                          if (postal) addressParts.push(postal);
-                          if (country) addressParts.push(country);
-                          const fullAddress = addressParts.length > 0 ? addressParts.join(', ') : null;
+                            const addressParts = [];
+                            if (addressLine1) addressParts.push(addressLine1);
+                            if (addressLine2) addressParts.push(addressLine2);
+                            if (city) addressParts.push(city);
+                            if (province) addressParts.push(province);
+                            if (postal) addressParts.push(postal);
+                            if (country) addressParts.push(country);
+                            const fullAddress = addressParts.length > 0 ? addressParts.join(', ') : null;
 
-                          const displayName = siteName || (city && province ? `${city}, ${province}` : city || province || '—');
+                            const displayName = siteName || (city && province ? `${city}, ${province}` : city || province || '—');
 
-                          if (fullAddress && displayName !== '—') {
-                            return (
-                              <div className="relative group inline-block">
-                                <span className="cursor-help underline decoration-dotted decoration-gray-400 hover:decoration-gray-600 transition-colors">
-                                  {displayName}
-                                </span>
-                                <div className="absolute left-0 bottom-full mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg shadow-xl whitespace-normal max-w-xs opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 pointer-events-none z-50">
-                                  {siteName && <div className="font-semibold mb-1.5 text-white">{siteName}</div>}
-                                  <div className="text-gray-200 leading-relaxed">{fullAddress}</div>
-                                  <div className="absolute -bottom-1 left-4 w-2 h-2 bg-gray-900 rotate-45"></div>
+                            if (fullAddress && displayName !== '—') {
+                              return (
+                                <div className="relative group inline-block">
+                                  <span className="cursor-help underline decoration-dotted decoration-gray-400 hover:decoration-gray-600 transition-colors">
+                                    {displayName}
+                                  </span>
+                                  <div className="absolute left-0 bottom-full mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg shadow-xl whitespace-normal max-w-xs opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 pointer-events-none z-50">
+                                    {siteName && <div className="font-semibold mb-1.5 text-white">{siteName}</div>}
+                                    <div className="text-gray-200 leading-relaxed">{fullAddress}</div>
+                                    <div className="absolute -bottom-1 left-4 w-2 h-2 bg-gray-900 rotate-45"></div>
+                                  </div>
                                 </div>
-                              </div>
-                            );
-                          }
+                              );
+                            }
 
-                          return displayName;
-                        })()}
+                            return displayName;
+                          })()}
+                        </div>
                       </div>
-                    </div>
+                    )}
 
                     {/* Status */}
                     <div>
@@ -560,53 +710,127 @@ export default function ProjectDetail(){
 
                   {/* Column 2 */}
                   <div className="min-w-0">
-                    {/* Code */}
-                    <div className="mb-4">
-                      <label className="text-xs text-gray-600 block mb-1">Code</label>
-                      <div className="text-sm font-medium">{proj?.code || '—'}</div>
-                    </div>
-
-                    {/* Start Date */}
-                    <div className="mb-4">
-                      <div className="flex items-center gap-1.5 mb-1">
-                        <label className="text-xs text-gray-600 block">Start Date</label>
-                        {hasEditPermission && (
-                          <button
-                            onClick={() => setEditStartDateModal(true)}
-                            className="text-gray-400 hover:text-[#7f1010] transition-colors"
-                            title="Edit Start Date"
+                    {/* Customer - only show for opportunities */}
+                    {proj?.is_bidding && (
+                      <div className="mb-4">
+                        <div className="text-xs text-gray-600 mb-1">Customer</div>
+                        {proj?.client_id ? (
+                          <Link
+                            to={`/customers/${encodeURIComponent(String(proj.client_id))}`}
+                            className="text-sm font-medium text-[#7f1010] hover:text-[#a31414] hover:underline break-words"
                           >
-                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                            </svg>
-                          </button>
+                            {proj?.client_display_name || proj?.client_name || 'View Customer'}
+                          </Link>
+                        ) : (
+                          <div className="text-sm font-medium text-gray-400">—</div>
                         )}
                       </div>
-                      <div className="text-sm font-medium">{proj?.date_start ? proj.date_start.slice(0, 10) : '—'}</div>
-                    </div>
+                    )}
 
-                    {/* ETA */}
-                    <div className="mb-4">
-                      <div className="flex items-center gap-1.5 mb-1">
-                        <label className="text-xs text-gray-600 block">ETA</label>
-                        {hasEditPermission && (
-                          <button
-                            onClick={() => setEditEtaModal(true)}
-                            className="text-gray-400 hover:text-[#7f1010] transition-colors"
-                            title="Edit ETA"
-                          >
-                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                            </svg>
-                          </button>
-                        )}
+                    {/* Site - only show for opportunities */}
+                    {proj?.is_bidding && (
+                      <div className="mb-4">
+                        <div className="flex items-center gap-1.5 mb-1">
+                          <label className="text-xs text-gray-600 block">Site</label>
+                          {hasEditPermission && (
+                            <button
+                              onClick={() => setEditSiteModal(true)}
+                              className="text-gray-400 hover:text-[#7f1010] transition-colors"
+                              title="Edit Site"
+                            >
+                              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                              </svg>
+                            </button>
+                          )}
+                        </div>
+                        <div className="text-sm font-medium">
+                          {(() => {
+                            const siteName = proj?.site_name;
+                            const addressLine1 = proj?.site_address_line1 || proj?.address;
+                            const addressLine2 = (proj as any)?.site_address_line2;
+                            const city = proj?.address_city || proj?.site_city;
+                            const province = proj?.address_province || proj?.site_province;
+                            const postal = proj?.address_postal_code || proj?.site_postal_code;
+                            const country = proj?.address_country || proj?.site_country;
+
+                            const addressParts = [];
+                            if (addressLine1) addressParts.push(addressLine1);
+                            if (addressLine2) addressParts.push(addressLine2);
+                            if (city) addressParts.push(city);
+                            if (province) addressParts.push(province);
+                            if (postal) addressParts.push(postal);
+                            if (country) addressParts.push(country);
+                            const fullAddress = addressParts.length > 0 ? addressParts.join(', ') : null;
+
+                            const displayName = siteName || (city && province ? `${city}, ${province}` : city || province || '—');
+
+                            if (fullAddress && displayName !== '—') {
+                              return (
+                                <div className="relative group inline-block">
+                                  <span className="cursor-help underline decoration-dotted decoration-gray-400 hover:decoration-gray-600 transition-colors">
+                                    {displayName}
+                                  </span>
+                                  <div className="absolute left-0 bottom-full mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg shadow-xl whitespace-normal max-w-xs opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 pointer-events-none z-50">
+                                    {siteName && <div className="font-semibold mb-1.5 text-white">{siteName}</div>}
+                                    <div className="text-gray-200 leading-relaxed">{fullAddress}</div>
+                                    <div className="absolute -bottom-1 left-4 w-2 h-2 bg-gray-900 rotate-45"></div>
+                                  </div>
+                                </div>
+                              );
+                            }
+
+                            return displayName;
+                          })()}
+                        </div>
                       </div>
-                      <div className="text-sm font-medium">{proj?.date_eta ? proj.date_eta.slice(0, 10) : '—'}</div>
-                    </div>
+                    )}
+
+                    {/* Start Date - only show for projects, not opportunities */}
+                    {!proj?.is_bidding && (
+                      <div className="mb-4">
+                        <div className="flex items-center gap-1.5 mb-1">
+                          <label className="text-xs text-gray-600 block">Start Date</label>
+                          {hasEditPermission && (
+                            <button
+                              onClick={() => setEditStartDateModal(true)}
+                              className="text-gray-400 hover:text-[#7f1010] transition-colors"
+                              title="Edit Start Date"
+                            >
+                              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                              </svg>
+                            </button>
+                          )}
+                        </div>
+                        <div className="text-sm font-medium">{proj?.date_start ? proj.date_start.slice(0, 10) : '—'}</div>
+                      </div>
+                    )}
+
+                    {/* ETA - only show for projects, not opportunities */}
+                    {!proj?.is_bidding && (
+                      <div className="mb-4">
+                        <div className="flex items-center gap-1.5 mb-1">
+                          <label className="text-xs text-gray-600 block">ETA</label>
+                          {hasEditPermission && (
+                            <button
+                              onClick={() => setEditEtaModal(true)}
+                              className="text-gray-400 hover:text-[#7f1010] transition-colors"
+                              title="Edit ETA"
+                            >
+                              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                              </svg>
+                            </button>
+                          )}
+                        </div>
+                        <div className="text-sm font-medium">{proj?.date_eta ? proj.date_eta.slice(0, 10) : '—'}</div>
+                      </div>
+                    )}
 
                     {/* Progress - only show for projects, not opportunities */}
                     {!proj?.is_bidding && (
-                      <div>
+                      <div className="mb-4">
                         <div className="flex items-center gap-1.5 mb-2">
                           <label className="text-xs text-gray-600 block">Progress</label>
                           {hasEditPermission && (
@@ -635,57 +859,247 @@ export default function ProjectDetail(){
                         </div>
                       </div>
                     )}
+
+                    {/* Project Divisions - for projects show here */}
+                    {!proj?.is_bidding && (
+                      <ProjectDivisionsHeroSection projectId={String(id)} proj={proj} hasEditPermission={hasEditPermission} />
+                    )}
                   </div>
                   
                   {/* Column 3 */}
                   <div className="min-w-0">
-                    <div className="mb-6">
-                      <div className="flex items-center gap-1.5 mb-2">
-                        <label className="text-xs text-gray-600 block">Estimator</label>
-                        {hasEditPermission && (
-                          <button
-                            onClick={() => setEditEstimatorModal(true)}
-                            className="text-gray-400 hover:text-[#7f1010] transition-colors"
-                            title="Edit Estimator"
-                          >
-                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                            </svg>
-                          </button>
-                        )}
-                      </div>
-                      {estimator ? (
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-full bg-indigo-600 flex items-center justify-center text-white font-semibold">
-                            {(estimator.name || estimator.username || 'E')[0].toUpperCase()}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="text-sm font-medium truncate">{estimator.name || estimator.username}</div>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="text-sm text-gray-400">—</div>
-                      )}
-                    </div>
-
-                    {!proj?.is_bidding && (
+                    {/* Estimators - for opportunities, show in column 3 */}
+                    {proj?.is_bidding && (
                       <div className="mb-6">
-                        <label className="text-xs text-gray-600 block mb-2">On-site Leads</label>
-                        <button
-                          onClick={() => setShowOnSiteLeadsModal(true)}
-                          className="px-4 py-2 rounded border bg-white hover:bg-gray-50 text-sm font-medium text-gray-700 flex items-center gap-2"
-                        >
-                          <span>Manage On-site Leads</span>
-                          {proj?.division_onsite_leads && Object.keys(proj.division_onsite_leads).length > 0 && (
-                            <span className="px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 text-xs font-semibold">
-                              {Object.keys(proj.division_onsite_leads).length}
-                            </span>
+                        <div className="flex items-center gap-1.5 mb-2">
+                          <label className="text-xs text-gray-600 block">Estimators</label>
+                          {hasEditPermission && (
+                            <button
+                              onClick={() => setEditEstimatorModal(true)}
+                              className="text-gray-400 hover:text-[#7f1010] transition-colors"
+                              title="Edit Estimators"
+                            >
+                              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                              </svg>
+                            </button>
                           )}
-                        </button>
+                        </div>
+                        {(() => {
+                          const estimatorIds = proj?.estimator_ids || (proj?.estimator_id ? [proj.estimator_id] : []);
+                          const estimators = estimatorIds
+                            .map((id: string) => employees?.find((e: any) => String(e.id) === String(id)))
+                            .filter(Boolean);
+                          
+                          if (estimators.length === 0) {
+                            return <div className="text-sm text-gray-400">—</div>;
+                          }
+                          
+                          if (estimators.length === 1) {
+                            const est = estimators[0];
+                            return (
+                              <div className="flex items-center gap-3">
+                                <UserAvatar user={est} size="w-8 h-8" showTooltip={true} />
+                                <div className="flex-1 min-w-0">
+                                  <div className="text-sm font-medium truncate">{getUserDisplayName(est)}</div>
+                                </div>
+                              </div>
+                            );
+                          }
+                          
+                          // Multiple estimators - show only avatars
+                          return (
+                            <div className="flex items-center gap-2 flex-wrap">
+                              {estimators.map((est: any) => (
+                                <UserAvatar key={est.id} user={est} size="w-8 h-8" showTooltip={true} />
+                              ))}
+                            </div>
+                          );
+                        })()}
                       </div>
                     )}
 
-                    <ProjectDivisionsHeroSection projectId={String(id)} proj={proj} hasEditPermission={hasEditPermission} />
+                    {/* Estimators - only show for projects, not opportunities */}
+                    {!proj?.is_bidding && (
+                      <div className="mb-6">
+                        <div className="flex items-center gap-1.5 mb-2">
+                          <label className="text-xs text-gray-600 block">Estimators</label>
+                          {hasEditPermission && (
+                            <button
+                              onClick={() => setEditEstimatorModal(true)}
+                              className="text-gray-400 hover:text-[#7f1010] transition-colors"
+                              title="Edit Estimators"
+                            >
+                              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                              </svg>
+                            </button>
+                          )}
+                        </div>
+                        {(() => {
+                          const estimatorIds = proj?.estimator_ids || (proj?.estimator_id ? [proj.estimator_id] : []);
+                          const estimators = estimatorIds
+                            .map((id: string) => employees?.find((e: any) => String(e.id) === String(id)))
+                            .filter(Boolean);
+                          
+                          if (estimators.length === 0) {
+                            return <div className="text-sm text-gray-400">—</div>;
+                          }
+                          
+                          if (estimators.length === 1) {
+                            const est = estimators[0];
+                            return (
+                              <div className="flex items-center gap-3">
+                                <UserAvatar user={est} size="w-8 h-8" showTooltip={true} />
+                                <div className="flex-1 min-w-0">
+                                  <div className="text-sm font-medium truncate">{getUserDisplayName(est)}</div>
+                                </div>
+                              </div>
+                            );
+                          }
+                          
+                          // Multiple estimators - show only avatars
+                          return (
+                            <div className="flex items-center gap-2 flex-wrap">
+                              {estimators.map((est: any) => (
+                                <UserAvatar key={est.id} user={est} size="w-8 h-8" showTooltip={true} />
+                              ))}
+                            </div>
+                          );
+                        })()}
+                      </div>
+                    )}
+
+                    {/* Project Divisions - for opportunities, show in column 3 below Estimators */}
+                    {proj?.is_bidding && (
+                      <ProjectDivisionsHeroSection projectId={String(id)} proj={proj} hasEditPermission={hasEditPermission} />
+                    )}
+
+                    {/* Project Admin - Only show for projects, not opportunities */}
+                    {!proj?.is_bidding && (
+                      <div className="mb-6">
+                        <div className="flex items-center gap-1.5 mb-2">
+                          <label className="text-xs text-gray-600 block">Project Admin</label>
+                          {hasEditPermission && (
+                            <button
+                              onClick={() => setEditProjectAdminModal(true)}
+                              className="text-gray-400 hover:text-[#7f1010] transition-colors"
+                              title="Edit Project Admin"
+                            >
+                              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                              </svg>
+                            </button>
+                          )}
+                        </div>
+                        {(() => {
+                          const adminId = proj?.project_admin_id;
+                          const admin = adminId ? employees?.find((e: any) => String(e.id) === String(adminId)) : null;
+                          if (!admin) return <div className="text-sm text-gray-400">—</div>;
+                          return (
+                            <div className="flex items-center gap-3">
+                              <UserAvatar user={admin} size="w-8 h-8" showTooltip={true} />
+                              <div className="flex-1 min-w-0">
+                                <div className="text-sm font-medium truncate">{getUserDisplayName(admin)}</div>
+                              </div>
+                            </div>
+                          );
+                        })()}
+                      </div>
+                    )}
+
+                    {/* On-site Leads */}
+                    {!proj?.is_bidding && (
+                      <div className="mb-6">
+                        <div className="flex items-center gap-1.5 mb-2">
+                          <label className="text-xs text-gray-600 block">On-site Leads</label>
+                          {hasEditPermission && (
+                            <button
+                              onClick={() => setShowOnSiteLeadsModal(true)}
+                              className="text-gray-400 hover:text-[#7f1010] transition-colors"
+                              title="Edit On-site Leads"
+                            >
+                              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                              </svg>
+                            </button>
+                          )}
+                        </div>
+                        {(() => {
+                          const leads = proj?.division_onsite_leads || {};
+                          
+                          // Helper function to get division label
+                          const getDivisionLabel = (divId: string): string => {
+                            if (!projectDivisions) return divId;
+                            for (const d of projectDivisions) {
+                              if (String(d.id) === String(divId)) return d.label || divId;
+                              for (const sub of (d.subdivisions || [])) {
+                                if (String(sub.id) === String(divId)) return `${d.label} - ${sub.label}`;
+                              }
+                            }
+                            return divId;
+                          };
+
+                          // Group leads by employee ID and collect all their divisions
+                          const leadMap = new Map<string, { employee: any; divisions: string[] }>();
+                          
+                          Object.entries(leads).forEach(([divId, leadId]) => {
+                            if (!leadId) return;
+                            const emp = employees?.find((e: any) => String(e.id) === String(leadId));
+                            if (!emp) return;
+                            
+                            const employeeId = String(leadId);
+                            const divisionLabel = getDivisionLabel(divId);
+                            
+                            if (leadMap.has(employeeId)) {
+                              // Employee already exists, add division to their list
+                              leadMap.get(employeeId)!.divisions.push(divisionLabel);
+                            } else {
+                              // New employee
+                              leadMap.set(employeeId, {
+                                employee: emp,
+                                divisions: [divisionLabel]
+                              });
+                            }
+                          });
+
+                          const uniqueLeads = Array.from(leadMap.values());
+                          
+                          if (uniqueLeads.length === 0) {
+                            return <div className="text-sm text-gray-400">—</div>;
+                          }
+                          
+                          if (uniqueLeads.length === 1) {
+                            const { employee, divisions } = uniqueLeads[0];
+                            return (
+                              <div className="flex items-center gap-3">
+                                <LeadTooltip employee={employee} divisions={divisions}>
+                                  <div className="relative group/lead">
+                                    <UserAvatar user={employee} size="w-8 h-8" showTooltip={false} />
+                                  </div>
+                                </LeadTooltip>
+                                <div className="flex-1 min-w-0">
+                                  <div className="text-sm font-medium truncate">{getUserDisplayName(employee)}</div>
+                                </div>
+                              </div>
+                            );
+                          }
+                          
+                          // Multiple leads - show only avatars (one per unique employee)
+                          return (
+                            <div className="flex items-center gap-2 flex-wrap">
+                              {uniqueLeads.map(({ employee, divisions }) => (
+                                <LeadTooltip key={employee.id} employee={employee} divisions={divisions}>
+                                  <div className="relative group/lead">
+                                    <UserAvatar user={employee} size="w-8 h-8" showTooltip={false} />
+                                  </div>
+                                </LeadTooltip>
+                              ))}
+                            </div>
+                          );
+                        })()}
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -1103,12 +1517,26 @@ export default function ProjectDetail(){
       {editEstimatorModal && (
         <EditEstimatorModal
           projectId={String(id)}
-          currentEstimatorId={proj?.estimator_id || ''}
+          currentEstimatorIds={proj?.estimator_ids || (proj?.estimator_id ? [proj.estimator_id] : [])}
           employees={employees||[]}
           onClose={() => setEditEstimatorModal(false)}
           onSave={async () => {
             await queryClient.invalidateQueries({ queryKey: ['project', id] });
             setEditEstimatorModal(false);
+          }}
+        />
+      )}
+
+      {/* Edit Project Admin Modal */}
+      {editProjectAdminModal && (
+        <EditProjectAdminModal
+          projectId={String(id)}
+          currentAdminId={proj?.project_admin_id || ''}
+          employees={employees||[]}
+          onClose={() => setEditProjectAdminModal(false)}
+          onSave={async () => {
+            await queryClient.invalidateQueries({ queryKey: ['project', id] });
+            setEditProjectAdminModal(false);
           }}
         />
       )}
@@ -4947,24 +5375,110 @@ function OnSiteLeadsModal({ projectId, originalDivisions, divisionLeads, setting
   const [localDivisions, setLocalDivisions] = useState<string[]>(originalDivisions);
   const [localLeads, setLocalLeads] = useState<Record<string, string>>(divisionLeads);
   const [isSaving, setIsSaving] = useState(false);
+  const [searchQueries, setSearchQueries] = useState<Record<string, string>>({});
+  const [openDivisionId, setOpenDivisionId] = useState<string | null>(null);
+  const [dropdownPosition, setDropdownPosition] = useState<{ top?: number; bottom?: number; left: number; width: number; maxHeight: number } | null>(null);
+  const triggerRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   useEffect(() => {
     setLocalDivisions(originalDivisions);
     setLocalLeads(divisionLeads);
   }, [originalDivisions, divisionLeads]);
 
-  const handleLeadChange = async (divId: string, leadId: string) => {
+  const handleLeadChange = (divId: string, leadId: string) => {
     if (!canEdit) return;
     const updated = { ...localLeads, [divId]: leadId };
     setLocalLeads(updated);
+    // Close dropdown after selection
+    setOpenDivisionId(null);
+  };
+
+  const handleSave = async () => {
+    if (!canEdit) return;
     setIsSaving(true);
     try {
       // Pass the same divisions (they come from project_division_ids and cannot be changed here)
-      await onUpdate(updated, localDivisions);
+      await onUpdate(localLeads, localDivisions);
+      onClose();
+    } catch (e: any) {
+      toast.error(e?.response?.data?.detail || 'Failed to update on-site leads');
     } finally {
       setIsSaving(false);
     }
   };
+
+  const updateSearchQuery = (divId: string, query: string) => {
+    setSearchQueries(prev => ({ ...prev, [divId]: query }));
+  };
+
+  const getFilteredEmployees = (divId: string) => {
+    const query = searchQueries[divId] || '';
+    if (!query.trim()) return employees;
+    const searchLower = query.toLowerCase();
+    return employees.filter((emp: any) => {
+      const name = getUserDisplayName(emp).toLowerCase();
+      const email = (emp.email || '').toLowerCase();
+      const username = (emp.username || '').toLowerCase();
+      return name.includes(searchLower) || email.includes(searchLower) || username.includes(searchLower);
+    });
+  };
+
+  const computeDropdownPosition = (divId: string) => {
+    const el = triggerRefs.current[divId];
+    if (!el) return;
+
+    const rect = el.getBoundingClientRect();
+    const PADDING = 8;
+    const DESIRED_MAX = 320;
+    const MIN_HEIGHT = 160;
+
+    const spaceBelow = window.innerHeight - rect.bottom - PADDING;
+    const spaceAbove = rect.top - PADDING;
+    const openUp = spaceBelow < 220 && spaceAbove > spaceBelow;
+
+    const available = openUp ? spaceAbove : spaceBelow;
+    const maxHeight = Math.min(DESIRED_MAX, Math.max(MIN_HEIGHT, available));
+
+    // Keep dropdown within viewport horizontally
+    const width = rect.width;
+    const maxLeft = window.innerWidth - width - PADDING;
+    const left = Math.max(PADDING, Math.min(rect.left, maxLeft));
+
+    if (openUp) {
+      // Position dropdown so its bottom aligns just above the trigger
+      const bottom = window.innerHeight - rect.top + PADDING;
+      setDropdownPosition({ bottom, left, width, maxHeight });
+    } else {
+      const top = rect.bottom + PADDING;
+      setDropdownPosition({ top, left, width, maxHeight });
+    }
+  };
+
+  const toggleDivisionDropdown = (divId: string) => {
+    if (!canEdit) return;
+    if (openDivisionId === divId) {
+      setOpenDivisionId(null);
+      return;
+    }
+    setOpenDivisionId(divId);
+    // Compute immediately (and again via effect below)
+    computeDropdownPosition(divId);
+  };
+
+  useEffect(() => {
+    if (!openDivisionId) {
+      setDropdownPosition(null);
+      return;
+    }
+    const update = () => computeDropdownPosition(openDivisionId);
+    update();
+    window.addEventListener('scroll', update, true);
+    window.addEventListener('resize', update);
+    return () => {
+      window.removeEventListener('scroll', update, true);
+      window.removeEventListener('resize', update);
+    };
+  }, [openDivisionId]);
 
   // Divisions come from project_division_ids and cannot be modified in this modal
   // No add/remove functionality - only edit leads
@@ -4973,18 +5487,20 @@ function OnSiteLeadsModal({ projectId, originalDivisions, divisionLeads, setting
   }
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
-      <div className="bg-white rounded-xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col on-site-leads-modal">
-        <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] p-6 flex items-center justify-between flex-shrink-0">
-          <h2 className="text-xl font-semibold text-white">On-site Leads by Division</h2>
+    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={() => setOpenDivisionId(null)}>
+      <div className="bg-white rounded-xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="p-4 bg-[#7f1010] flex items-center justify-between flex-shrink-0">
+          <h3 className="text-lg font-semibold text-white">On-site Leads by Division</h3>
           <button
             onClick={onClose}
-            className="text-2xl font-bold text-white hover:text-gray-200 w-8 h-8 flex items-center justify-center rounded hover:bg-white/20"
+            className="text-white hover:text-gray-200 transition-colors"
           >
-            ×
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
           </button>
         </div>
-        <div className="p-6 overflow-y-auto flex-1">
+        <div className="p-6 overflow-y-auto flex-1 min-h-0">
           <div className="flex items-center justify-between mb-4">
             <div className="text-sm text-gray-600">
               {localDivisions.length} division{localDivisions.length !== 1 ? 's' : ''} from Project Divisions
@@ -5029,28 +5545,179 @@ function OnSiteLeadsModal({ projectId, originalDivisions, divisionLeads, setting
           
           const leadId = localLeads[divId] || '';
           const lead = leadId ? employees.find((e:any) => String(e.id) === String(leadId)) : null;
+          const filteredEmployeesForDiv = getFilteredEmployees(divId);
+          const isExpanded = openDivisionId === divId;
+          
           return (
             <div key={divId} className="space-y-2">
               <div className="flex items-center gap-2">
                 {divIcon && <span className="text-lg">{divIcon}</span>}
                 <span className="text-sm font-medium text-gray-900">{divLabel}</span>
               </div>
-              <div className="flex items-center gap-2">
-                <select
-                  value={leadId}
-                  onChange={(e) => handleLeadChange(divId, e.target.value)}
-                  disabled={!canEdit}
-                  className={`flex-1 border rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-red focus:border-transparent ${!canEdit ? 'bg-gray-100 cursor-not-allowed' : ''}`}
+              <div className="relative">
+                {/* Dropdown trigger */}
+                <div
+                  ref={(el) => { triggerRefs.current[divId] = el; }}
+                  onClick={() => toggleDivisionDropdown(divId)}
+                  className={`flex items-center gap-2 border rounded px-3 py-1.5 text-sm cursor-pointer ${!canEdit ? 'bg-gray-100 cursor-not-allowed' : 'bg-white hover:bg-gray-50'}`}
                 >
-                  <option value="">Select lead...</option>
-                  {employees.map((emp:any) => (
-                    <option key={emp.id} value={emp.id}>{emp.name||emp.username}</option>
-                  ))}
-                </select>
-                {lead && (
-                  <div className="w-9 h-9 rounded-full bg-indigo-600 flex items-center justify-center text-white text-xs font-semibold flex-shrink-0">
-                    {(lead.name||lead.username||'L')[0].toUpperCase()}
-                  </div>
+                  {lead ? (
+                    <>
+                      <UserAvatar user={lead} size="w-6 h-6" showTooltip={false} />
+                      <span className="flex-1 text-left">{getUserDisplayName(lead)}</span>
+                    </>
+                  ) : (
+                    <>
+                      <div className="w-6 h-6 rounded-full bg-gray-200 flex items-center justify-center text-gray-500 text-xs font-medium">
+                        —
+                      </div>
+                      <span className="flex-1 text-left text-gray-500">Select lead...</span>
+                    </>
+                  )}
+                  <svg className={`w-4 h-4 text-gray-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </div>
+
+                {/* Dropdown content - Using fixed positioning to appear above footer */}
+                {isExpanded && canEdit && dropdownPosition && (
+                  <>
+                    {/* Backdrop to close dropdown */}
+                    <div 
+                      className="fixed inset-0 z-[60]" 
+                      onClick={() => setOpenDivisionId(null)}
+                    />
+                    {/* Dropdown */}
+                    <div 
+                      className="fixed z-[70] bg-white border rounded-lg shadow-xl overflow-hidden flex flex-col"
+                      style={{
+                        ...(dropdownPosition.top !== undefined ? { top: `${dropdownPosition.top}px` } : {}),
+                        ...(dropdownPosition.bottom !== undefined ? { bottom: `${dropdownPosition.bottom}px` } : {}),
+                        left: `${dropdownPosition.left}px`,
+                        width: `${dropdownPosition.width}px`,
+                        maxHeight: `${dropdownPosition.maxHeight}px`,
+                      }}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      {dropdownPosition.bottom !== undefined ? (
+                        <>
+                          {/* Employee list (top) */}
+                          <div className="overflow-y-auto flex-1">
+                            {/* Option to clear selection */}
+                            <div
+                              onClick={() => handleLeadChange(divId, '')}
+                              className={`flex items-center gap-3 p-2 cursor-pointer transition-colors ${
+                                !leadId ? 'bg-indigo-50 border-l-2 border-indigo-500' : 'hover:bg-gray-50'
+                              }`}
+                            >
+                              <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center text-gray-500 text-xs font-medium">
+                                —
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="text-sm font-medium text-gray-900">No Lead</div>
+                                <div className="text-xs text-gray-600">Clear selection</div>
+                              </div>
+                            </div>
+                            {filteredEmployeesForDiv.length === 0 ? (
+                              <div className="text-xs text-gray-500 text-center py-4">No employees found matching your search.</div>
+                            ) : (
+                              filteredEmployeesForDiv.map((emp: any) => {
+                                const isSelected = String(emp.id) === String(leadId);
+                                return (
+                                  <div
+                                    key={emp.id}
+                                    onClick={() => handleLeadChange(divId, String(emp.id))}
+                                    className={`flex items-center gap-3 p-2 cursor-pointer transition-colors ${
+                                      isSelected ? 'bg-indigo-50 border-l-2 border-indigo-500' : 'hover:bg-gray-50'
+                                    }`}
+                                  >
+                                    <UserAvatar user={emp} size="w-8 h-8" showTooltip={false} />
+                                    <div className="flex-1 min-w-0">
+                                      <div className="text-sm font-medium text-gray-900">{getUserDisplayName(emp)}</div>
+                                      {emp.email && (
+                                        <div className="text-xs text-gray-600 truncate">{emp.email}</div>
+                                      )}
+                                    </div>
+                                  </div>
+                                );
+                              })
+                            )}
+                          </div>
+
+                          {/* Search input (bottom) */}
+                          <div className="p-2 border-t bg-white">
+                            <input
+                              type="text"
+                              value={searchQueries[divId] || ''}
+                              onChange={(e) => updateSearchQuery(divId, e.target.value)}
+                              placeholder="Search by name, email, or username..."
+                              className="w-full border rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                              onClick={(e) => e.stopPropagation()}
+                              autoFocus
+                            />
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          {/* Search input (top) */}
+                          <div className="p-2 border-b">
+                            <input
+                              type="text"
+                              value={searchQueries[divId] || ''}
+                              onChange={(e) => updateSearchQuery(divId, e.target.value)}
+                              placeholder="Search by name, email, or username..."
+                              className="w-full border rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                              onClick={(e) => e.stopPropagation()}
+                              autoFocus
+                            />
+                          </div>
+
+                          {/* Employee list (bottom) */}
+                          <div className="overflow-y-auto flex-1">
+                            {/* Option to clear selection */}
+                            <div
+                              onClick={() => handleLeadChange(divId, '')}
+                              className={`flex items-center gap-3 p-2 cursor-pointer transition-colors ${
+                                !leadId ? 'bg-indigo-50 border-l-2 border-indigo-500' : 'hover:bg-gray-50'
+                              }`}
+                            >
+                              <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center text-gray-500 text-xs font-medium">
+                                —
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="text-sm font-medium text-gray-900">No Lead</div>
+                                <div className="text-xs text-gray-600">Clear selection</div>
+                              </div>
+                            </div>
+                            {filteredEmployeesForDiv.length === 0 ? (
+                              <div className="text-xs text-gray-500 text-center py-4">No employees found matching your search.</div>
+                            ) : (
+                              filteredEmployeesForDiv.map((emp: any) => {
+                                const isSelected = String(emp.id) === String(leadId);
+                                return (
+                                  <div
+                                    key={emp.id}
+                                    onClick={() => handleLeadChange(divId, String(emp.id))}
+                                    className={`flex items-center gap-3 p-2 cursor-pointer transition-colors ${
+                                      isSelected ? 'bg-indigo-50 border-l-2 border-indigo-500' : 'hover:bg-gray-50'
+                                    }`}
+                                  >
+                                    <UserAvatar user={emp} size="w-8 h-8" showTooltip={false} />
+                                    <div className="flex-1 min-w-0">
+                                      <div className="text-sm font-medium text-gray-900">{getUserDisplayName(emp)}</div>
+                                      {emp.email && (
+                                        <div className="text-xs text-gray-600 truncate">{emp.email}</div>
+                                      )}
+                                    </div>
+                                  </div>
+                                );
+                              })
+                            )}
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  </>
                 )}
               </div>
             </div>
@@ -5058,13 +5725,23 @@ function OnSiteLeadsModal({ projectId, originalDivisions, divisionLeads, setting
         })}
           </div>
         </div>
-        <div className="p-4 border-t bg-gray-50 flex justify-end gap-2 flex-shrink-0 relative z-0">
+        <div className="p-4 border-t flex items-center justify-end gap-2 flex-shrink-0 relative z-0">
           <button
             onClick={onClose}
-            className="px-4 py-2 rounded border bg-white hover:bg-gray-50 text-gray-700 text-sm font-medium"
+            disabled={isSaving}
+            className="px-3 py-1.5 rounded border bg-white hover:bg-gray-50 text-gray-700 font-medium text-sm disabled:opacity-50"
           >
-            Close
+            Cancel
           </button>
+          {canEdit && (
+            <button
+              onClick={handleSave}
+              disabled={isSaving}
+              className="px-3 py-1.5 rounded bg-[#7f1010] text-white disabled:opacity-60 disabled:cursor-not-allowed font-medium text-sm"
+            >
+              {isSaving ? 'Saving...' : 'Save'}
+            </button>
+          )}
         </div>
       </div>
     </div>
@@ -5776,25 +6453,46 @@ function EditSiteModal({ projectId, project, onClose, onSave }: {
 }
 
 // Edit Estimator Modal Component
-function EditEstimatorModal({ projectId, currentEstimatorId, employees, onClose, onSave }: {
+function EditEstimatorModal({ projectId, currentEstimatorIds, employees, onClose, onSave }: {
   projectId: string;
-  currentEstimatorId: string;
+  currentEstimatorIds: string[];
   employees: any[];
   onClose: () => void;
   onSave: () => Promise<void>;
 }) {
-  const [estimatorId, setEstimatorId] = useState(currentEstimatorId);
+  const [estimatorIds, setEstimatorIds] = useState<string[]>(currentEstimatorIds);
   const [saving, setSaving] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
-    setEstimatorId(currentEstimatorId);
-  }, [currentEstimatorId]);
+    setEstimatorIds(currentEstimatorIds);
+  }, [currentEstimatorIds]);
 
-  const selectedEstimator = employees.find((e: any) => String(e.id) === String(estimatorId));
-  const currentEstimator = employees.find((e: any) => String(e.id) === String(currentEstimatorId));
+  const toggleEstimator = (id: string) => {
+    setEstimatorIds(prev => 
+      prev.includes(id) 
+        ? prev.filter(eid => eid !== id)
+        : [...prev, id]
+    );
+  };
+
+  const removeEstimator = (id: string) => {
+    setEstimatorIds(prev => prev.filter(eid => eid !== id));
+  };
+
+  const filteredEmployees = employees.filter((emp: any) => {
+    if (!searchQuery.trim()) return true;
+    const searchLower = searchQuery.toLowerCase();
+    const name = getUserDisplayName(emp).toLowerCase();
+    const email = (emp.email || '').toLowerCase();
+    const username = (emp.username || '').toLowerCase();
+    return name.includes(searchLower) || email.includes(searchLower) || username.includes(searchLower);
+  });
 
   const handleSave = async () => {
-    if (estimatorId === currentEstimatorId) {
+    const sortedIds = [...estimatorIds].sort();
+    const sortedCurrent = [...currentEstimatorIds].sort();
+    if (JSON.stringify(sortedIds) === JSON.stringify(sortedCurrent)) {
       onClose();
       return;
     }
@@ -5802,67 +6500,261 @@ function EditEstimatorModal({ projectId, currentEstimatorId, employees, onClose,
     try {
       setSaving(true);
       await api('PATCH', `/projects/${projectId}`, {
-        estimator_id: estimatorId || null
+        estimator_ids: estimatorIds.length > 0 ? estimatorIds : []
       });
-      toast.success('Project estimator updated');
+      toast.success('Project estimators updated');
       await onSave();
     } catch (e: any) {
-      toast.error(e?.response?.data?.detail || 'Failed to update project estimator');
+      toast.error(e?.response?.data?.detail || 'Failed to update project estimators');
     } finally {
       setSaving(false);
     }
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white rounded-xl w-full max-w-md shadow-xl" onClick={(e) => e.stopPropagation()}>
-        <div className="p-4 border-b flex items-center justify-between">
-          <h3 className="text-lg font-semibold">Edit Project Estimator</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
+      <div className="bg-white rounded-xl w-full max-w-md max-h-[90vh] overflow-hidden flex flex-col shadow-xl">
+        <div className="p-4 bg-[#7f1010] flex items-center justify-between flex-shrink-0">
+          <h3 className="text-lg font-semibold text-white">Edit Estimators</h3>
+          <button onClick={onClose} className="text-white hover:text-gray-200 transition-colors">
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
         </div>
-        <div className="p-4 space-y-4">
+        <div className="p-4 space-y-4 overflow-y-auto flex-1 min-h-0">
+          {/* Search input */}
           <div>
-            <label className="text-sm font-medium text-gray-700 mb-2 block">Select Estimator</label>
-            <select
-              value={estimatorId}
-              onChange={(e) => setEstimatorId(e.target.value)}
-              className="w-full border rounded px-3 py-2"
-            >
-              <option value="">No Estimator</option>
-              {employees.map((emp: any) => (
-                <option key={emp.id} value={emp.id}>
-                  {emp.name || emp.username || emp.id}
-                </option>
-              ))}
-            </select>
+            <label className="text-sm font-medium text-gray-700 mb-2 block">Search Employees</label>
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search by name, email, or username..."
+              className="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+            />
           </div>
 
-          {selectedEstimator && (
+          <div>
+            <label className="text-sm font-medium text-gray-700 mb-2 block">Select Estimators</label>
+            <div className="space-y-2 max-h-[300px] overflow-y-auto">
+              {filteredEmployees.length === 0 ? (
+                <div className="text-sm text-gray-500 text-center py-4">No employees found matching your search.</div>
+              ) : (
+                filteredEmployees.map((emp: any) => {
+                  const isSelected = estimatorIds.includes(String(emp.id));
+                  return (
+                    <div
+                      key={emp.id}
+                      onClick={() => toggleEstimator(String(emp.id))}
+                      className={`flex items-center gap-3 p-3 rounded border cursor-pointer transition-colors ${
+                        isSelected ? 'bg-indigo-50 border-indigo-300' : 'bg-white border-gray-200 hover:bg-gray-50'
+                      }`}
+                    >
+                      <UserAvatar user={emp} size="w-8 h-8" showTooltip={false} />
+                      <div className="flex-1 min-w-0">
+                        <div className="font-medium text-gray-900">{getUserDisplayName(emp)}</div>
+                        {emp.email && (
+                          <div className="text-xs text-gray-600 truncate">{emp.email}</div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+
+          {estimatorIds.length > 0 && (
+            <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
+              <div className="text-xs font-medium text-gray-600 mb-2">Selected Estimators ({estimatorIds.length}):</div>
+              <div className="flex flex-wrap gap-2">
+                {estimatorIds.map(id => {
+                  const emp = employees.find((e: any) => String(e.id) === String(id));
+                  if (!emp) return null;
+                  return (
+                    <div key={id} className="flex items-center gap-2 bg-white px-2 py-1 rounded border">
+                      <UserAvatar user={emp} size="w-6 h-6" showTooltip={false} />
+                      <span className="text-xs font-medium text-gray-700">{getUserDisplayName(emp)}</span>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          removeEstimator(id);
+                        }}
+                        className="ml-1 text-gray-400 hover:text-red-600 transition-colors"
+                        title="Remove"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+        <div className="p-4 border-t flex items-center justify-end gap-2 flex-shrink-0">
+          <button
+            onClick={onClose}
+            disabled={saving}
+            className="px-3 py-1.5 rounded border bg-white hover:bg-gray-50 text-gray-700 font-medium text-sm disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="px-3 py-1.5 rounded bg-[#7f1010] text-white disabled:opacity-60 disabled:cursor-not-allowed font-medium text-sm"
+          >
+            {saving ? 'Saving...' : 'Save'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Edit Project Admin Modal Component
+function EditProjectAdminModal({ projectId, currentAdminId, employees, onClose, onSave }: {
+  projectId: string;
+  currentAdminId: string;
+  employees: any[];
+  onClose: () => void;
+  onSave: () => Promise<void>;
+}) {
+  const [adminId, setAdminId] = useState(currentAdminId);
+  const [saving, setSaving] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+
+  useEffect(() => {
+    setAdminId(currentAdminId);
+  }, [currentAdminId]);
+
+  const selectedAdmin = employees.find((e: any) => String(e.id) === String(adminId));
+  const currentAdmin = employees.find((e: any) => String(e.id) === String(currentAdminId));
+
+  const filteredEmployees = employees.filter((emp: any) => {
+    if (!searchQuery.trim()) return true;
+    const searchLower = searchQuery.toLowerCase();
+    const name = getUserDisplayName(emp).toLowerCase();
+    const email = (emp.email || '').toLowerCase();
+    const username = (emp.username || '').toLowerCase();
+    return name.includes(searchLower) || email.includes(searchLower) || username.includes(searchLower);
+  });
+
+  const handleSave = async () => {
+    if (adminId === currentAdminId) {
+      onClose();
+      return;
+    }
+
+    try {
+      setSaving(true);
+      await api('PATCH', `/projects/${projectId}`, {
+        project_admin_id: adminId || null
+      });
+      toast.success('Project admin updated');
+      await onSave();
+    } catch (e: any) {
+      toast.error(e?.response?.data?.detail || 'Failed to update project admin');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
+      <div className="bg-white rounded-xl w-full max-w-md max-h-[90vh] overflow-hidden flex flex-col shadow-xl">
+        <div className="p-4 bg-[#7f1010] flex items-center justify-between flex-shrink-0">
+          <h3 className="text-lg font-semibold text-white">Edit Project Admin</h3>
+          <button onClick={onClose} className="text-white hover:text-gray-200 transition-colors">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+        <div className="p-4 space-y-4 overflow-y-auto flex-1 min-h-0">
+          {/* Search input */}
+          <div>
+            <label className="text-sm font-medium text-gray-700 mb-2 block">Search Employees</label>
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search by name, email, or username..."
+              className="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+            />
+          </div>
+
+          <div>
+            <label className="text-sm font-medium text-gray-700 mb-2 block">Select Project Admin</label>
+            <div className="space-y-2 max-h-[300px] overflow-y-auto">
+              {filteredEmployees.length === 0 ? (
+                <div className="text-sm text-gray-500 text-center py-4">No employees found matching your search.</div>
+              ) : (
+                <>
+                  {/* Option to clear selection */}
+                  <div
+                    onClick={() => setAdminId('')}
+                    className={`flex items-center gap-3 p-3 rounded border cursor-pointer transition-colors ${
+                      !adminId ? 'bg-indigo-50 border-indigo-300' : 'bg-white border-gray-200 hover:bg-gray-50'
+                    }`}
+                  >
+                    <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center text-gray-500 text-xs font-medium">
+                      —
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="font-medium text-gray-900">No Admin</div>
+                      <div className="text-xs text-gray-600">Clear selection</div>
+                    </div>
+                  </div>
+                  {filteredEmployees.map((emp: any) => {
+                    const isSelected = String(emp.id) === String(adminId);
+                    return (
+                      <div
+                        key={emp.id}
+                        onClick={() => setAdminId(String(emp.id))}
+                        className={`flex items-center gap-3 p-3 rounded border cursor-pointer transition-colors ${
+                          isSelected ? 'bg-indigo-50 border-indigo-300' : 'bg-white border-gray-200 hover:bg-gray-50'
+                        }`}
+                      >
+                        <UserAvatar user={emp} size="w-8 h-8" showTooltip={false} />
+                        <div className="flex-1 min-w-0">
+                          <div className="font-medium text-gray-900">{getUserDisplayName(emp)}</div>
+                          {emp.email && (
+                            <div className="text-xs text-gray-600 truncate">{emp.email}</div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </>
+              )}
+            </div>
+          </div>
+
+          {selectedAdmin && (
             <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
-              <div className="text-sm font-medium text-gray-900 mb-3">Estimator Information</div>
+              <div className="text-sm font-medium text-gray-900 mb-3">Admin Information</div>
               <div className="flex items-center gap-3 mb-3">
-                <div className="w-12 h-12 rounded-full bg-indigo-600 flex items-center justify-center text-white font-semibold text-lg">
-                  {(selectedEstimator.name||selectedEstimator.username||'E')[0].toUpperCase()}
-                </div>
+                <UserAvatar user={selectedAdmin} size="w-12 h-12" showTooltip={false} />
                 <div>
-                  <div className="font-medium text-gray-900">{selectedEstimator.name || selectedEstimator.username || 'Unknown'}</div>
-                  {selectedEstimator.email && (
-                    <div className="text-sm text-gray-600">{selectedEstimator.email}</div>
+                  <div className="font-medium text-gray-900">{getUserDisplayName(selectedAdmin)}</div>
+                  {selectedAdmin.email && (
+                    <div className="text-sm text-gray-600">{selectedAdmin.email}</div>
                   )}
-                  {selectedEstimator.phone && (
-                    <div className="text-sm text-gray-600">{selectedEstimator.phone}</div>
+                  {selectedAdmin.phone && (
+                    <div className="text-sm text-gray-600">{selectedAdmin.phone}</div>
                   )}
                 </div>
               </div>
-              {selectedEstimator.roles && selectedEstimator.roles.length > 0 && (
+              {selectedAdmin.roles && selectedAdmin.roles.length > 0 && (
                 <div className="mt-2">
                   <span className="text-xs text-gray-600 font-medium">Roles:</span>
                   <div className="flex flex-wrap gap-1 mt-1">
-                    {selectedEstimator.roles.map((role: string, idx: number) => (
+                    {selectedAdmin.roles.map((role: string, idx: number) => (
                       <span key={idx} className="px-2 py-0.5 bg-indigo-100 text-indigo-700 rounded text-xs">
                         {role}
                       </span>
@@ -5873,36 +6765,35 @@ function EditEstimatorModal({ projectId, currentEstimatorId, employees, onClose,
             </div>
           )}
 
-          {currentEstimator && estimatorId !== currentEstimatorId && (
+          {currentAdmin && adminId !== currentAdminId && (
             <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
               <div className="flex items-start gap-2">
                 <svg className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                 </svg>
                 <div className="text-sm text-yellow-800">
-                  <div className="font-medium mb-1">Changing Estimator</div>
-                  <div className="text-xs">You are changing from <strong>{currentEstimator.name || currentEstimator.username || 'current estimator'}</strong> to <strong>{selectedEstimator?.name || selectedEstimator?.username || 'new estimator'}</strong>. The new estimator will be responsible for project estimates and cost calculations.</div>
+                  <div className="font-medium mb-1">Changing Project Admin</div>
+                  <div className="text-xs">You are changing from <strong>{getUserDisplayName(currentAdmin)}</strong> to <strong>{selectedAdmin ? getUserDisplayName(selectedAdmin) : 'no admin'}</strong>.</div>
                 </div>
               </div>
             </div>
           )}
-
-          <div className="flex gap-2 pt-2">
-            <button
-              onClick={handleSave}
-              disabled={saving}
-              className="flex-1 px-4 py-2 rounded bg-[#7f1010] text-white disabled:opacity-60 font-medium"
-            >
-              {saving ? 'Saving...' : 'Save Changes'}
-            </button>
-            <button
-              onClick={onClose}
-              disabled={saving}
-              className="px-4 py-2 rounded border bg-white hover:bg-gray-50 text-gray-700 font-medium disabled:opacity-50"
-            >
-              Cancel
-            </button>
-          </div>
+        </div>
+        <div className="p-4 border-t flex items-center justify-end gap-2 flex-shrink-0">
+          <button
+            onClick={onClose}
+            disabled={saving}
+            className="px-3 py-1.5 rounded border bg-white hover:bg-gray-50 text-gray-700 font-medium text-sm disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="px-3 py-1.5 rounded bg-[#7f1010] text-white disabled:opacity-60 disabled:cursor-not-allowed font-medium text-sm"
+          >
+            {saving ? 'Saving...' : 'Save'}
+          </button>
         </div>
       </div>
     </div>
