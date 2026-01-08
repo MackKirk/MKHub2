@@ -174,6 +174,9 @@ def list_projects(client: Optional[str] = None, site: Optional[str] = None, stat
             "project_division_ids": getattr(p, 'project_division_ids', None),
             "project_division_percentages": getattr(p, 'project_division_percentages', None),
             "is_bidding": getattr(p, 'is_bidding', False),
+            "estimator_id": str(getattr(p, 'estimator_id', None)) if getattr(p, 'estimator_id', None) else None,
+            "estimator_ids": [str(eid) for eid in (getattr(p, 'estimator_ids', None) or [])] if getattr(p, 'estimator_ids', None) else ([str(getattr(p, 'estimator_id', None))] if getattr(p, 'estimator_id', None) else []),
+            "project_admin_id": str(getattr(p, 'project_admin_id', None)) if getattr(p, 'project_admin_id', None) else None,
         }
         for p in query.order_by(Project.created_at.desc()).limit(100).all()
     ]
@@ -2806,7 +2809,8 @@ def business_opportunities(
             "cost_estimated": getattr(p, 'cost_estimated', None),
             "is_bidding": True,
             "cover_image_url": cover_url,
-            "estimator_id": getattr(p, 'estimator_id', None),
+            "estimator_id": str(getattr(p, 'estimator_id', None)) if getattr(p, 'estimator_id', None) else None,
+            "estimator_ids": [str(eid) for eid in (getattr(p, 'estimator_ids', None) or [])] if getattr(p, 'estimator_ids', None) else ([str(getattr(p, 'estimator_id', None))] if getattr(p, 'estimator_id', None) else []),
             "onsite_lead_id": getattr(p, 'onsite_lead_id', None),
         }
         
@@ -3366,7 +3370,9 @@ def business_projects(
             "cover_image_url": None,
             "client_name": None,
             "client_display_name": None,
-            "estimator_id": getattr(p, 'estimator_id', None),
+            "estimator_id": str(getattr(p, 'estimator_id', None)) if getattr(p, 'estimator_id', None) else None,
+            "estimator_ids": [str(eid) for eid in (getattr(p, 'estimator_ids', None) or [])] if getattr(p, 'estimator_ids', None) else ([str(getattr(p, 'estimator_id', None))] if getattr(p, 'estimator_id', None) else []),
+            "project_admin_id": str(getattr(p, 'project_admin_id', None)) if getattr(p, 'project_admin_id', None) else None,
             "onsite_lead_id": getattr(p, 'onsite_lead_id', None),
         }
         

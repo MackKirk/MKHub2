@@ -41,33 +41,26 @@ function UserAvatar({ user, size = 'w-6 h-6', showTooltip = true, tooltipText }:
   const initials = getUserInitials(user);
   const displayName = tooltipText || getUserDisplayName(user);
   const [imageError, setImageError] = useState(false);
-  
-  if (photoFileId && !imageError) {
-    return (
-      <div className="relative group/avatar">
+
+  return (
+    <div className="relative inline-flex group/avatar">
+      {photoFileId && !imageError ? (
         <img
           src={`/files/${photoFileId}/thumbnail?w=80`}
           alt={displayName}
           className={`${size} rounded-full object-cover border border-gray-300`}
           onError={() => setImageError(true)}
         />
-        {showTooltip && (
-          <div className="absolute right-0 top-full mt-1 px-2 py-1 bg-gray-900 text-white text-xs rounded whitespace-nowrap opacity-0 group-hover/avatar:opacity-100 transition-opacity pointer-events-none z-10">
-            {displayName}
-            <div className="absolute -top-1 right-2 w-2 h-2 bg-gray-900 rotate-45"></div>
-          </div>
-        )}
-      </div>
-    );
-  }
-  
-  return (
-    <div className={`relative group/avatar ${size} rounded-full bg-indigo-600 flex items-center justify-center text-white font-semibold text-xs`}>
-      {initials}
+      ) : (
+        <div className={`${size} rounded-full bg-indigo-600 flex items-center justify-center text-white font-semibold text-xs`}>
+          {initials}
+        </div>
+      )}
+
       {showTooltip && (
-        <div className="absolute right-0 top-full mt-1 px-2 py-1 bg-gray-900 text-white text-xs rounded whitespace-nowrap opacity-0 group-hover/avatar:opacity-100 transition-opacity pointer-events-none z-10">
+        <div className="absolute left-0 bottom-full mb-1 px-2 py-1 bg-gray-900 text-white text-xs rounded whitespace-nowrap opacity-0 group-hover/avatar:opacity-100 transition-opacity pointer-events-none z-20 shadow-lg">
           {displayName}
-          <div className="absolute -top-1 right-2 w-2 h-2 bg-gray-900 rotate-45"></div>
+          <div className="absolute -bottom-1 left-2 w-2 h-2 bg-gray-900 rotate-45"></div>
         </div>
       )}
     </div>
@@ -91,7 +84,9 @@ type Project = {
   progress?:number,
   status_label?:string,
   estimator_id?:string,
+  estimator_ids?:string[],
   estimator_name?:string,
+  project_admin_id?:string,
   onsite_lead_id?:string,
   cost_actual?:number,
   service_value?:number,
@@ -484,7 +479,7 @@ export default function Projects(){
     },
     {
       id: 'estimator',
-      label: 'Estimator',
+      label: 'Estimators',
       type: 'select',
       operators: ['is', 'is_not'],
       getOptions: () => (employees || []).map((emp: any) => ({ 
@@ -749,7 +744,7 @@ function ProjectListCard({ project, projectDivisions, projectStatuses }:{ projec
   const progress = Math.max(0, Math.min(100, Number(project.progress ?? 0)));
   const start = (project.date_start || project.created_at || '').slice(0,10);
   const eta = (project.date_eta || '').slice(0,10);
-  const estimatorIds = project.estimator_ids || (project.estimator_id ? [project.estimator_id] : []);
+  const projectAdminId = project.project_admin_id || null;
   const actualValue = project.cost_actual || 0;
   const estimatedValue = project.service_value || 0;
   const projectDivIds = project.project_division_ids || [];
@@ -763,12 +758,11 @@ function ProjectListCard({ project, projectDivisions, projectStatuses }:{ projec
   });
   const employees = employeesData || [];
   
-  // Get estimator employees for avatars
-  const estimators = useMemo(() => {
-    return estimatorIds
-      .map((id: string) => employees.find((e: any) => String(e.id) === String(id)))
-      .filter(Boolean);
-  }, [estimatorIds, employees]);
+  // Resolve Project Admin employee for avatar
+  const projectAdmin = useMemo(() => {
+    if (!projectAdminId) return null;
+    return employees.find((e: any) => String(e.id) === String(projectAdminId)) || null;
+  }, [projectAdminId, employees]);
   
   // Calculate percentages if not set (auto-initialize)
   const calculatedPercentages = useMemo(() => {
@@ -900,26 +894,22 @@ function ProjectListCard({ project, projectDivisions, projectStatuses }:{ projec
             <div className="font-medium text-gray-900 truncate">{eta || '—'}</div>
           </div>
           <div className="min-w-0">
-            <div className="text-xs text-gray-500 mb-1.5">Estimator</div>
-            {estimators.length === 0 ? (
+            <div className="text-xs text-gray-500 mb-1.5">Project Admin</div>
+            {!projectAdmin ? (
               <div className="text-gray-400 text-xs">—</div>
-            ) : estimators.length === 1 ? (
-              <div className="flex items-center gap-2">
-                <UserAvatar user={estimators[0]} size="w-6 h-6" showTooltip={true} />
-                <div className="font-medium text-gray-900 text-xs truncate">{getUserDisplayName(estimators[0])}</div>
-              </div>
             ) : (
-              <div className="flex items-center gap-1.5 flex-wrap">
-                {estimators.map((est: any) => (
-                  <UserAvatar key={est.id} user={est} size="w-6 h-6" showTooltip={true} />
-                ))}
+              <div className="flex items-center gap-2">
+                <UserAvatar user={projectAdmin} size="w-6 h-6" showTooltip={true} />
+                <div className="font-medium text-gray-900 text-xs truncate">{getUserDisplayName(projectAdmin)}</div>
               </div>
             )}
           </div>
           <div className="min-w-0">
-            <div className="text-xs text-gray-500">Estimated Value</div>
-            <div className="font-semibold text-[#7f1010] truncate">
-              {estimatedValue > 0 ? `$${estimatedValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—'}
+            <div className="text-xs text-gray-500 mb-1.5">Estimated Value</div>
+            <div className="h-6 flex items-center">
+              <div className="font-semibold text-[#7f1010] truncate w-full">
+                {estimatedValue > 0 ? `$${estimatedValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—'}
+              </div>
             </div>
           </div>
         </div>

@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
-import { useMemo, useState, useEffect, useRef } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import ImagePicker from '@/components/ImagePicker';
 import toast from 'react-hot-toast';
 import { Link, useLocation, useSearchParams, useNavigate } from 'react-router-dom';
@@ -37,33 +37,26 @@ function UserAvatar({ user, size = 'w-6 h-6', showTooltip = true, tooltipText }:
   const initials = getUserInitials(user);
   const displayName = tooltipText || getUserDisplayName(user);
   const [imageError, setImageError] = useState(false);
-  
-  if (photoFileId && !imageError) {
-    return (
-      <div className="relative group/avatar">
+
+  return (
+    <div className="relative inline-flex group/avatar">
+      {photoFileId && !imageError ? (
         <img
           src={`/files/${photoFileId}/thumbnail?w=80`}
           alt={displayName}
           className={`${size} rounded-full object-cover border border-gray-300`}
           onError={() => setImageError(true)}
         />
-        {showTooltip && (
-          <div className="absolute right-0 top-full mt-1 px-2 py-1 bg-gray-900 text-white text-xs rounded whitespace-nowrap opacity-0 group-hover/avatar:opacity-100 transition-opacity pointer-events-none z-10">
-            {displayName}
-            <div className="absolute -top-1 right-2 w-2 h-2 bg-gray-900 rotate-45"></div>
-          </div>
-        )}
-      </div>
-    );
-  }
-  
-  return (
-    <div className={`relative group/avatar ${size} rounded-full bg-indigo-600 flex items-center justify-center text-white font-semibold text-xs`}>
-      {initials}
+      ) : (
+        <div className={`${size} rounded-full bg-indigo-600 flex items-center justify-center text-white font-semibold text-xs`}>
+          {initials}
+        </div>
+      )}
+
       {showTooltip && (
-        <div className="absolute right-0 top-full mt-1 px-2 py-1 bg-gray-900 text-white text-xs rounded whitespace-nowrap opacity-0 group-hover/avatar:opacity-100 transition-opacity pointer-events-none z-10">
+        <div className="absolute left-0 bottom-full mb-1 px-2 py-1 bg-gray-900 text-white text-xs rounded whitespace-nowrap opacity-0 group-hover/avatar:opacity-100 transition-opacity pointer-events-none z-20 shadow-lg">
           {displayName}
-          <div className="absolute -top-1 right-2 w-2 h-2 bg-gray-900 rotate-45"></div>
+          <div className="absolute -bottom-1 left-2 w-2 h-2 bg-gray-900 rotate-45"></div>
         </div>
       )}
     </div>
@@ -1627,9 +1620,11 @@ function OpportunityListCard({ opportunity, onOpenReportModal, projectStatuses }
             )}
           </div>
           <div className="min-w-0">
-            <div className="text-xs text-gray-500">Estimated Value</div>
-            <div className="font-semibold text-[#7f1010] truncate">
-              {estimatedValue > 0 ? `$${estimatedValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—'}
+            <div className="text-xs text-gray-500 mb-1.5">Estimated Value</div>
+            <div className="h-6 flex items-center">
+              <div className="font-semibold text-[#7f1010] truncate w-full">
+                {estimatedValue > 0 ? `$${estimatedValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—'}
+              </div>
             </div>
           </div>
         </div>
