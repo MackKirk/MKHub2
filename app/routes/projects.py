@@ -2210,6 +2210,9 @@ def business_dashboard(
             # Get all subdivision IDs for this division
             from ..models.models import SettingList, SettingItem
             divisions_list = db.query(SettingList).filter(SettingList.name == "project_divisions").first()
+            
+            all_conditions = []
+            
             if divisions_list:
                 # Get division and all its subdivisions
                 division_items = db.query(SettingItem).filter(
@@ -2221,28 +2224,33 @@ def business_dashboard(
                 ).all()
                 division_ids_list = [str(item.id) for item in division_items]
                 
-                # Build filter condition for any of these IDs
-                conditions = []
+                # Build filter condition for any of these IDs (main division + all subdivisions)
                 for div_id_str in division_ids_list:
-                    conditions.append(cast(Project.project_division_ids, String).like(f'%{div_id_str}%'))
-                
-                if conditions:
-                    opportunities_query = opportunities_query.filter(or_(*conditions))
-                    projects_query = projects_query.filter(or_(*conditions))
+                    try:
+                        div_id_uuid = uuid.UUID(div_id_str)
+                        # Project matches if it has this division/subdivision ID in any format
+                        all_conditions.append(
+                            or_(
+                                Project.division_id == div_id_uuid,
+                                cast(Project.project_division_ids, String).like(f'%{div_id_str}%'),
+                                cast(Project.division_ids, String).like(f'%{div_id_str}%')
+                            )
+                        )
+                    except ValueError:
+                        pass
             
-            # Legacy support
-            opportunities_query = opportunities_query.filter(
+            # Always include the main division_id even if not in division_ids_list
+            all_conditions.append(
                 or_(
                     Project.division_id == div_uuid,
                     cast(Project.division_ids, String).like(f'%{division_id}%')
                 )
             )
-            projects_query = projects_query.filter(
-                or_(
-                    Project.division_id == div_uuid,
-                    cast(Project.division_ids, String).like(f'%{division_id}%')
-                )
-            )
+            
+            # Apply all conditions with OR (project matches if it has division or any subdivision)
+            if all_conditions:
+                opportunities_query = opportunities_query.filter(or_(*all_conditions))
+                projects_query = projects_query.filter(or_(*all_conditions))
         except ValueError:
             pass
     
@@ -3350,6 +3358,15 @@ def business_projects(
     # Build response with cover images and client info
     result = []
     for p in projects[:limit]:
+        # Include division percentages on list cards so they match General Information
+        raw_percentages = getattr(p, "project_division_percentages", None)
+        percentages_payload = None
+        if raw_percentages and isinstance(raw_percentages, dict):
+            try:
+                percentages_payload = {str(k): v for k, v in raw_percentages.items()}
+            except Exception:
+                percentages_payload = raw_percentages
+
         project_dict = {
             "id": str(p.id),
             "code": p.code,
@@ -3364,6 +3381,7 @@ def business_projects(
             "status_label": getattr(p, 'status_label', None),
             "division_ids": getattr(p, 'division_ids', None),  # Legacy
             "project_division_ids": getattr(p, 'project_division_ids', None),
+            "project_division_percentages": percentages_payload,
             "cost_actual": getattr(p, 'cost_actual', None),
             "service_value": getattr(p, 'service_value', None),
             "is_bidding": False,
@@ -3425,25 +3443,281 @@ def business_projects(
 
 @router.get("/business/divisions-stats")
 def business_divisions_stats(
+    division_id: Optional[str] = None,
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
+    mode: Optional[str] = "quantity",
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user)
 ):
-    """Get statistics for each project division"""
+    """Get statistics for each project division, or subdivisions of a specific division"""
     from ..models.models import SettingList, SettingItem
     
     divisions_list = db.query(SettingList).filter(SettingList.name == "project_divisions").first()
     if not divisions_list:
         return []
     
-    # Get all main divisions (no parent)
+    stats = []
+    
+    # If division_id is provided, return stats for its subdivisions
+    if division_id:
+        try:
+            div_uuid = uuid.UUID(division_id)
+            # Get the selected division
+            selected_division = db.query(SettingItem).filter(
+                SettingItem.list_id == divisions_list.id,
+                SettingItem.id == div_uuid
+            ).first()
+            
+            if not selected_division:
+                return []
+            
+            # Get all subdivisions of this division
+            subdivisions = db.query(SettingItem).filter(
+                SettingItem.list_id == divisions_list.id,
+                SettingItem.parent_id == div_uuid
+            ).order_by(SettingItem.sort_index.asc()).all()
+            
+            # If no subdivisions, return stats for the division itself
+            if not subdivisions:
+                # Calculate stats for the division itself
+                div_id_str = str(selected_division.id)
+                conditions = [
+                    cast(Project.project_division_ids, String).like(f'%{div_id_str}%'),
+                    # Legacy support
+                    Project.division_id == selected_division.id,
+                    cast(Project.division_ids, String).like(f'%{div_id_str}%')
+                ]
+                
+                opportunities_count = 0
+                projects_count = 0
+                opportunities_value = 0
+                projects_value = 0
+                
+                opp_query = db.query(Project).filter(
+                    Project.is_bidding == True,
+                    or_(*conditions)
+                )
+                proj_query = db.query(Project).filter(
+                    Project.is_bidding == False,
+                    or_(*conditions)
+                )
+                
+                # Apply date filtering
+                effective_start_dt = func.coalesce(Project.date_start, Project.created_at)
+                if date_from:
+                    try:
+                        start_d = datetime.strptime(date_from, "%Y-%m-%d").date()
+                        opp_query = opp_query.filter(cast(effective_start_dt, Date) >= start_d)
+                        proj_query = proj_query.filter(cast(effective_start_dt, Date) >= start_d)
+                    except Exception:
+                        pass
+                
+                if date_to:
+                    try:
+                        end_d = datetime.strptime(date_to, "%Y-%m-%d").date()
+                        opp_query = opp_query.filter(cast(effective_start_dt, Date) <= end_d)
+                        proj_query = proj_query.filter(cast(effective_start_dt, Date) <= end_d)
+                    except Exception:
+                        pass
+                
+                opportunities_count = opp_query.count()
+                projects_count = proj_query.count()
+                
+                opportunities_profit = 0
+                projects_profit = 0
+                
+                if mode == "value":
+                    # Calculate values from estimates, applying division percentages
+                    for p in opp_query.all():
+                        estimate = db.query(Estimate).filter(Estimate.project_id == p.id).order_by(Estimate.created_at.desc()).first()
+                        if estimate:
+                            final_total, profit = calculate_estimate_values(estimate, db)
+                            if final_total is not None:
+                                # Get division percentage for this division
+                                percentages = getattr(p, 'project_division_percentages', None)
+                                if percentages and isinstance(percentages, dict):
+                                    div_percentage = percentages.get(str(selected_division.id), 0) or percentages.get(selected_division.id, 0) or 0
+                                    if div_percentage > 0:
+                                        opportunities_value += final_total * (div_percentage / 100.0)
+                                        if profit is not None:
+                                            opportunities_profit += profit * (div_percentage / 100.0)
+                                else:
+                                    # If no percentages, assume 100% if division matches
+                                    opportunities_value += final_total
+                                    if profit is not None:
+                                        opportunities_profit += profit
+                        else:
+                            # Fallback to cost_estimated if no estimate
+                            opportunities_value += (getattr(p, 'cost_estimated', 0) or 0)
+                    
+                    for p in proj_query.all():
+                        estimate = db.query(Estimate).filter(Estimate.project_id == p.id).order_by(Estimate.created_at.desc()).first()
+                        if estimate:
+                            final_total, profit = calculate_estimate_values(estimate, db)
+                            if final_total is not None:
+                                # Get division percentage for this division
+                                percentages = getattr(p, 'project_division_percentages', None)
+                                if percentages and isinstance(percentages, dict):
+                                    div_percentage = percentages.get(str(selected_division.id), 0) or percentages.get(selected_division.id, 0) or 0
+                                    if div_percentage > 0:
+                                        projects_value += final_total * (div_percentage / 100.0)
+                                        if profit is not None:
+                                            projects_profit += profit * (div_percentage / 100.0)
+                                else:
+                                    # If no percentages, assume 100% if division matches
+                                    projects_value += final_total
+                                    if profit is not None:
+                                        projects_profit += profit
+                        else:
+                            # Fallback to cost_actual if no estimate
+                            projects_value += (getattr(p, 'cost_actual', 0) or 0)
+                else:
+                    # Quantity mode: just count
+                    for p in opp_query.all():
+                        opportunities_value += (getattr(p, 'cost_estimated', 0) or 0)
+                    for p in proj_query.all():
+                        projects_value += (getattr(p, 'cost_actual', 0) or 0)
+                
+                stats.append({
+                    "id": str(selected_division.id),
+                    "label": selected_division.label,
+                    "value": selected_division.value,
+                    "opportunities_count": opportunities_count,
+                    "projects_count": projects_count,
+                    "opportunities_value": opportunities_value,
+                    "projects_value": projects_value,
+                    "opportunities_profit": opportunities_profit if mode == "value" else None,
+                    "projects_profit": projects_profit if mode == "value" else None,
+                    "subdivisions": []
+                })
+                
+                return stats
+            
+            # For each subdivision, calculate stats
+            for subdiv in subdivisions:
+                subdiv_id_str = str(subdiv.id)
+                
+                # Count opportunities and projects for this subdivision
+                conditions = [
+                    cast(Project.project_division_ids, String).like(f'%{subdiv_id_str}%'),
+                    # Legacy support
+                    Project.division_id == subdiv.id,
+                    cast(Project.division_ids, String).like(f'%{subdiv_id_str}%')
+                ]
+                
+                opportunities_count = 0
+                projects_count = 0
+                opportunities_value = 0
+                projects_value = 0
+                opportunities_profit = 0
+                projects_profit = 0
+                
+                opp_query = db.query(Project).filter(
+                    Project.is_bidding == True,
+                    or_(*conditions)
+                )
+                proj_query = db.query(Project).filter(
+                    Project.is_bidding == False,
+                    or_(*conditions)
+                )
+                
+                # Apply date filtering
+                effective_start_dt = func.coalesce(Project.date_start, Project.created_at)
+                if date_from:
+                    try:
+                        start_d = datetime.strptime(date_from, "%Y-%m-%d").date()
+                        opp_query = opp_query.filter(cast(effective_start_dt, Date) >= start_d)
+                        proj_query = proj_query.filter(cast(effective_start_dt, Date) >= start_d)
+                    except Exception:
+                        pass
+                
+                if date_to:
+                    try:
+                        end_d = datetime.strptime(date_to, "%Y-%m-%d").date()
+                        opp_query = opp_query.filter(cast(effective_start_dt, Date) <= end_d)
+                        proj_query = proj_query.filter(cast(effective_start_dt, Date) <= end_d)
+                    except Exception:
+                        pass
+                
+                opportunities_count = opp_query.count()
+                projects_count = proj_query.count()
+                
+                if mode == "value":
+                    # Calculate values from estimates, applying division percentages
+                    for p in opp_query.all():
+                        estimate = db.query(Estimate).filter(Estimate.project_id == p.id).order_by(Estimate.created_at.desc()).first()
+                        if estimate:
+                            final_total, profit = calculate_estimate_values(estimate, db)
+                            if final_total is not None:
+                                # Get division percentage for this subdivision
+                                percentages = getattr(p, 'project_division_percentages', None)
+                                if percentages and isinstance(percentages, dict):
+                                    subdiv_percentage = percentages.get(str(subdiv.id), 0) or percentages.get(subdiv.id, 0) or 0
+                                    if subdiv_percentage > 0:
+                                        opportunities_value += final_total * (subdiv_percentage / 100.0)
+                                        if profit is not None:
+                                            opportunities_profit += profit * (subdiv_percentage / 100.0)
+                                else:
+                                    # If no percentages, assume 100% if subdivision matches
+                                    opportunities_value += final_total
+                                    if profit is not None:
+                                        opportunities_profit += profit
+                        else:
+                            # Fallback to cost_estimated if no estimate
+                            opportunities_value += (getattr(p, 'cost_estimated', 0) or 0)
+                    
+                    for p in proj_query.all():
+                        estimate = db.query(Estimate).filter(Estimate.project_id == p.id).order_by(Estimate.created_at.desc()).first()
+                        if estimate:
+                            final_total, profit = calculate_estimate_values(estimate, db)
+                            if final_total is not None:
+                                # Get division percentage for this subdivision
+                                percentages = getattr(p, 'project_division_percentages', None)
+                                if percentages and isinstance(percentages, dict):
+                                    subdiv_percentage = percentages.get(str(subdiv.id), 0) or percentages.get(subdiv.id, 0) or 0
+                                    if subdiv_percentage > 0:
+                                        projects_value += final_total * (subdiv_percentage / 100.0)
+                                        if profit is not None:
+                                            projects_profit += profit * (subdiv_percentage / 100.0)
+                                else:
+                                    # If no percentages, assume 100% if subdivision matches
+                                    projects_value += final_total
+                                    if profit is not None:
+                                        projects_profit += profit
+                        else:
+                            # Fallback to cost_actual if no estimate
+                            projects_value += (getattr(p, 'cost_actual', 0) or 0)
+                else:
+                    # Quantity mode: just count (values are still used for display but calculated differently)
+                    for p in opp_query.all():
+                        opportunities_value += (getattr(p, 'cost_estimated', 0) or 0)
+                    for p in proj_query.all():
+                        projects_value += (getattr(p, 'cost_actual', 0) or 0)
+                
+                stats.append({
+                    "id": str(subdiv.id),
+                    "label": subdiv.label,
+                    "value": subdiv.value,
+                    "opportunities_count": opportunities_count,
+                    "projects_count": projects_count,
+                    "opportunities_value": opportunities_value,
+                    "projects_value": projects_value,
+                    "opportunities_profit": opportunities_profit if mode == "value" else None,
+                    "projects_profit": projects_profit if mode == "value" else None,
+                    "subdivisions": []  # Subdivisions of subdivisions are not shown
+                })
+            
+            return stats
+        except ValueError:
+            return []
+    
+    # Original behavior: Get all main divisions (no parent)
     main_divisions = db.query(SettingItem).filter(
         SettingItem.list_id == divisions_list.id,
         SettingItem.parent_id == None
     ).order_by(SettingItem.sort_index.asc()).all()
     
-    stats = []
     for div in main_divisions:
         div_id_str = str(div.id)
         
@@ -3498,10 +3772,97 @@ def business_divisions_stats(
             opportunities_count = opp_query.count()
             projects_count = proj_query.count()
             
-            for p in opp_query.all():
-                opportunities_value += (getattr(p, 'cost_estimated', 0) or 0)
-            for p in proj_query.all():
-                projects_value += (getattr(p, 'cost_actual', 0) or 0)
+            opportunities_profit = 0
+            projects_profit = 0
+            
+            if mode == "value":
+                # Calculate values from estimates, applying division percentages
+                for p in opp_query.all():
+                    estimate = db.query(Estimate).filter(Estimate.project_id == p.id).order_by(Estimate.created_at.desc()).first()
+                    if estimate:
+                        final_total, profit = calculate_estimate_values(estimate, db)
+                        if final_total is not None:
+                            # Get division percentage for this division
+                            percentages = getattr(p, 'project_division_percentages', None)
+                            if percentages and isinstance(percentages, dict):
+                                # Sum percentages for this division INCLUDING its subdivisions, since projects may store
+                                # allocation at the subdivision level.
+                                div_percentage_total = 0.0
+                                for div_item_id in division_ids_list:
+                                    try:
+                                        div_item_uuid = uuid.UUID(div_item_id)
+                                    except Exception:
+                                        div_item_uuid = None
+                                    pct = 0
+                                    if div_item_id in percentages:
+                                        pct = percentages.get(div_item_id) or 0
+                                    elif div_item_uuid is not None and div_item_uuid in percentages:
+                                        pct = percentages.get(div_item_uuid) or 0
+                                    elif div_item_uuid is not None and str(div_item_uuid) in percentages:
+                                        pct = percentages.get(str(div_item_uuid)) or 0
+                                    try:
+                                        div_percentage_total += float(pct or 0)
+                                    except Exception:
+                                        pass
+
+                                if div_percentage_total > 0:
+                                    opportunities_value += final_total * (div_percentage_total / 100.0)
+                                    if profit is not None:
+                                        opportunities_profit += profit * (div_percentage_total / 100.0)
+                            else:
+                                # If no percentages, assume 100% if division matches
+                                opportunities_value += final_total
+                                if profit is not None:
+                                    opportunities_profit += profit
+                    else:
+                        # Fallback to cost_estimated if no estimate
+                        opportunities_value += (getattr(p, 'cost_estimated', 0) or 0)
+                
+                for p in proj_query.all():
+                    estimate = db.query(Estimate).filter(Estimate.project_id == p.id).order_by(Estimate.created_at.desc()).first()
+                    if estimate:
+                        final_total, profit = calculate_estimate_values(estimate, db)
+                        if final_total is not None:
+                            # Get division percentage for this division
+                            percentages = getattr(p, 'project_division_percentages', None)
+                            if percentages and isinstance(percentages, dict):
+                                # Sum percentages for this division INCLUDING its subdivisions.
+                                div_percentage_total = 0.0
+                                for div_item_id in division_ids_list:
+                                    try:
+                                        div_item_uuid = uuid.UUID(div_item_id)
+                                    except Exception:
+                                        div_item_uuid = None
+                                    pct = 0
+                                    if div_item_id in percentages:
+                                        pct = percentages.get(div_item_id) or 0
+                                    elif div_item_uuid is not None and div_item_uuid in percentages:
+                                        pct = percentages.get(div_item_uuid) or 0
+                                    elif div_item_uuid is not None and str(div_item_uuid) in percentages:
+                                        pct = percentages.get(str(div_item_uuid)) or 0
+                                    try:
+                                        div_percentage_total += float(pct or 0)
+                                    except Exception:
+                                        pass
+
+                                if div_percentage_total > 0:
+                                    projects_value += final_total * (div_percentage_total / 100.0)
+                                    if profit is not None:
+                                        projects_profit += profit * (div_percentage_total / 100.0)
+                            else:
+                                # If no percentages, assume 100% if division matches
+                                projects_value += final_total
+                                if profit is not None:
+                                    projects_profit += profit
+                    else:
+                        # Fallback to cost_actual if no estimate
+                        projects_value += (getattr(p, 'cost_actual', 0) or 0)
+            else:
+                # Quantity mode: just count
+                for p in opp_query.all():
+                    opportunities_value += (getattr(p, 'cost_estimated', 0) or 0)
+                for p in proj_query.all():
+                    projects_value += (getattr(p, 'cost_actual', 0) or 0)
         
         # Get subdivisions
         subdivisions = db.query(SettingItem).filter(
@@ -3517,6 +3878,8 @@ def business_divisions_stats(
             "projects_count": projects_count,
             "opportunities_value": opportunities_value,
             "projects_value": projects_value,
+            "opportunities_profit": opportunities_profit if mode == "value" else None,
+            "projects_profit": projects_profit if mode == "value" else None,
             "subdivisions": [{
                 "id": str(sub.id),
                 "label": sub.label,

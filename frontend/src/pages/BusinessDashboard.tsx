@@ -162,6 +162,8 @@ type DivisionStats = {
   projects_count: number;
   opportunities_value: number;
   projects_value: number;
+  opportunities_profit?: number;
+  projects_profit?: number;
   subdivisions: Array<{ id: string; label: string; value: string }>;
 };
 
@@ -272,7 +274,7 @@ const calculateDateRange = (dateFilter: DateFilterType, customDateStart: string,
 export default function BusinessDashboard() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const [selectedDivisionId] = useState<string>('');
+  const [selectedDivisionId, setSelectedDivisionId] = useState<string | null>(null);
   const [hasAnimated, setHasAnimated] = useState(false);
   const [animationComplete, setAnimationComplete] = useState(false);
   
@@ -290,11 +292,13 @@ export default function BusinessDashboard() {
   const [oppDivisionCustomStart, setOppDivisionCustomStart] = useState<string>('');
   const [oppDivisionCustomEnd, setOppDivisionCustomEnd] = useState<string>('');
   const [oppDivisionModalOpen, setOppDivisionModalOpen] = useState(false);
+  const [oppDivisionDisplayMode, setOppDivisionDisplayMode] = useState<'quantity' | 'value'>('quantity');
   
   const [projDivisionDateFilter, setProjDivisionDateFilter] = useState<DateFilterType>('all');
   const [projDivisionCustomStart, setProjDivisionCustomStart] = useState<string>('');
   const [projDivisionCustomEnd, setProjDivisionCustomEnd] = useState<string>('');
   const [projDivisionModalOpen, setProjDivisionModalOpen] = useState(false);
+  const [projDivisionDisplayMode, setProjDivisionDisplayMode] = useState<'quantity' | 'value'>('quantity');
   
   // Bar charts (Status charts)
   const [oppStatusDateFilter, setOppStatusDateFilter] = useState<DateFilterType>('all');
@@ -353,12 +357,14 @@ export default function BusinessDashboard() {
 
   // Get division statistics for Opportunities by Division
   const { data: oppDivisionsStats, isLoading: oppDivisionsLoading } = useQuery<DivisionStats[]>({
-    queryKey: ['business-divisions-stats-opp', oppDivisionDateRange.date_from, oppDivisionDateRange.date_to],
+    queryKey: ['business-divisions-stats-opp', selectedDivisionId, oppDivisionDateRange.date_from, oppDivisionDateRange.date_to, oppDivisionDisplayMode],
     queryFn: async () => {
       try {
         const params = new URLSearchParams();
+        if (selectedDivisionId) params.set('division_id', selectedDivisionId);
         if (oppDivisionDateRange.date_from) params.set('date_from', oppDivisionDateRange.date_from);
         if (oppDivisionDateRange.date_to) params.set('date_to', oppDivisionDateRange.date_to);
+        params.set('mode', oppDivisionDisplayMode);
         const url = `/projects/business/divisions-stats${params.toString() ? '?' + params.toString() : ''}`;
         return await api('GET', url);
       } catch (e) {
@@ -371,12 +377,14 @@ export default function BusinessDashboard() {
 
   // Get division statistics for Projects by Division
   const { data: projDivisionsStats, isLoading: projDivisionsLoading } = useQuery<DivisionStats[]>({
-    queryKey: ['business-divisions-stats-proj', projDivisionDateRange.date_from, projDivisionDateRange.date_to],
+    queryKey: ['business-divisions-stats-proj', selectedDivisionId, projDivisionDateRange.date_from, projDivisionDateRange.date_to, projDivisionDisplayMode],
     queryFn: async () => {
       try {
         const params = new URLSearchParams();
+        if (selectedDivisionId) params.set('division_id', selectedDivisionId);
         if (projDivisionDateRange.date_from) params.set('date_from', projDivisionDateRange.date_from);
         if (projDivisionDateRange.date_to) params.set('date_to', projDivisionDateRange.date_to);
+        params.set('mode', projDivisionDisplayMode);
         const url = `/projects/business/divisions-stats${params.toString() ? '?' + params.toString() : ''}`;
         return await api('GET', url);
       } catch (e) {
@@ -416,6 +424,17 @@ export default function BusinessDashboard() {
   const divisions = Array.isArray(divisionsData) ? divisionsData : [];
   const oppStatsByDivision = Array.isArray(oppDivisionsStats) ? oppDivisionsStats : [];
   const projStatsByDivision = Array.isArray(projDivisionsStats) ? projDivisionsStats : [];
+  
+  // Get selected division name for breadcrumb and titles
+  const selectedDivision = selectedDivisionId ? divisions.find(d => d.id === selectedDivisionId) : null;
+  
+  // Invalidate queries when selectedDivisionId changes
+  useEffect(() => {
+    queryClient.invalidateQueries({ queryKey: ['business-divisions-stats-opp'] });
+    queryClient.invalidateQueries({ queryKey: ['business-divisions-stats-proj'] });
+    queryClient.invalidateQueries({ queryKey: ['business-dashboard-opp-status'] });
+    queryClient.invalidateQueries({ queryKey: ['business-dashboard-proj-status'] });
+  }, [selectedDivisionId, queryClient]);
   
   // Check if we're still loading critical initial data (not refetching)
   // Only show overlay on first load, not on background refetches
@@ -499,7 +518,7 @@ export default function BusinessDashboard() {
         <div className="bg-slate-200/50 rounded-[12px] border border-slate-200 flex items-center justify-between py-4 px-6">
           <div>
             <div className="text-xl font-bold text-gray-900 tracking-tight mb-0.5">
-              Business Dashboard
+              Business Dashboard{selectedDivision ? ` • ${selectedDivision.label}` : ''}
             </div>
             <div className="text-sm text-gray-500 font-medium">
               Opportunities and projects grouped by division
@@ -511,11 +530,59 @@ export default function BusinessDashboard() {
           </div>
         </div>
 
+        {/* Filter Bar */}
+        <div className="bg-white rounded-lg border border-gray-200 p-3">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-medium text-gray-500 uppercase tracking-wide mr-2">Filter by:</span>
+            <div className="relative group">
+              <button
+                onClick={() => setSelectedDivisionId(null)}
+                className={`flex items-center justify-center w-10 h-10 rounded-lg transition-all duration-200 ${
+                  selectedDivisionId === null
+                    ? 'bg-[#7f1010] text-white shadow-md'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                }`}
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+                </svg>
+              </button>
+              <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 px-2 py-1.5 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10 whitespace-nowrap">
+                Show All
+                <div className="absolute left-1/2 -translate-x-1/2 -bottom-1 w-2 h-2 bg-gray-900 rotate-45"></div>
+              </div>
+            </div>
+            {divisions.map((division) => {
+              const isActive = selectedDivisionId === division.id;
+              const icon = getDivisionIcon(division.label);
+              return (
+                <div key={division.id} className="relative group">
+                  <button
+                    onClick={() => setSelectedDivisionId(division.id)}
+                    className={`flex items-center justify-center w-10 h-10 rounded-lg transition-all duration-200 text-2xl ${
+                      isActive
+                        ? 'bg-[#7f1010] text-white shadow-md scale-105'
+                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200 hover:scale-105'
+                    }`}
+                    title={division.label}
+                  >
+                    {icon}
+                  </button>
+                  <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 px-2 py-1.5 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10 whitespace-nowrap">
+                    {division.label}
+                    <div className="absolute left-1/2 -translate-x-1/2 -bottom-1 w-2 h-2 bg-gray-900 rotate-45"></div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
         {/* Section 1: Charts */}
         <section>
           <div className="space-y-4">
-            {/* Charts row: Opp by division / Projects by division / Status stacked (30/30/40 using fr to avoid overflow with gap) */}
-            <div className="grid grid-cols-1 lg:grid-cols-[3fr_3fr_4fr] gap-4 min-w-0">
+            {/* Row 1: Opportunities by Division / Projects by Division */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 min-w-0">
               {/* Opportunities by Division */}
               <LoadingOverlay isLoading={oppDivisionsLoading} minHeight="min-h-[200px]">
               <div 
@@ -528,7 +595,7 @@ export default function BusinessDashboard() {
               >
                 <div className="flex items-center justify-between mb-3 flex-shrink-0">
                   <div className="text-xs font-medium text-gray-500 uppercase tracking-wide">
-                    Opportunities by Division
+                    Opportunities by Division{selectedDivision ? ` - ${selectedDivision.label}` : ''}
                   </div>
                   <div className="flex items-center gap-2">
                       <select
@@ -566,31 +633,63 @@ export default function BusinessDashboard() {
                           </div>
                         </div>
                       )}
+                      <select
+                        value={oppDivisionDisplayMode}
+                        onChange={(e) => setOppDivisionDisplayMode(e.target.value as 'quantity' | 'value')}
+                        className="border border-gray-300 rounded px-2 py-1 text-xs"
+                      >
+                        <option value="quantity">Quantity</option>
+                        <option value="value">Value</option>
+                      </select>
                   </div>
                 </div>
-                <div className="flex-1 flex items-center">
-                  {oppStatsByDivision.length > 0 && (() => {
-                    const divisionsWithData = oppStatsByDivision
-                      .filter(d => d.opportunities_count > 0)
-                      .slice()
-                      .sort((a, b) => b.opportunities_count - a.opportunities_count);
-                    const totalOpp = divisionsWithData.reduce((sum, d) => sum + d.opportunities_count, 0);
-                    if (totalOpp === 0) {
-                      return <div className="text-xs text-gray-400">No data</div>;
-                    }
-                    let currentAngle = 0;
+                <div className="flex-1 flex items-center justify-center">
+                  {oppStatsByDivision.length === 0 ? (
+                    <div className="text-xs text-gray-400 text-center">No data</div>
+                  ) : (() => {
                     const colors = warmPalette;
+                    // Always start from divisions that have opportunities, regardless of value.
+                    const divisionsForList = oppStatsByDivision
+                      .filter(d => (d.opportunities_count || 0) > 0)
+                      .slice()
+                      .sort((a, b) => {
+                        return oppDivisionDisplayMode === 'value'
+                          ? (b.opportunities_value || 0) - (a.opportunities_value || 0)
+                          : (b.opportunities_count || 0) - (a.opportunities_count || 0);
+                      });
+
+                    // For the pie itself, we only draw slices with a positive contribution to avoid 0° arcs.
+                    const divisionsForChart = oppDivisionDisplayMode === 'value'
+                      ? divisionsForList.filter(d => (d.opportunities_value || 0) > 0)
+                      : divisionsForList;
+
+                    const total = oppDivisionDisplayMode === 'value'
+                      ? divisionsForChart.reduce((sum, d) => sum + (d.opportunities_value || 0), 0)
+                      : divisionsForChart.reduce((sum, d) => sum + (d.opportunities_count || 0), 0);
+
+                    const hasChartData = total > 0 && divisionsForChart.length > 0;
+
+                    const colorById = new Map<string, string>();
+                    divisionsForChart.forEach((d, idx) => {
+                      colorById.set(d.id, colors[idx % colors.length]);
+                    });
+
+                    let currentAngle = 0;
                     const radius = 50;
                     const centerX = 60;
                     const centerY = 60;
                     return (
-                      <div className="flex items-center gap-4">
+                      <div className="flex flex-col sm:flex-row items-center gap-4 justify-center w-full max-w-[760px] mx-auto px-2">
                         <svg width="120" height="120" viewBox="0 0 120 120" className="flex-shrink-0">
-                          {divisionsWithData.length === 1 ? (
+                          {!hasChartData ? (
+                            <circle cx={centerX} cy={centerY} r={radius} fill="#e5e7eb" />
+                          ) : divisionsForChart.length === 1 ? (
                             <circle cx={centerX} cy={centerY} r={radius} fill={colors[0]} />
                           ) : (
-                            divisionsWithData.map((div, idx) => {
-                              const percentage = (div.opportunities_count / totalOpp) * 100;
+                            divisionsForChart.map((div, idx) => {
+                              const percentage = oppDivisionDisplayMode === 'value'
+                                ? ((div.opportunities_value || 0) / total) * 100
+                                : ((div.opportunities_count || 0) / total) * 100;
                               const angle = (percentage / 100) * 360;
                               const startAngle = currentAngle;
                               const endAngle = currentAngle + angle;
@@ -599,7 +698,7 @@ export default function BusinessDashboard() {
                                 <path
                                   key={div.id}
                                   d={createPieSlice(startAngle, endAngle, radius, centerX, centerY)}
-                                  fill={colors[idx % colors.length]}
+                                  fill={colorById.get(div.id) || colors[idx % colors.length]}
                                   className="hover:opacity-80 transition-opacity"
                                   style={{
                                     opacity: hasAnimated ? 1 : 0,
@@ -610,24 +709,56 @@ export default function BusinessDashboard() {
                             })
                           )}
                         </svg>
-                        <div className="flex-1 space-y-1 text-xs">
-                          {divisionsWithData.slice(0, 7).map((div, idx) => (
-                            <div key={div.id} className="flex items-center gap-2">
-                              <div
-                                className="w-3 h-3 rounded-full"
-                                style={{ backgroundColor: colors[idx % colors.length] }}
-                              />
-                              <span className="text-gray-700 truncate flex-1">{div.label}</span>
-                              <span className="text-gray-900 font-semibold">
-                                <CountUp value={div.opportunities_count} enabled={hasAnimated} />
-                              </span>
-                            </div>
-                          ))}
+                        <div className="space-y-1 text-xs w-full flex-1 min-w-0">
+                          {divisionsForList.length === 0 ? (
+                            <div className="text-xs text-gray-400">No data</div>
+                          ) : divisionsForList.slice(0, 7).map((div) => {
+                            const valuePercentage = oppDivisionDisplayMode === 'value' && total > 0
+                              ? ((div.opportunities_value || 0) / total) * 100
+                              : 0;
+                            const countPercentage = oppDivisionDisplayMode === 'quantity' && total > 0
+                              ? ((div.opportunities_count || 0) / total) * 100
+                              : 0;
+                            const dotColor = colorById.get(div.id) || '#d1d5db';
+                            
+                            return (
+                              <div key={div.id} className={oppDivisionDisplayMode === 'value' ? 'space-y-1' : ''}>
+                                <div className="flex items-center gap-2">
+                                  <div
+                                    className="w-3 h-3 rounded-full"
+                                    style={{ backgroundColor: dotColor }}
+                                  />
+                                  <span className="text-gray-700 truncate flex-1 min-w-0 pr-2">{div.label}</span>
+                                  <span className="text-gray-900 font-semibold tabular-nums text-right min-w-[120px]">
+                                    {oppDivisionDisplayMode === 'value' ? (
+                                      <>
+                                        {formatCurrency(div.opportunities_value || 0)} ({valuePercentage.toFixed(0)}%)
+                                      </>
+                                    ) : (
+                                      <>
+                                        <CountUp value={div.opportunities_count || 0} enabled={hasAnimated} /> ({countPercentage.toFixed(0)}%)
+                                      </>
+                                    )}
+                                  </span>
+                                </div>
+                                {oppDivisionDisplayMode === 'value' && div.opportunities_profit !== undefined && (
+                                  <div className="flex items-center gap-2 pl-5">
+                                    <span className="flex-1 min-w-0" />
+                                    <span className="text-gray-700 font-semibold text-xs tabular-nums text-right min-w-[160px]">
+                                      <span className="text-gray-500 font-medium">Profit:</span>{' '}
+                                      {formatCurrency(div.opportunities_profit || 0)}{' '}
+                                      {div.opportunities_value > 0 ? `(${(((div.opportunities_profit || 0) / (div.opportunities_value || 1)) * 100).toFixed(0)}%)` : '(0%)'}
+                                    </span>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
                         </div>
                       </div>
                     );
                   })()}
-                  </div>
+                </div>
                 </div>
               </LoadingOverlay>
 
@@ -643,7 +774,7 @@ export default function BusinessDashboard() {
                 >
                   <div className="flex items-center justify-between mb-3 flex-shrink-0">
                     <div className="text-xs font-medium text-gray-500 uppercase tracking-wide">
-                      Projects by Division
+                      Projects by Division{selectedDivision ? ` - ${selectedDivision.label}` : ''}
                     </div>
                       <div className="flex items-center gap-2">
                         <select
@@ -681,31 +812,61 @@ export default function BusinessDashboard() {
                             </div>
                           </div>
                         )}
+                        <select
+                          value={projDivisionDisplayMode}
+                          onChange={(e) => setProjDivisionDisplayMode(e.target.value as 'quantity' | 'value')}
+                          className="border border-gray-300 rounded px-2 py-1 text-xs"
+                        >
+                          <option value="quantity">Quantity</option>
+                          <option value="value">Value</option>
+                        </select>
                       </div>
                     </div>
-                  <div className="flex-1 flex items-center">
-                    {projStatsByDivision.length > 0 && (() => {
-                    const divisionsWithData = projStatsByDivision
-                      .filter(d => d.projects_count > 0)
-                      .slice()
-                      .sort((a, b) => b.projects_count - a.projects_count);
-                    const totalProj = divisionsWithData.reduce((sum, d) => sum + d.projects_count, 0);
-                    if (totalProj === 0) {
-                      return <div className="text-xs text-gray-400">No data</div>;
-                    }
-                    let currentAngle = 0;
+                  <div className="flex-1 flex items-center justify-center">
+                    {projStatsByDivision.length === 0 ? (
+                      <div className="text-xs text-gray-400 text-center">No data</div>
+                    ) : (() => {
                     const colors = coolPalette;
+                    const divisionsForList = projStatsByDivision
+                      .filter(d => (d.projects_count || 0) > 0)
+                      .slice()
+                      .sort((a, b) => {
+                        return projDivisionDisplayMode === 'value'
+                          ? (b.projects_value || 0) - (a.projects_value || 0)
+                          : (b.projects_count || 0) - (a.projects_count || 0);
+                      });
+
+                    const divisionsForChart = projDivisionDisplayMode === 'value'
+                      ? divisionsForList.filter(d => (d.projects_value || 0) > 0)
+                      : divisionsForList;
+
+                    const total = projDivisionDisplayMode === 'value'
+                      ? divisionsForChart.reduce((sum, d) => sum + (d.projects_value || 0), 0)
+                      : divisionsForChart.reduce((sum, d) => sum + (d.projects_count || 0), 0);
+
+                    const hasChartData = total > 0 && divisionsForChart.length > 0;
+
+                    const colorById = new Map<string, string>();
+                    divisionsForChart.forEach((d, idx) => {
+                      colorById.set(d.id, colors[idx % colors.length]);
+                    });
+
+                    let currentAngle = 0;
                     const radius = 50;
                     const centerX = 60;
                     const centerY = 60;
                     return (
-                      <div className="flex items-center gap-4">
+                      <div className="flex flex-col sm:flex-row items-center gap-4 justify-center w-full max-w-[760px] mx-auto px-2">
                         <svg width="120" height="120" viewBox="0 0 120 120" className="flex-shrink-0">
-                          {divisionsWithData.length === 1 ? (
+                          {!hasChartData ? (
+                            <circle cx={centerX} cy={centerY} r={radius} fill="#e5e7eb" />
+                          ) : divisionsForChart.length === 1 ? (
                             <circle cx={centerX} cy={centerY} r={radius} fill={colors[0]} />
                           ) : (
-                            divisionsWithData.map((div, idx) => {
-                              const percentage = (div.projects_count / totalProj) * 100;
+                            divisionsForChart.map((div, idx) => {
+                              const percentage = projDivisionDisplayMode === 'value'
+                                ? ((div.projects_value || 0) / total) * 100
+                                : ((div.projects_count || 0) / total) * 100;
                               const angle = (percentage / 100) * 360;
                               const startAngle = currentAngle;
                               const endAngle = currentAngle + angle;
@@ -714,7 +875,7 @@ export default function BusinessDashboard() {
                                 <path
                                   key={div.id}
                                   d={createPieSlice(startAngle, endAngle, radius, centerX, centerY)}
-                                  fill={colors[idx % colors.length]}
+                                  fill={colorById.get(div.id) || colors[idx % colors.length]}
                                   className="hover:opacity-80 transition-opacity"
                                   style={{
                                     opacity: hasAnimated ? 1 : 0,
@@ -725,31 +886,64 @@ export default function BusinessDashboard() {
                             })
                           )}
                         </svg>
-                        <div className="flex-1 space-y-1 text-xs">
-                          {divisionsWithData.slice(0, 7).map((div, idx) => (
-                            <div key={div.id} className="flex items-center gap-2">
-                              <div
-                                className="w-3 h-3 rounded-full"
-                                style={{ backgroundColor: colors[idx % colors.length] }}
-                              />
-                              <span className="text-gray-700 truncate flex-1">{div.label}</span>
-                              <span className="text-gray-900 font-semibold">
-                                <CountUp value={div.projects_count} enabled={hasAnimated} />
-                              </span>
-                            </div>
-                          ))}
+                        <div className="space-y-1 text-xs w-full flex-1 min-w-0">
+                          {divisionsForList.length === 0 ? (
+                            <div className="text-xs text-gray-400">No data</div>
+                          ) : divisionsForList.slice(0, 7).map((div) => {
+                            const valuePercentage = projDivisionDisplayMode === 'value' && total > 0
+                              ? ((div.projects_value || 0) / total) * 100
+                              : 0;
+                            const countPercentage = projDivisionDisplayMode === 'quantity' && total > 0
+                              ? ((div.projects_count || 0) / total) * 100
+                              : 0;
+                            const dotColor = colorById.get(div.id) || '#d1d5db';
+                            
+                            return (
+                              <div key={div.id} className={projDivisionDisplayMode === 'value' ? 'space-y-1' : ''}>
+                                <div className="flex items-center gap-2">
+                                  <div
+                                    className="w-3 h-3 rounded-full"
+                                    style={{ backgroundColor: dotColor }}
+                                  />
+                                  <span className="text-gray-700 truncate flex-1 min-w-0 pr-2">{div.label}</span>
+                                  <span className="text-gray-900 font-semibold tabular-nums text-right min-w-[120px]">
+                                    {projDivisionDisplayMode === 'value' ? (
+                                      <>
+                                        {formatCurrency(div.projects_value || 0)} ({valuePercentage.toFixed(0)}%)
+                                      </>
+                                    ) : (
+                                      <>
+                                        <CountUp value={div.projects_count || 0} enabled={hasAnimated} /> ({countPercentage.toFixed(0)}%)
+                                      </>
+                                    )}
+                                  </span>
+                                </div>
+                                {projDivisionDisplayMode === 'value' && div.projects_profit !== undefined && (
+                                  <div className="flex items-center gap-2 pl-5">
+                                    <span className="flex-1 min-w-0" />
+                                    <span className="text-gray-700 font-semibold text-xs tabular-nums text-right min-w-[160px]">
+                                      <span className="text-gray-500 font-medium">Profit:</span>{' '}
+                                      {formatCurrency(div.projects_profit || 0)}{' '}
+                                      {div.projects_value > 0 ? `(${(((div.projects_profit || 0) / (div.projects_value || 1)) * 100).toFixed(0)}%)` : '(0%)'}
+                                    </span>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
                         </div>
                       </div>
                     );
                   })()}
-                  </div>
+                </div>
                 </div>
               </LoadingOverlay>
+            </div>
 
-                {/* Status charts (stacked) */}
-                <div className="space-y-4 min-w-0">
-                  {/* Opportunities by Status (horizontal bars) */}
-                  <LoadingOverlay isLoading={oppStatusLoading} minHeight="min-h-[200px]">
+            {/* Row 2: Opportunities by Status / Projects by Status */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 min-w-0">
+              {/* Opportunities by Status (horizontal bars) */}
+              <LoadingOverlay isLoading={oppStatusLoading} minHeight="min-h-[200px]">
                   <div 
                     className="rounded-lg border border-gray-200 bg-white shadow-sm p-4 min-w-0 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:shadow-md"
                     style={animationComplete ? {} : {
@@ -760,7 +954,7 @@ export default function BusinessDashboard() {
                   >
                     <div className="flex items-center justify-between mb-3">
                       <div className="text-xs font-medium text-gray-500 uppercase tracking-wide">
-                        Opportunities by Status
+                        Opportunities by Status{selectedDivision ? ` - ${selectedDivision.label}` : ''}
                       </div>
                       <div className="flex items-center gap-2 flex-wrap">
                         <select
@@ -848,9 +1042,11 @@ export default function BusinessDashboard() {
                             if (oppStatusDisplayMode === 'value') {
                               const valueData = data as StatusValueData;
                               const finalTotalPercentage = (valueData.final_total_with_gst / maxOpportunityStatusCount) * 100;
-                              const profitPercentage = (valueData.profit / maxOpportunityStatusCount) * 100;
                               const valuePercentage = totalValue > 0 ? (valueData.final_total_with_gst / totalValue) * 100 : 0;
-                              const profitValuePercentage = totalValue > 0 ? (valueData.profit / totalValue) * 100 : 0;
+                              const profitMarginPercentage = valueData.final_total_with_gst > 0
+                                ? (valueData.profit / valueData.final_total_with_gst) * 100
+                                : 0;
+                              const profitBarPercentage = Math.max(0, Math.min(100, profitMarginPercentage));
                               return (
                                 <div key={status} className="space-y-1.5">
                                   <div className="flex items-center gap-2">
@@ -868,15 +1064,10 @@ export default function BusinessDashboard() {
                                     </span>
                                   </div>
                                   <div className="flex items-center gap-2 pl-28">
-                                    <span className="text-xs text-gray-500">Profit:</span>
-                                    <div className="flex-1 bg-gray-100 rounded-full h-2 min-w-0 relative">
-                                      <div
-                                        className="bg-gradient-to-r from-[#f59e0b] to-[#fbbf24] rounded-full h-2 transition-all duration-500 ease-out absolute inset-0"
-                                        style={{ width: `${profitPercentage}%` }}
-                                      />
-                                    </div>
-                                    <span className="text-xs font-semibold text-gray-700 whitespace-nowrap">
-                                      {formatCurrency(valueData.profit)} ({profitValuePercentage.toFixed(0)}%)
+                                    <span className="flex-1 min-w-0" />
+                                    <span className="text-xs font-semibold text-gray-700 whitespace-nowrap tabular-nums text-right min-w-[170px]">
+                                      <span className="text-gray-500 font-medium">Profit:</span>{' '}
+                                      {formatCurrency(valueData.profit)} ({profitMarginPercentage.toFixed(0)}%)
                                     </span>
                                   </div>
                                 </div>
@@ -911,8 +1102,8 @@ export default function BusinessDashboard() {
                   </div>
                   </LoadingOverlay>
 
-                  {/* Projects by Status (horizontal bars) */}
-                  <LoadingOverlay isLoading={projStatusLoading} minHeight="min-h-[200px]">
+                {/* Projects by Status (horizontal bars) */}
+                <LoadingOverlay isLoading={projStatusLoading} minHeight="min-h-[200px]">
                   <div 
                     className="rounded-lg border border-gray-200 bg-white shadow-sm p-4 min-w-0 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:shadow-md"
                     style={animationComplete ? {} : {
@@ -923,7 +1114,7 @@ export default function BusinessDashboard() {
                   >
                     <div className="flex items-center justify-between mb-3">
                       <div className="text-xs font-medium text-gray-500 uppercase tracking-wide">
-                        Projects by Status
+                        Projects by Status{selectedDivision ? ` - ${selectedDivision.label}` : ''}
                       </div>
                       <div className="flex items-center gap-2 flex-wrap">
                         <select
@@ -1011,9 +1202,11 @@ export default function BusinessDashboard() {
                             if (projStatusDisplayMode === 'value') {
                               const valueData = data as StatusValueData;
                               const finalTotalPercentage = (valueData.final_total_with_gst / maxProjectStatusCount) * 100;
-                              const profitPercentage = (valueData.profit / maxProjectStatusCount) * 100;
                               const valuePercentage = totalValue > 0 ? (valueData.final_total_with_gst / totalValue) * 100 : 0;
-                              const profitValuePercentage = totalValue > 0 ? (valueData.profit / totalValue) * 100 : 0;
+                              const profitMarginPercentage = valueData.final_total_with_gst > 0
+                                ? (valueData.profit / valueData.final_total_with_gst) * 100
+                                : 0;
+                              const profitBarPercentage = Math.max(0, Math.min(100, profitMarginPercentage));
                               return (
                                 <div key={status} className="space-y-1.5">
                                   <div className="flex items-center gap-2">
@@ -1031,15 +1224,10 @@ export default function BusinessDashboard() {
                                     </span>
                                   </div>
                                   <div className="flex items-center gap-2 pl-28">
-                                    <span className="text-xs text-gray-500">Profit:</span>
-                                    <div className="flex-1 bg-gray-100 rounded-full h-2 min-w-0 relative">
-                                      <div
-                                        className="bg-gradient-to-r from-[#0284c7] to-[#38bdf8] rounded-full h-2 transition-all duration-500 ease-out absolute inset-0"
-                                        style={{ width: `${profitPercentage}%` }}
-                                      />
-                                    </div>
-                                    <span className="text-xs font-semibold text-gray-700 whitespace-nowrap">
-                                      {formatCurrency(valueData.profit)} ({profitValuePercentage.toFixed(0)}%)
+                                    <span className="flex-1 min-w-0" />
+                                    <span className="text-xs font-semibold text-gray-700 whitespace-nowrap tabular-nums text-right min-w-[170px]">
+                                      <span className="text-gray-500 font-medium">Profit:</span>{' '}
+                                      {formatCurrency(valueData.profit)} ({profitMarginPercentage.toFixed(0)}%)
                                     </span>
                                   </div>
                                 </div>
@@ -1074,7 +1262,6 @@ export default function BusinessDashboard() {
                   </div>
                   </LoadingOverlay>
                 </div>
-              </div>
             </div>
           </section>
 
@@ -1085,15 +1272,82 @@ export default function BusinessDashboard() {
             <div className="text-sm text-red-600">{String(divisionsError)}</div>
             <div className="text-xs text-gray-500 mt-2">Check console for details</div>
           </div>
-        ) : divisions.length > 0 ? (
+        ) : (selectedDivisionId ? oppStatsByDivision.length > 0 || projStatsByDivision.length > 0 : divisions.length > 0) ? (
           <section>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-              {divisions.map((division, idx) => {
-                // Use opportunities stats for display (or could combine both)
-                const divisionStat = oppStatsByDivision.find(s => s.id === division.id) || projStatsByDivision.find(s => s.id === division.id);
-                const oppCount = divisionStat?.opportunities_count || 0;
-                const projCount = divisionStat?.projects_count || 0;
-                const hasSubdivisions = division.subdivisions && division.subdivisions.length > 0;
+              {selectedDivisionId ? (
+                // Mode Focus: Show subdivision cards or division card if no subdivisions
+                oppStatsByDivision.map((subdivisionStat, idx) => {
+                  const oppCount = subdivisionStat.opportunities_count || 0;
+                  const projCount = subdivisionStat.projects_count || 0;
+                  
+                  // Use parent division icon for subdivisions, or division icon if showing division itself
+                  const isDivisionItself = subdivisionStat.id === selectedDivisionId;
+                  const icon = isDivisionItself 
+                    ? getDivisionIcon(selectedDivision?.label || subdivisionStat.label)
+                    : (selectedDivision ? getDivisionIcon(selectedDivision.label) : getDivisionIcon(subdivisionStat.label));
+                  
+                  return (
+                    <div
+                      key={subdivisionStat.id}
+                      className="rounded-lg border border-gray-200 bg-white shadow-sm p-5 flex flex-col h-full group transition-all duration-200 ease-out hover:-translate-y-0.5 hover:shadow-lg"
+                      style={animationComplete ? {} : {
+                        opacity: hasAnimated ? 1 : 0,
+                        transform: hasAnimated ? 'translateY(0)' : 'translateY(-8px)',
+                        transition: `opacity 400ms ease-out ${idx * 50}ms, transform 400ms ease-out ${idx * 50}ms`
+                      }}
+                    >
+                      <div className="flex items-center justify-between mb-3 gap-2">
+                        <div className="flex items-center gap-2 min-w-0 flex-1">
+                          <div className="text-3xl flex-shrink-0">{icon}</div>
+                          <div className="text-base font-semibold text-gray-900">{subdivisionStat.label}</div>
+                        </div>
+                      </div>
+
+                      <div className="mt-auto flex items-center text-sm pt-3 border-t">
+                        <div 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleViewOpportunities(subdivisionStat.id);
+                          }}
+                          className="cursor-pointer hover:bg-gray-50 rounded-lg p-2 transition-all group border border-transparent hover:border-gray-200 flex-1 flex items-center justify-center gap-1.5"
+                          title="View Opportunities"
+                        >
+                          <span className="text-xl font-bold text-[#7f1010] group-hover:text-[#a31414] group-hover:opacity-100 opacity-95 transition-all duration-150">
+                            <CountUp value={oppCount} enabled={hasAnimated} />
+                          </span>
+                          <span className="text-gray-600 group-hover:text-[#7f1010] transition-colors font-medium text-xs uppercase tracking-wide">
+                            Opportunities
+                          </span>
+                        </div>
+                        <div className="h-8 w-px bg-gray-200"></div>
+                        <div 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleViewProjects(subdivisionStat.id);
+                          }}
+                          className="cursor-pointer hover:bg-gray-50 rounded-lg p-2 transition-all group border border-transparent hover:border-gray-200 flex-1 flex items-center justify-center gap-1.5"
+                          title="View Projects"
+                        >
+                          <span className="text-xl font-bold text-[#7f1010] group-hover:text-[#a31414] group-hover:opacity-100 opacity-95 transition-all duration-150">
+                            <CountUp value={projCount} enabled={hasAnimated} />
+                          </span>
+                          <span className="text-gray-600 group-hover:text-[#7f1010] transition-colors font-medium text-xs uppercase tracking-wide">
+                            Projects
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })
+              ) : (
+                // Mode Overview: Show all division cards
+                divisions.map((division, idx) => {
+                  // Use opportunities stats for display (or could combine both)
+                  const divisionStat = oppStatsByDivision.find(s => s.id === division.id) || projStatsByDivision.find(s => s.id === division.id);
+                  const oppCount = divisionStat?.opportunities_count || 0;
+                  const projCount = divisionStat?.projects_count || 0;
+                  const hasSubdivisions = division.subdivisions && division.subdivisions.length > 0;
 
                 return (
                   <div
@@ -1126,14 +1380,7 @@ export default function BusinessDashboard() {
                         </div>
                       )}
                     </div>
-                    
-                    {divisionStat && (divisionStat.opportunities_value > 0 || divisionStat.projects_value > 0) && (
-                      <div className="mb-3 text-xs text-gray-500">
-                        <div>Est: ${divisionStat.opportunities_value.toLocaleString()}</div>
-                        <div>Act: ${divisionStat.projects_value.toLocaleString()}</div>
-                      </div>
-                    )}
-                    
+
                     <div className="mt-auto flex items-center text-sm pt-3 border-t">
                       <div 
                         onClick={(e) => {
@@ -1169,7 +1416,8 @@ export default function BusinessDashboard() {
                     </div>
                   </div>
                 );
-              })}
+              })
+              )}
             </div>
           </section>
         ) : (
