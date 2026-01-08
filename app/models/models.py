@@ -1444,6 +1444,29 @@ class TaskItem(Base):
     request = relationship("TaskRequest", back_populates="task")
 
 
+class TaskLogEntry(Base):
+    """
+    Append-only activity log for tasks (Trello-like).
+    Stores comments and system events (status/title/description changes).
+    """
+    __tablename__ = "task_log_entries"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    task_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tasks_v2.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+
+    entry_type: Mapped[str] = mapped_column(String(50), default="comment", index=True)
+    message: Mapped[str] = mapped_column(Text, nullable=False)
+
+    actor_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), index=True
+    )
+    actor_name: Mapped[Optional[str]] = mapped_column(String(255))
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, index=True)
+
+
 # Dispatch & Time Tracking Models
 
 class Shift(Base):
