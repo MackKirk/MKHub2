@@ -45,12 +45,16 @@ export default function TaskModal({ open, taskId, onClose, onUpdated }: Props) {
     queryKey: ['task', taskId],
     queryFn: () => api<Task>('GET', `/tasks/${taskId}`),
     enabled: open && !!taskId,
+    refetchInterval: open ? 10_000 : false, // Refetch every 10 seconds when modal is open
+    staleTime: 5_000, // Consider data stale after 5 seconds
   });
 
   const { data: logEntries = [] } = useQuery({
     queryKey: ['task-log', taskId],
     queryFn: () => api<TaskLogEntry[]>('GET', `/tasks/${taskId}/log`),
     enabled: open && !!taskId,
+    refetchInterval: open ? 10_000 : false, // Refetch every 10 seconds when modal is open
+    staleTime: 5_000, // Consider data stale after 5 seconds
   });
 
   const [titleDraft, setTitleDraft] = useState('');
@@ -87,6 +91,19 @@ export default function TaskModal({ open, taskId, onClose, onUpdated }: Props) {
     if (statusDropdownOpen) document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [statusDropdownOpen]);
+
+  // Refetch when window gains focus to sync with other users' changes
+  useEffect(() => {
+    if (!open || !taskId) return;
+    
+    const handleFocus = () => {
+      queryClient.invalidateQueries({ queryKey: ['task', taskId] });
+      queryClient.invalidateQueries({ queryKey: ['task-log', taskId] });
+    };
+    
+    window.addEventListener('focus', handleFocus);
+    return () => window.removeEventListener('focus', handleFocus);
+  }, [open, taskId, queryClient]);
 
   const ATTACH_BEGIN = '[MKHUB_ATTACHMENTS]';
   const ATTACH_END = '[/MKHUB_ATTACHMENTS]';
