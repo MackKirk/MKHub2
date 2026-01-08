@@ -6,6 +6,70 @@ import toast from 'react-hot-toast';
 import { Link, useLocation, useSearchParams, useNavigate } from 'react-router-dom';
 import LoadingOverlay from '@/components/LoadingOverlay';
 
+// Helper function to get user initials
+function getUserInitials(user: any): string {
+  const firstName = user?.first_name || user?.name || user?.username || '';
+  const lastName = user?.last_name || '';
+  const firstInitial = firstName ? firstName[0].toUpperCase() : '';
+  const lastInitial = lastName ? lastName[0].toUpperCase() : '';
+  if (firstInitial && lastInitial) {
+    return firstInitial + lastInitial;
+  }
+  return firstInitial || (user?.username ? user.username[0].toUpperCase() : '?');
+}
+
+// Helper function to get user display name
+function getUserDisplayName(user: any): string {
+  if (user?.first_name && user?.last_name) {
+    return `${user.first_name} ${user.last_name}`;
+  }
+  return user?.name || user?.username || 'Unknown';
+}
+
+// Component for user avatar with tooltip
+function UserAvatar({ user, size = 'w-6 h-6', showTooltip = true, tooltipText }: { 
+  user: any; 
+  size?: string; 
+  showTooltip?: boolean;
+  tooltipText?: string;
+}) {
+  const photoFileId = user?.profile_photo_file_id;
+  const initials = getUserInitials(user);
+  const displayName = tooltipText || getUserDisplayName(user);
+  const [imageError, setImageError] = useState(false);
+  
+  if (photoFileId && !imageError) {
+    return (
+      <div className="relative group/avatar">
+        <img
+          src={`/files/${photoFileId}/thumbnail?w=80`}
+          alt={displayName}
+          className={`${size} rounded-full object-cover border border-gray-300`}
+          onError={() => setImageError(true)}
+        />
+        {showTooltip && (
+          <div className="absolute right-0 top-full mt-1 px-2 py-1 bg-gray-900 text-white text-xs rounded whitespace-nowrap opacity-0 group-hover/avatar:opacity-100 transition-opacity pointer-events-none z-10">
+            {displayName}
+            <div className="absolute -top-1 right-2 w-2 h-2 bg-gray-900 rotate-45"></div>
+          </div>
+        )}
+      </div>
+    );
+  }
+  
+  return (
+    <div className={`relative group/avatar ${size} rounded-full bg-indigo-600 flex items-center justify-center text-white font-semibold text-xs`}>
+      {initials}
+      {showTooltip && (
+        <div className="absolute right-0 top-full mt-1 px-2 py-1 bg-gray-900 text-white text-xs rounded whitespace-nowrap opacity-0 group-hover/avatar:opacity-100 transition-opacity pointer-events-none z-10">
+          {displayName}
+          <div className="absolute -top-1 right-2 w-2 h-2 bg-gray-900 rotate-45"></div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 type Opportunity = { id:string, code?:string, name?:string, slug?:string, client_id?:string, created_at?:string, date_start?:string, date_eta?:string, date_end?:string, is_bidding?:boolean, project_division_ids?:string[], cover_image_url?:string, estimator_id?:string, estimator_name?:string, cost_estimated?:number };
 type ClientFile = { id:string, file_object_id:string, is_image?:boolean, content_type?:string };
 
@@ -1361,11 +1425,25 @@ function OpportunityListCard({ opportunity, onOpenReportModal, projectStatuses }
   const start = (opportunity.date_start || details?.date_start || opportunity.created_at || '').slice(0,10);
   const eta = (opportunity.date_eta || details?.date_eta || '').slice(0, 10);
   const estimatedValue = (opportunity as any).cost_estimated || details?.cost_estimated || 0;
-  const estimatorName = (opportunity as any).estimator_name || details?.estimator_name || '';
-  const estimatorId = (opportunity as any).estimator_id || details?.estimator_id;
+  const estimatorIds = (opportunity as any).estimator_ids || details?.estimator_ids || ((opportunity as any).estimator_id || details?.estimator_id ? [(opportunity as any).estimator_id || details?.estimator_id] : []);
   const clientName = client?.display_name || client?.name || '';
   const projectDivIds = (opportunity as any).project_division_ids || details?.project_division_ids || [];
   const percentages = (opportunity as any).project_division_percentages || details?.project_division_percentages || {};
+  
+  // Get employees data for avatars
+  const { data: employeesData } = useQuery({ 
+    queryKey:['employees-for-opportunities-cards'], 
+    queryFn: ()=> api<any[]>('GET','/employees'), 
+    staleTime: 300_000
+  });
+  const employees = employeesData || [];
+  
+  // Get estimator employees for avatars
+  const estimators = useMemo(() => {
+    return estimatorIds
+      .map((id: string) => employees.find((e: any) => String(e.id) === String(id)))
+      .filter(Boolean);
+  }, [estimatorIds, employees]);
   
   // Check for pending data (mobile-created opportunities may be missing key fields)
   const missingFields = useMemo(() => {
@@ -1373,13 +1451,14 @@ function OpportunityListCard({ opportunity, onOpenReportModal, projectStatuses }
     // Use details if available, otherwise fallback to opportunity data
     const siteId = details?.site_id;
     const hasDivisions = Array.isArray(projectDivIds) && projectDivIds.length > 0;
+    const hasEstimators = estimatorIds.length > 0;
     
-    if (!estimatorId) missing.push('Estimator');
+    if (!hasEstimators) missing.push('Estimator');
     if (!siteId) missing.push('Site');
     if (!hasDivisions) missing.push('Division');
     
     return missing;
-  }, [details, projectDivIds, estimatorId]);
+  }, [details, projectDivIds, estimatorIds]);
   
   const hasPendingData = missingFields.length > 0;
   
@@ -1531,18 +1610,21 @@ function OpportunityListCard({ opportunity, onOpenReportModal, projectStatuses }
         {/* Fields (simple text, no boxed grid) */}
         <div className="grid grid-cols-2 gap-3 text-sm">
           <div className="min-w-0">
-            <div className="text-xs text-gray-500">Start Date</div>
-            <div className="font-medium text-gray-900 truncate">{start || '—'}</div>
-          </div>
-          <div className="min-w-0">
-            <div className="text-xs text-gray-500">ETA</div>
-            <div className="font-medium text-gray-900 truncate">{eta || '—'}</div>
-          </div>
-          <div className="min-w-0">
-            <div className="text-xs text-gray-500">Estimator</div>
-            <div className={`font-medium truncate ${estimatorId ? 'text-gray-900' : 'text-gray-400'}`}>
-              {estimatorName || '—'}
-            </div>
+            <div className="text-xs text-gray-500 mb-1.5">Estimator</div>
+            {estimators.length === 0 ? (
+              <div className="text-gray-400 text-xs">—</div>
+            ) : estimators.length === 1 ? (
+              <div className="flex items-center gap-2">
+                <UserAvatar user={estimators[0]} size="w-6 h-6" showTooltip={true} />
+                <div className="font-medium text-gray-900 text-xs truncate">{getUserDisplayName(estimators[0])}</div>
+              </div>
+            ) : (
+              <div className="flex items-center gap-1.5 flex-wrap">
+                {estimators.map((est: any) => (
+                  <UserAvatar key={est.id} user={est} size="w-6 h-6" showTooltip={true} />
+                ))}
+              </div>
+            )}
           </div>
           <div className="min-w-0">
             <div className="text-xs text-gray-500">Estimated Value</div>
