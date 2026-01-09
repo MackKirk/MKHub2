@@ -16,6 +16,11 @@ type TaskLogEntry = {
   created_at?: string | null;
 };
 
+type TaskSync = {
+  task_updated_at: string | null;
+  log_last_created_at: string | null;
+};
+
 type Props = {
   open: boolean;
   taskId: string | null;
@@ -35,6 +40,7 @@ function formatDateTime(dateStr?: string | null) {
 export default function TaskModal({ open, taskId, onClose, onUpdated }: Props) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const lastTaskSyncRef = useRef<TaskSync | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const titleInputRef = useRef<HTMLInputElement | null>(null);
@@ -45,16 +51,36 @@ export default function TaskModal({ open, taskId, onClose, onUpdated }: Props) {
     queryKey: ['task', taskId],
     queryFn: () => api<Task>('GET', `/tasks/${taskId}`),
     enabled: open && !!taskId,
-    refetchInterval: open ? 10_000 : false, // Refetch every 10 seconds when modal is open
-    staleTime: 5_000, // Consider data stale after 5 seconds
+    staleTime: 15_000,
   });
 
   const { data: logEntries = [] } = useQuery({
     queryKey: ['task-log', taskId],
     queryFn: () => api<TaskLogEntry[]>('GET', `/tasks/${taskId}/log`),
     enabled: open && !!taskId,
-    refetchInterval: open ? 10_000 : false, // Refetch every 10 seconds when modal is open
-    staleTime: 5_000, // Consider data stale after 5 seconds
+    staleTime: 15_000,
+  });
+
+  // Lightweight polling: keep modal in sync without hammering full task/log endpoints.
+  useQuery({
+    queryKey: ['task-sync', taskId],
+    queryFn: () => api<TaskSync>('GET', `/tasks/${taskId}/sync`),
+    enabled: open && !!taskId,
+    refetchInterval: open ? 3_000 : false,
+    refetchIntervalInBackground: false,
+    onSuccess: (next) => {
+      const prev = lastTaskSyncRef.current;
+      if (!prev) {
+        lastTaskSyncRef.current = next;
+        return;
+      }
+      const taskChanged = (next?.task_updated_at || null) !== (prev?.task_updated_at || null);
+      const logChanged = (next?.log_last_created_at || null) !== (prev?.log_last_created_at || null);
+      if (taskChanged) queryClient.invalidateQueries({ queryKey: ['task', taskId] });
+      if (logChanged) queryClient.invalidateQueries({ queryKey: ['task-log', taskId] });
+      if (taskChanged || logChanged) queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      lastTaskSyncRef.current = next;
+    },
   });
 
   const [titleDraft, setTitleDraft] = useState('');

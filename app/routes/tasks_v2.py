@@ -4,7 +4,7 @@ from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
-from sqlalchemy import and_, or_
+from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import Session, joinedload
 
 from ..auth.security import get_current_user
@@ -166,6 +166,18 @@ def _tasks_for_user(db: Session, me: User, viewer_divisions: list[str]):
     )
 
 
+def _tasks_filter_for_user(me: User, viewer_divisions: list[str]):
+    """
+    Build a SQLAlchemy filter for tasks visible to a user:
+    - Direct assignment to the user
+    - Division-scoped tasks for any of the user's divisions
+    """
+    ownership_filters = [TaskItem.assigned_to_id == me.id]
+    if viewer_divisions:
+        ownership_filters.append(TaskItem.assigned_division_label.in_(viewer_divisions))
+    return or_(*ownership_filters)
+
+
 @router.get("")
 def list_tasks(db: Session = Depends(get_db), me: User = Depends(get_current_user)):
     viewer_divisions = _get_viewer_divisions(db, me.id)
@@ -176,6 +188,25 @@ def list_tasks(db: Session = Depends(get_db), me: User = Depends(get_current_use
         payload = _serialize_task(task, viewer_id=me.id, viewer_division=viewer_division, viewer_divisions=viewer_divisions)
         grouped.setdefault(task.status, []).append(payload)
     return grouped
+
+
+@router.get("/sync")
+def tasks_sync(db: Session = Depends(get_db), me: User = Depends(get_current_user)):
+    """
+    Lightweight endpoint for polling.
+    Returns the most recent updated_at among the user's visible non-archived tasks.
+    Frontend can poll this frequently and only refetch /tasks when it changes.
+    """
+    viewer_divisions = _get_viewer_divisions(db, me.id)
+    latest = (
+        db.query(func.max(TaskItem.updated_at))
+        .filter(and_(_tasks_filter_for_user(me, viewer_divisions), TaskItem.archived_at.is_(None)))
+        .scalar()
+    )
+    return {
+        "latest_task_updated_at": latest.isoformat() if latest else None,
+        "server_time": datetime.utcnow().isoformat(),
+    }
 
 
 @router.get("/archived")
@@ -418,6 +449,28 @@ def _add_task_log(
             actor_name=actor_name,
         )
     )
+
+
+@router.get("/{task_id}/sync")
+def task_sync(task_id: str, db: Session = Depends(get_db), me: User = Depends(get_current_user)):
+    """
+    Lightweight endpoint for polling a single task modal.
+    Returns task.updated_at and the latest log entry timestamp.
+    """
+    viewer_divisions = _get_viewer_divisions(db, me.id)
+    task = _get_task(task_id, db)
+    _ensure_view_permission(task, me, viewer_divisions)
+
+    latest_log = (
+        db.query(func.max(TaskLogEntry.created_at))
+        .filter(TaskLogEntry.task_id == task.id)
+        .scalar()
+    )
+    return {
+        "task_updated_at": task.updated_at.isoformat() if task.updated_at else None,
+        "log_last_created_at": latest_log.isoformat() if latest_log else None,
+        "server_time": datetime.utcnow().isoformat(),
+    }
 
 
 @router.get("/{task_id}")
