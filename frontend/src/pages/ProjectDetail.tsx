@@ -390,7 +390,7 @@ export default function ProjectDetail(){
   }, [settings]);
   const [overlayResolved, setOverlayResolved] = useState<string>('');
   const [showAuditLogModal, setShowAuditLogModal] = useState(false);
-  const [auditLogSection, setAuditLogSection] = useState<'timesheet' | 'reports' | 'schedule' | 'files' | 'photos' | 'proposal' | 'estimate'>('timesheet');
+  const [auditLogSection, setAuditLogSection] = useState<'general' | 'timesheet' | 'reports' | 'workload' | 'files' | 'proposal' | 'estimate' | 'orders'>('general');
   const [editStatusModal, setEditStatusModal] = useState(false);
   const [editProgressModal, setEditProgressModal] = useState(false);
   const [editProjectNameModal, setEditProjectNameModal] = useState(false);
@@ -1401,17 +1401,17 @@ export default function ProjectDetail(){
               {/* Left side - Section buttons */}
               <div className="w-48 border-r bg-gray-50 p-4">
                 <div className="space-y-2">
-                  {(['timesheet', 'reports', 'schedule', 'files', 'photos', 'proposal', 'estimate'] as const).map((section) => (
+                  {(['general', 'timesheet', 'reports', 'workload', 'files', 'proposal', 'estimate', 'orders'] as const).map((section) => (
                     <button
                       key={section}
-                      onClick={() => setAuditLogSection(section)}
+                      onClick={() => setAuditLogSection(section as any)}
                       className={`w-full text-left px-3 py-2 rounded text-sm ${
                         auditLogSection === section
                           ? 'bg-blue-100 text-blue-800 font-medium'
                           : 'bg-white text-gray-700 hover:bg-gray-100'
                       }`}
                     >
-                      {section[0].toUpperCase() + section.slice(1)}
+                      {section === 'general' ? 'General' : section[0].toUpperCase() + section.slice(1)}
                     </button>
                   ))}
                 </div>
@@ -1419,38 +1419,29 @@ export default function ProjectDetail(){
               
               {/* Right side - Log content */}
               <div className="flex-1 overflow-y-auto p-6">
+                {auditLogSection === 'general' && (
+                  <GeneralAuditSection projectId={String(id)} />
+                )}
                 {auditLogSection === 'timesheet' && (
                   <TimesheetAuditSection projectId={String(id)} />
                 )}
                 {auditLogSection === 'reports' && (
-                  <div className="text-center text-gray-500 py-8">
-                    Reports audit log coming soon...
-                  </div>
+                  <ReportsAuditSection projectId={String(id)} />
                 )}
-                {auditLogSection === 'schedule' && (
-                  <div className="text-center text-gray-500 py-8">
-                    Workload audit log coming soon...
-                  </div>
+                {auditLogSection === 'workload' && (
+                  <WorkloadAuditSection projectId={String(id)} />
                 )}
                 {auditLogSection === 'files' && (
-                  <div className="text-center text-gray-500 py-8">
-                    Files audit log coming soon...
-                  </div>
-                )}
-                {auditLogSection === 'photos' && (
-                  <div className="text-center text-gray-500 py-8">
-                    Photos audit log coming soon...
-                  </div>
+                  <FilesAuditSection projectId={String(id)} />
                 )}
                 {auditLogSection === 'proposal' && (
-                  <div className="text-center text-gray-500 py-8">
-                    Proposal audit log coming soon...
-                  </div>
+                  <ProposalAuditSection projectId={String(id)} />
                 )}
                 {auditLogSection === 'estimate' && (
-                  <div className="text-center text-gray-500 py-8">
-                    Estimate audit log coming soon...
-                  </div>
+                  <EstimateAuditSection projectId={String(id)} />
+                )}
+                {auditLogSection === 'orders' && (
+                  <OrdersAuditSection projectId={String(id)} />
                 )}
               </div>
             </div>
@@ -5135,230 +5126,271 @@ function TimesheetTab({ projectId, statusLabel }:{ projectId:string; statusLabel
   );
 }
 
-function TimesheetAuditSection({ projectId }:{ projectId:string }){
-  const [month, setMonth] = useState<string>(getCurrentMonthLocal());
-  const [offset, setOffset] = useState<number>(0);
-  const limit = 50;
-  const qs = (()=>{ const p = new URLSearchParams(); if(month) p.set('month', month); p.set('limit', String(limit)); p.set('offset', String(offset)); const s=p.toString(); return s? ('?'+s): ''; })();
-  const { data, refetch, isFetching } = useQuery({ queryKey:['timesheetLogs', projectId, month, offset], queryFn: ()=> api<any[]>('GET', `/projects/${projectId}/timesheet/logs${qs}`) });
-  const logs = data||[];
+// ===============================================
+// AUDIT LOG SECTIONS
+// ===============================================
+
+// Generic Audit Log Entry display component
+function AuditLogEntry({ log }: { log: any }) {
+  const [expanded, setExpanded] = useState(false);
+  const changes = log.changes || {};
+  const before = changes.before || {};
+  const after = changes.after || {};
+  
+  const getActionColor = (action: string) => {
+    switch (action?.toUpperCase()) {
+      case 'CREATE': return 'bg-green-100 text-green-800';
+      case 'UPDATE': return 'bg-blue-100 text-blue-800';
+      case 'DELETE': return 'bg-red-100 text-red-800';
+      case 'APPROVE': return 'bg-emerald-100 text-emerald-800';
+      case 'REJECT': return 'bg-orange-100 text-orange-800';
+      case 'UPLOAD': return 'bg-purple-100 text-purple-800';
+      case 'GENERATE_PDF': return 'bg-indigo-100 text-indigo-800';
+      default: return 'bg-gray-100 text-gray-800';
+    }
+  };
+  
+  const formatValue = (val: any): string => {
+    if (val === null || val === undefined) return '-';
+    if (typeof val === 'boolean') return val ? 'Yes' : 'No';
+    if (typeof val === 'object') return JSON.stringify(val);
+    return String(val);
+  };
+  
   return (
-    <div>
-      {/* Month filter */}
-      <div className="mb-4 flex items-center gap-2">
-        <label className="text-sm font-medium text-gray-700">Month:</label>
-        <input
-          type="month"
-          value={month}
-          onChange={(e) => {
-            setMonth(e.target.value);
-            setOffset(0);
-          }}
-          className="border rounded px-3 py-1 text-sm"
-        />
-      </div>
-      
-      <div className="border rounded-lg divide-y bg-white">
-        {isFetching && (
-          <div className="p-3 text-right bg-gray-50">
-            <span className="text-[11px] text-gray-500">Loading...</span>
+    <div className="px-4 py-3 text-sm hover:bg-gray-50 transition-colors">
+      <div className="flex items-start gap-3">
+        {log.actor_avatar_file_id ? (
+          <img 
+            src={`/files/${log.actor_avatar_file_id}/thumbnail?w=64`} 
+            className="w-8 h-8 rounded-full flex-shrink-0"
+            alt=""
+          />
+        ) : (
+          <div className="w-8 h-8 rounded-full bg-gray-300 flex items-center justify-center flex-shrink-0">
+            <span className="text-xs font-medium text-gray-600">
+              {(log.actor_name || 'U')[0].toUpperCase()}
+            </span>
           </div>
         )}
-        <div className="divide-y">
-          {logs.length? logs.map((l:any)=> {
-            const ch = l.changes||{};
-            const before = ch.before||{}; const after = ch.after||{};
-            const bMin = typeof before.minutes==='number'? (before.minutes/60).toFixed(2): null;
-            const aMin = typeof after.minutes==='number'? (after.minutes/60).toFixed(2): null;
-            
-            // Extract attendance information
-            const attendanceType = ch.attendance_type;
-            const workerName = ch.worker_name;
-            const performedBy = ch.performed_by;
-            const timeSelected = ch.time_selected;
-            const timeEntered = ch.time_entered;
-            const reasonText = ch.reason_text;
-            const status = ch.status;
-            const insideGeofence = ch.inside_geofence;
-            const gpsAccuracy = ch.gps_accuracy_m;
-            
-            // Determine if this is an attendance log
-            const isAttendanceLog = !!attendanceType;
-            
-            return (
-              <div key={l.id} className="px-3 py-3 text-sm border-b">
-                <div className="flex items-start gap-2">
-                  {l.user_avatar_file_id? <img src={`/files/${l.user_avatar_file_id}/thumbnail?w=64`} className="w-6 h-6 rounded-full"/> : <span className="w-6 h-6 rounded-full bg-gray-200 inline-block"/>}
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <div className="text-[11px] text-gray-500">
-                        {new Date(l.timestamp).toLocaleString('en-US', { 
-                          month: 'short', 
-                          day: 'numeric', 
-                          year: 'numeric',
-                          hour: 'numeric',
-                          minute: '2-digit',
-                          hour12: true 
-                        })}
+        
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap mb-1">
+            <span className={`px-2 py-0.5 rounded text-xs font-medium ${getActionColor(log.action)}`}>
+              {log.action?.replace('_', ' ') || 'ACTION'}
+            </span>
+            <span className="text-xs text-gray-500">
+              {log.timestamp ? new Date(log.timestamp).toLocaleString('en-US', {
+                month: 'short',
+                day: 'numeric',
+                year: 'numeric',
+                hour: 'numeric',
+                minute: '2-digit',
+                hour12: true
+              }) : '-'}
+            </span>
+            {log.actor_name && (
+              <>
+                <span className="text-gray-300">•</span>
+                <span className="text-xs font-medium text-gray-700">{log.actor_name}</span>
+              </>
+            )}
+            {log.affected_user_name && (
+              <>
+                <span className="text-gray-300">•</span>
+                <span className="text-xs text-blue-600">for {log.affected_user_name}</span>
+              </>
+            )}
+          </div>
+          
+          {/* Summary line */}
+          <div className="text-sm text-gray-700 mb-1">
+            {changes.title && <span className="font-medium">{changes.title}</span>}
+            {changes.file_name && <span className="font-medium">{changes.file_name}</span>}
+            {changes.order_number && <span className="font-medium">Order #{changes.order_number}</span>}
+            {changes.message && <span>{changes.message}</span>}
+          </div>
+          
+          {/* Expandable details */}
+          {(Object.keys(before).length > 0 || Object.keys(after).length > 0 || Object.keys(changes).length > 0) && (
+            <button 
+              onClick={() => setExpanded(!expanded)}
+              className="text-xs text-blue-600 hover:text-blue-800 mt-1"
+            >
+              {expanded ? '▼ Hide details' : '▶ Show details'}
+            </button>
+          )}
+          
+          {expanded && (
+            <div className="mt-2 p-3 bg-gray-50 rounded border text-xs">
+              {Object.keys(before).length > 0 && Object.keys(after).length > 0 ? (
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <div className="font-medium text-gray-500 mb-2">Before</div>
+                    {Object.entries(before).map(([key, val]) => (
+                      <div key={key} className="flex justify-between py-0.5">
+                        <span className="text-gray-500">{key}:</span>
+                        <span className="text-gray-700">{formatValue(val)}</span>
                       </div>
-                      <span className="text-gray-400">·</span>
-                      <div className="text-[11px] text-gray-500 font-medium">{l.user_name||''}</div>
-                      {isAttendanceLog && workerName && workerName !== l.user_name && (
-                        <>
-                          <span className="text-gray-400">·</span>
-                          <div className="text-[11px] text-blue-600 font-medium">
-                            for {workerName}
-                          </div>
-                        </>
-                      )}
-                    </div>
-                    
-                    <div className="text-gray-800 font-medium capitalize mb-2">
-                      {isAttendanceLog ? `${attendanceType === 'clock-in' ? 'Clock-In' : 'Clock-Out'}` : l.action}
-                    </div>
-                    
-                    {/* Attendance-specific information */}
-                    {isAttendanceLog && (
-                      <div className="mt-2 space-y-2 bg-gray-50 p-3 rounded border">
-                        <div className="grid grid-cols-2 gap-3 text-[11px]">
-                          <div>
-                            <div className="text-gray-500 font-medium mb-0.5">Time Selected</div>
-                            <div className="text-gray-800">
-                              {timeSelected ? new Date(timeSelected).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }) : '-'}
-                            </div>
-                          </div>
-                          <div>
-                            <div className="text-gray-500 font-medium mb-0.5">Time Entered</div>
-                            <div className="text-gray-800">
-                              {timeEntered ? new Date(timeEntered).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }) : '-'}
-                            </div>
-                          </div>
-                          <div>
-                            <div className="text-gray-500 font-medium mb-0.5">Status</div>
-                            <div className="text-gray-800">
-                              <span className={`px-1.5 py-0.5 rounded text-xs ${
-                                status === 'approved' ? 'bg-green-100 text-green-800' :
-                                status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
-                                'bg-red-100 text-red-800'
-                              }`}>
-                                {status || '-'}
-                              </span>
-                            </div>
-                          </div>
-                          <div>
-                            <div className="text-gray-500 font-medium mb-0.5">Location</div>
-                            <div className="text-gray-800">
-                              {insideGeofence === true ? (
-                                <span className="text-green-600">✓ Inside geofence</span>
-                              ) : insideGeofence === false ? (
-                                <span className="text-red-600">✗ Outside geofence</span>
-                              ) : (
-                                <span className="text-gray-400">-</span>
-                              )}
-                              {gpsAccuracy && (
-                                <span className="text-gray-500 ml-1">({gpsAccuracy.toFixed(0)}m accuracy)</span>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                        
-                        {/* Hours worked */}
-                        {(before.minutes !== undefined || after.minutes !== undefined || ch.minutes !== undefined) && (
-                          <div className="mt-2 pt-2 border-t">
-                            <div className="text-gray-500 font-medium mb-0.5 text-[11px]">Hours Worked</div>
-                            <div className="text-gray-800 text-sm font-medium">
-                              {l.action === 'update' ? (
-                                <>{bMin ?? '-'} → {aMin ?? '-'}h</>
-                              ) : (
-                                <>{ch.minutes !== undefined ? (Number(ch.minutes)/60).toFixed(2) : '-'}h</>
-                              )}
-                            </div>
-                          </div>
-                        )}
-                        
-                        {/* Reason text */}
-                        {reasonText && (
-                          <div className="mt-2 pt-2 border-t">
-                            <div className="text-gray-500 font-medium mb-1 text-[11px]">Reason</div>
-                            <div className="text-gray-800 text-xs bg-white p-2 rounded border">
-                              {reasonText}
-                            </div>
-                          </div>
-                        )}
+                    ))}
+                  </div>
+                  <div>
+                    <div className="font-medium text-gray-500 mb-2">After</div>
+                    {Object.entries(after).map(([key, val]) => (
+                      <div key={key} className="flex justify-between py-0.5">
+                        <span className="text-gray-500">{key}:</span>
+                        <span className="text-gray-700">{formatValue(val)}</span>
                       </div>
-                    )}
-                    
-                    {/* Regular timesheet entry changes (non-attendance) */}
-                    {!isAttendanceLog && (
-                      <>
-                        {(l.action==='update' && (before||after)) && (
-                          <div className="mt-1 grid grid-cols-3 gap-2 text-[11px] text-gray-700">
-                            <div>
-                              <div className="text-gray-500">Date</div>
-                              <div>{(before.work_date||'') ? String(before.work_date).slice(0,10) : '-' } → {(after.work_date||'') ? String(after.work_date).slice(0,10) : '-'}</div>
-                            </div>
-                            <div>
-                              <div className="text-gray-500">Hours</div>
-                              <div>{bMin??'-'} → {aMin??'-'}</div>
-                            </div>
-                            <div className="col-span-3 md:col-span-1">
-                              <div className="text-gray-500">Notes</div>
-                              <div className="truncate" title={`${before.notes||''} → ${after.notes||''}`}>{(before.notes||'-') + ' → ' + (after.notes||'-')}</div>
-                            </div>
-                            {(before.start_time || after.start_time) && (
-                              <div>
-                                <div className="text-gray-500">Start Time</div>
-                                <div>{formatTime12h(before.start_time || null) || '-'} → {formatTime12h(after.start_time || null) || '-'}</div>
-                              </div>
-                            )}
-                            {(before.end_time || after.end_time) && (
-                              <div>
-                                <div className="text-gray-500">End Time</div>
-                                <div>{formatTime12h(before.end_time || null) || '-'} → {formatTime12h(after.end_time || null) || '-'}</div>
-                              </div>
-                            )}
-                          </div>
-                        )}
-                        {(l.action!=='update' && l.changes) && (
-                          <div className="mt-1 text-[11px] text-gray-700">
-                            {(() => {
-                              // Try to format the changes in a more readable way
-                              if (typeof l.changes === 'object' && l.changes !== null) {
-                                const formatted: string[] = [];
-                                // Show message if available (for deletion logs)
-                                if (l.changes.message) {
-                                  formatted.push(l.changes.message);
-                                }
-                                if (l.changes.work_date) formatted.push(`Date: ${String(l.changes.work_date).slice(0,10)}`);
-                                if (l.changes.minutes !== undefined) formatted.push(`Hours: ${(Number(l.changes.minutes)/60).toFixed(2)}h`);
-                                if (l.changes.hours_worked !== undefined) formatted.push(`Hours: ${Number(l.changes.hours_worked).toFixed(2)}h`);
-                                if (l.changes.break_minutes !== undefined && l.changes.break_minutes > 0) formatted.push(`Break: ${l.changes.break_minutes}m`);
-                                if (l.changes.start_time) formatted.push(`Start: ${formatTime12h(l.changes.start_time)}`);
-                                if (l.changes.end_time) formatted.push(`End: ${formatTime12h(l.changes.end_time)}`);
-                                if (l.changes.notes) formatted.push(`Notes: ${l.changes.notes}`);
-                                if (formatted.length > 0) {
-                                  return formatted.join(' • ');
-                                }
-                              }
-                              return JSON.stringify(l.changes);
-                            })()}
-                          </div>
-                        )}
-                      </>
-                    )}
+                    ))}
                   </div>
                 </div>
-              </div>
-            );
-          }) : <div className="p-3 text-sm text-gray-600">No changes yet</div>}
-        </div>
-        <div className="p-3 text-right bg-gray-50">
-          <button onClick={()=>{ setOffset(o=> Math.max(0, o - limit)); refetch(); }} disabled={offset<=0} className="px-2 py-1 rounded bg-gray-100 text-sm mr-2 disabled:opacity-50">Prev</button>
-          <button onClick={()=>{ setOffset(o=> o + limit); refetch(); }} className="px-2 py-1 rounded bg-gray-100 text-sm">Load more</button>
+              ) : (
+                <div>
+                  {Object.entries(changes).filter(([k]) => k !== 'before' && k !== 'after').map(([key, val]) => (
+                    <div key={key} className="flex justify-between py-0.5">
+                      <span className="text-gray-500">{key}:</span>
+                      <span className="text-gray-700">{formatValue(val)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {log.context && Object.keys(log.context).length > 0 && (
+                <div className="mt-2 pt-2 border-t">
+                  <div className="font-medium text-gray-500 mb-1">Context</div>
+                  {Object.entries(log.context).filter(([_, v]) => v != null).map(([key, val]) => (
+                    <div key={key} className="flex justify-between py-0.5">
+                      <span className="text-gray-500">{key}:</span>
+                      <span className="text-gray-700">{formatValue(val)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </div>
   );
+}
+
+// Reusable Audit Section component
+function GenericAuditSection({ projectId, section, title }: { projectId: string; section: string; title: string }) {
+  const [month, setMonth] = useState<string>(getCurrentMonthLocal());
+  const [offset, setOffset] = useState<number>(0);
+  const limit = 50;
+  
+  const qs = (() => {
+    const p = new URLSearchParams();
+    p.set('section', section);
+    if (month) p.set('month', month);
+    p.set('limit', String(limit));
+    p.set('offset', String(offset));
+    return '?' + p.toString();
+  })();
+  
+  const { data, refetch, isFetching } = useQuery({
+    queryKey: ['projectAuditLogs', projectId, section, month, offset],
+    queryFn: () => api<any[]>('GET', `/projects/${projectId}/audit-logs${qs}`)
+  });
+  
+  const logs = data || [];
+  
+  return (
+    <div>
+      <div className="mb-4 flex items-center justify-between">
+        <h3 className="text-lg font-semibold text-gray-900">{title}</h3>
+        <div className="flex items-center gap-2">
+          <label className="text-sm text-gray-600">Month:</label>
+          <input
+            type="month"
+            value={month}
+            onChange={(e) => {
+              setMonth(e.target.value);
+              setOffset(0);
+            }}
+            className="border rounded px-3 py-1.5 text-sm"
+          />
+        </div>
+      </div>
+      
+      <div className="border rounded-lg bg-white overflow-hidden">
+        {isFetching && (
+          <div className="p-3 bg-gray-50 border-b">
+            <span className="text-xs text-gray-500">Loading...</span>
+          </div>
+        )}
+        
+        <div className="divide-y">
+          {logs.length > 0 ? (
+            logs.map((log: any) => <AuditLogEntry key={log.id} log={log} />)
+          ) : (
+            <div className="p-6 text-center text-gray-500">
+              No activity logs found for this period
+            </div>
+          )}
+        </div>
+        
+        <div className="p-3 bg-gray-50 border-t flex justify-between items-center">
+          <span className="text-xs text-gray-500">
+            Showing {logs.length} entries
+          </span>
+          <div>
+            <button 
+              onClick={() => { setOffset(o => Math.max(0, o - limit)); refetch(); }} 
+              disabled={offset <= 0 || isFetching}
+              className="px-3 py-1 rounded bg-white border text-sm mr-2 disabled:opacity-50 hover:bg-gray-100"
+            >
+              Previous
+            </button>
+            <button 
+              onClick={() => { setOffset(o => o + limit); refetch(); }}
+              disabled={logs.length < limit || isFetching}
+              className="px-3 py-1 rounded bg-white border text-sm disabled:opacity-50 hover:bg-gray-100"
+            >
+              Next
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Individual section components
+function ReportsAuditSection({ projectId }: { projectId: string }) {
+  return <GenericAuditSection projectId={projectId} section="reports" title="Reports Activity Log" />;
+}
+
+function FilesAuditSection({ projectId }: { projectId: string }) {
+  return <GenericAuditSection projectId={projectId} section="files" title="Files Activity Log" />;
+}
+
+function ProposalAuditSection({ projectId }: { projectId: string }) {
+  return <GenericAuditSection projectId={projectId} section="proposal" title="Proposal Activity Log" />;
+}
+
+function EstimateAuditSection({ projectId }: { projectId: string }) {
+  return <GenericAuditSection projectId={projectId} section="estimate" title="Estimate Activity Log" />;
+}
+
+function OrdersAuditSection({ projectId }: { projectId: string }) {
+  return <GenericAuditSection projectId={projectId} section="orders" title="Orders Activity Log" />;
+}
+
+function WorkloadAuditSection({ projectId }: { projectId: string }) {
+  return <GenericAuditSection projectId={projectId} section="workload" title="Workload Activity Log" />;
+}
+
+function GeneralAuditSection({ projectId }: { projectId: string }) {
+  return <GenericAuditSection projectId={projectId} section="general" title="General Activity Log" />;
+}
+
+// ===============================================
+// END AUDIT LOG SECTIONS
+// ===============================================
+
+function TimesheetAuditSection({ projectId }: { projectId: string }) {
+  return <GenericAuditSection projectId={projectId} section="timesheet" title="Timesheet Activity Log" />;
 }
 
 function OnSiteLeadsModal({ projectId, originalDivisions, divisionLeads, settings, projectDivisions, employees, canEdit, onClose, onUpdate }: {

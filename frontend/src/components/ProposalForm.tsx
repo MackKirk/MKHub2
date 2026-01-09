@@ -147,7 +147,13 @@ This agreement shall be governed by the laws of the Province of British Columbia
 By signing the accompanying proposal, the Owner agrees to these Terms and Conditions in full. For questions or clarification, please contact your Mack Kirk project representative.`;
 
   const [terms, setTerms] = useState<string>(mode === 'new' ? defaultTermsText : '');
+  const [selectedTermsTemplateId, setSelectedTermsTemplateId] = useState<string>('');
   const [sections, setSections] = useState<any[]>([]);
+  
+  // Get terms templates from settings
+  const termsTemplates = useMemo(() => {
+    return (settings?.['terms-templates'] || []) as Array<{ id: string; label: string; meta?: { description?: string } }>;
+  }, [settings]);
   const [coverBlob, setCoverBlob] = useState<Blob|null>(null);
   const [coverFoId, setCoverFoId] = useState<string|undefined>(undefined);
   const [page2Blob, setPage2Blob] = useState<Blob|null>(null);
@@ -1586,16 +1592,47 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
           <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] p-3 text-white font-semibold">
             Terms
           </div>
-          <div className="p-4">
-            <textarea 
-              className={`w-full border rounded px-3 py-2 ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} 
-              value={terms} 
-              onChange={e=>setTerms(e.target.value)} 
-              disabled={disabled} 
-              readOnly={disabled}
-              rows={12}
-              style={{ minHeight: '250px' }}
-            />
+          <div className="p-4 space-y-3">
+            {!disabled && termsTemplates.length > 0 && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Select Terms Template (optional)</label>
+                <select
+                  className="w-full border rounded px-3 py-2 text-sm"
+                  value={selectedTermsTemplateId}
+                  onChange={(e) => {
+                    const templateId = e.target.value;
+                    setSelectedTermsTemplateId(templateId);
+                    if (templateId) {
+                      const template = termsTemplates.find(t => t.id === templateId);
+                      if (template?.meta?.description) {
+                        setTerms(template.meta.description);
+                      }
+                    }
+                  }}
+                >
+                  <option value="">Custom / No template</option>
+                  {termsTemplates.map((template) => (
+                    <option key={template.id} value={template.id}>
+                      {template.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+            <div>
+              {!disabled && termsTemplates.length > 0 && (
+                <label className="block text-sm font-medium text-gray-700 mb-1">Terms Text</label>
+              )}
+              <textarea 
+                className={`w-full border rounded px-3 py-2 ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} 
+                value={terms} 
+                onChange={e=>setTerms(e.target.value)} 
+                disabled={disabled} 
+                readOnly={disabled}
+                rows={12}
+                style={{ minHeight: '250px' }}
+              />
+            </div>
           </div>
         </div>
         

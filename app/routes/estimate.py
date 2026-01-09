@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session, defer
 from sqlalchemy.exc import ProgrammingError
 from sqlalchemy import func, or_
 
-from ..auth.security import require_permissions
+from ..auth.security import require_permissions, get_current_user
 from ..db import get_db
 from ..models.models import Material, RelatedProduct, Estimate, EstimateItem, Project, Client
 
@@ -659,13 +659,38 @@ def _update_estimate_internal(estimate_id: int, body: EstimateIn, db: Session):
 
 
 @router.post("/estimates")
-def create_estimate(body: EstimateIn, db: Session = Depends(get_db), _=Depends(require_permissions("business:projects:estimate:write", "inventory:write"))):
+def create_estimate(body: EstimateIn, db: Session = Depends(get_db), _=Depends(require_permissions("business:projects:estimate:write", "inventory:write")), user=Depends(get_current_user)):
     # Check if estimate already exists for this project
     existing_est = db.query(Estimate).filter(Estimate.project_id == body.project_id).first()
     
     if existing_est:
         # If estimate exists, update it instead of creating a new one
-        return _update_estimate_internal(existing_est.id, body, db)
+        est = _update_estimate_internal(existing_est.id, body, db)
+        
+        # Create audit log for estimate update
+        try:
+            from ..services.audit import create_audit_log
+            create_audit_log(
+                db=db,
+                entity_type="estimate",
+                entity_id=str(est.id),
+                action="UPDATE",
+                actor_id=str(user.id) if user else None,
+                actor_role="user",
+                source="api",
+                changes_json={
+                    "items_count": len(body.items),
+                    "total_cost": est.total_cost,
+                    "markup": est.markup,
+                },
+                context={
+                    "project_id": str(body.project_id),
+                }
+            )
+        except Exception:
+            pass
+        
+        return est
     
     # Store UI state in notes as JSON
     ui_state = {}
@@ -753,6 +778,30 @@ def create_estimate(body: EstimateIn, db: Session = Depends(get_db), _=Depends(r
     est.total_cost = total
     db.commit()
     db.refresh(est)
+    
+    # Create audit log for estimate creation
+    try:
+        from ..services.audit import create_audit_log
+        create_audit_log(
+            db=db,
+            entity_type="estimate",
+            entity_id=str(est.id),
+            action="CREATE",
+            actor_id=str(user.id) if user else None,
+            actor_role="user",
+            source="api",
+            changes_json={
+                "items_count": len(body.items),
+                "total_cost": total,
+                "markup": body.markup or 0.0,
+            },
+            context={
+                "project_id": str(body.project_id),
+            }
+        )
+    except Exception:
+        pass
+    
     return est
 
 
@@ -853,10 +902,18 @@ def update_estimate(estimate_id: int, body: EstimateIn, db: Session = Depends(ge
 
 
 @router.delete("/estimates/{estimate_id}")
-def delete_estimate(estimate_id: int, db: Session = Depends(get_db), _=Depends(require_permissions("business:projects:estimate:write", "inventory:write"))):
+def delete_estimate(estimate_id: int, db: Session = Depends(get_db), _=Depends(require_permissions("business:projects:estimate:write", "inventory:write")), user=Depends(get_current_user)):
     est = db.query(Estimate).filter(Estimate.id == estimate_id).first()
     if not est:
         raise HTTPException(status_code=404, detail="Estimate not found")
+    
+    # Capture estimate info before deletion for audit log
+    estimate_info = {
+        "project_id": str(est.project_id) if est.project_id else None,
+        "total_cost": est.total_cost,
+        "markup": est.markup,
+    }
+    items_count = db.query(EstimateItem).filter(EstimateItem.estimate_id == estimate_id).count()
     
     # Delete estimate items first (due to foreign key constraint)
     db.query(EstimateItem).filter(EstimateItem.estimate_id == estimate_id).delete()
@@ -864,6 +921,29 @@ def delete_estimate(estimate_id: int, db: Session = Depends(get_db), _=Depends(r
     # Delete estimate
     db.delete(est)
     db.commit()
+    
+    # Create audit log for estimate deletion
+    try:
+        from ..services.audit import create_audit_log
+        create_audit_log(
+            db=db,
+            entity_type="estimate",
+            entity_id=str(estimate_id),
+            action="DELETE",
+            actor_id=str(user.id) if user else None,
+            actor_role="user",
+            source="api",
+            changes_json={
+                "deleted_estimate": estimate_info,
+                "items_deleted": items_count,
+            },
+            context={
+                "project_id": estimate_info.get("project_id"),
+            }
+        )
+    except Exception:
+        pass
+    
     return {"status": "ok"}
 
 

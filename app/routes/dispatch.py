@@ -201,7 +201,15 @@ def create_shift(
     db.commit()
     db.refresh(shift)
     
-    # Create audit log
+    # Get worker name for audit log
+    worker_profile = db.query(EmployeeProfile).filter(EmployeeProfile.user_id == worker_id).first()
+    worker_name = None
+    if worker_profile:
+        worker_name = f"{worker_profile.first_name or ''} {worker_profile.last_name or ''}".strip()
+    if not worker_name:
+        worker_name = worker.username if worker else None
+    
+    # Create audit log with names
     create_audit_log(
         db=db,
         entity_type="shift",
@@ -219,7 +227,10 @@ def create_shift(
         }},
         context={
             "project_id": project_id,
+            "project_name": project.name,
             "worker_id": worker_id,
+            "affected_user_id": worker_id,
+            "affected_user_name": worker_name,
         }
     )
     
@@ -355,7 +366,16 @@ def create_shift_without_project(
     db.commit()
     db.refresh(shift)
     
-    # Create audit log
+    # Get worker name for audit log
+    worker_profile = db.query(EmployeeProfile).filter(EmployeeProfile.user_id == worker_id).first()
+    worker_name = None
+    if worker_profile:
+        worker_name = f"{worker_profile.first_name or ''} {worker_profile.last_name or ''}".strip()
+    if not worker_name:
+        worker_user = db.query(User).filter(User.id == worker_id).first()
+        worker_name = worker_user.username if worker_user else None
+    
+    # Create audit log with names
     create_audit_log(
         db=db,
         entity_type="shift",
@@ -373,6 +393,8 @@ def create_shift_without_project(
         }},
         context={
             "worker_id": worker_id,
+            "affected_user_id": worker_id,
+            "affected_user_name": worker_name,
             "job_type": job_type,
         }
     )
@@ -708,7 +730,16 @@ def update_shift(
     # Get project for geofences and timezone
     project = db.query(Project).filter(Project.id == shift.project_id).first()
     
-    # Create audit log
+    # Get worker name for audit log
+    worker_profile = db.query(EmployeeProfile).filter(EmployeeProfile.user_id == shift.worker_id).first()
+    worker_name = None
+    if worker_profile:
+        worker_name = f"{worker_profile.first_name or ''} {worker_profile.last_name or ''}".strip()
+    if not worker_name:
+        worker_user = db.query(User).filter(User.id == shift.worker_id).first()
+        worker_name = worker_user.username if worker_user else None
+    
+    # Create audit log with names
     after_state = {
         "date": shift.date.isoformat(),
         "start_time": shift.start_time.isoformat(),
@@ -729,7 +760,10 @@ def update_shift(
         changes_json=changes,
         context={
             "project_id": str(shift.project_id),
+            "project_name": project.name if project else None,
             "worker_id": str(shift.worker_id),
+            "affected_user_id": str(shift.worker_id),
+            "affected_user_name": worker_name,
         }
     )
     
@@ -819,7 +853,17 @@ def delete_shift(
     shift.updated_at = datetime.now(timezone.utc)
     db.commit()
     
-    # Create audit log
+    # Get project and worker names for audit log
+    project = db.query(Project).filter(Project.id == project_id).first()
+    worker_profile = db.query(EmployeeProfile).filter(EmployeeProfile.user_id == worker_id).first()
+    worker_name = None
+    if worker_profile:
+        worker_name = f"{worker_profile.first_name or ''} {worker_profile.last_name or ''}".strip()
+    if not worker_name:
+        worker_user = db.query(User).filter(User.id == worker_id).first()
+        worker_name = worker_user.username if worker_user else None
+    
+    # Create audit log with names
     create_audit_log(
         db=db,
         entity_type="shift",
@@ -831,12 +875,12 @@ def delete_shift(
         changes_json={"before": shift_data},
         context={
             "project_id": project_id,
+            "project_name": project.name if project else None,
             "worker_id": worker_id,
+            "affected_user_id": worker_id,
+            "affected_user_name": worker_name,
         }
     )
-    
-    # Send notification
-    project = db.query(Project).filter(Project.id == project_id).first()
     if project:
         project_timezone = project.timezone if project else settings.tz_default
         send_shift_notification(
@@ -1416,13 +1460,28 @@ def create_attendance(
                     logger.error(f"Failed to create attendance task for supervisor {supervisor_id}: {exc}")
                     db.rollback()
         
-        # Create audit log
+        # Create audit log with names
         # Determine actor role (we already have is_authorized_supervisor, but need to check admin vs supervisor)
         actor_role = "worker"
         if is_admin(user, db):
             actor_role = "admin"
         elif is_supervisor(user, db):
             actor_role = "supervisor"
+        
+        # Get worker name for audit log (reuse worker_name if already resolved above, otherwise resolve)
+        attendance_worker_name = None
+        try:
+            w_profile = db.query(EmployeeProfile).filter(EmployeeProfile.user_id == worker_id).first()
+            if w_profile:
+                attendance_worker_name = f"{w_profile.first_name or ''} {w_profile.last_name or ''}".strip()
+            if not attendance_worker_name:
+                w_user = db.query(User).filter(User.id == worker_id).first()
+                attendance_worker_name = w_user.username if w_user else None
+        except Exception:
+            pass
+        
+        # Get project name
+        attendance_project_name = project.name if project else None
         
         create_audit_log(
             db=db,
@@ -1434,7 +1493,10 @@ def create_attendance(
             source=source,
             context={
                 "project_id": str(shift.project_id),
+                "project_name": attendance_project_name,
                 "worker_id": worker_id,
+                "affected_user_id": worker_id,
+                "affected_user_name": attendance_worker_name,
                 "shift_id": shift_id,
                 "gps_lat": gps_lat,
                 "gps_lng": gps_lng,
@@ -1705,7 +1767,19 @@ def create_attendance_supervisor(
     db.commit()
     db.refresh(attendance)
     
-    # Create audit log
+    # Get worker name for audit log
+    attendance_worker_name = None
+    try:
+        w_profile = db.query(EmployeeProfile).filter(EmployeeProfile.user_id == worker_id).first()
+        if w_profile:
+            attendance_worker_name = f"{w_profile.first_name or ''} {w_profile.last_name or ''}".strip()
+        if not attendance_worker_name:
+            w_user = db.query(User).filter(User.id == worker_id).first()
+            attendance_worker_name = w_user.username if w_user else None
+    except Exception:
+        pass
+    
+    # Create audit log with names
     create_audit_log(
         db=db,
         entity_type="attendance",
@@ -1716,7 +1790,10 @@ def create_attendance_supervisor(
         source="supervisor",
         context={
             "project_id": str(shift.project_id),
+            "project_name": project.name if project else None,
             "worker_id": worker_id,
+            "affected_user_id": worker_id,
+            "affected_user_name": attendance_worker_name,
             "shift_id": shift_id,
             "gps_lat": gps_lat,
             "gps_lng": gps_lng,
@@ -2060,7 +2137,19 @@ def create_direct_attendance(
                 except Exception as exc:
                     logger.error(f"Failed to create task for supervisor: {exc}")
         
-        # Create audit log
+        # Get worker name for audit log
+        direct_worker_name = None
+        try:
+            w_profile = db.query(EmployeeProfile).filter(EmployeeProfile.user_id == worker_id).first()
+            if w_profile:
+                direct_worker_name = f"{w_profile.first_name or ''} {w_profile.last_name or ''}".strip()
+            if not direct_worker_name:
+                w_user = db.query(User).filter(User.id == worker_id).first()
+                direct_worker_name = w_user.username if w_user else None
+        except Exception:
+            pass
+        
+        # Create audit log with names
         create_audit_log(
             db=db,
             entity_type="attendance",
@@ -2079,6 +2168,8 @@ def create_direct_attendance(
             }},
             context={
                 "worker_id": str(worker_id),
+                "affected_user_id": str(worker_id),
+                "affected_user_name": direct_worker_name,
                 "shift_id": None,
                 "job_type": job_type,
                 "direct_attendance": True,
@@ -2652,7 +2743,24 @@ def approve_attendance(
     db.commit()
     db.refresh(attendance)
     
-    # Create audit log
+    # Get shift and project for audit log and notification
+    shift = db.query(Shift).filter(Shift.id == attendance.shift_id).first()
+    project = db.query(Project).filter(Project.id == shift.project_id).first() if shift else None
+    project_timezone = project.timezone if project else settings.tz_default
+    
+    # Get worker name for audit log
+    approve_worker_name = None
+    try:
+        w_profile = db.query(EmployeeProfile).filter(EmployeeProfile.user_id == attendance.worker_id).first()
+        if w_profile:
+            approve_worker_name = f"{w_profile.first_name or ''} {w_profile.last_name or ''}".strip()
+        if not approve_worker_name:
+            w_user = db.query(User).filter(User.id == attendance.worker_id).first()
+            approve_worker_name = w_user.username if w_user else None
+    except Exception:
+        pass
+    
+    # Create audit log with names
     create_audit_log(
         db=db,
         entity_type="attendance",
@@ -2664,14 +2772,13 @@ def approve_attendance(
         changes_json={"before": {"status": "pending"}, "after": {"status": "approved"}},
         context={
             "note": note,
+            "project_id": str(shift.project_id) if shift else None,
+            "project_name": project.name if project else None,
             "worker_id": str(attendance.worker_id),
+            "affected_user_id": str(attendance.worker_id),
+            "affected_user_name": approve_worker_name,
         }
     )
-    
-    # Send notification
-    shift = db.query(Shift).filter(Shift.id == attendance.shift_id).first()
-    project = db.query(Project).filter(Project.id == shift.project_id).first() if shift else None
-    project_timezone = project.timezone if project else settings.tz_default
     
     send_attendance_notification(
         db=db,
@@ -2839,7 +2946,22 @@ def update_attendance(
     db.commit()
     db.refresh(attendance)
     
-    # Create audit log
+    # Get project for audit log
+    project = db.query(Project).filter(Project.id == shift.project_id).first() if shift else None
+    
+    # Get worker name for audit log
+    update_worker_name = None
+    try:
+        w_profile = db.query(EmployeeProfile).filter(EmployeeProfile.user_id == attendance.worker_id).first()
+        if w_profile:
+            update_worker_name = f"{w_profile.first_name or ''} {w_profile.last_name or ''}".strip()
+        if not update_worker_name:
+            w_user = db.query(User).filter(User.id == attendance.worker_id).first()
+            update_worker_name = w_user.username if w_user else None
+    except Exception:
+        pass
+    
+    # Create audit log with names
     after_state = {
         "time_selected_utc": attendance.time_selected_utc.isoformat(),
         "reason_text": attendance.reason_text,
@@ -2860,7 +2982,10 @@ def update_attendance(
         changes_json=changes,
         context={
             "project_id": str(shift.project_id),
+            "project_name": project.name if project else None,
             "worker_id": str(attendance.worker_id),
+            "affected_user_id": str(attendance.worker_id),
+            "affected_user_name": update_worker_name,
             "shift_id": str(attendance.shift_id),
         }
     )
@@ -2919,7 +3044,24 @@ def reject_attendance(
     db.commit()
     db.refresh(attendance)
     
-    # Create audit log
+    # Get shift and project for audit log and notification
+    shift = db.query(Shift).filter(Shift.id == attendance.shift_id).first()
+    project = db.query(Project).filter(Project.id == shift.project_id).first() if shift else None
+    project_timezone = project.timezone if project else settings.tz_default
+    
+    # Get worker name for audit log
+    reject_worker_name = None
+    try:
+        w_profile = db.query(EmployeeProfile).filter(EmployeeProfile.user_id == attendance.worker_id).first()
+        if w_profile:
+            reject_worker_name = f"{w_profile.first_name or ''} {w_profile.last_name or ''}".strip()
+        if not reject_worker_name:
+            w_user = db.query(User).filter(User.id == attendance.worker_id).first()
+            reject_worker_name = w_user.username if w_user else None
+    except Exception:
+        pass
+    
+    # Create audit log with names
     create_audit_log(
         db=db,
         entity_type="attendance",
@@ -2931,15 +3073,15 @@ def reject_attendance(
         changes_json={"before": {"status": "pending"}, "after": {"status": "rejected"}},
         context={
             "rejection_reason": rejection_reason,
+            "project_id": str(shift.project_id) if shift else None,
+            "project_name": project.name if project else None,
             "worker_id": str(attendance.worker_id),
+            "affected_user_id": str(attendance.worker_id),
+            "affected_user_name": reject_worker_name,
         }
     )
     
     # Send notification
-    shift = db.query(Shift).filter(Shift.id == attendance.shift_id).first()
-    project = db.query(Project).filter(Project.id == shift.project_id).first() if shift else None
-    project_timezone = project.timezone if project else settings.tz_default
-    
     send_attendance_notification(
         db=db,
         user_id=str(attendance.worker_id),

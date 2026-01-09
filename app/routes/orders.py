@@ -469,6 +469,30 @@ def generate_orders_from_estimate(
     
     db.commit()
     
+    # Create audit log for orders generation
+    try:
+        from ..services.audit import create_audit_log
+        create_audit_log(
+            db=db,
+            entity_type="order",
+            entity_id=orders_created[0] if orders_created else str(uuid.uuid4()),
+            action="CREATE",
+            actor_id=str(user.id) if user else None,
+            actor_role="user",
+            source="api",
+            changes_json={
+                "orders_created": len(orders_created),
+                "order_ids": orders_created,
+                "from_estimate": body.estimate_id,
+            },
+            context={
+                "project_id": str(project_id),
+                "action_type": "generate_from_estimate",
+            }
+        )
+    except Exception:
+        pass
+    
     return {
         "status": "ok",
         "orders_created": len(orders_created),
@@ -541,6 +565,35 @@ def update_order(
     order.updated_at = datetime.utcnow()
     db.commit()
     db.refresh(order)
+    
+    # Create audit log for order update
+    try:
+        from ..services.audit import create_audit_log
+        changes = {}
+        if body.status is not None:
+            changes["status"] = body.status
+        if body.recipient_email is not None:
+            changes["recipient_email"] = body.recipient_email
+        if body.notes is not None:
+            changes["notes"] = body.notes
+        
+        create_audit_log(
+            db=db,
+            entity_type="order",
+            entity_id=str(order_id),
+            action="UPDATE",
+            actor_id=str(user.id) if user else None,
+            actor_role="user",
+            source="api",
+            changes_json=changes,
+            context={
+                "project_id": str(order.project_id),
+                "order_code": order.order_code,
+                "order_type": order.order_type,
+            }
+        )
+    except Exception:
+        pass
     
     return get_order(order_id, db)
 
@@ -688,6 +741,7 @@ def delete_all_project_orders(
 def delete_order(
     order_id: uuid.UUID,
     db: Session = Depends(get_db),
+    user=Depends(get_current_user),
     _=Depends(require_permissions("business:projects:orders:write", "inventory:write"))
 ):
     """Delete an order"""
@@ -695,10 +749,42 @@ def delete_order(
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
     
+    # Capture order info before deletion for audit log
+    order_info = {
+        "order_code": order.order_code,
+        "order_type": order.order_type,
+        "status": order.status,
+        "project_id": str(order.project_id) if order.project_id else None,
+    }
+    items_count = db.query(ProjectOrderItem).filter(ProjectOrderItem.order_id == order_id).count()
+    
     # Delete items first (cascade should handle this, but being explicit)
     db.query(ProjectOrderItem).filter(ProjectOrderItem.order_id == order_id).delete()
     db.delete(order)
     db.commit()
+    
+    # Create audit log for order deletion
+    try:
+        from ..services.audit import create_audit_log
+        create_audit_log(
+            db=db,
+            entity_type="order",
+            entity_id=str(order_id),
+            action="DELETE",
+            actor_id=str(user.id) if user else None,
+            actor_role="user",
+            source="api",
+            changes_json={
+                "deleted_order": order_info,
+                "items_deleted": items_count,
+            },
+            context={
+                "project_id": order_info.get("project_id"),
+                "order_code": order_info.get("order_code"),
+            }
+        )
+    except Exception:
+        pass
     
     return {"status": "ok"}
 

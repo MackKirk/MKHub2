@@ -10,15 +10,28 @@ export default function SystemSettings(){
   const confirm = useConfirm();
   const queryClient = useQueryClient();
   const { data, refetch, isLoading } = useQuery({ queryKey:['settings-bundle'], queryFn: ()=>api<Record<string, Item[]>>('GET','/settings') });
-  const lists = Object.entries(data||{}).sort(([a],[b])=> a.localeCompare(b));
+  // Filter out non-list settings (like google_places_api_key) and lists with dedicated sections (like terms-templates)
+  const lists = Object.entries(data||{})
+    .filter(([name]) => !['google_places_api_key', 'terms-templates'].includes(name))
+    .sort(([a],[b])=> a.localeCompare(b));
   const [sel, setSel] = useState<string>('client_statuses');
   const items = (data||{})[sel]||[];
   const [label, setLabel] = useState('');
   const [value, setValue] = useState('');
+  const [description, setDescription] = useState('');
+  
+  // Reset form fields when selection changes
+  useEffect(() => {
+    setLabel('');
+    setValue('');
+    setDescription('');
+    setEdits({});
+  }, [sel]);
   const [edits, setEdits] = useState<Record<string, Item>>({});
   const isColorList = useMemo(()=> sel.toLowerCase().includes('status'), [sel]);
   const isDivisionList = useMemo(()=> sel.toLowerCase().includes('division'), [sel]);
   const isTimesheetConfig = useMemo(()=> sel === 'timesheet', [sel]);
+  const isTermsTemplates = useMemo(()=> sel === 'terms-templates', [sel]);
   const getEdit = (it: Item): Item => edits[it.id] || it;
   
   // Timesheet configuration values
@@ -302,13 +315,26 @@ export default function SystemSettings(){
         </div>
       </div>
 
+      {/* Terms Templates Section */}
+      <div className="rounded-xl border bg-white p-4">
+        <h3 className="font-semibold mb-3">Terms Templates</h3>
+        <p className="text-sm text-gray-600 mb-4">
+          Create and manage Terms templates for use in Proposals and Quotes. Select a template from the dropdown in proposal/quote forms to automatically populate the Terms section.
+        </p>
+        <TermsTemplatesSection />
+      </div>
+
       <div className="grid md:grid-cols-3 gap-4">
         <div className="rounded-xl border bg-white p-3">
           <h4 className="font-semibold mb-2">Lists</h4>
           <div className="space-y-1">
-            {lists.map(([name])=> (
-              <button key={name} onClick={()=>setSel(name)} className={`w-full text-left px-3 py-2 rounded ${sel===name? 'bg-black text-white':'hover:bg-gray-50'}`}>{name}</button>
-            ))}
+            {lists.map(([name])=> {
+              // Format display name for better readability
+              const displayName = name === 'terms-templates' ? 'Terms Templates' : name;
+              return (
+                <button key={name} onClick={()=>setSel(name)} className={`w-full text-left px-3 py-2 rounded ${sel===name? 'bg-black text-white':'hover:bg-gray-50'}`}>{displayName}</button>
+              );
+            })}
           </div>
         </div>
         <div className="md:col-span-2 rounded-xl border bg-white p-3">
@@ -503,31 +529,56 @@ export default function SystemSettings(){
             </div>
           ) : (
             <>
-              <div className="flex items-center justify-between mb-2">
-                <h4 className="font-semibold">{sel}</h4>
-                <div className="flex items-center gap-2">
-                  <input className="border rounded px-2 py-1 text-sm" placeholder="Label" value={label} onChange={e=>setLabel(e.target.value)} />
-                  {isDivisionList ? (
-                    <>
-                      <input className="border rounded px-2 py-1 text-sm w-28" placeholder="Abbr" value={(value||'').split('|')[0]||''} onChange={e=>{ const parts = (value||'').split('|'); parts[0] = e.target.value; setValue(parts.join('|')); }} />
-                      <input type="color" title="Color" className="border rounded w-10 h-8 p-0" value={((value||'').split('|')[1]||'#cccccc')} onChange={e=>{ const parts = (value||'').split('|'); parts[1] = e.target.value; setValue(parts.join('|')); }} />
-                    </>
-                  ) : isColorList ? (
-                    <input type="color" title="Color" className="border rounded w-10 h-8 p-0" value={value||'#cccccc'} onChange={e=>setValue(e.target.value)} />
-                  ) : (
-                    <input className="border rounded px-2 py-1 text-sm" placeholder="Value" value={value} onChange={e=>setValue(e.target.value)} />
-                  )}
-                  <button onClick={async()=>{ if(!label){ toast.error('Label required'); return; } try{ await api('POST', `/settings/${encodeURIComponent(sel)}`, undefined, { 'Content-Type':'application/x-www-form-urlencoded' }); }catch{} try{ let url = `/settings/${encodeURIComponent(sel)}?label=${encodeURIComponent(label)}`; if(isDivisionList){ const [abbr, color] = (value||'').split('|'); url += `&abbr=${encodeURIComponent(abbr||'')}&color=${encodeURIComponent(color||'#cccccc')}`; } else if (isColorList){ url += `&value=${encodeURIComponent(value||'#cccccc')}`; } else { url += `&value=${encodeURIComponent(value||'')}`; } await api('POST', url); setLabel(''); setValue(''); await refetch(); toast.success('Added'); }catch(_e){ toast.error('Failed'); } }} className="px-3 py-1.5 rounded bg-brand-red text-white">Add</button>
+              {isTermsTemplates ? (
+                <div className="space-y-3 mb-4">
+                  <h4 className="font-semibold">Terms Templates</h4>
+                  <div className="space-y-2">
+                    <input className="border rounded px-2 py-1 text-sm w-full" placeholder="Template Name" value={label} onChange={e=>setLabel(e.target.value)} />
+                    <textarea 
+                      className="border rounded px-2 py-1 text-sm w-full" 
+                      placeholder="Terms Description (full text)"
+                      value={description} 
+                      onChange={e=>setDescription(e.target.value)}
+                      rows={8}
+                    />
+                    <button onClick={async()=>{ if(!label){ toast.error('Template name required'); return; } try{ const url = `/settings/${encodeURIComponent(sel)}?label=${encodeURIComponent(label)}&description=${encodeURIComponent(description||'')}`; await api('POST', url); setLabel(''); setDescription(''); await refetch(); toast.success('Added'); }catch(_e){ toast.error('Failed'); } }} className="px-3 py-1.5 rounded bg-brand-red text-white">Add</button>
+                  </div>
                 </div>
-              </div>
+              ) : (
+                <div className="flex items-center justify-between mb-2">
+                  <h4 className="font-semibold">{sel}</h4>
+                  <div className="flex items-center gap-2">
+                    <input className="border rounded px-2 py-1 text-sm" placeholder="Label" value={label} onChange={e=>setLabel(e.target.value)} />
+                    {isDivisionList ? (
+                      <>
+                        <input className="border rounded px-2 py-1 text-sm w-28" placeholder="Abbr" value={(value||'').split('|')[0]||''} onChange={e=>{ const parts = (value||'').split('|'); parts[0] = e.target.value; setValue(parts.join('|')); }} />
+                        <input type="color" title="Color" className="border rounded w-10 h-8 p-0" value={((value||'').split('|')[1]||'#cccccc')} onChange={e=>{ const parts = (value||'').split('|'); parts[1] = e.target.value; setValue(parts.join('|')); }} />
+                      </>
+                    ) : isColorList ? (
+                      <input type="color" title="Color" className="border rounded w-10 h-8 p-0" value={value||'#cccccc'} onChange={e=>setValue(e.target.value)} />
+                    ) : (
+                      <input className="border rounded px-2 py-1 text-sm" placeholder="Value" value={value} onChange={e=>setValue(e.target.value)} />
+                    )}
+                    <button onClick={async()=>{ if(!label){ toast.error('Label required'); return; } try{ await api('POST', `/settings/${encodeURIComponent(sel)}`, undefined, { 'Content-Type':'application/x-www-form-urlencoded' }); }catch{} try{ let url = `/settings/${encodeURIComponent(sel)}?label=${encodeURIComponent(label)}`; if(isDivisionList){ const [abbr, color] = (value||'').split('|'); url += `&abbr=${encodeURIComponent(abbr||'')}&color=${encodeURIComponent(color||'#cccccc')}`; } else if (isColorList){ url += `&value=${encodeURIComponent(value||'#cccccc')}`; } else { url += `&value=${encodeURIComponent(value||'')}`; } await api('POST', url); setLabel(''); setValue(''); await refetch(); toast.success('Added'); }catch(_e){ toast.error('Failed'); } }} className="px-3 py-1.5 rounded bg-brand-red text-white">Add</button>
+                  </div>
+                </div>
+              )}
               <div className="rounded border overflow-hidden divide-y">
                 {isLoading? <div className="p-3"><div className="h-6 bg-gray-100 animate-pulse rounded"/></div> : items.length? items.map(it=> {
                   const e = getEdit(it);
                   return (
-                    <div key={it.id} className="px-3 py-2 text-sm flex items-center justify-between gap-3">
-                      <div className="flex items-center gap-2 flex-1 min-w-0">
+                    <div key={it.id} className={`px-3 py-2 text-sm ${isTermsTemplates ? 'flex flex-col gap-2' : 'flex items-center justify-between gap-3'}`}>
+                      <div className={`${isTermsTemplates ? 'space-y-2' : 'flex items-center gap-2 flex-1 min-w-0'}`}>
                         <input className="border rounded px-2 py-1 text-sm w-48" value={e.label} onChange={ev=> setEdits(s=>({ ...s, [it.id]: { ...(s[it.id]||it), label: ev.target.value } }))} />
-                        {isDivisionList ? (
+                        {isTermsTemplates ? (
+                          <textarea 
+                            className="border rounded px-2 py-1 text-sm w-full" 
+                            placeholder="Terms Description"
+                            value={e.meta?.description||''} 
+                            onChange={ev=> setEdits(s=>({ ...s, [it.id]: { ...(s[it.id]||it), meta: { ...(s[it.id]?.meta||it.meta||{}), description: ev.target.value } } }))}
+                            rows={8}
+                          />
+                        ) : isDivisionList ? (
                           <>
                             <input className="border rounded px-2 py-1 text-sm w-24" placeholder="Abbr" value={e.meta?.abbr||''} onChange={ev=> setEdits(s=>({ ...s, [it.id]: { ...(s[it.id]||it), meta: { ...(s[it.id]?.meta||it.meta||{}), abbr: ev.target.value } } }))} />
                             <input type="color" title="Color" className="border rounded w-10 h-8 p-0" value={e.meta?.color||'#cccccc'} onChange={ev=> setEdits(s=>({ ...s, [it.id]: { ...(s[it.id]||it), meta: { ...(s[it.id]?.meta||it.meta||{}), color: ev.target.value } } }))} />
@@ -559,7 +610,7 @@ export default function SystemSettings(){
                         {/* sort index is now auto-assigned and not user-editable */}
                       </div>
                       <div className="flex items-center gap-2">
-                        <button onClick={async()=>{ try{ let url = `/settings/${encodeURIComponent(sel)}/${encodeURIComponent(it.id)}?label=${encodeURIComponent(e.label||'')}`; if (isDivisionList){ url += `&abbr=${encodeURIComponent(e.meta?.abbr||'')}&color=${encodeURIComponent(e.meta?.color||'')}`; } else if (isColorList){ url += `&value=${encodeURIComponent(e.value||'')}`; if (sel === 'project_statuses'){ const allowEdit = e.meta?.allow_edit_proposal; const setsStart = e.meta?.sets_start_date; const setsEnd = e.meta?.sets_end_date; url += `&allow_edit_proposal=${(allowEdit === true || allowEdit === 'true' || allowEdit === 1) ? 'true' : 'false'}`; url += `&sets_start_date=${(setsStart === true || setsStart === 'true' || setsStart === 1) ? 'true' : 'false'}`; url += `&sets_end_date=${(setsEnd === true || setsEnd === 'true' || setsEnd === 1) ? 'true' : 'false'}`; } } else { url += `&value=${encodeURIComponent(e.value||'')}`; } await api('PUT', url); await refetch(); toast.success('Saved'); }catch(_e){ toast.error('Failed'); } }} className="px-2 py-1 rounded bg-black text-white">Save</button>
+                        <button onClick={async()=>{ try{ let url = `/settings/${encodeURIComponent(sel)}/${encodeURIComponent(it.id)}?label=${encodeURIComponent(e.label||'')}`; if (isTermsTemplates){ url += `&description=${encodeURIComponent(e.meta?.description||'')}`; } else if (isDivisionList){ url += `&abbr=${encodeURIComponent(e.meta?.abbr||'')}&color=${encodeURIComponent(e.meta?.color||'')}`; } else if (isColorList){ url += `&value=${encodeURIComponent(e.value||'')}`; if (sel === 'project_statuses'){ const allowEdit = e.meta?.allow_edit_proposal; const setsStart = e.meta?.sets_start_date; const setsEnd = e.meta?.sets_end_date; url += `&allow_edit_proposal=${(allowEdit === true || allowEdit === 'true' || allowEdit === 1) ? 'true' : 'false'}`; url += `&sets_start_date=${(setsStart === true || setsStart === 'true' || setsStart === 1) ? 'true' : 'false'}`; url += `&sets_end_date=${(setsEnd === true || setsEnd === 'true' || setsEnd === 1) ? 'true' : 'false'}`; } } else { url += `&value=${encodeURIComponent(e.value||'')}`; } await api('PUT', url); await refetch(); toast.success('Saved'); }catch(_e){ toast.error('Failed'); } }} className="px-2 py-1 rounded bg-black text-white">Save</button>
                         <button onClick={async()=>{ if(!(await confirm({ title: 'Delete item?', description: 'This action cannot be undone.' }))) return; try{ await api('DELETE', `/settings/${encodeURIComponent(sel)}/${encodeURIComponent(it.id)}`); await refetch(); toast.success('Deleted'); }catch(_e){ toast.error('Failed'); } }} className="px-2 py-1 rounded bg-gray-100">Delete</button>
                       </div>
                     </div>
@@ -569,6 +620,205 @@ export default function SystemSettings(){
             </>
           )}
         </div>
+      </div>
+    </div>
+  );
+}
+
+// Terms Templates Section Component
+function TermsTemplatesSection(){
+  const qc = useQueryClient();
+  const confirm = useConfirm();
+  const { data: settings, isLoading, refetch } = useQuery({ 
+    queryKey:['settings-bundle'], 
+    queryFn: ()=>api<Record<string, Item[]>>('GET','/settings') 
+  });
+  const templates = (settings?.['terms-templates'] || []) as Item[];
+  const [newTemplateName, setNewTemplateName] = useState('');
+  const [newTemplateDescription, setNewTemplateDescription] = useState('');
+  const [edits, setEdits] = useState<Record<string, Item>>({});
+  const [expandedTemplates, setExpandedTemplates] = useState<Set<string>>(new Set());
+  
+  const toggleTemplate = (templateId: string) => {
+    setExpandedTemplates(prev => {
+      const next = new Set(prev);
+      if (next.has(templateId)) {
+        next.delete(templateId);
+      } else {
+        next.add(templateId);
+      }
+      return next;
+    });
+  };
+
+  const createMutation = useMutation({
+    mutationFn: (payload: { name: string; description: string })=>{
+      return api('POST', `/settings/terms-templates?label=${encodeURIComponent(payload.name)}&description=${encodeURIComponent(payload.description)}`);
+    },
+    onSuccess: ()=>{
+      qc.invalidateQueries({ queryKey: ['settings-bundle'] });
+      setNewTemplateName('');
+      setNewTemplateDescription('');
+      toast.success('Terms template created');
+    },
+    onError: (e: any)=>toast.error(e?.message || 'Failed to create')
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string)=>api('DELETE', `/settings/terms-templates/${encodeURIComponent(id)}`),
+    onSuccess: ()=>{
+      qc.invalidateQueries({ queryKey: ['settings-bundle'] });
+      toast.success('Deleted');
+    },
+    onError: (e: any)=>toast.error(e?.message || 'Failed to delete')
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: (payload: { id:string; label?:string; description?:string })=>{
+      const params = new URLSearchParams();
+      if (payload.label !== undefined) params.set('label', payload.label);
+      if (payload.description !== undefined) params.set('description', payload.description);
+      return api('PUT', `/settings/terms-templates/${encodeURIComponent(payload.id)}?${params.toString()}`);
+    },
+    onSuccess: ()=>{
+      qc.invalidateQueries({ queryKey: ['settings-bundle'] });
+      toast.success('Updated');
+    },
+    onError: (e: any)=>toast.error(e?.message || 'Failed to update')
+  });
+
+  const getEdit = (it: Item): Item => edits[it.id] || it;
+
+  return (
+    <div className="space-y-4">
+      {/* Add New Template */}
+      <div className="border rounded-lg p-4 bg-gray-50">
+        <h4 className="font-semibold mb-3 text-sm">Create New Template</h4>
+        <div className="space-y-3">
+          <div>
+            <label className="block text-xs text-gray-600 mb-1">Template Name</label>
+            <input
+              value={newTemplateName}
+              onChange={e=>setNewTemplateName(e.target.value)}
+              placeholder="e.g., Standard Terms, Commercial Terms"
+              className="border rounded px-3 py-2 text-sm w-full"
+            />
+          </div>
+          <div>
+            <label className="block text-xs text-gray-600 mb-1">Terms Description</label>
+            <textarea
+              value={newTemplateDescription}
+              onChange={e=>setNewTemplateDescription(e.target.value)}
+              placeholder="Enter the full terms text..."
+              className="border rounded px-3 py-2 text-sm w-full"
+              rows={6}
+            />
+          </div>
+          <div className="flex justify-end">
+            <button
+              onClick={()=>{
+                if(!newTemplateName.trim()){
+                  toast.error('Template name is required');
+                  return;
+                }
+                createMutation.mutate({ name: newTemplateName.trim(), description: newTemplateDescription });
+              }}
+              className="px-4 py-2 rounded bg-brand-red text-white text-sm"
+              disabled={createMutation.isPending}
+            >
+              Create Template
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Existing Templates */}
+      <div>
+        <h4 className="font-semibold mb-3 text-sm">Existing Templates</h4>
+        {isLoading ? (
+          <div className="p-4 text-sm text-gray-500 border rounded">Loading...</div>
+        ) : templates.length === 0 ? (
+          <div className="p-4 text-sm text-gray-500 border rounded">No templates created yet</div>
+        ) : (
+          <div className="space-y-2">
+            {templates.map((template) => {
+              const e = getEdit(template);
+              const isExpanded = expandedTemplates.has(template.id);
+              return (
+                <div key={template.id} className="border rounded-lg bg-white overflow-hidden">
+                  {/* Header - Always visible */}
+                  <button
+                    onClick={() => toggleTemplate(template.id)}
+                    className="w-full px-4 py-3 flex items-center justify-between hover:bg-gray-50 transition-colors text-left"
+                  >
+                    <span className="font-medium text-sm text-gray-900">{template.label || 'Unnamed Template'}</span>
+                    <svg 
+                      className={`w-5 h-5 text-gray-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+                      fill="none" 
+                      stroke="currentColor" 
+                      viewBox="0 0 24 24"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+                  
+                  {/* Content - Collapsible */}
+                  {isExpanded && (
+                    <div className="px-4 pb-4 border-t bg-gray-50">
+                      <div className="space-y-3 pt-3">
+                        <div>
+                          <label className="block text-xs text-gray-600 mb-1">Template Name</label>
+                          <input
+                            value={e.label}
+                            onChange={ev=> setEdits(s=>({ ...s, [template.id]: { ...(s[template.id]||template), label: ev.target.value } }))}
+                            className="border rounded px-3 py-2 text-sm w-full"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs text-gray-600 mb-1">Terms Description</label>
+                          <textarea
+                            value={e.meta?.description||''} 
+                            onChange={ev=> setEdits(s=>({ ...s, [template.id]: { ...(s[template.id]||template), meta: { ...(s[template.id]?.meta||template.meta||{}), description: ev.target.value } } }))}
+                            className="border rounded px-3 py-2 text-sm w-full"
+                            rows={6}
+                          />
+                        </div>
+                        <div className="flex justify-end gap-2">
+                          <button
+                            onClick={async()=>{
+                              try{
+                                await updateMutation.mutateAsync({
+                                  id: template.id,
+                                  label: e.label,
+                                  description: e.meta?.description||''
+                                });
+                                setEdits(s=>{ const {[template.id]:_, ...rest} = s; return rest; });
+                              }catch(_e){}
+                            }}
+                            className="px-3 py-1.5 rounded bg-black text-white text-sm"
+                            disabled={updateMutation.isPending}
+                          >
+                            Save
+                          </button>
+                          <button
+                            onClick={async()=>{
+                              if(!(await confirm({ title: 'Delete template?', description: 'This action cannot be undone.' }))) return;
+                              deleteMutation.mutate(template.id);
+                            }}
+                            className="px-3 py-1.5 rounded bg-gray-100 text-sm"
+                            disabled={deleteMutation.isPending}
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
     </div>
   );

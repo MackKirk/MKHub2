@@ -152,5 +152,201 @@ def compute_diff(before: Dict, after: Dict) -> Dict:
     return diff
 
 
+# Entity type to section mapping for filtering
+SECTION_ENTITY_TYPES = {
+    "reports": ["report"],
+    "files": ["project_file"],
+    "proposal": ["proposal", "proposal_draft"],
+    "estimate": ["estimate", "estimate_item"],
+    "orders": ["order", "order_item"],
+    "workload": ["shift"],
+    "timesheet": ["attendance", "timesheet_entry"],
+    "general": ["project"],
+}
+
+
+def _resolve_user_name(db: Session, user_id: str) -> Optional[str]:
+    """Helper to resolve user ID to full name."""
+    from ..models.models import User, EmployeeProfile
+    try:
+        result = db.query(User, EmployeeProfile).outerjoin(
+            EmployeeProfile, EmployeeProfile.user_id == User.id
+        ).filter(User.id == user_id).first()
+        if result:
+            user, profile = result
+            if profile:
+                return f"{profile.first_name or ''} {profile.last_name or ''}".strip() or user.username
+            return user.username
+    except Exception:
+        pass
+    return None
+
+
+def _resolve_project_name(db: Session, project_id: str) -> Optional[str]:
+    """Helper to resolve project ID to name."""
+    from ..models.models import Project
+    try:
+        project = db.query(Project).filter(Project.id == project_id).first()
+        if project:
+            return project.name
+    except Exception:
+        pass
+    return None
+
+
+def get_project_audit_logs(
+    db: Session,
+    project_id: str,
+    section: Optional[str] = None,
+    month: Optional[str] = None,
+    limit: int = 50,
+    offset: int = 0
+) -> list:
+    """
+    Get audit logs for a specific project with optional section filtering.
+    
+    Args:
+        db: Database session
+        project_id: Project ID to filter by
+        section: Section to filter (reports|files|proposal|estimate|orders|workload|timesheet|general)
+        month: Month to filter (YYYY-MM format)
+        limit: Maximum number of results
+        offset: Offset for pagination
+    
+    Returns:
+        List of AuditLog objects with user info and resolved names
+    """
+    from sqlalchemy import or_, extract
+    from ..models.models import User, EmployeeProfile
+    
+    query = db.query(AuditLog)
+    
+    # Filter by project_id in context OR entity_id (for project entity type)
+    # We use JSON path query for context->project_id
+    query = query.filter(
+        or_(
+            AuditLog.context.op('->>')('project_id') == str(project_id),
+            (AuditLog.entity_type == 'project') & (AuditLog.entity_id == project_id)
+        )
+    )
+    
+    # Filter by section (entity types)
+    if section and section in SECTION_ENTITY_TYPES:
+        entity_types = SECTION_ENTITY_TYPES[section]
+        query = query.filter(AuditLog.entity_type.in_(entity_types))
+    
+    # Filter by month
+    if month:
+        try:
+            year, month_num = month.split('-')
+            query = query.filter(
+                extract('year', AuditLog.timestamp_utc) == int(year),
+                extract('month', AuditLog.timestamp_utc) == int(month_num)
+            )
+        except (ValueError, AttributeError):
+            pass
+    
+    # Order by timestamp descending (most recent first)
+    query = query.order_by(AuditLog.timestamp_utc.desc())
+    query = query.limit(limit).offset(offset)
+    
+    logs = query.all()
+    
+    # Cache for resolved names to avoid repeated queries
+    user_name_cache: Dict[str, Optional[str]] = {}
+    project_name_cache: Dict[str, Optional[str]] = {}
+    
+    def get_user_name(uid: str) -> Optional[str]:
+        if uid not in user_name_cache:
+            user_name_cache[uid] = _resolve_user_name(db, uid)
+        return user_name_cache.get(uid)
+    
+    def get_project_name(pid: str) -> Optional[str]:
+        if pid not in project_name_cache:
+            project_name_cache[pid] = _resolve_project_name(db, pid)
+        return project_name_cache.get(pid)
+    
+    # Enrich with user info and resolved names
+    result = []
+    for log in logs:
+        context = log.context or {}
+        changes = log.changes_json or {}
+        
+        # Get actor info
+        actor_name = None
+        actor_avatar = None
+        if log.actor_id:
+            actor = db.query(User, EmployeeProfile).outerjoin(
+                EmployeeProfile, EmployeeProfile.user_id == User.id
+            ).filter(User.id == log.actor_id).first()
+            if actor:
+                user, profile = actor
+                if profile:
+                    actor_name = f"{profile.first_name or ''} {profile.last_name or ''}".strip() or user.username
+                    actor_avatar = str(profile.profile_photo_file_id) if profile.profile_photo_file_id else None
+                else:
+                    actor_name = user.username
+        
+        # Get affected user info - prefer context name, fall back to ID resolution
+        affected_user_id = context.get('affected_user_id')
+        affected_user_name = context.get('affected_user_name')
+        if affected_user_id and not affected_user_name:
+            affected_user_name = get_user_name(affected_user_id)
+        
+        # Get project name - prefer context name, fall back to ID resolution
+        ctx_project_id = context.get('project_id')
+        project_name = context.get('project_name')
+        if ctx_project_id and not project_name:
+            project_name = get_project_name(ctx_project_id)
+        
+        # Resolve worker_id to name if present in context
+        worker_id = context.get('worker_id')
+        worker_name = context.get('worker_name')
+        if worker_id and not worker_name:
+            worker_name = get_user_name(worker_id)
+        
+        # Resolve approved_by to name if present in changes
+        approved_by_id = None
+        approved_by_name = None
+        if changes.get('after') and isinstance(changes['after'], dict):
+            approved_by_id = changes['after'].get('approved_by')
+        if not approved_by_id and changes.get('approved_by'):
+            approved_by_id = changes.get('approved_by')
+        if approved_by_id:
+            approved_by_name = get_user_name(str(approved_by_id))
+        
+        # Build enriched context with resolved names
+        enriched_context = dict(context)
+        if affected_user_name:
+            enriched_context['affected_user_name'] = affected_user_name
+        if project_name:
+            enriched_context['project_name'] = project_name
+        if worker_name:
+            enriched_context['worker_name'] = worker_name
+        if approved_by_name:
+            enriched_context['approved_by_name'] = approved_by_name
+        
+        result.append({
+            "id": str(log.id),
+            "timestamp": log.timestamp_utc.isoformat() if log.timestamp_utc else None,
+            "entity_type": log.entity_type,
+            "entity_id": str(log.entity_id) if log.entity_id else None,
+            "action": log.action,
+            "actor_id": str(log.actor_id) if log.actor_id else None,
+            "actor_name": actor_name,
+            "actor_avatar_file_id": actor_avatar,
+            "actor_role": log.actor_role,
+            "source": log.source,
+            "changes": changes,
+            "context": enriched_context,
+            "affected_user_id": affected_user_id,
+            "affected_user_name": affected_user_name,
+            "project_name": project_name,
+            "worker_name": worker_name,
+        })
+    
+    return result
+
+
 
 

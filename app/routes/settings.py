@@ -310,6 +310,7 @@ def get_settings_bundle(db: Session = Depends(get_db), user: UserType = Depends(
         out.setdefault("lead_sources", [])
         out.setdefault("timesheet", [])
         out.setdefault("report_categories", [])
+        out.setdefault("terms-templates", [])
     
     # Always add Google Places API key (if configured) - needed for address autocomplete
     # This should be available to all authenticated users, not just those with settings access
@@ -411,7 +412,7 @@ def list_settings(list_name: str, db: Session = Depends(get_db), _=Depends(requi
 
 
 @router.post("/{list_name}")
-def create_setting_item(list_name: str, label: str, value: str = "", sort_index: Optional[int] = None, abbr: Optional[str] = None, color: Optional[str] = None, db: Session = Depends(get_db), user: UserType = Depends(get_current_user)):
+def create_setting_item(list_name: str, label: str, value: str = "", sort_index: Optional[int] = None, abbr: Optional[str] = None, color: Optional[str] = None, description: Optional[str] = None, db: Session = Depends(get_db), user: UserType = Depends(get_current_user)):
     from ..auth.security import _has_permission
     
     # Check permissions: settings:access OR users:write OR (for break_eligible_employees in timesheet, also allow hr:users:edit:timesheet)
@@ -436,6 +437,9 @@ def create_setting_item(list_name: str, label: str, value: str = "", sort_index:
         meta["abbr"] = abbr
     if color:
         meta["color"] = color
+    # For terms-templates, store description in meta.description
+    if list_name == "terms-templates" and description is not None:
+        meta["description"] = description
     it = SettingItem(list_id=lst.id, label=label, value=value, sort_index=sort_index, meta=meta or None)
     db.add(it)
     db.commit()
@@ -714,7 +718,7 @@ def update_attendance(
 
 
 @router.put("/{list_name}/{item_id}")
-def update_setting_item(list_name: str, item_id: str, label: str = None, value: str = None, sort_index: int | None = None, abbr: Optional[str] = None, color: Optional[str] = None, allow_edit_proposal: Optional[str] = None, sets_start_date: Optional[str] = None, sets_end_date: Optional[str] = None, db: Session = Depends(get_db), user: UserType = Depends(get_current_user)):
+def update_setting_item(list_name: str, item_id: str, label: str = None, value: str = None, sort_index: int | None = None, abbr: Optional[str] = None, color: Optional[str] = None, allow_edit_proposal: Optional[str] = None, sets_start_date: Optional[str] = None, sets_end_date: Optional[str] = None, description: Optional[str] = None, db: Session = Depends(get_db), user: UserType = Depends(get_current_user)):
     from ..auth.security import _has_permission
     
     lst = db.query(SettingList).filter(SettingList.name == list_name).first()
@@ -754,6 +758,10 @@ def update_setting_item(list_name: str, item_id: str, label: str = None, value: 
     if sets_end_date is not None:
         # Convert string to boolean
         meta["sets_end_date"] = sets_end_date.lower() in ('true', '1', 'yes')
+    # For terms-templates, update description in meta.description
+    if list_name == "terms-templates":
+        if description is not None:
+            meta["description"] = description
     # Always set meta (even if empty dict) to ensure meta fields are preserved
     it.meta = meta
     db.commit()

@@ -99,7 +99,9 @@ async def generate_proposal(
     sections: str = Form("[]"),
     cover_file_object_id: Optional[str] = Form(None),
     page2_file_object_id: Optional[str] = Form(None),
+    project_id: Optional[str] = Form(None),
     db: Session = Depends(get_db),
+    user=Depends(get_current_user),
 ):
     file_id = str(uuid.uuid4())
     output_path = os.path.join(UPLOAD_DIR, f"proposal_{file_id}.pdf")
@@ -317,6 +319,33 @@ async def generate_proposal(
         except Exception:
             pass
 
+    # Create audit log for PDF generation
+    try:
+        from ..services.audit import create_audit_log
+        create_audit_log(
+            db=db,
+            entity_type="proposal",
+            entity_id=file_id,
+            action="GENERATE_PDF",
+            actor_id=str(user.id) if user else None,
+            actor_role="user",
+            source="api",
+            changes_json={
+                "cover_title": cover_title,
+                "order_number": order_number,
+                "project_name": project_name,
+                "client_name": client_name,
+                "total": total,
+                "template_style": template_style,
+            },
+            context={
+                "project_id": project_id,
+                "proposal_created_for": proposal_created_for,
+            }
+        )
+    except Exception:
+        pass
+
     return FileResponse(output_path, media_type="application/pdf", filename="ProjectProposal.pdf")
 
 
@@ -326,6 +355,7 @@ def create_or_update_draft(body: dict = Body(None), db: Session = Depends(get_db
     if body is None:
         body = {}
     draft_id = body.get('id')
+    is_new = False
     if draft_id:
         d = db.query(ProposalDraft).filter(ProposalDraft.id == draft_id).first()
         if not d:
@@ -333,6 +363,7 @@ def create_or_update_draft(body: dict = Body(None), db: Session = Depends(get_db
     else:
         d = ProposalDraft()
         db.add(d)
+        is_new = True
     d.client_id = body.get('client_id')
     d.site_id = body.get('site_id')
     d.user_id = getattr(user, 'id', None)
@@ -341,6 +372,32 @@ def create_or_update_draft(body: dict = Body(None), db: Session = Depends(get_db
     from datetime import datetime
     d.updated_at = datetime.utcnow()
     db.commit()
+    
+    # Create audit log for proposal draft
+    try:
+        from ..services.audit import create_audit_log
+        # Get project_id from data if available
+        project_id = (body.get('data') or {}).get('project_id')
+        create_audit_log(
+            db=db,
+            entity_type="proposal_draft",
+            entity_id=str(d.id),
+            action="CREATE" if is_new else "UPDATE",
+            actor_id=str(user.id) if user else None,
+            actor_role="user",
+            source="api",
+            changes_json={
+                "title": d.title,
+                "is_new": is_new,
+            },
+            context={
+                "project_id": str(project_id) if project_id else None,
+                "client_id": str(d.client_id) if d.client_id else None,
+            }
+        )
+    except Exception:
+        pass
+    
     return {"id": str(d.id), "updated_at": d.updated_at.isoformat()}
 
 
@@ -377,8 +434,36 @@ def delete_draft(draft_id: str, db: Session = Depends(get_db), user=Depends(get_
     d = db.query(ProposalDraft).filter(ProposalDraft.id == draft_id).first()
     if not d:
         return {"status":"ok"}
+    
+    # Capture draft info before deletion for audit log
+    draft_info = {
+        "title": d.title,
+        "client_id": str(d.client_id) if d.client_id else None,
+    }
+    project_id = (d.data or {}).get('project_id') if d.data else None
+    
     db.delete(d)
     db.commit()
+    
+    # Create audit log for draft deletion
+    try:
+        from ..services.audit import create_audit_log
+        create_audit_log(
+            db=db,
+            entity_type="proposal_draft",
+            entity_id=draft_id,
+            action="DELETE",
+            actor_id=str(user.id) if user else None,
+            actor_role="user",
+            source="api",
+            changes_json={"deleted_draft": draft_info},
+            context={
+                "project_id": str(project_id) if project_id else None,
+            }
+        )
+    except Exception:
+        pass
+    
     return {"status":"ok"}
 
 
@@ -399,9 +484,10 @@ def next_code(client_id: str, db: Session = Depends(get_db)):
 
 
 @router.post("")
-def save_proposal(payload: dict = Body(...), db: Session = Depends(get_db)):
+def save_proposal(payload: dict = Body(...), db: Session = Depends(get_db), user=Depends(get_current_user)):
     pid = payload.get('id')
     title = payload.get('cover_title') or payload.get('title') or 'Proposal'
+    is_new = False
     if pid:
         p = db.query(Proposal).filter(Proposal.id == pid).first()
         if not p:
@@ -430,8 +516,8 @@ def save_proposal(payload: dict = Body(...), db: Session = Depends(get_db)):
                     # Don't set image_manually_set to True here - it stays False so it can be auto-updated
         
         db.commit()
-        return {"id": str(p.id)}
     else:
+        is_new = True
         p = Proposal(
             project_id=payload.get('project_id'),
             client_id=payload.get('client_id'),
@@ -454,7 +540,32 @@ def save_proposal(payload: dict = Body(...), db: Session = Depends(get_db)):
                     # Don't set image_manually_set to True here - it stays False so it can be auto-updated
         
         db.commit()
-        return {"id": str(p.id)}
+    
+    # Create audit log for proposal save
+    try:
+        from ..services.audit import create_audit_log
+        create_audit_log(
+            db=db,
+            entity_type="proposal",
+            entity_id=str(p.id),
+            action="CREATE" if is_new else "UPDATE",
+            actor_id=str(user.id) if user else None,
+            actor_role="user",
+            source="api",
+            changes_json={
+                "title": title,
+                "order_number": p.order_number,
+                "is_new": is_new,
+            },
+            context={
+                "project_id": str(p.project_id) if p.project_id else None,
+                "client_id": str(p.client_id) if p.client_id else None,
+            }
+        )
+    except Exception:
+        pass
+    
+    return {"id": str(p.id)}
 
 
 @router.get("")

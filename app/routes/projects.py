@@ -16,7 +16,7 @@ router = APIRouter(prefix="/projects", tags=["projects"])
 
 
 @router.post("")
-def create_project(payload: dict, db: Session = Depends(get_db)):
+def create_project(payload: dict, db: Session = Depends(get_db), user=Depends(get_current_user)):
     # Minimal validation: require client_id
     if not payload.get("client_id"):
         raise HTTPException(status_code=400, detail="client_id is required")
@@ -136,6 +136,33 @@ def create_project(payload: dict, db: Session = Depends(get_db)):
                     pass
     except Exception:
         db.rollback()
+    
+    # Create audit log for project creation
+    try:
+        from ..services.audit import create_audit_log
+        create_audit_log(
+            db=db,
+            entity_type="project",
+            entity_id=str(proj.id),
+            action="CREATE",
+            actor_id=str(user.id) if user else None,
+            actor_role="user",
+            source="api",
+            changes_json={
+                "name": proj.name,
+                "code": proj.code,
+                "client_id": str(proj.client_id) if proj.client_id else None,
+                "is_bidding": getattr(proj, 'is_bidding', False),
+                "status_label": getattr(proj, 'status_label', None),
+            },
+            context={
+                "project_id": str(proj.id),
+                "client_name": client.company_name if client else None,
+            }
+        )
+    except Exception:
+        pass  # Don't fail project creation if audit log fails
+    
     return {"id": str(proj.id)}
 
 
@@ -264,10 +291,28 @@ def get_project(project_id: str, db: Session = Depends(get_db)):
 
 
 @router.patch("/{project_id}")
-def update_project(project_id: str, payload: dict, db: Session = Depends(get_db)):
+def update_project(project_id: str, payload: dict, db: Session = Depends(get_db), user=Depends(get_current_user)):
     p = db.query(Project).filter(Project.id == project_id).first()
     if not p:
         raise HTTPException(status_code=404, detail="Not found")
+    
+    # Capture before state for audit log
+    before_state = {
+        "name": getattr(p, 'name', None),
+        "status_label": getattr(p, 'status_label', None),
+        "estimator_id": str(getattr(p, 'estimator_id', None)) if getattr(p, 'estimator_id', None) else None,
+        "project_admin_id": str(getattr(p, 'project_admin_id', None)) if getattr(p, 'project_admin_id', None) else None,
+        "onsite_lead_id": str(getattr(p, 'onsite_lead_id', None)) if getattr(p, 'onsite_lead_id', None) else None,
+        "division_ids": getattr(p, 'division_ids', None),
+        "project_division_ids": getattr(p, 'project_division_ids', None),
+        "progress": getattr(p, 'progress', None),
+        "date_start": str(getattr(p, 'date_start', None)) if getattr(p, 'date_start', None) else None,
+        "date_end": str(getattr(p, 'date_end', None)) if getattr(p, 'date_end', None) else None,
+        "address": getattr(p, 'address', None),
+        "lat": str(getattr(p, 'lat', None)) if getattr(p, 'lat', None) else None,
+        "lng": str(getattr(p, 'lng', None)) if getattr(p, 'lng', None) else None,
+    }
+    
     # Do not allow changing auto-generated code
     if "code" in payload:
         payload.pop("code", None)
@@ -451,14 +496,60 @@ def update_project(project_id: str, payload: dict, db: Session = Depends(get_db)
             if updated_count > 0:
                 db.commit()
     
+    # Create audit log for project update
+    try:
+        from ..services.audit import create_audit_log, compute_diff
+        after_state = {
+            "name": getattr(p, 'name', None),
+            "status_label": getattr(p, 'status_label', None),
+            "estimator_id": str(getattr(p, 'estimator_id', None)) if getattr(p, 'estimator_id', None) else None,
+            "project_admin_id": str(getattr(p, 'project_admin_id', None)) if getattr(p, 'project_admin_id', None) else None,
+            "onsite_lead_id": str(getattr(p, 'onsite_lead_id', None)) if getattr(p, 'onsite_lead_id', None) else None,
+            "division_ids": getattr(p, 'division_ids', None),
+            "project_division_ids": getattr(p, 'project_division_ids', None),
+            "progress": getattr(p, 'progress', None),
+            "date_start": str(getattr(p, 'date_start', None)) if getattr(p, 'date_start', None) else None,
+            "date_end": str(getattr(p, 'date_end', None)) if getattr(p, 'date_end', None) else None,
+            "address": getattr(p, 'address', None),
+            "lat": str(getattr(p, 'lat', None)) if getattr(p, 'lat', None) else None,
+            "lng": str(getattr(p, 'lng', None)) if getattr(p, 'lng', None) else None,
+        }
+        changes = compute_diff(before_state, after_state)
+        if changes:  # Only log if there were actual changes
+            create_audit_log(
+                db=db,
+                entity_type="project",
+                entity_id=str(p.id),
+                action="UPDATE",
+                actor_id=str(user.id) if user else None,
+                actor_role="user",
+                source="api",
+                changes_json={"before": before_state, "after": after_state},
+                context={
+                    "project_id": str(p.id),
+                    "changed_fields": list(changes.keys()),
+                }
+            )
+    except Exception:
+        pass  # Don't fail project update if audit log fails
+    
     return {"status": "ok"}
 
 
 @router.delete("/{project_id}")
-def delete_project(project_id: str, db: Session = Depends(get_db)):
+def delete_project(project_id: str, db: Session = Depends(get_db), user=Depends(get_current_user)):
     p = db.query(Project).filter(Project.id == project_id).first()
     if not p:
         return {"status": "ok"}
+    
+    # Capture project info before deletion for audit log
+    project_info = {
+        "name": getattr(p, 'name', None),
+        "code": getattr(p, 'code', None),
+        "client_id": str(getattr(p, 'client_id', None)) if getattr(p, 'client_id', None) else None,
+        "is_bidding": getattr(p, 'is_bidding', False),
+        "status_label": getattr(p, 'status_label', None),
+    }
     
     # Before deleting the project, remove references from estimate_items that were added via reports
     # Get all reports for this project
@@ -474,6 +565,28 @@ def delete_project(project_id: str, db: Session = Depends(get_db)):
     
     db.delete(p)
     db.commit()
+    
+    # Create audit log for project deletion
+    try:
+        from ..services.audit import create_audit_log
+        create_audit_log(
+            db=db,
+            entity_type="project",
+            entity_id=project_id,
+            action="DELETE",
+            actor_id=str(user.id) if user else None,
+            actor_role="user",
+            source="api",
+            changes_json={"deleted_project": project_info},
+            context={
+                "project_id": project_id,
+                "project_name": project_info.get("name"),
+                "was_bidding": project_info.get("is_bidding"),
+            }
+        )
+    except Exception:
+        pass  # Don't fail if audit log fails
+    
     return {"status": "ok"}
 
 
@@ -540,6 +653,31 @@ def attach_project_file(
     row = ClientFile(client_id=proj.client_id, site_id=None, file_object_id=fo.id, category=category, key=fo.key, original_name=original_name)
     db.add(row)
     db.commit()
+    
+    # Create audit log for file upload
+    try:
+        from ..services.audit import create_audit_log
+        create_audit_log(
+            db=db,
+            entity_type="project_file",
+            entity_id=str(row.id),
+            action="UPLOAD",
+            actor_id=str(user.id) if user else None,
+            actor_role="user",
+            source="api",
+            changes_json={
+                "file_name": original_name or fo.key,
+                "category": category,
+                "content_type": getattr(fo, 'content_type', None),
+            },
+            context={
+                "project_id": project_id,
+                "file_object_id": str(fo.id),
+            }
+        )
+    except Exception:
+        pass
+    
     return {"id": str(row.id)}
 
 
@@ -566,6 +704,13 @@ def update_project_file(
     fo = db.query(FileObject).filter(FileObject.id == cf.file_object_id).first()
     if not fo or str(getattr(fo, 'project_id', '') or '') != str(project_id):
         raise HTTPException(status_code=404, detail="File not found in project")
+    
+    # Capture before state for audit log
+    before_state = {
+        "category": getattr(cf, "category", None),
+        "original_name": getattr(cf, "original_name", None),
+    }
+    
     # Update category if provided
     if "category" in payload:
         # Must have write access to the destination category as well
@@ -575,6 +720,33 @@ def update_project_file(
     if "original_name" in payload:
         cf.original_name = payload["original_name"]
     db.commit()
+    
+    # Create audit log for file update
+    try:
+        from ..services.audit import create_audit_log, compute_diff
+        after_state = {
+            "category": getattr(cf, "category", None),
+            "original_name": getattr(cf, "original_name", None),
+        }
+        changes = compute_diff(before_state, after_state)
+        if changes:
+            create_audit_log(
+                db=db,
+                entity_type="project_file",
+                entity_id=str(cf.id),
+                action="UPDATE",
+                actor_id=str(user.id) if user else None,
+                actor_role="user",
+                source="api",
+                changes_json={"before": before_state, "after": after_state},
+                context={
+                    "project_id": project_id,
+                    "file_name": getattr(cf, "original_name", None),
+                }
+            )
+    except Exception:
+        pass
+    
     return {"id": str(cf.id)}
 
 
@@ -599,8 +771,37 @@ def delete_project_file(
     fo = db.query(FileObject).filter(FileObject.id == cf.file_object_id).first()
     if not fo or str(getattr(fo, 'project_id', '') or '') != str(project_id):
         raise HTTPException(status_code=404, detail="File not found in project")
+    
+    # Capture file info before deletion for audit log
+    file_info = {
+        "file_name": getattr(cf, "original_name", None) or getattr(cf, "key", None),
+        "category": getattr(cf, "category", None),
+        "content_type": getattr(fo, "content_type", None) if fo else None,
+    }
+    
     db.delete(cf)
     db.commit()
+    
+    # Create audit log for file deletion
+    try:
+        from ..services.audit import create_audit_log
+        create_audit_log(
+            db=db,
+            entity_type="project_file",
+            entity_id=file_id,
+            action="DELETE",
+            actor_id=str(user.id) if user else None,
+            actor_role="user",
+            source="api",
+            changes_json={"deleted_file": file_info},
+            context={
+                "project_id": project_id,
+                "file_name": file_info.get("file_name"),
+            }
+        )
+    except Exception:
+        pass
+    
     return {"status": "ok"}
 
 
@@ -694,14 +895,53 @@ def create_project_report(project_id: str, payload: dict, db: Session = Depends(
     db.add(row)
     db.commit()
     db.refresh(row)
+    
+    # Create audit log for report creation
+    try:
+        from ..services.audit import create_audit_log
+        create_audit_log(
+            db=db,
+            entity_type="report",
+            entity_id=str(row.id),
+            action="CREATE",
+            actor_id=str(user.id) if user else None,
+            actor_role="user",
+            source="api",
+            changes_json={
+                "title": payload.get("title"),
+                "category_id": payload.get("category_id"),
+                "division_id": payload.get("division_id"),
+                "financial_type": financial_type,
+                "financial_value": payload.get("financial_value"),
+                "approval_status": approval_status,
+            },
+            context={
+                "project_id": project_id,
+                "report_title": payload.get("title"),
+            }
+        )
+    except Exception:
+        pass
+    
     return {"id": str(row.id)}
 
 
 @router.delete("/{project_id}/reports/{report_id}")
-def delete_project_report(project_id: str, report_id: str, db: Session = Depends(get_db)):
+def delete_project_report(project_id: str, report_id: str, db: Session = Depends(get_db), user=Depends(get_current_user)):
     row = db.query(ProjectReport).filter(ProjectReport.id == report_id, ProjectReport.project_id == project_id).first()
     if not row:
         return {"status": "ok"}
+    
+    # Capture report info before deletion for audit log
+    report_info = {
+        "title": getattr(row, 'title', None),
+        "category_id": getattr(row, 'category_id', None),
+        "division_id": getattr(row, 'division_id', None),
+        "financial_type": getattr(row, 'financial_type', None),
+        "financial_value": getattr(row, 'financial_value', None),
+        "approval_status": getattr(row, 'approval_status', None),
+        "created_by": str(getattr(row, 'created_by', None)) if getattr(row, 'created_by', None) else None,
+    }
 
     # If this is an "Estimate Changes" report, deleting the report should also delete the estimate items
     # that were added via this report (instead of detaching them).
@@ -747,6 +987,27 @@ def delete_project_report(project_id: str, report_id: str, db: Session = Depends
 
     db.delete(row)
     db.commit()
+    
+    # Create audit log for report deletion
+    try:
+        from ..services.audit import create_audit_log
+        create_audit_log(
+            db=db,
+            entity_type="report",
+            entity_id=report_id,
+            action="DELETE",
+            actor_id=str(user.id) if user else None,
+            actor_role="user",
+            source="api",
+            changes_json={"deleted_report": report_info},
+            context={
+                "project_id": project_id,
+                "report_title": report_info.get("title"),
+            }
+        )
+    except Exception:
+        pass
+    
     return {"status": "ok"}
 
 
@@ -948,6 +1209,31 @@ def approve_estimate_changes_report(project_id: str, report_id: str, db: Session
     
     db.commit()
     db.refresh(estimate)
+    
+    # Create audit log for report approval
+    try:
+        from ..services.audit import create_audit_log
+        create_audit_log(
+            db=db,
+            entity_type="report",
+            entity_id=str(report.id),
+            action="APPROVE",
+            actor_id=str(user.id) if user else None,
+            actor_role="user",
+            source="api",
+            changes_json={
+                "approval_status": "approved",
+                "items_added": len(items),
+                "total_value": total,
+            },
+            context={
+                "project_id": project_id,
+                "report_title": getattr(report, 'title', None),
+                "estimate_id": str(estimate.id),
+            }
+        )
+    except Exception:
+        pass
     
     return {"status": "ok", "estimate_id": estimate.id}
 
@@ -1546,10 +1832,60 @@ def create_time_entry(project_id: str, payload: dict, db: Session = Depends(get_
     db.add(row)
     db.commit()
     db.refresh(row)
-    # log
-    log = ProjectTimeEntryLog(entry_id=row.id, project_id=row.project_id, user_id=user.id, action="create", changes={"minutes": row.minutes, "work_date": row.work_date.isoformat(), "notes": row.notes or None, "start_time": start_time, "end_time": end_time})
-    db.add(log)
-    db.commit()
+    
+    # Create audit log with rich context
+    try:
+        from ..services.audit import create_audit_log
+        from ..services.permissions import is_admin, is_supervisor
+        
+        # Determine actor role
+        actor_role = "worker"
+        if is_admin(user, db):
+            actor_role = "admin"
+        elif is_supervisor(user, db):
+            actor_role = "supervisor"
+        
+        # Get affected user name
+        affected_user = db.query(User, EmployeeProfile).outerjoin(
+            EmployeeProfile, EmployeeProfile.user_id == User.id
+        ).filter(User.id == target_uuid).first()
+        affected_user_name = None
+        if affected_user:
+            u, ep = affected_user
+            if ep:
+                affected_user_name = f"{ep.first_name or ''} {ep.last_name or ''}".strip() or u.username
+            else:
+                affected_user_name = u.username
+        
+        # Get project name
+        proj = db.query(Project).filter(Project.id == project_id).first()
+        project_name = proj.name if proj else None
+        
+        create_audit_log(
+            db=db,
+            entity_type="timesheet_entry",
+            entity_id=str(row.id),
+            action="CREATE",
+            actor_id=str(user.id),
+            actor_role=actor_role,
+            source="api",
+            changes_json={
+                "minutes": row.minutes,
+                "work_date": row.work_date.isoformat(),
+                "notes": row.notes or None,
+                "start_time": start_time,
+                "end_time": end_time,
+            },
+            context={
+                "project_id": str(project_id),
+                "project_name": project_name,
+                "affected_user_id": str(target_uuid),
+                "affected_user_name": affected_user_name,
+            }
+        )
+    except Exception:
+        pass
+    
     return {"id": str(row.id)}
 
 
@@ -1682,16 +2018,59 @@ def update_time_entry(project_id: str, entry_id: str, payload: dict, db: Session
             "break_minutes": attendance.break_minutes,
         }
 
-        # Log update
+        # Create audit log with rich context
         try:
-            db.add(ProjectTimeEntryLog(
-                entry_id=te.id if te else None,
-                project_id=uuid.UUID(project_id),
-                user_id=user.id,
-                action="update",
-                changes={"message": "attendance updated via project > timesheet", "attendance_id": str(attendance.id), "before": before, "after": after}
-            ))
-            db.commit()
+            from ..services.audit import create_audit_log
+            from ..services.permissions import is_admin, is_supervisor
+            
+            # Determine actor role
+            actor_role = "worker"
+            if is_admin(user, db):
+                actor_role = "admin"
+            elif is_supervisor(user, db):
+                actor_role = "supervisor"
+            
+            # Get affected user name
+            affected_user = db.query(User, EmployeeProfile).outerjoin(
+                EmployeeProfile, EmployeeProfile.user_id == User.id
+            ).filter(User.id == attendance.worker_id).first()
+            affected_user_name = None
+            if affected_user:
+                u, ep = affected_user
+                if ep:
+                    affected_user_name = f"{ep.first_name or ''} {ep.last_name or ''}".strip() or u.username
+                else:
+                    affected_user_name = u.username
+            
+            # Get project name
+            proj = db.query(Project).filter(Project.id == project_id).first()
+            project_name = proj.name if proj else None
+            
+            # Get work date
+            work_date = local_date.isoformat() if local_date else None
+            
+            create_audit_log(
+                db=db,
+                entity_type="timesheet_entry",
+                entity_id=str(attendance.id),
+                action="UPDATE",
+                actor_id=str(user.id),
+                actor_role=actor_role,
+                source="api",
+                changes_json={
+                    "before": before,
+                    "after": after,
+                    "source": "attendance",
+                },
+                context={
+                    "project_id": str(project_id),
+                    "project_name": project_name,
+                    "affected_user_id": str(attendance.worker_id),
+                    "affected_user_name": affected_user_name,
+                    "attendance_id": str(attendance.id),
+                    "work_date": work_date,
+                }
+            )
         except Exception:
             pass
 
@@ -1738,8 +2117,57 @@ def update_time_entry(project_id: str, entry_id: str, payload: dict, db: Session
             pass
     db.commit()
     after = {"work_date": row.work_date.isoformat(), "minutes": row.minutes, "notes": row.notes, "start_time": getattr(row,'start_time', None).isoformat() if getattr(row,'start_time', None) else None, "end_time": getattr(row,'end_time', None).isoformat() if getattr(row,'end_time', None) else None, "is_approved": bool(getattr(row,'is_approved', False))}
-    db.add(ProjectTimeEntryLog(entry_id=row.id, project_id=row.project_id, user_id=user.id, action="update", changes={"before": before, "after": after}))
-    db.commit()
+    
+    # Create audit log with rich context
+    try:
+        from ..services.audit import create_audit_log
+        from ..services.permissions import is_admin, is_supervisor
+        
+        # Determine actor role
+        actor_role = "worker"
+        if is_admin(user, db):
+            actor_role = "admin"
+        elif is_supervisor(user, db):
+            actor_role = "supervisor"
+        
+        # Get affected user name
+        affected_user = db.query(User, EmployeeProfile).outerjoin(
+            EmployeeProfile, EmployeeProfile.user_id == User.id
+        ).filter(User.id == row.user_id).first()
+        affected_user_name = None
+        if affected_user:
+            u, ep = affected_user
+            if ep:
+                affected_user_name = f"{ep.first_name or ''} {ep.last_name or ''}".strip() or u.username
+            else:
+                affected_user_name = u.username
+        
+        # Get project name
+        proj = db.query(Project).filter(Project.id == row.project_id).first()
+        project_name = proj.name if proj else None
+        
+        create_audit_log(
+            db=db,
+            entity_type="timesheet_entry",
+            entity_id=str(row.id),
+            action="UPDATE",
+            actor_id=str(user.id),
+            actor_role=actor_role,
+            source="api",
+            changes_json={
+                "before": before,
+                "after": after,
+            },
+            context={
+                "project_id": str(row.project_id),
+                "project_name": project_name,
+                "affected_user_id": str(row.user_id),
+                "affected_user_name": affected_user_name,
+            }
+        )
+    except Exception:
+        pass
+    
     return {"status":"ok"}
 
 
@@ -1807,23 +2235,60 @@ def delete_time_entry(project_id: str, entry_id: str, db: Session = Depends(get_
         if attendance.clock_out_time:
             end_time_str = attendance.clock_out_time.time().isoformat()
         
-        # Create log before deleting
-        log = ProjectTimeEntryLog(
-            entry_id=None,  # No ProjectTimeEntry for attendance records
-            project_id=project_id,
-            user_id=user.id,
-            action="delete",
-            changes={
-                "message": "record deleted via project > timesheet",
-                "attendance_id": str(attendance_uuid),  # Store attendance ID in changes
-                "work_date": work_date.isoformat() if work_date else None,
-                "start_time": start_time_str,
-                "end_time": end_time_str,
-                "hours_worked": hours_worked,
-                "break_minutes": break_minutes,
-            }
-        )
-        db.add(log)
+        # Create audit log with rich context before deleting
+        try:
+            from ..services.audit import create_audit_log
+            from ..services.permissions import is_admin, is_supervisor
+            
+            # Determine actor role
+            actor_role = "worker"
+            if is_admin(user, db):
+                actor_role = "admin"
+            elif is_supervisor(user, db):
+                actor_role = "supervisor"
+            
+            # Get affected user name
+            affected_user = db.query(User, EmployeeProfile).outerjoin(
+                EmployeeProfile, EmployeeProfile.user_id == User.id
+            ).filter(User.id == attendance.worker_id).first()
+            affected_user_name = None
+            if affected_user:
+                u, ep = affected_user
+                if ep:
+                    affected_user_name = f"{ep.first_name or ''} {ep.last_name or ''}".strip() or u.username
+                else:
+                    affected_user_name = u.username
+            
+            # Get project name
+            proj = db.query(Project).filter(Project.id == project_id).first()
+            project_name = proj.name if proj else None
+            
+            create_audit_log(
+                db=db,
+                entity_type="timesheet_entry",
+                entity_id=str(attendance_uuid),
+                action="DELETE",
+                actor_id=str(user.id),
+                actor_role=actor_role,
+                source="api",
+                changes_json={
+                    "work_date": work_date.isoformat() if work_date else None,
+                    "start_time": start_time_str,
+                    "end_time": end_time_str,
+                    "hours_worked": hours_worked,
+                    "break_minutes": break_minutes,
+                    "source": "attendance",
+                },
+                context={
+                    "project_id": str(project_id),
+                    "project_name": project_name,
+                    "affected_user_id": str(attendance.worker_id),
+                    "affected_user_name": affected_user_name,
+                    "attendance_id": str(attendance_uuid),
+                }
+            )
+        except Exception:
+            pass
         
         # If this attendance had a synced ProjectTimeEntry (created on approval), delete it too.
         # Prefer precise linkage by source_attendance_id; fallback to legacy note pattern.
@@ -1874,9 +2339,64 @@ def delete_time_entry(project_id: str, entry_id: str, db: Session = Depends(get_
         entry_work_date = row.work_date
         entry_start_time = row.start_time
         entry_end_time = row.end_time
+        entry_minutes = row.minutes
+        entry_notes = row.notes
+        entry_project_id = row.project_id
+        entry_id = row.id
         
-        # Log deletion
-        db.add(ProjectTimeEntryLog(entry_id=row.id, project_id=row.project_id, user_id=user.id, action="delete", changes={"message": "record deleted via project > timesheet"}))
+        # Create audit log with rich context before deleting
+        try:
+            from ..services.audit import create_audit_log
+            from ..services.permissions import is_supervisor
+            
+            # Determine actor role
+            actor_role = "worker"
+            if is_admin(user, db):
+                actor_role = "admin"
+            elif is_supervisor(user, db):
+                actor_role = "supervisor"
+            
+            # Get affected user name
+            affected_user = db.query(User, EmployeeProfile).outerjoin(
+                EmployeeProfile, EmployeeProfile.user_id == User.id
+            ).filter(User.id == entry_user_id).first()
+            affected_user_name = None
+            if affected_user:
+                u, ep = affected_user
+                if ep:
+                    affected_user_name = f"{ep.first_name or ''} {ep.last_name or ''}".strip() or u.username
+                else:
+                    affected_user_name = u.username
+            
+            # Get project name
+            proj = db.query(Project).filter(Project.id == entry_project_id).first()
+            project_name = proj.name if proj else None
+            
+            create_audit_log(
+                db=db,
+                entity_type="timesheet_entry",
+                entity_id=str(entry_id),
+                action="DELETE",
+                actor_id=str(user.id),
+                actor_role=actor_role,
+                source="api",
+                changes_json={
+                    "work_date": entry_work_date.isoformat() if entry_work_date else None,
+                    "start_time": entry_start_time.isoformat() if entry_start_time else None,
+                    "end_time": entry_end_time.isoformat() if entry_end_time else None,
+                    "minutes": entry_minutes,
+                    "notes": entry_notes,
+                },
+                context={
+                    "project_id": str(entry_project_id),
+                    "project_name": project_name,
+                    "affected_user_id": str(entry_user_id),
+                    "affected_user_name": affected_user_name,
+                }
+            )
+        except Exception:
+            pass
+        
         db.delete(row)
         db.commit()
     
@@ -2007,18 +2527,71 @@ def approve_time_entry(project_id: str, entry_id: str, approved: bool = True, db
     if not can_approve_timesheet(user, str(row.user_id), db):
         raise HTTPException(status_code=403, detail="Forbidden")
     from datetime import datetime, timezone
+    
+    before_approved = row.is_approved
     row.is_approved = bool(approved)
     if row.is_approved:
         row.approved_at = datetime.now(timezone.utc)
         row.approved_by = user.id
-        action = "approve"
+        action = "APPROVE"
     else:
         row.approved_at = None
         row.approved_by = None
-        action = "unapprove"
+        action = "UNAPPROVE"
     db.commit()
-    db.add(ProjectTimeEntryLog(entry_id=row.id, project_id=row.project_id, user_id=user.id, action=action, changes=None))
-    db.commit()
+    
+    # Create audit log with rich context
+    try:
+        from ..services.audit import create_audit_log
+        from ..services.permissions import is_admin, is_supervisor
+        
+        # Determine actor role
+        actor_role = "worker"
+        if is_admin(user, db):
+            actor_role = "admin"
+        elif is_supervisor(user, db):
+            actor_role = "supervisor"
+        
+        # Get affected user name
+        affected_user = db.query(User, EmployeeProfile).outerjoin(
+            EmployeeProfile, EmployeeProfile.user_id == User.id
+        ).filter(User.id == row.user_id).first()
+        affected_user_name = None
+        if affected_user:
+            u, ep = affected_user
+            if ep:
+                affected_user_name = f"{ep.first_name or ''} {ep.last_name or ''}".strip() or u.username
+            else:
+                affected_user_name = u.username
+        
+        # Get project name
+        proj = db.query(Project).filter(Project.id == row.project_id).first()
+        project_name = proj.name if proj else None
+        
+        create_audit_log(
+            db=db,
+            entity_type="timesheet_entry",
+            entity_id=str(row.id),
+            action=action,
+            actor_id=str(user.id),
+            actor_role=actor_role,
+            source="api",
+            changes_json={
+                "before": {"is_approved": before_approved},
+                "after": {"is_approved": row.is_approved},
+                "work_date": row.work_date.isoformat() if row.work_date else None,
+                "minutes": row.minutes,
+            },
+            context={
+                "project_id": str(row.project_id),
+                "project_name": project_name,
+                "affected_user_id": str(row.user_id),
+                "affected_user_name": affected_user_name,
+            }
+        )
+    except Exception:
+        pass
+    
     return {"status": "ok", "is_approved": row.is_approved}
 
 
@@ -2054,6 +2627,51 @@ def timesheet_by_user(month: Optional[str] = None, user_id: Optional[str] = None
             "is_approved": bool(getattr(r,'is_approved', False)),
         })
     return out
+
+
+# ---- Project Audit Logs ----
+@router.get("/{project_id}/audit-logs")
+def get_project_audit_logs(
+    project_id: str,
+    section: Optional[str] = None,
+    month: Optional[str] = None,
+    limit: int = 50,
+    offset: int = 0,
+    db: Session = Depends(get_db),
+    _=Depends(require_permissions("business:projects:read"))
+):
+    """
+    Get audit logs for a specific project/opportunity.
+    
+    Args:
+        project_id: Project/Opportunity ID
+        section: Filter by section (reports|files|proposal|estimate|orders|workload|timesheet|general)
+        month: Filter by month (YYYY-MM format)
+        limit: Maximum number of results (default 50, max 200)
+        offset: Offset for pagination
+    
+    Returns:
+        List of audit log entries with user information
+    """
+    from ..services.audit import get_project_audit_logs as fetch_logs
+    
+    # Validate project exists
+    p = db.query(Project).filter(Project.id == project_id).first()
+    if not p:
+        raise HTTPException(status_code=404, detail="Project not found")
+    
+    # Validate and clamp limit
+    try:
+        limit = max(1, min(200, int(limit)))
+    except (ValueError, TypeError):
+        limit = 50
+    
+    try:
+        offset = max(0, int(offset))
+    except (ValueError, TypeError):
+        offset = 0
+    
+    return fetch_logs(db, project_id, section, month, limit, offset)
 
 
 @router.post("/{project_id}/convert-to-project")
