@@ -58,10 +58,33 @@ export default function TasksPage() {
   const location = useLocation();
   const fromHome = location.state?.fromHome === true;
   const queryClient = useQueryClient();
+  const lastTasksSyncRef = useMemo(() => ({ current: null as string | null }), []);
+
   const { data, isLoading } = useQuery({
     queryKey: ['tasks'],
     queryFn: () => api<TaskBuckets>('GET', '/tasks'),
-    refetchInterval: 30_000,
+    staleTime: 15_000,
+  });
+
+  // Lightweight polling: only refetch full /tasks when something actually changed server-side.
+  useQuery({
+    queryKey: ['tasks-sync'],
+    queryFn: () => api<{ latest_task_updated_at: string | null }>('GET', '/tasks/sync'),
+    refetchInterval: 5_000,
+    refetchIntervalInBackground: false,
+    enabled: true,
+    onSuccess: (res) => {
+      const next = res?.latest_task_updated_at || null;
+      const prev = lastTasksSyncRef.current;
+      if (prev === null) {
+        lastTasksSyncRef.current = next;
+        return;
+      }
+      if (next && next !== prev) {
+        lastTasksSyncRef.current = next;
+        queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      }
+    },
   });
 
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);

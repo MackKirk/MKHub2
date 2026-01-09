@@ -4,7 +4,7 @@ from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
-from sqlalchemy import and_, or_
+from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import Session, joinedload
 
 from ..auth.security import get_current_user
@@ -126,11 +126,11 @@ def _serialize_task(task: TaskItem, viewer_id: uuid.UUID, viewer_division: Optio
         } if task.concluded_by_id else None,
         "archived_at": task.archived_at.isoformat() if task.archived_at else None,
         "permissions": {
-            "can_start": task.status == "accepted" and (is_owner or (not task.assigned_to_id and is_division_member)),
-            "can_conclude": task.status == "in_progress" and (is_owner or (not task.assigned_to_id and is_division_member)),
-            "can_block": task.status == "in_progress" and (is_owner or (not task.assigned_to_id and is_division_member)),
-            "can_unblock": task.status == "blocked" and (is_owner or (not task.assigned_to_id and is_division_member)),
-            "can_archive": task.status == "done" and task.archived_at is None and (is_owner or (not task.assigned_to_id and is_division_member)),
+            "can_start": task.status == "accepted" and (is_owner or is_division_member),
+            "can_conclude": task.status == "in_progress" and (is_owner or is_division_member),
+            "can_block": task.status == "in_progress" and (is_owner or is_division_member),
+            "can_unblock": task.status == "blocked" and (is_owner or is_division_member),
+            "can_archive": task.status == "done" and task.archived_at is None and (is_owner or is_division_member),
             "can_delete": task.requested_by_id == viewer_id,  # Only if user created the task
         },
     }
@@ -146,14 +146,9 @@ def _tasks_for_user(db: Session, me: User, viewer_divisions: list[str]):
     ownership_filters = [TaskItem.assigned_to_id == me.id]
     
     if viewer_divisions:
-        # Tasks assigned to any of the user's divisions (when not assigned to specific user)
-        division_filters = [
-            and_(
-                TaskItem.assigned_to_id.is_(None),
-                TaskItem.assigned_division_label == div_label
-            )
-            for div_label in viewer_divisions
-        ]
+        # Tasks assigned to any of the user's divisions (division-scoped tasks)
+        # Do NOT require assigned_to_id IS NULL; division members can always see the task.
+        division_filters = [TaskItem.assigned_division_label == div_label for div_label in viewer_divisions]
         if division_filters:
             ownership_filters.append(or_(*division_filters))
     
@@ -171,6 +166,18 @@ def _tasks_for_user(db: Session, me: User, viewer_divisions: list[str]):
     )
 
 
+def _tasks_filter_for_user(me: User, viewer_divisions: list[str]):
+    """
+    Build a SQLAlchemy filter for tasks visible to a user:
+    - Direct assignment to the user
+    - Division-scoped tasks for any of the user's divisions
+    """
+    ownership_filters = [TaskItem.assigned_to_id == me.id]
+    if viewer_divisions:
+        ownership_filters.append(TaskItem.assigned_division_label.in_(viewer_divisions))
+    return or_(*ownership_filters)
+
+
 @router.get("")
 def list_tasks(db: Session = Depends(get_db), me: User = Depends(get_current_user)):
     viewer_divisions = _get_viewer_divisions(db, me.id)
@@ -181,6 +188,25 @@ def list_tasks(db: Session = Depends(get_db), me: User = Depends(get_current_use
         payload = _serialize_task(task, viewer_id=me.id, viewer_division=viewer_division, viewer_divisions=viewer_divisions)
         grouped.setdefault(task.status, []).append(payload)
     return grouped
+
+
+@router.get("/sync")
+def tasks_sync(db: Session = Depends(get_db), me: User = Depends(get_current_user)):
+    """
+    Lightweight endpoint for polling.
+    Returns the most recent updated_at among the user's visible non-archived tasks.
+    Frontend can poll this frequently and only refetch /tasks when it changes.
+    """
+    viewer_divisions = _get_viewer_divisions(db, me.id)
+    latest = (
+        db.query(func.max(TaskItem.updated_at))
+        .filter(and_(_tasks_filter_for_user(me, viewer_divisions), TaskItem.archived_at.is_(None)))
+        .scalar()
+    )
+    return {
+        "latest_task_updated_at": latest.isoformat() if latest else None,
+        "server_time": datetime.utcnow().isoformat(),
+    }
 
 
 @router.get("/archived")
@@ -196,13 +222,7 @@ def list_archived_tasks(db: Session = Depends(get_db), me: User = Depends(get_cu
     ownership_filters = [TaskItem.assigned_to_id == me.id]
     
     if viewer_divisions:
-        division_filters = [
-            and_(
-                TaskItem.assigned_to_id.is_(None),
-                TaskItem.assigned_division_label == div_label
-            )
-            for div_label in viewer_divisions
-        ]
+        division_filters = [TaskItem.assigned_division_label == div_label for div_label in viewer_divisions]
         if division_filters:
             ownership_filters.append(or_(*division_filters))
     
@@ -255,75 +275,107 @@ def create_task(payload: TaskCreate, db: Session = Depends(get_db), me: User = D
     if not title:
         raise HTTPException(status_code=400, detail="Title is required")
 
-    # Collect all user IDs to assign tasks to
-    target_user_ids: list[uuid.UUID] = []
-    
-    # If assigned_user_ids provided, add them
-    if payload.assigned_user_ids:
-        for user_id_str in payload.assigned_user_ids:
-            try:
-                target_user_ids.append(uuid.UUID(user_id_str))
-            except ValueError:
-                raise HTTPException(status_code=400, detail=f"Invalid user ID: {user_id_str}")
-    
-    # If assigned_division_ids provided, get all users in those divisions
-    if payload.assigned_division_ids:
+    assigned_user_ids_raw = payload.assigned_user_ids or []
+    assigned_division_ids_raw = payload.assigned_division_ids or []
+
+    created_tasks: list[TaskItem] = []
+    origin_id = str(uuid.uuid4())  # Same origin_id for all tasks created in this batch
+
+    # Division assignment => create ONE shared task per division (visible/synced for all members)
+    if assigned_division_ids_raw:
         division_ids: list[uuid.UUID] = []
-        for div_id_str in payload.assigned_division_ids:
+        for div_id_str in assigned_division_ids_raw:
             try:
                 division_ids.append(uuid.UUID(div_id_str))
             except ValueError:
                 raise HTTPException(status_code=400, detail=f"Invalid division ID: {div_id_str}")
-        
-        division_users = _get_users_in_divisions(db, division_ids)
-        for user in division_users:
-            if user.id not in target_user_ids:  # Avoid duplicates
-                target_user_ids.append(user.id)
-    
-    # If no assignments specified, default to current user (backward compatibility)
-    if not target_user_ids:
-        target_user_ids = [me.id]
-    
-    if not target_user_ids:
-        raise HTTPException(status_code=400, detail="No valid users or divisions specified")
-    
-    # Create a task for each target user
-    created_tasks = []
-    origin_id = str(uuid.uuid4())  # Same origin_id for all tasks created in this batch
-    
-    for user_id in target_user_ids:
-        # Verify user exists and is active
-        target_user = db.query(User).filter(User.id == user_id, User.is_active == True).first()
-        if not target_user:
-            continue  # Skip invalid/inactive users
-        
+
+        divisions = db.query(SettingItem).filter(SettingItem.id.in_(division_ids)).all()
+        if not divisions:
+            raise HTTPException(status_code=400, detail="No valid divisions specified")
+
+        for div in divisions:
+            div_label = getattr(div, "label", None)
+            if not div_label:
+                continue
+            task = create_task_item(
+                db,
+                title=title,
+                description=(payload.description or "").strip() or None,
+                requested_by_id=me.id,
+                assigned_to_id=None,
+                priority=payload.priority or "normal",
+                due_date=payload.due_date,
+                origin_type="manual_request",
+                origin_reference="Manual",
+                origin_id=origin_id,
+                assigned_division_label=div_label,
+                request=None,
+            )
+            task.status = "accepted"
+            task.updated_at = datetime.utcnow()
+            _add_task_log(db, task, me, "created", f'Task created: "{title}"')
+            created_tasks.append(task)
+
+    # Direct user assignment => keep legacy behavior (one task per user)
+    elif assigned_user_ids_raw:
+        target_user_ids: list[uuid.UUID] = []
+        for user_id_str in assigned_user_ids_raw:
+            try:
+                target_user_ids.append(uuid.UUID(user_id_str))
+            except ValueError:
+                raise HTTPException(status_code=400, detail=f"Invalid user ID: {user_id_str}")
+
+        for user_id in target_user_ids:
+            target_user = db.query(User).filter(User.id == user_id, User.is_active == True).first()
+            if not target_user:
+                continue
+            task = create_task_item(
+                db,
+                title=title,
+                description=(payload.description or "").strip() or None,
+                requested_by_id=me.id,
+                assigned_to_id=user_id,
+                priority=payload.priority or "normal",
+                due_date=payload.due_date,
+                origin_type="manual_request",
+                origin_reference="Manual",
+                origin_id=origin_id,
+                assigned_division_label=None,
+                request=None,
+            )
+            task.status = "accepted"
+            task.updated_at = datetime.utcnow()
+            _add_task_log(db, task, me, "created", f'Task created: "{title}"')
+            created_tasks.append(task)
+
+    # No assignment => default to current user (backward compatibility)
+    else:
         task = create_task_item(
             db,
             title=title,
             description=(payload.description or "").strip() or None,
             requested_by_id=me.id,
-            assigned_to_id=user_id,  # Assign to specific user
+            assigned_to_id=me.id,
             priority=payload.priority or "normal",
             due_date=payload.due_date,
             origin_type="manual_request",
             origin_reference="Manual",
-            origin_id=origin_id,  # Same origin_id links all tasks in this batch
-            assigned_division_label=None,  # Not using division assignment when assigning to specific users
+            origin_id=origin_id,
+            assigned_division_label=None,
             request=None,
         )
-        # Explicitly set initial status
         task.status = "accepted"
         task.updated_at = datetime.utcnow()
         _add_task_log(db, task, me, "created", f'Task created: "{title}"')
         created_tasks.append(task)
-    
+
     if not created_tasks:
-        raise HTTPException(status_code=400, detail="No valid users found to assign tasks to")
-    
+        raise HTTPException(status_code=400, detail="No valid assignees found")
+
     db.commit()
-    
-    # Return the first created task (for backward compatibility with frontend)
-    # Frontend can refresh the list to see all created tasks
+
+    # Return the first created task (frontend will refresh the list)
     db.refresh(created_tasks[0])
     return _serialize_task(created_tasks[0], viewer_id=me.id, viewer_division=viewer_division, viewer_divisions=viewer_divisions)
 
@@ -342,9 +394,9 @@ def _get_task(task_id: str, db: Session) -> TaskItem:
 def _ensure_view_permission(task: TaskItem, me: User, viewer_divisions: list[str]) -> None:
     if task.assigned_to_id == me.id:
         return
-    if task.assigned_to_id is None and task.assigned_division_label:
-        if task.assigned_division_label in viewer_divisions:
-            return
+    # Division-scoped tasks: any member of the division can view (even if the task is "claimed")
+    if task.assigned_division_label and task.assigned_division_label in (viewer_divisions or []):
+        return
     raise HTTPException(status_code=403, detail="You do not have access to this task")
 
 
@@ -354,14 +406,11 @@ def _ensure_action_permission(task: TaskItem, me: User, viewer_divisions: list[s
     Mirrors the owner-or-division-member rules used by start/conclude permissions.
     """
     is_owner = task.assigned_to_id == me.id
-    is_division_member = (
-        task.assigned_to_id is None
-        and task.assigned_division_label is not None
-        and task.assigned_division_label in (viewer_divisions or [])
-    )
+    is_division_member = task.assigned_division_label is not None and task.assigned_division_label in (viewer_divisions or [])
     if not (is_owner or is_division_member):
         raise HTTPException(status_code=403, detail="You do not have permission to update this task")
-    if task.assigned_to_id and task.assigned_to_id != me.id:
+    # If it's assigned to someone else AND you don't have division access, block the action
+    if task.assigned_to_id and task.assigned_to_id != me.id and not is_division_member:
         raise HTTPException(status_code=403, detail="Task is assigned to another user")
 
 
@@ -400,6 +449,28 @@ def _add_task_log(
             actor_name=actor_name,
         )
     )
+
+
+@router.get("/{task_id}/sync")
+def task_sync(task_id: str, db: Session = Depends(get_db), me: User = Depends(get_current_user)):
+    """
+    Lightweight endpoint for polling a single task modal.
+    Returns task.updated_at and the latest log entry timestamp.
+    """
+    viewer_divisions = _get_viewer_divisions(db, me.id)
+    task = _get_task(task_id, db)
+    _ensure_view_permission(task, me, viewer_divisions)
+
+    latest_log = (
+        db.query(func.max(TaskLogEntry.created_at))
+        .filter(TaskLogEntry.task_id == task.id)
+        .scalar()
+    )
+    return {
+        "task_updated_at": task.updated_at.isoformat() if task.updated_at else None,
+        "log_last_created_at": latest_log.isoformat() if latest_log else None,
+        "server_time": datetime.utcnow().isoformat(),
+    }
 
 
 @router.get("/{task_id}")
@@ -508,17 +579,15 @@ def start_task(task_id: str, db: Session = Depends(get_db), me: User = Depends(g
     viewer_division = viewer_divisions[0] if viewer_divisions else None  # For backward compatibility
     task = _get_task(task_id, db)
     _ensure_view_permission(task, me, viewer_divisions)
+    _ensure_action_permission(task, me, viewer_divisions)
     if task.status != "accepted":
         raise HTTPException(status_code=400, detail="Task is not in Accepted status")
 
-    if task.assigned_to_id and task.assigned_to_id != me.id:
-        raise HTTPException(status_code=403, detail="Task is assigned to another user")
-
-    if not task.assigned_to_id:
-        if not viewer_divisions or task.assigned_division_label not in viewer_divisions:
-            raise HTTPException(status_code=403, detail="Task is not assigned to any of your divisions")
-        task.assigned_to_id = me.id
-        task.assigned_to_name = get_user_display(db, me.id)
+    # Division-scoped tasks are collaborative: do NOT "claim" by setting assigned_to_id.
+    # For user-assigned tasks, keep ownership rules (handled by _ensure_action_permission + assigned_to_id checks).
+    if task.assigned_division_label is None:
+        if task.assigned_to_id and task.assigned_to_id != me.id:
+            raise HTTPException(status_code=403, detail="Task is assigned to another user")
 
     now = datetime.utcnow()
     task.status = "in_progress"
@@ -539,11 +608,9 @@ def conclude_task(task_id: str, db: Session = Depends(get_db), me: User = Depend
     viewer_division = viewer_divisions[0] if viewer_divisions else None  # For backward compatibility
     task = _get_task(task_id, db)
     _ensure_view_permission(task, me, viewer_divisions)
+    _ensure_action_permission(task, me, viewer_divisions)
     if task.status != "in_progress":
         raise HTTPException(status_code=400, detail="Task is not In Progress")
-
-    if task.assigned_to_id and task.assigned_to_id != me.id:
-        raise HTTPException(status_code=403, detail="Task is assigned to another user")
 
     now = datetime.utcnow()
     task.status = "done"
