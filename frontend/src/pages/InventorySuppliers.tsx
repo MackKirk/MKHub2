@@ -553,7 +553,7 @@ export default function InventorySuppliers() {
       confirmText: 'Remove',
       cancelText: 'Cancel'
     });
-    if (!ok) return;
+    if (ok !== 'confirm') return;
     try {
       await api('DELETE', `/estimate/related/${a}/${b}`);
       toast.success('Relation removed');
@@ -1224,7 +1224,7 @@ export default function InventorySuppliers() {
                                             confirmText: 'Delete',
                                             cancelText: 'Cancel'
                                           });
-                                          if (ok) {
+                                          if (ok === 'confirm') {
                                             try {
                                               await api('DELETE', `/inventory/contacts/${contact.id}`);
                                               refetchContacts();
@@ -1563,7 +1563,7 @@ export default function InventorySuppliers() {
                             confirmText: 'Delete',
                             cancelText: 'Cancel'
                           });
-                          if (ok) {
+                          if (ok === 'confirm') {
                             deleteMut.mutate(viewing.id);
                             setOpen(false);
                             resetForm();
