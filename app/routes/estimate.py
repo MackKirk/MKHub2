@@ -581,9 +581,12 @@ def _update_estimate_internal(estimate_id: int, body: EstimateIn, db: Session):
     item_extras = {}
     for it in body.items:
         price = it.unit_price
-        if price is None and it.material_id is not None:
-            m = db.query(Material).filter(Material.id == it.material_id).first()
-            price = (m.price or 0.0) if m else 0.0
+        # Get material to capture snapshot data
+        material = None
+        if it.material_id is not None:
+            material = db.query(Material).filter(Material.id == it.material_id).first()
+            if price is None and material:
+                price = (material.price or 0.0)
         elif price is None:
             price = 0.0
         line_total = (it.quantity or 0.0) * (price or 0.0)
@@ -598,6 +601,19 @@ def _update_estimate_internal(estimate_id: int, body: EstimateIn, db: Session):
             if old_item_id in old_items_report_tracking:
                 added_via_report_id, added_via_report_date = old_items_report_tracking[old_item_id]
         
+        # Capture product snapshot data when adding product to estimate
+        # This preserves product data even if product is later updated in catalog
+        product_name_snapshot = None
+        product_unit_snapshot = None
+        product_supplier_name_snapshot = None
+        product_price_snapshot = None
+        # Save snapshot for products (item_type is 'product' or None/default)
+        if material and (it.item_type == 'product' or it.item_type is None):
+            product_name_snapshot = material.name
+            product_unit_snapshot = material.unit
+            product_supplier_name_snapshot = material.supplier_name
+            product_price_snapshot = material.price
+        
         estimate_item = EstimateItem(
             estimate_id=est.id,
             material_id=it.material_id,
@@ -608,7 +624,11 @@ def _update_estimate_internal(estimate_id: int, body: EstimateIn, db: Session):
             description=it.description or None,
             item_type=it.item_type or 'product',
             added_via_report_id=added_via_report_id,
-            added_via_report_date=added_via_report_date
+            added_via_report_date=added_via_report_date,
+            product_name_snapshot=product_name_snapshot,
+            product_unit_snapshot=product_unit_snapshot,
+            product_supplier_name_snapshot=product_supplier_name_snapshot,
+            product_price_snapshot=product_price_snapshot
         )
         db.add(estimate_item)
         db.flush()  # Flush to get the ID
@@ -715,13 +735,29 @@ def create_estimate(body: EstimateIn, db: Session = Depends(get_db), _=Depends(r
     for idx, it in enumerate(body.items):
         # default to current material price if unit_price not provided and material_id exists
         price = it.unit_price
-        if price is None and it.material_id is not None:
-            m = db.query(Material).filter(Material.id == it.material_id).first()
-            price = (m.price or 0.0) if m else 0.0
+        # Get material to capture snapshot data
+        material = None
+        if it.material_id is not None:
+            material = db.query(Material).filter(Material.id == it.material_id).first()
+            if price is None and material:
+                price = (material.price or 0.0)
         elif price is None:
             price = 0.0
         line_total = (it.quantity or 0.0) * (price or 0.0)
         total += line_total
+        
+        # Capture product snapshot data when adding product to estimate
+        # This preserves product data even if product is later updated in catalog
+        product_name_snapshot = None
+        product_unit_snapshot = None
+        product_supplier_name_snapshot = None
+        product_price_snapshot = None
+        if material and (it.item_type == 'product' or it.item_type is None):
+            product_name_snapshot = material.name
+            product_unit_snapshot = material.unit
+            product_supplier_name_snapshot = material.supplier_name
+            product_price_snapshot = material.price
+        
         estimate_item = EstimateItem(
             estimate_id=est.id, 
             material_id=it.material_id,
@@ -730,7 +766,11 @@ def create_estimate(body: EstimateIn, db: Session = Depends(get_db), _=Depends(r
             total_price=line_total, 
             section=it.section or None,
             description=it.description or None,
-            item_type=it.item_type or 'product'
+            item_type=it.item_type or 'product',
+            product_name_snapshot=product_name_snapshot,
+            product_unit_snapshot=product_unit_snapshot,
+            product_supplier_name_snapshot=product_supplier_name_snapshot,
+            product_price_snapshot=product_price_snapshot
         )
         db.add(estimate_item)
         db.flush()  # Flush to get the ID
@@ -862,19 +902,39 @@ def get_estimate(estimate_id: int, db: Session = Depends(get_db), _=Depends(requ
                 item_dict["unit"] = extras['unit']
         
         # If material_id exists, get material details
+        # Use snapshot data if available (preserves product data at time of addition)
+        # Otherwise fall back to current material data (for backward compatibility)
         if item.material_id:
-            m = db.query(Material).filter(Material.id == item.material_id).first()
-            if m:
-                item_dict["name"] = m.name
-                # Only set unit from material if not already set from extras (for non-product items)
+            # Prefer snapshot data if available (preserves original product data)
+            if hasattr(item, 'product_name_snapshot') and item.product_name_snapshot:
+                item_dict["name"] = item.product_name_snapshot
+                # Only set unit from snapshot if not already set from extras
                 if 'unit' not in item_dict:
-                    item_dict["unit"] = m.unit
-                item_dict["supplier_name"] = m.supplier_name
-                item_dict["unit_type"] = m.unit_type
-                item_dict["units_per_package"] = m.units_per_package
-                item_dict["coverage_sqs"] = m.coverage_sqs
-                item_dict["coverage_ft2"] = m.coverage_ft2
-                item_dict["coverage_m2"] = m.coverage_m2
+                    item_dict["unit"] = item.product_unit_snapshot
+                item_dict["supplier_name"] = item.product_supplier_name_snapshot
+                # For other fields (unit_type, coverage, etc.), still use current material data
+                # as these are less likely to change and may be needed for calculations
+                m = db.query(Material).filter(Material.id == item.material_id).first()
+                if m:
+                    item_dict["unit_type"] = m.unit_type
+                    item_dict["units_per_package"] = m.units_per_package
+                    item_dict["coverage_sqs"] = m.coverage_sqs
+                    item_dict["coverage_ft2"] = m.coverage_ft2
+                    item_dict["coverage_m2"] = m.coverage_m2
+            else:
+                # Fall back to current material data (for backward compatibility with old estimates)
+                m = db.query(Material).filter(Material.id == item.material_id).first()
+                if m:
+                    item_dict["name"] = m.name
+                    # Only set unit from material if not already set from extras (for non-product items)
+                    if 'unit' not in item_dict:
+                        item_dict["unit"] = m.unit
+                    item_dict["supplier_name"] = m.supplier_name
+                    item_dict["unit_type"] = m.unit_type
+                    item_dict["units_per_package"] = m.units_per_package
+                    item_dict["coverage_sqs"] = m.coverage_sqs
+                    item_dict["coverage_ft2"] = m.coverage_ft2
+                    item_dict["coverage_m2"] = m.coverage_m2
         items_with_details.append(item_dict)
     
     # Return rates with defaults if not saved
@@ -1033,15 +1093,27 @@ async def generate_estimate_pdf(estimate_id: int, db: Session = Depends(get_db),
                 item_dict["unit"] = extras['unit']
         
         # Get material details if available
+        # Use snapshot data if available (preserves product data at time of addition)
+        # Otherwise fall back to current material data (for backward compatibility)
         if item.material_id:
-            material = db.query(Material).filter(Material.id == item.material_id).first()
-            if material:
-                item_dict["name"] = material.name
-                # Only set unit from material if not already set from extras (for non-product items)
+            # Prefer snapshot data if available (preserves original product data)
+            if hasattr(item, 'product_name_snapshot') and item.product_name_snapshot:
+                item_dict["name"] = item.product_name_snapshot
+                # Only set unit from snapshot if not already set from extras
                 if 'unit' not in item_dict or not item_dict.get("unit"):
-                    item_dict["unit"] = material.unit or ""
+                    item_dict["unit"] = item.product_unit_snapshot or ""
                 if 'supplier_name' not in item_dict:
-                    item_dict["supplier_name"] = material.supplier_name or ""
+                    item_dict["supplier_name"] = item.product_supplier_name_snapshot or ""
+            else:
+                # Fall back to current material data (for backward compatibility with old estimates)
+                material = db.query(Material).filter(Material.id == item.material_id).first()
+                if material:
+                    item_dict["name"] = material.name
+                    # Only set unit from material if not already set from extras (for non-product items)
+                    if 'unit' not in item_dict or not item_dict.get("unit"):
+                        item_dict["unit"] = material.unit or ""
+                    if 'supplier_name' not in item_dict:
+                        item_dict["supplier_name"] = material.supplier_name or ""
         
         items_by_section[section].append(item_dict)
     

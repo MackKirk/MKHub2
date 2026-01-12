@@ -1259,6 +1259,12 @@ class EstimateItem(Base):
     # Report tracking fields
     added_via_report_id = Column(UUID(as_uuid=True), ForeignKey("project_reports.id"), nullable=True)
     added_via_report_date = Column(DateTime(timezone=True), nullable=True)
+    
+    # Product snapshot fields - preserve product data at time of addition to estimate
+    product_name_snapshot = Column(String, nullable=True)
+    product_unit_snapshot = Column(String, nullable=True)
+    product_supplier_name_snapshot = Column(String, nullable=True)
+    product_price_snapshot = Column(Float, nullable=True)
 
 
 class RelatedProduct(Base):
