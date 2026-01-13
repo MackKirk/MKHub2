@@ -14,6 +14,7 @@ from ..models.models import (
     SupplierContact,
     InventoryOrder,
     InventoryOrderItem,
+    Material,
 )
 from ..schemas.inventory import (
     ProductCreate,
@@ -249,6 +250,7 @@ def update_supplier(supplier_id: uuid.UUID, body: dict, db: Session = Depends(ge
 @router.delete("/suppliers/{supplier_id}")
 def delete_supplier(supplier_id: uuid.UUID, db: Session = Depends(get_db)):
     import traceback
+    from sqlalchemy import func
     try:
         print(f"DELETE SUPPLIER - Attempting to delete: {supplier_id}")
         row = db.query(Supplier).filter(Supplier.id == supplier_id).first()
@@ -257,6 +259,29 @@ def delete_supplier(supplier_id: uuid.UUID, db: Session = Depends(get_db)):
             raise HTTPException(status_code=404, detail="Supplier not found")
         
         print(f"Found supplier: {row.name}")
+        
+        # Check if there are any products (Material) associated with this supplier
+        # Products use supplier_name (string) to relate to suppliers
+        products_count = db.query(Material).filter(
+            func.lower(Material.supplier_name) == func.lower(row.name)
+        ).count()
+        
+        if products_count > 0:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Cannot delete supplier: there are {products_count} product(s) registered with this supplier. Please remove or reassign all products first."
+            )
+        
+        # Check if there are any orders associated with this supplier
+        orders_count = db.query(InventoryOrder).filter(
+            InventoryOrder.supplier_id == supplier_id
+        ).count()
+        
+        if orders_count > 0:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Cannot delete supplier: there are {orders_count} order(s) associated with this supplier. Please remove or reassign all orders first."
+            )
         
         # Manually delete contacts first to avoid relationship issues
         contacts = db.query(SupplierContact).filter(SupplierContact.supplier_id == supplier_id).all()
