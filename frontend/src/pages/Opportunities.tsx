@@ -793,6 +793,30 @@ export default function Opportunities(){
   const [hasAnimated, setHasAnimated] = useState(false);
   const [animationComplete, setAnimationComplete] = useState(false);
   
+  // View mode state with persistence
+  const [viewMode, setViewMode] = useState<'cards' | 'list'>(() => {
+    // Check URL param first
+    const urlView = searchParams.get('view');
+    if (urlView === 'list' || urlView === 'cards') {
+      return urlView;
+    }
+    // Then check localStorage
+    const saved = localStorage.getItem('opportunities-view-mode');
+    return (saved === 'list' || saved === 'cards') ? saved : 'list';
+  });
+  
+  // Sync viewMode with URL and localStorage
+  useEffect(() => {
+    const params = new URLSearchParams(searchParams);
+    if (viewMode === 'list') {
+      params.set('view', 'list');
+    } else {
+      params.delete('view');
+    }
+    setSearchParams(params, { replace: true });
+    localStorage.setItem('opportunities-view-mode', viewMode);
+  }, [viewMode, searchParams, setSearchParams]);
+  
   // Get current date formatted (same as Dashboard)
   const todayLabel = useMemo(() => {
     return new Date().toLocaleDateString('en-CA', {
@@ -1001,6 +1025,36 @@ export default function Opportunities(){
         {/* Primary Row: Global Search + Status + Actions */}
         <div className="px-6 py-4 bg-white">
           <div className="flex items-center gap-4">
+            {/* View Toggle Button */}
+            <div className="flex items-center border border-gray-200 rounded-md overflow-hidden">
+              <button
+                onClick={() => setViewMode('list')}
+                className={`px-3 py-2.5 text-sm font-medium transition-colors duration-150 ${
+                  viewMode === 'list'
+                    ? 'bg-gray-100 text-gray-900'
+                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                }`}
+                title="List view"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                </svg>
+              </button>
+              <button
+                onClick={() => setViewMode('cards')}
+                className={`px-3 py-2.5 text-sm font-medium transition-colors duration-150 border-l border-gray-200 ${
+                  viewMode === 'cards'
+                    ? 'bg-gray-100 text-gray-900'
+                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                }`}
+                title="Card view"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+                </svg>
+              </button>
+            </div>
+
             {/* Global Search - Dominant, large */}
             <div className="flex-1">
               <div className="relative">
@@ -1068,34 +1122,64 @@ export default function Opportunities(){
       )}
       
       <LoadingOverlay isLoading={isInitialLoading} text="Loading opportunities...">
-        <div 
-          className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-3 gap-4"
-          style={animationComplete ? {} : {
-            opacity: hasAnimated ? 1 : 0,
-            transform: hasAnimated ? 'translateY(0) scale(1)' : 'translateY(-8px) scale(0.98)',
-            transition: 'opacity 400ms ease-out, transform 400ms ease-out'
-          }}
-        >
-          {hasEditPermission && (
-            <Link
-              to="/projects/new?is_bidding=true"
-              state={{ backgroundLocation: location }}
-              className="border-2 border-dashed border-gray-300 rounded-xl p-4 hover:border-brand-red hover:bg-gray-50 transition-all text-center bg-white flex flex-col items-center justify-center min-h-[200px]"
-            >
-              <div className="text-4xl text-gray-400 mb-2">+</div>
-              <div className="font-medium text-sm text-gray-700">New Opportunity</div>
-              <div className="text-xs text-gray-500 mt-1">Add new opportunity</div>
-            </Link>
-          )}
-          {arr.map(p => (
-            <OpportunityListCard 
-              key={p.id} 
-              opportunity={p} 
-              onOpenReportModal={(projectId) => setReportModalOpen({ open: true, projectId })}
-              projectStatuses={projectStatuses}
-            />
-          ))}
-        </div>
+        {viewMode === 'cards' ? (
+          <div 
+            className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-3 gap-4"
+            style={animationComplete ? {} : {
+              opacity: hasAnimated ? 1 : 0,
+              transform: hasAnimated ? 'translateY(0) scale(1)' : 'translateY(-8px) scale(0.98)',
+              transition: 'opacity 400ms ease-out, transform 400ms ease-out'
+            }}
+          >
+            {hasEditPermission && (
+              <Link
+                to="/projects/new?is_bidding=true"
+                state={{ backgroundLocation: location }}
+                className="border-2 border-dashed border-gray-300 rounded-xl p-4 hover:border-brand-red hover:bg-gray-50 transition-all text-center bg-white flex flex-col items-center justify-center min-h-[200px]"
+              >
+                <div className="text-4xl text-gray-400 mb-2">+</div>
+                <div className="font-medium text-sm text-gray-700">New Opportunity</div>
+                <div className="text-xs text-gray-500 mt-1">Add new opportunity</div>
+              </Link>
+            )}
+            {arr.map(p => (
+              <OpportunityListCard 
+                key={p.id} 
+                opportunity={p} 
+                onOpenReportModal={(projectId) => setReportModalOpen({ open: true, projectId })}
+                projectStatuses={projectStatuses}
+              />
+            ))}
+          </div>
+        ) : (
+          <div 
+            className="flex flex-col gap-2"
+            style={animationComplete ? {} : {
+              opacity: hasAnimated ? 1 : 0,
+              transform: hasAnimated ? 'translateY(0) scale(1)' : 'translateY(-8px) scale(0.98)',
+              transition: 'opacity 400ms ease-out, transform 400ms ease-out'
+            }}
+          >
+            {hasEditPermission && (
+              <Link
+                to="/projects/new?is_bidding=true"
+                state={{ backgroundLocation: location }}
+                className="border-2 border-dashed border-gray-300 rounded-lg p-4 hover:border-brand-red hover:bg-gray-50 transition-all text-center bg-white flex items-center justify-center min-h-[60px]"
+              >
+                <div className="text-2xl text-gray-400 mr-2">+</div>
+                <div className="font-medium text-sm text-gray-700">New Opportunity</div>
+              </Link>
+            )}
+            {arr.map(p => (
+              <OpportunityListItem 
+                key={p.id} 
+                opportunity={p} 
+                onOpenReportModal={(projectId) => setReportModalOpen({ open: true, projectId })}
+                projectStatuses={projectStatuses}
+              />
+            ))}
+          </div>
+        )}
         {!isInitialLoading && arr.length === 0 && (
           <div className="p-8 text-center text-gray-500 rounded-xl border bg-white">
             No opportunities found matching your criteria.
@@ -1398,6 +1482,116 @@ function CreateReportModal({ projectId, reportCategories, onClose, onSuccess }: 
         </div>
       </div>
     </div>
+  );
+}
+
+function OpportunityListItem({ opportunity, onOpenReportModal, projectStatuses }: { 
+  opportunity: Opportunity;
+  onOpenReportModal: (projectId: string) => void;
+  projectStatuses: any[];
+}){
+  const navigate = useNavigate();
+  const { data:client } = useQuery({ 
+    queryKey:['opportunity-client', opportunity.client_id], 
+    queryFn: ()=> opportunity.client_id? api<any>('GET', `/clients/${encodeURIComponent(String(opportunity.client_id||''))}`): Promise.resolve(null), 
+    enabled: !!opportunity.client_id, 
+    staleTime: 300_000 
+  });
+  const { data:details } = useQuery({ 
+    queryKey:['opportunity-detail-card', opportunity.id], 
+    queryFn: ()=> api<any>('GET', `/projects/${encodeURIComponent(String(opportunity.id))}`), 
+    staleTime: 60_000 
+  });
+  
+  const status = (opportunity as any).status_label || details?.status_label || '';
+  const statusLabel = String(status || '').trim();
+  const statusColor = (projectStatuses || []).find((s: any) => String(s?.label || '').trim() === statusLabel)?.value || '#e5e7eb';
+  const estimatedValue = (opportunity as any).cost_estimated || details?.cost_estimated || 0;
+  const estimatorIds = (opportunity as any).estimator_ids || details?.estimator_ids || ((opportunity as any).estimator_id || details?.estimator_id ? [(opportunity as any).estimator_id || details?.estimator_id] : []);
+  const clientName = client?.display_name || client?.name || '';
+  
+  // Get employees data for avatars
+  const { data: employeesData } = useQuery({ 
+    queryKey:['employees-for-opportunities-list'], 
+    queryFn: ()=> api<any[]>('GET','/employees'), 
+    staleTime: 300_000
+  });
+  const employees = employeesData || [];
+  
+  // Get estimator employees for avatars
+  const estimators = useMemo(() => {
+    return estimatorIds
+      .map((id: string) => employees.find((e: any) => String(e.id) === String(id)))
+      .filter(Boolean);
+  }, [estimatorIds, employees]);
+
+  return (
+    <Link 
+      to={`/opportunities/${encodeURIComponent(String(opportunity.id))}`} 
+      className="group border rounded-lg bg-white p-4 hover:shadow-md transition-all duration-200"
+    >
+      <div className="flex items-center justify-between gap-4">
+        {/* Left: Name, Code, Client */}
+        <div className="flex-1 min-w-0">
+          <div className="font-semibold text-base text-gray-900 group-hover:text-[#7f1010] transition-colors truncate">
+            {opportunity.name || 'Opportunity'}
+          </div>
+          <div className="flex items-center gap-2 mt-1 text-sm text-gray-600">
+            <span className="truncate">{opportunity.code || '—'}</span>
+            {clientName && (
+              <>
+                <span className="text-gray-400">•</span>
+                <span className="truncate">{clientName}</span>
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* Center: Estimator and Value */}
+        <div className="flex items-center gap-6 text-sm">
+          <div className="min-w-0">
+            <div className="text-xs text-gray-500 mb-1">Estimator</div>
+            {estimators.length === 0 ? (
+              <div className="text-gray-400 text-xs">—</div>
+            ) : estimators.length === 1 ? (
+              <div className="flex items-center gap-2">
+                <UserAvatar user={estimators[0]} size="w-5 h-5" showTooltip={true} />
+                <div className="font-medium text-gray-900 text-xs truncate max-w-[120px]">{getUserDisplayName(estimators[0])}</div>
+              </div>
+            ) : (
+              <div className="flex items-center gap-1">
+                {estimators.slice(0, 2).map((est: any) => (
+                  <UserAvatar key={est.id} user={est} size="w-5 h-5" showTooltip={true} />
+                ))}
+                {estimators.length > 2 && (
+                  <span className="text-xs text-gray-500 ml-1">+{estimators.length - 2}</span>
+                )}
+              </div>
+            )}
+          </div>
+          <div className="min-w-0">
+            <div className="text-xs text-gray-500">Value</div>
+            <div className="font-semibold text-[#7f1010] whitespace-nowrap">
+              {estimatedValue > 0 ? `$${estimatedValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—'}
+            </div>
+          </div>
+        </div>
+
+        {/* Right: Status */}
+        <div className="flex-shrink-0">
+          <span
+            className={[
+              'inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-medium border shadow-sm',
+              'backdrop-blur-sm border-gray-200 text-gray-800',
+            ].join(' ')}
+            title={status}
+            style={{ backgroundColor: statusColor, color: '#000' }}
+          >
+            <span className="truncate max-w-[10rem]">{status || '—'}</span>
+          </span>
+        </div>
+      </div>
+    </Link>
   );
 }
 

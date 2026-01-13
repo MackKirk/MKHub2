@@ -341,6 +341,30 @@ export default function Projects(){
   const [hasAnimated, setHasAnimated] = useState(false);
   const [animationComplete, setAnimationComplete] = useState(false);
   
+  // View mode state with persistence
+  const [viewMode, setViewMode] = useState<'cards' | 'list'>(() => {
+    // Check URL param first
+    const urlView = searchParams.get('view');
+    if (urlView === 'list' || urlView === 'cards') {
+      return urlView;
+    }
+    // Then check localStorage
+    const saved = localStorage.getItem('projects-view-mode');
+    return (saved === 'list' || saved === 'cards') ? saved : 'list';
+  });
+  
+  // Sync viewMode with URL and localStorage
+  useEffect(() => {
+    const params = new URLSearchParams(searchParams);
+    if (viewMode === 'list') {
+      params.set('view', 'list');
+    } else {
+      params.delete('view');
+    }
+    setSearchParams(params, { replace: true });
+    localStorage.setItem('projects-view-mode', viewMode);
+  }, [viewMode, searchParams, setSearchParams]);
+  
   // Convert current URL params to rules for modal
   const currentRules = useMemo(() => {
     return convertParamsToRules(searchParams);
@@ -587,6 +611,36 @@ export default function Projects(){
         {/* Primary Row: Global Search + Actions */}
         <div className="px-6 py-4 bg-white">
           <div className="flex items-center gap-4">
+            {/* View Toggle Button */}
+            <div className="flex items-center border border-gray-200 rounded-md overflow-hidden">
+              <button
+                onClick={() => setViewMode('list')}
+                className={`px-3 py-2.5 text-sm font-medium transition-colors duration-150 ${
+                  viewMode === 'list'
+                    ? 'bg-gray-100 text-gray-900'
+                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                }`}
+                title="List view"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                </svg>
+              </button>
+              <button
+                onClick={() => setViewMode('cards')}
+                className={`px-3 py-2.5 text-sm font-medium transition-colors duration-150 border-l border-gray-200 ${
+                  viewMode === 'cards'
+                    ? 'bg-gray-100 text-gray-900'
+                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                }`}
+                title="Card view"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+                </svg>
+              </button>
+            </div>
+
             {/* Global Search - Dominant, large */}
             <div className="flex-1">
               <div className="relative">
@@ -649,35 +703,67 @@ export default function Projects(){
         </div>
       )}
       <LoadingOverlay isLoading={isInitialLoading} text="Loading projects...">
-        <div 
-          className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-3 gap-4"
-          style={animationComplete ? {} : {
-            opacity: hasAnimated ? 1 : 0,
-            transform: hasAnimated ? 'translateY(0) scale(1)' : 'translateY(-8px) scale(0.98)',
-            transition: 'opacity 400ms ease-out, transform 400ms ease-out'
-          }}
-        >
-          {isLoading && !arr.length ? (
-            <>
-              {[1, 2, 3, 4, 5, 6].map(i => (
-                <div key={i} className="h-64 bg-gray-100 animate-pulse rounded-xl" />
-              ))}
-            </>
-          ) : arr.length > 0 ? (
-            arr.map(p => (
-              <ProjectListCard
-                key={p.id}
-                project={p}
-                projectDivisions={projectDivisions}
-                projectStatuses={projectStatuses}
-              />
-            ))
-          ) : (
-            <div className="col-span-2 p-8 text-center text-gray-500 rounded-xl border bg-white">
-              No projects found matching your criteria.
-            </div>
-          )}
-        </div>
+        {viewMode === 'cards' ? (
+          <div 
+            className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-3 gap-4"
+            style={animationComplete ? {} : {
+              opacity: hasAnimated ? 1 : 0,
+              transform: hasAnimated ? 'translateY(0) scale(1)' : 'translateY(-8px) scale(0.98)',
+              transition: 'opacity 400ms ease-out, transform 400ms ease-out'
+            }}
+          >
+            {isLoading && !arr.length ? (
+              <>
+                {[1, 2, 3, 4, 5, 6].map(i => (
+                  <div key={i} className="h-64 bg-gray-100 animate-pulse rounded-xl" />
+                ))}
+              </>
+            ) : arr.length > 0 ? (
+                arr.map(p => (
+                  <ProjectListCard
+                    key={p.id}
+                    project={p}
+                    projectDivisions={projectDivisions}
+                    projectStatuses={projectStatuses}
+                  />
+                ))
+              ) : (
+                <div className="col-span-2 p-8 text-center text-gray-500 rounded-xl border bg-white">
+                  No projects found matching your criteria.
+                </div>
+              )}
+          </div>
+        ) : (
+          <div 
+            className="flex flex-col gap-2"
+            style={animationComplete ? {} : {
+              opacity: hasAnimated ? 1 : 0,
+              transform: hasAnimated ? 'translateY(0) scale(1)' : 'translateY(-8px) scale(0.98)',
+              transition: 'opacity 400ms ease-out, transform 400ms ease-out'
+            }}
+          >
+            {isLoading && !arr.length ? (
+              <>
+                {[1, 2, 3, 4, 5, 6].map(i => (
+                  <div key={i} className="h-20 bg-gray-100 animate-pulse rounded-lg" />
+                ))}
+              </>
+            ) : arr.length > 0 ? (
+                arr.map(p => (
+                  <ProjectListItem
+                    key={p.id}
+                    project={p}
+                    projectDivisions={projectDivisions}
+                    projectStatuses={projectStatuses}
+                  />
+                ))
+              ) : (
+                <div className="p-8 text-center text-gray-500 rounded-xl border bg-white">
+                  No projects found matching your criteria.
+                </div>
+              )}
+          </div>
+        )}
       </LoadingOverlay>
       {pickerOpen?.open && (
         <ImagePicker isOpen={true} onClose={()=>setPickerOpen(null)} clientId={String(pickerOpen?.clientId||'')} targetWidth={800} targetHeight={300} allowEdit={true} onConfirm={async(blob)=>{
@@ -726,6 +812,102 @@ const getDivisionIcon = (label: string): string => {
   };
   return iconMap[label] || '📦';
 };
+
+function ProjectListItem({ project, projectDivisions, projectStatuses }:{ project: Project, projectDivisions?: any[], projectStatuses: any[] }){
+  const navigate = useNavigate();
+  
+  // Use client name from project data
+  const clientName = project.client_display_name || project.client_name || '';
+  const status = project.status_label || '';
+  const statusLabel = String(status || '').trim();
+  const statusColor = (projectStatuses || []).find((s: any) => String(s?.label || '').trim() === statusLabel)?.value || '#e5e7eb';
+  const start = (project.date_start || project.created_at || '').slice(0,10);
+  const eta = (project.date_eta || '').slice(0,10);
+  const projectAdminId = project.project_admin_id || null;
+  const estimatedValue = project.service_value || 0;
+  
+  // Get employees data for avatars
+  const { data: employeesData } = useQuery({ 
+    queryKey:['employees-for-projects-list'], 
+    queryFn: ()=> api<any[]>('GET','/employees'), 
+    staleTime: 300_000
+  });
+  const employees = employeesData || [];
+  
+  // Resolve Project Admin employee for avatar
+  const projectAdmin = useMemo(() => {
+    if (!projectAdminId) return null;
+    return employees.find((e: any) => String(e.id) === String(projectAdminId)) || null;
+  }, [projectAdminId, employees]);
+
+  return (
+    <Link 
+      to={`/projects/${encodeURIComponent(String(project.id))}`} 
+      className="group border rounded-lg bg-white p-4 hover:shadow-md transition-all duration-200"
+    >
+      <div className="flex items-center justify-between gap-4">
+        {/* Left: Name, Code, Client */}
+        <div className="flex-1 min-w-0">
+          <div className="font-semibold text-base text-gray-900 group-hover:text-[#7f1010] transition-colors truncate">
+            {project.name || 'Project'}
+          </div>
+          <div className="flex items-center gap-2 mt-1 text-sm text-gray-600">
+            <span className="truncate">{project.code || '—'}</span>
+            {clientName && (
+              <>
+                <span className="text-gray-400">•</span>
+                <span className="truncate">{clientName}</span>
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* Center: Dates, Project Admin, and Value */}
+        <div className="flex items-center gap-6 text-sm">
+          <div className="min-w-0">
+            <div className="text-xs text-gray-500">Start</div>
+            <div className="font-medium text-gray-900 whitespace-nowrap">{start || '—'}</div>
+          </div>
+          <div className="min-w-0">
+            <div className="text-xs text-gray-500">ETA</div>
+            <div className="font-medium text-gray-900 whitespace-nowrap">{eta || '—'}</div>
+          </div>
+          <div className="min-w-0">
+            <div className="text-xs text-gray-500 mb-1">Project Admin</div>
+            {!projectAdmin ? (
+              <div className="text-gray-400 text-xs">—</div>
+            ) : (
+              <div className="flex items-center gap-2">
+                <UserAvatar user={projectAdmin} size="w-5 h-5" showTooltip={true} />
+                <div className="font-medium text-gray-900 text-xs truncate max-w-[120px]">{getUserDisplayName(projectAdmin)}</div>
+              </div>
+            )}
+          </div>
+          <div className="min-w-0">
+            <div className="text-xs text-gray-500">Value</div>
+            <div className="font-semibold text-[#7f1010] whitespace-nowrap">
+              {estimatedValue > 0 ? `$${estimatedValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—'}
+            </div>
+          </div>
+        </div>
+
+        {/* Right: Status */}
+        <div className="flex-shrink-0">
+          <span
+            className={[
+              'inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-medium border shadow-sm',
+              'backdrop-blur-sm border-gray-200 text-gray-800',
+            ].join(' ')}
+            title={status}
+            style={{ backgroundColor: statusColor, color: '#000' }}
+          >
+            <span className="truncate max-w-[10rem]">{status || '—'}</span>
+          </span>
+        </div>
+      </div>
+    </Link>
+  );
+}
 
 function ProjectListCard({ project, projectDivisions, projectStatuses }:{ project: Project, projectDivisions?: any[], projectStatuses: any[] }){
   const navigate = useNavigate();
