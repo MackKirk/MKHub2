@@ -7,7 +7,7 @@ import toast from 'react-hot-toast';
 import ImagePicker from '@/components/ImagePicker';
 import { useConfirm } from '@/components/ConfirmProvider';
 import { useUnsavedChanges } from '@/components/UnsavedChangesProvider';
-import EstimateBuilder, { EstimateBuilderRef } from '@/components/EstimateBuilder';
+// EstimateBuilder removed - now using simple pricing items
 
 type Client = { id:string, name?:string, display_name?:string, address_line1?:string, city?:string, province?:string, country?:string };
 type Site = { id:string, site_name?:string, site_address_line1?:string, site_address_line2?:string, site_city?:string, site_province?:string, site_postal_code?:string, site_country?:string };
@@ -30,7 +30,7 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
   const { data:nextCode } = useQuery({ queryKey:['proposalCode', clientId], queryFn: ()=> (mode==='new' && clientId)? api<any>('GET', `/proposals/next-code?client_id=${encodeURIComponent(clientId)}`) : Promise.resolve(null) });
   const { data:contacts, refetch: refetchContacts } = useQuery({ queryKey:['clientContacts', clientId], queryFn: ()=> clientId? api<any[]>('GET', `/clients/${clientId}/contacts`): Promise.resolve([]), enabled: !!clientId });
   
-  // Fetch project and settings for EstimateBuilder when projectId is available
+  // Fetch project data when projectId is available (used for order_number and other fields)
   const { data:project } = useQuery({ 
     queryKey:['project', projectId], 
     queryFn: async ()=> {
@@ -54,11 +54,8 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
   });
   const { data:settings } = useQuery({ queryKey:['settings'], queryFn: ()=>api<any>('GET','/settings') });
   
-  // Check permissions for estimate editing
+  // Check permissions (me query might be used elsewhere)
   const { data:me } = useQuery({ queryKey:['me'], queryFn: ()=>api<any>('GET','/auth/me') });
-  const isAdmin = (me?.roles||[]).includes('admin');
-  const permissions = new Set(me?.permissions || []);
-  const canEditEstimate = isAdmin || permissions.has('business:projects:estimate:write');
 
   // form state
   const templateStyle = 'Mack Kirk'; // Fixed template for proposals
@@ -71,14 +68,11 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
   const [otherNotes, setOtherNotes] = useState<string>('');
   const [projectDescription, setProjectDescription] = useState<string>('');
   const [additionalNotes, setAdditionalNotes] = useState<string>('');
-  const [pricingItems, setPricingItems] = useState<{ name:string, price:string, pst?:boolean, gst?:boolean }[]>([]);
+  const [pricingItems, setPricingItems] = useState<{ name:string, price:string, quantity?:string, pst?:boolean, gst?:boolean }[]>([]);
   const [optionalServices, setOptionalServices] = useState<{ service:string, price:string }[]>([]);
   const [showTotalInPdf, setShowTotalInPdf] = useState<boolean>(true);
-  const [pricingType, setPricingType] = useState<'pricing'|'estimate'>('estimate');
-  const [markup, setMarkup] = useState<number>(0);
   const [pstRate, setPstRate] = useState<number>(7);
   const [gstRate, setGstRate] = useState<number>(5);
-  const [profitRate, setProfitRate] = useState<number>(0);
   const defaultTermsText = `1. PARTIES & GENERAL INFORMATION
 This document outlines the binding agreement between Mack Kirk (hereafter referred to as "Contractor") and the Client (hereafter referred to as "Owner" or "Buyer") for commercial project services. The scope of this contract may include roof repairs, replacements, restorations, inspections, or other construction services, as outlined in the attached proposal. By proceeding with any aspect of the work or delivery of materials, the Owner agrees to all terms and conditions within this document, which supersedes any conflicting terms not expressly agreed upon in writing. Both parties affirm that they possess the authority to enter into this agreement and agree to collaborate professionally and transparently throughout the project timeline. The laws governing this agreement shall be those of the Province of British Columbia, and any disputes will be resolved within its jurisdiction.
 
@@ -178,7 +172,6 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
   const [isReady, setIsReady] = useState<boolean>(false);
   const [focusTarget, setFocusTarget] = useState<{ type:'title'|'caption', sectionIndex:number, imageIndex?: number }|null>(null);
   const [activeSectionIndex, setActiveSectionIndex] = useState<number>(-1);
-  const [estimateHasUnsavedChanges, setEstimateHasUnsavedChanges] = useState<boolean>(false);
   const [selectedContactId, setSelectedContactId] = useState<string>('');
   const [contactModalOpen, setContactModalOpen] = useState(false);
   const [newContactName, setNewContactName] = useState('');
@@ -198,7 +191,6 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
   const lastAutoSaveRef = useRef<number>(0);
   const proposalIdRef = useRef<string | undefined>(mode === 'edit' ? initial?.id : undefined);
   const handleSaveRef = useRef<() => Promise<void>>();
-  const estimateBuilderRef = useRef<EstimateBuilderRef | null>(null);
 
   // --- Helpers declared early so effects can safely reference them
   const sanitizeSections = (arr:any[])=> (arr||[]).map((sec:any)=>{
@@ -240,31 +232,34 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
   };
 
   const totalNum = useMemo(()=>{ 
-    return pricingItems.reduce((a,c)=> a + Number(parseAccounting(c.price)||'0'), 0); 
+    return pricingItems.reduce((a,c)=> {
+      const price = Number(parseAccounting(c.price)||'0');
+      const qty = Number(c.quantity || '1');
+      return a + (price * qty);
+    }, 0); 
   }, [pricingItems]);
 
   // Calculate PST only on items marked for PST
   const totalForPst = useMemo(() => {
     return pricingItems
       .filter(c => c.pst === true)
-      .reduce((a, c) => a + Number(parseAccounting(c.price)||'0'), 0);
+      .reduce((a, c) => {
+        const price = Number(parseAccounting(c.price)||'0');
+        const qty = Number(c.quantity || '1');
+        return a + (price * qty);
+      }, 0);
   }, [pricingItems]);
 
   // Calculate GST only on items marked for GST
   const totalForGst = useMemo(() => {
     return pricingItems
       .filter(c => c.gst === true)
-      .reduce((a, c) => a + Number(parseAccounting(c.price)||'0'), 0);
+      .reduce((a, c) => {
+        const price = Number(parseAccounting(c.price)||'0');
+        const qty = Number(c.quantity || '1');
+        return a + (price * qty);
+      }, 0);
   }, [pricingItems]);
-
-  // Calculate Summary values for manual pricing
-  const totalWithMarkup = useMemo(() => {
-    return totalNum * (1 + (markup / 100));
-  }, [totalNum, markup]);
-
-  const markupValue = useMemo(() => {
-    return totalWithMarkup - totalNum;
-  }, [totalWithMarkup, totalNum]);
 
   const pst = useMemo(() => {
     // PST is calculated only on items marked for PST (applied to direct costs)
@@ -286,64 +281,14 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
     return subtotal + gst;
   }, [subtotal, gst]);
 
-  // Calculate final total to display (grandTotal for manual, or from estimate)
-  const [estimateGrandTotal, setEstimateGrandTotal] = useState<number>(0);
-  const [estimatePst, setEstimatePst] = useState<number>(0);
-  const [estimateGst, setEstimateGst] = useState<number>(0);
-  
-  // Update estimate values periodically when using estimate pricing
-  useEffect(() => {
-    if (pricingType === 'estimate' && estimateBuilderRef.current) {
-      const interval = setInterval(() => {
-        const total = estimateBuilderRef.current?.getGrandTotal() || 0;
-        const pstValue = estimateBuilderRef.current?.getPst() || 0;
-        const gstValue = estimateBuilderRef.current?.getGst() || 0;
-        setEstimateGrandTotal(total);
-        setEstimatePst(pstValue);
-        setEstimateGst(gstValue);
-      }, 100);
-      return () => clearInterval(interval);
-    } else {
-      setEstimateGrandTotal(0);
-      setEstimatePst(0);
-      setEstimateGst(0);
-    }
-  }, [pricingType]);
-
-  const displayTotal = useMemo(() => {
-    return pricingType === 'estimate' ? estimateGrandTotal : grandTotal;
-  }, [pricingType, estimateGrandTotal, grandTotal]);
-
-  const displayPst = useMemo(() => {
-    return pricingType === 'estimate' ? estimatePst : pst;
-  }, [pricingType, estimatePst, pst]);
-
-  const displayGst = useMemo(() => {
-    return pricingType === 'estimate' ? estimateGst : gst;
-  }, [pricingType, estimateGst, gst]);
-
-  // Calculate Total Estimate for estimate pricing (grandTotal - GST)
-  const estimateTotalEstimate = useMemo(() => {
-    if (pricingType === 'estimate') {
-      return estimateGrandTotal - estimateGst;
-    }
-    return 0;
-  }, [pricingType, estimateGrandTotal, estimateGst]);
-
   // Calculate if PST/GST should be shown in PDF based on items
   const showPstInPdf = useMemo(() => {
-    if (pricingType === 'estimate') {
-      return estimatePst > 0;
-    }
     return pricingItems.some(item => item.pst === true);
-  }, [pricingType, pricingItems, estimatePst]);
+  }, [pricingItems]);
 
   const showGstInPdf = useMemo(() => {
-    if (pricingType === 'estimate') {
-      return estimateGst > 0;
-    }
     return pricingItems.some(item => item.gst === true);
-  }, [pricingType, pricingItems, estimateGst]);
+  }, [pricingItems]);
 
   const computeFingerprint = ()=>{
     try{
@@ -363,11 +308,8 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
         showTotalInPdf,
         showPstInPdf,
         showGstInPdf,
-        pricingType,
-        markup,
         pstRate,
         gstRate,
-        profitRate,
         terms,
         sections: sanitizeSections(sections),
         coverFoId,
@@ -401,9 +343,9 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
     // Load pricing items from bid_price and additional_costs (legacy support)
     const legacyBidPrice = d.bid_price ?? 0;
     const dc = Array.isArray(d.additional_costs)? d.additional_costs : [];
-    const loadedItems: { name:string, price:string, pst?:boolean, gst?:boolean }[] = [];
+    const loadedItems: { name:string, price:string, quantity?:string, pst?:boolean, gst?:boolean }[] = [];
     if (legacyBidPrice && Number(legacyBidPrice) > 0) {
-      loadedItems.push({ name: 'Bid Price', price: formatAccounting(legacyBidPrice), pst: false, gst: false });
+      loadedItems.push({ name: 'Bid Price', price: formatAccounting(legacyBidPrice), quantity: '1', pst: false, gst: false });
     }
     dc.forEach((c:any)=> {
       const label = String(c.label||'');
@@ -412,6 +354,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
         loadedItems.push({ 
           name: label, 
           price: formatAccounting(value),
+          quantity: c.quantity || '1',
           pst: c.pst === true || c.pst === 'true' || c.pst === 1,
           gst: c.gst === true || c.gst === 'true' || c.gst === 1
         });
@@ -421,11 +364,8 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
     const os = Array.isArray(d.optional_services)? d.optional_services : [];
     setOptionalServices(os.map((s:any)=> ({ service: String(s.service||''), price: formatAccounting(s.price ?? '') })));
     setShowTotalInPdf(d.show_total_in_pdf !== undefined ? Boolean(d.show_total_in_pdf) : true);
-    setPricingType('estimate');
-    setMarkup(d.markup !== undefined && d.markup !== null ? Number(d.markup) : 5);
     setPstRate(d.pst_rate !== undefined && d.pst_rate !== null ? Number(d.pst_rate) : 7);
     setGstRate(d.gst_rate !== undefined && d.gst_rate !== null ? Number(d.gst_rate) : 5);
-    setProfitRate(d.profit_rate !== undefined && d.profit_rate !== null ? Number(d.profit_rate) : 0);
     setTerms(String(d.terms_text||defaultTermsText));
     const loaded = Array.isArray(d.sections)? JSON.parse(JSON.stringify(d.sections)) : [];
     const normalized = loaded.map((sec:any)=>{
@@ -479,28 +419,8 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
   const hasUnsavedChanges = useMemo(() => {
     if (!isReady) return false;
     const fp = computeFingerprint();
-    const proposalHasChanges = fp !== lastSavedHash;
-    // Also check if estimate has unsaved changes (when using estimate pricing)
-    const estimateHasChanges = pricingType === 'estimate' && estimateHasUnsavedChanges;
-    return proposalHasChanges || estimateHasChanges;
-  }, [isReady, lastSavedHash, coverTitle, templateStyle, orderNumber, date, createdFor, primary, typeOfProject, otherNotes, projectDescription, additionalNotes, pricingItems, optionalServices, showTotalInPdf, showPstInPdf, showGstInPdf, pricingType, markup, pstRate, gstRate, profitRate, terms, sections, coverFoId, page2FoId, clientId, siteId, projectId, computeFingerprint, estimateHasUnsavedChanges]);
-  
-  // Periodically check if estimate has unsaved changes
-  useEffect(() => {
-    if (pricingType !== 'estimate' || !estimateBuilderRef.current) {
-      setEstimateHasUnsavedChanges(false);
-      return;
-    }
-    
-    const checkInterval = setInterval(() => {
-      if (estimateBuilderRef.current) {
-        const hasChanges = estimateBuilderRef.current.hasUnsavedChanges();
-        setEstimateHasUnsavedChanges(hasChanges);
-      }
-    }, 1000); // Check every second
-    
-    return () => clearInterval(checkInterval);
-  }, [pricingType]);
+    return fp !== lastSavedHash;
+  }, [isReady, lastSavedHash, coverTitle, templateStyle, orderNumber, date, createdFor, primary, typeOfProject, otherNotes, projectDescription, additionalNotes, pricingItems, optionalServices, showTotalInPdf, showPstInPdf, showGstInPdf, pstRate, gstRate, terms, sections, coverFoId, page2FoId, clientId, siteId, projectId, computeFingerprint]);
   
   // Sync selected contact when contacts are loaded or createdFor changes (only on initial load)
   useEffect(() => {
@@ -771,7 +691,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
       // Update lastAutoSaveRef when proposal is loaded to prevent immediate auto-save
       lastAutoSaveRef.current = Date.now();
     }
-      }, [isReady, lastSavedHash, coverTitle, orderNumber, date, createdFor, primary, typeOfProject, otherNotes, projectDescription, additionalNotes, pricingItems, optionalServices, showTotalInPdf, pricingType, terms, sections, coverFoId, page2FoId, clientId, siteId, projectId, computeFingerprint]);
+      }, [isReady, lastSavedHash, coverTitle, orderNumber, date, createdFor, primary, typeOfProject, otherNotes, projectDescription, additionalNotes, pricingItems, optionalServices, showTotalInPdf, terms, sections, coverFoId, page2FoId, clientId, siteId, projectId, computeFingerprint]);
 
   const handleSave = useCallback(async()=>{
     if (disabled || isSaving) {
@@ -779,25 +699,6 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
     }
     try{
       setIsSaving(true);
-      
-      // Save estimate first if using estimate pricing
-      if (pricingType === 'estimate' && estimateBuilderRef.current) {
-        try {
-          const estimateSaved = await estimateBuilderRef.current.save();
-          if (!estimateSaved) {
-            toast.error('Failed to save estimate');
-            setIsSaving(false);
-            return;
-          }
-          // Update state after successful save
-          setEstimateHasUnsavedChanges(false);
-        } catch (e) {
-          console.error('Error saving estimate:', e);
-          toast.error('Failed to save estimate');
-          setIsSaving(false);
-          return;
-        }
-      }
       
       // When in project context, ALWAYS check if proposal already exists for this project
       // This ensures we update the existing proposal instead of creating duplicates
@@ -842,18 +743,15 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
         project_description: projectDescription||null,
         additional_project_notes: additionalNotes||null,
         bid_price: 0, // Legacy field
-        total: totalNum,
+        total: grandTotal,
         terms_text: terms||'',
         show_total_in_pdf: showTotalInPdf,
         show_pst_in_pdf: showPstInPdf,
         show_gst_in_pdf: showGstInPdf,
-        additional_costs: pricingItems.map(c=> ({ label: c.name, value: Number(parseAccounting(c.price)||'0'), pst: c.pst === true, gst: c.gst === true })),
+        additional_costs: pricingItems.map(c=> ({ label: c.name, value: Number(parseAccounting(c.price)||'0'), quantity: c.quantity || '1', pst: c.pst === true, gst: c.gst === true })),
         optional_services: optionalServices.map(s=> ({ service: s.service, price: Number(parseAccounting(s.price)||'0') })),
-        pricing_type: pricingType,
-        markup: markup,
         pst_rate: pstRate,
         gst_rate: gstRate,
-        profit_rate: profitRate,
         sections: sanitizeSections(sections),
         cover_file_object_id: coverFoId||null,
         page2_file_object_id: page2FoId||null,
@@ -891,7 +789,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
       lastAutoSaveRef.current = Date.now();
     }catch(e){ toast.error('Save failed'); }
     finally{ setIsSaving(false); }
-  }, [disabled, isSaving, mode, initial?.id, projectId, clientId, siteId, coverTitle, templateStyle, orderNumber, date, createdFor, primary, typeOfProject, otherNotes, projectDescription, additionalNotes, totalNum, showTotalInPdf, showPstInPdf, showGstInPdf, pricingType, markup, pstRate, gstRate, profitRate, terms, pricingItems, optionalServices, sections, coverFoId, page2FoId, nav, queryClient, onSave, computeFingerprint, sanitizeSections, parseAccounting]);
+  }, [disabled, isSaving, mode, initial?.id, projectId, clientId, siteId, coverTitle, templateStyle, orderNumber, date, createdFor, primary, typeOfProject, otherNotes, projectDescription, additionalNotes, totalNum, showTotalInPdf, showPstInPdf, showGstInPdf, pstRate, gstRate, terms, pricingItems, optionalServices, sections, coverFoId, page2FoId, nav, queryClient, onSave, computeFingerprint, sanitizeSections, parseAccounting]);
 
   // Update ref when handleSave changes
   useEffect(() => {
@@ -928,11 +826,8 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
       setPricingItems([]);
     setOptionalServices([]);
     setShowTotalInPdf(true);
-    setPricingType('estimate');
-    setMarkup(5);
     setPstRate(7);
     setGstRate(5);
-    setProfitRate(0);
     setTerms('');
       setSections([]);
       setCoverBlob(null);
@@ -960,20 +855,6 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
     try {
       isAutoSavingRef.current = true;
       
-      // Save estimate first if using estimate pricing
-      if (pricingType === 'estimate' && estimateBuilderRef.current) {
-        try {
-          const saved = await estimateBuilderRef.current.save();
-          if (saved) {
-            // Update state after successful save
-            setEstimateHasUnsavedChanges(false);
-          }
-        } catch (e) {
-          // Silent fail for auto-save
-          console.error('Error auto-saving estimate:', e);
-        }
-      }
-      
       const payload:any = {
         id: proposalIdRef.current || (mode==='edit'? initial?.id : undefined),
         project_id: projectId||null,
@@ -992,18 +873,15 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
         project_description: projectDescription||null,
         additional_project_notes: additionalNotes||null,
         bid_price: 0, // Legacy field
-        total: totalNum,
+        total: grandTotal,
         terms_text: terms||'',
         show_total_in_pdf: showTotalInPdf,
         show_pst_in_pdf: showPstInPdf,
         show_gst_in_pdf: showGstInPdf,
-        additional_costs: pricingItems.map(c=> ({ label: c.name, value: Number(parseAccounting(c.price)||'0'), pst: c.pst === true, gst: c.gst === true })),
+        additional_costs: pricingItems.map(c=> ({ label: c.name, value: Number(parseAccounting(c.price)||'0'), quantity: c.quantity || '1', pst: c.pst === true, gst: c.gst === true })),
         optional_services: optionalServices.map(s=> ({ service: s.service, price: Number(parseAccounting(s.price)||'0') })),
-        pricing_type: pricingType,
-        markup: markup,
         pst_rate: pstRate,
         gst_rate: gstRate,
-        profit_rate: profitRate,
         sections: sanitizeSections(sections),
         cover_file_object_id: coverFoId||null,
         page2_file_object_id: page2FoId||null,
@@ -1029,7 +907,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
     } finally {
       isAutoSavingRef.current = false;
     }
-    }, [clientId, projectId, siteId, coverTitle, templateStyle, orderNumber, date, createdFor, primary, typeOfProject, otherNotes, projectDescription, additionalNotes, pricingItems, optionalServices, showTotalInPdf, showPstInPdf, showGstInPdf, pricingType, markup, pstRate, gstRate, profitRate, totalNum, terms, sections, coverFoId, page2FoId, mode, initial, queryClient, sanitizeSections, computeFingerprint, parseAccounting]);
+    }, [clientId, projectId, siteId, coverTitle, templateStyle, orderNumber, date, createdFor, primary, typeOfProject, otherNotes, projectDescription, additionalNotes, pricingItems, optionalServices, showTotalInPdf, showPstInPdf, showGstInPdf, pstRate, gstRate, totalNum, terms, sections, coverFoId, page2FoId, mode, initial, queryClient, sanitizeSections, computeFingerprint, parseAccounting]);
 
   // Auto-save on changes (debounced)
   useEffect(() => {
@@ -1051,7 +929,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
         clearTimeout(autoSaveTimeoutRef.current);
       }
     };
-    }, [isReady, clientId, coverTitle, templateStyle, orderNumber, date, createdFor, primary, typeOfProject, otherNotes, projectDescription, additionalNotes, pricingItems, optionalServices, showTotalInPdf, showPstInPdf, showGstInPdf, pricingType, terms, sections, coverFoId, page2FoId, autoSave]);
+    }, [isReady, clientId, coverTitle, templateStyle, orderNumber, date, createdFor, primary, typeOfProject, otherNotes, projectDescription, additionalNotes, pricingItems, optionalServices, showTotalInPdf, showPstInPdf, showGstInPdf, terms, sections, coverFoId, page2FoId, autoSave]);
 
   // Periodic auto-save (every 30 seconds)
   useEffect(() => {
@@ -1086,6 +964,11 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
       form.append('cover_title', coverTitle||'Proposal');
       form.append('template_style', templateStyle||'Mack Kirk');
       form.append('order_number', (project?.code || orderNumber)||'');
+      // IMPORTANT: for Opportunities/Projects, include project_id so the backend/PDF can
+      // hide item images and show Qty. Standalone quotes typically have no projectId.
+      if (projectId && projectId.trim() !== '') {
+        form.append('project_id', projectId);
+      }
       form.append('company_name', companyName||'');
       form.append('company_address', companyAddress||'');
       form.append('date', date||'');
@@ -1140,20 +1023,17 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
       form.append('other_notes', otherNotes||'');
       form.append('additional_project_notes', additionalNotes||'');
       form.append('bid_price', String(0)); // Legacy field
-      form.append('total', String(displayTotal));
+      form.append('total', String(grandTotal));
       form.append('show_total_in_pdf', String(showTotalInPdf));
       form.append('show_pst_in_pdf', String(showPstInPdf));
       form.append('show_gst_in_pdf', String(showGstInPdf));
-      form.append('pst_value', String(displayPst));
-      form.append('gst_value', String(displayGst));
-      form.append('estimate_total_estimate', String(pricingType === 'estimate' ? estimateTotalEstimate : 0));
+      form.append('pst_value', String(pst));
+      form.append('gst_value', String(gst));
+      form.append('estimate_total_estimate', String(0));
       form.append('terms_text', terms||'');
-      form.append('pricing_type', pricingType);
-      form.append('markup', String(markup));
       form.append('pst_rate', String(pstRate));
       form.append('gst_rate', String(gstRate));
-      form.append('profit_rate', String(profitRate));
-      form.append('additional_costs', JSON.stringify(pricingItems.map(c=> ({ label: c.name, value: Number(parseAccounting(c.price)||'0') }))));
+      form.append('additional_costs', JSON.stringify(pricingItems.map(c=> ({ label: c.name, value: Number(parseAccounting(c.price)||'0'), quantity: c.quantity || '1', pst: c.pst === true, gst: c.gst === true }))));
       form.append('optional_services', JSON.stringify(optionalServices.map(s=> ({ service: s.service, price: Number(parseAccounting(s.price)||'0') }))));
       form.append('sections', JSON.stringify(sanitizeSections(sections)));
       if (coverFoId) form.append('cover_file_object_id', coverFoId);
@@ -1166,6 +1046,8 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
       const blob = await resp.blob();
       const url = URL.createObjectURL(blob);
       setDownloadUrl(url);
+      // Open PDF in new tab automatically for preview
+      window.open(url, '_blank');
       toast.success('Proposal ready');
       setLastGeneratedHash(computeFingerprint());
     }catch(e){ toast.error('Generate failed'); }
@@ -1175,17 +1057,42 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
   // drag helpers
   const [draggingSection, setDraggingSection] = useState<number|null>(null);
   const [dragOverSection, setDragOverSection] = useState<number|null>(null);
+  const [dragInsertPosition, setDragInsertPosition] = useState<'above'|'below'|null>(null); // Track where to insert
   const onSectionDragStart = (idx:number)=> setDraggingSection(idx);
-  const onSectionDragOver = (idx:number)=> setDragOverSection(idx);
+  const onSectionDragOver = (idx:number, e: React.DragEvent)=> {
+    if (draggingSection === null || draggingSection === idx) return;
+    setDragOverSection(idx);
+    // Determine if inserting above or below based on mouse position
+    const rect = e.currentTarget.getBoundingClientRect();
+    const mouseY = e.clientY;
+    const sectionMiddle = rect.top + rect.height / 2;
+    setDragInsertPosition(mouseY < sectionMiddle ? 'above' : 'below');
+  };
   const onSectionDrop = ()=>{
-    if (draggingSection===null || dragOverSection===null || draggingSection===dragOverSection) { setDraggingSection(null); setDragOverSection(null); return; }
+    if (draggingSection===null || dragOverSection===null || draggingSection===dragOverSection) { 
+      setDraggingSection(null); 
+      setDragOverSection(null);
+      setDragInsertPosition(null);
+      return; 
+    }
     setSections(arr=>{
       const next = [...arr];
       const [moved] = next.splice(draggingSection,1);
-      next.splice(dragOverSection,0,moved);
+      // Adjust insertion index based on whether we're moving up or down
+      let insertIdx = dragOverSection;
+      if (draggingSection < dragOverSection) {
+        // Moving down: adjust index since we removed an item before
+        insertIdx = dragInsertPosition === 'above' ? dragOverSection : dragOverSection + 1;
+      } else {
+        // Moving up: insert at the target position
+        insertIdx = dragInsertPosition === 'above' ? dragOverSection : dragOverSection + 1;
+      }
+      next.splice(insertIdx, 0, moved);
       return next;
     });
-    setDraggingSection(null); setDragOverSection(null);
+    setDraggingSection(null);
+    setDragOverSection(null);
+    setDragInsertPosition(null);
   };
 
   const onImageDragStart = (secIdx:number, imgIdx:number)=> setSectionPicker({ secId: String(secIdx), index: imgIdx });
@@ -1360,9 +1267,32 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
           <div className="p-4">
           <div className="space-y-3">
             {sections.map((s:any, idx:number)=> (
-              <div key={s.id||idx}
-                   className={`border rounded p-3 ${dragOverSection===idx && !disabled? 'ring-2 ring-brand-red':''}`}
-                   onDragOver={!disabled ? (e)=>{ e.preventDefault(); onSectionDragOver(idx); } : undefined}
+              <div key={s.id||idx} className="relative">
+                {/* Insertion line indicator - shown above the section when dragging */}
+                {!disabled && dragOverSection === idx && dragInsertPosition === 'above' && draggingSection !== null && draggingSection !== idx && (
+                  <div className="absolute -top-2 left-0 right-0 h-0.5 bg-brand-red rounded-full z-10 shadow-lg" style={{boxShadow: '0 0 8px rgba(214, 32, 40, 0.6)'}}></div>
+                )}
+                <div
+                   className={`border rounded p-3 transition-all ${
+                     draggingSection === idx ? 'opacity-50 scale-95' : ''
+                   } ${
+                     dragOverSection === idx && !disabled && draggingSection !== idx 
+                       ? 'ring-2 ring-brand-red ring-opacity-50 bg-red-50/30' 
+                       : ''
+                   }`}
+                   onDragOver={!disabled ? (e)=>{ e.preventDefault(); onSectionDragOver(idx, e); } : undefined}
+                   onDragLeave={!disabled ? (e)=>{
+                     // Only clear if we're actually leaving the section (not just moving to a child element)
+                     const rect = e.currentTarget.getBoundingClientRect();
+                     const x = e.clientX;
+                     const y = e.clientY;
+                     if (x < rect.left || x > rect.right || y < rect.top || y > rect.bottom) {
+                       if (dragOverSection === idx) {
+                         setDragOverSection(null);
+                         setDragInsertPosition(null);
+                       }
+                     }
+                   } : undefined}
                    onDrop={!disabled ? onSectionDrop : undefined}
               >
                 <div className="flex items-center justify-between mb-2">
@@ -1380,6 +1310,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                           if (draggingSection === idx) {
                             setDraggingSection(null);
                             setDragOverSection(null);
+                            setDragInsertPosition(null);
                           }
                         }}>
                         <svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
@@ -1508,6 +1439,11 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                   </div>
                 )}
               </div>
+                {/* Insertion line indicator - shown below the section when dragging */}
+                {!disabled && dragOverSection === idx && dragInsertPosition === 'below' && draggingSection !== null && draggingSection !== idx && (
+                  <div className="absolute -bottom-2 left-0 right-0 h-0.5 bg-brand-red rounded-full z-10 shadow-lg" style={{boxShadow: '0 0 8px rgba(214, 32, 40, 0.6)'}}></div>
+                )}
+            </div>
             ))}
             {!disabled && (
               <div className="flex items-center gap-2">
@@ -1526,28 +1462,228 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
           </div>
           <div className="p-4">
           <div className="text-[12px] text-gray-600 mb-2">If no pricing items are added, the "Pricing Table" section will be hidden in the PDF.</div>
-          <div>
-            {projectId && projectId.trim() !== '' ? (
-              <EstimateBuilder 
-                ref={estimateBuilderRef}
-                projectId={projectId} 
-                statusLabel={project?.status_label||''} 
-                settings={settings||{}} 
-                isBidding={project?.is_bidding}
-                canEdit={canEditEstimate}
-                hideFooter={true}
-              />
-            ) : (
-              <div className="text-sm text-gray-600 p-4 border rounded bg-gray-50">
-                Estimate requires a project to be associated with this proposal.
+          {!disabled && (
+            <div className="sticky top-0 z-30 bg-white/95 backdrop-blur mb-3 py-3 border-b">
+              <div className="flex items-center gap-2">
+                <div className="ml-auto flex items-center gap-3 text-sm">
+                  <label className="text-sm">PST (%)</label>
+                  <input 
+                    type="number" 
+                    className="border rounded px-2 py-1 w-20" 
+                    value={pstRate} 
+                    min={0} 
+                    step={1} 
+                    onChange={e=>setPstRate(Number(e.target.value||0))} 
+                    disabled={disabled}
+                  />
+                  <label className="text-sm">GST (%)</label>
+                  <input 
+                    type="number" 
+                    className="border rounded px-2 py-1 w-20" 
+                    value={gstRate} 
+                    min={0} 
+                    step={1} 
+                    onChange={e=>setGstRate(Number(e.target.value||0))} 
+                    disabled={disabled}
+                  />
+                </div>
               </div>
-            )}
+            </div>
+          )}
+          {disabled && (
+            <div className="mb-4 flex items-center gap-4">
+              <label className="flex items-center gap-2 text-sm">
+                <span>PST (%)</span>
+                <input 
+                  type="number" 
+                  className="border rounded px-2 py-1 w-20 bg-gray-100 cursor-not-allowed" 
+                  value={pstRate} 
+                  disabled={true}
+                  readOnly={true}
+                />
+              </label>
+              <label className="flex items-center gap-2 text-sm">
+                <span>GST (%)</span>
+                <input 
+                  type="number" 
+                  className="border rounded px-2 py-1 w-20 bg-gray-100 cursor-not-allowed" 
+                  value={gstRate} 
+                  disabled={true}
+                  readOnly={true}
+                />
+              </label>
+            </div>
+          )}
+          <div className="space-y-2">
+            {pricingItems.map((c, i)=> {
+              const priceNum = parseFloat(parseAccounting(c.price || '0').replace(/,/g, '')) || 0;
+              const qtyNum = parseFloat(c.quantity || '1') || 1;
+              const lineTotal = priceNum * qtyNum;
+              
+              return (
+                <div key={i} className="flex flex-col sm:flex-row gap-1.5 sm:gap-2 items-stretch sm:items-center w-full min-w-0">
+                  <input 
+                    className={`flex-1 min-w-0 border rounded px-3 py-2 text-sm ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} 
+                    placeholder="Name" 
+                    value={c.name} 
+                    onChange={e=>{ 
+                      const v=e.target.value; 
+                      setPricingItems(arr=> arr.map((x,j)=> j===i? { ...x, name:v }: x)); 
+                    }}
+                    disabled={disabled} 
+                    readOnly={disabled} 
+                  />
+                  <input 
+                    type="text" 
+                    className={`flex-1 min-w-[100px] max-w-[140px] border rounded px-2 sm:px-3 py-2 text-sm ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} 
+                    placeholder="Price" 
+                    value={c.price} 
+                    onChange={e=>{ 
+                      const v = parseAccounting(e.target.value); 
+                      setPricingItems(arr=> arr.map((x,j)=> j===i? { ...x, price:v }: x)); 
+                    }} 
+                    onBlur={!disabled ? ()=> setPricingItems(arr=> arr.map((x,j)=> j===i? { ...x, price: formatAccounting(x.price) }: x)) : undefined} 
+                    disabled={disabled} 
+                    readOnly={disabled} 
+                  />
+                  <div className="flex items-center border rounded overflow-hidden min-w-[80px] max-w-[120px]">
+                    <input 
+                      type="number" 
+                      min="1"
+                      step="1"
+                      className={`flex-1 min-w-0 border-0 rounded-none px-2 sm:px-3 py-2 text-sm appearance-none [-moz-appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} 
+                      placeholder="Qty" 
+                      value={c.quantity || '1'} 
+                      onChange={e=>{ 
+                        const v = e.target.value;
+                        const num = parseInt(v) || 1;
+                        const finalValue = num < 1 ? '1' : String(num);
+                        setPricingItems(arr=> arr.map((x,j)=> j===i? { ...x, quantity: finalValue }: x)); 
+                      }} 
+                      disabled={disabled} 
+                      readOnly={disabled} 
+                    />
+                    {!disabled && (
+                      <div className="flex flex-col flex-none border-l bg-white w-6">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const currentQty = parseInt(c.quantity || '1') || 1;
+                            const newQty = currentQty + 1;
+                            setPricingItems(arr=> arr.map((x,j)=> j===i? { ...x, quantity: String(newQty) }: x));
+                          }}
+                          className="px-0.5 py-0 text-[9px] leading-tight border-b hover:bg-gray-100 flex items-center justify-center flex-1"
+                          title="Increase"
+                        >
+                          ▲
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const currentQty = parseInt(c.quantity || '1') || 1;
+                            const newQty = Math.max(1, currentQty - 1);
+                            setPricingItems(arr=> arr.map((x,j)=> j===i? { ...x, quantity: String(newQty) }: x));
+                          }}
+                          className="px-0.5 py-0 text-[9px] leading-tight hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center flex-1"
+                          title="Decrease"
+                          disabled={parseInt(c.quantity || '1') <= 1}
+                        >
+                          ▼
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                  <div className={`border rounded px-2 sm:px-3 py-2 bg-gray-50 min-w-[100px] max-w-[140px] flex-shrink-0 ${disabled ? 'cursor-not-allowed' : ''}`}>
+                    <div className="text-xs sm:text-sm font-medium text-gray-700 text-right whitespace-nowrap overflow-hidden">
+                      ${formatAccounting(lineTotal)}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1.5 flex-shrink-0">
+                    <label className={`flex items-center gap-1 text-xs flex-shrink-0 ${disabled ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
+                      <input 
+                        type="checkbox" 
+                        checked={c.pst === true}
+                        onChange={e=> setPricingItems(arr=> arr.map((x,j)=> j===i? { ...x, pst: e.target.checked }: x))}
+                        className={disabled ? 'cursor-not-allowed' : 'cursor-pointer'}
+                        disabled={disabled}
+                      />
+                      <span className="text-gray-700 whitespace-nowrap">PST</span>
+                    </label>
+                    <label className={`flex items-center gap-1 text-xs flex-shrink-0 ${disabled ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
+                      <input 
+                        type="checkbox" 
+                        checked={c.gst === true}
+                        onChange={e=> setPricingItems(arr=> arr.map((x,j)=> j===i? { ...x, gst: e.target.checked }: x))}
+                        className={disabled ? 'cursor-not-allowed' : 'cursor-pointer'}
+                        disabled={disabled}
+                      />
+                      <span className="text-gray-700 whitespace-nowrap">GST</span>
+                    </label>
+                  </div>
+                  {!disabled && (
+                    <button 
+                      className="p-1 rounded bg-red-100 hover:bg-red-200 flex items-center justify-center transition-colors flex-shrink-0 w-7 h-7" 
+                      onClick={()=> setPricingItems(arr=> arr.filter((_,j)=> j!==i))}
+                      title="Remove"
+                    >
+                      <svg className="w-4 h-4 text-red-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          {!disabled && (
+            <button 
+              className="mt-3 w-full border-2 border-dashed border-gray-300 rounded-lg p-4 hover:border-brand-red hover:bg-gray-50 transition-all text-center bg-white flex items-center justify-center min-h-[60px] disabled:opacity-60"
+              onClick={()=> setPricingItems(arr=> [...arr, { name:'', price:'', quantity:'1', pst: false, gst: false }])}
+            >
+              <div className="text-2xl text-gray-400 mr-2">+</div>
+              <div className="font-medium text-sm text-gray-700">Add Pricing Item</div>
+            </button>
+          )}
+
+          {/* Summary Section */}
+          <div className="mt-6">
+            <div className="rounded-xl border bg-white overflow-hidden">
+              {/* Summary Header - Gray */}
+              <div className="bg-gray-500 p-3 text-white font-semibold">
+                Summary
+              </div>
+              
+              {/* Two Cards Grid - inside Summary card */}
+              <div className="p-4">
+                <div className="grid md:grid-cols-2 gap-4">
+                  {/* Left Card */}
+                  <div className="rounded-xl border bg-white p-4">
+                    <div className="space-y-1 text-sm">
+                      <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span className="font-bold">Total Direct Costs</span><span className="font-bold">${totalNum.toFixed(2)}</span></div>
+                      {showPstInPdf && pst > 0 && (
+                        <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span>PST ({pstRate}%)</span><span>${pst.toFixed(2)}</span></div>
+                      )}
+                      <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span className="font-bold">Sub-total</span><span className="font-bold">${subtotal.toFixed(2)}</span></div>
+                    </div>
+                  </div>
+                  {/* Right Card */}
+                  <div className="rounded-xl border bg-white p-4">
+                    <div className="space-y-1 text-sm">
+                      {showGstInPdf && gst > 0 && (
+                        <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span>GST ({gstRate}%)</span><span>${gst.toFixed(2)}</span></div>
+                      )}
+                      <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1 text-lg"><span className="font-bold">Final Total (with GST)</span><span className="font-bold">${grandTotal.toFixed(2)}</span></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
 
-          {/* Total with Show in PDF checkbox - PST/GST shown in PDF automatically based on items marked */}
+          {/* Total with Show in PDF checkbox */}
           <div className="mt-3 space-y-2">
             <div className="flex items-center gap-2">
-              <div className="text-sm font-semibold">Total: <span className="text-gray-600">${formatAccounting(displayTotal)}</span></div>
+              <div className="text-sm font-semibold">Total: <span className="text-gray-600">${formatAccounting(grandTotal)}</span></div>
               <label className={`flex items-center gap-1 text-sm text-gray-600 ${disabled ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
                 <input 
                   type="checkbox" 

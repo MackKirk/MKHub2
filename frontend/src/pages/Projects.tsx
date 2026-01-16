@@ -735,7 +735,7 @@ export default function Projects(){
           </div>
         ) : (
           <div 
-            className="flex flex-col gap-2"
+            className="flex flex-col gap-2 overflow-x-auto"
             style={animationComplete ? {} : {
               opacity: hasAnimated ? 1 : 0,
               transform: hasAnimated ? 'translateY(0) scale(1)' : 'translateY(-8px) scale(0.98)',
@@ -843,11 +843,11 @@ function ProjectListItem({ project, projectDivisions, projectStatuses }:{ projec
   return (
     <Link 
       to={`/projects/${encodeURIComponent(String(project.id))}`} 
-      className="group border rounded-lg bg-white p-4 hover:shadow-md transition-all duration-200"
+      className="group border rounded-lg bg-white p-4 hover:shadow-md transition-all duration-200 min-w-[800px]"
     >
-      <div className="flex items-center justify-between gap-4">
-        {/* Left: Name, Code, Client */}
-        <div className="flex-1 min-w-0">
+      <div className="grid grid-cols-[10fr_3fr_3fr_3fr_3fr_3fr] gap-2 sm:gap-3 lg:gap-4 items-center overflow-hidden">
+        {/* Coluna 1: Name, Code, Client */}
+        <div className="min-w-0">
           <div className="font-semibold text-base text-gray-900 group-hover:text-[#7f1010] transition-colors truncate">
             {project.name || 'Project'}
           </div>
@@ -862,46 +862,50 @@ function ProjectListItem({ project, projectDivisions, projectStatuses }:{ projec
           </div>
         </div>
 
-        {/* Center: Dates, Project Admin, and Value */}
-        <div className="flex items-center gap-6 text-sm">
-          <div className="min-w-0">
-            <div className="text-xs text-gray-500">Start</div>
-            <div className="font-medium text-gray-900 whitespace-nowrap">{start || '—'}</div>
-          </div>
-          <div className="min-w-0">
-            <div className="text-xs text-gray-500">ETA</div>
-            <div className="font-medium text-gray-900 whitespace-nowrap">{eta || '—'}</div>
-          </div>
-          <div className="min-w-0">
-            <div className="text-xs text-gray-500 mb-1">Project Admin</div>
-            {!projectAdmin ? (
-              <div className="text-gray-400 text-xs">—</div>
-            ) : (
-              <div className="flex items-center gap-2">
-                <UserAvatar user={projectAdmin} size="w-5 h-5" showTooltip={true} />
-                <div className="font-medium text-gray-900 text-xs truncate max-w-[120px]">{getUserDisplayName(projectAdmin)}</div>
-              </div>
-            )}
-          </div>
-          <div className="min-w-0">
-            <div className="text-xs text-gray-500">Value</div>
-            <div className="font-semibold text-[#7f1010] whitespace-nowrap">
-              {estimatedValue > 0 ? `$${estimatedValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—'}
+        {/* Coluna 2: Start */}
+        <div className="min-w-0">
+          <div className="text-xs text-gray-500 mb-0.5">Start</div>
+          <div className="font-medium text-gray-900 whitespace-nowrap text-sm truncate">{start || '—'}</div>
+        </div>
+
+        {/* Coluna 3: ETA */}
+        <div className="min-w-0">
+          <div className="text-xs text-gray-500 mb-0.5">ETA</div>
+          <div className="font-medium text-gray-900 whitespace-nowrap text-sm truncate">{eta || '—'}</div>
+        </div>
+
+        {/* Coluna 4: Avatares (Project Admin) */}
+        <div className="min-w-0">
+          <div className="text-xs text-gray-500 mb-0.5">Project Admin</div>
+          {!projectAdmin ? (
+            <div className="text-gray-400 text-xs">—</div>
+          ) : (
+            <div className="flex items-center gap-1.5 min-w-0">
+              <UserAvatar user={projectAdmin} size="w-5 h-5" showTooltip={true} />
+              <div className="font-medium text-gray-900 text-xs truncate min-w-0">{getUserDisplayName(projectAdmin)}</div>
             </div>
+          )}
+        </div>
+
+        {/* Coluna 5: Value */}
+        <div className="min-w-0">
+          <div className="text-xs text-gray-500 mb-0.5">Value</div>
+          <div className="font-semibold text-[#7f1010] whitespace-nowrap text-sm truncate">
+            {estimatedValue > 0 ? `$${estimatedValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—'}
           </div>
         </div>
 
-        {/* Right: Status */}
-        <div className="flex-shrink-0">
+        {/* Coluna 6: Status */}
+        <div className="min-w-0">
           <span
             className={[
-              'inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-medium border shadow-sm',
+              'inline-flex items-center gap-1 px-2 lg:px-3 py-1.5 rounded-full text-xs font-medium border shadow-sm',
               'backdrop-blur-sm border-gray-200 text-gray-800',
             ].join(' ')}
             title={status}
             style={{ backgroundColor: statusColor, color: '#000' }}
           >
-            <span className="truncate max-w-[10rem]">{status || '—'}</span>
+            <span className="truncate">{status || '—'}</span>
           </span>
         </div>
       </div>

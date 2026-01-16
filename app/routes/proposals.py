@@ -270,6 +270,18 @@ async def generate_proposal(
                             except Exception:
                                 pass
 
+    # Check if this is an opportunity (bidding project) or regular project
+    project_id_clean = (project_id or "").strip()
+    is_bidding = False
+    # True if this is for an opportunity or project (not a standalone quote)
+    # Use project_id presence as the source of truth (DB lookup is best-effort).
+    is_project = bool(project_id_clean)
+    if project_id_clean:
+        from ..models.models import Project
+        project = db.query(Project).filter(Project.id == project_id_clean).first()
+        if project:
+            is_bidding = getattr(project, 'is_bidding', False) or False
+    
     proposal_data = {
         "company_name": company_name,
         "company_address": company_address,
@@ -304,6 +316,9 @@ async def generate_proposal(
         "additional_costs": parsed_costs,
         "optional_services": parsed_optional_services,
         "sections": parsed_sections,
+        "project_id": project_id_clean or None,
+        "is_bidding": is_bidding,  # Pass is_bidding flag to PDF
+        "is_project": is_project,  # Pass is_project flag to PDF (True for both opportunities and projects)
     }
 
     await generate_pdf(proposal_data, output_path)

@@ -1118,6 +1118,8 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
       const blob = await resp.blob();
       const url = URL.createObjectURL(blob);
       setDownloadUrl(url);
+      // Open PDF in new tab automatically for preview
+      window.open(url, '_blank');
       toast.success('Quote ready');
       setLastGeneratedHash(computeFingerprint());
     }catch(e){ toast.error('Generate failed'); }
@@ -1127,17 +1129,42 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
   // drag helpers
   const [draggingSection, setDraggingSection] = useState<number|null>(null);
   const [dragOverSection, setDragOverSection] = useState<number|null>(null);
+  const [dragInsertPosition, setDragInsertPosition] = useState<'above'|'below'|null>(null); // Track where to insert
   const onSectionDragStart = (idx:number)=> setDraggingSection(idx);
-  const onSectionDragOver = (idx:number)=> setDragOverSection(idx);
+  const onSectionDragOver = (idx:number, e: React.DragEvent)=> {
+    if (draggingSection === null || draggingSection === idx) return;
+    setDragOverSection(idx);
+    // Determine if inserting above or below based on mouse position
+    const rect = e.currentTarget.getBoundingClientRect();
+    const mouseY = e.clientY;
+    const sectionMiddle = rect.top + rect.height / 2;
+    setDragInsertPosition(mouseY < sectionMiddle ? 'above' : 'below');
+  };
   const onSectionDrop = ()=>{
-    if (draggingSection===null || dragOverSection===null || draggingSection===dragOverSection) { setDraggingSection(null); setDragOverSection(null); return; }
+    if (draggingSection===null || dragOverSection===null || draggingSection===dragOverSection) { 
+      setDraggingSection(null); 
+      setDragOverSection(null);
+      setDragInsertPosition(null);
+      return; 
+    }
     setSections(arr=>{
       const next = [...arr];
       const [moved] = next.splice(draggingSection,1);
-      next.splice(dragOverSection,0,moved);
+      // Adjust insertion index based on whether we're moving up or down
+      let insertIdx = dragOverSection;
+      if (draggingSection < dragOverSection) {
+        // Moving down: adjust index since we removed an item before
+        insertIdx = dragInsertPosition === 'above' ? dragOverSection : dragOverSection + 1;
+      } else {
+        // Moving up: insert at the target position
+        insertIdx = dragInsertPosition === 'above' ? dragOverSection : dragOverSection + 1;
+      }
+      next.splice(insertIdx, 0, moved);
       return next;
     });
-    setDraggingSection(null); setDragOverSection(null);
+    setDraggingSection(null);
+    setDragOverSection(null);
+    setDragInsertPosition(null);
   };
 
   const onImageDragStart = (secIdx:number, imgIdx:number)=> setSectionPicker({ secId: String(secIdx), index: imgIdx });
@@ -1303,9 +1330,32 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
           <div className="p-3 sm:p-4">
           <div className="space-y-3">
             {sections.map((s:any, idx:number)=> (
-              <div key={s.id||idx}
-                   className={`border rounded p-3 ${dragOverSection===idx && !disabled? 'ring-2 ring-brand-red':''}`}
-                   onDragOver={!disabled ? (e)=>{ e.preventDefault(); onSectionDragOver(idx); } : undefined}
+              <div key={s.id||idx} className="relative">
+                {/* Insertion line indicator - shown above the section when dragging */}
+                {!disabled && dragOverSection === idx && dragInsertPosition === 'above' && draggingSection !== null && draggingSection !== idx && (
+                  <div className="absolute -top-2 left-0 right-0 h-0.5 bg-brand-red rounded-full z-10 shadow-lg" style={{boxShadow: '0 0 8px rgba(214, 32, 40, 0.6)'}}></div>
+                )}
+                <div
+                   className={`border rounded p-3 transition-all ${
+                     draggingSection === idx ? 'opacity-50 scale-95' : ''
+                   } ${
+                     dragOverSection === idx && !disabled && draggingSection !== idx 
+                       ? 'ring-2 ring-brand-red ring-opacity-50 bg-red-50/30' 
+                       : ''
+                   }`}
+                   onDragOver={!disabled ? (e)=>{ e.preventDefault(); onSectionDragOver(idx, e); } : undefined}
+                   onDragLeave={!disabled ? (e)=>{
+                     // Only clear if we're actually leaving the section (not just moving to a child element)
+                     const rect = e.currentTarget.getBoundingClientRect();
+                     const x = e.clientX;
+                     const y = e.clientY;
+                     if (x < rect.left || x > rect.right || y < rect.top || y > rect.bottom) {
+                       if (dragOverSection === idx) {
+                         setDragOverSection(null);
+                         setDragInsertPosition(null);
+                       }
+                     }
+                   } : undefined}
                    onDrop={!disabled ? onSectionDrop : undefined}
               >
                 <div className="flex items-center justify-between mb-2">
@@ -1323,6 +1373,7 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
                           if (draggingSection === idx) {
                             setDraggingSection(null);
                             setDragOverSection(null);
+                            setDragInsertPosition(null);
                           }
                         }}>
                         <svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
@@ -1451,6 +1502,11 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
                   </div>
                 )}
               </div>
+                {/* Insertion line indicator - shown below the section when dragging */}
+                {!disabled && dragOverSection === idx && dragInsertPosition === 'below' && draggingSection !== null && draggingSection !== idx && (
+                  <div className="absolute -bottom-2 left-0 right-0 h-0.5 bg-brand-red rounded-full z-10 shadow-lg" style={{boxShadow: '0 0 8px rgba(214, 32, 40, 0.6)'}}></div>
+                )}
+            </div>
             ))}
             {!disabled && (
               <div className="flex items-center gap-2">
@@ -1520,12 +1576,6 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
                 {!disabled && (
                   <div className="sticky top-0 z-30 bg-white/95 backdrop-blur mb-3 py-3 border-b">
                     <div className="flex items-center gap-2">
-                      <button 
-                        onClick={()=> setProductSearchModalOpen({ sectionIndex, itemIndex: -1 })}
-                        disabled={disabled}
-                        className="px-3 py-2 rounded bg-gray-100 hover:bg-gray-200 disabled:opacity-60 text-base">
-                        + Add Pricing Item
-                      </button>
                       <div className="ml-auto flex items-center gap-3 text-sm">
                         <label className="text-sm">PST (%)</label>
                         <input 
@@ -1577,8 +1627,8 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
                     const lineTotal = priceNum * qtyNum;
                     
                     return (
-                      <div key={i} className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-center">
-                        <div className="col-span-1 sm:col-span-6 flex items-center gap-2 relative">
+                      <div key={i} className="flex flex-col sm:flex-row gap-1.5 sm:gap-2 items-stretch sm:items-center w-full min-w-0">
+                        <div className="flex-1 flex items-center gap-2 relative min-w-0">
                           {/* Product Image - show placeholder if no image */}
                           <div className="flex-shrink-0 w-10 h-10 rounded border overflow-hidden bg-gray-100">
                             {c.productImage ? (
@@ -1600,7 +1650,7 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
                             )}
                           </div>
                           <input 
-                            className={`flex-1 border rounded px-3 py-2 ${disabled || c.productId ? 'bg-gray-50 cursor-not-allowed' : ''}`} 
+                            className={`flex-1 min-w-0 border rounded px-3 py-2 ${disabled || c.productId ? 'bg-gray-50 cursor-not-allowed' : ''}`} 
                             placeholder="Name" 
                             value={c.name} 
                             onChange={e=>{ 
@@ -1623,8 +1673,8 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
                             </button>
                           )}
                         </div>
-                        <input type="text" className={`col-span-1 sm:col-span-1 border rounded px-2 sm:px-3 py-2 text-sm ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} placeholder="Price" value={c.price} onChange={e=>{ const v = parseAccounting(e.target.value); setPricingSections(arr=> arr.map((s,idx)=> idx===sectionIndex? { ...s, items: s.items.map((x,j)=> j===i? { ...x, price:v }: x) }: s)); }} onBlur={!disabled ? ()=> setPricingSections(arr=> arr.map((s,idx)=> idx===sectionIndex? { ...s, items: s.items.map((x,j)=> j===i? { ...x, price: formatAccounting(x.price) }: x) }: s)) : undefined} disabled={disabled} readOnly={disabled} />
-                        <div className="col-span-1 sm:col-span-1 flex items-center border rounded overflow-hidden">
+                        <input type="text" className={`flex-1 min-w-[100px] max-w-[140px] border rounded px-2 sm:px-3 py-2 text-sm ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} placeholder="Price" value={c.price} onChange={e=>{ const v = parseAccounting(e.target.value); setPricingSections(arr=> arr.map((s,idx)=> idx===sectionIndex? { ...s, items: s.items.map((x,j)=> j===i? { ...x, price:v }: x) }: s)); }} onBlur={!disabled ? ()=> setPricingSections(arr=> arr.map((s,idx)=> idx===sectionIndex? { ...s, items: s.items.map((x,j)=> j===i? { ...x, price: formatAccounting(x.price) }: x) }: s)) : undefined} disabled={disabled} readOnly={disabled} />
+                        <div className="flex items-center border rounded overflow-hidden min-w-[80px] max-w-[120px]">
                           <input 
                             type="number" 
                             min="1"
@@ -1671,14 +1721,13 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
                             </div>
                           )}
                         </div>
-                        <div className={`col-span-1 sm:col-span-1 border rounded px-2 sm:px-3 py-2 bg-gray-50 ${disabled ? 'cursor-not-allowed' : ''}`}>
-                          <div className="text-xs sm:text-sm font-medium text-gray-700 text-right">
+                        <div className={`border rounded px-2 sm:px-3 py-2 bg-gray-50 min-w-[100px] max-w-[140px] flex-shrink-0 ${disabled ? 'cursor-not-allowed' : ''}`}>
+                          <div className="text-xs sm:text-sm font-medium text-gray-700 text-right whitespace-nowrap overflow-hidden">
                             ${formatAccounting(lineTotal)}
                           </div>
                         </div>
-                        <div className="col-span-1 sm:col-span-2 flex items-center gap-2 sm:gap-3 flex-wrap">
-                          <span className="text-xs sm:text-sm text-gray-600 whitespace-nowrap">Apply for this item:</span>
-                          <label className={`flex items-center gap-1 text-xs sm:text-sm ${disabled ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
+                        <div className="flex items-center gap-1.5 flex-shrink-0">
+                          <label className={`flex items-center gap-1 text-xs sm:text-sm flex-shrink-0 ${disabled ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
                             <input 
                               type="checkbox" 
                               checked={c.pst === true}
@@ -1686,9 +1735,9 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
                               className={disabled ? 'cursor-not-allowed' : 'cursor-pointer'}
                               disabled={disabled}
                             />
-                            <span className="text-gray-700">PST</span>
+                            <span className="text-gray-700 whitespace-nowrap">PST</span>
                           </label>
-                          <label className={`flex items-center gap-1 text-xs sm:text-sm ${disabled ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
+                          <label className={`flex items-center gap-1 text-xs sm:text-sm flex-shrink-0 ${disabled ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
                             <input 
                               type="checkbox" 
                               checked={c.gst === true}
@@ -1696,16 +1745,34 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
                               className={disabled ? 'cursor-not-allowed' : 'cursor-pointer'}
                               disabled={disabled}
                             />
-                            <span className="text-gray-700">GST</span>
+                            <span className="text-gray-700 whitespace-nowrap">GST</span>
                           </label>
                         </div>
                         {!disabled && (
-                          <button className="col-span-1 sm:col-span-1 px-2 py-2 rounded bg-gray-100 text-xs sm:text-sm whitespace-nowrap" onClick={()=> setPricingSections(arr=> arr.map((s,idx)=> idx===sectionIndex? { ...s, items: s.items.filter((_,j)=> j!==i) }: s))}>Remove</button>
+                          <button 
+                            className="p-1 rounded bg-red-100 hover:bg-red-200 flex items-center justify-center transition-colors flex-shrink-0 w-7 h-7" 
+                            onClick={()=> setPricingSections(arr=> arr.map((s,idx)=> idx===sectionIndex? { ...s, items: s.items.filter((_,j)=> j!==i) }: s))}
+                            title="Remove"
+                          >
+                            <svg className="w-4 h-4 text-red-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                          </button>
                         )}
                       </div>
                     );
                   })}
                 </div>
+                {!disabled && (
+                  <button 
+                    onClick={()=> setProductSearchModalOpen({ sectionIndex, itemIndex: -1 })}
+                    disabled={disabled}
+                    className="mt-3 w-full border-2 border-dashed border-gray-300 rounded-lg p-4 hover:border-brand-red hover:bg-gray-50 transition-all text-center bg-white flex items-center justify-center min-h-[60px] disabled:opacity-60"
+                  >
+                    <div className="text-2xl text-gray-400 mr-2">+</div>
+                    <div className="font-medium text-sm text-gray-700">Add Pricing Item</div>
+                  </button>
+                )}
                 
                 {/* Show PST, GST fields even when disabled (read-only view) */}
                 {disabled && (

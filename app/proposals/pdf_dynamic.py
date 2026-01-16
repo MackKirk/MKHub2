@@ -230,19 +230,23 @@ class PricingTable(Flowable):
             show_gst = data.get('show_gst_in_pdf', True)
             base_height = 70 if show_total else 50  # Reduced height if total is hidden
             
-            # Check if this is a quotation - affects label width calculation
+            # Check if this is a quotation, opportunity, or project - affects label width calculation
             is_quote = data.get("is_quote", False)
+            is_bidding = data.get("is_bidding", False)
+            # Treat presence of project_id as project context (opportunity or project)
+            is_project = bool(data.get("is_project")) or bool(data.get("project_id"))
+            show_qty = is_quote or is_bidding or is_project  # Show Qty for quotes, opportunities, and projects
             
-            # Always reserve space for images (product images or placeholders)
-            # Since we always show an image (product or placeholder), always reserve space
-            has_images = True  # Always true since we show placeholder when no image
+            # Reserve space for images (product images or placeholders)
+            # For opportunities and projects, don't reserve space for images
+            has_images = not (is_bidding or is_project)  # Only show images if not bidding and not project
             image_width = 40  # Image width in points
-            image_space = image_width + 8  # 8 points spacing
+            image_space = (image_width + 8) if has_images else 0  # 8 points spacing
             
             # Calculate height considering wrapped text for each cost item
             # Reserve space for quantity and total on right (about 150px width if showing Qty, otherwise less)
-            # Also reserve space for images
-            max_label_width = (A4[0] - 80) - 150 - image_space if is_quote else (A4[0] - 80) - 80 - image_space
+            # Also reserve space for images (if not bidding)
+            max_label_width = (A4[0] - 80) - 150 - image_space if show_qty else (A4[0] - 80) - 80 - image_space
             font_name = "Montserrat-Bold"
             font_size = 11.5
             additional_height = 0
@@ -251,8 +255,9 @@ class PricingTable(Flowable):
                 wrapped_lines = wrap_text(label, font_name, font_size, max_label_width)
                 # Each line takes 16px, with 2px spacing between lines
                 item_height = len(wrapped_lines) * 16 + (len(wrapped_lines) - 1) * 2
-                # Always ensure minimum height to accommodate image (product or placeholder)
-                item_height = max(item_height, image_width + 4)  # Add small padding
+                # Only ensure minimum height to accommodate image if images are shown
+                if has_images:
+                    item_height = max(item_height, image_width + 4)  # Add small padding
                 additional_height += item_height
             
             # Add height for PST and GST lines if they should be shown
@@ -344,23 +349,28 @@ class PricingTable(Flowable):
         else:
             # For manual pricing, show the full format
             additional_costs = self.data.get("additional_costs") or []
-            # Check if this is a quotation (quote) - only show Qty for quotations
+            # Check if this is a quotation (quote), opportunity (bidding), or project - show Qty for all
             is_quote = self.data.get("is_quote", False)
+            is_bidding = self.data.get("is_bidding", False)
+            # Treat presence of project_id as project context (opportunity or project)
+            is_project = bool(self.data.get("is_project")) or bool(self.data.get("project_id"))
+            show_qty = is_quote or is_bidding or is_project  # Show Qty for quotes, opportunities, and projects
             
             # Image width - reserve space for product images
             image_width = 40  # 40 points for product image
             image_spacing = 8  # 8 points spacing between image and text
             
+            # For opportunities and projects, don't show images
             # Reserve space for quantity and total on right (about 150px width if showing Qty, otherwise less)
-            # Also reserve space for image if any item has an image
-            has_images = any(cost.get("image_path") for cost in additional_costs) if additional_costs else False
+            # Also reserve space for image if any item has an image AND it's not an opportunity or project
+            has_images = (not (is_bidding or is_project)) and (any(cost.get("image_path") for cost in additional_costs) if additional_costs else False)
             image_space = (image_width + image_spacing) if has_images else 0
             
             # Store the text start position for PST/GST alignment (available in outer scope)
             text_start_x = x_left + image_space if has_images else x_left
             
             if additional_costs:
-                max_label_width = width - 150 - image_space if is_quote else width - 80 - image_space
+                max_label_width = width - 150 - image_space if show_qty else width - 80 - image_space
                 font_name = "Montserrat-Bold"
                 font_size = 11.5
                 
@@ -385,38 +395,40 @@ class PricingTable(Flowable):
                     line_total = unit_price * quantity
                     line_total_str = f"${line_total:,.2f}"
                     
-                    # Only format quantity string if this is a quotation
+                    # Format quantity string if this is a quotation or opportunity
                     quantity_str = None
-                    if is_quote:
+                    if show_qty:
                         # Format quantity: show as integer if whole number, otherwise show decimal
                         if quantity == int(quantity):
                             quantity_str = f"Qty: {int(quantity)}"
                         else:
                             quantity_str = f"Qty: {quantity:.2f}"
                     
-                    # Draw product image - use placeholder if no image
+                    # Draw product image - use placeholder if no image (but NOT for opportunities or projects)
                     image_path = cost.get("image_path")
                     image_x = x_left
                     text_x = text_start_x
                     
                     # Determine which image to use (product image or placeholder)
+                    # For opportunities (bidding) and projects, don't show images at all
                     final_image_path = None
-                    if image_path and os.path.exists(image_path):
-                        final_image_path = image_path
-                    else:
-                        # Use placeholder image
-                        # BASE_DIR is app/proposals, so go up one level to app/, then to ui/assets
-                        placeholder_path = os.path.join(os.path.dirname(BASE_DIR), "ui", "assets", "image placeholders", "no_image.png")
-                        if os.path.exists(placeholder_path):
-                            final_image_path = placeholder_path
+                    if not (is_bidding or is_project):
+                        if image_path and os.path.exists(image_path):
+                            final_image_path = image_path
                         else:
-                            # Fallback: try relative path from project root
-                            placeholder_path = os.path.join("app", "ui", "assets", "image placeholders", "no_image.png")
+                            # Use placeholder image only if not bidding or project
+                            # BASE_DIR is app/proposals, so go up one level to app/, then to ui/assets
+                            placeholder_path = os.path.join(os.path.dirname(BASE_DIR), "ui", "assets", "image placeholders", "no_image.png")
                             if os.path.exists(placeholder_path):
                                 final_image_path = placeholder_path
+                            else:
+                                # Fallback: try relative path from project root
+                                placeholder_path = os.path.join("app", "ui", "assets", "image placeholders", "no_image.png")
+                                if os.path.exists(placeholder_path):
+                                    final_image_path = placeholder_path
                     
-                    # Always draw an image (product image or placeholder)
-                    if final_image_path:
+                    # Draw an image (product image or placeholder) only if not bidding or project
+                    if final_image_path and not (is_bidding or is_project):
                         try:
                             # Draw product image or placeholder (40x40 points)
                             img = Image(final_image_path, width=image_width, height=image_width)
@@ -454,8 +466,8 @@ class PricingTable(Flowable):
                     c.setFont(font_name, font_size)
                     c.setFillColor(colors.grey)
                     
-                    # Draw quantity first (slightly to the left) only if it's a quotation
-                    if is_quote and quantity_str:
+                    # Draw quantity first (slightly to the left) if showing Qty (quote or opportunity)
+                    if show_qty and quantity_str:
                         quantity_x = x_right - 100
                         c.drawRightString(quantity_x, line_y, quantity_str)
                     
@@ -463,9 +475,9 @@ class PricingTable(Flowable):
                     c.drawRightString(x_right, line_y, line_total_str)
                     
                     # Move y down by the total height of this item (all lines)
-                    # Ensure minimum height to accommodate image (always present now)
+                    # Ensure minimum height to accommodate image (only if not bidding or project)
                     item_height = len(wrapped_lines) * 16 + (len(wrapped_lines) - 1) * 2
-                    if final_image_path:
+                    if final_image_path and not (is_bidding or is_project):
                         item_height = max(item_height, image_width + 4)  # Add small padding
                     y -= item_height
                 
@@ -1151,7 +1163,9 @@ def build_dynamic_pages(data, output_path):
                     "show_pst_in_pdf": section_show_pst,
                     "show_gst_in_pdf": section_show_gst,
                     "section_index": section_idx,  # Add section index for title numbering
-                    "is_quote": data.get("is_quote", False)
+                    "is_quote": data.get("is_quote", False),
+                    "is_bidding": data.get("is_bidding", False),  # Pass is_bidding to pricing table
+                    "is_project": data.get("is_project", False)  # Pass is_project to pricing table
                 }))
     elif show_pricing:
         # Legacy format: single pricing table from additional_costs

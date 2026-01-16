@@ -2049,15 +2049,12 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
                       
                       const blob = await resp.blob();
                       const url = URL.createObjectURL(blob);
-                      const a = document.createElement('a');
-                      a.href = url;
-                      a.download = `estimate-${estimateIdToUse}.pdf`;
-                      document.body.appendChild(a);
-                      a.click();
-                      document.body.removeChild(a);
-                      URL.revokeObjectURL(url);
+                      // Open PDF in new tab automatically for preview instead of auto-download
+                      window.open(url, '_blank');
+                      // Note: Don't revoke URL immediately - let it stay open for the user to view/download
+                      // The browser will handle cleanup when the tab is closed
                       
-                      toast.success('PDF generated and downloaded');
+                      toast.success('PDF generated and opened in new tab');
                     }catch(_e){
                       toast.error('Failed to generate PDF');
                     }finally{
