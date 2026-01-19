@@ -5,6 +5,7 @@ import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
 import NationalitySelect from '@/components/NationalitySelect';
 import AddressAutocomplete from '@/components/AddressAutocomplete';
+import PostalCodeAutocomplete from '@/components/PostalCodeAutocomplete';
 import { useConfirm } from '@/components/ConfirmProvider';
 
 type ProfileResp = { user: { username: string; email: string; first_name?: string; last_name?: string }, profile?: any };
@@ -48,6 +49,14 @@ export default function OnboardingWizard() {
   const [form, setForm] = useState<any>({});
   const [saving, setSaving] = useState(false);
   const [formInitialized, setFormInitialized] = useState(false);
+  
+  // Address dropdowns state
+  const [countries, setCountries] = useState<Array<{ name: string }>>([]);
+  const [provinces, setProvinces] = useState<string[]>([]);
+  const [cities, setCities] = useState<string[]>([]);
+  const [loadingStates, setLoadingStates] = useState(false);
+  const [loadingCities, setLoadingCities] = useState(false);
+  const [geoLoaded, setGeoLoaded] = useState(false);
   
   // Initialize form from profile data (only once)
   useEffect(() => {
@@ -200,16 +209,240 @@ export default function OnboardingWizard() {
     setForm((s: any) => ({ ...s, address_line1: value }));
   }, []);
   
-  const handleAddressSelect = useCallback((address: any) => {
-    setForm((s: any) => ({
-      ...s,
-      address_line1: address.address_line1 || s.address_line1,
-      city: address.city !== undefined ? address.city : s.city,
-      province: address.province !== undefined ? address.province : s.province,
-      postal_code: address.postal_code !== undefined ? address.postal_code : s.postal_code,
-      country: address.country !== undefined ? address.country : s.country,
-    }));
+  // Load countries from MKHubGeo
+  const loadCountries = useCallback(async () => {
+    if (geoLoaded) return;
+    
+    // Check if geo.js is loaded
+    if (typeof window !== 'undefined' && (window as any).MKHubGeo) {
+      try {
+        const geo = (window as any).MKHubGeo;
+        if (geo.data && geo.data.length > 0) {
+          setCountries(geo.data);
+          setGeoLoaded(true);
+        } else {
+          // Try to load if data is empty
+          await geo.load();
+          if (geo.data && geo.data.length > 0) {
+            setCountries(geo.data);
+            setGeoLoaded(true);
+          }
+        }
+      } catch (error) {
+        console.error('Failed to load countries:', error);
+        toast.error('Failed to load countries list');
+      }
+    } else {
+      // Wait a bit and try again
+      setTimeout(() => {
+        if ((window as any).MKHubGeo) {
+          loadCountries();
+        }
+      }, 500);
+    }
+  }, [geoLoaded]);
+  
+  // Wait for geo.js to load (it's loaded via script tag in index.html)
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    
+    // Check if geo.js is already loaded
+    if ((window as any).MKHubGeo) {
+      loadCountries();
+      return;
+    }
+    
+    // Wait for geo.js to load (check every 100ms for up to 5 seconds)
+    let attempts = 0;
+    const maxAttempts = 50;
+    const checkInterval = setInterval(() => {
+      attempts++;
+      if ((window as any).MKHubGeo) {
+        clearInterval(checkInterval);
+        loadCountries();
+      } else if (attempts >= maxAttempts) {
+        clearInterval(checkInterval);
+        console.warn('geo.js did not load after 5 seconds');
+      }
+    }, 100);
+    
+    return () => clearInterval(checkInterval);
+  }, [loadCountries]);
+  
+  // Load cities for a province (defined first to avoid circular dependency)
+  const loadCitiesForProvince = useCallback(async (country: string, province: string, currentCity?: string) => {
+    if (!country || !province) {
+      setCities([]);
+      return;
+    }
+    
+    setLoadingCities(true);
+    try {
+      if (typeof window !== 'undefined' && (window as any).MKHubGeo) {
+        const geo = (window as any).MKHubGeo;
+        const cityList = await geo.getCities(country, province);
+        setCities(cityList || []);
+        
+        // Validate if current city exists in new province
+        if (currentCity && cityList && cityList.includes(currentCity)) {
+          // City is valid, keep it
+        } else {
+          // City is not valid, clear it
+          if (currentCity) {
+            setForm((s: any) => ({ ...s, city: '' }));
+          }
+        }
+      } else {
+        console.warn('MKHubGeo not available');
+        setCities([]);
+      }
+    } catch (error) {
+      console.error('Failed to load cities:', error);
+      toast.error('Failed to load cities');
+      setCities([]);
+    } finally {
+      setLoadingCities(false);
+    }
   }, []);
+  
+  // Load provinces for a country
+  const loadProvincesForCountry = useCallback(async (country: string, currentProvince?: string, currentCity?: string) => {
+    if (!country) {
+      setProvinces([]);
+      setCities([]);
+      return;
+    }
+    
+    setLoadingStates(true);
+    try {
+      if (typeof window !== 'undefined' && (window as any).MKHubGeo) {
+        const geo = (window as any).MKHubGeo;
+        const states = await geo.getStates(country);
+        setProvinces(states || []);
+        
+        // Validate if current province exists in new country
+        if (currentProvince && states && states.includes(currentProvince)) {
+          // Province is valid, load cities for it
+          await loadCitiesForProvince(country, currentProvince, currentCity);
+        } else {
+          // Province is not valid, clear it and city
+          if (currentProvince) {
+            setForm((s: any) => ({ ...s, province: '', city: '' }));
+          }
+          setCities([]);
+        }
+      } else {
+        console.warn('MKHubGeo not available');
+        setProvinces([]);
+      }
+    } catch (error) {
+      console.error('Failed to load provinces:', error);
+      toast.error('Failed to load provinces/states');
+      setProvinces([]);
+    } finally {
+      setLoadingStates(false);
+    }
+  }, [loadCitiesForProvince]);
+  
+  // Handle country change
+  const handleCountryChange = useCallback((country: string) => {
+    setForm((s: any) => {
+      const currentProvince = s.province;
+      const currentCity = s.city;
+      // Use setTimeout to avoid calling async function during state update
+      setTimeout(() => {
+        loadProvincesForCountry(country, currentProvince, currentCity);
+      }, 0);
+      return { ...s, country };
+    });
+  }, [loadProvincesForCountry]);
+  
+  // Handle province change
+  const handleProvinceChange = useCallback((province: string) => {
+    setForm((s: any) => {
+      const currentCity = s.city;
+      const currentCountry = s.country;
+      // Use setTimeout to avoid calling async function during state update
+      if (currentCountry) {
+        setTimeout(() => {
+          loadCitiesForProvince(currentCountry, province, currentCity);
+        }, 0);
+      }
+      return { ...s, province };
+    });
+  }, [loadCitiesForProvince]);
+  
+  // Handle address select (moved after loadProvincesForCountry and loadCitiesForProvince definitions)
+  const handleAddressSelect = useCallback((address: any) => {
+    setForm((s: any) => {
+      const newForm = {
+        ...s,
+        address_line1: address.address_line1 || s.address_line1,
+        city: address.city !== undefined ? address.city : s.city,
+        province: address.province !== undefined ? address.province : s.province,
+        postal_code: address.postal_code !== undefined ? address.postal_code : s.postal_code,
+        country: address.country !== undefined ? address.country : s.country,
+      };
+      
+      // Use setTimeout to avoid calling async functions during state update
+      setTimeout(() => {
+        // If country changed, load provinces
+        if (address.country !== undefined && address.country !== s.country) {
+          loadProvincesForCountry(address.country, newForm.province, newForm.city);
+        } else if (address.province !== undefined && address.province !== s.province && newForm.country) {
+          // If province changed, load cities
+          loadCitiesForProvince(newForm.country, address.province, newForm.city);
+        } else if (address.city !== undefined && newForm.country && newForm.province) {
+          // If city changed, ensure cities list is loaded
+          loadCitiesForProvince(newForm.country, newForm.province, address.city);
+        } else if (address.country && !s.country) {
+          // If country was just set, load provinces
+          loadProvincesForCountry(address.country, newForm.province, newForm.city);
+        }
+      }, 0);
+      
+      return newForm;
+    });
+  }, [loadProvincesForCountry, loadCitiesForProvince]);
+  
+  // Handle postal code select
+  const handlePostalCodeSelect = useCallback((address: any) => {
+    setForm((s: any) => {
+      const updates: any = { postal_code: address.postal_code || s.postal_code };
+      
+      // Only update if field is not already filled
+      if (address.city && !s.city) updates.city = address.city;
+      if (address.province && !s.province) updates.province = address.province;
+      if (address.country && !s.country) updates.country = address.country;
+      
+      const newForm = { ...s, ...updates };
+      
+      // If country was set, load provinces (use setTimeout to avoid state update during render)
+      if (updates.country && updates.country !== s.country) {
+        setTimeout(() => {
+          loadProvincesForCountry(updates.country, newForm.province, newForm.city);
+        }, 0);
+      } else if (updates.province && updates.province !== s.province && newForm.country) {
+        // If province was set, load cities
+        setTimeout(() => {
+          loadCitiesForProvince(newForm.country, updates.province, newForm.city);
+        }, 0);
+      }
+      
+      return newForm;
+    });
+  }, [loadProvincesForCountry, loadCitiesForProvince]);
+  
+  // Load countries on mount and when form is initialized
+  useEffect(() => {
+    if (formInitialized && currentStep === 2) {
+      loadCountries();
+      // If country is already set, load provinces
+      if (form.country) {
+        loadProvincesForCountry(form.country, form.province, form.city);
+      }
+    }
+  }, [formInitialized, currentStep, form.country, form.province, form.city, loadCountries, loadProvincesForCountry]);
   
   // Check if onboarding is complete (memoized to prevent unnecessary recalculations)
   const reqPersonal = useMemo(() => ['gender', 'date_of_birth', 'marital_status', 'nationality', 'phone', 'address_line1', 'city', 'province', 'postal_code', 'country', 'sin_number', 'work_eligibility_status'], []);
@@ -512,36 +745,60 @@ export default function OnboardingWizard() {
                     className="w-full rounded-lg border px-3 py-2"
                   />
                 </Field>
-                <Field label="City" required invalid={!form.city}>
-                  <input
-                    type="text"
-                    value={form.city || ''}
-                    readOnly
-                    className="w-full rounded-lg border px-3 py-2 bg-gray-50 cursor-not-allowed"
-                  />
+                {/* Row 1: Country | Province/State */}
+                <Field label="Country" required invalid={!form.country}>
+                  <select
+                    value={form.country || ''}
+                    onChange={e => handleCountryChange(e.target.value)}
+                    className="w-full rounded-lg border px-3 py-2"
+                    disabled={loadingStates}
+                  >
+                    <option value="">Select country...</option>
+                    {countries.map((c) => (
+                      <option key={c.name} value={c.name}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </select>
                 </Field>
                 <Field label="Province/State" required invalid={!form.province}>
-                  <input
-                    type="text"
+                  <select
                     value={form.province || ''}
-                    readOnly
-                    className="w-full rounded-lg border px-3 py-2 bg-gray-50 cursor-not-allowed"
-                  />
+                    onChange={e => handleProvinceChange(e.target.value)}
+                    className="w-full rounded-lg border px-3 py-2"
+                    disabled={!form.country || loadingStates || loadingCities}
+                  >
+                    <option value="">{loadingStates ? 'Loading...' : form.country ? 'Select province/state...' : 'Select country first'}</option>
+                    {provinces.map((p) => (
+                      <option key={p} value={p}>
+                        {p}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                {/* Row 2: City | Postal Code */}
+                <Field label="City" required invalid={!form.city}>
+                  <select
+                    value={form.city || ''}
+                    onChange={e => set('city', e.target.value)}
+                    className="w-full rounded-lg border px-3 py-2"
+                    disabled={!form.country || !form.province || loadingCities}
+                  >
+                    <option value="">{loadingCities ? 'Loading...' : form.province ? 'Select city...' : 'Select province first'}</option>
+                    {cities.map((c) => (
+                      <option key={c} value={c}>
+                        {c}
+                      </option>
+                    ))}
+                  </select>
                 </Field>
                 <Field label="Postal code" required invalid={!form.postal_code}>
-                  <input
-                    type="text"
+                  <PostalCodeAutocomplete
                     value={form.postal_code || ''}
-                    readOnly
-                    className="w-full rounded-lg border px-3 py-2 bg-gray-50 cursor-not-allowed"
-                  />
-                </Field>
-                <Field label="Country" required invalid={!form.country}>
-                  <input
-                    type="text"
-                    value={form.country || ''}
-                    readOnly
-                    className="w-full rounded-lg border px-3 py-2 bg-gray-50 cursor-not-allowed"
+                    onChange={(value) => set('postal_code', value)}
+                    onPostalCodeSelect={handlePostalCodeSelect}
+                    placeholder="Enter postal code..."
+                    className="w-full rounded-lg border px-3 py-2"
                   />
                 </Field>
                 <Field label="Address line 2">

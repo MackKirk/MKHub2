@@ -185,6 +185,14 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
   const [contactPhotoBlob, setContactPhotoBlob] = useState<Blob|null>(null);
   const [pickerForContact, setPickerForContact] = useState<string|null>(null);
   const confirm = useConfirm();
+  const [footerVisible, setFooterVisible] = useState<boolean>(false);
+  const [sectionsExpanded, setSectionsExpanded] = useState<Record<string, boolean>>({
+    generalInfo: false,
+    sections: false,
+    pricing: false,
+    optionalServices: false,
+    terms: false,
+  });
   const { setHasUnsavedChanges: setGlobalUnsavedChanges } = useUnsavedChanges();
   const autoSaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isAutoSavingRef = useRef<boolean>(false);
@@ -1160,9 +1168,21 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
       <div className="space-y-6">
         {/* General Information Block */}
         <div className="rounded-xl border bg-white overflow-hidden">
-          <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] p-3 text-white font-semibold">
-            General Information
+          <div 
+            className="bg-gradient-to-br from-[#7f1010] to-[#a31414] p-3 text-white font-semibold flex items-center justify-between cursor-pointer hover:opacity-90 transition-opacity"
+            onClick={() => setSectionsExpanded(prev => ({ ...prev, generalInfo: !prev.generalInfo }))}
+          >
+            <span>General Information</span>
+            <svg 
+              className={`w-5 h-5 transition-transform duration-200 ${sectionsExpanded.generalInfo ? 'rotate-180' : ''}`}
+              fill="none" 
+              stroke="currentColor" 
+              viewBox="0 0 24 24"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
           </div>
+          {sectionsExpanded.generalInfo && (
           <div className="p-4">
             <div className="grid md:grid-cols-2 gap-4">
               {/* Card 1 - Left Column */}
@@ -1257,13 +1277,26 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
               </div>
             </div>
           </div>
+          )}
         </div>
         
         {/* Sections Block */}
         <div className="rounded-xl border bg-white overflow-hidden">
-          <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] p-3 text-white font-semibold">
-            Sections
+          <div 
+            className="bg-gradient-to-br from-[#7f1010] to-[#a31414] p-3 text-white font-semibold flex items-center justify-between cursor-pointer hover:opacity-90 transition-opacity"
+            onClick={() => setSectionsExpanded(prev => ({ ...prev, sections: !prev.sections }))}
+          >
+            <span>Sections</span>
+            <svg 
+              className={`w-5 h-5 transition-transform duration-200 ${sectionsExpanded.sections ? 'rotate-180' : ''}`}
+              fill="none" 
+              stroke="currentColor" 
+              viewBox="0 0 24 24"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
           </div>
+          {sectionsExpanded.sections && (
           <div className="p-4">
           <div className="space-y-3">
             {sections.map((s:any, idx:number)=> (
@@ -1453,13 +1486,26 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
             )}
           </div>
           </div>
+          )}
         </div>
 
         {/* Pricing Block */}
         <div className="rounded-xl border bg-white overflow-hidden">
-          <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] p-3 text-white font-semibold">
-            Pricing
+          <div 
+            className="bg-gradient-to-br from-[#7f1010] to-[#a31414] p-3 text-white font-semibold flex items-center justify-between cursor-pointer hover:opacity-90 transition-opacity"
+            onClick={() => setSectionsExpanded(prev => ({ ...prev, pricing: !prev.pricing }))}
+          >
+            <span>Pricing</span>
+            <svg 
+              className={`w-5 h-5 transition-transform duration-200 ${sectionsExpanded.pricing ? 'rotate-180' : ''}`}
+              fill="none" 
+              stroke="currentColor" 
+              viewBox="0 0 24 24"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
           </div>
+          {sectionsExpanded.pricing && (
           <div className="p-4">
           <div className="text-[12px] text-gray-600 mb-2">If no pricing items are added, the "Pricing Table" section will be hidden in the PDF.</div>
           {!disabled && (
@@ -1697,13 +1743,26 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
             </div>
           </div>
           </div>
+          )}
         </div>
 
         {/* Optional Services Block */}
         <div className="rounded-xl border bg-white overflow-hidden">
-          <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] p-3 text-white font-semibold">
-            Optional Services
+          <div 
+            className="bg-gradient-to-br from-[#7f1010] to-[#a31414] p-3 text-white font-semibold flex items-center justify-between cursor-pointer hover:opacity-90 transition-opacity"
+            onClick={() => setSectionsExpanded(prev => ({ ...prev, optionalServices: !prev.optionalServices }))}
+          >
+            <span>Optional Services</span>
+            <svg 
+              className={`w-5 h-5 transition-transform duration-200 ${sectionsExpanded.optionalServices ? 'rotate-180' : ''}`}
+              fill="none" 
+              stroke="currentColor" 
+              viewBox="0 0 24 24"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
           </div>
+          {sectionsExpanded.optionalServices && (
           <div className="p-4">
           <div className="text-[12px] text-gray-600 mb-2">If no services are added, the "Optional Services" section will be hidden in the PDF.</div>
             <div className="space-y-2">
@@ -1721,13 +1780,26 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
               )}
             </div>
           </div>
+          )}
         </div>
 
         {/* Terms Block */}
         <div className="rounded-xl border bg-white overflow-hidden">
-          <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] p-3 text-white font-semibold">
-            Terms
+          <div 
+            className="bg-gradient-to-br from-[#7f1010] to-[#a31414] p-3 text-white font-semibold flex items-center justify-between cursor-pointer hover:opacity-90 transition-opacity"
+            onClick={() => setSectionsExpanded(prev => ({ ...prev, terms: !prev.terms }))}
+          >
+            <span>Terms</span>
+            <svg 
+              className={`w-5 h-5 transition-transform duration-200 ${sectionsExpanded.terms ? 'rotate-180' : ''}`}
+              fill="none" 
+              stroke="currentColor" 
+              viewBox="0 0 24 24"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
           </div>
+          {sectionsExpanded.terms && (
           <div className="p-4 space-y-3">
             {!disabled && termsTemplates.length > 0 && (
               <div>
@@ -1770,6 +1842,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
               />
             </div>
           </div>
+          )}
         </div>
         
         {downloadUrl && (renderFingerprint!==lastGeneratedHash) && (
@@ -1777,20 +1850,43 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
         )}
         
         {/* Spacer to prevent fixed bar from overlapping content */}
-        <div className="h-24" />
+        <div className="h-12" />
+      </div>
+      
+      {/* Footer hover trigger area - always visible at bottom */}
+      <div 
+        className="fixed left-60 right-0 bottom-0 z-40 h-3 cursor-pointer transition-all duration-300"
+        onMouseEnter={() => setFooterVisible(true)}
+        onMouseLeave={() => setFooterVisible(false)}
+      >
+        {/* Arrow indicator when footer is hidden */}
+        {!footerVisible && (
+          <div className="absolute bottom-0 left-1/2 -translate-x-1/2 flex items-center justify-center gap-1 px-3 py-1 bg-white/90 backdrop-blur-sm border-t border-x rounded-t-lg shadow-sm text-xs text-gray-600 font-medium">
+            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+            </svg>
+            Actions
+          </div>
+        )}
       </div>
       
       {/* Fixed footer bar */}
-      <div className="fixed left-60 right-0 bottom-0 z-40">
+      <div 
+        className={`fixed left-60 right-0 bottom-0 z-40 transition-transform duration-300 ease-out ${
+          footerVisible ? 'translate-y-0' : 'translate-y-full'
+        }`}
+        onMouseEnter={() => setFooterVisible(true)}
+        onMouseLeave={() => setFooterVisible(false)}
+      >
         <div className="px-4">
-          <div className="mx-auto max-w-[1400px] rounded-t-xl border bg-white/95 backdrop-blur p-4 flex items-center justify-between shadow-[0_-6px_16px_rgba(0,0,0,0.08)]">
+          <div className="mx-auto max-w-[1400px] rounded-t-xl border bg-white/95 backdrop-blur p-2.5 flex items-center justify-between shadow-[0_-6px_16px_rgba(0,0,0,0.08)]">
             {/* Left: Status indicator */}
             {hasUnsavedChanges ? (
-              <div className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-3 py-1.5 font-medium">
+              <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2.5 py-1 font-medium">
                 Unsaved changes
               </div>
             ) : (
-              <div className="text-sm text-green-700 bg-green-50 border border-green-200 rounded-full px-3 py-1.5 font-medium">
+              <div className="text-xs text-green-700 bg-green-50 border border-green-200 rounded-full px-2.5 py-1 font-medium">
                 All changes saved
               </div>
             )}
@@ -1799,10 +1895,10 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
             <div className="flex-1"></div>
             
             {/* Right: Action buttons */}
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5">
               {!disabled && projectId && !window.location.pathname.includes('/proposals/') && (
                 <button 
-                  className="px-4 py-2 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium transition-colors" 
+                  className="px-3 py-1.5 text-sm rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium transition-colors" 
                   onClick={handleClearProposal}
                   disabled={disabled}
                 >
@@ -1812,7 +1908,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
               {!disabled && mode === 'edit' && (!projectId || window.location.pathname.includes('/proposals/')) && (
                 <>
                   <button 
-                    className="px-4 py-2 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium transition-colors" 
+                    className="px-3 py-1.5 text-sm rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium transition-colors" 
                     onClick={async () => {
                       const result = await confirm({ 
                         title: 'Delete Proposal', 
@@ -1837,12 +1933,12 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                   >
                     Delete Proposal
                   </button>
-                  <div className="w-px h-5 bg-gray-300"></div>
+                  <div className="w-px h-4 bg-gray-300"></div>
                 </>
               )}
               {!disabled && (
                 <button 
-                  className={`px-5 py-2 rounded-lg text-white font-semibold disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm ${
+                  className={`px-4 py-1.5 text-sm rounded-lg text-white font-semibold disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm ${
                     hasUnsavedChanges
                       ? 'bg-gradient-to-r from-brand-red to-[#ee2b2b] hover:from-red-700 hover:to-red-800' 
                       : 'bg-gray-400 hover:bg-gray-500'
@@ -1853,9 +1949,9 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                   {isSaving ? 'Saving...' : 'Save Proposal'}
                 </button>
               )}
-              <div className="w-px h-5 bg-gray-300"></div>
+              <div className="w-px h-4 bg-gray-300"></div>
               <button 
-                className="px-4 py-2 rounded-lg bg-gray-400 hover:bg-gray-500 text-white font-medium disabled:opacity-60 disabled:cursor-not-allowed transition-colors" 
+                className="px-3 py-1.5 text-sm rounded-lg bg-gray-400 hover:bg-gray-500 text-white font-medium disabled:opacity-60 disabled:cursor-not-allowed transition-colors" 
                 disabled={isGenerating} 
                 onClick={handleGenerate}
               >
@@ -1863,11 +1959,11 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
               </button>
               {downloadUrl && (
                 <>
-                  <div className="w-px h-5 bg-gray-300"></div>
+                  <div className="w-px h-4 bg-gray-300"></div>
                   {(renderFingerprint===lastGeneratedHash) ? (
-                    <a className="px-4 py-2 rounded-lg bg-gray-400 hover:bg-gray-500 text-white font-medium transition-colors" href={downloadUrl} download="ProjectProposal.pdf">Download PDF</a>
+                    <a className="px-3 py-1.5 text-sm rounded-lg bg-gray-400 hover:bg-gray-500 text-white font-medium transition-colors" href={downloadUrl} download="ProjectProposal.pdf">Download PDF</a>
                   ) : (
-                    <button className="px-4 py-2 rounded-lg bg-gray-200 text-gray-600 cursor-not-allowed font-medium" title="PDF is outdated. Generate again to enable download" disabled>Download PDF</button>
+                    <button className="px-3 py-1.5 text-sm rounded-lg bg-gray-200 text-gray-600 cursor-not-allowed font-medium" title="PDF is outdated. Generate again to enable download" disabled>Download PDF</button>
                   )}
                 </>
               )}

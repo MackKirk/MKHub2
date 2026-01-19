@@ -50,6 +50,7 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
   const [sectionNames, setSectionNames] = useState<Record<string, string>>({});
   const [addingToSection, setAddingToSection] = useState<{section: string, type: 'product' | 'labour' | 'subcontractor' | 'miscellaneous' | 'shop'} | null>(null);
   const [dirty, setDirty] = useState(false);
+  const [footerVisible, setFooterVisible] = useState<boolean>(false);
   const savedStateRef = useRef<{ items: Item[], markup: number, pstRate: number, gstRate: number, profitRate: number, sectionOrder: string[], sectionNames: Record<string, string> } | null>(null);
   const isSavingRef = useRef<boolean>(false);
   const pendingSaveRef = useRef<{ items: Item[], markup: number, pstRate: number, gstRate: number, profitRate: number, sectionOrder: string[], sectionNames: Record<string, string> } | null>(null);
@@ -1965,29 +1966,54 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
       </div>
 
       {/* Spacer to prevent fixed bar from overlapping content */}
-      {!hideFooter && <div className="h-24" />}
+      {!hideFooter && <div className="h-12" />}
+
+      {/* Footer hover trigger area - always visible at bottom */}
+      {!hideFooter && (
+        <div 
+          className="fixed left-60 right-0 bottom-0 z-40 h-3 cursor-pointer transition-all duration-300"
+          onMouseEnter={() => setFooterVisible(true)}
+          onMouseLeave={() => setFooterVisible(false)}
+        >
+          {/* Arrow indicator when footer is hidden */}
+          {!footerVisible && (
+            <div className="absolute bottom-0 left-1/2 -translate-x-1/2 flex items-center justify-center gap-1 px-3 py-1 bg-white/90 backdrop-blur-sm border-t border-x rounded-t-lg shadow-sm text-xs text-gray-600 font-medium">
+              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+              </svg>
+              Actions
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Fixed Unsaved Changes bar */}
       {!hideFooter && (
-      <div className="fixed left-60 right-0 bottom-0 z-40">
+      <div 
+        className={`fixed left-60 right-0 bottom-0 z-40 transition-transform duration-300 ease-out ${
+          footerVisible ? 'translate-y-0' : 'translate-y-full'
+        }`}
+        onMouseEnter={() => setFooterVisible(true)}
+        onMouseLeave={() => setFooterVisible(false)}
+      >
         <div className="px-4">
-          <div className="mx-auto max-w-[1400px] rounded-t-xl border bg-white/95 backdrop-blur p-4 flex items-center justify-between shadow-[0_-6px_16px_rgba(0,0,0,0.08)]">
+          <div className="mx-auto max-w-[1400px] rounded-t-xl border bg-white/95 backdrop-blur p-2.5 flex items-center justify-between shadow-[0_-6px_16px_rgba(0,0,0,0.08)]">
             {/* Left: Status indicator (only show when canEdit) */}
             {canEdit && (
-              <div className={dirty ? 'text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-3 py-1.5 font-medium' : 'text-sm text-green-700 bg-green-50 border border-green-200 rounded-full px-3 py-1.5 font-medium'}>
+              <div className={dirty ? 'text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2.5 py-1 font-medium' : 'text-xs text-green-700 bg-green-50 border border-green-200 rounded-full px-2.5 py-1 font-medium'}>
                 {dirty ? 'Unsaved changes' : 'All changes saved'}
               </div>
             )}
             {!canEdit && <div className="w-0"></div>}
             
             {/* Center: Analysis and PDF */}
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5">
                 <button
                   onClick={()=>setSummaryOpen(true)}
-                  className="px-4 py-2 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium transition-colors">
+                  className="px-3 py-1.5 text-sm rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium transition-colors">
                   Analysis
                 </button>
-                <div className="w-px h-5 bg-gray-300"></div>
+                <div className="w-px h-4 bg-gray-300"></div>
                 <button
                   onClick={async()=>{
                     try{
@@ -2062,18 +2088,18 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
                     }
                   }}
                   disabled={isLoading || items.length === 0}
-                  className="px-4 py-2 rounded-lg bg-gray-400 hover:bg-gray-500 text-white font-medium disabled:opacity-60 disabled:cursor-not-allowed transition-colors">
+                  className="px-3 py-1.5 text-sm rounded-lg bg-gray-400 hover:bg-gray-500 text-white font-medium disabled:opacity-60 disabled:cursor-not-allowed transition-colors">
                   {isLoading ? 'Generating...' : 'Generate PDF'}
                 </button>
               </div>
               
               {/* Right: Save */}
               {canEdit ? (
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1.5">
                   <button 
                     disabled={!dirty} 
                     onClick={handleManualSave}
-                    className={`px-5 py-2 rounded-lg text-white font-semibold disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm ${
+                    className={`px-4 py-1.5 text-sm rounded-lg text-white font-semibold disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm ${
                       dirty 
                         ? 'bg-gradient-to-r from-brand-red to-[#ee2b2b] hover:from-red-700 hover:to-red-800' 
                         : 'bg-gray-400 hover:bg-gray-500'

@@ -5,6 +5,14 @@
 html,body,#root{height:100%}
 body{font-family:theme(fontFamily.sans);background:#f6f7f9}
 
+/* Google Places Autocomplete dropdown */
+.pac-container{
+  z-index: 100000 !important;
+}
+.pac-item{
+  cursor: pointer;
+}
+
 /* Floating Chat Button - Visual Integration Refinement */
 .mkchat-fab {
   width: 48px !important;

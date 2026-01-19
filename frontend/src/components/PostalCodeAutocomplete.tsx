@@ -2,18 +2,14 @@ import { useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 
-interface AddressAutocompleteProps {
+interface PostalCodeAutocompleteProps {
   value: string;
   onChange: (value: string) => void;
-  onAddressSelect?: (address: {
-    address_line1: string;
-    address_line2?: string;
+  onPostalCodeSelect?: (address: {
+    postal_code: string;
     city?: string;
     province?: string;
     country?: string;
-    postal_code?: string;
-    lat?: number;
-    lng?: number;
   }) => void;
   placeholder?: string;
   className?: string;
@@ -55,27 +51,27 @@ const loadGooglePlacesScript = (apiKey: string): Promise<void> => {
   });
 };
 
-export default function AddressAutocomplete({
+export default function PostalCodeAutocomplete({
   value,
   onChange,
-  onAddressSelect,
-  placeholder = 'Enter address',
+  onPostalCodeSelect,
+  placeholder = 'Enter postal code',
   className = '',
   disabled = false,
   apiKey,
-}: AddressAutocompleteProps) {
+}: PostalCodeAutocompleteProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const autocompleteRef = useRef<any>(null);
-  const onAddressSelectRef = useRef(onAddressSelect);
+  const onPostalCodeSelectRef = useRef(onPostalCodeSelect);
   const onChangeRef = useRef(onChange);
   const [scriptLoaded, setScriptLoaded] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
   // Keep refs updated
   useEffect(() => {
-    onAddressSelectRef.current = onAddressSelect;
+    onPostalCodeSelectRef.current = onPostalCodeSelect;
     onChangeRef.current = onChange;
-  }, [onAddressSelect, onChange]);
+  }, [onPostalCodeSelect, onChange]);
 
   // Get API key from backend settings
   const { data: settingsData } = useQuery({
@@ -101,7 +97,7 @@ export default function AddressAutocomplete({
 
   useEffect(() => {
     if (!apiKeyValue) {
-      console.warn('Google Places API key not found. Address autocomplete will not work.');
+      console.warn('Google Places API key not found. Postal code autocomplete will not work.');
       return;
     }
 
@@ -131,10 +127,12 @@ export default function AddressAutocomplete({
       window.google.maps.event.clearInstanceListeners(autocompleteRef.current);
     }
 
-    // Initialize autocomplete
+    // Initialize autocomplete - we'll use geocode type and filter for postal codes
+    // Note: Google Places doesn't have a direct postal_code type, so we use geocode
+    // and will filter/format results to show postal codes
     const autocomplete = new window.google.maps.places.Autocomplete(inputRef.current, {
-      types: ['address'],
-      fields: ['address_components', 'formatted_address', 'geometry'],
+      types: ['geocode'], // Use geocode to get addresses that include postal codes
+      fields: ['address_components', 'formatted_address', 'geometry', 'name'],
     });
 
     autocompleteRef.current = autocomplete;
@@ -143,139 +141,89 @@ export default function AddressAutocomplete({
     const handlePlaceSelect = () => {
       const place = autocomplete.getPlace();
       
-      console.log('Place selected:', place);
-      
-      if (!place.address_components || !place.geometry) {
-        console.warn('Place missing address_components or geometry');
+      if (!place.address_components) {
         return;
       }
 
-      // Parse address components
-      let address_line1 = '';
-      let address_line2 = '';
+      // Parse address components to extract postal code, city, province, country
+      let postal_code = '';
       let city = '';
       let province = '';
       let country = '';
-      let postal_code = '';
-      const lat = place.geometry.location?.lat();
-      const lng = place.geometry.location?.lng();
 
-      console.log('Address components:', place.address_components);
-
-      // Parse address components
       place.address_components.forEach((component: any) => {
         const types = component.types;
-        console.log('Component:', component.long_name, 'Types:', types);
 
-        if (types.includes('street_number')) {
-          address_line1 = (address_line1 + component.long_name + ' ').trim();
+        if (types.includes('postal_code')) {
+          postal_code = component.long_name;
         }
-        if (types.includes('route')) {
-          address_line1 = (address_line1 + ' ' + component.long_name).trim();
-        }
-        if (types.includes('subpremise')) {
-          address_line2 = component.long_name;
-        }
-        // Try multiple locality types
         if (types.includes('locality') && !city) {
           city = component.long_name;
         }
         if (types.includes('sublocality') && !city) {
           city = component.long_name;
         }
-        if (types.includes('sublocality_level_1') && !city) {
-          city = component.long_name;
-        }
-        // Try multiple administrative area types
         if (types.includes('administrative_area_level_1')) {
-          province = component.long_name || component.short_name;
-        }
-        if (types.includes('administrative_area_level_2') && !province) {
           province = component.long_name || component.short_name;
         }
         if (types.includes('country')) {
           country = component.long_name || component.short_name;
         }
-        if (types.includes('postal_code')) {
-          postal_code = component.long_name;
-        }
       });
 
-      // Build formatted address for display (full address with city, province, country)
-      // This matches what Google shows in the autocomplete dropdown
-      const addressParts = [];
-      const streetAddress = address_line1.trim();
-      if (streetAddress) addressParts.push(streetAddress);
-      if (city) addressParts.push(city);
-      if (province) addressParts.push(province);
-      if (country) addressParts.push(country);
-      const formattedFullAddress = addressParts.join(', ');
-      
-      // Use formatted_address from Google if available, otherwise build our own
-      const displayAddress = place.formatted_address || formattedFullAddress || streetAddress;
-      
-      console.log('Parsed address:', {
-        streetAddress,
-        formattedFullAddress,
-        displayAddress,
-        address_line2,
-        city,
-        province,
-        country,
-        postal_code,
-        lat,
-        lng,
-      });
-      
-      // Update the input field with full formatted address using ref to avoid stale closure
-      if (onChangeRef.current) {
-        onChangeRef.current(displayAddress);
+      // If no postal code found in components, try to extract from formatted_address or name
+      if (!postal_code) {
+        // Try formatted_address first
+        if (place.formatted_address) {
+          // Common postal code patterns: Canadian (A1A 1A1), US (12345 or 12345-6789), UK (SW1A 1AA), etc.
+          const postalCodeMatch = place.formatted_address.match(/\b([A-Z0-9]{2,}\s?[A-Z0-9]{2,})\b/i);
+          if (postalCodeMatch) {
+            postal_code = postalCodeMatch[1].toUpperCase();
+          }
+        }
+        // If still not found, try place name (sometimes postal codes are in the name)
+        if (!postal_code && place.name) {
+          const postalCodeMatch = place.name.match(/\b([A-Z0-9]{2,}\s?[A-Z0-9]{2,})\b/i);
+          if (postalCodeMatch) {
+            postal_code = postalCodeMatch[1].toUpperCase();
+          }
+        }
       }
 
-      // Call onAddressSelect callback with parsed address using ref to avoid stale closure
-      // Always call this, even if some fields are empty, so the parent can update all fields
-      // address_line1 will contain the full formatted address for display
-      const addressData = {
-        address_line1: displayAddress, // Full formatted address for display
-        address_line2: address_line2 || undefined,
-        city: city || undefined,
-        province: province || undefined,
-        country: country || undefined,
-        postal_code: postal_code || undefined,
-        lat: lat || undefined,
-        lng: lng || undefined,
-      };
-      
-      console.log('Calling onAddressSelect with:', addressData);
-      console.log('onAddressSelectRef.current:', onAddressSelectRef.current);
-      
-      if (onAddressSelectRef.current) {
-        try {
-          onAddressSelectRef.current(addressData);
-          console.log('onAddressSelect called successfully');
-        } catch (error) {
-          console.error('Error calling onAddressSelect:', error);
-        }
-      } else {
-        console.warn('onAddressSelect callback not provided');
+      // Only proceed if we found a postal code
+      if (!postal_code) {
+        return;
+      }
+
+      // Update the input field with postal code
+      if (onChangeRef.current) {
+        onChangeRef.current(postal_code);
+      }
+
+      // Call onPostalCodeSelect callback
+      if (onPostalCodeSelectRef.current) {
+        const addressData = {
+          postal_code,
+          city: city || undefined,
+          province: province || undefined,
+          country: country || undefined,
+        };
+        
+        onPostalCodeSelectRef.current(addressData);
       }
     };
 
     // Add listener for place selection
     const listener = autocomplete.addListener('place_changed', () => {
-      console.log('place_changed event fired');
       handlePlaceSelect();
     });
-    console.log('Added place_changed listener');
 
     // Also listen for Enter key and blur events as fallback
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Enter') {
-        console.log('Enter key pressed, checking for place...');
         setTimeout(() => {
           const place = autocomplete.getPlace();
           if (place && place.place_id) {
-            console.log('Place found on Enter key:', place);
             handlePlaceSelect();
           }
         }, 100);
@@ -283,11 +231,9 @@ export default function AddressAutocomplete({
     };
 
     const handleBlur = () => {
-      console.log('Input blurred, checking for place...');
       setTimeout(() => {
         const place = autocomplete.getPlace();
         if (place && place.place_id) {
-          console.log('Place found on blur:', place);
           handlePlaceSelect();
         }
       }, 200);
@@ -353,4 +299,3 @@ export default function AddressAutocomplete({
     </div>
   );
 }
-
