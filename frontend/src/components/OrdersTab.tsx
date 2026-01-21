@@ -91,9 +91,6 @@ export default function OrdersTab({ projectId, project, statusLabel }: { project
   
   const currentEstimateId = projectEstimates[0]?.id;
   
-  const handleBackToOverview = () => {
-    nav(location.pathname, { replace: true });
-  };
   const [viewingItemsOrder, setViewingItemsOrder] = useState<Order | null>(null);
   const [showAddExtraOrder, setShowAddExtraOrder] = useState(false);
   const [addOrderStep, setAddOrderStep] = useState<1 | 2>(1);
@@ -324,26 +321,6 @@ export default function OrdersTab({ projectId, project, statusLabel }: { project
           <strong>Editing Restricted:</strong> This project has status "{statusLabel}" which does not allow editing orders.
         </div>
       )}
-      
-      {/* Header with Clear All button */}
-      {/* Minimalist header */}
-      <div className="mb-4">
-        <div className="flex items-center gap-3">
-          <button
-            onClick={handleBackToOverview}
-            className="p-2 rounded-lg border hover:bg-gray-50 transition-colors flex items-center justify-center"
-            title="Back to Overview"
-          >
-            <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-            </svg>
-          </button>
-          <div>
-            <h3 className="text-lg font-semibold text-gray-900">Orders</h3>
-            <p className="text-xs text-gray-500">Purchase orders and supplies</p>
-          </div>
-        </div>
-      </div>
       
       {canEditOrders && (
         <div className="flex items-center justify-between">

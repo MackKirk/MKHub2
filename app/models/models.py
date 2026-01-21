@@ -195,6 +195,7 @@ class Project(Base):
     service_value: Mapped[Optional[int]] = mapped_column(BigInteger)
     description: Mapped[Optional[str]] = mapped_column(String(2000))
     notes: Mapped[Optional[str]] = mapped_column(String(2000))
+    lead_source: Mapped[Optional[str]] = mapped_column(String(100))  # Lead source (same as Client)
     is_bidding: Mapped[bool] = mapped_column(Boolean, default=False)  # True if this is a bidding (quote), False if it's an active project
     status_changed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))  # Timestamp when status was last changed
     image_file_object_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))  # Image for general information card
@@ -474,6 +475,12 @@ class Proposal(Base):
     title: Mapped[Optional[str]] = mapped_column(String(255))
     data: Mapped[Optional[dict]] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    # Change Order fields
+    is_change_order: Mapped[bool] = mapped_column(Boolean, default=False)
+    change_order_number: Mapped[Optional[int]] = mapped_column(Integer)
+    parent_proposal_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
+    approved_report_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
+    approval_status: Mapped[Optional[str]] = mapped_column(String(50))  # "pending", "approved", "rejected"
 
 
 class Quote(Base):

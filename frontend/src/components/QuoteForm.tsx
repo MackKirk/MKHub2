@@ -109,7 +109,7 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
   const [pickerForContact, setPickerForContact] = useState<string|null>(null);
   const [footerVisible, setFooterVisible] = useState<boolean>(false);
   const [sectionsExpanded, setSectionsExpanded] = useState<Record<string, boolean>>({
-    generalInfo: false,
+    generalInfo: true,
     sections: false,
     pricing: false,
     optionalServices: false,

@@ -503,10 +503,17 @@ def save_proposal(payload: dict = Body(...), db: Session = Depends(get_db), user
     pid = payload.get('id')
     title = payload.get('cover_title') or payload.get('title') or 'Proposal'
     is_new = False
+    is_change_order = payload.get('is_change_order', False)
+    
     if pid:
         p = db.query(Proposal).filter(Proposal.id == pid).first()
         if not p:
             raise HTTPException(status_code=404, detail='Proposal not found')
+        
+        # Prevent editing approved Change Orders
+        if p.is_change_order and p.approved_report_id:
+            raise HTTPException(status_code=400, detail='Cannot edit approved Change Order')
+        
         # Allow updating scope relations
         p.project_id = payload.get('project_id') or p.project_id
         p.client_id = payload.get('client_id') or p.client_id
@@ -533,14 +540,81 @@ def save_proposal(payload: dict = Body(...), db: Session = Depends(get_db), user
         db.commit()
     else:
         is_new = True
-        p = Proposal(
-            project_id=payload.get('project_id'),
-            client_id=payload.get('client_id'),
-            site_id=payload.get('site_id'),
-            order_number=payload.get('order_number'),
-            title=title,
-            data=payload,
-        )
+        
+        # Handle Change Order creation
+        if is_change_order:
+            project_id = payload.get('project_id')
+            if not project_id:
+                raise HTTPException(status_code=400, detail='project_id is required for Change Orders')
+            
+            # Find the original proposal
+            original_proposal = db.query(Proposal).filter(
+                Proposal.project_id == project_id,
+                Proposal.is_change_order == False
+            ).order_by(Proposal.created_at.asc()).first()
+            
+            if not original_proposal:
+                raise HTTPException(status_code=404, detail='Original proposal not found. Please create a Proposal first.')
+            
+            # Get the next change order number
+            latest_change_order = db.query(Proposal).filter(
+                Proposal.project_id == project_id,
+                Proposal.is_change_order == True
+            ).order_by(Proposal.change_order_number.desc()).first()
+            
+            next_change_order_number = payload.get('change_order_number')
+            if not next_change_order_number:
+                if latest_change_order and latest_change_order.change_order_number:
+                    next_change_order_number = latest_change_order.change_order_number + 1
+                else:
+                    next_change_order_number = 1
+            
+            # Copy General Information from original proposal
+            original_data = original_proposal.data or {}
+            change_order_data = {}
+            
+            # Copy General Information fields
+            general_info_fields = [
+                'cover_title', 'date', 'proposal_created_for', 'primary_contact_name',
+                'primary_contact_phone', 'primary_contact_email', 'type_of_project',
+                'other_notes', 'cover_file_object_id', 'page2_file_object_id'
+            ]
+            for field in general_info_fields:
+                if field in original_data:
+                    change_order_data[field] = original_data[field]
+            
+            # Merge with payload data (payload can override General Information if needed)
+            change_order_data.update(payload)
+            
+            # Ensure Sections and Pricing are empty for new Change Orders
+            if 'sections' not in change_order_data:
+                change_order_data['sections'] = []
+            if 'pricing_items' not in change_order_data:
+                change_order_data['pricing_items'] = []
+            if 'optional_services' not in change_order_data:
+                change_order_data['optional_services'] = []
+            
+            p = Proposal(
+                project_id=project_id,
+                client_id=payload.get('client_id') or original_proposal.client_id,
+                site_id=payload.get('site_id') or original_proposal.site_id,
+                order_number=payload.get('order_number') or original_proposal.order_number,
+                title=title or f"Change Order {next_change_order_number}",
+                data=change_order_data,
+                is_change_order=True,
+                change_order_number=next_change_order_number,
+                parent_proposal_id=original_proposal.id,
+            )
+        else:
+            p = Proposal(
+                project_id=payload.get('project_id'),
+                client_id=payload.get('client_id'),
+                site_id=payload.get('site_id'),
+                order_number=payload.get('order_number'),
+                title=title,
+                data=payload,
+            )
+        
         db.add(p)
         db.flush()  # Flush to get the ID
         
@@ -602,7 +676,66 @@ def list_proposals(client_id: Optional[str] = Query(None), site_id: Optional[str
         "title": r.title,
         "created_at": r.created_at.isoformat() if r.created_at else None,
         "data": r.data if r.data else {},
+        "is_change_order": getattr(r, 'is_change_order', False),
+        "change_order_number": getattr(r, 'change_order_number', None),
+        "parent_proposal_id": str(getattr(r, 'parent_proposal_id', None)) if getattr(r, 'parent_proposal_id', None) else None,
+        "approved_report_id": str(getattr(r, 'approved_report_id', None)) if getattr(r, 'approved_report_id', None) else None,
+        "approval_status": getattr(r, 'approval_status', None) or ('approved' if getattr(r, 'approved_report_id', None) else None),
     } for r in rows]
+
+
+@router.get("/latest-approved")
+def get_latest_approved_proposal(project_id: Optional[str] = Query(None), db: Session = Depends(get_db)):
+    """Get the latest approved proposal for a project (last Change Order or original if no Change Orders)"""
+    if not project_id:
+        raise HTTPException(status_code=400, detail="project_id is required")
+    
+    # First, try to find the latest approved Change Order
+    # Change Orders must have is_change_order=True and approved_report_id set (indicating they were approved)
+    latest_change_order = db.query(Proposal).filter(
+        Proposal.project_id == project_id,
+        Proposal.is_change_order == True,
+        Proposal.approved_report_id.isnot(None)
+    ).order_by(Proposal.change_order_number.desc()).first()
+    
+    if latest_change_order:
+        return {
+            "id": str(latest_change_order.id),
+            "project_id": str(latest_change_order.project_id) if getattr(latest_change_order, 'project_id', None) else None,
+            "client_id": str(latest_change_order.client_id) if latest_change_order.client_id else None,
+            "site_id": str(latest_change_order.site_id) if latest_change_order.site_id else None,
+            "order_number": latest_change_order.order_number,
+            "title": latest_change_order.title,
+            "data": latest_change_order.data or {},
+            "created_at": latest_change_order.created_at.isoformat() if latest_change_order.created_at else None,
+            "is_change_order": latest_change_order.is_change_order,
+            "change_order_number": latest_change_order.change_order_number,
+            "parent_proposal_id": str(latest_change_order.parent_proposal_id) if latest_change_order.parent_proposal_id else None,
+        }
+    
+    # If no Change Orders, return the original proposal (is_change_order=False or None)
+    original_proposal = db.query(Proposal).filter(
+        Proposal.project_id == project_id,
+        Proposal.is_change_order == False
+    ).order_by(Proposal.created_at.asc()).first()
+    
+    if original_proposal:
+        return {
+            "id": str(original_proposal.id),
+            "project_id": str(original_proposal.project_id) if getattr(original_proposal, 'project_id', None) else None,
+            "client_id": str(original_proposal.client_id) if original_proposal.client_id else None,
+            "site_id": str(original_proposal.site_id) if original_proposal.site_id else None,
+            "order_number": original_proposal.order_number,
+            "title": original_proposal.title,
+            "data": original_proposal.data or {},
+            "created_at": original_proposal.created_at.isoformat() if original_proposal.created_at else None,
+            "is_change_order": False,
+            "change_order_number": None,
+            "parent_proposal_id": None,
+        }
+    
+    # If no proposals found at all, return None
+    raise HTTPException(status_code=404, detail="No proposals found for this project")
 
 
 @router.get("/{proposal_id}")
@@ -619,7 +752,52 @@ def get_proposal(proposal_id: str, db: Session = Depends(get_db)):
         "title": p.title,
         "data": p.data or {},
         "created_at": p.created_at.isoformat() if p.created_at else None,
+        "is_change_order": getattr(p, 'is_change_order', False),
+        "change_order_number": getattr(p, 'change_order_number', None),
+        "parent_proposal_id": str(getattr(p, 'parent_proposal_id', None)) if getattr(p, 'parent_proposal_id', None) else None,
+        "approved_report_id": str(getattr(p, 'approved_report_id', None)) if getattr(p, 'approved_report_id', None) else None,
+        "approval_status": getattr(p, 'approval_status', None) or ('approved' if getattr(p, 'approved_report_id', None) else None),
     }
+
+
+@router.post("/{proposal_id}/submit-for-approval")
+def submit_proposal_for_approval(proposal_id: str, db: Session = Depends(get_db), user=Depends(get_current_user)):
+    """Submit a Change Order for approval by creating a report"""
+    from datetime import datetime, timezone
+    from ..models.models import ProjectReport
+    
+    p = db.query(Proposal).filter(Proposal.id == proposal_id).first()
+    if not p:
+        raise HTTPException(status_code=404, detail='Proposal not found')
+    
+    if not p.is_change_order:
+        raise HTTPException(status_code=400, detail='Only Change Orders can be submitted for approval')
+    
+    if p.approved_report_id:
+        raise HTTPException(status_code=400, detail='Change Order has already been submitted for approval')
+    
+    # Create a report for this Change Order
+    report = ProjectReport(
+        project_id=p.project_id,
+        title=f"Change Order {p.change_order_number} - Approval Request",
+        category_id='estimate-changes',
+        description=f"Change Order {p.change_order_number} submitted for approval",
+        financial_type='estimate-changes',
+        approval_status='pending',
+        created_by=user.id if user else None,
+        estimate_data={
+            'proposal_data': p.data or {}
+        }
+    )
+    db.add(report)
+    db.flush()
+    
+    # Update proposal with approval status and report ID
+    p.approval_status = 'pending'
+    p.approved_report_id = report.id
+    db.commit()
+    
+    return {"status": "ok", "report_id": str(report.id)}
 
 
 @router.delete("/{proposal_id}")

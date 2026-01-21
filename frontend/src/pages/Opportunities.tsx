@@ -1615,7 +1615,6 @@ function OpportunityListCard({ opportunity, onOpenReportModal, projectStatuses }
   const estimatorIds = (opportunity as any).estimator_ids || details?.estimator_ids || ((opportunity as any).estimator_id || details?.estimator_id ? [(opportunity as any).estimator_id || details?.estimator_id] : []);
   const clientName = client?.display_name || client?.name || '';
   const projectDivIds = (opportunity as any).project_division_ids || details?.project_division_ids || [];
-  const percentages = (opportunity as any).project_division_percentages || details?.project_division_percentages || {};
   
   // Get employees data for avatars
   const { data: employeesData } = useQuery({ 
@@ -1631,6 +1630,20 @@ function OpportunityListCard({ opportunity, onOpenReportModal, projectStatuses }
       .map((id: string) => employees.find((e: any) => String(e.id) === String(id)))
       .filter(Boolean);
   }, [estimatorIds, employees]);
+  
+  // Fetch proposals to get pricing items for percentage calculation
+  const { data:proposals } = useQuery({ 
+    queryKey:['opportunityProposals', opportunity.id], 
+    queryFn: ()=>api<any[]>('GET', `/proposals?project_id=${encodeURIComponent(String(opportunity.id||''))}`) 
+  });
+  
+  // Fetch full proposal data if proposal exists
+  const proposal = proposals && proposals.length > 0 ? proposals[0] : null;
+  const { data:proposalData } = useQuery({ 
+    queryKey: ['proposal', proposal?.id],
+    queryFn: () => proposal?.id ? api<any>('GET', `/proposals/${proposal.id}`) : Promise.resolve(null),
+    enabled: !!proposal?.id
+  });
   
   // Check for pending data (mobile-created opportunities may be missing key fields)
   const missingFields = useMemo(() => {
@@ -1649,22 +1662,47 @@ function OpportunityListCard({ opportunity, onOpenReportModal, projectStatuses }
   
   const hasPendingData = missingFields.length > 0;
   
-  // Calculate percentages if not set (auto-initialize)
+  // Calculate percentages from pricing items
   const calculatedPercentages = useMemo(() => {
     if (projectDivIds.length === 0) return {};
-    // If percentages exist and cover all divisions, use them
-    const hasPercentages = projectDivIds.every(id => percentages[String(id)] !== undefined);
-    if (hasPercentages && Object.keys(percentages).length > 0) {
-      return percentages;
-    }
-    // Otherwise, calculate equal distribution
-    const equalPercent = projectDivIds.length === 1 ? 100 : 100 / projectDivIds.length;
+    
+    // Initialize all divisions to 0%
     const result: { [key: string]: number } = {};
     projectDivIds.forEach(id => {
-      result[String(id)] = equalPercent;
+      result[String(id)] = 0;
     });
+    
+    // Get pricing items from proposal (data is nested in proposalData.data)
+    const pricingItems = proposalData?.data?.additional_costs || [];
+    
+    // If no pricing items, return 0% for all divisions
+    if (pricingItems.length === 0) {
+      return result;
+    }
+    
+    // Group by division_id and sum values
+    const divisionTotals: { [key: string]: number } = {};
+    pricingItems.forEach((item: any) => {
+      if (item.division_id) {
+        const divId = String(item.division_id);
+        const value = (item.value || 0) * (parseInt(item.quantity || '1', 10) || 1);
+        divisionTotals[divId] = (divisionTotals[divId] || 0) + value;
+      }
+    });
+    
+    // Calculate total
+    const total = Object.values(divisionTotals).reduce((a, b) => a + b, 0);
+    
+    // Calculate percentages only if total > 0
+    if (total > 0) {
+      projectDivIds.forEach(id => {
+        const idStr = String(id);
+        result[idStr] = divisionTotals[idStr] ? (divisionTotals[idStr] / total) * 100 : 0;
+      });
+    }
+    
     return result;
-  }, [projectDivIds, percentages]);
+  }, [projectDivIds, proposalData]);
   
   // Get division icons and labels with percentages
   const divisionIcons = useMemo(() => {

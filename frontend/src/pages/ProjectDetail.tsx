@@ -1,6 +1,6 @@
 import { useParams, Link, useLocation, useNavigate } from 'react-router-dom';
 import { useMemo, useState, useEffect, useCallback, useRef } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient, useQueries } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
 import ImagePicker from '@/components/ImagePicker';
@@ -247,7 +247,7 @@ function UserAvatar({ user, size = 'w-8 h-8', showTooltip = true, tooltipText }:
           onError={() => setImageError(true)}
         />
         {showTooltip && (
-          <div className="absolute right-0 top-full mt-1 px-2 py-1 bg-gray-900 text-white text-xs rounded whitespace-nowrap opacity-0 group-hover/avatar:opacity-100 transition-opacity pointer-events-none z-10">
+          <div className="absolute right-0 top-full mt-1 px-2 py-1 bg-gray-900 text-white text-xs rounded whitespace-nowrap opacity-0 group-hover/avatar:opacity-100 transition-opacity pointer-events-none z-[9999]">
             {displayName}
             <div className="absolute -top-1 right-2 w-2 h-2 bg-gray-900 rotate-45"></div>
           </div>
@@ -260,7 +260,7 @@ function UserAvatar({ user, size = 'w-8 h-8', showTooltip = true, tooltipText }:
     <div className={`relative group/avatar ${size} rounded-full bg-indigo-600 flex items-center justify-center text-white font-semibold text-xs`}>
       {initials}
       {showTooltip && (
-        <div className="absolute right-0 top-full mt-1 px-2 py-1 bg-gray-900 text-white text-xs rounded whitespace-nowrap opacity-0 group-hover/avatar:opacity-100 transition-opacity pointer-events-none z-10">
+        <div className="absolute right-0 top-full mt-1 px-2 py-1 bg-gray-900 text-white text-xs rounded whitespace-nowrap opacity-0 group-hover/avatar:opacity-100 transition-opacity pointer-events-none z-[9999]">
           {displayName}
           <div className="absolute -top-1 right-2 w-2 h-2 bg-gray-900 rotate-45"></div>
         </div>
@@ -269,11 +269,11 @@ function UserAvatar({ user, size = 'w-8 h-8', showTooltip = true, tooltipText }:
   );
 }
 
-type Project = { id:string, code?:string, name?:string, client_id?:string, client_display_name?:string, client_name?:string, address?:string, address_city?:string, address_province?:string, address_country?:string, address_postal_code?:string, description?:string, status_id?:string, division_id?:string, division_ids?:string[], project_division_ids?:string[], estimator_id?:string, estimator_ids?:string[], project_admin_id?:string, onsite_lead_id?:string, division_onsite_leads?:Record<string, string>, contact_id?:string, contact_name?:string, contact_email?:string, contact_phone?:string, date_start?:string, date_eta?:string, date_end?:string, cost_estimated?:number, cost_actual?:number, service_value?:number, progress?:number, site_id?:string, site_name?:string, site_address_line1?:string, site_address_line2?:string, site_city?:string, site_province?:string, site_country?:string, site_postal_code?:string, status_label?:string, status_changed_at?:string, is_bidding?:boolean };
+type Project = { id:string, code?:string, name?:string, client_id?:string, client_display_name?:string, client_name?:string, address?:string, address_city?:string, address_province?:string, address_country?:string, address_postal_code?:string, description?:string, status_id?:string, division_id?:string, division_ids?:string[], project_division_ids?:string[], estimator_id?:string, estimator_ids?:string[], project_admin_id?:string, onsite_lead_id?:string, division_onsite_leads?:Record<string, string>, contact_id?:string, contact_name?:string, contact_email?:string, contact_phone?:string, date_start?:string, date_eta?:string, date_end?:string, cost_estimated?:number, cost_actual?:number, service_value?:number, progress?:number, site_id?:string, site_name?:string, site_address_line1?:string, site_address_line2?:string, site_city?:string, site_province?:string, site_country?:string, site_postal_code?:string, status_label?:string, status_changed_at?:string, is_bidding?:boolean, lead_source?:string };
 type ProjectFile = { id:string, file_object_id:string, is_image?:boolean, content_type?:string, category?:string, original_name?:string, uploaded_at?:string };
 type Update = { id:string, timestamp?:string, text?:string, images?:any };
 type Report = { id:string, title?:string, category_id?:string, division_id?:string, description?:string, images?:any, status?:string, created_at?:string, created_by?:string, financial_value?:number, financial_type?:string, estimate_data?:any, approval_status?:string, approved_by?:string, approved_at?:string };
-type Proposal = { id:string, title?:string, order_number?:string, created_at?:string, data?:any };
+type Proposal = { id:string, title?:string, order_number?:string, created_at?:string, data?:any, is_change_order?:boolean, change_order_number?:number, parent_proposal_id?:string, approved_report_id?:string, approval_status?:string };
 
 export default function ProjectDetail(){
   const location = useLocation();
@@ -295,6 +295,8 @@ export default function ProjectDetail(){
   const searchParams = new URLSearchParams(location.search);
   const initialTab = (searchParams.get('tab') as 'overview'|'general'|'reports'|'dispatch'|'timesheet'|'files'|'photos'|'proposal'|'estimate'|'orders'|null) || null;
   const [tab, setTab] = useState<'overview'|'general'|'reports'|'dispatch'|'timesheet'|'files'|'photos'|'proposal'|'estimate'|'orders'|null>(initialTab);
+  // Live pricing items (from ProposalForm) to update division percentages instantly without reload.
+  const [livePricingItems, setLivePricingItems] = useState<any[] | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [showOnSiteLeadsModal, setShowOnSiteLeadsModal] = useState(false);
   const [isHeroCollapsed, setIsHeroCollapsed] = useState(false);
@@ -347,6 +349,15 @@ export default function ProjectDetail(){
       setTab(null);
     }
   }, [location.search, hasTabPermission, me]);
+
+  // Auto-collapse hero section when a tab is selected, expand when back to primary page
+  useEffect(() => {
+    if (tab === null || tab === 'overview') {
+      setIsHeroCollapsed(false);
+    } else {
+      setIsHeroCollapsed(true);
+    }
+  }, [tab]);
   
   const cover = useMemo(()=>{
     const arr = (files||[]) as ProjectFile[];
@@ -399,6 +410,7 @@ export default function ProjectDetail(){
   const [editProjectAdminModal, setEditProjectAdminModal] = useState(false);
   const [editEtaModal, setEditEtaModal] = useState(false);
   const [editStartDateModal, setEditStartDateModal] = useState(false);
+  const [editLeadSourceModal, setEditLeadSourceModal] = useState(false);
   useEffect(()=>{
     (async()=>{
       try{
@@ -430,7 +442,7 @@ export default function ProjectDetail(){
     });
   }, [baseAvailableTabs, hasTabPermission, me]);
 
-  const handleTabClick = async (newTab: typeof availableTabs[number]) => {
+  const handleTabClick = async (newTab: typeof availableTabs[number] | 'estimate') => {
     // Check permission for the tab being accessed
     if (newTab !== 'overview' && !hasTabPermission(newTab)) {
       toast.error('You do not have permission to access this tab');
@@ -467,11 +479,6 @@ export default function ProjectDetail(){
     }
   };
 
-  const handleBackToCards = () => {
-    setTab(null);
-    nav(location.pathname, { replace: true });
-  };
-
   const estimator = employees?.find((e:any) => String(e.id) === String(proj?.estimator_id));
   const statusLabel = String((proj as any)?.status_label||'').trim();
   const statusColor = ((settings||{}).project_statuses||[]).find((s:any)=>s.label===statusLabel)?.value || '#e5e7eb';
@@ -485,15 +492,59 @@ export default function ProjectDetail(){
     });
   }, []);
 
+  // Helper function to get page title based on active tab
+  const getPageTitle = (proj: any, activeTab: typeof tab): string => {
+    const baseTitle = proj?.is_bidding ? 'Opportunity Information' : 'Project Information';
+    if (!activeTab || activeTab === 'overview') {
+      return baseTitle;
+    }
+    const tabTitles: Record<string, string> = {
+      'reports': 'Project Reports',
+      'dispatch': 'Workload',
+      'timesheet': 'Timesheet',
+      'files': 'Project Files',
+      'proposal': 'Proposal',
+      'estimate': 'Estimate',
+      'orders': 'Orders',
+    };
+    const tabTitle = tabTitles[activeTab] || activeTab;
+    return `${baseTitle} • ${tabTitle}`;
+  };
+
+  // Helper function to get page description based on active tab
+  const getPageDescription = (proj: any, activeTab: typeof tab): string => {
+    if (!activeTab || activeTab === 'overview') {
+      return proj?.is_bidding ? 'Overview, files, proposal and estimate.' : 'Overview, files, schedule and contacts.';
+    }
+    const tabDescriptions: Record<string, string> = {
+      'reports': 'Daily updates and site events',
+      'dispatch': 'Employee shifts and workload management',
+      'timesheet': 'Time tracking and hours',
+      'files': 'Documents, photos and files',
+      'proposal': 'Project proposals',
+      'estimate': 'Cost estimates and budgets',
+      'orders': 'Purchase orders and supplies',
+    };
+    return tabDescriptions[activeTab] || '';
+  };
+
   return (
     <div>
       {/* Title Bar */}
       <div className="bg-slate-200/50 rounded-[12px] border border-slate-200 flex items-center justify-between py-4 px-6 mb-6">
         <div className="flex items-center gap-4 flex-1">
           <button
-            onClick={() => nav(proj?.is_bidding ? '/opportunities' : '/projects')}
+            onClick={() => {
+              // If on a tab, go back to primary page; otherwise go to list
+              if (tab && tab !== 'overview') {
+                setTab(null);
+                nav(location.pathname, { replace: true });
+              } else {
+                nav(proj?.is_bidding ? '/opportunities' : '/projects');
+              }
+            }}
             className="p-2 rounded-lg hover:bg-gray-200 transition-colors flex items-center justify-center"
-            title={proj?.is_bidding ? 'Back to Opportunities' : 'Back to Projects'}
+            title={tab && tab !== 'overview' ? 'Back to Overview' : (proj?.is_bidding ? 'Back to Opportunities' : 'Back to Projects')}
           >
             <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
@@ -501,9 +552,9 @@ export default function ProjectDetail(){
           </button>
           <div>
             <div className="text-xl font-bold text-gray-900 tracking-tight mb-0.5">
-              {proj?.is_bidding ? 'Opportunity Information' : 'Project Information'}
+              {getPageTitle(proj, tab)}
             </div>
-            <div className="text-sm text-gray-500 font-medium">{proj?.is_bidding ? 'Overview, files, proposal and estimate.' : 'Overview, files, schedule and contacts.'}</div>
+            <div className="text-sm text-gray-500 font-medium">{getPageDescription(proj, tab)}</div>
           </div>
         </div>
         <div className="text-right">
@@ -515,7 +566,7 @@ export default function ProjectDetail(){
       {/* Hero Section - Based on Mockup */}
       {isHeroCollapsed ? (
         /* Collapsed View - Single Line */
-        <div className="mb-4 rounded-xl border bg-white overflow-hidden relative">
+        <div className="mb-4 rounded-xl border bg-white overflow-visible relative">
           <div className="p-4">
             <div className="flex items-center justify-between gap-4">
               <div className="flex-1 min-w-0">
@@ -531,29 +582,69 @@ export default function ProjectDetail(){
                     <span className="text-sm font-semibold text-gray-700 w-10 text-right">{Math.max(0,Math.min(100,Number(proj?.progress||0)))}%</span>
                   </div>
                 )}
-                {/* Estimator */}
-                {estimator ? (
-                  <div className="flex items-center gap-2">
-                    <div className="w-8 h-8 rounded-full bg-indigo-600 flex items-center justify-center text-white font-semibold text-xs">
-                      {(estimator.name||estimator.username||'E')[0].toUpperCase()}
-                    </div>
-                    <div className="text-sm font-medium text-gray-700">{estimator.name||estimator.username}</div>
-                  </div>
-                ) : (
-                  <div className="text-sm text-gray-400">—</div>
-                )}
+                {/* Project Admin for projects, Estimators for opportunities */}
+                {(() => {
+                  if (proj?.is_bidding) {
+                    // For opportunities: show estimators
+                    const estimatorIds = proj?.estimator_ids || (proj?.estimator_id ? [proj.estimator_id] : []);
+                    const estimators = estimatorIds
+                      .map((id: string) => employees?.find((e: any) => String(e.id) === String(id)))
+                      .filter(Boolean);
+                    
+                    if (estimators.length === 0) {
+                      return <div className="text-sm text-gray-400">—</div>;
+                    }
+                    
+                    if (estimators.length === 1) {
+                      const est = estimators[0];
+                      return (
+                        <div className="flex items-center gap-2">
+                          <UserAvatar user={est} size="w-8 h-8" showTooltip={true} />
+                          <div className="text-sm font-medium text-gray-700">{getUserDisplayName(est)}</div>
+                        </div>
+                      );
+                    }
+                    
+                    // Multiple estimators - show only avatars
+                    return (
+                      <div className="flex items-center gap-2">
+                        {estimators.map((est: any) => (
+                          <UserAvatar key={est.id} user={est} size="w-8 h-8" showTooltip={true} />
+                        ))}
+                      </div>
+                    );
+                  } else {
+                    // For projects: show Project Admin
+                    const adminId = proj?.project_admin_id;
+                    if (!adminId) {
+                      return <div className="text-sm text-gray-400">—</div>;
+                    }
+                    
+                    const projectAdmin = employees?.find((e: any) => String(e.id) === String(adminId));
+                    if (!projectAdmin) {
+                      return <div className="text-sm text-gray-400">—</div>;
+                    }
+                    
+                    return (
+                      <div className="flex items-center gap-2">
+                        <UserAvatar user={projectAdmin} size="w-8 h-8" showTooltip={true} />
+                        <div className="text-sm font-medium text-gray-700">{getUserDisplayName(projectAdmin)}</div>
+                      </div>
+                    );
+                  }
+                })()}
               </div>
             </div>
           </div>
           
-          {/* Expand button - bottom right corner of card */}
+          {/* Expand button - aligned with middle of card */}
           <button
             onClick={() => setIsHeroCollapsed(!isHeroCollapsed)}
-            className="absolute bottom-0 right-0 w-8 h-8 rounded-tl-lg border-t border-l bg-white hover:bg-gray-50 transition-colors flex items-center justify-center shadow-sm"
+            className="absolute top-1/2 -translate-y-1/2 right-4 p-1.5 text-gray-600 hover:text-gray-900 transition-colors"
             title="Expand"
           >
             <svg 
-              className="w-4 h-4 text-gray-600" 
+              className="w-5 h-5" 
               fill="none" 
               stroke="currentColor" 
               viewBox="0 0 24 24"
@@ -786,6 +877,48 @@ export default function ProjectDetail(){
                       </div>
                     )}
 
+                    {/* Lead Source - only show for opportunities */}
+                    {proj?.is_bidding && (
+                      <div className="mb-4">
+                        <div className="flex items-center gap-1.5 mb-1">
+                          <label className="text-xs text-gray-600 block">Lead Source</label>
+                          {hasEditPermission && (
+                            <button
+                              onClick={() => setEditLeadSourceModal(true)}
+                              className="text-gray-400 hover:text-[#7f1010] transition-colors"
+                              title="Edit Lead Source"
+                            >
+                              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                              </svg>
+                            </button>
+                          )}
+                        </div>
+                        <div className="text-sm font-medium">{proj?.lead_source || '—'}</div>
+                      </div>
+                    )}
+
+                    {/* Lead Source - only show for projects, at top of column 2 */}
+                    {!proj?.is_bidding && (
+                      <div className="mb-4">
+                        <div className="flex items-center gap-1.5 mb-1">
+                          <label className="text-xs text-gray-600 block">Lead Source</label>
+                          {hasEditPermission && (
+                            <button
+                              onClick={() => setEditLeadSourceModal(true)}
+                              className="text-gray-400 hover:text-[#7f1010] transition-colors"
+                              title="Edit Lead Source"
+                            >
+                              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                              </svg>
+                            </button>
+                          )}
+                        </div>
+                        <div className="text-sm font-medium">{proj?.lead_source || '—'}</div>
+                      </div>
+                    )}
+
                     {/* Start Date - only show for projects, not opportunities */}
                     {!proj?.is_bidding && (
                       <div className="mb-4">
@@ -858,11 +991,6 @@ export default function ProjectDetail(){
                           </span>
                         </div>
                       </div>
-                    )}
-
-                    {/* Project Divisions - for projects show here */}
-                    {!proj?.is_bidding && (
-                      <ProjectDivisionsHeroSection projectId={String(id)} proj={proj} hasEditPermission={hasEditPermission} />
                     )}
                   </div>
                   
@@ -972,7 +1100,7 @@ export default function ProjectDetail(){
 
                     {/* Project Divisions - for opportunities, show in column 3 below Estimators */}
                     {proj?.is_bidding && (
-                      <ProjectDivisionsHeroSection projectId={String(id)} proj={proj} hasEditPermission={hasEditPermission} />
+                      <ProjectDivisionsHeroSection projectId={String(id)} proj={proj} hasEditPermission={hasEditPermission} livePricingItems={livePricingItems} />
                     )}
 
                     {/* Project Admin - Only show for projects, not opportunities */}
@@ -1100,6 +1228,11 @@ export default function ProjectDetail(){
                         })()}
                       </div>
                     )}
+
+                    {/* Project Divisions - for projects, show in column 3 below On-site Leads */}
+                    {!proj?.is_bidding && (
+                      <ProjectDivisionsHeroSection projectId={String(id)} proj={proj} hasEditPermission={hasEditPermission} livePricingItems={livePricingItems} />
+                    )}
                   </div>
                 </div>
               </div>
@@ -1109,11 +1242,11 @@ export default function ProjectDetail(){
           {/* Collapse button - bottom right corner of card */}
           <button
             onClick={() => setIsHeroCollapsed(!isHeroCollapsed)}
-            className="absolute bottom-0 right-0 w-8 h-8 rounded-tl-lg border-t border-l bg-white hover:bg-gray-50 transition-colors flex items-center justify-center shadow-sm"
+            className="absolute bottom-2 right-2 p-1.5 text-gray-600 hover:text-gray-900 transition-colors"
             title="Collapse"
           >
             <svg 
-              className="w-4 h-4 text-gray-600" 
+              className="w-5 h-5" 
               fill="none" 
               stroke="currentColor" 
               viewBox="0 0 24 24"
@@ -1139,10 +1272,7 @@ export default function ProjectDetail(){
                   <h4 className="font-semibold mb-3">Workload</h4>
                   <CalendarMock title="Project Calendar" projectId={String(id)} hasEditPermission={hasEditPermission} />
                 </div>
-                <div className="rounded-xl border bg-white p-4">
-                  <h4 className="font-semibold mb-3">Costs Summary</h4>
-                  <ProjectCostsSummary projectId={String(id)} estimates={projectEstimates||[]} />
-                </div>
+                <ProjectCostsSummary projectId={String(id)} proposals={proposals||[]} />
               </div>
               
               {/* Last Reports and Project Team Cards */}
@@ -1279,7 +1409,7 @@ export default function ProjectDetail(){
                     <h4 className="font-semibold mb-2">Estimated Time of Completion</h4>
                     <ProjectEtaEdit projectId={String(id)} proj={proj||{}} settings={settings||{}} />
                   </div>
-                  <ProjectCostsSummary projectId={String(id)} estimates={projectEstimates||[]} />
+                  <ProjectCostsSummary projectId={String(id)} proposals={proposals||[]} />
                   {!proj?.is_bidding && (
                     <div className="md:col-span-3 rounded-xl border bg-white p-4">
                       <h4 className="font-semibold mb-2">Workload</h4>
@@ -1306,33 +1436,12 @@ export default function ProjectDetail(){
               )}
 
               {tab==='proposal' && (
-                <ProjectProposalTab projectId={String(id)} clientId={String(proj?.client_id||'')} siteId={String(proj?.site_id||'')} proposals={proposals||[]} statusLabel={proj?.status_label||''} settings={settings||{}} isBidding={proj?.is_bidding} />
+                <ProjectProposalTab projectId={String(id)} clientId={String(proj?.client_id||'')} siteId={String(proj?.site_id||'')} proposals={proposals||[]} statusLabel={proj?.status_label||''} settings={settings||{}} isBidding={proj?.is_bidding} onPricingItemsChange={setLivePricingItems} />
               )}
 
               {tab==='estimate' && (
-                <div className="space-y-4">
-                  {/* Minimalist header */}
-                  <div className="mb-4">
-                    <div className="flex items-center gap-3">
-                      <button
-                        onClick={handleBackToCards}
-                        className="p-2 rounded-lg border hover:bg-gray-50 transition-colors flex items-center justify-center"
-                        title="Back to Overview"
-                      >
-                        <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-                        </svg>
-                      </button>
-                      <div>
-                        <h3 className="text-lg font-semibold text-gray-900">Estimate</h3>
-                        <p className="text-xs text-gray-500">Cost estimates and budgets</p>
-                      </div>
-                    </div>
-                  </div>
-                  
-                  <div className="rounded-xl border bg-white p-4">
-                    <EstimateBuilder ref={estimateBuilderRef} projectId={String(id)} statusLabel={proj?.status_label||''} settings={settings||{}} isBidding={proj?.is_bidding} canEdit={canEditEstimate} />
-                  </div>
+                <div className="rounded-xl border bg-white p-4">
+                  <EstimateBuilder ref={estimateBuilderRef} projectId={String(id)} statusLabel={proj?.status_label||''} settings={settings||{}} isBidding={proj?.is_bidding} canEdit={canEditEstimate} />
                 </div>
               )}
 
@@ -1557,6 +1666,19 @@ export default function ProjectDetail(){
           }}
         />
       )}
+
+      {/* Edit Lead Source Modal */}
+      {editLeadSourceModal && (
+        <EditLeadSourceModal
+          projectId={String(id)}
+          currentLeadSource={proj?.lead_source || ''}
+          onClose={() => setEditLeadSourceModal(false)}
+          onSave={async () => {
+            await queryClient.invalidateQueries({ queryKey: ['project', id] });
+            setEditLeadSourceModal(false);
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -1690,6 +1812,90 @@ function EditEtaModal({ projectId, currentEta, onClose, onSave }: {
               onChange={(e) => setEta(e.target.value)}
               className="w-full border rounded px-3 py-2"
             />
+          </div>
+        </div>
+        <div className="p-4 border-t flex justify-end gap-2">
+          <button
+            onClick={onClose}
+            disabled={saving}
+            className="px-4 py-2 rounded border bg-white hover:bg-gray-50 text-gray-700 font-medium disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="px-4 py-2 rounded bg-brand-red text-white font-medium disabled:opacity-50"
+          >
+            {saving ? 'Saving...' : 'Save'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function EditLeadSourceModal({ projectId, currentLeadSource, onClose, onSave }: {
+  projectId: string;
+  currentLeadSource: string;
+  onClose: () => void;
+  onSave: () => Promise<void>;
+}) {
+  const { data: settings } = useQuery({ queryKey: ['settings'], queryFn: ()=>api<any>('GET','/settings') });
+  const leadSources = (settings?.lead_sources || []) as any[];
+  const [leadSource, setLeadSource] = useState(currentLeadSource);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    setLeadSource(currentLeadSource);
+  }, [currentLeadSource]);
+
+  const handleSave = async () => {
+    if (leadSource === currentLeadSource) {
+      onClose();
+      return;
+    }
+
+    try {
+      setSaving(true);
+      await api('PATCH', `/projects/${projectId}`, {
+        lead_source: leadSource || null
+      });
+      toast.success('Lead source updated');
+      await onSave();
+    } catch (e: any) {
+      toast.error(e?.response?.data?.detail || 'Failed to update lead source');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-xl w-full max-w-md shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="p-4 border-b flex items-center justify-between">
+          <h3 className="text-lg font-semibold">Edit Lead Source</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+        <div className="p-4 space-y-4">
+          <div>
+            <label className="text-sm font-medium text-gray-700 mb-2 block">Lead Source</label>
+            <select
+              value={leadSource || ''}
+              onChange={(e) => setLeadSource(e.target.value)}
+              className="w-full border rounded px-3 py-2"
+            >
+              <option value="">Select...</option>
+              {leadSources.map((ls: any) => {
+                const val = ls?.value ?? ls?.id ?? ls?.label ?? ls?.name ?? String(ls);
+                const label = ls?.label ?? ls?.name ?? String(ls);
+                return <option key={String(val)} value={String(val)}>{label}</option>;
+              })}
+            </select>
           </div>
         </div>
         <div className="p-4 border-t flex justify-end gap-2">
@@ -1879,96 +2085,72 @@ function ReportsTabEnhanced({ projectId, items, onRefresh }:{ projectId:string, 
     }
   };
 
-  const location = useLocation();
-  const nav = useNavigate();
-  const handleBackToOverview = () => {
-    nav(location.pathname, { replace: true });
-  };
-
   return (
     <div className="flex flex-col h-full">
-      {/* Minimalist header */}
-      <div className="mb-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <button
-              onClick={handleBackToOverview}
-              className="p-2 rounded-lg border hover:bg-gray-50 transition-colors flex items-center justify-center"
-              title="Back to Overview"
-            >
-              <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-              </svg>
-            </button>
-            <div>
-              <h3 className="text-lg font-semibold text-gray-900">Project Reports</h3>
-              <p className="text-xs text-gray-500">Daily updates and site events</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            {/* Category Filter Dropdown */}
-            <select
-              value={selectedCategoryFilter}
-              onChange={(e) => setSelectedCategoryFilter(e.target.value)}
-              className="px-3 py-2 rounded border border-gray-300 bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-brand-red focus:border-transparent min-w-[200px]"
-            >
-              <option value="">All Reports ({categoryCounts[''] || 0})</option>
-              {commercialCategories.length > 0 && (
-                <optgroup label="📌 Commercial">
-                  {commercialCategories.map(cat => {
-                    const count = categoryCounts[cat.value || ''] || 0;
-                    return (
-                      <option key={cat.id || cat.value || cat.label} value={cat.value || cat.label}>
-                        {cat.label} ({count})
-                      </option>
-                    );
-                  })}
-                </optgroup>
-              )}
-              {productionCategories.length > 0 && (
-                <optgroup label="📌 Production / Execution">
-                  {productionCategories.map(cat => {
-                    const count = categoryCounts[cat.value || ''] || 0;
-                    return (
-                      <option key={cat.id || cat.value || cat.label} value={cat.value || cat.label}>
-                        {cat.label} ({count})
-                      </option>
-                    );
-                  })}
-                </optgroup>
-              )}
-              {financialCategories.length > 0 && (
-                <optgroup label="📌 Financial (Update Project Values)">
-                  {financialCategories.map(cat => {
-                    const count = categoryCounts[cat.value || ''] || 0;
-                    return (
-                      <option key={cat.id || cat.value || cat.label} value={cat.value || cat.label}>
-                        {cat.label} ({count})
-                      </option>
-                    );
-                  })}
-                </optgroup>
-              )}
-            </select>
-            {canEditReports && (
-              <button
-                onClick={() => setShowCreateModal(true)}
-                className="px-4 py-2 rounded bg-brand-red hover:bg-red-700 text-white text-sm font-medium flex items-center gap-2"
-              >
-                <span>+</span>
-                <span>New Report</span>
-              </button>
-            )}
-          </div>
-        </div>
-      </div>
-
       {/* Two-column layout */}
       <div className="flex-1 flex gap-4 min-h-0">
         {/* Left sidebar - Reports list (30%) */}
         <div className="w-[30%] flex flex-col border rounded-xl bg-white overflow-hidden">
-          <div className="overflow-y-auto flex-1 divide-y">
-            {sortedReports.length ? sortedReports.map(r => {
+          <div className="overflow-y-auto flex-1">
+            {/* Category Filter Dropdown - Inside the card, above New Report button */}
+            <div className="p-3 border-b">
+              <select
+                value={selectedCategoryFilter}
+                onChange={(e) => setSelectedCategoryFilter(e.target.value)}
+                className="w-full px-3 py-2 rounded border border-gray-300 bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-brand-red focus:border-transparent"
+              >
+                <option value="">All Reports ({categoryCounts[''] || 0})</option>
+                {commercialCategories.length > 0 && (
+                  <optgroup label="📌 Commercial">
+                    {commercialCategories.map(cat => {
+                      const count = categoryCounts[cat.value || ''] || 0;
+                      return (
+                        <option key={cat.id || cat.value || cat.label} value={cat.value || cat.label}>
+                          {cat.label} ({count})
+                        </option>
+                      );
+                    })}
+                  </optgroup>
+                )}
+                {productionCategories.length > 0 && (
+                  <optgroup label="📌 Production / Execution">
+                    {productionCategories.map(cat => {
+                      const count = categoryCounts[cat.value || ''] || 0;
+                      return (
+                        <option key={cat.id || cat.value || cat.label} value={cat.value || cat.label}>
+                          {cat.label} ({count})
+                        </option>
+                      );
+                    })}
+                  </optgroup>
+                )}
+                {financialCategories.length > 0 && (
+                  <optgroup label="📌 Financial (Update Project Values)">
+                    {financialCategories.map(cat => {
+                      const count = categoryCounts[cat.value || ''] || 0;
+                      return (
+                        <option key={cat.id || cat.value || cat.label} value={cat.value || cat.label}>
+                          {cat.label} ({count})
+                        </option>
+                      );
+                    })}
+                  </optgroup>
+                )}
+              </select>
+            </div>
+            <div className="divide-y">
+              {canEditReports && (
+                <div className="p-3 pb-3">
+                  <div
+                    onClick={() => setShowCreateModal(true)}
+                    className="border-2 border-dashed border-gray-300 rounded-lg p-4 hover:border-brand-red hover:bg-gray-50 transition-all text-center bg-white flex flex-col items-center justify-center min-h-[120px] cursor-pointer"
+                  >
+                    <div className="text-3xl text-gray-400 mb-2">+</div>
+                    <div className="font-medium text-sm text-gray-700">New Report</div>
+                  </div>
+                </div>
+              )}
+              {sortedReports.length ? sortedReports.map(r => {
               const reportDate = r.created_at ? new Date(r.created_at) : null;
               const attachments = r.images?.attachments || [];
               const isSelected = selectedReportId === r.id;
@@ -2028,6 +2210,7 @@ function ReportsTabEnhanced({ projectId, items, onRefresh }:{ projectId:string, 
                 )}
               </div>
             )}
+            </div>
           </div>
         </div>
 
@@ -2395,10 +2578,10 @@ function CreateReportModal({ projectId, reportCategories, onClose, onSuccess }: 
   const [desc, setDesc] = useState('');
   const [file, setFile] = useState<File|null>(null);
   const [financialValue, setFinancialValue] = useState<number>(0);
-  const estimateBuilderRef = useRef<EstimateBuilderRef>(null);
   const { data:project } = useQuery({ queryKey:['project', projectId], queryFn: ()=>api<any>('GET', `/projects/${projectId}`) });
   
   // Separate categories into commercial and production based on meta.group
+  // Filter out 'estimate-changes' category as Change Orders are now handled in Proposals
   const commercialCategories = useMemo(() => {
     return reportCategories
       .filter(cat => {
@@ -2421,7 +2604,8 @@ function CreateReportModal({ projectId, reportCategories, onClose, onSuccess }: 
     return reportCategories
       .filter(cat => {
         const meta = cat.meta || {};
-        return meta.group === 'financial';
+        // Exclude 'estimate-changes' as Change Orders are now in Proposals
+        return meta.group === 'financial' && cat.value !== 'estimate-changes' && cat.label !== 'Change Order';
       })
       .sort((a, b) => (a.sort_index || 0) - (b.sort_index || 0));
   }, [reportCategories]);
@@ -2441,18 +2625,6 @@ function CreateReportModal({ projectId, reportCategories, onClose, onSuccess }: 
     if (!desc.trim()) {
       toast.error('Please enter a description');
       return;
-    }
-    if (category === 'estimate-changes') {
-      // Validate estimate has items
-      if (!estimateBuilderRef.current) {
-        toast.error('Estimate builder not ready');
-        return;
-      }
-      const estimateData = estimateBuilderRef.current.getEstimateData();
-      if (!estimateData || !estimateData.items || estimateData.items.length === 0) {
-        toast.error('Please add at least one item to the estimate');
-        return;
-      }
     }
     try {
       let imgMeta: any = undefined;
@@ -2486,46 +2658,6 @@ function CreateReportModal({ projectId, reportCategories, onClose, onSuccess }: 
         };
       }
       
-      // Get estimate data if it's estimate-changes
-      let estimateDataPayload: any = undefined;
-      if (category === 'estimate-changes') {
-        const estimateData = estimateBuilderRef.current?.getEstimateData();
-        if (estimateData) {
-          // Format estimate data to match backend expectations
-          estimateDataPayload = {
-            markup: estimateData.markup,
-            pst_rate: estimateData.pstRate,
-            gst_rate: estimateData.gstRate,
-            profit_rate: estimateData.profitRate,
-            section_order: estimateData.sectionOrder,
-            section_names: estimateData.sectionNames,
-            items: estimateData.items.map(it => ({
-              material_id: it.material_id,
-              quantity: it.quantity,
-              unit_price: it.unit_price,
-              section: it.section,
-              description: it.description,
-              item_type: it.item_type,
-              name: it.name,
-              unit: it.unit,
-              markup: it.markup,
-              taxable: it.taxable,
-              qty_required: it.qty_required,
-              unit_required: it.unit_required,
-              supplier_name: it.supplier_name,
-              unit_type: it.unit_type,
-              units_per_package: it.units_per_package,
-              coverage_sqs: it.coverage_sqs,
-              coverage_ft2: it.coverage_ft2,
-              coverage_m2: it.coverage_m2,
-              labour_journey: it.labour_journey,
-              labour_men: it.labour_men,
-              labour_journey_type: it.labour_journey_type
-            }))
-          };
-        }
-      }
-      
       const payload: any = {
         title: title.trim(),
         category_id: category || null,
@@ -2536,9 +2668,6 @@ function CreateReportModal({ projectId, reportCategories, onClose, onSuccess }: 
       if (category === 'additional-income' || category === 'additional-expense') {
         payload.financial_value = financialValue;
         payload.financial_type = category;
-      } else if (category === 'estimate-changes') {
-        payload.financial_type = 'estimate-changes';
-        payload.estimate_data = estimateDataPayload;
       }
       
       await api('POST', `/projects/${projectId}/reports`, payload);
@@ -2553,11 +2682,9 @@ function CreateReportModal({ projectId, reportCategories, onClose, onSuccess }: 
     }
   };
 
-  const isEstimateChanges = category === 'estimate-changes';
-  
   return (
     <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
-      <div className={`bg-white rounded-xl ${isEstimateChanges ? 'max-w-7xl' : 'max-w-2xl'} w-full max-h-[90vh] overflow-hidden flex flex-col`}>
+      <div className="bg-white rounded-xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col">
         <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] p-6 flex items-center justify-between flex-shrink-0">
           <h2 className="text-xl font-semibold text-white">Create Project Report</h2>
           <button
@@ -2631,34 +2758,16 @@ function CreateReportModal({ projectId, reportCategories, onClose, onSuccess }: 
                 />
               </div>
             ) : null}
-            {category === 'estimate-changes' ? (
-              <div className="border rounded p-4">
-                <label className="text-xs text-gray-600 block mb-2">Change Order</label>
-                <div className="max-h-[400px] overflow-y-auto">
-                  <EstimateBuilder
-                    ref={estimateBuilderRef}
-                    projectId=""
-                    estimateId={undefined}
-                    settings={project?.settings}
-                    isBidding={project?.is_bidding}
-                    canEdit={true}
-                    hideFooter={true}
-                  />
-                </div>
-              </div>
-            ) : null}
-            {category !== 'estimate-changes' && (
-              <div>
-                <label className="text-xs text-gray-600 block mb-1">Description *</label>
-                <textarea
-                  className="w-full border rounded px-3 py-2 text-sm"
-                  rows={6}
-                  placeholder="Describe what happened, how the day went, or any events on site..."
-                  value={desc}
-                  onChange={e => setDesc(e.target.value)}
-                />
-              </div>
-            )}
+            <div>
+              <label className="text-xs text-gray-600 block mb-1">Description *</label>
+              <textarea
+                className="w-full border rounded px-3 py-2 text-sm"
+                rows={6}
+                placeholder="Describe what happened, how the day went, or any events on site..."
+                value={desc}
+                onChange={e => setDesc(e.target.value)}
+              />
+            </div>
             {category === 'estimate-changes' && (
               <div>
                 <label className="text-xs text-gray-600 block mb-1">Description *</label>
@@ -2837,10 +2946,6 @@ function ProjectFilesTabEnhanced({ projectId, files, onRefresh }:{ projectId:str
     queryFn: ()=>api<any>('GET', `/projects/${projectId}`)
   });
 
-  const handleBackToOverview = () => {
-    nav(location.pathname, { replace: true });
-  };
-
   // Organize files by category
   const filesByCategory = useMemo(() => {
     const grouped: Record<string, ProjectFile[]> = { 'all': [], 'uncategorized': [] };
@@ -2982,25 +3087,6 @@ function ProjectFilesTabEnhanced({ projectId, files, onRefresh }:{ projectId:str
 
   return (
     <div className="space-y-4">
-      {/* Minimalist header with back button */}
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-3">
-          <button
-            onClick={handleBackToOverview}
-            className="p-2 rounded-lg border hover:bg-gray-50 transition-colors flex items-center justify-center"
-            title="Back to Overview"
-          >
-            <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-            </svg>
-          </button>
-          <div>
-            <h3 className="text-lg font-semibold text-gray-900">Project Files</h3>
-            <p className="text-xs text-gray-500">Organize files by category</p>
-          </div>
-        </div>
-      </div>
-
       <div className="rounded-xl border bg-white overflow-hidden">
         <div className="flex h-[calc(100vh-300px)]">
           {/* Left Sidebar - Categories */}
@@ -3347,8 +3433,9 @@ function ProjectFilesTabEnhanced({ projectId, files, onRefresh }:{ projectId:str
   );
 }
 
-function ProjectProposalTab({ projectId, clientId, siteId, proposals, statusLabel, settings, isBidding }:{ projectId:string, clientId:string, siteId?:string, proposals: Proposal[], statusLabel:string, settings:any, isBidding?:boolean }){
+function ProjectProposalTab({ projectId, clientId, siteId, proposals, statusLabel, settings, isBidding, onPricingItemsChange }:{ projectId:string, clientId:string, siteId?:string, proposals: Proposal[], statusLabel:string, settings:any, isBidding?:boolean, onPricingItemsChange?: (items: any[])=>void }){
   const queryClient = useQueryClient();
+  const [selectedTab, setSelectedTab] = useState<string>('proposal');
   
   // Check permissions for proposals
   const { data: me } = useQuery({ queryKey:['me'], queryFn: ()=>api<any>('GET','/auth/me') });
@@ -3356,15 +3443,48 @@ function ProjectProposalTab({ projectId, clientId, siteId, proposals, statusLabe
   const permissions = new Set(me?.permissions || []);
   const hasEditProposalPermission = isAdmin || permissions.has('business:projects:proposal:write');
   
-  // Get the first (and only) proposal for this project
-  const proposal = (proposals||[])[0];
+  // Organize proposals: original first, then Change Orders sorted by number
+  const organizedProposals = useMemo(() => {
+    const original = proposals.find(p => !p.is_change_order);
+    const changeOrders = proposals
+      .filter(p => p.is_change_order)
+      .sort((a, b) => (a.change_order_number || 0) - (b.change_order_number || 0));
+    
+    return {
+      original: original || null,
+      changeOrders: changeOrders
+    };
+  }, [proposals]);
+  
+  // Get the currently selected proposal
+  const selectedProposal = useMemo(() => {
+    if (selectedTab === 'proposal') {
+      return organizedProposals.original;
+    } else if (selectedTab.startsWith('change-order-')) {
+      const orderNum = parseInt(selectedTab.replace('change-order-', ''));
+      return organizedProposals.changeOrders.find(co => co.change_order_number === orderNum);
+    }
+    return null;
+  }, [selectedTab, organizedProposals]);
   
   // Fetch full proposal data if it exists
   const { data: proposalData, isLoading: isLoadingProposal, refetch: refetchProposal } = useQuery({
-    queryKey: ['proposal', proposal?.id],
-    queryFn: () => proposal?.id ? api<any>('GET', `/proposals/${proposal.id}`) : Promise.resolve(null),
-    enabled: !!proposal?.id
+    queryKey: ['proposal', selectedProposal?.id],
+    queryFn: () => selectedProposal?.id ? api<any>('GET', `/proposals/${selectedProposal.id}`) : Promise.resolve(null),
+    enabled: !!selectedProposal?.id
   });
+  
+  // Set default tab when proposals load
+  useEffect(() => {
+    if (organizedProposals.original && selectedTab === 'proposal') {
+      // Already on proposal tab, keep it
+    } else if (organizedProposals.original && !selectedTab) {
+      setSelectedTab('proposal');
+    } else if (organizedProposals.changeOrders.length > 0 && !organizedProposals.original && selectedTab === 'proposal') {
+      // No original, go to first change order
+      setSelectedTab(`change-order-${organizedProposals.changeOrders[0].change_order_number}`);
+    }
+  }, [organizedProposals, selectedTab]);
   
   // Refetch proposals list when needed
   const { refetch: refetchProposals } = useQuery({ 
@@ -3376,8 +3496,31 @@ function ProjectProposalTab({ projectId, clientId, siteId, proposals, statusLabe
   // For opportunities (is_bidding = true): only allow editing if status is "prospecting"
   // Restrict editing for "Sent to Customer" and "Refused" statuses
   // For projects (is_bidding = false): use similar logic but check settings
+  // NOTE: Change Orders are editable until approved, then they become read-only
   const canEdit = useMemo(()=>{
     if (!hasEditProposalPermission) return false; // No permission = no edit
+    
+    // Check if we're editing a Change Order
+    if (selectedTab.startsWith('change-order-')) {
+      const orderNum = parseInt(selectedTab.replace('change-order-', ''));
+      const changeOrder = organizedProposals.changeOrders.find(co => co.change_order_number === orderNum);
+      if (changeOrder) {
+        // Check if Change Order is approved
+        const approvalStatus = changeOrder.approval_status || (changeOrder.approved_report_id ? 'approved' : null);
+        if (approvalStatus === 'approved') {
+          // Approved Change Orders cannot be edited
+          return false;
+        }
+        // Change Orders that are not approved are editable regardless of project status
+        return true;
+      }
+    }
+    
+    if (selectedTab === 'create-change-order') {
+      // Creating new Change Order is always allowed if we have permission
+      return true;
+    }
+    
     if (!statusLabel) return true; // Default to allow if no status
     
     const statusLabelLower = statusLabel.toLowerCase().trim();
@@ -3395,56 +3538,170 @@ function ProjectProposalTab({ projectId, clientId, siteId, proposals, statusLabe
     // For projects (is_bidding = false), use existing logic
     // Only allow editing if status is "prospecting"
     return statusLabelLower === 'prospecting';
-  }, [statusLabel, hasEditProposalPermission, isBidding]);
+  }, [statusLabel, hasEditProposalPermission, isBidding, selectedTab, organizedProposals]);
   
-  const location = useLocation();
-  const nav = useNavigate();
-  const handleBackToOverview = () => {
-    nav(location.pathname, { replace: true });
+  // Handle creating a new Change Order
+  const handleCreateChangeOrder = async () => {
+    try {
+      // Find the original proposal to get General Information
+      const originalProposal = organizedProposals.original;
+      if (!originalProposal) {
+        toast.error('Please create a Proposal first before creating a Change Order');
+        return;
+      }
+
+      // Fetch original proposal data to copy General Information
+      const originalData = await api<any>('GET', `/proposals/${originalProposal.id}`);
+      
+      // Create new Change Order with General Information from original but empty Sections/Pricing
+      const changeOrderData = {
+        ...originalData.data,
+        sections: [],
+        pricing_items: [],
+        optional_services: [],
+        // Keep General Information fields
+      };
+
+      const newChangeOrder = await api<any>('POST', '/proposals', {
+        project_id: projectId,
+        client_id: clientId,
+        site_id: siteId,
+        is_change_order: true,
+        change_order_number: nextChangeOrderNumber,
+        parent_proposal_id: originalProposal.id,
+        title: `Change Order ${nextChangeOrderNumber}`,
+        order_number: originalData.order_number,
+        data: changeOrderData,
+      });
+
+      // Refetch proposals and switch to the new Change Order tab
+      await refetchProposals();
+      queryClient.invalidateQueries({ queryKey: ['projectProposals', projectId] });
+      setSelectedTab(`change-order-${nextChangeOrderNumber}`);
+      toast.success(`Change Order ${nextChangeOrderNumber} created`);
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to create Change Order');
+    }
   };
+
+  // Calculate next change order number
+  const nextChangeOrderNumber = organizedProposals.changeOrders.length > 0
+    ? Math.max(...organizedProposals.changeOrders.map(co => co.change_order_number || 0)) + 1
+    : 1;
 
   return (
     <div className="space-y-4">
-      {/* Minimalist header */}
-      <div className="mb-4">
-        <div className="flex items-center gap-3">
-          <button
-            onClick={handleBackToOverview}
-            className="p-2 rounded-lg border hover:bg-gray-50 transition-colors flex items-center justify-center"
-            title="Back to Overview"
-          >
-            <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-            </svg>
-          </button>
-          <div>
-            <h3 className="text-lg font-semibold text-gray-900">Proposal</h3>
-            <p className="text-xs text-gray-500">Project proposals</p>
-          </div>
+      {/* Tabs for proposals */}
+      {(organizedProposals.original || organizedProposals.changeOrders.length > 0 || (!isBidding && hasEditProposalPermission && organizedProposals.original)) && (
+        <div className="border-b border-gray-200">
+          <nav className="-mb-px flex space-x-8" aria-label="Tabs">
+            {organizedProposals.original && (
+              <button
+                onClick={() => setSelectedTab('proposal')}
+                className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${
+                  selectedTab === 'proposal'
+                    ? 'border-brand-red text-brand-red'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                Proposal
+              </button>
+            )}
+            {organizedProposals.changeOrders.map((co) => {
+              const approvalStatus = co.approval_status || (co.approved_report_id ? 'approved' : null);
+              const isApproved = approvalStatus === 'approved';
+              const isPending = approvalStatus === 'pending';
+              
+              return (
+                <button
+                  key={co.id}
+                  onClick={() => setSelectedTab(`change-order-${co.change_order_number}`)}
+                  className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm flex items-center gap-2 ${
+                    selectedTab === `change-order-${co.change_order_number}`
+                      ? 'border-brand-red text-brand-red'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  }`}
+                >
+                  <span>Change Order {co.change_order_number}</span>
+                  {isApproved && (
+                    <span className="text-xs px-1.5 py-0.5 rounded bg-green-100 text-green-700">✓</span>
+                  )}
+                  {isPending && (
+                    <span className="text-xs px-1.5 py-0.5 rounded bg-yellow-100 text-yellow-700">⏳</span>
+                  )}
+                </button>
+              );
+            })}
+            {/* Create Change Order tab - only show in projects (not opportunities) */}
+            {!isBidding && hasEditProposalPermission && organizedProposals.original && (
+              <button
+                onClick={handleCreateChangeOrder}
+                className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${
+                  selectedTab === 'create-change-order'
+                    ? 'border-brand-red text-brand-red'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                + Create Change Order
+              </button>
+            )}
+          </nav>
         </div>
-      </div>
+      )}
       
-      {isLoadingProposal && proposal ? (
+      {/* Proposal Form */}
+      {selectedTab === 'create-change-order' ? (
+        // Show empty form for creating new Change Order
+        <div className="text-center py-8 text-gray-500">
+          <p className="mb-4">Click the "+ Create Change Order" tab to create a new Change Order.</p>
+          <p className="text-sm">The Change Order will be created with General Information from the original Proposal.</p>
+        </div>
+      ) : isLoadingProposal && selectedProposal ? (
         <div className="h-24 bg-gray-100 animate-pulse rounded"/>
       ) : (
         <ProposalForm 
-          mode={proposal ? 'edit' : 'new'} 
+          mode={selectedProposal ? 'edit' : 'new'} 
           clientId={clientId} 
           siteId={siteId} 
           projectId={projectId} 
           initial={proposalData || null}
           disabled={!canEdit}
-          showRestrictionWarning={!canEdit && !!statusLabel}
-          restrictionMessage={!canEdit && statusLabel ? `This project has status "${statusLabel}" which does not allow editing proposals or estimates.` : undefined}
+          showRestrictionWarning={!canEdit && (!!statusLabel || (selectedTab.startsWith('change-order-') && selectedProposal?.approval_status === 'approved'))}
+          restrictionMessage={
+            !canEdit && selectedTab.startsWith('change-order-') && selectedProposal?.approval_status === 'approved'
+              ? 'This Change Order has been approved and cannot be edited.'
+              : !canEdit && statusLabel && !selectedTab.startsWith('change-order-')
+              ? `This project has status "${statusLabel}" which does not allow editing proposals or estimates.`
+              : undefined
+          }
+          onPricingItemsChange={onPricingItemsChange}
           onSave={async ()=>{
             // Always refetch proposals list after save to get the updated/created proposal
             await refetchProposals();
             // Force refetch of project proposals to ensure UI updates
             queryClient.invalidateQueries({ queryKey: ['projectProposals', projectId] });
-            // If we now have a proposal, refetch its full data
+            
+            // Check if current tab still exists after refetch
             const updatedProposals = await api<Proposal[]>('GET', `/proposals?project_id=${encodeURIComponent(String(projectId))}`);
+            const updatedOrganized = {
+              original: updatedProposals.find(p => !p.is_change_order) || null,
+              changeOrders: updatedProposals
+                .filter(p => p.is_change_order)
+                .sort((a, b) => (a.change_order_number || 0) - (b.change_order_number || 0))
+            };
+            
+            // If current Change Order was deleted, switch to Proposal tab
+            if (selectedTab.startsWith('change-order-')) {
+              const orderNum = parseInt(selectedTab.replace('change-order-', ''));
+              const stillExists = updatedOrganized.changeOrders.some(co => co.change_order_number === orderNum);
+              if (!stillExists) {
+                setSelectedTab('proposal');
+              }
+            }
+            
+            // If we now have a proposal, refetch its full data
             if (Array.isArray(updatedProposals) && updatedProposals.length > 0) {
-              const updatedProposal = updatedProposals[0];
+              const updatedProposal = updatedProposals.find(p => p.id === selectedProposal?.id) || updatedProposals[0];
               // Invalidate the proposal query to trigger refetch
               queryClient.invalidateQueries({ queryKey: ['proposal', updatedProposal.id] });
               // Force a refetch of the proposal data
@@ -3452,6 +3709,8 @@ function ProjectProposalTab({ projectId, clientId, siteId, proposals, statusLabe
             }
             // Also refetch the proposals list query
             queryClient.refetchQueries({ queryKey: ['projectProposals', projectId] });
+            // Invalidate project query to refresh division percentages in ProjectDivisionsHeroSection
+            queryClient.invalidateQueries({ queryKey: ['project', projectId] });
           }}
         />
       )}
@@ -3569,10 +3828,6 @@ function TimesheetTab({ projectId, statusLabel }:{ projectId:string; statusLabel
     const statusLower = String(statusLabel).trim().toLowerCase();
     return statusLower === 'on hold' || statusLower === 'finished';
   }, [statusLabel]);
-  
-  const handleBackToOverview = () => {
-    nav(location.pathname, { replace: true });
-  };
   
   const qs = useMemo(()=>{
     const p = new URLSearchParams();
@@ -4381,25 +4636,6 @@ function TimesheetTab({ projectId, statusLabel }:{ projectId:string; statusLabel
           <strong>Editing Restricted:</strong> This project has status "{statusLabel}" which does not allow editing timesheet.
         </div>
       )}
-      
-      {/* Minimalist header */}
-      <div className="mb-4">
-        <div className="flex items-center gap-3">
-          <button
-            onClick={handleBackToOverview}
-            className="p-2 rounded-lg border hover:bg-gray-50 transition-colors flex items-center justify-center"
-            title="Back to Overview"
-          >
-            <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-            </svg>
-          </button>
-          <div>
-            <h3 className="text-lg font-semibold text-gray-900">Timesheet</h3>
-            <p className="text-xs text-gray-500">Time tracking and hours</p>
-          </div>
-        </div>
-      </div>
       
       <div className="grid md:grid-cols-3 gap-4">
         <div className="rounded-xl border bg-white p-4">
@@ -5781,17 +6017,116 @@ function OnSiteLeadsModal({ projectId, originalDivisions, divisionLeads, setting
 }
 
 function LastReportsCard({ reports }: { reports: Report[] }){
+  const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string>(''); // Empty string = all categories
+  const { data: settings } = useQuery({ queryKey:['settings'], queryFn: ()=>api<any>('GET','/settings') });
+  const reportCategories = (settings?.report_categories || []) as any[];
+
+  // Separate categories into commercial and production based on meta.group
+  const commercialCategories = useMemo(() => {
+    return reportCategories
+      .filter(cat => {
+        const meta = cat.meta || {};
+        return meta.group === 'commercial';
+      })
+      .sort((a, b) => (a.sort_index || 0) - (b.sort_index || 0));
+  }, [reportCategories]);
+  
+  const productionCategories = useMemo(() => {
+    return reportCategories
+      .filter(cat => {
+        const meta = cat.meta || {};
+        return meta.group === 'production';
+      })
+      .sort((a, b) => (a.sort_index || 0) - (b.sort_index || 0));
+  }, [reportCategories]);
+  
+  const financialCategories = useMemo(() => {
+    return reportCategories
+      .filter(cat => {
+        const meta = cat.meta || {};
+        return meta.group === 'financial';
+      })
+      .sort((a, b) => (a.sort_index || 0) - (b.sort_index || 0));
+  }, [reportCategories]);
+
+  // Calculate counts per category
+  const categoryCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    // Count "All" (total reports)
+    counts[''] = reports.length;
+    // Count by category
+    reports.forEach(report => {
+      const catId = report.category_id || '';
+      counts[catId] = (counts[catId] || 0) + 1;
+    });
+    return counts;
+  }, [reports]);
+
+  // Filter and sort reports
   const recentReports = useMemo(() => {
-    return (reports||[]).slice(0, 5).sort((a, b) => {
+    let filtered = [...(reports||[])];
+    
+    // Apply category filter
+    if (selectedCategoryFilter) {
+      filtered = filtered.filter(r => r.category_id === selectedCategoryFilter);
+    }
+    
+    // Sort by date (newest first) and take top 5
+    return filtered.sort((a, b) => {
       const dateA = a.created_at ? new Date(a.created_at).getTime() : 0;
       const dateB = b.created_at ? new Date(b.created_at).getTime() : 0;
       return dateB - dateA;
-    });
-  }, [reports]);
+    }).slice(0, 5);
+  }, [reports, selectedCategoryFilter]);
 
   return (
     <div className="rounded-xl border bg-white p-4">
-      <h4 className="font-semibold mb-3">Last Reports</h4>
+      <div className="flex items-center justify-between mb-3">
+        <h4 className="font-semibold">Last Reports</h4>
+        <select
+          value={selectedCategoryFilter}
+          onChange={(e) => setSelectedCategoryFilter(e.target.value)}
+          className="px-2 py-1 rounded border border-gray-300 bg-white text-xs font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-brand-red focus:border-transparent min-w-[150px]"
+        >
+          <option value="">All ({categoryCounts[''] || 0})</option>
+          {commercialCategories.length > 0 && (
+            <optgroup label="📌 Commercial">
+              {commercialCategories.map(cat => {
+                const count = categoryCounts[cat.value || ''] || 0;
+                return (
+                  <option key={cat.id || cat.value || cat.label} value={cat.value || cat.label}>
+                    {cat.label} ({count})
+                  </option>
+                );
+              })}
+            </optgroup>
+          )}
+          {productionCategories.length > 0 && (
+            <optgroup label="📌 Production / Execution">
+              {productionCategories.map(cat => {
+                const count = categoryCounts[cat.value || ''] || 0;
+                return (
+                  <option key={cat.id || cat.value || cat.label} value={cat.value || cat.label}>
+                    {cat.label} ({count})
+                  </option>
+                );
+              })}
+            </optgroup>
+          )}
+          {financialCategories.length > 0 && (
+            <optgroup label="📌 Financial">
+              {financialCategories.map(cat => {
+                const count = categoryCounts[cat.value || ''] || 0;
+                return (
+                  <option key={cat.id || cat.value || cat.label} value={cat.value || cat.label}>
+                    {cat.label} ({count})
+                  </option>
+                );
+              })}
+            </optgroup>
+          )}
+        </select>
+      </div>
       {recentReports.length > 0 ? (
         <div className="space-y-2">
           {recentReports.map((report) => (
@@ -6908,40 +7243,70 @@ function EditProgressModal({ projectId, currentProgress, onClose, onSave }: {
   );
 }
 
-function ProjectDivisionsHeroSection({ projectId, proj, hasEditPermission }: { projectId: string, proj: any, hasEditPermission?: boolean }){
+function ProjectDivisionsHeroSection({ projectId, proj, hasEditPermission, livePricingItems }: { projectId: string, proj: any, hasEditPermission?: boolean, livePricingItems?: any[] | null }){
   const queryClient = useQueryClient();
   const [showEditModal, setShowEditModal] = useState(false);
   const { data:projectDivisions } = useQuery({ queryKey:['project-divisions'], queryFn: ()=>api<any[]>('GET','/settings/project-divisions'), staleTime: 300_000 });
+  
+  // Fetch proposals to get pricing items for percentage calculation
+  const { data:proposals } = useQuery({ 
+    queryKey:['projectProposals', projectId], 
+    queryFn: ()=>api<any[]>('GET', `/proposals?project_id=${encodeURIComponent(String(projectId||''))}`) 
+  });
+  
+  // Fetch full proposal data if proposal exists
+  const proposal = proposals && proposals.length > 0 ? proposals[0] : null;
+  const { data:proposalData } = useQuery({ 
+    queryKey: ['proposal', proposal?.id],
+    queryFn: () => proposal?.id ? api<any>('GET', `/proposals/${proposal.id}`) : Promise.resolve(null),
+    enabled: !!proposal?.id
+  });
 
   const projectDivIds = Array.isArray(proj?.project_division_ids) ? proj.project_division_ids : [];
-  const percentages = proj?.project_division_percentages || {};
 
-  // Calculate percentages if not set (auto-initialize)
+  // Calculate percentages from pricing items
   const calculatedPercentages = useMemo(() => {
     if (projectDivIds.length === 0) return {};
     
-    // Filter percentages to only include valid division IDs (remove orphaned percentages)
-    const filteredPercentages: { [key: string]: number } = {};
+    // Initialize all divisions to 0%
+    const result: { [key: string]: number } = {};
     projectDivIds.forEach(id => {
-      const idStr = String(id);
-      if (percentages[idStr] !== undefined) {
-        filteredPercentages[idStr] = percentages[idStr];
+      result[String(id)] = 0;
+    });
+    
+    // Get pricing items from proposal (data is nested in proposalData.data)
+    // Prefer live pricing items (from ProposalForm via ProjectDetail state) if provided.
+    const savedPricingItems = proposalData?.data?.additional_costs || [];
+    const pricingItems = Array.isArray(livePricingItems) ? livePricingItems : savedPricingItems;
+    
+    // If no pricing items, return 0% for all divisions
+    if (pricingItems.length === 0) {
+      return result;
+    }
+    
+    // Group by division_id and sum values
+    const divisionTotals: { [key: string]: number } = {};
+    pricingItems.forEach((item: any) => {
+      if (item.division_id) {
+        const divId = String(item.division_id);
+        const value = (item.value || 0) * (parseInt(item.quantity || '1', 10) || 1);
+        divisionTotals[divId] = (divisionTotals[divId] || 0) + value;
       }
     });
     
-    // If percentages exist and cover all divisions, use them
-    const hasPercentages = projectDivIds.every(id => filteredPercentages[String(id)] !== undefined);
-    if (hasPercentages && Object.keys(filteredPercentages).length > 0) {
-      return filteredPercentages;
+    // Calculate total
+    const total = Object.values(divisionTotals).reduce((a, b) => a + b, 0);
+    
+    // Calculate percentages only if total > 0
+    if (total > 0) {
+      projectDivIds.forEach(id => {
+        const idStr = String(id);
+        result[idStr] = divisionTotals[idStr] ? (divisionTotals[idStr] / total) * 100 : 0;
+      });
     }
-    // Otherwise, calculate equal distribution
-    const equalPercent = projectDivIds.length === 1 ? 100 : 100 / projectDivIds.length;
-    const result: { [key: string]: number } = {};
-    projectDivIds.forEach(id => {
-      result[String(id)] = equalPercent;
-    });
+    
     return result;
-  }, [projectDivIds, percentages]);
+  }, [projectDivIds, proposalData, livePricingItems]);
 
   // Get division icons and labels with percentages
   const divisionIcons = useMemo(() => {
@@ -7050,8 +7415,6 @@ function EditDivisionsModal({ projectId, currentDivisions, currentPercentages, p
   onSave: () => Promise<void>;
 }) {
   const [projectDivs, setProjectDivs] = useState<string[]>(currentDivisions);
-  const [percentages, setPercentages] = useState<{ [key: string]: number }>(currentPercentages);
-  const [inputValues, setInputValues] = useState<{ [key: string]: string }>({});
   const [saving, setSaving] = useState(false);
   const [expandedDivisions, setExpandedDivisions] = useState<Set<string>>(new Set());
 
@@ -7106,65 +7469,17 @@ function EditDivisionsModal({ projectId, currentDivisions, currentPercentages, p
     
     // De-dupe as a safety net (handles legacy/buggy stored arrays)
     setProjectDivs(Array.from(new Set(cleanedDivisions.map((x) => String(x)))));
-    setPercentages(currentPercentages);
-  }, [currentDivisions, currentPercentages, projectDivisions, validDivisionIdSet]);
-
-  // Update percentages when divisions change
-  useEffect(() => {
-    setPercentages(prev => {
-      const newPercentages: { [key: string]: number } = {};
-      selectedDivIds.forEach(divId => {
-        const existingPercentage = prev[String(divId)];
-        if (existingPercentage !== undefined) {
-          newPercentages[String(divId)] = existingPercentage;
-        } else {
-          // New division starts with 0%
-          newPercentages[String(divId)] = 0;
-        }
-      });
-      return newPercentages;
-    });
-  }, [selectedDivIds]);
-
-  // Calculate total percentage (only for selected divisions)
-  const totalPercentage = useMemo(() => {
-    if (selectedDivIds.length === 0) return 0;
-    return selectedDivIds.reduce((sum, divId) => {
-      return sum + (percentages[String(divId)] || 0);
-    }, 0);
-  }, [percentages, selectedDivIds]);
-
-  const isValid = selectedDivIds.length === 0 || Math.round(totalPercentage) === 100;
-
-  const updatePercentage = (divId: string, value: number) => {
-    // Round to integer
-    const intValue = Math.round(Math.max(0, Math.min(100, value)));
-    setPercentages(prev => ({
-      ...prev,
-      [String(divId)]: intValue
-    }));
-  };
+  }, [currentDivisions, projectDivisions, validDivisionIdSet]);
 
   const handleSave = async () => {
-    if (selectedDivIds.length > 0 && !isValid) {
-      toast.error('Division percentages must total exactly 100%');
-      return;
-    }
     try {
       setSaving(true);
-      // Round all percentages to integers before saving
-      const roundedPercentages: { [key: string]: number } = {};
-      if (selectedDivIds.length > 0) {
-        selectedDivIds.forEach((id) => {
-          roundedPercentages[String(id)] = Math.round(percentages[String(id)] || 0);
-        });
-      }
-      const percentagesPayload = selectedDivIds.length > 0 ? roundedPercentages : null;
+      // Percentages are now calculated automatically from pricing items, so send null
       await api('PATCH', `/projects/${projectId}`, { 
         project_division_ids: selectedDivIds.length > 0 ? selectedDivIds : null,
-        project_division_percentages: percentagesPayload
+        project_division_percentages: null
       });
-      toast.success('Divisions and percentages saved');
+      toast.success('Divisions saved');
       await onSave();
     } catch (e: any) {
       toast.error(e?.response?.data?.detail || 'Failed to save divisions');
@@ -7200,8 +7515,8 @@ function EditDivisionsModal({ projectId, currentDivisions, currentPercentages, p
           </button>
         </div>
         <div className="flex-1 flex flex-row overflow-hidden">
-          {/* Left Column - Divisions */}
-          <div className="w-1/2 border-r overflow-y-auto p-4">
+          {/* Divisions List - Full Width */}
+          <div className="w-full overflow-y-auto p-4">
             <div className="space-y-2">
               <div className="text-sm font-semibold text-gray-700 mb-3">Available Divisions</div>
               {projectDivisions.map((div: any) => {
@@ -7268,113 +7583,6 @@ function EditDivisionsModal({ projectId, currentDivisions, currentPercentages, p
               )}
             </div>
           </div>
-
-          {/* Right Column - Percentages */}
-          <div className="w-1/2 overflow-y-auto p-4">
-            <div className="space-y-3">
-              <div className="text-sm font-semibold text-gray-700 mb-3">Division Percentages</div>
-              {selectedDivIds.length > 0 ? (
-                <>
-                  {selectedDivIds.map((divId) => {
-                    const divInfo = getDivisionInfo(divId);
-                    if (!divInfo) return null;
-                    
-                    const percentage = percentages[String(divId)] || 0;
-                    const label = divInfo.isSubdivision ? `${divInfo.parentLabel} - ${divInfo.label}` : divInfo.label;
-                    const icon = getDivisionIcon(divInfo.isSubdivision ? divInfo.parentLabel : divInfo.label);
-                    
-                    return (
-                      <div key={divId} className="border rounded-lg p-3 bg-gray-50">
-                        <div className="flex items-center gap-2 mb-3">
-                          <span className="text-lg">{icon}</span>
-                          <span className="text-sm font-medium text-gray-900">{label}</span>
-                        </div>
-                        <div className="space-y-2">
-                          <div className="flex items-center gap-3">
-                            <input
-                              type="range"
-                              min="0"
-                              max="100"
-                              step="1"
-                              value={percentage}
-                              onChange={(e) => {
-                                const val = parseInt(e.target.value, 10);
-                                if (!isNaN(val)) {
-                                  updatePercentage(divId, val);
-                                  setInputValues(prev => {
-                                    const newVals = { ...prev };
-                                    delete newVals[String(divId)];
-                                    return newVals;
-                                  });
-                                }
-                              }}
-                              className="flex-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
-                            />
-                            <input
-                              type="number"
-                              min="0"
-                              max="100"
-                              step="1"
-                              value={inputValues[String(divId)] !== undefined ? inputValues[String(divId)] : (percentage === undefined || percentage === null ? '' : String(Math.round(percentage)))}
-                              onChange={(e) => {
-                                const val = e.target.value;
-                                setInputValues(prev => ({
-                                  ...prev,
-                                  [String(divId)]: val
-                                }));
-                                if (val !== '' && val !== '-' && val !== '.') {
-                                  const numVal = parseInt(val, 10);
-                                  if (!isNaN(numVal)) {
-                                    updatePercentage(divId, numVal);
-                                  }
-                                }
-                              }}
-                              onBlur={(e) => {
-                                const val = e.target.value;
-                                if (val === '' || isNaN(parseInt(val, 10))) {
-                                  updatePercentage(divId, 0);
-                                  setInputValues(prev => {
-                                    const newVals = { ...prev };
-                                    delete newVals[String(divId)];
-                                    return newVals;
-                                  });
-                                } else {
-                                  const intVal = parseInt(val, 10);
-                                  if (!isNaN(intVal)) {
-                                    updatePercentage(divId, intVal);
-                                  }
-                                  setInputValues(prev => {
-                                    const newVals = { ...prev };
-                                    delete newVals[String(divId)];
-                                    return newVals;
-                                  });
-                                }
-                              }}
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter') {
-                                  e.currentTarget.blur();
-                                }
-                              }}
-                              className="w-20 px-2 py-1 border rounded text-sm text-center"
-                            />
-                            <span className="text-sm text-gray-600 w-8">%</span>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                  {/* Total percentage display */}
-                  {selectedDivIds.length > 0 && (
-                    <div className={`text-sm font-medium ${isValid ? 'text-gray-700' : 'text-red-600'}`}>
-                      Total: {Math.round(totalPercentage)}% {!isValid && '(Must equal 100%)'}
-                    </div>
-                  )}
-                </>
-              ) : (
-                <div className="text-sm text-gray-500 text-center py-4">Select divisions to set percentages.</div>
-              )}
-            </div>
-          </div>
         </div>
         <div className="p-4 border-t flex items-center justify-end gap-2">
           <button
@@ -7385,7 +7593,7 @@ function EditDivisionsModal({ projectId, currentDivisions, currentPercentages, p
           </button>
           <button
             onClick={handleSave}
-            disabled={saving || (selectedDivIds.length > 0 && !isValid)}
+            disabled={saving}
             className="px-3 py-1.5 rounded bg-[#7f1010] text-white disabled:opacity-60 disabled:cursor-not-allowed font-medium text-sm"
           >
             {saving ? 'Saving...' : 'Save'}
@@ -8015,239 +8223,150 @@ function ProjectEtaEdit({ projectId, proj, settings }:{ projectId:string, proj:a
   );
 }
 
-function ProjectCostsSummary({ projectId, estimates }:{ projectId:string, estimates:any[] }){
-  const { data:estimateData } = useQuery({ 
-    queryKey: ['estimate', estimates[0]?.id], 
-    queryFn: () => estimates[0]?.id ? api<any>('GET', `/estimate/estimates/${estimates[0].id}`) : Promise.resolve(null),
-    enabled: !!estimates[0]?.id,
-    refetchInterval: 2000 // Refetch every 2 seconds to update in real-time
+// Helper function to calculate Final Total (with GST) from proposal data
+function calculateProposalTotal(proposalData: any): number {
+  if (!proposalData) return 0;
+  
+  const data = proposalData?.data || proposalData || {};
+  const additionalCosts = data.additional_costs || [];
+  
+  if (additionalCosts.length === 0) return 0;
+  
+  const pstRate = Number(data.pst_rate) || 7.0;
+  const gstRate = Number(data.gst_rate) || 5.0;
+  
+  // Calculate Total Direct Costs
+  const totalDirectCosts = additionalCosts.reduce((sum: number, item: any) => {
+    const value = Number(item.value || 0);
+    const quantity = Number(item.quantity || 1);
+    return sum + (value * quantity);
+  }, 0);
+  
+  // Calculate PST (only on items with pst=true)
+  const totalForPst = additionalCosts
+    .filter((item: any) => item.pst === true)
+    .reduce((sum: number, item: any) => {
+      const value = Number(item.value || 0);
+      const quantity = Number(item.quantity || 1);
+      return sum + (value * quantity);
+    }, 0);
+  
+  const pst = totalForPst * (pstRate / 100);
+  
+  // Calculate Subtotal (Total Direct Costs + PST)
+  const subtotal = totalDirectCosts + pst;
+  
+  // Calculate GST (only on items with gst=true)
+  const totalForGst = additionalCosts
+    .filter((item: any) => item.gst === true)
+    .reduce((sum: number, item: any) => {
+      const value = Number(item.value || 0);
+      const quantity = Number(item.quantity || 1);
+      return sum + (value * quantity);
+    }, 0);
+  
+  const gst = totalForGst * (gstRate / 100);
+  
+  // Calculate Grand Total (Final Total with GST) = Subtotal + GST
+  return subtotal + gst;
+}
+
+function ProjectCostsSummary({ projectId, proposals }:{ projectId:string, proposals:any[] }){
+  // Organize proposals: original first, then Change Orders sorted by number
+  const organizedProposals = useMemo(() => {
+    const original = proposals.find(p => !p.is_change_order);
+    const changeOrders = proposals
+      .filter(p => p.is_change_order)
+      .sort((a, b) => (a.change_order_number || 0) - (b.change_order_number || 0));
+    
+    return {
+      original: original || null,
+      changeOrders: changeOrders
+    };
+  }, [proposals]);
+  
+  // Fetch full proposal data for original proposal
+  const { data: originalProposalData } = useQuery({ 
+    queryKey: ['proposal', organizedProposals.original?.id], 
+    queryFn: () => organizedProposals.original?.id ? api<any>('GET', `/proposals/${organizedProposals.original.id}`) : Promise.resolve(null),
+    enabled: !!organizedProposals.original?.id,
+    refetchInterval: 2000
   });
   
-  // Extract data from estimateData (always extract, even if empty)
-  const items = estimateData?.items || [];
-  const markup = estimateData?.estimate?.markup || estimateData?.markup || 0;
-  const pstRate = estimateData?.pst_rate ?? 0;
-  const gstRate = estimateData?.gst_rate ?? 0;
-  const profitRate = estimateData?.profit_rate ?? 20; // Default to 20%
-  const sectionOrder = estimateData?.section_order || [];
+  // Fetch full proposal data for all change orders using useQueries
+  const changeOrderQueries = useQueries({
+    queries: organizedProposals.changeOrders.map(co => ({
+      queryKey: ['proposal', co.id],
+      queryFn: () => api<any>('GET', `/proposals/${co.id}`),
+      enabled: !!co.id,
+      refetchInterval: 2000
+    }))
+  });
   
-  // Parse UI state for item extras
-  const itemExtrasMap = useMemo(() => {
-    const notes = estimateData?.estimate?.notes || estimateData?.notes;
-    if (!notes) return {};
-    try {
-      const uiState = JSON.parse(notes);
-      return uiState.item_extras || {};
-    } catch {
-      return {};
-    }
-  }, [estimateData]);
+  // Calculate totals for each proposal
+  const originalTotal = useMemo(() => {
+    if (!organizedProposals.original) return 0;
+    // Use full proposal data if available, otherwise use the proposal object itself
+    const dataToUse = originalProposalData || organizedProposals.original;
+    return calculateProposalTotal(dataToUse);
+  }, [originalProposalData, organizedProposals.original]);
   
-  // Group items by section
-  const groupedItems = useMemo(() => {
-    const groups: Record<string, any[]> = {};
-    items.forEach((it:any) => {
-      const section = it.section || 'Miscellaneous';
-      if(!groups[section]) groups[section] = [];
-      groups[section].push(it);
+  const changeOrderTotals = useMemo(() => {
+    return organizedProposals.changeOrders.map((co, idx) => {
+      const queryResult = changeOrderQueries[idx];
+      // Use full proposal data if available, otherwise use the proposal object itself
+      const dataToUse = queryResult?.data || co;
+      return {
+        changeOrder: co,
+        total: calculateProposalTotal(dataToUse),
+        number: co.change_order_number || idx + 1
+      };
     });
-    return groups;
-  }, [items]);
+  }, [organizedProposals.changeOrders, changeOrderQueries]);
   
-  // Helper function to calculate section subtotal (same as EstimateBuilder)
-  const calculateSectionSubtotal = useCallback((sectionName: string): number => {
-    const sectionItems = groupedItems[sectionName] || [];
-    const isLabourSection = ['Labour', 'Sub-Contractors', 'Shop', 'Miscellaneous'].includes(sectionName) || 
-                          sectionName.startsWith('Labour Section') || 
-                          sectionName.startsWith('Sub-Contractor Section') || 
-                          sectionName.startsWith('Shop Section') || 
-                          sectionName.startsWith('Miscellaneous Section');
-    return sectionItems.reduce((sum, it) => {
-      const m = itemExtrasMap[`item_${it.id}`]?.markup !== undefined && itemExtrasMap[`item_${it.id}`].markup !== null ? itemExtrasMap[`item_${it.id}`].markup : markup;
-      let itemTotal = 0;
-      if (!isLabourSection) {
-        itemTotal = (it.quantity || 0) * (it.unit_price || 0);
-      } else {
-        if (it.item_type === 'labour' && itemExtrasMap[`item_${it.id}`]?.labour_journey_type) {
-          const extras = itemExtrasMap[`item_${it.id}`];
-          if (extras.labour_journey_type === 'contract') {
-            itemTotal = (extras.labour_journey || 0) * (it.unit_price || 0);
-          } else {
-            itemTotal = (extras.labour_journey || 0) * (extras.labour_men || 0) * (it.unit_price || 0);
-          }
-        } else {
-          itemTotal = (it.quantity || 0) * (it.unit_price || 0);
-        }
-      }
-      return sum + (itemTotal * (1 + (m/100)));
-    }, 0);
-  }, [groupedItems, markup, itemExtrasMap]);
+  // Calculate grand total (sum of all)
+  const grandTotal = useMemo(() => {
+    return originalTotal + changeOrderTotals.reduce((sum, co) => sum + co.total, 0);
+  }, [originalTotal, changeOrderTotals]);
   
-  // Calculate specific section costs (same as EstimateBuilder)
-  const totalProductsCosts = useMemo(() => sectionOrder
-    .filter(section => !['Labour', 'Sub-Contractors', 'Shop', 'Miscellaneous'].includes(section) && 
-                      !section.startsWith('Labour Section') && 
-                      !section.startsWith('Sub-Contractor Section') && 
-                      !section.startsWith('Shop Section') && 
-                      !section.startsWith('Miscellaneous Section'))
-    .reduce((sum, section) => sum + calculateSectionSubtotal(section), 0), [sectionOrder, calculateSectionSubtotal]);
+  // Check if we have any pricing data
+  const hasPricingData = originalTotal > 0 || changeOrderTotals.some(co => co.total > 0);
   
-  const totalLabourCosts = useMemo(() => calculateSectionSubtotal('Labour') + 
-           sectionOrder
-             .filter(s => s.startsWith('Labour Section'))
-             .reduce((sum, section) => sum + calculateSectionSubtotal(section), 0), [sectionOrder, calculateSectionSubtotal]);
-  
-  const totalSubContractorsCosts = useMemo(() => calculateSectionSubtotal('Sub-Contractors') + 
-           sectionOrder
-             .filter(s => s.startsWith('Sub-Contractor Section'))
-             .reduce((sum, section) => sum + calculateSectionSubtotal(section), 0), [sectionOrder, calculateSectionSubtotal]);
-  
-  const totalShopCosts = useMemo(() => calculateSectionSubtotal('Shop') + 
-           sectionOrder
-             .filter(s => s.startsWith('Shop Section'))
-             .reduce((sum, section) => sum + calculateSectionSubtotal(section), 0), [sectionOrder, calculateSectionSubtotal]);
-  
-  const totalMiscellaneousCosts = useMemo(() => calculateSectionSubtotal('Miscellaneous') + 
-           sectionOrder
-             .filter(s => s.startsWith('Miscellaneous Section'))
-             .reduce((sum, section) => sum + calculateSectionSubtotal(section), 0), [sectionOrder, calculateSectionSubtotal]);
-  
-  // Total Direct Project Costs (sum of all specific costs)
-  const totalDirectProjectCosts = useMemo(() => totalProductsCosts + totalLabourCosts + totalSubContractorsCosts + totalShopCosts + totalMiscellaneousCosts, [totalProductsCosts, totalLabourCosts, totalSubContractorsCosts, totalShopCosts, totalMiscellaneousCosts]);
-  
-  // Calculate total without markup for all items
-  const totalWithoutMarkup = useMemo(() => items.reduce((acc, it) => {
-    const m = itemExtrasMap[`item_${it.id}`]?.markup !== undefined && itemExtrasMap[`item_${it.id}`].markup !== null ? itemExtrasMap[`item_${it.id}`].markup : markup;
-    let itemTotal = 0;
-    const section = it.section || 'Miscellaneous';
-    const isLabourSection = ['Labour', 'Sub-Contractors', 'Shop', 'Miscellaneous'].includes(section) ||
-                            section.startsWith('Labour Section') ||
-                            section.startsWith('Sub-Contractor Section') ||
-                            section.startsWith('Shop Section') ||
-                            section.startsWith('Miscellaneous Section');
-    
-    if (!isLabourSection) {
-      itemTotal = (it.quantity || 0) * (it.unit_price || 0);
-    } else {
-      if (it.item_type === 'labour' && itemExtrasMap[`item_${it.id}`]?.labour_journey_type) {
-        const extras = itemExtrasMap[`item_${it.id}`];
-        if (extras.labour_journey_type === 'contract') {
-          itemTotal = (extras.labour_journey || 0) * (it.unit_price || 0);
-        } else {
-          itemTotal = (extras.labour_journey || 0) * (extras.labour_men || 0) * (it.unit_price || 0);
-        }
-      } else {
-        itemTotal = (it.quantity || 0) * (it.unit_price || 0);
-      }
-    }
-    return acc + itemTotal;
-  }, 0), [items, markup, itemExtrasMap]);
-  
-  // Calculate total with markup for all items
-  const totalWithMarkupAll = useMemo(() => items.reduce((acc, it) => {
-    const m = itemExtrasMap[`item_${it.id}`]?.markup !== undefined && itemExtrasMap[`item_${it.id}`].markup !== null ? itemExtrasMap[`item_${it.id}`].markup : markup;
-    let itemTotal = 0;
-    const section = it.section || 'Miscellaneous';
-    const isLabourSection = ['Labour', 'Sub-Contractors', 'Shop', 'Miscellaneous'].includes(section) ||
-                            section.startsWith('Labour Section') ||
-                            section.startsWith('Sub-Contractor Section') ||
-                            section.startsWith('Shop Section') ||
-                            section.startsWith('Miscellaneous Section');
-    
-    if (!isLabourSection) {
-      itemTotal = (it.quantity || 0) * (it.unit_price || 0);
-    } else {
-      if (it.item_type === 'labour' && itemExtrasMap[`item_${it.id}`]?.labour_journey_type) {
-        const extras = itemExtrasMap[`item_${it.id}`];
-        if (extras.labour_journey_type === 'contract') {
-          itemTotal = (extras.labour_journey || 0) * (it.unit_price || 0);
-        } else {
-          itemTotal = (extras.labour_journey || 0) * (extras.labour_men || 0) * (it.unit_price || 0);
-        }
-      } else {
-        itemTotal = (it.quantity || 0) * (it.unit_price || 0);
-      }
-    }
-    return acc + (itemTotal * (1 + (m/100)));
-  }, 0), [items, markup, itemExtrasMap]);
-  
-  // Sections Mark-up (difference between total with markup and total without markup)
-  const sectionsMarkup = useMemo(() => totalWithMarkupAll - totalWithoutMarkup, [totalWithMarkupAll, totalWithoutMarkup]);
-  
-  // Calculate taxable total (only taxable items) with markup
-  const taxableTotal = useMemo(() => items.reduce((acc, it) => {
-    const extras = itemExtrasMap[`item_${it.id}`];
-    if (extras?.taxable === false) return acc;
-    const m = extras?.markup !== undefined && extras.markup !== null ? extras.markup : markup;
-    let itemTotal = 0;
-    const section = it.section || 'Miscellaneous';
-    const isLabourSection = ['Labour', 'Sub-Contractors', 'Shop', 'Miscellaneous'].includes(section) ||
-                            section.startsWith('Labour Section') ||
-                            section.startsWith('Sub-Contractor Section') ||
-                            section.startsWith('Shop Section') ||
-                            section.startsWith('Miscellaneous Section');
-    
-    if (!isLabourSection) {
-      itemTotal = (it.quantity || 0) * (it.unit_price || 0);
-    } else {
-      if (it.item_type === 'labour' && itemExtrasMap[`item_${it.id}`]?.labour_journey_type) {
-        const extras = itemExtrasMap[`item_${it.id}`];
-        if (extras.labour_journey_type === 'contract') {
-          itemTotal = (extras.labour_journey || 0) * (it.unit_price || 0);
-        } else {
-          itemTotal = (extras.labour_journey || 0) * (extras.labour_men || 0) * (it.unit_price || 0);
-        }
-      } else {
-        itemTotal = (it.quantity || 0) * (it.unit_price || 0);
-      }
-    }
-    return acc + (itemTotal * (1 + (m/100)));
-  }, 0), [items, markup, itemExtrasMap]);
-  
-  const pst = useMemo(() => taxableTotal * (pstRate / 100), [taxableTotal, pstRate]);
-  const subtotal = useMemo(() => totalDirectProjectCosts + pst, [totalDirectProjectCosts, pst]);
-  const profitValue = useMemo(() => subtotal * (profitRate / 100), [subtotal, profitRate]);
-  const finalTotal = useMemo(() => subtotal + profitValue, [subtotal, profitValue]);
-  const gst = useMemo(() => finalTotal * (gstRate / 100), [finalTotal, gstRate]);
-  const grandTotal = useMemo(() => finalTotal + gst, [finalTotal, gst]);
-  
-  // Calculate markup percentage (Sections Mark-up / Total Direct Project Costs * 100)
-  const markupPercentage = useMemo(() => totalDirectProjectCosts > 0 ? (sectionsMarkup / totalDirectProjectCosts) * 100 : 0, [sectionsMarkup, totalDirectProjectCosts]);
-  
-  const summaryItems = useMemo(() => [
-    { label: 'Subtotal', value: totalDirectProjectCosts },
-    { label: `Markup (${markupPercentage.toFixed(1)}%)`, value: sectionsMarkup },
-    { label: `PST (${pstRate}%)`, value: pst },
-    { label: `Profit (${profitRate}%)`, value: profitValue },
-    { label: `GST (${gstRate}%)`, value: gst },
-  ], [totalDirectProjectCosts, markupPercentage, sectionsMarkup, pstRate, pst, profitRate, profitValue, gstRate, gst]);
-  
-  // Early return AFTER all hooks
-  if(!estimateData || !estimates.length) {
+  if (!hasPricingData) {
     return (
-      <div className="md:col-span-3 rounded-xl border bg-white p-4">
+      <div className="rounded-xl border bg-white p-4">
         <h4 className="font-semibold mb-2">Costs Summary</h4>
-        <div className="text-sm text-gray-600">No estimate available</div>
+        <div className="text-sm text-gray-600">No proposal pricing available</div>
       </div>
     );
   }
   
+  // Prepare items for display in columns
+  const itemsToDisplay = [
+    ...(originalTotal > 0 ? [{ label: 'Total Estimate', value: originalTotal }] : []),
+    ...changeOrderTotals
+      .filter(co => co.total > 0)
+      .map(co => ({ label: `Change Order ${co.number}`, value: co.total }))
+  ];
+  
   return (
-    <div className="md:col-span-3 rounded-xl border bg-white p-4">
+    <div className="rounded-xl border bg-white p-4">
       <h4 className="font-semibold mb-3">Costs Summary</h4>
-      <div className="grid md:grid-cols-5 gap-4 text-sm">
-        {summaryItems.map((item, idx)=> (
-          <div key={idx}>
+      
+      {/* Items in columns */}
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 mb-4">
+        {itemsToDisplay.map((item, idx) => (
+          <div key={idx} className="text-center">
             <div className="text-xs text-gray-600 mb-1">{item.label}</div>
-            <div className="text-lg font-semibold">${item.value.toFixed(2)}</div>
+            <div className="text-lg font-semibold text-gray-900">${item.value.toFixed(2)}</div>
           </div>
         ))}
-        <div className="md:col-span-5 pt-3 border-t mt-2">
-          <div className="flex items-center justify-between">
-            <div className="text-sm font-semibold text-gray-700">Grand Total</div>
-            <div className="text-2xl font-bold text-brand-red">${grandTotal.toFixed(2)}</div>
-          </div>
-        </div>
+      </div>
+      
+      {/* Grand Total in a row below */}
+      <div className="flex items-center justify-between pt-3 border-t-2 border-gray-300">
+        <div className="text-base font-semibold text-gray-900">Total</div>
+        <div className="text-2xl font-bold text-brand-red">${grandTotal.toFixed(2)}</div>
       </div>
     </div>
   );

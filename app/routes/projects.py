@@ -15,6 +15,143 @@ from sqlalchemy import or_, and_, cast, String, Date
 router = APIRouter(prefix="/projects", tags=["projects"])
 
 
+def calculate_proposal_grand_total(proposal_data: dict) -> float:
+    """
+    Calculate Final Total (with GST) from proposal's additional_costs.
+    Matches the calculation logic from ProposalForm.tsx:
+    - Total Direct Costs = sum of (value * quantity) for all items
+    - PST = sum of (value * quantity * pst_rate / 100) for items with pst=true
+    - Subtotal = Total Direct Costs + PST
+    - GST = sum of (value * quantity * gst_rate / 100) for items with gst=true (on direct costs, independent of PST)
+    - Final Total (with GST) = Subtotal + GST = Total Direct Costs + PST + GST
+    """
+    if not proposal_data:
+        return 0.0
+    
+    additional_costs = proposal_data.get('additional_costs', [])
+    if not isinstance(additional_costs, list):
+        return 0.0
+    
+    pst_rate = float(proposal_data.get('pst_rate', 7.0))
+    gst_rate = float(proposal_data.get('gst_rate', 5.0))
+    
+    total_direct_costs = 0.0
+    pst_total = 0.0
+    gst_base_total = 0.0  # GST is calculated on direct costs (items with gst=true)
+    
+    for item in additional_costs:
+        if not isinstance(item, dict):
+            continue
+        
+        value = float(item.get('value', 0) or 0)
+        quantity = float(item.get('quantity', 1) or 1)
+        line_total = value * quantity
+        
+        total_direct_costs += line_total
+        
+        # PST applies to items with pst=true
+        if item.get('pst', False):
+            pst_total += line_total * (pst_rate / 100)
+        
+        # GST applies to items with gst=true (on direct costs, independent of PST)
+        if item.get('gst', False):
+            gst_base_total += line_total
+    
+    # Calculate subtotal and GST
+    subtotal = total_direct_costs + pst_total
+    gst = gst_base_total * (gst_rate / 100)
+    
+    # Final Total (with GST) = Subtotal + GST
+    grand_total = subtotal + gst
+    
+    return grand_total
+
+
+def calculate_proposal_values_for_division(proposal_data: dict, division_id: Optional[str] = None) -> tuple[float, float]:
+    """
+    Calculate Final Total (with GST) from proposal's additional_costs.
+    If division_id is provided, calculates division-specific value by summing only items with matching division_id.
+    If division_id is None, returns (total_value, total_value).
+    
+    Matches the calculation logic from ProposalForm.tsx:
+    - Total Direct Costs = sum of (value * quantity) for all items (or filtered by division_id)
+    - PST = sum of (value * quantity * pst_rate / 100) for items with pst=true
+    - Subtotal = Total Direct Costs + PST
+    - GST = sum of (value * quantity * gst_rate / 100) for items with gst=true (on direct costs, independent of PST)
+    - Final Total (with GST) = Subtotal + GST
+    
+    Returns: (final_total_with_gst, division_value) where:
+        - final_total_with_gst: total value for all items (or all if division_id is None)
+        - division_value: value specific to division_id (or same as total if division_id is None)
+    """
+    if not proposal_data:
+        return (0.0, 0.0)
+    
+    additional_costs = proposal_data.get('additional_costs', [])
+    if not isinstance(additional_costs, list):
+        return (0.0, 0.0)
+    
+    pst_rate = float(proposal_data.get('pst_rate', 7.0))
+    gst_rate = float(proposal_data.get('gst_rate', 5.0))
+    
+    # Filter items by division_id if provided
+    if division_id:
+        division_items = [
+            item for item in additional_costs 
+            if isinstance(item, dict) and str(item.get('division_id', '')) == str(division_id)
+        ]
+    else:
+        division_items = additional_costs
+    
+    # Calculate totals for all items
+    total_direct_costs = 0.0
+    pst_total = 0.0
+    gst_base_total = 0.0
+    
+    # Calculate totals for division-specific items
+    division_direct_costs = 0.0
+    division_pst_total = 0.0
+    division_gst_base_total = 0.0
+    
+    for item in additional_costs:
+        if not isinstance(item, dict):
+            continue
+        
+        value = float(item.get('value', 0) or 0)
+        quantity = float(item.get('quantity', 1) or 1)
+        line_total = value * quantity
+        
+        # Add to total (all items)
+        total_direct_costs += line_total
+        
+        if item.get('pst', False):
+            pst_total += line_total * (pst_rate / 100)
+        
+        if item.get('gst', False):
+            gst_base_total += line_total
+        
+        # Add to division total if this item matches division_id
+        if not division_id or str(item.get('division_id', '')) == str(division_id):
+            division_direct_costs += line_total
+            
+            if item.get('pst', False):
+                division_pst_total += line_total * (pst_rate / 100)
+            
+            if item.get('gst', False):
+                division_gst_base_total += line_total
+    
+    # Calculate subtotals and GST
+    subtotal = total_direct_costs + pst_total
+    gst = gst_base_total * (gst_rate / 100)
+    grand_total = subtotal + gst
+    
+    division_subtotal = division_direct_costs + division_pst_total
+    division_gst = division_gst_base_total * (gst_rate / 100)
+    division_value = division_subtotal + division_gst
+    
+    return (grand_total, division_value)
+
+
 @router.post("")
 def create_project(payload: dict, db: Session = Depends(get_db), user=Depends(get_current_user)):
     # Minimal validation: require client_id
@@ -280,6 +417,7 @@ def get_project(project_id: str, db: Session = Depends(get_db)):
         "cost_estimated": getattr(p, 'cost_estimated', None),
         "cost_actual": getattr(p, 'cost_actual', None),
         "service_value": getattr(p, 'service_value', None),
+        "lead_source": getattr(p, 'lead_source', None),
         "lat": float(p.lat) if getattr(p, 'lat', None) is not None else None,
         "lng": float(p.lng) if getattr(p, 'lng', None) is not None else None,
         "timezone": getattr(p, 'timezone', None),
@@ -1034,10 +1172,94 @@ def approve_estimate_changes_report(project_id: str, report_id: str, db: Session
     if getattr(report, 'approval_status', None) != "pending":
         raise HTTPException(status_code=400, detail="Report is not pending approval")
     
-    # Get estimate_data
+    # Get estimate_data or proposal_data
     estimate_data = getattr(report, 'estimate_data', None)
+    proposal_data = estimate_data.get('proposal_data') if estimate_data and isinstance(estimate_data, dict) else None
+    
+    # Check if there's already a Change Order linked to this report
+    from ..models.models import Proposal
+    existing_change_order = db.query(Proposal).filter(Proposal.approved_report_id == report.id).first()
+    
+    # If we have proposal_data and no existing Change Order, create a new Proposal (Change Order)
+    # This is for backward compatibility with old reports
+    if proposal_data and not existing_change_order:
+        # Find the latest approved proposal (Change Order or original)
+        latest_proposal = db.query(Proposal).filter(
+            Proposal.project_id == project_id,
+            Proposal.is_change_order == True,
+            Proposal.approved_report_id.isnot(None)
+        ).order_by(Proposal.change_order_number.desc()).first()
+        
+        # If no Change Orders, find the original proposal
+        if not latest_proposal:
+            latest_proposal = db.query(Proposal).filter(
+                Proposal.project_id == project_id,
+                Proposal.is_change_order == False
+            ).order_by(Proposal.created_at.asc()).first()
+        
+        # Determine the next change order number and find the original proposal
+        original_proposal = None
+        if latest_proposal:
+            if latest_proposal.is_change_order:
+                next_change_order_number = (latest_proposal.change_order_number or 0) + 1
+                # Find the original proposal using parent_proposal_id
+                if latest_proposal.parent_proposal_id:
+                    original_proposal = db.query(Proposal).filter(Proposal.id == latest_proposal.parent_proposal_id).first()
+            else:
+                # latest_proposal is the original
+                original_proposal = latest_proposal
+                next_change_order_number = 1
+        
+        # If we still don't have original_proposal, try to find it
+        if not original_proposal:
+            original_proposal = db.query(Proposal).filter(
+                Proposal.project_id == project_id,
+                Proposal.is_change_order == False
+            ).order_by(Proposal.created_at.asc()).first()
+        
+        parent_proposal_id = original_proposal.id if original_proposal else None
+        
+        # Get project to get client_id and site_id
+        project = db.query(Project).filter(Project.id == project_id).first()
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+        
+        # Create new Proposal (Change Order)
+        new_proposal = Proposal(
+            project_id=project_id,
+            client_id=project.client_id,
+            site_id=project.site_id,
+            is_change_order=True,
+            change_order_number=next_change_order_number,
+            parent_proposal_id=parent_proposal_id,
+            approved_report_id=report.id,
+            order_number=latest_proposal.order_number if latest_proposal else None,
+            title=f"Change Order {next_change_order_number}",
+            data=proposal_data,
+        )
+        db.add(new_proposal)
+        db.flush()
+        existing_change_order = new_proposal
+    
+    # Update report status and related Change Order
+    report.approval_status = "approved"
+    report.approved_by = user.id
+    report.approved_at = datetime.now(timezone.utc)
+    
+    # Update related Change Order if it exists
+    if existing_change_order:
+        existing_change_order.approval_status = "approved"
+    
+    # Continue with estimate logic for compatibility (if estimate_data exists and has items)
     if not estimate_data:
-        raise HTTPException(status_code=400, detail="Report does not contain estimate data")
+        db.commit()
+        return {"status": "ok"}
+    
+    # Check if we have items to add to estimate (for backward compatibility)
+    items = estimate_data.get('items', [])
+    if not items:
+        db.commit()
+        return {"status": "ok"}
     
     # Get or create estimate for the project
     estimate = db.query(Estimate).filter(Estimate.project_id == project_id).first()
@@ -2879,19 +3101,27 @@ def business_dashboard(
     # Get opportunities by status
     opportunities_by_status = {}
     if mode == "value":
-        # Calculate values from estimates
+        # Calculate values from proposals
         for opp in opportunities_query.all():
             status = getattr(opp, 'status_label', None) or 'No Status'
-            estimate = db.query(Estimate).filter(Estimate.project_id == opp.id).order_by(Estimate.created_at.desc()).first()
-            final_total, profit = calculate_estimate_values(estimate, db)
+            proposal = db.query(Proposal).filter(Proposal.project_id == opp.id).order_by(Proposal.created_at.desc()).first()
+            
+            final_total = None
+            if proposal and proposal.data:
+                try:
+                    final_total, _ = calculate_proposal_values_for_division(proposal.data, division_id=None)
+                except Exception:
+                    pass
+            
+            # Fallback to cost_estimated if no proposal
+            if final_total is None or final_total == 0:
+                final_total = getattr(opp, 'cost_estimated', 0) or 0
             
             if status not in opportunities_by_status:
                 opportunities_by_status[status] = {"final_total_with_gst": 0.0, "profit": 0.0}
             
-            if final_total is not None:
-                opportunities_by_status[status]["final_total_with_gst"] += final_total
-            if profit is not None:
-                opportunities_by_status[status]["profit"] += profit
+            opportunities_by_status[status]["final_total_with_gst"] += final_total
+            # Proposals don't have separate profit calculation, so profit remains 0.0
     else:
         # Count by status (quantity mode)
         for opp in opportunities_query.all():
@@ -2901,19 +3131,27 @@ def business_dashboard(
     # Get projects by status
     projects_by_status = {}
     if mode == "value":
-        # Calculate values from estimates
+        # Calculate values from proposals
         for proj in projects_query.all():
             status = getattr(proj, 'status_label', None) or 'No Status'
-            estimate = db.query(Estimate).filter(Estimate.project_id == proj.id).order_by(Estimate.created_at.desc()).first()
-            final_total, profit = calculate_estimate_values(estimate, db)
+            proposal = db.query(Proposal).filter(Proposal.project_id == proj.id).order_by(Proposal.created_at.desc()).first()
+            
+            final_total = None
+            if proposal and proposal.data:
+                try:
+                    final_total, _ = calculate_proposal_values_for_division(proposal.data, division_id=None)
+                except Exception:
+                    pass
+            
+            # Fallback to cost_actual if no proposal
+            if final_total is None or final_total == 0:
+                final_total = getattr(proj, 'cost_actual', 0) or 0
             
             if status not in projects_by_status:
                 projects_by_status[status] = {"final_total_with_gst": 0.0, "profit": 0.0}
             
-            if final_total is not None:
-                projects_by_status[status]["final_total_with_gst"] += final_total
-            if profit is not None:
-                projects_by_status[status]["profit"] += profit
+            projects_by_status[status]["final_total_with_gst"] += final_total
+            # Proposals don't have separate profit calculation, so profit remains 0.0
     else:
         # Count by status (quantity mode)
         for proj in projects_query.all():
@@ -3318,81 +3556,22 @@ def business_opportunities(
                 name = ' '.join([x for x in [first, last] if x])
             users_map[str(user.id)] = name or None
     
-    # Fetch latest estimates and calculate Grand Total (Final Total with GST) for each project
+    # Fetch latest proposals and calculate Grand Total (Final Total with GST) for each project
     estimated_values_map = {}
     if project_ids:
-        import json
-        # Get latest estimate for each project
-        estimates = db.query(Estimate).filter(Estimate.project_id.in_(project_ids)).order_by(Estimate.created_at.desc()).all()
-        for est in estimates:
-            pid_str = str(est.project_id)
-            if pid_str not in estimated_values_map:
-                # Calculate Grand Total (Final Total with GST) - matching estimate.py logic exactly
-                if est.notes:
-                    try:
-                        ui_state = json.loads(est.notes)
-                        pst_rate = ui_state.get('pst_rate', 7.0)
-                        gst_rate = ui_state.get('gst_rate', 5.0)
-                        profit_rate = ui_state.get('profit_rate', 20.0)
-                        global_markup = ui_state.get('markup', est.markup or 0.0)
-                        
-                        items = db.query(EstimateItem).filter(EstimateItem.estimate_id == est.id).all()
-                        item_extras_map = ui_state.get('item_extras', {})
-                        
-                        # Calculate totals considering item types and markups (matching estimate.py logic exactly)
-                        total = 0.0
-                        total_with_markup = 0.0
-                        taxable_total_with_markup = 0.0
-                        
-                        for item in items:
-                            item_key = f'item_{item.id}'
-                            extras = item_extras_map.get(item_key, {})
-                            item_type = item.item_type or 'product'
-                            taxable = extras.get('taxable', True)  # Default to True if not specified
-                            item_markup = extras.get('markup')  # Individual item markup (can be None)
-                            
-                            # Calculate item total without markup
-                            if item_type == 'labour' and extras.get('labour_journey_type'):
-                                if extras['labour_journey_type'] == 'contract':
-                                    item_total = (extras.get('labour_journey', 0) or 0) * (item.unit_price or 0.0)
-                                else:
-                                    item_total = (extras.get('labour_journey', 0) or 0) * (extras.get('labour_men', 0) or 0) * (item.unit_price or 0.0)
-                            else:
-                                item_total = (item.quantity or 0.0) * (item.unit_price or 0.0)
-                            
-                            # Apply markup (individual or global)
-                            markup_percent = item_markup if item_markup is not None else global_markup
-                            item_total_with_markup = item_total * (1 + (markup_percent / 100))
-                            
-                            total += item_total
-                            total_with_markup += item_total_with_markup
-                            
-                            # PST only applies to taxable items (with markup)
-                            if taxable:
-                                taxable_total_with_markup += item_total_with_markup
-                        
-                        # Calculate PST on taxable items with markup
-                        pst = taxable_total_with_markup * (pst_rate / 100)
-                        
-                        # Subtotal = total with markup + PST
-                        subtotal = total_with_markup + pst
-                        
-                        # Profit is calculated on subtotal
-                        profit_value = subtotal * (profit_rate / 100)
-                        
-                        # Final total = subtotal + profit
-                        final_total = subtotal + profit_value
-                        
-                        # GST is calculated on final total
-                        gst = final_total * (gst_rate / 100)
-                        
-                        # Grand total = final total + GST
-                        grand_total = final_total + gst
-                        
+        # Get latest proposal for each project
+        proposals = db.query(Proposal).filter(Proposal.project_id.in_(project_ids)).order_by(Proposal.created_at.desc()).all()
+        for prop in proposals:
+            pid_str = str(prop.project_id) if prop.project_id else None
+            if pid_str and pid_str not in estimated_values_map:
+                try:
+                    proposal_data = prop.data or {}
+                    grand_total = calculate_proposal_grand_total(proposal_data)
+                    if grand_total > 0:
                         estimated_values_map[pid_str] = grand_total
-                    except Exception:
-                        # If calculation fails, use total_cost as fallback
-                        estimated_values_map[pid_str] = est.total_cost
+                except Exception:
+                    # If calculation fails, skip this proposal
+                    pass
 
     out = []
     for p in projects:
@@ -3438,6 +3617,7 @@ def business_opportunities(
             "estimator_id": str(getattr(p, 'estimator_id', None)) if getattr(p, 'estimator_id', None) else None,
             "estimator_ids": [str(eid) for eid in (getattr(p, 'estimator_ids', None) or [])] if getattr(p, 'estimator_ids', None) else ([str(getattr(p, 'estimator_id', None))] if getattr(p, 'estimator_id', None) else []),
             "onsite_lead_id": getattr(p, 'onsite_lead_id', None),
+            "lead_source": getattr(p, 'lead_source', None),
         }
         
         # Add estimator name if found
@@ -3881,83 +4061,22 @@ def business_projects(
                 name = ' '.join([x for x in [first, last] if x])
             users_map[str(user.id)] = name or None
     
-    # Fetch latest estimates and calculate Grand Total (Final Total with GST) for each project
-    estimates_map = {}
+    # Fetch latest proposals and calculate Grand Total (Final Total with GST) for each project
     estimated_values_map = {}
     if project_ids:
-        import json
-        # Get latest estimate for each project
-        estimates = db.query(Estimate).filter(Estimate.project_id.in_(project_ids)).order_by(Estimate.created_at.desc()).all()
-        for est in estimates:
-            pid_str = str(est.project_id)
-            if pid_str not in estimates_map:
-                estimates_map[pid_str] = est
-                # Calculate Grand Total (Final Total with GST) - matching estimate.py logic exactly
-                if est.notes:
-                    try:
-                        ui_state = json.loads(est.notes)
-                        pst_rate = ui_state.get('pst_rate', 7.0)
-                        gst_rate = ui_state.get('gst_rate', 5.0)
-                        profit_rate = ui_state.get('profit_rate', 20.0)
-                        global_markup = ui_state.get('markup', est.markup or 0.0)
-                        
-                        items = db.query(EstimateItem).filter(EstimateItem.estimate_id == est.id).all()
-                        item_extras_map = ui_state.get('item_extras', {})
-                        
-                        # Calculate totals considering item types and markups (matching estimate.py logic exactly)
-                        total = 0.0
-                        total_with_markup = 0.0
-                        taxable_total_with_markup = 0.0
-                        
-                        for item in items:
-                            item_key = f'item_{item.id}'
-                            extras = item_extras_map.get(item_key, {})
-                            item_type = item.item_type or 'product'
-                            taxable = extras.get('taxable', True)  # Default to True if not specified
-                            item_markup = extras.get('markup')  # Individual item markup (can be None)
-                            
-                            # Calculate item total without markup
-                            if item_type == 'labour' and extras.get('labour_journey_type'):
-                                if extras['labour_journey_type'] == 'contract':
-                                    item_total = (extras.get('labour_journey', 0) or 0) * (item.unit_price or 0.0)
-                                else:
-                                    item_total = (extras.get('labour_journey', 0) or 0) * (extras.get('labour_men', 0) or 0) * (item.unit_price or 0.0)
-                            else:
-                                item_total = (item.quantity or 0.0) * (item.unit_price or 0.0)
-                            
-                            # Apply markup (individual or global)
-                            markup_percent = item_markup if item_markup is not None else global_markup
-                            item_total_with_markup = item_total * (1 + (markup_percent / 100))
-                            
-                            total += item_total
-                            total_with_markup += item_total_with_markup
-                            
-                            # PST only applies to taxable items (with markup)
-                            if taxable:
-                                taxable_total_with_markup += item_total_with_markup
-                        
-                        # Calculate PST on taxable items with markup
-                        pst = taxable_total_with_markup * (pst_rate / 100)
-                        
-                        # Subtotal = total with markup + PST
-                        subtotal = total_with_markup + pst
-                        
-                        # Profit is calculated on subtotal
-                        profit_value = subtotal * (profit_rate / 100)
-                        
-                        # Final total = subtotal + profit
-                        final_total = subtotal + profit_value
-                        
-                        # GST is calculated on final total
-                        gst = final_total * (gst_rate / 100)
-                        
-                        # Grand total = final total + GST
-                        grand_total = final_total + gst
-                        
+        # Get latest proposal for each project
+        proposals = db.query(Proposal).filter(Proposal.project_id.in_(project_ids)).order_by(Proposal.created_at.desc()).all()
+        for prop in proposals:
+            pid_str = str(prop.project_id) if prop.project_id else None
+            if pid_str and pid_str not in estimated_values_map:
+                try:
+                    proposal_data = prop.data or {}
+                    grand_total = calculate_proposal_grand_total(proposal_data)
+                    if grand_total > 0:
                         estimated_values_map[pid_str] = grand_total
-                    except Exception:
-                        # If calculation fails, use total_cost as fallback
-                        estimated_values_map[pid_str] = est.total_cost
+                except Exception:
+                    # If calculation fails, skip this proposal
+                    pass
     
     # Latest proposal cover per project (batch) - used if cover isn't already present
     proposal_cover_by_project: dict[str, str] = {}
@@ -4010,6 +4129,7 @@ def business_projects(
             "estimator_ids": [str(eid) for eid in (getattr(p, 'estimator_ids', None) or [])] if getattr(p, 'estimator_ids', None) else ([str(getattr(p, 'estimator_id', None))] if getattr(p, 'estimator_id', None) else []),
             "project_admin_id": str(getattr(p, 'project_admin_id', None)) if getattr(p, 'project_admin_id', None) else None,
             "onsite_lead_id": getattr(p, 'onsite_lead_id', None),
+            "lead_source": getattr(p, 'lead_source', None),
         }
         
         # Add cover image URL - same priority as General Information
@@ -4146,49 +4266,59 @@ def business_divisions_stats(
                 projects_profit = 0
                 
                 if mode == "value":
-                    # Calculate values from estimates, applying division percentages
+                    # Calculate values from proposals, applying division percentages or division_id
                     for p in opp_query.all():
-                        estimate = db.query(Estimate).filter(Estimate.project_id == p.id).order_by(Estimate.created_at.desc()).first()
-                        if estimate:
-                            final_total, profit = calculate_estimate_values(estimate, db)
-                            if final_total is not None:
+                        proposal = db.query(Proposal).filter(Proposal.project_id == p.id).order_by(Proposal.created_at.desc()).first()
+                        if proposal and proposal.data:
+                            try:
+                                final_total, division_value = calculate_proposal_values_for_division(
+                                    proposal.data, 
+                                    division_id=str(selected_division.id)
+                                )
+                                
                                 # Get division percentage for this division
                                 percentages = getattr(p, 'project_division_percentages', None)
                                 if percentages and isinstance(percentages, dict):
+                                    # If percentages exist, use them (compatibility)
                                     div_percentage = percentages.get(str(selected_division.id), 0) or percentages.get(selected_division.id, 0) or 0
                                     if div_percentage > 0:
                                         opportunities_value += final_total * (div_percentage / 100.0)
-                                        if profit is not None:
-                                            opportunities_profit += profit * (div_percentage / 100.0)
+                                        # Proposals don't have separate profit, so profit remains 0
                                 else:
-                                    # If no percentages, assume 100% if division matches
-                                    opportunities_value += final_total
-                                    if profit is not None:
-                                        opportunities_profit += profit
+                                    # If no percentages, use division-specific value from proposal items
+                                    opportunities_value += division_value
+                            except Exception:
+                                # Fallback to cost_estimated if calculation fails
+                                opportunities_value += (getattr(p, 'cost_estimated', 0) or 0)
                         else:
-                            # Fallback to cost_estimated if no estimate
+                            # Fallback to cost_estimated if no proposal
                             opportunities_value += (getattr(p, 'cost_estimated', 0) or 0)
                     
                     for p in proj_query.all():
-                        estimate = db.query(Estimate).filter(Estimate.project_id == p.id).order_by(Estimate.created_at.desc()).first()
-                        if estimate:
-                            final_total, profit = calculate_estimate_values(estimate, db)
-                            if final_total is not None:
+                        proposal = db.query(Proposal).filter(Proposal.project_id == p.id).order_by(Proposal.created_at.desc()).first()
+                        if proposal and proposal.data:
+                            try:
+                                final_total, division_value = calculate_proposal_values_for_division(
+                                    proposal.data, 
+                                    division_id=str(selected_division.id)
+                                )
+                                
                                 # Get division percentage for this division
                                 percentages = getattr(p, 'project_division_percentages', None)
                                 if percentages and isinstance(percentages, dict):
+                                    # If percentages exist, use them (compatibility)
                                     div_percentage = percentages.get(str(selected_division.id), 0) or percentages.get(selected_division.id, 0) or 0
                                     if div_percentage > 0:
                                         projects_value += final_total * (div_percentage / 100.0)
-                                        if profit is not None:
-                                            projects_profit += profit * (div_percentage / 100.0)
+                                        # Proposals don't have separate profit, so profit remains 0
                                 else:
-                                    # If no percentages, assume 100% if division matches
-                                    projects_value += final_total
-                                    if profit is not None:
-                                        projects_profit += profit
+                                    # If no percentages, use division-specific value from proposal items
+                                    projects_value += division_value
+                            except Exception:
+                                # Fallback to cost_actual if calculation fails
+                                projects_value += (getattr(p, 'cost_actual', 0) or 0)
                         else:
-                            # Fallback to cost_actual if no estimate
+                            # Fallback to cost_actual if no proposal
                             projects_value += (getattr(p, 'cost_actual', 0) or 0)
                 else:
                     # Quantity mode: just count
@@ -4262,49 +4392,59 @@ def business_divisions_stats(
                 projects_count = proj_query.count()
                 
                 if mode == "value":
-                    # Calculate values from estimates, applying division percentages
+                    # Calculate values from proposals, applying division percentages or division_id
                     for p in opp_query.all():
-                        estimate = db.query(Estimate).filter(Estimate.project_id == p.id).order_by(Estimate.created_at.desc()).first()
-                        if estimate:
-                            final_total, profit = calculate_estimate_values(estimate, db)
-                            if final_total is not None:
+                        proposal = db.query(Proposal).filter(Proposal.project_id == p.id).order_by(Proposal.created_at.desc()).first()
+                        if proposal and proposal.data:
+                            try:
+                                final_total, division_value = calculate_proposal_values_for_division(
+                                    proposal.data, 
+                                    division_id=str(subdiv.id)
+                                )
+                                
                                 # Get division percentage for this subdivision
                                 percentages = getattr(p, 'project_division_percentages', None)
                                 if percentages and isinstance(percentages, dict):
+                                    # If percentages exist, use them (compatibility)
                                     subdiv_percentage = percentages.get(str(subdiv.id), 0) or percentages.get(subdiv.id, 0) or 0
                                     if subdiv_percentage > 0:
                                         opportunities_value += final_total * (subdiv_percentage / 100.0)
-                                        if profit is not None:
-                                            opportunities_profit += profit * (subdiv_percentage / 100.0)
+                                        # Proposals don't have separate profit, so profit remains 0
                                 else:
-                                    # If no percentages, assume 100% if subdivision matches
-                                    opportunities_value += final_total
-                                    if profit is not None:
-                                        opportunities_profit += profit
+                                    # If no percentages, use division-specific value from proposal items
+                                    opportunities_value += division_value
+                            except Exception:
+                                # Fallback to cost_estimated if calculation fails
+                                opportunities_value += (getattr(p, 'cost_estimated', 0) or 0)
                         else:
-                            # Fallback to cost_estimated if no estimate
+                            # Fallback to cost_estimated if no proposal
                             opportunities_value += (getattr(p, 'cost_estimated', 0) or 0)
                     
                     for p in proj_query.all():
-                        estimate = db.query(Estimate).filter(Estimate.project_id == p.id).order_by(Estimate.created_at.desc()).first()
-                        if estimate:
-                            final_total, profit = calculate_estimate_values(estimate, db)
-                            if final_total is not None:
+                        proposal = db.query(Proposal).filter(Proposal.project_id == p.id).order_by(Proposal.created_at.desc()).first()
+                        if proposal and proposal.data:
+                            try:
+                                final_total, division_value = calculate_proposal_values_for_division(
+                                    proposal.data, 
+                                    division_id=str(subdiv.id)
+                                )
+                                
                                 # Get division percentage for this subdivision
                                 percentages = getattr(p, 'project_division_percentages', None)
                                 if percentages and isinstance(percentages, dict):
+                                    # If percentages exist, use them (compatibility)
                                     subdiv_percentage = percentages.get(str(subdiv.id), 0) or percentages.get(subdiv.id, 0) or 0
                                     if subdiv_percentage > 0:
                                         projects_value += final_total * (subdiv_percentage / 100.0)
-                                        if profit is not None:
-                                            projects_profit += profit * (subdiv_percentage / 100.0)
+                                        # Proposals don't have separate profit, so profit remains 0
                                 else:
-                                    # If no percentages, assume 100% if subdivision matches
-                                    projects_value += final_total
-                                    if profit is not None:
-                                        projects_profit += profit
+                                    # If no percentages, use division-specific value from proposal items
+                                    projects_value += division_value
+                            except Exception:
+                                # Fallback to cost_actual if calculation fails
+                                projects_value += (getattr(p, 'cost_actual', 0) or 0)
                         else:
-                            # Fallback to cost_actual if no estimate
+                            # Fallback to cost_actual if no proposal
                             projects_value += (getattr(p, 'cost_actual', 0) or 0)
                 else:
                     # Quantity mode: just count (values are still used for display but calculated differently)
@@ -4394,17 +4534,16 @@ def business_divisions_stats(
             projects_profit = 0
             
             if mode == "value":
-                # Calculate values from estimates, applying division percentages
+                # Calculate values from proposals, applying division percentages or division_id
                 for p in opp_query.all():
-                    estimate = db.query(Estimate).filter(Estimate.project_id == p.id).order_by(Estimate.created_at.desc()).first()
-                    if estimate:
-                        final_total, profit = calculate_estimate_values(estimate, db)
-                        if final_total is not None:
+                    proposal = db.query(Proposal).filter(Proposal.project_id == p.id).order_by(Proposal.created_at.desc()).first()
+                    if proposal and proposal.data:
+                        try:
                             # Get division percentage for this division
                             percentages = getattr(p, 'project_division_percentages', None)
                             if percentages and isinstance(percentages, dict):
-                                # Sum percentages for this division INCLUDING its subdivisions, since projects may store
-                                # allocation at the subdivision level.
+                                # If percentages exist, use them (compatibility)
+                                # Sum percentages for this division INCLUDING its subdivisions
                                 div_percentage_total = 0.0
                                 for div_item_id in division_ids_list:
                                     try:
@@ -4422,29 +4561,34 @@ def business_divisions_stats(
                                         div_percentage_total += float(pct or 0)
                                     except Exception:
                                         pass
-
+                                
                                 if div_percentage_total > 0:
+                                    final_total, _ = calculate_proposal_values_for_division(proposal.data, division_id=None)
                                     opportunities_value += final_total * (div_percentage_total / 100.0)
-                                    if profit is not None:
-                                        opportunities_profit += profit * (div_percentage_total / 100.0)
+                                    # Proposals don't have separate profit, so profit remains 0
                             else:
-                                # If no percentages, assume 100% if division matches
-                                opportunities_value += final_total
-                                if profit is not None:
-                                    opportunities_profit += profit
+                                # If no percentages, sum division-specific values from proposal items
+                                division_sum = 0.0
+                                for div_item_id in division_ids_list:
+                                    _, div_value = calculate_proposal_values_for_division(proposal.data, division_id=div_item_id)
+                                    division_sum += div_value
+                                opportunities_value += division_sum
+                        except Exception:
+                            # Fallback to cost_estimated if calculation fails
+                            opportunities_value += (getattr(p, 'cost_estimated', 0) or 0)
                     else:
-                        # Fallback to cost_estimated if no estimate
+                        # Fallback to cost_estimated if no proposal
                         opportunities_value += (getattr(p, 'cost_estimated', 0) or 0)
                 
                 for p in proj_query.all():
-                    estimate = db.query(Estimate).filter(Estimate.project_id == p.id).order_by(Estimate.created_at.desc()).first()
-                    if estimate:
-                        final_total, profit = calculate_estimate_values(estimate, db)
-                        if final_total is not None:
+                    proposal = db.query(Proposal).filter(Proposal.project_id == p.id).order_by(Proposal.created_at.desc()).first()
+                    if proposal and proposal.data:
+                        try:
                             # Get division percentage for this division
                             percentages = getattr(p, 'project_division_percentages', None)
                             if percentages and isinstance(percentages, dict):
-                                # Sum percentages for this division INCLUDING its subdivisions.
+                                # If percentages exist, use them (compatibility)
+                                # Sum percentages for this division INCLUDING its subdivisions
                                 div_percentage_total = 0.0
                                 for div_item_id in division_ids_list:
                                     try:
@@ -4462,18 +4606,23 @@ def business_divisions_stats(
                                         div_percentage_total += float(pct or 0)
                                     except Exception:
                                         pass
-
+                                
                                 if div_percentage_total > 0:
+                                    final_total, _ = calculate_proposal_values_for_division(proposal.data, division_id=None)
                                     projects_value += final_total * (div_percentage_total / 100.0)
-                                    if profit is not None:
-                                        projects_profit += profit * (div_percentage_total / 100.0)
+                                    # Proposals don't have separate profit, so profit remains 0
                             else:
-                                # If no percentages, assume 100% if division matches
-                                projects_value += final_total
-                                if profit is not None:
-                                    projects_profit += profit
+                                # If no percentages, sum division-specific values from proposal items
+                                division_sum = 0.0
+                                for div_item_id in division_ids_list:
+                                    _, div_value = calculate_proposal_values_for_division(proposal.data, division_id=div_item_id)
+                                    division_sum += div_value
+                                projects_value += division_sum
+                        except Exception:
+                            # Fallback to cost_actual if calculation fails
+                            projects_value += (getattr(p, 'cost_actual', 0) or 0)
                     else:
-                        # Fallback to cost_actual if no estimate
+                        # Fallback to cost_actual if no proposal
                         projects_value += (getattr(p, 'cost_actual', 0) or 0)
             else:
                 # Quantity mode: just count

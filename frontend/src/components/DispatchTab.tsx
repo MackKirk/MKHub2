@@ -168,10 +168,6 @@ export default function DispatchTab({ projectId, statusLabel }: { projectId: str
   const [deleteMode, setDeleteMode] = useState(false);
   const [selectedShiftsForDelete, setSelectedShiftsForDelete] = useState<Set<string>>(new Set());
 
-  const handleBackToOverview = () => {
-    nav(location.pathname, { replace: true });
-  };
-
   return (
     <div className="space-y-4">
       {/* Editing Restricted Warning */}
@@ -180,25 +176,6 @@ export default function DispatchTab({ projectId, statusLabel }: { projectId: str
           <strong>Editing Restricted:</strong> This project has status "{statusLabel}" which does not allow editing workload.
         </div>
       )}
-      
-      {/* Minimalist header */}
-      <div className="mb-4">
-        <div className="flex items-center gap-3">
-          <button
-            onClick={handleBackToOverview}
-            className="p-2 rounded-lg border hover:bg-gray-50 transition-colors flex items-center justify-center"
-            title="Back to Overview"
-          >
-            <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-            </svg>
-          </button>
-          <div>
-            <h3 className="text-lg font-semibold text-gray-900">Workload</h3>
-            <p className="text-xs text-gray-500">Employee shifts and workload management</p>
-          </div>
-        </div>
-      </div>
       
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
