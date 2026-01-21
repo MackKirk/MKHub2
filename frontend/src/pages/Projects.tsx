@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueries } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { useMemo, useState, useEffect } from 'react';
 import ImagePicker from '@/components/ImagePicker';
@@ -93,6 +93,113 @@ type Project = {
   service_value?:number,
 };
 type ClientFile = { id:string, file_object_id:string, is_image?:boolean, content_type?:string };
+
+// Helper function to calculate Final Total (with GST) from proposal data
+function calculateProposalTotal(proposalData: any): number {
+  if (!proposalData) return 0;
+  
+  const data = proposalData?.data || proposalData || {};
+  const additionalCosts = data.additional_costs || [];
+  
+  if (additionalCosts.length === 0) return 0;
+  
+  const pstRate = Number(data.pst_rate) || 7.0;
+  const gstRate = Number(data.gst_rate) || 5.0;
+  
+  // Calculate Total Direct Costs
+  const totalDirectCosts = additionalCosts.reduce((sum: number, item: any) => {
+    const value = Number(item.value || 0);
+    const quantity = Number(item.quantity || 1);
+    return sum + (value * quantity);
+  }, 0);
+  
+  // Calculate PST (only on items with pst=true)
+  const totalForPst = additionalCosts
+    .filter((item: any) => item.pst === true)
+    .reduce((sum: number, item: any) => {
+      const value = Number(item.value || 0);
+      const quantity = Number(item.quantity || 1);
+      return sum + (value * quantity);
+    }, 0);
+  
+  const pst = totalForPst * (pstRate / 100);
+  
+  // Calculate Subtotal (Total Direct Costs + PST)
+  const subtotal = totalDirectCosts + pst;
+  
+  // Calculate GST (only on items with gst=true)
+  const totalForGst = additionalCosts
+    .filter((item: any) => item.gst === true)
+    .reduce((sum: number, item: any) => {
+      const value = Number(item.value || 0);
+      const quantity = Number(item.quantity || 1);
+      return sum + (value * quantity);
+    }, 0);
+  
+  const gst = totalForGst * (gstRate / 100);
+  
+  // Calculate Grand Total (Final Total with GST) = Subtotal + GST
+  return subtotal + gst;
+}
+
+// Helper function to calculate total from all proposals (original + change orders)
+function useProposalsTotal(projectId: string): number {
+  // Fetch all proposals for the project
+  const { data: proposals } = useQuery({ 
+    queryKey: ['projectProposals', projectId], 
+    queryFn: () => api<any[]>('GET', `/proposals?project_id=${encodeURIComponent(projectId)}`),
+    enabled: !!projectId
+  });
+  
+  // Organize proposals: original first, then Change Orders sorted by number
+  const organizedProposals = useMemo(() => {
+    if (!proposals || proposals.length === 0) return { original: null, changeOrders: [] };
+    
+    const original = proposals.find(p => !p.is_change_order);
+    const changeOrders = proposals
+      .filter(p => p.is_change_order)
+      .sort((a, b) => (a.change_order_number || 0) - (b.change_order_number || 0));
+    
+    return {
+      original: original || null,
+      changeOrders: changeOrders
+    };
+  }, [proposals]);
+  
+  // Fetch full proposal data for original proposal
+  const { data: originalProposalData } = useQuery({ 
+    queryKey: ['proposal', organizedProposals.original?.id], 
+    queryFn: () => organizedProposals.original?.id ? api<any>('GET', `/proposals/${organizedProposals.original.id}`) : Promise.resolve(null),
+    enabled: !!organizedProposals.original?.id
+  });
+  
+  // Fetch full proposal data for all change orders using useQueries
+  const changeOrderQueries = useQueries({
+    queries: organizedProposals.changeOrders.map(co => ({
+      queryKey: ['proposal', co.id],
+      queryFn: () => api<any>('GET', `/proposals/${co.id}`),
+      enabled: !!co.id
+    }))
+  });
+  
+  // Calculate totals
+  const total = useMemo(() => {
+    // Calculate original total
+    const originalTotal = calculateProposalTotal(originalProposalData || organizedProposals.original);
+    
+    // Calculate change orders totals
+    const changeOrderTotals = organizedProposals.changeOrders.map((co, idx) => {
+      const queryResult = changeOrderQueries[idx];
+      const dataToUse = queryResult?.data || co;
+      return calculateProposalTotal(dataToUse);
+    });
+    
+    // Sum all totals
+    return originalTotal + changeOrderTotals.reduce((sum, coTotal) => sum + coTotal, 0);
+  }, [originalProposalData, organizedProposals, changeOrderQueries]);
+  
+  return total;
+}
 
 // Helper functions for currency formatting (CAD)
 const formatCurrency = (value: string): string => {
@@ -824,7 +931,10 @@ function ProjectListItem({ project, projectDivisions, projectStatuses }:{ projec
   const start = (project.date_start || project.created_at || '').slice(0,10);
   const eta = (project.date_eta || '').slice(0,10);
   const projectAdminId = project.project_admin_id || null;
-  const estimatedValue = project.service_value || 0;
+  
+  // Calculate total from proposals (original + change orders)
+  const proposalsTotal = useProposalsTotal(project.id);
+  const estimatedValue = proposalsTotal > 0 ? proposalsTotal : (project.service_value || 0);
   
   // Get employees data for avatars
   const { data: employeesData } = useQuery({ 
@@ -933,10 +1043,12 @@ function ProjectListCard({ project, projectDivisions, projectStatuses }:{ projec
   const eta = (project.date_eta || '').slice(0,10);
   const projectAdminId = project.project_admin_id || null;
   const actualValue = project.cost_actual || 0;
-  const estimatedValue = project.service_value || 0;
+  
+  // Calculate total from proposals (original + change orders)
+  const proposalsTotal = useProposalsTotal(project.id);
+  const estimatedValue = proposalsTotal > 0 ? proposalsTotal : (project.service_value || 0);
+  
   const projectDivIds = project.project_division_ids || [];
-  // Matches ProjectDetail (General Information): `project_division_percentages`
-  const percentages = project.project_division_percentages || {};
   
   // Get employees data for avatars
   const { data: employeesData } = useQuery({ 
@@ -952,33 +1064,61 @@ function ProjectListCard({ project, projectDivisions, projectStatuses }:{ projec
     return employees.find((e: any) => String(e.id) === String(projectAdminId)) || null;
   }, [projectAdminId, employees]);
   
-  // Calculate percentages if not set (auto-initialize)
+  // Fetch proposals to get pricing items for percentage calculation
+  const { data:proposals } = useQuery({ 
+    queryKey:['projectProposals', project.id], 
+    queryFn: ()=>api<any[]>('GET', `/proposals?project_id=${encodeURIComponent(String(project.id||''))}`) 
+  });
+  
+  // Fetch full proposal data if proposal exists
+  const proposal = proposals && proposals.length > 0 ? proposals[0] : null;
+  const { data:proposalData } = useQuery({ 
+    queryKey: ['proposal', proposal?.id],
+    queryFn: () => proposal?.id ? api<any>('GET', `/proposals/${proposal.id}`) : Promise.resolve(null),
+    enabled: !!proposal?.id
+  });
+  
+  // Calculate percentages from pricing items
   const calculatedPercentages = useMemo(() => {
     if (projectDivIds.length === 0) return {};
-
-    // Filter percentages to only include valid division IDs (remove orphaned percentages)
-    const filteredPercentages: { [key: string]: number } = {};
-    projectDivIds.forEach(id => {
-      const idStr = String(id);
-      if ((percentages as any)[idStr] !== undefined) {
-        filteredPercentages[idStr] = Number((percentages as any)[idStr]) || 0;
-      }
-    });
-
-    // If percentages exist and cover all divisions, use them
-    const hasPercentages = projectDivIds.every(id => filteredPercentages[String(id)] !== undefined);
-    if (hasPercentages && Object.keys(filteredPercentages).length > 0) {
-      return filteredPercentages;
-    }
-
-    // Otherwise, calculate equal distribution
-    const equalPercent = projectDivIds.length === 1 ? 100 : 100 / projectDivIds.length;
+    
+    // Initialize all divisions to 0%
     const result: { [key: string]: number } = {};
     projectDivIds.forEach(id => {
-      result[String(id)] = equalPercent;
+      result[String(id)] = 0;
     });
+    
+    // Get pricing items from proposal (data is nested in proposalData.data)
+    const pricingItems = proposalData?.data?.additional_costs || [];
+    
+    // If no pricing items, return 0% for all divisions
+    if (pricingItems.length === 0) {
+      return result;
+    }
+    
+    // Group by division_id and sum values
+    const divisionTotals: { [key: string]: number } = {};
+    pricingItems.forEach((item: any) => {
+      if (item.division_id) {
+        const divId = String(item.division_id);
+        const value = (item.value || 0) * (parseInt(item.quantity || '1', 10) || 1);
+        divisionTotals[divId] = (divisionTotals[divId] || 0) + value;
+      }
+    });
+    
+    // Calculate total
+    const total = Object.values(divisionTotals).reduce((a, b) => a + b, 0);
+    
+    // Calculate percentages only if total > 0
+    if (total > 0) {
+      projectDivIds.forEach(id => {
+        const idStr = String(id);
+        result[idStr] = divisionTotals[idStr] ? (divisionTotals[idStr] / total) * 100 : 0;
+      });
+    }
+    
     return result;
-  }, [projectDivIds, percentages]);
+  }, [projectDivIds, proposalData]);
   
   // Get division icons and labels with percentages (only if projectDivisions is already loaded)
   const divisionIcons = useMemo(() => {

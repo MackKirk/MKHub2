@@ -9,12 +9,55 @@ import { useConfirm } from '@/components/ConfirmProvider';
 import { useUnsavedChanges } from '@/components/UnsavedChangesProvider';
 // EstimateBuilder removed - now using simple pricing items
 
+// Icon mapping for divisions (same as in Projects.tsx)
+const getDivisionIcon = (label: string): string => {
+  const iconMap: Record<string, string> = {
+    'Roofing': '🏠',
+    'Concrete Restoration & Waterproofing': '🏗️',
+    'Cladding & Exterior Finishes': '🧱',
+    'Repairs & Maintenance': '🔧',
+    'Mechanical': '🔩',
+    'Electrical': '⚡',
+    'Carpentry': '🪵',
+    'Welding & Custom Fabrication': '🔥',
+    'Structural Upgrading': '📐',
+    'Solar PV': '☀️',
+    'Green Roofing': '🌱',
+  };
+  return iconMap[label] || '📦';
+};
+
 type Client = { id:string, name?:string, display_name?:string, address_line1?:string, city?:string, province?:string, country?:string };
 type Site = { id:string, site_name?:string, site_address_line1?:string, site_address_line2?:string, site_city?:string, site_province?:string, site_postal_code?:string, site_country?:string };
 
-export default function ProposalForm({ mode, clientId: clientIdProp, siteId: siteIdProp, projectId: projectIdProp, initial, disabled, onSave, showRestrictionWarning, restrictionMessage }: { mode:'new'|'edit', clientId?:string, siteId?:string, projectId?:string, initial?: any, disabled?: boolean, onSave?: ()=>void, showRestrictionWarning?: boolean, restrictionMessage?: string }){
+// Helper function to get division info by ID
+function getDivisionInfoById(divisionId: string | undefined, projectDivisions: any[] | undefined): { icon: string; label: string } | null {
+  if (!divisionId || !projectDivisions) return null;
+  for (const div of (projectDivisions || [])) {
+    if (String(div.id) === String(divisionId)) {
+      return { icon: getDivisionIcon(div.label), label: div.label };
+    }
+    for (const sub of (div.subdivisions || [])) {
+      if (String(sub.id) === String(divisionId)) {
+        return { icon: getDivisionIcon(div.label), label: `${div.label} - ${sub.label}` };
+      }
+    }
+  }
+  return null;
+}
+
+export default function ProposalForm({ mode, clientId: clientIdProp, siteId: siteIdProp, projectId: projectIdProp, initial, disabled, onSave, showRestrictionWarning, restrictionMessage, onPricingItemsChange }: { mode:'new'|'edit', clientId?:string, siteId?:string, projectId?:string, initial?: any, disabled?: boolean, onSave?: ()=>void, showRestrictionWarning?: boolean, restrictionMessage?: string, onPricingItemsChange?: (items: any[])=>void }){
   const nav = useNavigate();
   const queryClient = useQueryClient();
+  const confirm = useConfirm();
+  
+  // Check if this is a Change Order
+  const isChangeOrder = initial?.is_change_order === true;
+  const approvalStatus = initial?.approval_status || (initial?.approved_report_id ? 'approved' : null);
+  const isApproved = approvalStatus === 'approved';
+  
+  // Disable editing if Change Order is approved
+  const effectiveDisabled = disabled || (isChangeOrder && isApproved);
 
   const [clientId] = useState<string>(String(clientIdProp || initial?.client_id || ''));
   const [siteId] = useState<string>(String(siteIdProp || initial?.site_id || ''));
@@ -54,6 +97,13 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
   });
   const { data:settings } = useQuery({ queryKey:['settings'], queryFn: ()=>api<any>('GET','/settings') });
   
+  // Fetch project divisions for division selection
+  const { data:projectDivisions } = useQuery({ 
+    queryKey:['project-divisions'], 
+    queryFn: ()=>api<any[]>('GET','/settings/project-divisions'), 
+    staleTime: 300_000
+  });
+  
   // Check permissions (me query might be used elsewhere)
   const { data:me } = useQuery({ queryKey:['me'], queryFn: ()=>api<any>('GET','/auth/me') });
 
@@ -68,8 +118,9 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
   const [otherNotes, setOtherNotes] = useState<string>('');
   const [projectDescription, setProjectDescription] = useState<string>('');
   const [additionalNotes, setAdditionalNotes] = useState<string>('');
-  const [pricingItems, setPricingItems] = useState<{ name:string, price:string, quantity?:string, pst?:boolean, gst?:boolean }[]>([]);
+  const [pricingItems, setPricingItems] = useState<{ name:string, price:string, quantity?:string, pst?:boolean, gst?:boolean, division_id?:string }[]>([]);
   const [optionalServices, setOptionalServices] = useState<{ service:string, price:string }[]>([]);
+  const [showDivisionModal, setShowDivisionModal] = useState(false);
   const [showTotalInPdf, setShowTotalInPdf] = useState<boolean>(true);
   const [pstRate, setPstRate] = useState<number>(7);
   const [gstRate, setGstRate] = useState<number>(5);
@@ -184,10 +235,9 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
   const [contactNameError, setContactNameError] = useState(false);
   const [contactPhotoBlob, setContactPhotoBlob] = useState<Blob|null>(null);
   const [pickerForContact, setPickerForContact] = useState<string|null>(null);
-  const confirm = useConfirm();
   const [footerVisible, setFooterVisible] = useState<boolean>(false);
   const [sectionsExpanded, setSectionsExpanded] = useState<Record<string, boolean>>({
-    generalInfo: false,
+    generalInfo: true,
     sections: false,
     pricing: false,
     optionalServices: false,
@@ -268,6 +318,35 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
         return a + (price * qty);
       }, 0);
   }, [pricingItems]);
+  
+  // Update React Query cache with current pricing items for real-time percentage calculation
+  useEffect(() => {
+    if (!projectId) return;
+    
+    const additionalCosts = pricingItems.map(c => {
+      // Parse price value - handle both formatted and unformatted values
+      const priceStr = c.price || '0';
+      const cleanedPrice = priceStr.replace(/,/g, '').replace(/[^0-9.]/g, '');
+      const priceValue = Number(cleanedPrice) || 0;
+      
+      return {
+        label: c.name,
+        value: priceValue,
+        quantity: c.quantity || '1',
+        pst: c.pst === true,
+        gst: c.gst === true,
+        division_id: c.division_id || null
+      };
+    });
+
+    // Always update cache, even if empty, to ensure real-time updates
+    queryClient.setQueryData(['proposal-pricing-items', projectId], {
+      data: { additional_costs: additionalCosts }
+    });
+
+    // Push live updates to parent (ProjectDetail) so percentages update instantly without reload.
+    onPricingItemsChange?.(additionalCosts);
+  }, [pricingItems, projectId, queryClient, onPricingItemsChange]);
 
   const pst = useMemo(() => {
     // PST is calculated only on items marked for PST (applied to direct costs)
@@ -351,7 +430,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
     // Load pricing items from bid_price and additional_costs (legacy support)
     const legacyBidPrice = d.bid_price ?? 0;
     const dc = Array.isArray(d.additional_costs)? d.additional_costs : [];
-    const loadedItems: { name:string, price:string, quantity?:string, pst?:boolean, gst?:boolean }[] = [];
+    const loadedItems: { name:string, price:string, quantity?:string, pst?:boolean, gst?:boolean, division_id?:string }[] = [];
     if (legacyBidPrice && Number(legacyBidPrice) > 0) {
       loadedItems.push({ name: 'Bid Price', price: formatAccounting(legacyBidPrice), quantity: '1', pst: false, gst: false });
     }
@@ -364,7 +443,8 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
           price: formatAccounting(value),
           quantity: c.quantity || '1',
           pst: c.pst === true || c.pst === 'true' || c.pst === 1,
-          gst: c.gst === true || c.gst === 'true' || c.gst === 1
+          gst: c.gst === true || c.gst === 'true' || c.gst === 1,
+          division_id: c.division_id ? String(c.division_id) : undefined
         });
       }
     });
@@ -756,7 +836,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
         show_total_in_pdf: showTotalInPdf,
         show_pst_in_pdf: showPstInPdf,
         show_gst_in_pdf: showGstInPdf,
-        additional_costs: pricingItems.map(c=> ({ label: c.name, value: Number(parseAccounting(c.price)||'0'), quantity: c.quantity || '1', pst: c.pst === true, gst: c.gst === true })),
+        additional_costs: pricingItems.map(c=> ({ label: c.name, value: Number(parseAccounting(c.price)||'0'), quantity: c.quantity || '1', pst: c.pst === true, gst: c.gst === true, division_id: c.division_id || null })),
         optional_services: optionalServices.map(s=> ({ service: s.service, price: Number(parseAccounting(s.price)||'0') })),
         pst_rate: pstRate,
         gst_rate: gstRate,
@@ -886,7 +966,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
         show_total_in_pdf: showTotalInPdf,
         show_pst_in_pdf: showPstInPdf,
         show_gst_in_pdf: showGstInPdf,
-        additional_costs: pricingItems.map(c=> ({ label: c.name, value: Number(parseAccounting(c.price)||'0'), quantity: c.quantity || '1', pst: c.pst === true, gst: c.gst === true })),
+        additional_costs: pricingItems.map(c=> ({ label: c.name, value: Number(parseAccounting(c.price)||'0'), quantity: c.quantity || '1', pst: c.pst === true, gst: c.gst === true, division_id: c.division_id || null })),
         optional_services: optionalServices.map(s=> ({ service: s.service, price: Number(parseAccounting(s.price)||'0') })),
         pst_rate: pstRate,
         gst_rate: gstRate,
@@ -1166,10 +1246,11 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
       )}
       
       <div className="space-y-6">
-        {/* General Information Block */}
+        {/* General Information Block - Hidden for Change Orders */}
+        {!isChangeOrder && (
         <div className="rounded-xl border bg-white overflow-hidden">
           <div 
-            className="bg-gradient-to-br from-[#7f1010] to-[#a31414] p-3 text-white font-semibold flex items-center justify-between cursor-pointer hover:opacity-90 transition-opacity"
+            className="bg-slate-200 p-3 text-gray-900 font-semibold flex items-center justify-between cursor-pointer hover:opacity-90 transition-opacity"
             onClick={() => setSectionsExpanded(prev => ({ ...prev, generalInfo: !prev.generalInfo }))}
           >
             <span>General Information</span>
@@ -1279,11 +1360,12 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
           </div>
           )}
         </div>
+        )}
         
         {/* Sections Block */}
         <div className="rounded-xl border bg-white overflow-hidden">
           <div 
-            className="bg-gradient-to-br from-[#7f1010] to-[#a31414] p-3 text-white font-semibold flex items-center justify-between cursor-pointer hover:opacity-90 transition-opacity"
+            className="bg-slate-200 p-3 text-gray-900 font-semibold flex items-center justify-between cursor-pointer hover:opacity-90 transition-opacity"
             onClick={() => setSectionsExpanded(prev => ({ ...prev, sections: !prev.sections }))}
           >
             <span>Sections</span>
@@ -1303,14 +1385,14 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
               <div key={s.id||idx} className="relative">
                 {/* Insertion line indicator - shown above the section when dragging */}
                 {!disabled && dragOverSection === idx && dragInsertPosition === 'above' && draggingSection !== null && draggingSection !== idx && (
-                  <div className="absolute -top-2 left-0 right-0 h-0.5 bg-brand-red rounded-full z-10 shadow-lg" style={{boxShadow: '0 0 8px rgba(214, 32, 40, 0.6)'}}></div>
+                  <div className="absolute -top-2 left-0 right-0 h-0.5 bg-slate-400 rounded-full z-10 shadow-lg" style={{boxShadow: '0 0 8px rgba(148, 163, 184, 0.6)'}}></div>
                 )}
                 <div
                    className={`border rounded p-3 transition-all ${
                      draggingSection === idx ? 'opacity-50 scale-95' : ''
                    } ${
                      dragOverSection === idx && !disabled && draggingSection !== idx 
-                       ? 'ring-2 ring-brand-red ring-opacity-50 bg-red-50/30' 
+                       ? 'ring-2 ring-slate-400 ring-opacity-50 bg-slate-100/50' 
                        : ''
                    }`}
                    onDragOver={!disabled ? (e)=>{ e.preventDefault(); onSectionDragOver(idx, e); } : undefined}
@@ -1474,7 +1556,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
               </div>
                 {/* Insertion line indicator - shown below the section when dragging */}
                 {!disabled && dragOverSection === idx && dragInsertPosition === 'below' && draggingSection !== null && draggingSection !== idx && (
-                  <div className="absolute -bottom-2 left-0 right-0 h-0.5 bg-brand-red rounded-full z-10 shadow-lg" style={{boxShadow: '0 0 8px rgba(214, 32, 40, 0.6)'}}></div>
+                  <div className="absolute -bottom-2 left-0 right-0 h-0.5 bg-slate-400 rounded-full z-10 shadow-lg" style={{boxShadow: '0 0 8px rgba(148, 163, 184, 0.6)'}}></div>
                 )}
             </div>
             ))}
@@ -1492,7 +1574,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
         {/* Pricing Block */}
         <div className="rounded-xl border bg-white overflow-hidden">
           <div 
-            className="bg-gradient-to-br from-[#7f1010] to-[#a31414] p-3 text-white font-semibold flex items-center justify-between cursor-pointer hover:opacity-90 transition-opacity"
+            className="bg-slate-200 p-3 text-gray-900 font-semibold flex items-center justify-between cursor-pointer hover:opacity-90 transition-opacity"
             onClick={() => setSectionsExpanded(prev => ({ ...prev, pricing: !prev.pricing }))}
           >
             <span>Pricing</span>
@@ -1566,8 +1648,23 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
               const qtyNum = parseFloat(c.quantity || '1') || 1;
               const lineTotal = priceNum * qtyNum;
               
+              // Get division info for icon display
+              const divisionInfo = getDivisionInfoById(c.division_id, projectDivisions);
+              
               return (
                 <div key={i} className="flex flex-col sm:flex-row gap-1.5 sm:gap-2 items-stretch sm:items-center w-full min-w-0">
+                  {/* Division Icon */}
+                  {divisionInfo && (
+                    <div className="relative group/divicon flex-shrink-0">
+                      <div className="text-lg cursor-pointer hover:scale-110 transition-transform flex items-center justify-center w-8 h-8">
+                        {divisionInfo.icon}
+                      </div>
+                      <div className="absolute left-0 bottom-full mb-1 px-2 py-1 bg-gray-900 text-white text-xs rounded whitespace-nowrap opacity-0 group-hover/divicon:opacity-100 transition-opacity pointer-events-none z-[9999] shadow-lg">
+                        {divisionInfo.label}
+                        <div className="absolute -bottom-1 left-2 w-2 h-2 bg-gray-900 rotate-45"></div>
+                      </div>
+                    </div>
+                  )}
                   <input 
                     className={`flex-1 min-w-0 border rounded px-3 py-2 text-sm ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} 
                     placeholder="Name" 
@@ -1684,7 +1781,15 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
           {!disabled && (
             <button 
               className="mt-3 w-full border-2 border-dashed border-gray-300 rounded-lg p-4 hover:border-brand-red hover:bg-gray-50 transition-all text-center bg-white flex items-center justify-center min-h-[60px] disabled:opacity-60"
-              onClick={()=> setPricingItems(arr=> [...arr, { name:'', price:'', quantity:'1', pst: false, gst: false }])}
+              onClick={()=> {
+                // Only show modal if projectId exists and has divisions
+                if (projectId && project?.project_division_ids && project.project_division_ids.length > 0) {
+                  setShowDivisionModal(true);
+                } else {
+                  // Fallback: add item without division if no project/divisions
+                  setPricingItems(arr=> [...arr, { name:'', price:'', quantity:'1', pst: false, gst: false }]);
+                }
+              }}
             >
               <div className="text-2xl text-gray-400 mr-2">+</div>
               <div className="font-medium text-sm text-gray-700">Add Pricing Item</div>
@@ -1749,7 +1854,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
         {/* Optional Services Block */}
         <div className="rounded-xl border bg-white overflow-hidden">
           <div 
-            className="bg-gradient-to-br from-[#7f1010] to-[#a31414] p-3 text-white font-semibold flex items-center justify-between cursor-pointer hover:opacity-90 transition-opacity"
+            className="bg-slate-200 p-3 text-gray-900 font-semibold flex items-center justify-between cursor-pointer hover:opacity-90 transition-opacity"
             onClick={() => setSectionsExpanded(prev => ({ ...prev, optionalServices: !prev.optionalServices }))}
           >
             <span>Optional Services</span>
@@ -1786,7 +1891,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
         {/* Terms Block */}
         <div className="rounded-xl border bg-white overflow-hidden">
           <div 
-            className="bg-gradient-to-br from-[#7f1010] to-[#a31414] p-3 text-white font-semibold flex items-center justify-between cursor-pointer hover:opacity-90 transition-opacity"
+            className="bg-slate-200 p-3 text-gray-900 font-semibold flex items-center justify-between cursor-pointer hover:opacity-90 transition-opacity"
             onClick={() => setSectionsExpanded(prev => ({ ...prev, terms: !prev.terms }))}
           >
             <span>Terms</span>
@@ -1896,47 +2001,117 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
             
             {/* Right: Action buttons */}
             <div className="flex items-center gap-1.5">
-              {!disabled && projectId && !window.location.pathname.includes('/proposals/') && (
+              {/* Submit for Approval button - only for Change Orders that are not approved */}
+              {isChangeOrder && !isApproved && !effectiveDisabled && (
+                <>
+                  <button 
+                    className="px-4 py-1.5 text-sm rounded-lg bg-green-600 hover:bg-green-700 text-white font-semibold transition-colors shadow-sm" 
+                    onClick={async () => {
+                      const result = await confirm({
+                        title: 'Submit for Approval',
+                        message: 'Are you sure you want to submit this Change Order for approval? Once submitted, it cannot be edited until approved.',
+                        confirmText: 'Submit',
+                        cancelText: 'Cancel'
+                      });
+                      if (result !== 'confirm') return;
+                      try {
+                        if (initial?.id) {
+                          // First save any unsaved changes
+                          if (hasUnsavedChanges && handleSaveRef.current) {
+                            await handleSaveRef.current();
+                          }
+                          // Then submit for approval
+                          await api('POST', `/proposals/${encodeURIComponent(initial.id)}/submit-for-approval`);
+                          toast.success('Change Order submitted for approval');
+                          // Refetch to get updated status
+                          queryClient.invalidateQueries({ queryKey: ['proposal', initial.id] });
+                          queryClient.invalidateQueries({ queryKey: ['projectProposals'] });
+                          if (onSave) {
+                            onSave();
+                          }
+                        }
+                      } catch (e: any) {
+                        console.error('Failed to submit for approval:', e);
+                        toast.error(e?.response?.data?.detail || 'Failed to submit for approval');
+                      }
+                    }}
+                  >
+                    Submit for Approval
+                  </button>
+                  <div className="w-px h-4 bg-gray-300"></div>
+                </>
+              )}
+              {/* Approval status badge for Change Orders */}
+              {isChangeOrder && isApproved && (
+                <>
+                  <div className="px-3 py-1.5 text-sm rounded-lg bg-green-100 text-green-700 font-medium">
+                    ✓ Approved
+                  </div>
+                  <div className="w-px h-4 bg-gray-300"></div>
+                </>
+              )}
+              {isChangeOrder && approvalStatus === 'pending' && (
+                <>
+                  <div className="px-3 py-1.5 text-sm rounded-lg bg-yellow-100 text-yellow-700 font-medium">
+                    ⏳ Pending Approval
+                  </div>
+                  <div className="w-px h-4 bg-gray-300"></div>
+                </>
+              )}
+              {!effectiveDisabled && projectId && !window.location.pathname.includes('/proposals/') && (
                 <button 
                   className="px-3 py-1.5 text-sm rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium transition-colors" 
                   onClick={handleClearProposal}
-                  disabled={disabled}
+                  disabled={effectiveDisabled}
                 >
                   Clear Proposal
                 </button>
               )}
-              {!disabled && mode === 'edit' && (!projectId || window.location.pathname.includes('/proposals/')) && (
+              {/* Delete button for regular proposals or Change Orders that haven't been submitted for approval */}
+              {mode === 'edit' && (
+                (isChangeOrder && !isApproved && approvalStatus !== 'pending' && !effectiveDisabled) || // Change Orders not submitted
+                (!isChangeOrder && (!projectId || window.location.pathname.includes('/proposals/')) && !effectiveDisabled) // Regular proposals in standalone view
+              ) && (
                 <>
                   <button 
                     className="px-3 py-1.5 text-sm rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium transition-colors" 
                     onClick={async () => {
                       const result = await confirm({ 
-                        title: 'Delete Proposal', 
-                        message: 'Are you sure you want to delete this proposal? This action cannot be undone.' 
+                        title: isChangeOrder ? 'Delete Change Order' : 'Delete Proposal', 
+                        message: isChangeOrder 
+                          ? `Are you sure you want to delete Change Order ${initial?.change_order_number || ''}? This action cannot be undone.`
+                          : 'Are you sure you want to delete this proposal? This action cannot be undone.' 
                       });
                       if (result !== 'confirm') return;
                       try {
                         if (initial?.id) {
                           await api('DELETE', `/proposals/${encodeURIComponent(initial.id)}`);
-                          toast.success('Proposal deleted');
+                          toast.success(isChangeOrder ? 'Change Order deleted' : 'Proposal deleted');
                           queryClient.invalidateQueries({ queryKey: ['proposals'] });
                           queryClient.invalidateQueries({ queryKey: ['projectProposals'] });
                           if (!projectId || window.location.pathname.includes('/proposals/')) {
                             nav(-1);
+                          } else if (projectId && isChangeOrder) {
+                            // For Change Orders in project context, refresh the proposals list
+                            queryClient.invalidateQueries({ queryKey: ['projectProposals', projectId] });
+                            // Call onSave to refresh the parent component (it will handle navigation to Proposal tab)
+                            if (onSave) {
+                              await onSave();
+                            }
                           }
                         }
                       } catch (e: any) {
-                        console.error('Failed to delete proposal:', e);
-                        toast.error(e?.response?.data?.detail || 'Failed to delete proposal');
+                        console.error('Failed to delete:', e);
+                        toast.error(e?.response?.data?.detail || `Failed to delete ${isChangeOrder ? 'Change Order' : 'proposal'}`);
                       }
                     }}
                   >
-                    Delete Proposal
+                    {isChangeOrder ? 'Delete Change Order' : 'Delete Proposal'}
                   </button>
                   <div className="w-px h-4 bg-gray-300"></div>
                 </>
               )}
-              {!disabled && (
+              {!effectiveDisabled && !isApproved && (
                 <button 
                   className={`px-4 py-1.5 text-sm rounded-lg text-white font-semibold disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm ${
                     hasUnsavedChanges
@@ -1944,19 +2119,23 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                       : 'bg-gray-400 hover:bg-gray-500'
                   }`}
                   onClick={handleSave} 
-                  disabled={disabled || isSaving || !hasUnsavedChanges}
+                  disabled={effectiveDisabled || isSaving || !hasUnsavedChanges}
                 >
                   {isSaving ? 'Saving...' : 'Save Proposal'}
                 </button>
               )}
-              <div className="w-px h-4 bg-gray-300"></div>
-              <button 
-                className="px-3 py-1.5 text-sm rounded-lg bg-gray-400 hover:bg-gray-500 text-white font-medium disabled:opacity-60 disabled:cursor-not-allowed transition-colors" 
-                disabled={isGenerating} 
-                onClick={handleGenerate}
-              >
-                {isGenerating ? 'Generating…' : 'Generate Proposal'}
-              </button>
+              {!isApproved && (
+                <>
+                  <div className="w-px h-4 bg-gray-300"></div>
+                  <button 
+                    className="px-3 py-1.5 text-sm rounded-lg bg-gray-400 hover:bg-gray-500 text-white font-medium disabled:opacity-60 disabled:cursor-not-allowed transition-colors" 
+                    disabled={isGenerating} 
+                    onClick={handleGenerate}
+                  >
+                    {isGenerating ? 'Generating…' : 'Generate Proposal'}
+                  </button>
+                </>
+              )}
               {downloadUrl && (
                 <>
                   <div className="w-px h-4 bg-gray-300"></div>
@@ -2272,9 +2451,92 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
             } finally {
               setPickerForContact(null);
             }
-          }} 
+          }}
         />
       )}
+
+      {/* Division Selection Modal */}
+      {showDivisionModal && projectId && project?.project_division_ids && (
+        <DivisionSelectionModal
+          projectDivisions={projectDivisions || []}
+          projectDivisionIds={project.project_division_ids || []}
+          onSelect={(divisionId) => {
+            setPricingItems(arr => [...arr, { name: '', price: '', quantity: '1', pst: false, gst: false, division_id: divisionId }]);
+            setShowDivisionModal(false);
+          }}
+          onClose={() => setShowDivisionModal(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+// Division Selection Modal Component
+function DivisionSelectionModal({ 
+  projectDivisions, 
+  projectDivisionIds, 
+  onSelect, 
+  onClose 
+}: { 
+  projectDivisions: any[]; 
+  projectDivisionIds: string[]; 
+  onSelect: (divisionId: string) => void; 
+  onClose: () => void;
+}) {
+  // Get all available divisions (all divisions assigned to the project, allowing repeats)
+  const availableDivisions = useMemo(() => {
+    const divisions: Array<{ id: string; label: string; icon: string }> = [];
+    
+    for (const div of projectDivisions) {
+      const divId = String(div.id);
+      // Check main division
+      if (projectDivisionIds.includes(divId)) {
+        divisions.push({ id: divId, label: div.label, icon: getDivisionIcon(div.label) });
+      }
+      // Check subdivisions
+      for (const sub of (div.subdivisions || [])) {
+        const subId = String(sub.id);
+        if (projectDivisionIds.includes(subId)) {
+          divisions.push({ id: subId, label: `${div.label} - ${sub.label}`, icon: getDivisionIcon(div.label) });
+        }
+      }
+    }
+    
+    return divisions;
+  }, [projectDivisions, projectDivisionIds]);
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-xl w-full max-w-2xl max-h-[80vh] overflow-hidden flex flex-col shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="p-4 bg-[#7f1010] flex items-center justify-between">
+          <h3 className="text-lg font-semibold text-white">Select Division</h3>
+          <button onClick={onClose} className="text-white hover:text-gray-200 transition-colors">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+        <div className="flex-1 overflow-y-auto p-4">
+          {availableDivisions.length > 0 ? (
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              {availableDivisions.map((div) => (
+                <button
+                  key={div.id}
+                  onClick={() => onSelect(div.id)}
+                  className="flex flex-col items-center gap-2 p-4 border rounded-lg hover:border-[#7f1010] hover:bg-gray-50 transition-all"
+                >
+                  <span className="text-3xl">{div.icon}</span>
+                  <span className="text-sm font-medium text-gray-900 text-center">{div.label}</span>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-8 text-gray-500">
+              <p>All divisions have been assigned to pricing items.</p>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
