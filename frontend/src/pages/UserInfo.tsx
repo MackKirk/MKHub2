@@ -2038,7 +2038,9 @@ export default function UserInfo(){
   const [dirty, setDirty] = useState<boolean>(false);
   const [permissionsDirty, setPermissionsDirty] = useState<boolean>(false);
   const [divisionsDirty, setDivisionsDirty] = useState<boolean>(false);
+  const [projectDivisionsDirty, setProjectDivisionsDirty] = useState<boolean>(false);
   const [selectedDivisions, setSelectedDivisions] = useState<string[]>([]);
+  const [selectedProjectDivisions, setSelectedProjectDivisions] = useState<string[]>([]);
   const [isEditingPersonal, setIsEditingPersonal] = useState(false);
   
   // Auto-fill work_eligibility_status if user has visas but no status
@@ -2115,9 +2117,12 @@ export default function UserInfo(){
     setDirty(false); 
     setPermissionsDirty(false);
     setDivisionsDirty(false);
+    setProjectDivisionsDirty(false);
     const divisions = (u?.divisions || []).map((d: any) => String(d.id));
     setSelectedDivisions(divisions);
-  }, [userId, data?.profile, u?.divisions]);
+    const projectDivs = Array.isArray(p?.project_division_ids) ? p.project_division_ids.map((id: any) => String(id)) : [];
+    setSelectedProjectDivisions(projectDivs);
+  }, [userId, data?.profile, u?.divisions, p?.project_division_ids]);
 
   const handleTabChange = async (newTab: typeof tabParam | 'personal') => {
     // Check if user has permission to view this tab
@@ -2252,13 +2257,22 @@ export default function UserInfo(){
         await queryClient.refetchQueries({ queryKey: ['userProfile', userId] });
       }
       
+      // Save project divisions if any changes
+      if (projectDivisionsDirty && (canEdit || canEditGeneral)) {
+        await api('PUT', `/employees/${encodeURIComponent(String(userId||''))}/project-divisions`, selectedProjectDivisions);
+        setProjectDivisionsDirty(false);
+        // Invalidate and refetch user profile to get updated project divisions
+        await queryClient.invalidateQueries({ queryKey: ['userProfile', userId] });
+        await queryClient.refetchQueries({ queryKey: ['userProfile', userId] });
+      }
+      
       // Save permissions if any
       if (permissionsDirty && permissionsRef.current) {
         await permissionsRef.current.save();
         setPermissionsDirty(false);
       }
       
-      if (dirty || permissionsDirty || divisionsDirty) {
+      if (dirty || permissionsDirty || divisionsDirty || projectDivisionsDirty) {
         toast.success('Saved');
       }
     }catch(e: any){ 
@@ -2439,30 +2453,29 @@ export default function UserInfo(){
                     <div className="text-xs text-gray-500 mt-0.5 mb-2">Dates and employment attributes.</div>
                     <JobSection type="employment" p={p} editable={isEditingJob && (canEditGeneral || !!canSelfEdit)} userId={String(userId)} collectChanges={collectChanges} usersOptions={usersOptions||[]} settings={settings} canViewCompensation={canViewJobCompensation} />
                   </div>
-                  <div>
-                    <div className="flex items-center gap-2"><h4 className="font-semibold">Organization</h4></div>
-                    <div className="text-xs text-gray-500 mt-0.5 mb-2">Reporting and work contacts.</div>
-                    <JobSection 
-                      type="organization" 
-                      p={p} 
-                      editable={isEditingJob && (canEditGeneral || !!canSelfEdit)} 
-                      userId={String(userId)} 
-                      collectChanges={collectChanges} 
-                      usersOptions={usersOptions||[]} 
-                      settings={settings} 
-                      userDivisions={u?.divisions || []}
-                      selectedDivisions={selectedDivisions}
-                      onDivisionsChange={(divisions) => {
-                        setSelectedDivisions(divisions);
-                        setDivisionsDirty(true);
-                      }}
-                    />
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2"><h4 className="font-semibold">Time Off</h4></div>
-                    <div className="text-xs text-gray-500 mt-0.5 mb-2">Request time off and view your balance.</div>
-                    <TimeOffSection userId={String(userId)} canEdit={canEditGeneral} />
-                  </div>
+                  <OrganizationSection 
+                    p={p} 
+                    editable={isEditingJob && (canEditGeneral || !!canSelfEdit)} 
+                    userId={String(userId)} 
+                    collectChanges={collectChanges} 
+                    usersOptions={usersOptions||[]} 
+                    settings={settings} 
+                    userDivisions={u?.divisions || []}
+                    selectedDivisions={selectedDivisions}
+                    onDivisionsChange={(divisions) => {
+                      setSelectedDivisions(divisions);
+                      setDivisionsDirty(true);
+                    }}
+                    selectedProjectDivisions={selectedProjectDivisions}
+                    onProjectDivisionsChange={(divisions) => {
+                      setSelectedProjectDivisions(divisions);
+                      setProjectDivisionsDirty(true);
+                    }}
+                  />
+                  {canViewJobCompensation && (
+                    <SalarySection p={p} editable={isEditingJob && (canEditGeneral || !!canSelfEdit)} userId={String(userId)} collectChanges={collectChanges} settings={settings} canEdit={canEditGeneral} />
+                  )}
+                  <TimeOffSection userId={String(userId)} canEdit={canEditGeneral} />
                 </div>
               )}
               {tab==='docs' && canViewGeneral && <UserDocuments userId={String(userId)} canEdit={canEditGeneral} />}
@@ -3036,27 +3049,6 @@ function JobSection({ type, p, editable, userId, collectChanges, usersOptions, s
                 <input className="w-full rounded-lg border px-3 py-2" value={form.employment_type} onChange={e=>onField('employment_type', e.target.value)} />
               ))
             ) : <div className="text-gray-900 font-medium py-1">{String(p.employment_type||'') || '—'}</div>}
-          </div>
-        )}
-        {canViewCompensation && (
-          <div>
-            <div className="text-sm text-gray-600">Pay type</div>
-            {isEditable? (
-              (settings?.pay_types?.length ? (
-                <select className="w-full rounded-lg border px-3 py-2" value={form.pay_type} onChange={e=>onField('pay_type', e.target.value)}>
-                  <option value="">Select...</option>
-                  {settings.pay_types.map((it:any)=> <option key={it.id} value={it.label}>{it.label}</option>)}
-                </select>
-              ) : (
-                <input className="w-full rounded-lg border px-3 py-2" value={form.pay_type} onChange={e=>onField('pay_type', e.target.value)} />
-              ))
-            ) : <div className="text-gray-900 font-medium py-1">{String(p.pay_type||'') || '—'}</div>}
-          </div>
-        )}
-        {canViewCompensation && (
-          <div>
-            <div className="text-sm text-gray-600">Pay rate</div>
-            {isEditable? <input className="w-full rounded-lg border px-3 py-2" value={form.pay_rate} onChange={e=>onField('pay_rate', e.target.value)} /> : <div className="text-gray-900 font-medium py-1">{String(p.pay_rate||'') || '—'}</div>}
           </div>
         )}
         <div>
@@ -4324,6 +4316,553 @@ function TimesheetBlock({ userId, canEdit = true }:{ userId:string, canEdit?: bo
 }
 
 
+function SalarySection({ p, editable, userId, collectChanges, settings, canEdit }:{ p:any, editable:boolean, userId:string, collectChanges: (kv:Record<string,any>)=>void, settings?: any, canEdit:boolean }){
+  const isEditable = !!editable;
+  const [form, setForm] = useState<any>(()=>({
+    pay_rate: p.pay_rate||'',
+    pay_type: p.pay_type||'',
+  }));
+  const [showPayRate, setShowPayRate] = useState(false);
+  const prevEditableRef = useRef(editable);
+  
+  useEffect(() => {
+    // When entering edit mode, initialize form with current p values
+    if (editable && !prevEditableRef.current) {
+      setForm({ pay_rate: p.pay_rate||'', pay_type: p.pay_type||'' });
+    }
+    // When exiting edit mode, update form with latest p values
+    if (!editable && prevEditableRef.current) {
+      setForm({ pay_rate: p.pay_rate||'', pay_type: p.pay_type||'' });
+    }
+    prevEditableRef.current = editable;
+  }, [editable, p.pay_rate, p.pay_type]);
+  
+  const onField = (key:string, value:any)=>{ 
+    setForm((s:any)=>({ ...s, [key]: value })); 
+    collectChanges({ [key]: value }); 
+  };
+
+  return (
+    <div className="rounded-xl border bg-white p-4">
+      <div className="mb-4 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <div className="w-8 h-8 rounded bg-green-100 flex items-center justify-center">
+            <svg className="w-5 h-5 text-green-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          </div>
+          <h5 className="text-sm font-semibold text-green-900">Salary</h5>
+        </div>
+      </div>
+      {/* Current Salary */}
+      <div className="mb-4">
+        <div className="grid md:grid-cols-2 gap-4">
+          {/* Pay Rate Card */}
+          <div className="rounded-lg border-2 border-gray-200 bg-gray-50 p-3">
+            <div className="flex items-center justify-between mb-1.5">
+              <div className="text-[10px] font-medium text-gray-600 uppercase tracking-wide">Pay Rate</div>
+              {!isEditable && (
+                <button
+                  onClick={() => setShowPayRate(!showPayRate)}
+                  className="text-gray-500 hover:text-gray-700 transition-colors"
+                  type="button"
+                >
+                  {showPayRate ? (
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                    </svg>
+                  ) : (
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+                    </svg>
+                  )}
+                </button>
+              )}
+            </div>
+            {isEditable? (
+              <input className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400" value={form.pay_rate} onChange={e=>onField('pay_rate', e.target.value)} placeholder="$29.00 / Hour" />
+            ) : (
+              <div className="text-sm font-semibold text-gray-900">
+                {showPayRate ? (String(p.pay_rate||'') || '—') : '••••'}
+              </div>
+            )}
+          </div>
+
+          {/* Pay Type Card */}
+          <div className="rounded-lg border-2 border-gray-200 bg-gray-50 p-3">
+            <div className="text-[10px] font-medium text-gray-600 uppercase tracking-wide mb-1.5">Pay Type</div>
+            {isEditable? (
+              (settings?.pay_types?.length ? (
+                <select className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400" value={form.pay_type} onChange={e=>onField('pay_type', e.target.value)}>
+                  <option value="">Select...</option>
+                  {settings.pay_types.map((it:any)=> <option key={it.id} value={it.label}>{it.label}</option>)}
+                </select>
+              ) : (
+                <input className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400" value={form.pay_type} onChange={e=>onField('pay_type', e.target.value)} placeholder="Hourly / Salary / Contract..." />
+              ))
+            ) : (
+              <div className="text-sm font-semibold text-gray-900">{String(p.pay_type||'') || '—'}</div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Salary History */}
+      <SalaryHistorySection userId={userId} canEdit={canEdit} settings={settings} />
+    </div>
+  );
+}
+
+function SalaryHistorySection({ userId, canEdit, settings }:{ userId:string, canEdit:boolean, settings?: any }){
+  const queryClient = useQueryClient();
+  const { data:rows, refetch, isLoading } = useQuery({
+    queryKey:['salary-history', userId],
+    queryFn: ()=> api<any[]>('GET', `/employees/${userId}/salary-history`)
+  });
+
+  const [showAdd, setShowAdd] = useState(false);
+  const [effectiveDate, setEffectiveDate] = useState('');
+  const [payType, setPayType] = useState('');
+  const [newSalary, setNewSalary] = useState('');
+  const [justification, setJustification] = useState('');
+  const [notes, setNotes] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const reset = ()=>{
+    setEffectiveDate('');
+    setPayType('');
+    setNewSalary('');
+    setJustification('');
+    setNotes('');
+  };
+
+  const save = async()=>{
+    if (saving) return;
+    if (!effectiveDate) { toast.error('Effective date is required'); return; }
+    if (!String(newSalary||'').trim()) { toast.error('Pay rate is required'); return; }
+    if (!String(justification||'').trim()) { toast.error('Change reason is required'); return; }
+
+    setSaving(true);
+    try{
+      await api('POST', `/employees/${userId}/salary-history`, {
+        effective_date: `${effectiveDate}T00:00:00Z`,
+        new_salary: String(newSalary).trim(),
+        pay_type: String(payType||'').trim() || null,
+        justification: String(justification).trim(),
+        notes: String(notes||'').trim() || null,
+      });
+      toast.success('Salary change saved');
+      setShowAdd(false);
+      reset();
+      await refetch();
+      await queryClient.invalidateQueries({ queryKey: ['userProfile', userId] });
+    }catch(e:any){
+      toast.error(e?.message || 'Failed to save salary change');
+    }finally{
+      setSaving(false);
+    }
+  };
+
+  const formatDate = (iso?: string | null)=>{
+    if(!iso) return '—';
+    try{
+      return new Date(iso).toLocaleDateString(undefined, { timeZone: 'UTC' });
+    }catch{
+      return String(iso).slice(0,10);
+    }
+  };
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-2">
+        <div className="text-xs font-medium text-gray-700">History</div>
+        {canEdit && (
+          <button
+            onClick={()=>setShowAdd(true)}
+            className="px-2.5 py-1 rounded border border-green-300 text-green-700 text-xs font-medium hover:bg-green-50"
+          >
+            New Entry
+          </button>
+        )}
+      </div>
+
+      {isLoading ? (
+        <div className="text-xs text-gray-600">Loading...</div>
+      ) : (rows && rows.length > 0) ? (
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="border-b">
+                <th className="text-left py-1.5 px-2 font-medium text-gray-600">Effective date</th>
+                <th className="text-left py-1.5 px-2 font-medium text-gray-600">Pay type</th>
+                <th className="text-left py-1.5 px-2 font-medium text-gray-600">Pay rate</th>
+                <th className="text-left py-1.5 px-2 font-medium text-gray-600">Change reason</th>
+                <th className="text-left py-1.5 px-2 font-medium text-gray-600">Comment</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r:any)=> {
+                const prev = String(r.previous_salary||'').trim();
+                const next = String(r.new_salary||'').trim();
+                const payLabel = prev ? `${next} (was ${prev})` : (next || '—');
+                return (
+                  <tr key={r.id} className="border-b align-top">
+                    <td className="py-1.5 px-2 whitespace-nowrap text-gray-900">{formatDate(r.effective_date)}</td>
+                    <td className="py-1.5 px-2 whitespace-nowrap text-gray-900">{String(r.pay_type||'') || '—'}</td>
+                    <td className="py-1.5 px-2 whitespace-nowrap text-gray-900">{payLabel}</td>
+                    <td className="py-1.5 px-2 whitespace-pre-line text-gray-900">{String(r.justification||'') || '—'}</td>
+                    <td className="py-1.5 px-2 whitespace-pre-line text-gray-900">{String(r.notes||'') || '—'}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <div className="text-xs text-gray-600 py-3 text-center">No salary history yet.</div>
+      )}
+
+      {showAdd && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl w-full max-w-lg p-4">
+            <div className="text-lg font-semibold mb-4">New salary entry</div>
+            <div className="space-y-3">
+              <div className="grid md:grid-cols-2 gap-3">
+                <div>
+                  <div className="text-xs text-gray-600">Effective date *</div>
+                  <input type="date" className="w-full rounded-lg border px-3 py-2" value={effectiveDate} onChange={e=>setEffectiveDate(e.target.value)} />
+                </div>
+                <div>
+                  <div className="text-xs text-gray-600">Pay type</div>
+                  {(settings?.pay_types?.length ? (
+                    <select className="w-full rounded-lg border px-3 py-2" value={payType} onChange={e=>setPayType(e.target.value)}>
+                      <option value="">Select...</option>
+                      {settings.pay_types.map((it:any)=> <option key={it.id} value={it.label}>{it.label}</option>)}
+                    </select>
+                  ) : (
+                    <input className="w-full rounded-lg border px-3 py-2" value={payType} onChange={e=>setPayType(e.target.value)} placeholder="Hourly / Salary / Contract..." />
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <div className="text-xs text-gray-600">Pay rate *</div>
+                <input className="w-full rounded-lg border px-3 py-2" value={newSalary} onChange={e=>setNewSalary(e.target.value)} placeholder="$29.00 / Hour" />
+              </div>
+
+              <div>
+                <div className="text-xs text-gray-600">Change reason *</div>
+                <textarea className="w-full rounded-lg border px-3 py-2" rows={3} value={justification} onChange={e=>setJustification(e.target.value)} placeholder="Reason for the salary change..." />
+              </div>
+
+              <div>
+                <div className="text-xs text-gray-600">Comment</div>
+                <textarea className="w-full rounded-lg border px-3 py-2" rows={2} value={notes} onChange={e=>setNotes(e.target.value)} placeholder="Optional notes..." />
+              </div>
+            </div>
+
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                onClick={() => { setShowAdd(false); reset(); }}
+                className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={save}
+                disabled={saving}
+                className="px-4 py-2 bg-[#d11616] text-white rounded-lg hover:bg-[#b01414] disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {saving ? 'Saving...' : 'Save'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+function OrganizationSection({ p, editable, userId, collectChanges, usersOptions, settings, userDivisions, selectedDivisions, onDivisionsChange, selectedProjectDivisions, onProjectDivisionsChange }: { p:any, editable:boolean, userId:string, collectChanges: (kv:Record<string,any>)=>void, usersOptions:any[], settings:any, userDivisions?: any[], selectedDivisions?: string[], onDivisionsChange?: (divisions: string[]) => void, selectedProjectDivisions?: string[], onProjectDivisionsChange?: (divisions: string[]) => void }){
+  const isEditable = !!editable;
+  const { data: projectDivisions } = useQuery({ 
+    queryKey:['project-divisions'], 
+    queryFn: ()=> api<any[]>('GET','/settings/project-divisions'), 
+    staleTime: 300_000 
+  });
+  
+  const [form, setForm] = useState<any>(()=>({
+    job_title: p.job_title||'',
+    manager_user_id: p.manager_user_id||'',
+  }));
+  const [departmentDropdownOpen, setDepartmentDropdownOpen] = useState(false);
+  const [projectDivisionDropdownOpen, setProjectDivisionDropdownOpen] = useState(false);
+  
+  const prevEditableRef = useRef(editable);
+  
+  useEffect(() => {
+    if (editable && !prevEditableRef.current) {
+      setForm({ job_title: p.job_title||'', manager_user_id: p.manager_user_id||'' });
+      if (onProjectDivisionsChange) {
+        const projectDivs = Array.isArray(p.project_division_ids) ? p.project_division_ids.map((id: any) => String(id)) : [];
+        onProjectDivisionsChange(projectDivs);
+      }
+    }
+    if (!editable && prevEditableRef.current) {
+      setForm({ job_title: p.job_title||'', manager_user_id: p.manager_user_id||'' });
+      if (onProjectDivisionsChange) {
+        const projectDivs = Array.isArray(p.project_division_ids) ? p.project_division_ids.map((id: any) => String(id)) : [];
+        onProjectDivisionsChange(projectDivs);
+      }
+    }
+    prevEditableRef.current = editable;
+  }, [editable, p.job_title, p.manager_user_id, p.project_division_ids, onProjectDivisionsChange]);
+  
+  const onField = (key:string, value:any)=>{ 
+    setForm((s:any)=>({ ...s, [key]: value })); 
+    collectChanges({ [key]: value }); 
+  };
+  
+  const handleDepartmentToggle = (divisionId: string) => {
+    const newSelection = selectedDivisions?.includes(divisionId)
+      ? selectedDivisions.filter(id => id !== divisionId)
+      : [...(selectedDivisions || []), divisionId];
+    if (onDivisionsChange) {
+      onDivisionsChange(newSelection);
+    }
+    collectChanges({ _divisions_changed: true, _selected_divisions: newSelection });
+  };
+  
+  const handleProjectDivisionToggle = (divisionId: string) => {
+    const current = selectedProjectDivisions || [];
+    const newSelection = current.includes(divisionId)
+      ? current.filter(id => id !== divisionId)
+      : [...current, divisionId];
+    if (onProjectDivisionsChange) {
+      onProjectDivisionsChange(newSelection);
+    }
+    collectChanges({ project_division_ids: newSelection });
+  };
+  
+  const { data: supervisorProfile } = useQuery({
+    queryKey: ['supervisor-profile-org', p?.manager_user_id],
+    queryFn: ()=> api<any>('GET', `/auth/users/${p.manager_user_id}/profile`),
+    enabled: !!p?.manager_user_id,
+  });
+  
+  const supervisor = useMemo(()=>{
+    if (supervisorProfile?.profile) {
+      const fn = supervisorProfile.profile.first_name||'';
+      const ln = supervisorProfile.profile.last_name||'';
+      const full = `${fn} ${ln}`.trim();
+      if (full) return full;
+    }
+    if(!p?.manager_user_id) return '';
+    const row = (usersOptions||[]).find((x:any)=> String(x.id)===String(p.manager_user_id));
+    return row? (row.username || row.email) : '';
+  }, [usersOptions, p?.manager_user_id, supervisorProfile]);
+  
+  // Flatten project divisions (main divisions + subdivisions)
+  const allProjectDivisions = useMemo(() => {
+    if (!projectDivisions) return [];
+    const flat: any[] = [];
+    projectDivisions.forEach((div: any) => {
+      flat.push({ ...div, isMain: true });
+      if (div.subdivisions && Array.isArray(div.subdivisions)) {
+        div.subdivisions.forEach((sub: any) => {
+          flat.push({ ...sub, isMain: false, parentLabel: div.label });
+        });
+      }
+    });
+    return flat;
+  }, [projectDivisions]);
+  
+  return (
+    <div className="rounded-xl border bg-white p-4">
+      <div className="mb-4 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <div className="w-8 h-8 rounded bg-purple-100 flex items-center justify-center">
+            <svg className="w-5 h-5 text-purple-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+            </svg>
+          </div>
+          <h5 className="text-sm font-semibold text-purple-900">Organization</h5>
+        </div>
+      </div>
+      
+      <div className="space-y-4">
+        {/* Job Title */}
+        <div>
+          <div className="text-xs font-medium text-gray-600 mb-1.5">Job Title</div>
+          {isEditable? (
+            <input className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400" value={form.job_title} onChange={e=>onField('job_title', e.target.value)} placeholder="e.g. Project Manager" />
+          ) : (
+            <div className="text-sm font-semibold text-gray-900">{String(p.job_title||'') || '—'}</div>
+          )}
+        </div>
+        
+        {/* Supervisor */}
+        <div>
+          <div className="text-xs font-medium text-gray-600 mb-1.5">Supervisor</div>
+          {isEditable? (
+            <select className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400" value={form.manager_user_id} onChange={e=>onField('manager_user_id', e.target.value)}>
+              <option value="">Select...</option>
+              {(usersOptions||[]).map((u:any)=> (
+                <option key={u.id} value={u.id}><UserLabel id={u.id} fallback={u.username||u.email} /></option>
+              ))}
+            </select>
+          ) : (
+            <div className="text-sm font-semibold text-gray-900">{supervisor||'—'}</div>
+          )}
+        </div>
+        
+        {/* Departments */}
+        <div className="relative">
+          <div className="text-xs font-medium text-gray-600 mb-1.5">Departments</div>
+          {isEditable? (
+            (settings?.divisions?.length ? (
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setDepartmentDropdownOpen(!departmentDropdownOpen)}
+                  className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-left flex items-center justify-between"
+                >
+                  <span className={selectedDivisions && selectedDivisions.length > 0 ? 'text-gray-900' : 'text-gray-400'}>
+                    {selectedDivisions && selectedDivisions.length > 0 
+                      ? selectedDivisions.map((id: string) => {
+                          const division = settings.divisions.find((d: any) => String(d.id) === id);
+                          return division?.label || '';
+                        }).filter(Boolean).join(', ')
+                      : 'Select departments...'}
+                  </span>
+                  <span className="text-gray-400">▼</span>
+                </button>
+                {departmentDropdownOpen && (
+                  <>
+                    <div 
+                      className="fixed inset-0 z-10" 
+                      onClick={() => setDepartmentDropdownOpen(false)}
+                    />
+                    <div className="absolute z-20 w-full mt-1 bg-white border rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                      {settings.divisions.map((it: any) => (
+                        <label
+                          key={it.id}
+                          className="flex items-center gap-2 px-3 py-2 hover:bg-gray-50 cursor-pointer"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={selectedDivisions?.includes(String(it.id)) || false}
+                            onChange={() => handleDepartmentToggle(String(it.id))}
+                            className="rounded border-gray-300 text-brand-red focus:ring-brand-red"
+                          />
+                          <span className="text-xs">{it.label}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
+            ) : (
+              <input className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900" value={form.division} onChange={e=>onField('division', e.target.value)} />
+            ))
+          ) : (
+            <div className="text-sm font-semibold text-gray-900">
+              {userDivisions && userDivisions.length > 0
+                ? userDivisions.map((d: any) => d.label).join(', ')
+                : '—'}
+            </div>
+          )}
+        </div>
+        
+        {/* Project Divisions */}
+        <div className="relative">
+          <div className="text-xs font-medium text-gray-600 mb-1.5">Project Divisions</div>
+          {isEditable? (
+            projectDivisions && projectDivisions.length > 0 ? (
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setProjectDivisionDropdownOpen(!projectDivisionDropdownOpen)}
+                  className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-left flex items-center justify-between"
+                >
+                  <span className={(selectedProjectDivisions || []).length > 0 ? 'text-gray-900' : 'text-gray-400'}>
+                    {(selectedProjectDivisions || []).length > 0 
+                      ? (selectedProjectDivisions || []).map((id: string) => {
+                          const division = allProjectDivisions.find((d: any) => String(d.id) === id);
+                          return division ? (division.isMain ? division.label : `${division.parentLabel} - ${division.label}`) : '';
+                        }).filter(Boolean).join(', ')
+                      : 'Select project divisions...'}
+                  </span>
+                  <span className="text-gray-400">▼</span>
+                </button>
+                {projectDivisionDropdownOpen && (
+                  <>
+                    <div 
+                      className="fixed inset-0 z-10" 
+                      onClick={() => setProjectDivisionDropdownOpen(false)}
+                    />
+                    <div className="absolute z-20 w-full mt-1 bg-white border rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                      {projectDivisions.map((div: any) => (
+                        <div key={div.id}>
+                          <label
+                            className="flex items-center gap-2 px-3 py-2 hover:bg-gray-50 cursor-pointer font-medium"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={(selectedProjectDivisions || []).includes(String(div.id))}
+                              onChange={() => handleProjectDivisionToggle(String(div.id))}
+                              className="rounded border-gray-300 text-brand-red focus:ring-brand-red"
+                            />
+                            <span className="text-xs">{div.label}</span>
+                          </label>
+                          {div.subdivisions && div.subdivisions.length > 0 && (
+                            <div className="pl-6">
+                              {div.subdivisions.map((sub: any) => (
+                                <label
+                                  key={sub.id}
+                                  className="flex items-center gap-2 px-3 py-2 hover:bg-gray-50 cursor-pointer"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={(selectedProjectDivisions || []).includes(String(sub.id))}
+                                    onChange={() => handleProjectDivisionToggle(String(sub.id))}
+                                    className="rounded border-gray-300 text-brand-red focus:ring-brand-red"
+                                  />
+                                  <span className="text-xs text-gray-600">{sub.label}</span>
+                                </label>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
+            ) : (
+              <div className="text-xs text-gray-500">Loading project divisions...</div>
+            )
+          ) : (
+            <div className="text-sm font-semibold text-gray-900">
+              {(selectedProjectDivisions || []).length > 0
+                ? (selectedProjectDivisions || []).map((id: string) => {
+                    const division = allProjectDivisions.find((d: any) => String(d.id) === id);
+                    return division ? (division.isMain ? division.label : `${division.parentLabel} - ${division.label}`) : '';
+                  }).filter(Boolean).join(', ')
+                : '—'}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
   const { data:balances, refetch:refetchBalances } = useQuery({ 
     queryKey:['time-off-balance', userId], 
@@ -4459,26 +4998,37 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
   };
   
   return (
-    <div className="space-y-4">
-      {/* Top Row: Balance (left) and Upcoming (right) */}
-      <div className="grid md:grid-cols-2 gap-4">
-        {/* Balance Section - Left */}
-        <div className="rounded-lg border bg-white p-4">
-          <div className="flex items-center justify-between mb-3">
-            <h5 className="font-semibold flex items-center gap-2">
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-              </svg>
-              Available Balance
-            </h5>
-            <button
-              onClick={handleSync}
-              disabled={syncing}
-              className="px-3 py-1.5 rounded border text-sm disabled:opacity-50 hover:bg-gray-50"
-            >
-              {syncing ? 'Syncing...' : 'Sync'}
-            </button>
+    <div className="rounded-xl border bg-white p-4">
+      <div className="mb-4 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <div className="w-8 h-8 rounded bg-blue-100 flex items-center justify-center">
+            <svg className="w-5 h-5 text-blue-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
           </div>
+          <h5 className="font-semibold text-blue-900">Time Off</h5>
+        </div>
+      </div>
+      <div className="space-y-4">
+        {/* Top Row: Balance (left) and Upcoming (right) */}
+        <div className="grid md:grid-cols-2 gap-4">
+          {/* Balance Section - Left */}
+          <div className="rounded-lg border bg-gray-50 p-4">
+            <div className="flex items-center justify-between mb-3">
+              <h5 className="font-semibold flex items-center gap-2 text-sm">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                Available Balance
+              </h5>
+              <button
+                onClick={handleSync}
+                disabled={syncing}
+                className="px-3 py-1.5 rounded border border-blue-300 text-blue-700 text-sm font-medium hover:bg-blue-50 disabled:opacity-50"
+              >
+                {syncing ? 'Syncing...' : 'Sync'}
+              </button>
+            </div>
           {balances && balances.length > 0 ? (
             <div className="space-y-3">
               {balances.map((b: any) => {
@@ -4506,24 +5056,24 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
           )}
         </div>
         
-        {/* Upcoming Time Off - Right */}
-        <div className="rounded-lg border bg-white p-4">
-          <div className="flex items-center justify-between mb-3">
-            <h5 className="font-semibold flex items-center gap-2">
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              Upcoming Time Off
-            </h5>
-            {availablePolicies.length > 0 && (
-              <button
-                onClick={() => setShowRequestForm(true)}
-                className="px-3 py-1.5 rounded bg-brand-red text-white text-sm hover:bg-red-700"
-              >
-                Request Time Off
-              </button>
-            )}
-          </div>
+          {/* Upcoming Time Off - Right */}
+          <div className="rounded-lg border bg-gray-50 p-4">
+            <div className="flex items-center justify-between mb-3">
+              <h5 className="font-semibold flex items-center gap-2 text-sm">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                Upcoming Time Off
+              </h5>
+              {availablePolicies.length > 0 && (
+                <button
+                  onClick={() => setShowRequestForm(true)}
+                  className="px-3 py-1.5 rounded border border-blue-300 text-blue-700 text-sm font-medium hover:bg-blue-50"
+                >
+                  Request Time Off
+                </button>
+              )}
+            </div>
           {upcomingRequests.length > 0 || pendingRequests.length > 0 ? (
             <div className="space-y-2 max-h-64 overflow-y-auto">
               {[...pendingRequests, ...upcomingRequests].slice(0, 5).map((r: any) => (
@@ -4552,23 +5102,23 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
         </div>
       </div>
       
-      {/* History Section - Bottom */}
-      <div className="rounded-lg border bg-white p-4">
-        <div className="flex items-center justify-between mb-3">
-          <h5 className="font-semibold flex items-center gap-2">
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-            </svg>
-            History
-          </h5>
-          <button
-            onClick={handleSyncHistory}
-            disabled={syncingHistory}
-            className="px-3 py-1.5 rounded border text-sm disabled:opacity-50 hover:bg-gray-50"
-          >
-            {syncingHistory ? 'Syncing...' : 'Sync History'}
-          </button>
-        </div>
+        {/* History Section - Bottom */}
+        <div className="rounded-lg border bg-gray-50 p-4">
+          <div className="flex items-center justify-between mb-3">
+            <h5 className="font-semibold flex items-center gap-2 text-sm">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+              History
+            </h5>
+            <button
+              onClick={handleSyncHistory}
+              disabled={syncingHistory}
+              className="px-3 py-1.5 rounded border border-blue-300 text-blue-700 text-sm font-medium hover:bg-blue-50 disabled:opacity-50"
+            >
+              {syncingHistory ? 'Syncing...' : 'Sync History'}
+            </button>
+          </div>
         {history && history.length > 0 ? (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -4638,6 +5188,7 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
             No history available. Click "Sync History" to load from BambooHR.
           </div>
         )}
+        </div>
       </div>
       
       {/* Request Form Modal */}

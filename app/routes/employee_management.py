@@ -69,6 +69,38 @@ def update_user_divisions(
     return {"status": "ok", "divisions": [{"id": str(d.id), "label": d.label} for d in division_items]}
 
 
+@router.put("/{user_id}/project-divisions")
+def update_user_project_divisions(
+    user_id: str,
+    project_division_ids: List[str] = Body(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permissions("users:write"))
+):
+    """Update user project divisions (replace existing)"""
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    profile = db.query(EmployeeProfile).filter(EmployeeProfile.user_id == user.id).first()
+    if not profile:
+        raise HTTPException(status_code=404, detail="Employee profile not found")
+    
+    # Validate that all IDs are valid UUIDs
+    try:
+        validated_ids = [uuid_lib.UUID(did) for did in project_division_ids]
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=f"Invalid UUID format: {e}")
+    
+    # Store as list of strings for JSON serialization
+    profile.project_division_ids = [str(did) for did in validated_ids]
+    profile.updated_at = datetime.now(timezone.utc)
+    profile.updated_by = current_user.id
+    
+    db.commit()
+    
+    return {"status": "ok", "project_division_ids": profile.project_division_ids}
+
+
 # =====================
 # Salary History
 # =====================

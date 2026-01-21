@@ -685,6 +685,7 @@ class EmployeeProfile(Base):
     emergency_contact_phone: Mapped[Optional[str]] = mapped_column(String(100))
     cloth_size: Mapped[Optional[str]] = mapped_column(String(50))
     cloth_sizes_custom: Mapped[Optional[list]] = mapped_column(JSON)
+    project_division_ids: Mapped[Optional[list]] = mapped_column(JSON)  # Array of project division/subdivision UUIDs (from project_divisions SettingList)
 
     # Sistema / Auditoria
     created_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
