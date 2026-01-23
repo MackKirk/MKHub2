@@ -54,7 +54,6 @@ export default function ImagePicker({
   const dragging = useRef<{x:number, y:number, tx:number, ty:number}|null>(null);
   const [isPanning] = useState(true);
   const blobUrlRef = useRef<string | null>(null);
-  const [blurredImageUrl, setBlurredImageUrl] = useState<string | null>(null);
 
   useEffect(()=>{
     if(!isOpen){
@@ -64,7 +63,6 @@ export default function ImagePicker({
         URL.revokeObjectURL(blobUrlRef.current);
         blobUrlRef.current = null;
       }
-      setBlurredImageUrl(null);
     }
   }, [isOpen]);
 
@@ -233,33 +231,6 @@ export default function ImagePicker({
     return { x: Math.min(0, Math.max(minX, nx)), y: Math.min(0, Math.max(minY, ny)) };
   };
 
-  // Check if image doesn't fill container (needs blur background)
-  const needsBlurBackground = useMemo(() => {
-    if (!img) return false;
-    const dw = img.naturalWidth * coverScale * zoom;
-    const dh = img.naturalHeight * coverScale * zoom;
-    return dw < cw || dh < ch;
-  }, [img, coverScale, zoom, cw, ch]);
-
-  // Generate blurred background image - simplified approach using the original image
-  // We'll use CSS filter blur directly in the render, which is more efficient
-  const generateBlurredImage = useCallback(async () => {
-    if (!img) return;
-    
-    // Simply use the original image URL - we'll apply CSS blur filter in the render
-    // This is much more efficient than processing pixels
-    // No need to revoke URLs here since we're using the same source as the main image
-    setBlurredImageUrl(img.src);
-  }, [img]);
-
-  // Generate blurred image when needed
-  useEffect(() => {
-    if (needsBlurBackground && img && !blurredImageUrl) {
-      generateBlurredImage();
-    } else if (!needsBlurBackground) {
-      setBlurredImageUrl(null);
-    }
-  }, [needsBlurBackground, img, blurredImageUrl, generateBlurredImage]);
 
   const loadFromFile = async (file: File)=>{
     const lower = (file.name||'').toLowerCase();
@@ -559,76 +530,9 @@ export default function ImagePicker({
       canvas.width = Math.round(targetWidth * scaleOut); canvas.height = Math.round(targetHeight * scaleOut);
       const ctx = canvas.getContext('2d')!;
       
-      // Check if we need blur background (image doesn't fill container)
-      const dw = img.naturalWidth * coverScale * zoom;
-      const dh = img.naturalHeight * coverScale * zoom;
-      const needsBlur = dw < cw || dh < ch;
-      
-      if (needsBlur) {
-        // Draw blurred background first
-        // Use a smaller canvas for blur to improve performance
-        const blurScale = 0.3; // Scale down for faster blur
-        const blurCanvas = document.createElement('canvas');
-        blurCanvas.width = Math.round(canvas.width * blurScale);
-        blurCanvas.height = Math.round(canvas.height * blurScale);
-        const blurCtx = blurCanvas.getContext('2d')!;
-        
-        // Calculate scale to fill the blur canvas
-        const scaleX = blurCanvas.width / img.naturalWidth;
-        const scaleY = blurCanvas.height / img.naturalHeight;
-        const fillScale = Math.max(scaleX, scaleY);
-        const scaledWidth = img.naturalWidth * fillScale;
-        const scaledHeight = img.naturalHeight * fillScale;
-        const offsetX = (blurCanvas.width - scaledWidth) / 2;
-        const offsetY = (blurCanvas.height - scaledHeight) / 2;
-        
-        // Draw image scaled to fill blur canvas
-        blurCtx.drawImage(img, offsetX, offsetY, scaledWidth, scaledHeight);
-        
-        // Apply blur using a simple box blur (faster on smaller canvas)
-        const imageData = blurCtx.getImageData(0, 0, blurCanvas.width, blurCanvas.height);
-        const data = imageData.data;
-        const blurRadius = 8; // Smaller radius for smaller canvas
-        const passes = 2;
-        
-        for (let pass = 0; pass < passes; pass++) {
-          const tempData = new Uint8ClampedArray(data);
-          for (let y = 0; y < blurCanvas.height; y++) {
-            for (let x = 0; x < blurCanvas.width; x++) {
-              let r = 0, g = 0, b = 0, count = 0;
-              for (let dy = -blurRadius; dy <= blurRadius; dy++) {
-                for (let dx = -blurRadius; dx <= blurRadius; dx++) {
-                  const nx = x + dx;
-                  const ny = y + dy;
-                  if (nx >= 0 && nx < blurCanvas.width && ny >= 0 && ny < blurCanvas.height) {
-                    const idx = (ny * blurCanvas.width + nx) * 4;
-                    r += tempData[idx];
-                    g += tempData[idx + 1];
-                    b += tempData[idx + 2];
-                    count++;
-                  }
-                }
-              }
-              if (count > 0) {
-                const idx = (y * blurCanvas.width + x) * 4;
-                data[idx] = r / count;
-                data[idx + 1] = g / count;
-                data[idx + 2] = b / count;
-                data[idx + 3] = tempData[idx + 3]; // Keep alpha
-              }
-            }
-          }
-        }
-        
-        blurCtx.putImageData(imageData, 0, 0);
-        
-        // Draw blurred background scaled up to main canvas
-        ctx.drawImage(blurCanvas, 0, 0, canvas.width, canvas.height);
-      } else {
-        // Fill with white if no blur needed
-        ctx.fillStyle = '#fff';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-      }
+      // Use white background instead of blur
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
       
       // Draw the main image on top
       const scale = coverScale * zoom;
@@ -791,6 +695,63 @@ export default function ImagePicker({
 
   if(!isOpen) return null;
   return (
+    <>
+      <style>{`
+        .custom-slider {
+          -webkit-appearance: none;
+          appearance: none;
+          flex: 1;
+          height: 6px;
+          border-radius: 3px;
+          outline: none;
+          cursor: pointer;
+        }
+        
+        .custom-slider::-webkit-slider-thumb {
+          -webkit-appearance: none;
+          appearance: none;
+          width: 18px;
+          height: 18px;
+          border-radius: 50%;
+          background: #6b7280;
+          cursor: pointer;
+          border: 2px solid #ffffff;
+          box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+          position: relative;
+          z-index: 1;
+        }
+        
+        .custom-slider::-moz-range-thumb {
+          width: 18px;
+          height: 18px;
+          border-radius: 50%;
+          background: #6b7280;
+          cursor: pointer;
+          border: 2px solid #ffffff;
+          box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+          position: relative;
+          z-index: 1;
+        }
+        
+        .custom-slider-container {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          margin-bottom: 4px;
+        }
+        
+        .custom-slider-value {
+          background: #6b7280;
+          color: white;
+          padding: 2px 8px;
+          border-radius: 4px;
+          font-size: 11px;
+          font-weight: 500;
+          white-space: nowrap;
+          line-height: 1.2;
+          flex-shrink: 0;
+        }
+      `}</style>
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
       <div className="w-[900px] max-w-[95vw] bg-white rounded-xl overflow-hidden">
         <div className="px-4 py-3 border-b flex items-center justify-between">
@@ -852,26 +813,7 @@ export default function ImagePicker({
           <div className="col-span-2">
             <div className="p-4">
               <div className="mb-3 text-sm text-gray-600">Target: {targetWidth}×{targetHeight}px</div>
-              <div ref={containerRef} className="relative bg-gray-100 overflow-hidden" style={{ width: cw, height: ch, userSelect:'none', cursor: (img && isPanning)? (dragging.current? 'grabbing':'grab') : 'default', touchAction:'none' as any }} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp}>
-                {blurredImageUrl && needsBlurBackground && img && (
-                  <img 
-                    src={blurredImageUrl} 
-                    draggable={false} 
-                    onDragStart={(e)=>e.preventDefault()} 
-                    style={{ 
-                      position:'absolute', 
-                      left: 0, 
-                      top: 0, 
-                      width: cw, 
-                      height: ch, 
-                      objectFit: 'cover',
-                      filter: 'blur(20px)',
-                      transform: 'scale(1.1)', // Slight scale to avoid edges
-                      userSelect:'none',
-                      zIndex: 0
-                    }} 
-                  />
-                )}
+              <div ref={containerRef} className="relative bg-white overflow-hidden" style={{ width: cw, height: ch, userSelect:'none', cursor: (img && isPanning)? (dragging.current? 'grabbing':'grab') : 'default', touchAction:'none' as any }} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp}>
                 {img && (
                   <img src={img.src} draggable={false} onDragStart={(e)=>e.preventDefault()} style={{ position:'absolute', left: tx, top: ty, width: img.naturalWidth*coverScale*zoom, height: img.naturalHeight*coverScale*zoom, maxWidth:'none', maxHeight:'none', userSelect:'none', zIndex: 1 }} />
                 )}
@@ -879,8 +821,23 @@ export default function ImagePicker({
                 <div className="absolute inset-0 ring-2 ring-black/70 pointer-events-none" style={{ zIndex: 2 }} />
               </div>
               <div className="mt-3 flex items-center gap-3">
-                <label className="text-sm text-gray-600">Zoom</label>
-                <input type="range" min={0.1} max={6} step={0.01} disabled={!img || !allowEdit} value={zoom} onChange={(e)=>{ const nz = Math.min(6, Math.max(0.1, parseFloat(e.target.value||'1'))); const { x, y } = clamp(tx, ty, nz); setZoom(nz); setTx(x); setTy(y); }} />
+                <div className="custom-slider-container" style={{ flex: 1 }}>
+                  <span className="text-xs font-medium text-gray-700 flex-shrink-0" style={{ width: '45px' }}>Zoom:</span>
+                  <input 
+                    type="range" 
+                    min={0.1} 
+                    max={6} 
+                    step={0.01} 
+                    disabled={!img || !allowEdit} 
+                    value={zoom} 
+                    onChange={(e)=>{ const nz = Math.min(6, Math.max(0.1, parseFloat(e.target.value||'1'))); const { x, y } = clamp(tx, ty, nz); setZoom(nz); setTx(x); setTy(y); }} 
+                    className="custom-slider"
+                    style={{
+                      background: `linear-gradient(to right, #6b7280 0%, #6b7280 ${((zoom - 0.1) / (6 - 0.1)) * 100}%, #e5e7eb ${((zoom - 0.1) / (6 - 0.1)) * 100}%, #e5e7eb 100%)`
+                    }}
+                  />
+                  <div className="custom-slider-value">{zoom.toFixed(2)}x</div>
+                </div>
                 <button type="button" disabled={!img || !allowEdit} onClick={()=>{ const { x, y } = clamp(0,0,1); setZoom(1); setTx(x); setTy(y); }} className="px-3 py-1.5 rounded bg-gray-100 disabled:opacity-50">Reset</button>
                 <div className="ml-auto" />
                 {!hideEditButton && (
@@ -916,6 +873,7 @@ export default function ImagePicker({
         />
       )}
     </div>
+    </>
   );
 }
 

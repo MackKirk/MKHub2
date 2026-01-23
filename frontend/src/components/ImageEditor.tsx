@@ -1,6 +1,70 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { api } from '@/lib/api';
 
+// Custom slider styles and icon rendering improvements
+const sliderStyle = `
+  img[src*="/ui/assets/icons/"] {
+    image-rendering: auto;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  
+  .custom-slider {
+    -webkit-appearance: none;
+    appearance: none;
+    flex: 1;
+    height: 6px;
+    border-radius: 3px;
+    outline: none;
+    cursor: pointer;
+  }
+  
+  .custom-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: #6b7280;
+    cursor: pointer;
+    border: 2px solid #ffffff;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+    position: relative;
+    z-index: 1;
+  }
+  
+  .custom-slider::-moz-range-thumb {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: #6b7280;
+    cursor: pointer;
+    border: 2px solid #ffffff;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+    position: relative;
+    z-index: 1;
+  }
+  
+  .custom-slider-container {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 4px;
+  }
+  
+  .custom-slider-value {
+    background: #6b7280;
+    color: white;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 500;
+    white-space: nowrap;
+    line-height: 1.2;
+    flex-shrink: 0;
+  }
+`;
+
 // Icon paths - using ui/assets/icons (served by backend)
 // Adding cache-busting query parameter to force reload
 const iconCacheBuster = `?v=${Date.now()}`;
@@ -53,7 +117,7 @@ type ImageEditorProps = {
 };
 
 export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'image', fileObjectId, onSave, targetWidth, targetHeight, editorScaleFactor = 2.5 }: ImageEditorProps) {
-  const [mode, setMode] = useState<'pan' | 'rect' | 'arrow' | 'text' | 'circle' | 'draw' | 'select' | 'delete'>('pan');
+  const [mode, setMode] = useState<'pan' | 'rect' | 'arrow' | 'text' | 'circle' | 'draw' | 'select' | 'delete'>('select');
   const [img, setImg] = useState<HTMLImageElement | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -71,14 +135,15 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
   }, [offsetX, offsetY, scale]);
   const [items, setItems] = useState<AnnotationItem[]>([]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const [color, setColor] = useState('#ff0000');
+  const [color, setColor] = useState('#000000');
   const [stroke, setStroke] = useState(3);
   const [fontSize, setFontSize] = useState(16);
   const [text, setText] = useState('');
-  const [textBackgroundEnabled, setTextBackgroundEnabled] = useState(false);
+  const [textBackgroundEnabled, setTextBackgroundEnabled] = useState(true);
   const [textBackgroundColor, setTextBackgroundColor] = useState('#ffffff');
   const [textBackgroundOpacity, setTextBackgroundOpacity] = useState(0.8);
   const [cursorVisible, setCursorVisible] = useState(true);
+  const [canvasDimensions, setCanvasDimensions] = useState<{ width: number; height: number }>({ width: 0, height: 0 });
   const cursorBlinkRef = useRef<ReturnType<typeof setInterval> | null>(null);
   
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -176,6 +241,13 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
     prevStrokeRef.current = stroke;
   }, [stroke, selectedIds, mode]);
 
+  // Auto-switch from delete to select when no items are available
+  useEffect(() => {
+    if (mode === 'delete' && items.length === 0) {
+      setMode('select');
+    }
+  }, [mode, items.length]);
+
   // Helper to exit text editing mode (used by ESC and click-outside)
   const exitTextEditing = useCallback(() => {
     const editingId = textEditingRef.current;
@@ -202,8 +274,8 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
       cursorBlinkRef.current = null;
     }
 
-    // After leaving text editing we always return to pan mode
-    setMode('pan');
+    // After leaving text editing we always return to select mode
+    setMode('select');
   }, [setItems, setSelectedIds, setMode]);
 
   // Load image - only when modal opens or fileObjectId changes
@@ -270,7 +342,7 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
           setOffsetY(0);
           setItems([]);
           setSelectedIds([]);
-          setMode('pan');
+          setMode('select');
         };
         
         image.onerror = () => {
@@ -295,71 +367,97 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, fileObjectId]); // Only depend on isOpen and fileObjectId to prevent infinite loops
 
-  // Set canvas size to match image dimensions (scaled to fit viewport if needed)
-  // Or use targetWidth/targetHeight if provided (for ImagePicker integration)
+  // Set canvas size to match image dimensions exactly (no white space)
+  // The canvas will be sized to show the full image without any padding
   useEffect(() => {
     if (!canvasRef.current || !overlayRef.current || !img) return;
     
     let canvasWidth: number;
     let canvasHeight: number;
     
-    // If targetWidth and targetHeight are provided, scale them up for better editing
-    // This maintains the same aspect ratio but makes the canvas larger
+    const imgWidth = img.naturalWidth;
+    const imgHeight = img.naturalHeight;
+    
+    // If targetWidth and targetHeight are provided, use them
     if (targetWidth && targetHeight) {
-      const scaleFactor = editorScaleFactor || 2.5; // Default 2.5x, but can be customized
-      canvasWidth = targetWidth * scaleFactor;
-      canvasHeight = targetHeight * scaleFactor;
+      canvasWidth = targetWidth;
+      canvasHeight = targetHeight;
     } else {
-      // Otherwise, calculate based on available space
-      const container = containerRef.current;
-      if (!container) return;
+      // Calculate maximum size that fits in viewport while maintaining aspect ratio
+      // Account for sidebar (224px) + gap (16px) + padding (32px) + modal padding (32px) + margin
+      const sidebarWithGap = 240; // w-56 (224px) + gap-4 (16px)
+      const totalPadding = 64; // p-4 on modal content (16px * 2) + modal padding (16px * 2)
+      const maxWidth = Math.min(imgWidth, window.innerWidth - sidebarWithGap - totalPadding - 40);
+      const maxHeight = Math.min(imgHeight, window.innerHeight - 200);
       
-      // Get available space in container (accounting for sidebar width ~280px and padding)
-      const availableWidth = Math.max(300, container.clientWidth - 300);
-      const availableHeight = Math.max(300, window.innerHeight * 0.75);
-      
-      const imgWidth = img.naturalWidth;
-      const imgHeight = img.naturalHeight;
       const imgAspect = imgWidth / imgHeight;
-      const containerAspect = availableWidth / availableHeight;
+      const maxAspect = maxWidth / maxHeight;
       
-      // Scale image to fit available space while maintaining aspect ratio
-      if (imgAspect > containerAspect) {
+      // Scale to fit while maintaining aspect ratio
+      if (imgAspect > maxAspect) {
         // Image is wider - fit to width
-        canvasWidth = Math.min(imgWidth, availableWidth);
-        canvasHeight = canvasWidth / imgAspect;
+        canvasWidth = maxWidth;
+        canvasHeight = maxWidth / imgAspect;
       } else {
         // Image is taller - fit to height
-        canvasHeight = Math.min(imgHeight, availableHeight);
-        canvasWidth = canvasHeight * imgAspect;
+        canvasHeight = maxHeight;
+        canvasWidth = maxHeight * imgAspect;
       }
     }
     
-    canvasRef.current.width = Math.round(canvasWidth);
-    canvasRef.current.height = Math.round(canvasHeight);
-    overlayRef.current.width = canvasRef.current.width;
-    overlayRef.current.height = canvasRef.current.height;
+    // Use devicePixelRatio for crisp rendering on high-DPI displays
+    const dpr = window.devicePixelRatio || 1;
+    const displayWidth = Math.round(canvasWidth);
+    const displayHeight = Math.round(canvasHeight);
     
-    // When targetWidth/targetHeight are provided, calculate initial scale to fill canvas
-    if (targetWidth && targetHeight && img) {
-      const imgWidth = img.naturalWidth;
-      const imgHeight = img.naturalHeight;
-      
-      // Calculate scale to fill canvas (cover scale - same logic as ImagePicker)
-      // The canvas is now 2.5x larger, so we need to scale the image accordingly
-      const coverScale = Math.max(canvasWidth / imgWidth, canvasHeight / imgHeight);
-      
-      // Set initial scale and reset offsets
-      setScale(coverScale);
-      setOffsetX(0);
-      setOffsetY(0);
+    // Set display size (CSS pixels)
+    canvasRef.current.style.width = `${displayWidth}px`;
+    canvasRef.current.style.height = `${displayHeight}px`;
+    overlayRef.current.style.width = `${displayWidth}px`;
+    overlayRef.current.style.height = `${displayHeight}px`;
+    
+    // Set actual size in memory (scaled by devicePixelRatio)
+    canvasRef.current.width = displayWidth * dpr;
+    canvasRef.current.height = displayHeight * dpr;
+    overlayRef.current.width = displayWidth * dpr;
+    overlayRef.current.height = displayHeight * dpr;
+    
+    // Scale drawing context to match devicePixelRatio
+    const baseCtx = canvasRef.current.getContext('2d');
+    const overlayCtx = overlayRef.current.getContext('2d');
+    if (baseCtx) {
+      baseCtx.scale(dpr, dpr);
+      baseCtx.imageSmoothingEnabled = true;
+      baseCtx.imageSmoothingQuality = 'high';
     }
+    if (overlayCtx) {
+      overlayCtx.scale(dpr, dpr);
+      overlayCtx.imageSmoothingEnabled = true;
+      overlayCtx.imageSmoothingQuality = 'high';
+    }
+    
+    // Update canvas dimensions state for modal sizing
+    setCanvasDimensions({ width: Math.round(canvasWidth), height: Math.round(canvasHeight) });
+    
+    // Calculate initial scale to show the full image exactly (fit, not cover)
+    // This ensures the image appears complete without any white space
+    const fitScale = Math.min(canvasWidth / imgWidth, canvasHeight / imgHeight);
+    
+    // Set initial scale and reset offsets to center the image
+    setScale(fitScale);
+    setOffsetX(0);
+    setOffsetY(0);
   }, [img, isOpen, targetWidth, targetHeight, editorScaleFactor]);
 
   // Clamp translation - allow movement within canvas when zoom < 1, or ensure coverage when zoom >= 1
   const clampOffset = useCallback((x: number, y: number, s?: number): { x: number; y: number } => {
     const canvas = canvasRef.current;
     if (!canvas || !img) return { x, y };
+
+    // Get display dimensions (CSS pixels)
+    const dpr = window.devicePixelRatio || 1;
+    const displayWidth = canvas.width / dpr;
+    const displayHeight = canvas.height / dpr;
 
     // Calculate the displayed size of the image after rotation and scale
     const iw = img.naturalWidth;
@@ -375,8 +473,8 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
     const rotatedW = iw * currentScale * cos + ih * currentScale * sin;
     const rotatedH = iw * currentScale * sin + ih * currentScale * cos;
     
-    const cw = canvas.width;
-    const ch = canvas.height;
+    const cw = displayWidth;
+    const ch = displayHeight;
 
     // Center-based clamp:
     // - If rotatedW > cw: clamp to ensure edges cover canvas.
@@ -404,13 +502,18 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
     const canvas = canvasRef.current;
     if (!canvas || !img) return;
 
+    // Get display dimensions (CSS pixels)
+    const dpr = window.devicePixelRatio || 1;
+    const displayWidth = canvas.width / dpr;
+    const displayHeight = canvas.height / dpr;
+
     // Cache key depends on the source + current canvas size.
-    const key = `${img.src}|${canvas.width}x${canvas.height}`;
+    const key = `${img.src}|${displayWidth}x${displayHeight}`;
     if (blurredBgCanvasRef.current && blurredBgKeyRef.current === key) return;
 
     const bg = document.createElement('canvas');
-    bg.width = canvas.width;
-    bg.height = canvas.height;
+    bg.width = displayWidth;
+    bg.height = displayHeight;
     const bctx = bg.getContext('2d');
     if (!bctx) return;
 
@@ -439,12 +542,17 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
     
+    // Get display dimensions (CSS pixels)
+    const dpr = window.devicePixelRatio || 1;
+    const displayWidth = canvas.width / dpr;
+    const displayHeight = canvas.height / dpr;
+    
     // Use clamped offsets (read from refs so drawBase doesn't change on every drag tick)
     const currentScale = scaleRef.current;
     const clamped = clampOffset(offsetXRef.current, offsetYRef.current, currentScale);
     
     ctx.save();
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.clearRect(0, 0, displayWidth, displayHeight);
     
     // Determine if we need a blur background (fast check; uses currentScale)
     const iw0 = img.naturalWidth;
@@ -454,23 +562,16 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
     const sin0 = Math.abs(Math.sin(angleRad0));
     const rotatedW0 = iw0 * currentScale * cos0 + ih0 * currentScale * sin0;
     const rotatedH0 = iw0 * currentScale * sin0 + ih0 * currentScale * cos0;
-    const needsBlur = rotatedW0 < canvas.width || rotatedH0 < canvas.height;
+    const needsBlur = rotatedW0 < displayWidth || rotatedH0 < displayHeight;
 
+    // Only draw background if image doesn't fill the canvas completely
+    // Use white background instead of blur
     if (needsBlur) {
-      ensureBlurredBackground();
-      const bg = blurredBgCanvasRef.current;
-      if (bg) {
-        ctx.drawImage(bg, 0, 0, canvas.width, canvas.height);
-      } else {
-        ctx.fillStyle = '#f6f6f6';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-      }
-    } else {
-      ctx.fillStyle = '#f6f6f6';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, displayWidth, displayHeight);
     }
     
-    ctx.translate(canvas.width / 2 + clamped.x, canvas.height / 2 + clamped.y);
+    ctx.translate(displayWidth / 2 + clamped.x, displayHeight / 2 + clamped.y);
     ctx.rotate(angle * Math.PI / 180);
     const iw = img.naturalWidth;
     const ih = img.naturalHeight;
@@ -512,12 +613,18 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
       return { x: it.x, y: it.y - h, w, h };
     }
     if (it.type === 'circle') {
-      // Support both circle (r) and ellipse (rx, ry)
-      if (it.rx !== undefined && it.ry !== undefined) {
+      // Support both old format (rx, ry or r) and new format (w, h)
+      if (it.w !== undefined && it.h !== undefined) {
+        // New format: x, y is already top-left corner
+        return { x: it.x, y: it.y, w: Math.abs(it.w), h: Math.abs(it.h) };
+      } else if (it.rx !== undefined && it.ry !== undefined) {
+        // Old format: x, y is center, rx, ry are radii
         return { x: it.x - it.rx, y: it.y - it.ry, w: it.rx * 2, h: it.ry * 2 };
+      } else {
+        // Old format: x, y is center, r is radius
+        const r = Math.max(1, it.r || 1);
+        return { x: it.x - r, y: it.y - r, w: r * 2, h: r * 2 };
       }
-      const r = Math.max(1, it.r || 1);
-      return { x: it.x - r, y: it.y - r, w: r * 2, h: r * 2 };
     }
     if (it.type === 'path') {
       const pts = it.points || [];
@@ -541,7 +648,12 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
     const ctx = overlay.getContext('2d');
     if (!ctx) return;
     
-    ctx.clearRect(0, 0, overlay.width, overlay.height);
+    // Get display dimensions (CSS pixels)
+    const dpr = window.devicePixelRatio || 1;
+    const displayWidth = overlay.width / dpr;
+    const displayHeight = overlay.height / dpr;
+    
+    ctx.clearRect(0, 0, displayWidth, displayHeight);
     
     // Draw items
     for (const it of items) {
@@ -787,11 +899,35 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
         ctx.restore();
       } else if (it.type === 'circle') {
         ctx.beginPath();
-        // Support both circle (r) and ellipse (rx, ry)
-        if (it.rx !== undefined && it.ry !== undefined) {
-          ctx.ellipse(it.x, it.y, Math.max(1, it.rx), Math.max(1, it.ry), 0, 0, Math.PI * 2);
+        // Calculate center and radii from bounding box (x, y, w, h)
+        // Support both old format (rx, ry or r) and new format (w, h)
+        let centerX: number, centerY: number, rx: number, ry: number;
+        
+        if (it.w !== undefined && it.h !== undefined) {
+          // New format: x, y is top-left corner, w, h is size
+          centerX = it.x + it.w / 2;
+          centerY = it.y + it.h / 2;
+          rx = Math.abs(it.w) / 2;
+          ry = Math.abs(it.h) / 2;
+        } else if (it.rx !== undefined && it.ry !== undefined) {
+          // Old format: x, y is center, rx, ry are radii
+          centerX = it.x;
+          centerY = it.y;
+          rx = Math.max(1, it.rx);
+          ry = Math.max(1, it.ry);
         } else {
-          ctx.arc(it.x, it.y, Math.max(1, it.r || 1), 0, Math.PI * 2);
+          // Old format: x, y is center, r is radius
+          const r = Math.max(1, it.r || 1);
+          centerX = it.x;
+          centerY = it.y;
+          rx = r;
+          ry = r;
+        }
+        
+        if (rx === ry) {
+          ctx.arc(centerX, centerY, Math.max(1, rx), 0, Math.PI * 2);
+        } else {
+          ctx.ellipse(centerX, centerY, Math.max(1, rx), Math.max(1, ry), 0, 0, Math.PI * 2);
         }
         ctx.stroke();
       } else if (it.type === 'path') {
@@ -1030,8 +1166,8 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
     
     const canvas = canvasRef.current;
     const handleWheel = (e: WheelEvent) => {
-      // Only handle wheel when in pan mode and not editing text
-      if (textEditingRef.current || mode !== 'pan') return;
+      // Handle wheel when in pan or select mode and not editing text
+      if (textEditingRef.current || (mode !== 'pan' && mode !== 'select')) return;
       
       e.preventDefault();
       e.stopPropagation();
@@ -1067,29 +1203,63 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
       exitTextEditing();
       return;
     }
-    if (mode !== 'pan' || !img) return;
-    e.preventDefault();
-    const rect = (e.target as HTMLCanvasElement).getBoundingClientRect();
-    draggingRef.current = {
-      x: e.clientX - rect.left,
-      y: e.clientY - rect.top,
-      offsetX: offsetXRef.current,
-      offsetY: offsetYRef.current,
-    };
-    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    if (!img) return;
+    
+    // Allow pan in pan mode, or in select mode when clicking outside items
+    if (mode === 'pan') {
+      e.preventDefault();
+      const rect = (e.target as HTMLCanvasElement).getBoundingClientRect();
+      draggingRef.current = {
+        x: e.clientX - rect.left,
+        y: e.clientY - rect.top,
+        offsetX: offsetXRef.current,
+        offsetY: offsetYRef.current,
+      };
+      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    } else if (mode === 'select') {
+      // In select mode, check if clicking outside any item
+      const rect = (e.target as HTMLCanvasElement).getBoundingClientRect();
+      const dpr = window.devicePixelRatio || 1;
+      const displayWidth = canvasRef.current ? canvasRef.current.width / dpr : 0;
+      const displayHeight = canvasRef.current ? canvasRef.current.height / dpr : 0;
+      
+      // Convert click coordinates to canvas coordinates
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      
+      // Check if click is within canvas bounds and outside any item
+      if (x >= 0 && x <= displayWidth && y >= 0 && y <= displayHeight) {
+        const hit = itemAt(x, y);
+        if (!hit) {
+          // Click is outside any item, allow pan
+          e.preventDefault();
+          draggingRef.current = {
+            x: e.clientX - rect.left,
+            y: e.clientY - rect.top,
+            offsetX: offsetXRef.current,
+            offsetY: offsetYRef.current,
+          };
+          (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+        }
+      }
+    }
   };
 
   const handleCanvasPointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    if (mode !== 'pan' || !img || !draggingRef.current) return;
-    const rect = (e.target as HTMLCanvasElement).getBoundingClientRect();
-    const dx = e.clientX - rect.left - draggingRef.current.x;
-    const dy = e.clientY - rect.top - draggingRef.current.y;
-    const { x, y } = clampOffset(draggingRef.current.offsetX + dx, draggingRef.current.offsetY + dy);
-    setOffsetX(x);
-    setOffsetY(y);
+    if (!img || !draggingRef.current) return;
+    // Allow pan movement in pan mode or when dragging in select mode (after clicking outside items)
+    if (mode === 'pan' || (mode === 'select' && draggingRef.current)) {
+      const rect = (e.target as HTMLCanvasElement).getBoundingClientRect();
+      const dx = e.clientX - rect.left - draggingRef.current.x;
+      const dy = e.clientY - rect.top - draggingRef.current.y;
+      const { x, y } = clampOffset(draggingRef.current.offsetX + dx, draggingRef.current.offsetY + dy);
+      setOffsetX(x);
+      setOffsetY(y);
+    }
   };
 
   const handleCanvasPointerUp = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    // If we were panning in select mode, stay in select mode (don't change mode)
     draggingRef.current = null;
     (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
   };
@@ -1251,7 +1421,14 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
     if (mode === 'delete') {
       const hit = itemAt(x, y);
       if (hit) {
-        setItems(prev => prev.filter(it => it && it.id && it.id !== hit.id));
+        setItems(prev => {
+          const newItems = prev.filter(it => it && it.id && it.id !== hit.id);
+          // If no items left, switch to select mode
+          if (newItems.length === 0) {
+            setMode('select');
+          }
+          return newItems;
+        });
         setSelectedIds(prev => prev.filter(id => id !== hit.id));
       }
       return;
@@ -1289,8 +1466,8 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
           type: 'circle',
           x,
           y,
-          rx: 1, // Start as ellipse to allow oval shapes
-          ry: 1,
+          w: 1, // Width of bounding box
+          h: 1, // Height of bounding box
           color,
           stroke,
         };
@@ -1351,9 +1528,9 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
                     startY: y,
                     startW: bb.w,
                     startH: bb.h,
-                    startR: item.type === 'circle' ? (item.r || (item.rx && item.ry ? Math.max(item.rx, item.ry) : undefined)) : undefined,
-                    startRx: item.type === 'circle' ? (item.rx || item.r) : undefined,
-                    startRy: item.type === 'circle' ? (item.ry || item.r) : undefined,
+                    startR: item.type === 'circle' && !item.w ? (item.r || (item.rx && item.ry ? Math.max(item.rx, item.ry) : undefined)) : undefined,
+                    startRx: item.type === 'circle' && !item.w ? (item.rx || item.r) : undefined,
+                    startRy: item.type === 'circle' && !item.w ? (item.ry || item.r) : undefined,
                     startX2: item.type === 'arrow' ? item.x2 : undefined,
                     startY2: item.type === 'arrow' ? item.y2 : undefined,
                   };
@@ -1377,7 +1554,7 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
               return; // Don't do anything else, just update cursor position
             }
             
-            // If clicking outside the text being edited, exit edit mode and return to pan
+            // If clicking outside the text being edited, exit edit mode and return to select
             if (textEditingRef.current && (!hit || hit.type !== 'text' || hit.id !== textEditingRef.current)) {
               setItems(prev => prev.map(it => !it || !it.id ? it : ({ ...it, _editing: false })).filter(it => it && it.id));
               textEditingRef.current = null;
@@ -1386,7 +1563,7 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
                 clearInterval(cursorBlinkRef.current);
                 cursorBlinkRef.current = null;
               }
-              setMode('pan');
+              setMode('select');
               return; // Don't continue with selection logic
             }
             
@@ -1506,8 +1683,16 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
           } else {
               // Click on empty area - disable text editing (already handled above)
               setSelectedIds([]);
-              // Click on empty area -> return to pan mode
-              setMode('pan');
+              // Click on empty area -> allow pan in select mode
+              if (mode === 'select' && img) {
+                // Start pan when clicking outside items in select mode
+                draggingRef.current = {
+                  x: e.clientX - rect.left,
+                  y: e.clientY - rect.top,
+                  offsetX: offsetXRef.current,
+                  offsetY: offsetYRef.current,
+                };
+              }
             }
           }
         }
@@ -1518,6 +1703,16 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
     const rect = (e.target as HTMLCanvasElement).getBoundingClientRect();
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
+    
+    // Handle pan when dragging in select mode (clicked outside items)
+    if (mode === 'select' && draggingRef.current && img) {
+      const dx = e.clientX - rect.left - draggingRef.current.x;
+      const dy = e.clientY - rect.top - draggingRef.current.y;
+      const { x: newX, y: newY } = clampOffset(draggingRef.current.offsetX + dx, draggingRef.current.offsetY + dy);
+      setOffsetX(newX);
+      setOffsetY(newY);
+      return;
+    }
     
     // Mouse-drag text selection while editing
     if (textEditingRef.current && textSelectingRef.current) {
@@ -1552,13 +1747,11 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
       } else if (drawingRef.current.type === 'arrow') {
         setItems(prev => prev.map(it => !it || !it.id ? it : (it.id === drawingRef.current!.id ? { ...it, x2: x, y2: y } : it)).filter(it => it && it.id));
       } else if (drawingRef.current.type === 'circle') {
-        const dx = Math.abs(x - drawingRef.current.x);
-        const dy = Math.abs(y - drawingRef.current.y);
-        // Allow independent rx and ry for oval shapes
+        // Update width and height like rectangle (from corner to corner)
         setItems(prev => prev.map(it => {
           if (!it || !it.id) return it;
           if (it.id === drawingRef.current!.id) {
-            return { ...it, rx: Math.max(1, dx), ry: Math.max(1, dy) };
+            return { ...it, w: x - it.x, h: y - it.y };
           }
           return it;
         }).filter(it => it && it.id));
@@ -1624,57 +1817,79 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
             
             return { ...it, x: newX, y: newY, w: newW, h: newH };
           } else if (it.type === 'circle') {
-            const { handle, startR, startRx, startRy } = resizeState;
-            const centerX = item.x;
-            const centerY = item.y;
+            const { handle, startW, startH, startR, startRx, startRy } = resizeState;
+            const bb = getItemBounds(item);
+            if (!bb) return it;
             
-            // Support both circle (r) and ellipse (rx, ry)
-            if (item.rx !== undefined || item.ry !== undefined || startRx !== undefined || startRy !== undefined) {
-              // Ellipse mode - allow independent x and y radii
-              let newRx = startRx !== undefined ? startRx : (item.rx || item.r || 1);
-              let newRy = startRy !== undefined ? startRy : (item.ry || item.r || 1);
-              let newX = centerX;
-              let newY = centerY;
+            // Support both new format (w, h) and old format (rx, ry or r)
+            if (item.w !== undefined && item.h !== undefined) {
+              // New format: treat like rectangle
+              const origX = bb.x;
+              const origY = bb.y;
               
-              if (handle === 'se' || handle === 'ne' || handle === 'sw' || handle === 'nw') {
-                // Corner handles - calculate distance from center
-                const distX = Math.abs(x - centerX);
-                const distY = Math.abs(y - centerY);
-                if (handle === 'se' || handle === 'ne') { newRx = distX; }
-                if (handle === 'sw' || handle === 'nw') { newRx = distX; }
-                if (handle === 'se' || handle === 'sw') { newRy = distY; }
-                if (handle === 'ne' || handle === 'nw') { newRy = distY; }
-              } else if (handle.includes('e')) { 
-                newRx = startRx! + dx;
-              } else if (handle.includes('w')) { 
-                newRx = startRx! - dx;
-                newX = centerX + dx;
-              } else if (handle.includes('s')) { 
-                newRy = startRy! + dy;
-              } else if (handle.includes('n')) { 
-                newRy = startRy! - dy;
-                newY = centerY + dy;
-              }
+              // Allow negative width/height to flip (like Paint)
+              let newW = startW! + (handle.includes('e') ? dx : handle.includes('w') ? -dx : 0);
+              let newH = startH! + (handle.includes('s') ? dy : handle.includes('n') ? -dy : 0);
+              let newX = origX;
+              let newY = origY;
               
-              return { ...it, x: newX, y: newY, rx: Math.max(1, newRx), ry: Math.max(1, newRy) };
+              // Adjust position when resizing from left or top
+              if (handle.includes('w')) { newX = origX + dx; }
+              if (handle.includes('n')) { newY = origY + dy; }
+              
+              return { ...it, x: newX, y: newY, w: newW, h: newH };
             } else {
-              // Circle mode - maintain aspect ratio
-              let newR = startR!;
+              // Old format: support rx, ry or r (center-based)
+              const centerX = item.x;
+              const centerY = item.y;
               
-              if (handle === 'se' || handle === 'ne' || handle === 'sw' || handle === 'nw') {
-                const dist = Math.hypot(x - centerX, y - centerY);
-                newR = Math.max(1, dist);
-              } else if (handle.includes('e')) { 
-                newR = Math.max(1, startR! + dx); 
-              } else if (handle.includes('w')) { 
-                newR = Math.max(1, startR! - dx); 
-              } else if (handle.includes('s')) { 
-                newR = Math.max(1, startR! + dy); 
-              } else if (handle.includes('n')) { 
-                newR = Math.max(1, startR! - dy); 
+              if (item.rx !== undefined || item.ry !== undefined || startRx !== undefined || startRy !== undefined) {
+                // Ellipse mode - allow independent x and y radii
+                let newRx = startRx !== undefined ? startRx : (item.rx || item.r || 1);
+                let newRy = startRy !== undefined ? startRy : (item.ry || item.r || 1);
+                let newX = centerX;
+                let newY = centerY;
+                
+                if (handle === 'se' || handle === 'ne' || handle === 'sw' || handle === 'nw') {
+                  // Corner handles - calculate distance from center
+                  const distX = Math.abs(x - centerX);
+                  const distY = Math.abs(y - centerY);
+                  if (handle === 'se' || handle === 'ne') { newRx = distX; }
+                  if (handle === 'sw' || handle === 'nw') { newRx = distX; }
+                  if (handle === 'se' || handle === 'sw') { newRy = distY; }
+                  if (handle === 'ne' || handle === 'nw') { newRy = distY; }
+                } else if (handle.includes('e')) { 
+                  newRx = startRx! + dx;
+                } else if (handle.includes('w')) { 
+                  newRx = startRx! - dx;
+                  newX = centerX + dx;
+                } else if (handle.includes('s')) { 
+                  newRy = startRy! + dy;
+                } else if (handle.includes('n')) { 
+                  newRy = startRy! - dy;
+                  newY = centerY + dy;
+                }
+                
+                return { ...it, x: newX, y: newY, rx: Math.max(1, newRx), ry: Math.max(1, newRy) };
+              } else {
+                // Circle mode - maintain aspect ratio
+                let newR = startR!;
+                
+                if (handle === 'se' || handle === 'ne' || handle === 'sw' || handle === 'nw') {
+                  const dist = Math.hypot(x - centerX, y - centerY);
+                  newR = Math.max(1, dist);
+                } else if (handle.includes('e')) { 
+                  newR = Math.max(1, startR! + dx); 
+                } else if (handle.includes('w')) { 
+                  newR = Math.max(1, startR! - dx); 
+                } else if (handle.includes('s')) { 
+                  newR = Math.max(1, startR! + dy); 
+                } else if (handle.includes('n')) { 
+                  newR = Math.max(1, startR! - dy); 
+                }
+                
+                return { ...it, r: newR };
               }
-              
-              return { ...it, r: newR };
             }
           } else if (it.type === 'arrow') {
             const { handle } = resizeState;
@@ -1816,6 +2031,11 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
   };
 
   const handleOverlayMouseUp = () => {
+    // Clear pan dragging if active (when panning in select mode)
+    if (draggingRef.current && mode === 'select' && !drawingRef.current && !movingRef.current && !resizingRef.current) {
+      draggingRef.current = null;
+    }
+    
     if (textSelectingRef.current) {
       textSelectingRef.current = false;
     }
@@ -1837,12 +2057,38 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
       marqueeRef.current = null;
     }
     
-    // If we just finished drawing rect, arrow, circle, or text, switch to pan mode
+    // If we just finished drawing rect, arrow, circle, or text, switch to select mode
     if (drawingRef.current) {
       const drawnType = drawingRef.current.type;
       const drawnId = drawingRef.current.id;
-      if (drawnType === 'rect' || drawnType === 'arrow' || drawnType === 'circle') {
-        setMode('pan');
+      if (drawnType === 'rect' || drawnType === 'circle') {
+        // Normalize coordinates: ensure x, y is top-left and w, h are positive
+        setItems(prev => prev.map(it => {
+          if (!it || !it.id || it.id !== drawnId) return it;
+          const currentW = it.w || 0;
+          const currentH = it.h || 0;
+          let newX = it.x;
+          let newY = it.y;
+          let newW = currentW;
+          let newH = currentH;
+          
+          // If width is negative, adjust x and make w positive
+          if (currentW < 0) {
+            newX = it.x + currentW;
+            newW = Math.abs(currentW);
+          }
+          
+          // If height is negative, adjust y and make h positive
+          if (currentH < 0) {
+            newY = it.y + currentH;
+            newH = Math.abs(currentH);
+          }
+          
+          return { ...it, x: newX, y: newY, w: newW, h: newH };
+        }).filter(it => it && it.id));
+        setMode('select');
+      } else if (drawnType === 'arrow') {
+        setMode('select');
       } else if (drawnType === 'text') {
         // For text, enable editing after creating the area
         // Make sure item exists in items array before trying to edit
@@ -1851,7 +2097,7 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
           // Only enable editing if text box has meaningful size
           setItems(prev => prev.map(it => !it || !it.id ? it : (it.id === drawnId ? { ...it, _editing: true } : it)).filter(it => it && it.id));
           textEditingRef.current = drawnId;
-          setMode('pan');
+          setMode('select');
           // Start cursor blink
           if (cursorBlinkRef.current) {
             clearInterval(cursorBlinkRef.current);
@@ -1867,10 +2113,10 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
             }
           }, 100);
         } else {
-          // If text box is too small, just switch to pan mode without editing
+          // If text box is too small, just switch to select mode without editing
           // Also clear textEditingRef to ensure drag works
           textEditingRef.current = null;
-          setMode('pan');
+          setMode('select');
         }
       }
     }
@@ -2063,9 +2309,9 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
         // Only delete when not editing text
         setItems(prev => prev.filter(it => it && it.id && !selectedIds.includes(it.id)));
         setSelectedIds([]);
-      } else if (e.key === 'Escape' && mode !== 'pan') {
-        // Escape key -> return to pan mode
-        setMode('pan');
+      } else if (e.key === 'Escape' && mode !== 'select' && mode !== 'pan') {
+        // Escape key -> return to select mode
+        setMode('select');
         setSelectedIds([]);
       }
     };
@@ -2093,43 +2339,28 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
     
     setIsSaving(true);
     
+    // Get display dimensions (CSS pixels) - this is what the user sees
+    const dpr = window.devicePixelRatio || 1;
+    const displayWidth = canvas.width / dpr;
+    const displayHeight = canvas.height / dpr;
+    
     // Create final canvas with same size as the editing canvas to match what user sees
     const finalCanvas = document.createElement('canvas');
-    finalCanvas.width = canvas.width;
-    finalCanvas.height = canvas.height;
+    finalCanvas.width = displayWidth;
+    finalCanvas.height = displayHeight;
     const ctx = finalCanvas.getContext('2d');
     if (!ctx) return;
     
     // Draw base image with transformations (same as drawBase function)
     ctx.save();
     const clamped = clampOffset(offsetX, offsetY);
-    ctx.clearRect(0, 0, finalCanvas.width, finalCanvas.height);
+    ctx.clearRect(0, 0, displayWidth, displayHeight);
     
-    // Draw blurred background if needed (fast path, same as preview)
-    const iw0 = img.naturalWidth;
-    const ih0 = img.naturalHeight;
-    const angleRad0 = (angle * Math.PI) / 180;
-    const cos0 = Math.abs(Math.cos(angleRad0));
-    const sin0 = Math.abs(Math.sin(angleRad0));
-    const rotatedW0 = iw0 * scale * cos0 + ih0 * scale * sin0;
-    const rotatedH0 = iw0 * scale * sin0 + ih0 * scale * cos0;
-    const needsBlur = rotatedW0 < finalCanvas.width || rotatedH0 < finalCanvas.height;
-
-    if (needsBlur) {
-      ensureBlurredBackground();
-      const bg = blurredBgCanvasRef.current;
-      if (bg) {
-        ctx.drawImage(bg, 0, 0, finalCanvas.width, finalCanvas.height);
-      } else {
-        ctx.fillStyle = '#f6f6f6';
-        ctx.fillRect(0, 0, finalCanvas.width, finalCanvas.height);
-      }
-    } else {
-      ctx.fillStyle = '#f6f6f6';
-      ctx.fillRect(0, 0, finalCanvas.width, finalCanvas.height);
-    }
+    // Use white background instead of blur
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, finalCanvas.width, finalCanvas.height);
     
-    ctx.translate(finalCanvas.width / 2 + clamped.x, finalCanvas.height / 2 + clamped.y);
+    ctx.translate(displayWidth / 2 + clamped.x, displayHeight / 2 + clamped.y);
     ctx.rotate(angle * Math.PI / 180);
     const iw = img.naturalWidth;
     const ih = img.naturalHeight;
@@ -2310,18 +2541,36 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
 
   if (!isOpen) return null;
 
+  // Calculate modal size based on canvas dimensions
+  const canvasWidth = canvasDimensions.width || canvasRef.current?.width || 0;
+  const canvasHeight = canvasDimensions.height || canvasRef.current?.height || 0;
+  const sidebarWidth = 240; // w-56 = 224px + gap-4 = 16px
+  const padding = 32; // p-4 = 16px * 2
+  const headerHeight = 60; // approximate header height
+  const modalWidth = isLoading ? 800 : (canvasWidth > 0 ? canvasWidth + sidebarWidth + padding : 1200);
+  const modalHeight = isLoading ? 600 : (canvasHeight > 0 ? Math.max(canvasHeight, 400) + headerHeight + padding : 700);
+
   return (
-    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center">
-      <div className="w-[1200px] max-w-[95vw] max-h-[90vh] bg-white rounded-xl overflow-hidden flex flex-col">
-        <div className="px-4 py-3 border-b flex items-center justify-between">
+    <>
+      <style>{sliderStyle}</style>
+      <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
+      <div 
+        className="bg-white rounded-xl overflow-hidden flex flex-col"
+        style={{
+          width: isLoading ? '800px' : `${Math.min(modalWidth, window.innerWidth - 32)}px`,
+          maxWidth: '95vw',
+          maxHeight: '95vh'
+        }}
+      >
+        <div className="px-4 py-3 border-b flex items-center justify-between flex-shrink-0">
           <div className="font-semibold">Edit Image: {imageName}</div>
           <button onClick={onClose} className="text-gray-500 hover:text-gray-700 text-2xl font-bold w-8 h-8 flex items-center justify-center rounded hover:bg-gray-100">×</button>
         </div>
         
         <div className="flex-1 overflow-auto p-4">
-          <div ref={containerRef} className="flex gap-4 flex-wrap">
-            <div className="flex-1">
-              <div className="relative border border-gray-300 bg-gray-100 inline-block" style={isLoading ? { height: '500px', width: '500px', display: 'flex', alignItems: 'center', justifyContent: 'center' } : undefined}>
+          <div ref={containerRef} className="flex gap-4 items-start">
+            <div className="flex-shrink-0" style={{ width: canvasWidth > 0 ? `${canvasWidth}px` : 'auto', maxWidth: canvasWidth > 0 ? `${canvasWidth}px` : 'none' }}>
+              <div className="relative inline-block" style={isLoading ? { height: '500px', width: '500px', display: 'flex', alignItems: 'center', justifyContent: 'center' } : undefined}>
                 {isLoading && (
                   <div className="text-center">
                     <div className="mx-auto mb-4 h-10 w-10 rounded-full border-4 border-gray-200 border-t-brand-red animate-spin" />
@@ -2345,7 +2594,7 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
                       ref={canvasRef}
                       className="block"
                       style={{ 
-                        cursor: (mode === 'pan' && !textEditingRef.current) ? (draggingRef.current ? 'grabbing' : 'grab') : 'default',
+                        cursor: ((mode === 'pan' || mode === 'select') && !textEditingRef.current) ? (draggingRef.current ? 'grabbing' : 'grab') : 'default',
                         display: 'block',
                         pointerEvents: textEditingRef.current ? 'none' : 'auto',
                         touchAction: 'none'
@@ -2372,26 +2621,69 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
                         outline: 'none'
                       }}
                       onMouseMove={(e) => {
-                        if (mode === 'select') {
+                        if (mode === 'select' || mode === 'delete') {
                           const rect = (e.target as HTMLCanvasElement).getBoundingClientRect();
                           const x = e.clientX - rect.left;
                           const y = e.clientY - rect.top;
                           let cursor = 'default';
-                          for (const item of items) {
-                            if (selectedIds.includes(item.id)) {
-                              const handle = getHandleAt(x, y, item);
-                              if (handle) {
-                                if (handle === 'nw' || handle === 'se') cursor = 'nwse-resize';
-                                else if (handle === 'ne' || handle === 'sw') cursor = 'nesw-resize';
-                                else if (handle === 'n' || handle === 's') cursor = 'ns-resize';
-                                else if (handle === 'e' || handle === 'w') cursor = 'ew-resize';
-                                break;
+                          
+                          // Check if hovering over a resize handle (only in select mode)
+                          let handleFound = false;
+                          if (mode === 'select') {
+                            for (const item of items) {
+                              if (selectedIds.includes(item.id)) {
+                                const handle = getHandleAt(x, y, item);
+                                if (handle) {
+                                  if (handle === 'nw' || handle === 'se') cursor = 'nwse-resize';
+                                  else if (handle === 'ne' || handle === 'sw') cursor = 'nesw-resize';
+                                  else if (handle === 'n' || handle === 's') cursor = 'ns-resize';
+                                  else if (handle === 'e' || handle === 'w') cursor = 'ew-resize';
+                                  handleFound = true;
+                                  break;
+                                }
                               }
                             }
                           }
+                          
+                          // If not over a handle, check if over an item or can pan
+                          if (!handleFound) {
+                            const hit = itemAt(x, y);
+                            if (hit) {
+                              cursor = 'default';
+                            } else {
+                              // Not over any item - can pan, show grab cursor (only in select mode)
+                              if (mode === 'select') {
+                                cursor = draggingRef.current ? 'grabbing' : 'grab';
+                              } else {
+                                // In delete mode, show default cursor when not over item
+                                cursor = 'default';
+                              }
+                            }
+                          }
+                          
                           (e.target as HTMLCanvasElement).style.cursor = cursor;
                         }
                         handleOverlayMouseMove(e);
+                      }}
+                      onWheel={(e) => {
+                        // Handle zoom when in select or pan mode
+                        if (textEditingRef.current || (mode !== 'pan' && mode !== 'select')) return;
+                        if (!img) return;
+                        
+                        e.preventDefault();
+                        e.stopPropagation();
+                        
+                        const factor = e.deltaY < 0 ? 1.06 : 1/1.06;
+                        const currentScale = scaleRef.current;
+                        const currentOffsetX = offsetXRef.current;
+                        const currentOffsetY = offsetYRef.current;
+                        const newScale = Math.min(3, Math.max(0.1, currentScale * factor));
+                        
+                        // Recalculate clamp values with new scale
+                        const clamped = clampOffset(currentOffsetX, currentOffsetY, newScale);
+                        setScale(newScale);
+                        setOffsetX(clamped.x);
+                        setOffsetY(clamped.y);
                       }}
                       onMouseDown={handleOverlayMouseDown}
                       onMouseUp={handleOverlayMouseUp}
@@ -2408,40 +2700,43 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
               </div>
             </div>
             
-            <div className="w-64 space-y-4">
+            <div className="w-56 flex-shrink-0 space-y-2.5">
               <div>
-                <label className="block text-sm font-medium mb-2">Image Controls</label>
+                <label className="block text-xs font-medium mb-1.5 text-gray-700">Image Controls</label>
                 <div>
-                  <label className="block text-sm font-medium mb-2">Rotation</label>
-                  <div className="flex gap-2">
-                    <button onClick={() => setAngle(prev => (prev + 270) % 360)} className="flex-1 px-3 py-2 rounded bg-gray-100">
+                  <label className="block text-xs text-gray-600 mb-1">Rotation</label>
+                  <div className="flex gap-1.5">
+                    <button onClick={() => setAngle(prev => (prev + 270) % 360)} className="flex-1 px-2 py-1.5 rounded text-xs bg-gray-100 hover:bg-gray-200 transition-colors">
                       ⟲ Left
                     </button>
-                    <button onClick={() => setAngle(prev => (prev + 90) % 360)} className="flex-1 px-3 py-2 rounded bg-gray-100">
+                    <button onClick={() => setAngle(prev => (prev + 90) % 360)} className="flex-1 px-2 py-1.5 rounded text-xs bg-gray-100 hover:bg-gray-200 transition-colors">
                       ⟳ Right
                     </button>
                   </div>
                 </div>
-                <div className="mt-3">
-                  <label className="block text-sm font-medium mb-2">Zoom: {scale.toFixed(2)}x</label>
-                  <input
-                    type="range"
-                    min="0.1"
-                    max="3"
-                    step="0.01"
-                    value={scale}
-                    onChange={e => setScale(parseFloat(e.target.value))}
-                    className="w-full"
-                  />
-                </div>
-                <div className="mt-3 text-xs text-gray-500">
-                  Pan: Drag image automatically when no tool is selected (Press ESC to return to pan)
+                <div className="mt-2">
+                  <div className="custom-slider-container mb-1">
+                    <span className="text-xs font-medium text-gray-700 flex-shrink-0" style={{ width: '45px' }}>Zoom:</span>
+                    <input
+                      type="range"
+                      min="0.1"
+                      max="3"
+                      step="0.01"
+                      value={scale}
+                      onChange={e => setScale(parseFloat(e.target.value))}
+                      className="custom-slider"
+                      style={{
+                        background: `linear-gradient(to right, #6b7280 0%, #6b7280 ${((scale - 0.1) / (3 - 0.1)) * 100}%, #e5e7eb ${((scale - 0.1) / (3 - 0.1)) * 100}%, #e5e7eb 100%)`
+                      }}
+                    />
+                    <div className="custom-slider-value">{scale.toFixed(2)}x</div>
+                  </div>
                 </div>
               </div>
               
-              <div className="pt-4 border-t">
-                <label className="block text-sm font-medium mb-2">Annotation Tools</label>
-                <div className="grid grid-cols-2 gap-2">
+              <div className="pt-2.5 border-t">
+                <label className="block text-xs font-medium mb-1.5 text-gray-700">Tools</label>
+                <div className="grid grid-cols-3 gap-1.5">
                   <button onClick={() => {
                     // Disable text editing when changing tools
                     if (textEditingRef.current) {
@@ -2453,10 +2748,9 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
                         setSelectedIds([]);
                       }
                     }
-                    setMode(mode === 'select' ? 'pan' : 'select');
-                  }} className={`px-3 py-2 rounded text-sm flex items-center justify-center gap-2 ${mode === 'select' ? 'bg-brand-red text-white' : 'bg-gray-100'}`}>
-                    <img src={selectIcon} alt="Select" className="w-5 h-5" />
-                    Select
+                    setMode('select');
+                  }} className={`px-2 py-2 rounded flex items-center justify-center hover:bg-gray-200 transition-colors ${mode === 'select' ? 'bg-brand-red text-white' : 'bg-gray-100'}`} title="Select">
+                    <img src={selectIcon} alt="Select" className="w-6 h-6" />
                   </button>
                   <button onClick={() => {
                     if (textEditingRef.current) {
@@ -2467,10 +2761,9 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
                         cursorBlinkRef.current = null;
                       }
                     }
-                    setMode(mode === 'rect' ? 'pan' : 'rect');
-                  }} className={`px-3 py-2 rounded text-sm flex items-center justify-center gap-2 ${mode === 'rect' ? 'bg-brand-red text-white' : 'bg-gray-100'}`}>
-                    <img src={rectIcon} alt="Rect" className="w-5 h-5" />
-                    Rect
+                    setMode('rect');
+                  }} className={`px-2 py-2 rounded flex items-center justify-center hover:bg-gray-200 transition-colors ${mode === 'rect' ? 'bg-brand-red text-white' : 'bg-gray-100'}`} title="Rectangle">
+                    <img src={rectIcon} alt="Rect" className="w-6 h-6" />
                   </button>
                   <button onClick={() => {
                     if (textEditingRef.current) {
@@ -2481,10 +2774,9 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
                         cursorBlinkRef.current = null;
                       }
                     }
-                    setMode(mode === 'arrow' ? 'pan' : 'arrow');
-                  }} className={`px-3 py-2 rounded text-sm flex items-center justify-center gap-2 ${mode === 'arrow' ? 'bg-brand-red text-white' : 'bg-gray-100'}`}>
-                    <img src={arrowIcon} alt="Arrow" className="w-5 h-5" />
-                    Arrow
+                    setMode('arrow');
+                  }} className={`px-2 py-2 rounded flex items-center justify-center hover:bg-gray-200 transition-colors ${mode === 'arrow' ? 'bg-brand-red text-white' : 'bg-gray-100'}`} title="Arrow">
+                    <img src={arrowIcon} alt="Arrow" className="w-6 h-6" />
                   </button>
                   <button onClick={() => {
                     if (textEditingRef.current) {
@@ -2495,10 +2787,9 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
                         cursorBlinkRef.current = null;
                       }
                     }
-                    setMode(mode === 'text' ? 'pan' : 'text');
-                  }} className={`px-3 py-2 rounded text-sm flex items-center justify-center gap-2 ${mode === 'text' ? 'bg-brand-red text-white' : 'bg-gray-100'}`}>
+                    setMode('text');
+                  }} className={`px-2 py-2 rounded flex items-center justify-center hover:bg-gray-200 transition-colors ${mode === 'text' ? 'bg-brand-red text-white' : 'bg-gray-100'}`} title="Text">
                     <img src={textIcon} alt="Text" className="w-5 h-5" />
-                    Text
                   </button>
                   <button onClick={() => {
                     if (textEditingRef.current) {
@@ -2509,105 +2800,136 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
                         cursorBlinkRef.current = null;
                       }
                     }
-                    setMode(mode === 'circle' ? 'pan' : 'circle');
-                  }} className={`px-3 py-2 rounded text-sm flex items-center justify-center gap-2 ${mode === 'circle' ? 'bg-brand-red text-white' : 'bg-gray-100'}`}>
+                    setMode('circle');
+                  }} className={`px-2 py-2 rounded flex items-center justify-center hover:bg-gray-200 transition-colors ${mode === 'circle' ? 'bg-brand-red text-white' : 'bg-gray-100'}`} title="Circle">
                     <img src={circleIcon} alt="Circle" className="w-5 h-5" />
-                    Circle
                   </button>
                   <button onClick={() => {
                     if (textEditingRef.current) {
                       exitTextEditing();
                     }
-                    setMode(mode === 'draw' ? 'pan' : 'draw');
-                  }} className={`px-3 py-2 rounded text-sm flex items-center justify-center gap-2 ${mode === 'draw' ? 'bg-brand-red text-white' : 'bg-gray-100'}`}>
+                    setMode('draw');
+                  }} className={`px-2 py-2 rounded flex items-center justify-center hover:bg-gray-200 transition-colors ${mode === 'draw' ? 'bg-brand-red text-white' : 'bg-gray-100'}`} title="Draw">
                     <img src={pencilIcon} alt="Draw" className="w-5 h-5" />
-                    Draw
                   </button>
                   <button onClick={() => {
                     if (textEditingRef.current) {
                       exitTextEditing();
                     }
-                    setMode(mode === 'delete' ? 'pan' : 'delete');
-                  }} className={`px-3 py-2 rounded text-sm flex items-center justify-center gap-2 ${mode === 'delete' ? 'bg-brand-red text-white' : 'bg-gray-100'}`}>
+                    setMode('delete');
+                  }} className={`px-2 py-2 rounded flex items-center justify-center hover:bg-gray-200 transition-colors ${mode === 'delete' ? 'bg-brand-red text-white' : 'bg-gray-100'}`} title="Delete">
                     <img src={deleteIcon} alt="Delete" className="w-5 h-5" />
-                    Delete
                   </button>
                 </div>
               </div>
               
-              <div className="pt-4 border-t">
-                <label className="block text-sm font-medium mb-2">Text Background</label>
-                <div className="mb-2">
-                  <label className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={textBackgroundEnabled}
-                      onChange={e => setTextBackgroundEnabled(e.target.checked)}
-                      className="w-4 h-4"
-                    />
-                    <span className="text-sm">Enable background</span>
-                  </label>
-                </div>
+              <div className="pt-2.5 border-t">
+                <label className="flex items-center gap-1.5 mb-1.5">
+                  <span className="text-xs font-medium text-gray-700">Text Background:</span>
+                  <input
+                    type="checkbox"
+                    checked={textBackgroundEnabled}
+                    onChange={e => setTextBackgroundEnabled(e.target.checked)}
+                    className="w-2.5 h-2.5"
+                  />
+                  <span className="text-xs text-gray-600">Enable</span>
+                </label>
                 {textBackgroundEnabled && (
-                  <>
-                    <div className="mb-2">
-                      <label className="block text-sm font-medium mb-1">Background Color</label>
+                  <div className="flex gap-1.5 items-start">
+                    <div style={{ width: '20%' }}>
+                      <label className="block text-xs text-gray-600 mb-1">Color</label>
                       <input
                         type="color"
                         value={textBackgroundColor}
                         onChange={e => setTextBackgroundColor(e.target.value)}
-                        className="w-full h-10"
+                        className="w-full h-6 rounded"
                       />
                     </div>
-                    <div>
-                      <label className="block text-sm font-medium mb-1">Opacity: {Math.round(textBackgroundOpacity * 100)}%</label>
-                      <input
-                        type="range"
-                        min="0"
-                        max="1"
-                        step="0.01"
-                        value={textBackgroundOpacity}
-                        onChange={e => setTextBackgroundOpacity(parseFloat(e.target.value))}
-                        className="w-full"
-                      />
+                    <div style={{ width: '80%' }}>
+                      <label className="block text-xs text-gray-600 mb-1">Opacity</label>
+                      <div className="custom-slider-container mb-1">
+                        <input
+                          type="range"
+                          min="0"
+                          max="1"
+                          step="0.01"
+                          value={textBackgroundOpacity}
+                          onChange={e => setTextBackgroundOpacity(parseFloat(e.target.value))}
+                          className="custom-slider"
+                          style={{
+                            background: `linear-gradient(to right, #6b7280 0%, #6b7280 ${textBackgroundOpacity * 100}%, #e5e7eb ${textBackgroundOpacity * 100}%, #e5e7eb 100%)`
+                          }}
+                        />
+                        <div className="custom-slider-value">{Math.round(textBackgroundOpacity * 100)}%</div>
+                      </div>
                     </div>
-                  </>
+                  </div>
                 )}
               </div>
               
-              <div>
-                <label className="block text-sm font-medium mb-2">Color</label>
-                <input type="color" value={color} onChange={e => setColor(e.target.value)} className="w-full h-10" />
+              <div className="pt-2.5 border-t">
+                <label className="block text-xs font-medium mb-2 text-gray-700">Text/Line Configs</label>
+                <div className="custom-slider-container mb-1">
+                  <span className="text-xs font-medium text-gray-700 flex-shrink-0" style={{ width: '50px' }}>Color:</span>
+                  <input 
+                    type="color" 
+                    value={color} 
+                    onChange={e => setColor(e.target.value)} 
+                    className="h-6 rounded" 
+                    style={{ width: '60px' }}
+                  />
+                </div>
               </div>
               <div>
-                <label className="block text-sm font-medium mb-2">Stroke: {stroke}</label>
-                <input type="range" min="1" max="20" value={stroke} onChange={e => setStroke(parseInt(e.target.value))} className="w-full" />
+                <div className="custom-slider-container mb-1">
+                  <span className="text-xs font-medium text-gray-700 flex-shrink-0" style={{ width: '50px' }}>Stroke:</span>
+                  <input
+                    type="range"
+                    min="1"
+                    max="20"
+                    value={stroke}
+                    onChange={e => setStroke(parseInt(e.target.value))}
+                    className="custom-slider"
+                    style={{
+                      background: `linear-gradient(to right, #6b7280 0%, #6b7280 ${((stroke - 1) / (20 - 1)) * 100}%, #e5e7eb ${((stroke - 1) / (20 - 1)) * 100}%, #e5e7eb 100%)`
+                    }}
+                  />
+                  <div className="custom-slider-value">{stroke}</div>
+                </div>
               </div>
               <div>
-                <label className="block text-sm font-medium mb-2">Font Size: {fontSize}</label>
-                <input type="range" min="8" max="72" value={fontSize} onChange={e => setFontSize(parseInt(e.target.value))} className="w-full" />
+                <div className="custom-slider-container mb-1">
+                  <span className="text-xs font-medium text-gray-700 flex-shrink-0" style={{ width: '50px' }}>Font:</span>
+                  <input
+                    type="range"
+                    min="8"
+                    max="72"
+                    value={fontSize}
+                    onChange={e => setFontSize(parseInt(e.target.value))}
+                    className="custom-slider"
+                    style={{
+                      background: `linear-gradient(to right, #6b7280 0%, #6b7280 ${((fontSize - 8) / (72 - 8)) * 100}%, #e5e7eb ${((fontSize - 8) / (72 - 8)) * 100}%, #e5e7eb 100%)`
+                    }}
+                  />
+                  <div className="custom-slider-value">{fontSize}</div>
+                </div>
               </div>
               
-              <div className="pt-4 border-t">
-                <button onClick={handleReset} className="w-full px-3 py-2 rounded bg-gray-100 mb-2">
-                  Reset
-                </button>
-                <button onClick={handleSave} disabled={isSaving} className="w-full px-3 py-2 rounded bg-brand-red text-white flex items-center justify-center gap-2 disabled:opacity-50">
-                  <img src={saveIcon} alt="Save" className="w-5 h-5" />
-                  {isSaving ? 'Saving...' : 'Save Image'}
-                </button>
-              </div>
-              
-              <div className="text-xs text-gray-500">
-                <div>• Pan: drag image</div>
-                <div>• Rect/Arrow/Text: click or drag</div>
-                <div>• Click to select, drag to move</div>
-                <div>• Del key removes selected</div>
+              <div className="pt-2.5 border-t">
+                <div className="flex gap-1.5">
+                  <button onClick={handleReset} className="flex-1 px-1.5 py-1.5 rounded text-xs bg-gray-100 hover:bg-gray-200 transition-colors">
+                    Reset
+                  </button>
+                  <button onClick={handleSave} disabled={isSaving} className="flex-1 px-1.5 py-1.5 rounded text-xs bg-brand-red text-white flex items-center justify-center disabled:opacity-50 hover:bg-red-700 transition-colors">
+                    {isSaving ? 'Saving...' : 'Save'}
+                  </button>
+                </div>
               </div>
             </div>
           </div>
         </div>
       </div>
-    </div>
+      </div>
+    </>
   );
 }
