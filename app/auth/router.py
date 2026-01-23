@@ -907,10 +907,13 @@ def outlook_disconnect(user: User = Depends(get_current_user)):
 @router.get("/me/profile")
 def my_profile(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     from ..models.models import EmployeeProfile
-
+    from sqlalchemy.orm import joinedload
+    
+    # Refresh user with divisions loaded
+    user_with_divisions = db.query(User).options(joinedload(User.divisions)).filter(User.id == user.id).first()
     ep = db.query(EmployeeProfile).filter(EmployeeProfile.user_id == user.id).first()
     # Get user divisions
-    divisions = [{"id": str(d.id), "label": d.label} for d in getattr(user, 'divisions', [])]
+    divisions = [{"id": str(d.id), "label": d.label} for d in (user_with_divisions.divisions if user_with_divisions and hasattr(user_with_divisions, 'divisions') and user_with_divisions.divisions else [])]
     data = {
         "user": {
             "id": str(user.id),
@@ -959,6 +962,7 @@ def my_profile(user: User = Depends(get_current_user), db: Session = Depends(get
             "pay_type": ep.pay_type,
             "employment_type": ep.employment_type,
             "sin_number": ep.sin_number,
+            "project_division_ids": list(getattr(ep, "project_division_ids", None) or []),
             # New API field backed by legacy column
             "work_eligibility_status": getattr(ep, "work_permit_status", None),
             "work_permit_status": ep.work_permit_status,
@@ -1132,12 +1136,13 @@ def get_user_profile(user_id: str, db: Session = Depends(get_db), me: User = Dep
     if not can_read:
         raise HTTPException(status_code=403, detail="Forbidden")
     from ..models.models import EmployeeProfile
-    u = db.query(User).filter(User.id == user_id).first()
+    from sqlalchemy.orm import joinedload
+    u = db.query(User).options(joinedload(User.divisions)).filter(User.id == user_id).first()
     if not u:
         raise HTTPException(status_code=404, detail="Not found")
     ep = db.query(EmployeeProfile).filter(EmployeeProfile.user_id == u.id).first()
     # Get user divisions
-    divisions = [{"id": str(d.id), "label": d.label} for d in getattr(u, 'divisions', [])]
+    divisions = [{"id": str(d.id), "label": d.label} for d in (u.divisions if hasattr(u, 'divisions') and u.divisions else [])]
     profile_data = None
     if ep:
         profile_data = {
@@ -1149,10 +1154,13 @@ def get_user_profile(user_id: str, db: Session = Depends(get_db), me: User = Dep
                 "pay_rate","pay_type","employment_type","sin_number","work_permit_status","visa_status","profile_photo_file_id",
                 "emergency_contact_name","emergency_contact_relationship","emergency_contact_phone",
                 "cloth_size",
+                "project_division_ids",
             ]
         }
         # New API field backed by legacy column
         profile_data["work_eligibility_status"] = getattr(ep, "work_permit_status", None)
+        # Normalize null -> [] for frontend
+        profile_data["project_division_ids"] = list(profile_data.get("project_division_ids") or [])
         # Get global custom cloth sizes
         from ..models.models import SettingList, SettingItem
         custom_sizes_list = db.query(SettingList).filter(SettingList.name == "cloth_sizes_custom").first()

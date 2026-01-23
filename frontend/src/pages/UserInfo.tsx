@@ -2248,13 +2248,14 @@ export default function UserInfo(){
       
       // Save divisions if any changes
       if (divisionsDirty && (canEdit || canEditGeneral)) {
-        await api('PATCH', `/users/${encodeURIComponent(String(userId||''))}`, {
-          divisions: selectedDivisions
-        });
+        await api('PUT', `/employees/${encodeURIComponent(String(userId||''))}/divisions`, selectedDivisions);
         setDivisionsDirty(false);
         // Invalidate and refetch user profile to get updated divisions
         await queryClient.invalidateQueries({ queryKey: ['userProfile', userId] });
         await queryClient.refetchQueries({ queryKey: ['userProfile', userId] });
+        // Wait a bit for the refetch to complete
+        await new Promise(resolve => setTimeout(resolve, 200));
+        // The useEffect will automatically update selectedDivisions when u?.divisions changes
       }
       
       // Save project divisions if any changes
@@ -2377,88 +2378,64 @@ export default function UserInfo(){
               )}
               {tab==='personal' && canViewGeneral && (
                 <div className="space-y-6 pb-24">
-                  <div>
-                    <div className="flex items-center justify-between gap-2">
-                      <h4 className="font-semibold">Basic information</h4>
-                      {!isEditingPersonal && (canEditGeneral || canSelfEdit) && (
-                        <button
-                          onClick={() => setIsEditingPersonal(true)}
-                          className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-brand-red to-[#ee2b2b] text-white text-sm font-medium hover:opacity-90 flex items-center gap-1.5"
-                        >
-                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                          </svg>
-                          Edit
-                        </button>
-                      )}
-                    </div>
-                    <div className="text-xs text-gray-500 mt-0.5 mb-2">Core personal details.</div>
-                    <EditableGrid p={p} editable={isEditingPersonal && (canEditGeneral || !!canSelfEdit)} selfEdit={false} userId={String(userId)} collectChanges={collectChanges} inlineSave={false} fields={[['First name','first_name'],['Last name','last_name'],['Middle name','middle_name'],['Prefered name','preferred_name'],['Gender','gender'],['Marital status','marital_status'],['Date of birth','date_of_birth'],['Nationality','nationality']]} />
-                    <div className="mt-4 grid md:grid-cols-2 gap-4">
-                      <ClothSizeField p={p} editable={isEditingPersonal && (canEditGeneral || !!canSelfEdit)} userId={String(userId)} collectChanges={collectChanges} profileData={data} />
-                    </div>
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2"><h4 className="font-semibold">Address</h4></div>
-                    <div className="text-xs text-gray-500 mt-0.5 mb-2">Home address for contact and records.</div>
-                    <AddressSection p={p} editable={isEditingPersonal && (canEditGeneral || !!canSelfEdit)} selfEdit={false} userId={String(userId)} collectChanges={collectChanges} inlineSave={false} />
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2"><h4 className="font-semibold">Contact</h4></div>
-                    <div className="text-xs text-gray-500 mt-0.5 mb-2">How we can reach you.</div>
-                    <EditableGrid p={p} editable={isEditingPersonal && (canEditGeneral || !!canSelfEdit)} selfEdit={false} userId={String(userId)} collectChanges={collectChanges} inlineSave={false} fields={[['Phone 1','phone'],['Phone 2','mobile_phone']]} />
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2"><h4 className="font-semibold">Education</h4></div>
-                    <div className="text-xs text-gray-500 mt-0.5 mb-2">Academic history.</div>
-                    <EducationSection userId={String(userId)} canEdit={isEditingPersonal && (canEditGeneral || !!canSelfEdit)} />
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2"><h4 className="font-semibold">Legal & Documents</h4></div>
-                    <div className="text-xs text-gray-500 mt-0.5 mb-2">Legal status and identification.</div>
-                    <div className="grid md:grid-cols-2 gap-4 mb-4">
-                      <EditableGrid p={p} editable={isEditingPersonal && (canEditGeneral || !!canSelfEdit)} selfEdit={!!canSelfEdit} userId={String(userId)} collectChanges={collectChanges} inlineSave={false} fields={[['SIN Number','sin_number']]} />
-                      <EditableGrid p={p} editable={isEditingPersonal && (canEditGeneral || !!canSelfEdit)} selfEdit={!!canSelfEdit} userId={String(userId)} collectChanges={collectChanges} inlineSave={false} fields={[['Work Eligibility Status','work_eligibility_status']]} fieldOptions={{ work_eligibility_status: ['Canadian Citizen', 'Permanent Resident', 'Temporary Resident (with work authorization)', 'Other'] }} />
-                    </div>
-                    <WorkEligibilityDocumentsSection 
-                      userId={String(userId)} 
-                      canEdit={isEditingPersonal && (canEditGeneral || !!canSelfEdit)} 
-                      workEligibilityStatus={isEditingPersonal && pending.work_eligibility_status !== undefined ? pending.work_eligibility_status : (p.work_eligibility_status || '')}
-                    />
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2"><h4 className="font-semibold">Emergency Contacts</h4></div>
-                    <div className="text-xs text-gray-500 mt-0.5 mb-2">People to contact in case of emergency.</div>
-                    <EmergencyContactsSection userId={String(userId)} canEdit={isEditingPersonal && (canEditGeneral || !!canSelfEdit)} />
-                  </div>
+                  <BasicInformationSection 
+                    p={p} 
+                    editable={isEditingPersonal && (canEditGeneral || !!canSelfEdit)} 
+                    userId={String(userId)} 
+                    collectChanges={collectChanges} 
+                    profileData={data}
+                    onEditClick={() => setIsEditingPersonal(true)}
+                    canEdit={canEditGeneral || !!canSelfEdit}
+                  />
+                  <AddressSectionCard 
+                    p={p} 
+                    editable={isEditingPersonal && (canEditGeneral || !!canSelfEdit)} 
+                    userId={String(userId)} 
+                    collectChanges={collectChanges}
+                    onEditClick={() => setIsEditingPersonal(true)}
+                    canEdit={canEditGeneral || !!canSelfEdit}
+                  />
+                  <ContactSection 
+                    p={p} 
+                    editable={isEditingPersonal && (canEditGeneral || !!canSelfEdit)} 
+                    userId={String(userId)} 
+                    collectChanges={collectChanges}
+                    onEditClick={() => setIsEditingPersonal(true)}
+                    canEdit={canEditGeneral || !!canSelfEdit}
+                  />
+                  <EducationSectionCard 
+                    userId={String(userId)} 
+                    canEdit={isEditingPersonal && (canEditGeneral || !!canSelfEdit)}
+                    onEditClick={() => setIsEditingPersonal(true)}
+                    canEditButton={canEditGeneral || !!canSelfEdit}
+                  />
+                  <LegalDocumentsSection 
+                    p={p} 
+                    editable={isEditingPersonal && (canEditGeneral || !!canSelfEdit)} 
+                    userId={String(userId)} 
+                    collectChanges={collectChanges}
+                    pending={pending}
+                    onEditClick={() => setIsEditingPersonal(true)}
+                    canEdit={canEditGeneral || !!canSelfEdit}
+                    canSelfEdit={!!canSelfEdit}
+                  />
+                  <EmergencyContactsSectionCard 
+                    userId={String(userId)} 
+                    canEdit={isEditingPersonal && (canEditGeneral || !!canSelfEdit)}
+                    onEditClick={() => setIsEditingPersonal(true)}
+                    canEditButton={canEditGeneral || !!canSelfEdit}
+                  />
                 </div>
               )}
               {tab==='job' && canViewGeneral && (
                 <div className="space-y-6 pb-24">
-                  <div>
-                    <div className="flex items-center justify-between gap-2">
-                      <h4 className="font-semibold">Employment Details</h4>
-                      {!isEditingJob && (canEditGeneral || !!canSelfEdit) && (
-                        <button
-                          onClick={() => setIsEditingJob(true)}
-                          className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-brand-red to-[#ee2b2b] text-white text-sm font-medium hover:opacity-90 flex items-center gap-1.5"
-                        >
-                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                          </svg>
-                          Edit
-                        </button>
-                      )}
-                    </div>
-                    <div className="text-xs text-gray-500 mt-0.5 mb-2">Dates and employment attributes.</div>
-                    <JobSection type="employment" p={p} editable={isEditingJob && (canEditGeneral || !!canSelfEdit)} userId={String(userId)} collectChanges={collectChanges} usersOptions={usersOptions||[]} settings={settings} canViewCompensation={canViewJobCompensation} />
-                  </div>
                   <OrganizationSection 
                     p={p} 
                     editable={isEditingJob && (canEditGeneral || !!canSelfEdit)} 
                     userId={String(userId)} 
                     collectChanges={collectChanges} 
-                    usersOptions={usersOptions||[]} 
+                    usersOptions={usersOptions||[]}
+                    canViewCompensation={canViewJobCompensation} 
                     settings={settings} 
                     userDivisions={u?.divisions || []}
                     selectedDivisions={selectedDivisions}
@@ -2471,6 +2448,7 @@ export default function UserInfo(){
                       setSelectedProjectDivisions(divisions);
                       setProjectDivisionsDirty(true);
                     }}
+                    onEditClick={() => setIsEditingJob(true)}
                   />
                   {canViewJobCompensation && (
                     <SalarySection p={p} editable={isEditingJob && (canEditGeneral || !!canSelfEdit)} userId={String(userId)} collectChanges={collectChanges} settings={settings} canEdit={canEditGeneral} />
@@ -2605,28 +2583,28 @@ function EditableGrid({p, fields, editable, selfEdit, userId, collectChanges, in
           
           return (
             <div key={key}>
-              <div className="text-sm text-gray-600">{label}</div>
+              <div className="text-xs font-medium text-gray-600 mb-1.5">{label}</div>
               {isEditable ? (
                 (key==='date_of_birth' || key==='hire_date' || key==='termination_date') ? (
-                  <input type="date" value={(form[key]||'').slice(0,10)} onChange={e=> { setForm((s:any)=>({ ...s, [key]: e.target.value })); collectChanges && collectChanges({ [key]: e.target.value }); }} className="w-full rounded-lg border px-3 py-2"/>
+                  <input type="date" value={(form[key]||'').slice(0,10)} onChange={e=> { setForm((s:any)=>({ ...s, [key]: e.target.value })); collectChanges && collectChanges({ [key]: e.target.value }); }} className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"/>
                 ) : key === 'nationality' ? (
-                  <NationalitySelect value={form[key]||''} onChange={v=> { setForm((s:any)=>({ ...s, [key]: v })); collectChanges && collectChanges({ [key]: v }); }} />
+                  <NationalitySelect value={form[key]||''} onChange={v=> { setForm((s:any)=>({ ...s, [key]: v })); collectChanges && collectChanges({ [key]: v }); }} className="w-full" />
                 ) : options ? (
-                  <select value={form[key]||''} onChange={e=> { setForm((s:any)=>({ ...s, [key]: e.target.value })); collectChanges && collectChanges({ [key]: e.target.value }); }} className="w-full rounded-lg border px-3 py-2">
+                  <select value={form[key]||''} onChange={e=> { setForm((s:any)=>({ ...s, [key]: e.target.value })); collectChanges && collectChanges({ [key]: e.target.value }); }} className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400">
                     <option value="">Select...</option>
                     {options.map(opt => (
                       <option key={opt} value={opt}>{opt}</option>
                     ))}
                   </select>
                 ) : (key === 'phone' || key === 'mobile_phone') ? (
-                  <input value={form[key]||''} onChange={e=> { const formatted = formatPhone(e.target.value); setForm((s:any)=>({ ...s, [key]: formatted })); collectChanges && collectChanges({ [key]: formatted }); }} className="w-full rounded-lg border px-3 py-2"/>
+                  <input value={form[key]||''} onChange={e=> { const formatted = formatPhone(e.target.value); setForm((s:any)=>({ ...s, [key]: formatted })); collectChanges && collectChanges({ [key]: formatted }); }} className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"/>
                 ) : key === 'sin_number' ? (
-                  <input value={form[key]||''} onChange={e=> { const formatted = formatSIN(e.target.value); setForm((s:any)=>({ ...s, [key]: formatted })); collectChanges && collectChanges({ [key]: formatted }); }} maxLength={11} placeholder="123-456-789" className="w-full rounded-lg border px-3 py-2"/>
+                  <input value={form[key]||''} onChange={e=> { const formatted = formatSIN(e.target.value); setForm((s:any)=>({ ...s, [key]: formatted })); collectChanges && collectChanges({ [key]: formatted }); }} maxLength={11} placeholder="123-456-789" className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"/>
                 ) : (
-                  <input value={form[key]||''} onChange={e=> { setForm((s:any)=>({ ...s, [key]: e.target.value })); collectChanges && collectChanges({ [key]: e.target.value }); }} className="w-full rounded-lg border px-3 py-2"/>
+                  <input value={form[key]||''} onChange={e=> { setForm((s:any)=>({ ...s, [key]: e.target.value })); collectChanges && collectChanges({ [key]: e.target.value }); }} className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"/>
                 )
               ) : (
-                <div className="text-gray-900 font-medium py-1 break-words">{(key==='date_of_birth' || key==='hire_date' || key==='termination_date')? (String(p[key]??'').slice(0,10) || '—') : (String(p[key]??'') || '—')}</div>
+                <div className="text-sm font-semibold text-gray-900">{(key==='date_of_birth' || key==='hire_date' || key==='termination_date')? (String(p[key]??'').slice(0,10) || '—') : (String(p[key]??'') || '—')}</div>
               )}
             </div>
           );
@@ -2694,7 +2672,7 @@ function ClothSizeField({ p, editable, userId, collectChanges, profileData }: { 
   
   return (
     <div>
-      <div className="text-sm text-gray-600">Cloth Size</div>
+      <div className="text-xs font-medium text-gray-600 mb-1.5">Cloth Size</div>
       {isEditable ? (
         <ClothSizeSelect
           value={form.cloth_size || ''}
@@ -2706,9 +2684,10 @@ function ClothSizeField({ p, editable, userId, collectChanges, profileData }: { 
           customSizes={customSizes}
           useGlobalCustomSizes={true}
           onRefreshCustomSizes={handleRefreshCustomSizes}
+          className="w-full"
         />
       ) : (
-        <div className="text-gray-900 font-medium py-1 break-words">{String(p.cloth_size || '') || '—'}</div>
+        <div className="text-sm font-semibold text-gray-900">{String(p.cloth_size || '') || '—'}</div>
       )}
     </div>
   );
@@ -2760,122 +2739,127 @@ function AddressSection({ p, editable, selfEdit, userId, collectChanges, inlineS
   return (
     <div>
       <div className="grid md:grid-cols-2 gap-4">
-        <div>
-          <div className="text-sm text-gray-600">Address line 1</div>
-          {isEditable? (
-            <AddressAutocomplete
-              value={form.address_line1 || ''}
-              onChange={(value) => {
-                setForm((s:any)=>({ ...s, address_line1: value }));
-                collectChanges && collectChanges({ address_line1: value });
+        {/* Left column: Address lines and Postal code */}
+        <div className="space-y-4">
+          <div>
+            <div className="text-xs font-medium text-gray-600 mb-1.5">Address line 1</div>
+            {isEditable? (
+              <AddressAutocomplete
+                value={form.address_line1 || ''}
+                onChange={(value) => {
+                  setForm((s:any)=>({ ...s, address_line1: value }));
+                  collectChanges && collectChanges({ address_line1: value });
+                }}
+                onAddressSelect={(address) => {
+                  setForm((currentForm: any) => {
+                    const updatedForm = {
+                      ...currentForm,
+                      address_line1: address.address_line1 !== undefined ? address.address_line1 : currentForm.address_line1,
+                      city: address.city !== undefined ? address.city : currentForm.city,
+                      province: address.province !== undefined ? address.province : currentForm.province,
+                      postal_code: address.postal_code !== undefined ? address.postal_code : currentForm.postal_code,
+                      country: address.country !== undefined ? address.country : currentForm.country,
+                    };
+                    // Call collectChanges with the updated form
+                    if (collectChanges) {
+                      collectChanges({
+                        address_line1: updatedForm.address_line1,
+                        city: updatedForm.city,
+                        province: updatedForm.province,
+                        postal_code: updatedForm.postal_code,
+                        country: updatedForm.country,
+                      });
+                    }
+                    return updatedForm;
+                  });
+                }}
+                placeholder="Start typing an address..."
+                className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
+              />
+            ) : (
+              <div className="text-sm font-semibold text-gray-900 break-words">{String(p.address_line1||'') || '—'}</div>
+            )}
+          </div>
+          <div>
+            <div className="text-xs font-medium text-gray-600 mb-1.5">Address line 2</div>
+            {isEditable? (
+              <AddressAutocomplete
+                value={form.address_line2 || ''}
+                onChange={(value) => {
+                  setForm((s:any)=>({ ...s, address_line2: value }));
+                  collectChanges && collectChanges({ address_line2: value });
+                }}
+                placeholder="Start typing an address..."
+                className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
+              />
+            ) : (
+              <div className="text-sm font-semibold text-gray-900 break-words">{String(p.address_line2||'') || '—'}</div>
+            )}
+          </div>
+          <div>
+            <div className="text-xs font-medium text-gray-600 mb-1.5">Postal code</div>
+            {isEditable ? (
+              <input 
+              value={form.postal_code || ''} 
+              onChange={(e) => {
+                setForm((s:any)=>({ ...s, postal_code: e.target.value }));
+                collectChanges && collectChanges({ postal_code: e.target.value });
               }}
-              onAddressSelect={(address) => {
-                setForm((s:any) => ({
-                  ...s,
-                  address_line1: address.address_line1 || s.address_line1,
-                  city: address.city !== undefined ? address.city : s.city,
-                  province: address.province !== undefined ? address.province : s.province,
-                  postal_code: address.postal_code !== undefined ? address.postal_code : s.postal_code,
-                  country: address.country !== undefined ? address.country : s.country,
-                }));
-                collectChanges && collectChanges({
-                  address_line1: address.address_line1,
-                  city: address.city,
-                  province: address.province,
-                  postal_code: address.postal_code,
-                  country: address.country,
-                });
+              className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
+            />
+            ) : (
+              <div className="text-sm font-semibold text-gray-900 break-words">{String(p.postal_code||'') || '—'}</div>
+            )}
+          </div>
+        </div>
+        
+        {/* Right column: City, Province, Country */}
+        <div className="space-y-4">
+          <div>
+            <div className="text-xs font-medium text-gray-600 mb-1.5">City</div>
+            {isEditable ? (
+              <input 
+              value={form.city || ''} 
+              onChange={(e) => {
+                setForm((s:any)=>({ ...s, city: e.target.value }));
+                collectChanges && collectChanges({ city: e.target.value });
               }}
-              placeholder="Start typing an address..."
-              className="w-full rounded-lg border px-3 py-2"
+              className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
             />
-          ) : (
-            <div className="text-gray-900 font-medium py-1 break-words">{String(p.address_line1||'') || '—'}</div>
-          )}
-        </div>
-        <div>
-          <div className="text-sm text-gray-600">Complement (e.g., Apt, Unit, Basement)</div>
-          {isEditable? (
-            <input 
-              type="text" 
-              value={form.address_line1_complement || ''} 
-              onChange={e=> { 
-                setForm((s:any)=>({ ...s, address_line1_complement: e.target.value })); 
-                collectChanges && collectChanges({ address_line1_complement: e.target.value }); 
-              }} 
-              placeholder="Apt 101, Unit 2, Basement, etc."
-              className="w-full rounded-lg border px-3 py-2"
-            />
-          ) : (
-            <div className="text-gray-900 font-medium py-1 break-words">{String(p.address_line1_complement||'') || '—'}</div>
-          )}
-        </div>
-        <div className="grid md:grid-cols-2 gap-4">
-          <div>
-            <div className="text-sm text-gray-600">City</div>
-            {isEditable ? (
-              <input value={form.city || ''} readOnly className="w-full rounded-lg border px-3 py-2 bg-gray-50 cursor-not-allowed"/>
             ) : (
-              <div className="text-gray-900 font-medium py-1 break-words">{String(p.city||'') || '—'}</div>
+              <div className="text-sm font-semibold text-gray-900 break-words">{String(p.city||'') || '—'}</div>
             )}
           </div>
           <div>
-            <div className="text-sm text-gray-600">Province/State</div>
+            <div className="text-xs font-medium text-gray-600 mb-1.5">Province/State</div>
             {isEditable ? (
-              <input value={form.province || ''} readOnly className="w-full rounded-lg border px-3 py-2 bg-gray-50 cursor-not-allowed"/>
-            ) : (
-              <div className="text-gray-900 font-medium py-1 break-words">{String(p.province||'') || '—'}</div>
-            )}
-          </div>
-          <div>
-            <div className="text-sm text-gray-600">Postal code</div>
-            {isEditable ? (
-              <input value={form.postal_code || ''} readOnly className="w-full rounded-lg border px-3 py-2 bg-gray-50 cursor-not-allowed"/>
-            ) : (
-              <div className="text-gray-900 font-medium py-1 break-words">{String(p.postal_code||'') || '—'}</div>
-            )}
-          </div>
-          <div>
-            <div className="text-sm text-gray-600">Country</div>
-            {isEditable ? (
-              <input value={form.country || ''} readOnly className="w-full rounded-lg border px-3 py-2 bg-gray-50 cursor-not-allowed"/>
-            ) : (
-              <div className="text-gray-900 font-medium py-1 break-words">{String(p.country||'') || '—'}</div>
-            )}
-          </div>
-        </div>
-        <div>
-          <div className="text-sm text-gray-600">Address line 2</div>
-          {isEditable? (
-            <AddressAutocomplete
-              value={form.address_line2 || ''}
-              onChange={(value) => {
-                setForm((s:any)=>({ ...s, address_line2: value }));
-                collectChanges && collectChanges({ address_line2: value });
+              <input 
+              value={form.province || ''} 
+              onChange={(e) => {
+                setForm((s:any)=>({ ...s, province: e.target.value }));
+                collectChanges && collectChanges({ province: e.target.value });
               }}
-              placeholder="Start typing an address..."
-              className="w-full rounded-lg border px-3 py-2"
+              className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
             />
-          ) : (
-            <div className="text-gray-900 font-medium py-1 break-words">{String(p.address_line2||'') || '—'}</div>
-          )}
-        </div>
-        <div>
-          <div className="text-sm text-gray-600">Complement (e.g., Apt, Unit, Basement)</div>
-          {isEditable? (
-            <input 
-              type="text" 
-              value={form.address_line2_complement || ''} 
-              onChange={e=> { 
-                setForm((s:any)=>({ ...s, address_line2_complement: e.target.value })); 
-                collectChanges && collectChanges({ address_line2_complement: e.target.value }); 
-              }} 
-              placeholder="Apt 101, Unit 2, Basement, etc."
-              className="w-full rounded-lg border px-3 py-2"
+            ) : (
+              <div className="text-sm font-semibold text-gray-900 break-words">{String(p.province||'') || '—'}</div>
+            )}
+          </div>
+          <div>
+            <div className="text-xs font-medium text-gray-600 mb-1.5">Country</div>
+            {isEditable ? (
+              <input 
+              value={form.country || ''} 
+              onChange={(e) => {
+                setForm((s:any)=>({ ...s, country: e.target.value }));
+                collectChanges && collectChanges({ country: e.target.value });
+              }}
+              className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
             />
-          ) : (
-            <div className="text-gray-900 font-medium py-1 break-words">{String(p.address_line2_complement||'') || '—'}</div>
-          )}
+            ) : (
+              <div className="text-sm font-semibold text-gray-900 break-words">{String(p.country||'') || '—'}</div>
+            )}
+          </div>
         </div>
       </div>
       {isEditable && inlineSave && (
@@ -3026,34 +3010,87 @@ function JobSection({ type, p, editable, userId, collectChanges, usersOptions, s
     collectChanges({ _divisions_changed: true, _selected_divisions: newSelection });
   };
   if (type==='employment'){
+    const isActive = !p.termination_date || String(p.termination_date||'').trim() === '';
+    const statusColor = isActive ? 'green' : 'red';
+    const statusBg = isActive ? 'bg-green-100' : 'bg-red-100';
+    const statusText = isActive ? 'text-green-700' : 'text-red-700';
+    const statusLabel = isActive ? 'Active' : 'Terminated';
+    
     return (
-      <div className="grid md:grid-cols-2 gap-4">
-        <div>
-          <div className="text-sm text-gray-600">Hire date</div>
-          {isEditable? <input type="date" className="w-full rounded-lg border px-3 py-2" value={(form.hire_date||'').slice(0,10)} onChange={e=>onField('hire_date', e.target.value)} /> : <div className="text-gray-900 font-medium py-1">{String(p.hire_date||'').slice(0,10) || '—'}</div>}
-        </div>
-        <div>
-          <div className="text-sm text-gray-600">Termination date</div>
-          {isEditable? <input type="date" className="w-full rounded-lg border px-3 py-2" value={(form.termination_date||'').slice(0,10)} onChange={e=>onField('termination_date', e.target.value)} /> : <div className="text-gray-900 font-medium py-1">{String(p.termination_date||'').slice(0,10) || '—'}</div>}
-        </div>
-        {canViewCompensation && (
-          <div>
-            <div className="text-sm text-gray-600">Employment type</div>
-            {isEditable? (
-              (settings?.employment_types?.length ? (
-                <select className="w-full rounded-lg border px-3 py-2" value={form.employment_type} onChange={e=>onField('employment_type', e.target.value)}>
-                  <option value="">Select...</option>
-                  {settings.employment_types.map((it:any)=> <option key={it.id} value={it.label}>{it.label}</option>)}
-                </select>
-              ) : (
-                <input className="w-full rounded-lg border px-3 py-2" value={form.employment_type} onChange={e=>onField('employment_type', e.target.value)} />
-              ))
-            ) : <div className="text-gray-900 font-medium py-1">{String(p.employment_type||'') || '—'}</div>}
+      <div className="space-y-4">
+        {/* Employment Details Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {/* Employment Status Card */}
+          <div className="rounded-lg border border-gray-200 bg-white p-3">
+            <div className="flex items-center justify-center mb-2">
+              <div className={`w-8 h-8 rounded ${statusBg} flex items-center justify-center`}>
+                {isActive ? (
+                  <svg className={`w-5 h-5 ${statusText}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                ) : (
+                  <svg className={`w-5 h-5 ${statusText}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                )}
+              </div>
+            </div>
+            <div className="text-center">
+              <div className={`text-sm font-semibold ${isActive ? 'text-green-600' : 'text-red-600'}`}>
+                {statusLabel}
+              </div>
+              <div className="text-xs font-medium text-gray-700 mt-0.5">
+                Employment Status
+              </div>
+            </div>
           </div>
-        )}
-        <div>
-          <div className="text-sm text-gray-600">Job title</div>
-          {isEditable? <input className="w-full rounded-lg border px-3 py-2" value={form.job_title} onChange={e=>onField('job_title', e.target.value)} /> : <div className="text-gray-900 font-medium py-1">{String(p.job_title||'') || '—'}</div>}
+          
+          {/* Hire Date Card */}
+          <div className="rounded-lg border border-gray-200 bg-white p-3">
+            <div className="flex items-center justify-center mb-2">
+              <div className="w-8 h-8 rounded bg-blue-100 flex items-center justify-center">
+                <svg className="w-5 h-5 text-blue-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+              </div>
+            </div>
+            <div className="text-center">
+              {isEditable ? (
+                <input type="date" className="w-full text-center text-sm font-semibold text-gray-900 border-0 bg-transparent focus:outline-none focus:ring-0" value={(form.hire_date||'').slice(0,10)} onChange={e=>onField('hire_date', e.target.value)} />
+              ) : (
+                <div className="text-sm font-semibold text-gray-900">
+                  {String(p.hire_date||'').slice(0,10) || '—'}
+                </div>
+              )}
+              <div className="text-xs font-medium text-gray-700 mt-0.5">
+                Hire Date
+              </div>
+            </div>
+          </div>
+          
+          {/* Termination Date Card */}
+          <div className="rounded-lg border border-gray-200 bg-white p-3">
+            <div className="flex items-center justify-center mb-2">
+              <div className="w-8 h-8 rounded bg-orange-100 flex items-center justify-center">
+                <svg className="w-5 h-5 text-orange-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+              </div>
+            </div>
+            <div className="text-center">
+              {isEditable ? (
+                <input type="date" className="w-full text-center text-sm font-semibold text-gray-900 border-0 bg-transparent focus:outline-none focus:ring-0" value={(form.termination_date||'').slice(0,10)} onChange={e=>onField('termination_date', e.target.value)} />
+              ) : (
+                <div className="text-sm font-semibold text-gray-900">
+                  {String(p.termination_date||'').slice(0,10) || '—'}
+                </div>
+              )}
+              <div className="text-xs font-medium text-gray-700 mt-0.5">
+                Termination Date
+              </div>
+            </div>
+          </div>
+          
         </div>
       </div>
     );
@@ -4585,7 +4622,228 @@ function SalaryHistorySection({ userId, canEdit, settings }:{ userId:string, can
 }
 
 
-function OrganizationSection({ p, editable, userId, collectChanges, usersOptions, settings, userDivisions, selectedDivisions, onDivisionsChange, selectedProjectDivisions, onProjectDivisionsChange }: { p:any, editable:boolean, userId:string, collectChanges: (kv:Record<string,any>)=>void, usersOptions:any[], settings:any, userDivisions?: any[], selectedDivisions?: string[], onDivisionsChange?: (divisions: string[]) => void, selectedProjectDivisions?: string[], onProjectDivisionsChange?: (divisions: string[]) => void }){
+// Icon mapping for divisions (same as Projects.tsx)
+const getDivisionIcon = (label: string): string => {
+  const iconMap: Record<string, string> = {
+    'Roofing': '🏠',
+    'Concrete Restoration & Waterproofing': '🏗️',
+    'Cladding & Exterior Finishes': '🧱',
+    'Repairs & Maintenance': '🔧',
+    'Mechanical': '🔩',
+    'Electrical': '⚡',
+    'Carpentry': '🪵',
+    'Welding & Custom Fabrication': '🔥',
+    'Structural Upgrading': '📐',
+    'Solar PV': '☀️',
+    'Green Roofing': '🌱',
+  };
+  return iconMap[label] || '📦';
+};
+
+// Personal tab sections
+function BasicInformationSection({ p, editable, userId, collectChanges, profileData, onEditClick, canEdit }: { p: any, editable: boolean, userId: string, collectChanges: (kv: Record<string, any>) => void, profileData?: any, onEditClick?: () => void, canEdit?: boolean }) {
+  const isEditable = !!editable;
+  return (
+    <div className="rounded-xl border bg-white p-4">
+      <div className="mb-4 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <div className="w-8 h-8 rounded bg-blue-100 flex items-center justify-center">
+            <svg className="w-5 h-5 text-blue-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+            </svg>
+          </div>
+          <h5 className="text-sm font-semibold text-blue-900">Basic Information</h5>
+        </div>
+        {!isEditable && onEditClick && canEdit && (
+          <button
+            onClick={onEditClick}
+            className="p-1.5 rounded hover:bg-gray-100 text-gray-600 hover:text-brand-red transition-colors"
+            title="Edit Basic Information"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+            </svg>
+          </button>
+        )}
+      </div>
+      <div className="space-y-4">
+        <EditableGrid p={p} editable={isEditable} selfEdit={false} userId={userId} collectChanges={collectChanges} inlineSave={false} fields={[['First name','first_name'],['Last name','last_name'],['Middle name','middle_name'],['Prefered name','preferred_name'],['Gender','gender'],['Marital status','marital_status'],['Date of birth','date_of_birth'],['Nationality','nationality']]} />
+        <div className="grid md:grid-cols-2 gap-4">
+          <ClothSizeField p={p} editable={isEditable} userId={userId} collectChanges={collectChanges} profileData={profileData} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AddressSectionCard({ p, editable, userId, collectChanges, onEditClick, canEdit }: { p: any, editable: boolean, userId: string, collectChanges: (kv: Record<string, any>) => void, onEditClick?: () => void, canEdit?: boolean }) {
+  const isEditable = !!editable;
+  return (
+    <div className="rounded-xl border bg-white p-4">
+      <div className="mb-4 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <div className="w-8 h-8 rounded bg-green-100 flex items-center justify-center">
+            <svg className="w-5 h-5 text-green-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+          </div>
+          <h5 className="text-sm font-semibold text-green-900">Address</h5>
+        </div>
+        {!isEditable && onEditClick && canEdit && (
+          <button
+            onClick={onEditClick}
+            className="p-1.5 rounded hover:bg-gray-100 text-gray-600 hover:text-brand-red transition-colors"
+            title="Edit Address"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+            </svg>
+          </button>
+        )}
+      </div>
+      <div className="space-y-4">
+        <AddressSection p={p} editable={isEditable} selfEdit={false} userId={userId} collectChanges={collectChanges} inlineSave={false} />
+      </div>
+    </div>
+  );
+}
+
+function ContactSection({ p, editable, userId, collectChanges, onEditClick, canEdit }: { p: any, editable: boolean, userId: string, collectChanges: (kv: Record<string, any>) => void, onEditClick?: () => void, canEdit?: boolean }) {
+  const isEditable = !!editable;
+  return (
+    <div className="rounded-xl border bg-white p-4">
+      <div className="mb-4 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <div className="w-8 h-8 rounded bg-yellow-100 flex items-center justify-center">
+            <svg className="w-5 h-5 text-yellow-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+            </svg>
+          </div>
+          <h5 className="text-sm font-semibold text-yellow-900">Contact</h5>
+        </div>
+        {!isEditable && onEditClick && canEdit && (
+          <button
+            onClick={onEditClick}
+            className="p-1.5 rounded hover:bg-gray-100 text-gray-600 hover:text-brand-red transition-colors"
+            title="Edit Contact"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+            </svg>
+          </button>
+        )}
+      </div>
+      <div className="space-y-4">
+        <EditableGrid p={p} editable={isEditable} selfEdit={false} userId={userId} collectChanges={collectChanges} inlineSave={false} fields={[['Phone 1','phone'],['Phone 2','mobile_phone']]} />
+      </div>
+    </div>
+  );
+}
+
+function EducationSectionCard({ userId, canEdit, onEditClick, canEditButton }: { userId: string, canEdit: boolean, onEditClick?: () => void, canEditButton?: boolean }) {
+  return (
+    <div className="rounded-xl border bg-white p-4">
+      <div className="mb-4 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <div className="w-8 h-8 rounded bg-indigo-100 flex items-center justify-center">
+            <svg className="w-5 h-5 text-indigo-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+            </svg>
+          </div>
+          <h5 className="text-sm font-semibold text-indigo-900">Education</h5>
+        </div>
+        {!canEdit && onEditClick && canEditButton && (
+          <button
+            onClick={onEditClick}
+            className="p-1.5 rounded hover:bg-gray-100 text-gray-600 hover:text-brand-red transition-colors"
+            title="Edit Education"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+            </svg>
+          </button>
+        )}
+      </div>
+      <div className="space-y-4">
+        <EducationSection userId={userId} canEdit={canEdit} />
+      </div>
+    </div>
+  );
+}
+
+function LegalDocumentsSection({ p, editable, userId, collectChanges, pending, onEditClick, canEdit, canSelfEdit }: { p: any, editable: boolean, userId: string, collectChanges: (kv: Record<string, any>) => void, pending: any, onEditClick?: () => void, canEdit?: boolean, canSelfEdit?: boolean }) {
+  const isEditable = !!editable;
+  return (
+    <div className="rounded-xl border bg-white p-4">
+      <div className="mb-4 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <div className="w-8 h-8 rounded bg-red-100 flex items-center justify-center">
+            <svg className="w-5 h-5 text-red-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+          </div>
+          <h5 className="text-sm font-semibold text-red-900">Legal & Documents</h5>
+        </div>
+        {!isEditable && onEditClick && canEdit && (
+          <button
+            onClick={onEditClick}
+            className="p-1.5 rounded hover:bg-gray-100 text-gray-600 hover:text-brand-red transition-colors"
+            title="Edit Legal & Documents"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+            </svg>
+          </button>
+        )}
+      </div>
+      <div className="space-y-4">
+        <div className="grid md:grid-cols-2 gap-4">
+          <EditableGrid p={p} editable={isEditable} selfEdit={!!canSelfEdit} userId={userId} collectChanges={collectChanges} inlineSave={false} fields={[['SIN Number','sin_number']]} />
+          <EditableGrid p={p} editable={isEditable} selfEdit={!!canSelfEdit} userId={userId} collectChanges={collectChanges} inlineSave={false} fields={[['Work Eligibility Status','work_eligibility_status']]} fieldOptions={{ work_eligibility_status: ['Canadian Citizen', 'Permanent Resident', 'Temporary Resident (with work authorization)', 'Other'] }} />
+        </div>
+        <WorkEligibilityDocumentsSection 
+          userId={userId} 
+          canEdit={isEditable} 
+          workEligibilityStatus={isEditable && pending.work_eligibility_status !== undefined ? pending.work_eligibility_status : (p.work_eligibility_status || '')}
+        />
+      </div>
+    </div>
+  );
+}
+
+function EmergencyContactsSectionCard({ userId, canEdit, onEditClick, canEditButton }: { userId: string, canEdit: boolean, onEditClick?: () => void, canEditButton?: boolean }) {
+  return (
+    <div className="rounded-xl border bg-white p-4">
+      <div className="mb-4 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <div className="w-8 h-8 rounded bg-orange-100 flex items-center justify-center">
+            <svg className="w-5 h-5 text-orange-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+          </div>
+          <h5 className="text-sm font-semibold text-orange-900">Emergency Contacts</h5>
+        </div>
+        {!canEdit && onEditClick && canEditButton && (
+          <button
+            onClick={onEditClick}
+            className="p-1.5 rounded hover:bg-gray-100 text-gray-600 hover:text-brand-red transition-colors"
+            title="Edit Emergency Contacts"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+            </svg>
+          </button>
+        )}
+      </div>
+      <div className="space-y-4">
+        <EmergencyContactsSection userId={userId} canEdit={canEdit} />
+      </div>
+    </div>
+  );
+}
+
+function OrganizationSection({ p, editable, userId, collectChanges, usersOptions, settings, userDivisions, selectedDivisions, onDivisionsChange, selectedProjectDivisions, onProjectDivisionsChange, canViewCompensation, onEditClick }: { p:any, editable:boolean, userId:string, collectChanges: (kv:Record<string,any>)=>void, usersOptions:any[], settings:any, userDivisions?: any[], selectedDivisions?: string[], onDivisionsChange?: (divisions: string[]) => void, selectedProjectDivisions?: string[], onProjectDivisionsChange?: (divisions: string[]) => void, canViewCompensation?: boolean, onEditClick?: () => void }){
   const isEditable = !!editable;
   const { data: projectDivisions } = useQuery({ 
     queryKey:['project-divisions'], 
@@ -4596,6 +4854,11 @@ function OrganizationSection({ p, editable, userId, collectChanges, usersOptions
   const [form, setForm] = useState<any>(()=>({
     job_title: p.job_title||'',
     manager_user_id: p.manager_user_id||'',
+    employment_type: p.employment_type||'',
+    hire_date: p.hire_date||'',
+    termination_date: p.termination_date||'',
+    work_email: p.work_email||'',
+    work_phone: p.work_phone||'',
   }));
   const [departmentDropdownOpen, setDepartmentDropdownOpen] = useState(false);
   const [projectDivisionDropdownOpen, setProjectDivisionDropdownOpen] = useState(false);
@@ -4604,14 +4867,14 @@ function OrganizationSection({ p, editable, userId, collectChanges, usersOptions
   
   useEffect(() => {
     if (editable && !prevEditableRef.current) {
-      setForm({ job_title: p.job_title||'', manager_user_id: p.manager_user_id||'' });
+      setForm({ job_title: p.job_title||'', manager_user_id: p.manager_user_id||'', employment_type: p.employment_type||'', hire_date: p.hire_date||'', termination_date: p.termination_date||'', work_email: p.work_email||'', work_phone: p.work_phone||'' });
       if (onProjectDivisionsChange) {
         const projectDivs = Array.isArray(p.project_division_ids) ? p.project_division_ids.map((id: any) => String(id)) : [];
         onProjectDivisionsChange(projectDivs);
       }
     }
     if (!editable && prevEditableRef.current) {
-      setForm({ job_title: p.job_title||'', manager_user_id: p.manager_user_id||'' });
+      setForm({ job_title: p.job_title||'', manager_user_id: p.manager_user_id||'', employment_type: p.employment_type||'', hire_date: p.hire_date||'', termination_date: p.termination_date||'', work_email: p.work_email||'', work_phone: p.work_phone||'' });
       if (onProjectDivisionsChange) {
         const projectDivs = Array.isArray(p.project_division_ids) ? p.project_division_ids.map((id: any) => String(id)) : [];
         onProjectDivisionsChange(projectDivs);
@@ -4690,91 +4953,172 @@ function OrganizationSection({ p, editable, userId, collectChanges, usersOptions
           </div>
           <h5 className="text-sm font-semibold text-purple-900">Organization</h5>
         </div>
+        {!isEditable && onEditClick && (
+          <button
+            onClick={onEditClick}
+            className="p-1.5 rounded hover:bg-gray-100 text-gray-600 hover:text-brand-red transition-colors"
+            title="Edit Organization"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+            </svg>
+          </button>
+        )}
       </div>
       
       <div className="space-y-4">
-        {/* Job Title */}
-        <div>
-          <div className="text-xs font-medium text-gray-600 mb-1.5">Job Title</div>
-          {isEditable? (
-            <input className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400" value={form.job_title} onChange={e=>onField('job_title', e.target.value)} placeholder="e.g. Project Manager" />
-          ) : (
-            <div className="text-sm font-semibold text-gray-900">{String(p.job_title||'') || '—'}</div>
-          )}
-        </div>
-        
-        {/* Supervisor */}
-        <div>
-          <div className="text-xs font-medium text-gray-600 mb-1.5">Supervisor</div>
-          {isEditable? (
-            <select className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400" value={form.manager_user_id} onChange={e=>onField('manager_user_id', e.target.value)}>
-              <option value="">Select...</option>
-              {(usersOptions||[]).map((u:any)=> (
-                <option key={u.id} value={u.id}><UserLabel id={u.id} fallback={u.username||u.email} /></option>
-              ))}
-            </select>
-          ) : (
-            <div className="text-sm font-semibold text-gray-900">{supervisor||'—'}</div>
-          )}
-        </div>
-        
-        {/* Departments */}
-        <div className="relative">
-          <div className="text-xs font-medium text-gray-600 mb-1.5">Departments</div>
-          {isEditable? (
-            (settings?.divisions?.length ? (
-              <div className="relative">
-                <button
-                  type="button"
-                  onClick={() => setDepartmentDropdownOpen(!departmentDropdownOpen)}
-                  className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-left flex items-center justify-between"
-                >
-                  <span className={selectedDivisions && selectedDivisions.length > 0 ? 'text-gray-900' : 'text-gray-400'}>
-                    {selectedDivisions && selectedDivisions.length > 0 
-                      ? selectedDivisions.map((id: string) => {
-                          const division = settings.divisions.find((d: any) => String(d.id) === id);
-                          return division?.label || '';
-                        }).filter(Boolean).join(', ')
-                      : 'Select departments...'}
-                  </span>
-                  <span className="text-gray-400">▼</span>
-                </button>
-                {departmentDropdownOpen && (
-                  <>
-                    <div 
-                      className="fixed inset-0 z-10" 
-                      onClick={() => setDepartmentDropdownOpen(false)}
-                    />
-                    <div className="absolute z-20 w-full mt-1 bg-white border rounded-lg shadow-lg max-h-60 overflow-y-auto">
-                      {settings.divisions.map((it: any) => (
-                        <label
-                          key={it.id}
-                          className="flex items-center gap-2 px-3 py-2 hover:bg-gray-50 cursor-pointer"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={selectedDivisions?.includes(String(it.id)) || false}
-                            onChange={() => handleDepartmentToggle(String(it.id))}
-                            className="rounded border-gray-300 text-brand-red focus:ring-brand-red"
-                          />
-                          <span className="text-xs">{it.label}</span>
-                        </label>
-                      ))}
-                    </div>
-                  </>
-                )}
-              </div>
+        {/* Job Title | Employment Type */}
+        <div className="grid md:grid-cols-2 gap-4">
+          <div>
+            <div className="text-xs font-medium text-gray-600 mb-1.5">Job Title</div>
+            {isEditable? (
+              <input className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400" value={form.job_title} onChange={e=>onField('job_title', e.target.value)} placeholder="e.g. Project Manager" />
             ) : (
-              <input className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900" value={form.division} onChange={e=>onField('division', e.target.value)} />
-            ))
-          ) : (
-            <div className="text-sm font-semibold text-gray-900">
-              {userDivisions && userDivisions.length > 0
-                ? userDivisions.map((d: any) => d.label).join(', ')
-                : '—'}
-            </div>
-          )}
+              <div className="text-sm font-semibold text-gray-900">{String(p.job_title||'') || '—'}</div>
+            )}
+          </div>
+          <div>
+            <div className="text-xs font-medium text-gray-600 mb-1.5">Employment Type</div>
+            {isEditable? (
+              <select className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400" value={form.employment_type} onChange={e=>onField('employment_type', e.target.value)}>
+                <option value="">Select...</option>
+                <option value="Full-time">Full-time</option>
+                <option value="Hourly">Hourly</option>
+                <option value="Part-time">Part-time</option>
+                <option value="Salary">Salary</option>
+              </select>
+            ) : (
+              <div className="text-sm font-semibold text-gray-900">{String(p.employment_type||'') || '—'}</div>
+            )}
+          </div>
+        </div>
+        
+        {/* Supervisor | Hire Date */}
+        <div className="grid md:grid-cols-2 gap-4">
+          <div>
+            <div className="text-xs font-medium text-gray-600 mb-1.5">Supervisor</div>
+            {isEditable? (
+              <select className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400" value={form.manager_user_id} onChange={e=>onField('manager_user_id', e.target.value)}>
+                <option value="">Select...</option>
+                {(usersOptions||[]).map((u:any)=> (
+                  <option key={u.id} value={u.id}><UserLabel id={u.id} fallback={u.username||u.email} /></option>
+                ))}
+              </select>
+            ) : (
+              <div className="text-sm font-semibold text-gray-900">{supervisor||'—'}</div>
+            )}
+          </div>
+          <div>
+            <div className="text-xs font-medium text-gray-600 mb-1.5">Hire Date</div>
+            {isEditable? (
+              <input type="date" className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400" value={(form.hire_date||'').slice(0,10)} onChange={e=>onField('hire_date', e.target.value)} />
+            ) : (
+              <div className="text-sm font-semibold text-gray-900">{String(p.hire_date||'').slice(0,10) || '—'}</div>
+            )}
+          </div>
+        </div>
+        
+        {/* Department | Termination Date */}
+        <div className="grid md:grid-cols-2 gap-4">
+          {/* Departments */}
+          <div className="relative">
+            <div className="text-xs font-medium text-gray-600 mb-1.5">Departments</div>
+            {isEditable? (
+              (settings?.divisions?.length ? (
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setDepartmentDropdownOpen(!departmentDropdownOpen)}
+                    className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-left flex items-center justify-between"
+                  >
+                    <span className={selectedDivisions && selectedDivisions.length > 0 ? 'text-gray-900' : 'text-gray-400'}>
+                      {selectedDivisions && selectedDivisions.length > 0 
+                        ? selectedDivisions.map((id: string) => {
+                            const division = settings.divisions.find((d: any) => String(d.id) === id);
+                            return division?.label || '';
+                          }).filter(Boolean).join(', ')
+                        : 'Select departments...'}
+                    </span>
+                    <span className="text-gray-400">▼</span>
+                  </button>
+                  {departmentDropdownOpen && (
+                    <>
+                      <div 
+                        className="fixed inset-0 z-10" 
+                        onClick={() => setDepartmentDropdownOpen(false)}
+                      />
+                      <div className="absolute z-20 w-full mt-1 bg-white border rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                        {settings.divisions.map((it: any) => (
+                          <label
+                            key={it.id}
+                            className="flex items-center gap-2 px-3 py-2 hover:bg-gray-50 cursor-pointer"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={selectedDivisions && selectedDivisions.includes(String(it.id))}
+                              onChange={() => {
+                                const newSelection = selectedDivisions && selectedDivisions.includes(String(it.id))
+                                  ? selectedDivisions.filter(id => id !== String(it.id))
+                                  : [...(selectedDivisions || []), String(it.id)];
+                                if (onDivisionsChange) {
+                                  onDivisionsChange(newSelection);
+                                }
+                              }}
+                              className="rounded border-gray-300"
+                            />
+                            <span className="text-xs text-gray-900">{it.label}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </div>
+              ) : (
+                <div className="text-sm font-semibold text-gray-900">
+                  {selectedDivisions && selectedDivisions.length > 0 && settings?.divisions
+                    ? selectedDivisions.map((id: string) => {
+                        const division = settings.divisions.find((d: any) => String(d.id) === id);
+                        return division?.label || '';
+                      }).filter(Boolean).join(', ')
+                    : (userDivisions && userDivisions.length > 0
+                      ? userDivisions.map((d: any) => d.label).join(', ')
+                      : (p.division || '—'))}
+                </div>
+              ))
+            ) : (
+              <div className="text-sm font-semibold text-gray-900">
+                {selectedDivisions && selectedDivisions.length > 0 && settings?.divisions
+                  ? selectedDivisions.map((id: string) => {
+                      const division = settings.divisions.find((d: any) => String(d.id) === id);
+                      return division?.label || '';
+                    }).filter(Boolean).join(', ')
+                  : (userDivisions && userDivisions.length > 0
+                    ? userDivisions.map((d: any) => d.label).join(', ')
+                    : (p.division || '—'))}
+              </div>
+            )}
+          </div>
+          <div>
+            <div className="text-xs font-medium text-gray-600 mb-1.5">Termination Date</div>
+            {isEditable? (
+              <input type="date" className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400" value={(form.termination_date||'').slice(0,10)} onChange={e=>onField('termination_date', e.target.value)} />
+            ) : (
+              <div className="text-sm font-semibold text-gray-900">{String(p.termination_date||'').slice(0,10) || '—'}</div>
+            )}
+          </div>
+        </div>
+        
+        {/* Work email and Work phone */}
+        <div className="grid md:grid-cols-2 gap-4">
+          <div>
+            <div className="text-xs font-medium text-gray-600 mb-1.5">Work email</div>
+            {isEditable? <input className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400" value={form.work_email} onChange={e=>onField('work_email', e.target.value)} /> : <div className="text-sm font-semibold text-gray-900">{String(p.work_email||'') || '—'}</div>}
+          </div>
+          <div>
+            <div className="text-xs font-medium text-gray-600 mb-1.5">Work phone</div>
+            {isEditable? <input className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400" value={form.work_phone} onChange={e=>onField('work_phone', e.target.value)} /> : <div className="text-sm font-semibold text-gray-900">{String(p.work_phone||'') || '—'}</div>}
+          </div>
         </div>
         
         {/* Project Divisions */}
@@ -4848,13 +5192,21 @@ function OrganizationSection({ p, editable, userId, collectChanges, usersOptions
               <div className="text-xs text-gray-500">Loading project divisions...</div>
             )
           ) : (
-            <div className="text-sm font-semibold text-gray-900">
+            <div className="space-y-1.5">
               {(selectedProjectDivisions || []).length > 0
                 ? (selectedProjectDivisions || []).map((id: string) => {
                     const division = allProjectDivisions.find((d: any) => String(d.id) === id);
-                    return division ? (division.isMain ? division.label : `${division.parentLabel} - ${division.label}`) : '';
-                  }).filter(Boolean).join(', ')
-                : '—'}
+                    if (!division) return null;
+                    const divisionLabel = division.isMain ? division.label : `${division.parentLabel} - ${division.label}`;
+                    const divisionIcon = getDivisionIcon(division.isMain ? division.label : division.parentLabel);
+                    return (
+                      <div key={id} className="flex items-center gap-1.5">
+                        <span className="text-xs">{divisionIcon}</span>
+                        <span className="text-sm font-semibold text-gray-900">{divisionLabel}</span>
+                      </div>
+                    );
+                  }).filter(Boolean)
+                : <div className="text-sm font-semibold text-gray-900">—</div>}
             </div>
           )}
         </div>
@@ -4864,6 +5216,11 @@ function OrganizationSection({ p, editable, userId, collectChanges, usersOptions
 }
 
 function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
+  const { data:me } = useQuery({ queryKey:['me'], queryFn: ()=> api<any>('GET','/auth/me') });
+  
+  // Ensure canEdit is true for admins
+  const hasEditPermission = canEdit || (me?.roles || []).some((r: string) => String(r || '').toLowerCase() === 'admin') || (me?.permissions || []).includes('users:write');
+  
   const { data:balances, refetch:refetchBalances } = useQuery({ 
     queryKey:['time-off-balance', userId], 
     queryFn: ()=> api<any[]>('GET', `/employees/${userId}/time-off/balance`) 
@@ -4885,6 +5242,14 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
   const [submitting, setSubmitting] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [syncingHistory, setSyncingHistory] = useState(false);
+  const [showAdjustModal, setShowAdjustModal] = useState(false);
+  const [adjustingBalance, setAdjustingBalance] = useState<any>(null);
+  const [selectedPolicyName, setSelectedPolicyName] = useState('');
+  const [adjustmentType, setAdjustmentType] = useState<'add' | 'subtract'>('add');
+  const [adjustmentDays, setAdjustmentDays] = useState('');
+  const [effectiveDate, setEffectiveDate] = useState(new Date().toISOString().split('T')[0]);
+  const [adjustmentNote, setAdjustmentNote] = useState('');
+  const [adjusting, setAdjusting] = useState(false);
   
   const calculateHours = () => {
     if (startDate && endDate) {
@@ -4969,6 +5334,53 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
     }
   };
   
+  const handleOpenAdjust = (balance: any) => {
+    setAdjustingBalance(balance);
+    setSelectedPolicyName(balance.policy_name || '');
+    setAdjustmentType('add');
+    setAdjustmentDays('');
+    setEffectiveDate(new Date().toISOString().split('T')[0]);
+    setAdjustmentNote('');
+    setShowAdjustModal(true);
+  };
+  
+  const handleAdjust = async () => {
+    const policyName = selectedPolicyName || adjustingBalance?.policy_name;
+    if (!policyName || !adjustmentDays || !effectiveDate || !adjustmentNote.trim()) {
+      toast.error('Please fill in all required fields');
+      return;
+    }
+    
+    const days = parseFloat(adjustmentDays);
+    if (isNaN(days) || days <= 0) {
+      toast.error('Amount must be greater than 0');
+      return;
+    }
+    
+    setAdjusting(true);
+    try {
+      await api('POST', `/employees/${userId}/time-off/balance/adjust`, {
+        policy_name: policyName,
+        adjustment_type: adjustmentType,
+        amount_days: days,
+        effective_date: effectiveDate,
+        note: adjustmentNote.trim()
+      });
+      toast.success('Balance adjusted successfully');
+      setShowAdjustModal(false);
+      setAdjustingBalance(null);
+      setSelectedPolicyName('');
+      setAdjustmentDays('');
+      setAdjustmentNote('');
+      refetchBalances();
+      refetchHistory();
+    } catch (error: any) {
+      toast.error(error?.message || 'Failed to adjust balance');
+    } finally {
+      setAdjusting(false);
+    }
+  };
+  
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'approved': return 'bg-green-100 text-green-800';
@@ -4980,6 +5392,44 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
   
   const availablePolicies = balances?.map((b: any) => b.policy_name) || [];
   const totalBalance = balances?.reduce((sum: number, b: any) => sum + b.balance_hours, 0) || 0;
+  
+  // Ensure we always show cards for main policies (Sick Leave and Vacation), even if they don't exist in DB
+  const defaultPolicies = ['Sick Leave', 'Vacation'];
+  const displayedBalances = useMemo(() => {
+    if (!balances || balances.length === 0) {
+      // If no balances, show default policies as empty cards
+      return defaultPolicies.map(policy => ({
+        id: `default-${policy}`,
+        policy_name: policy,
+        balance_hours: 0,
+        accrued_hours: 0,
+        used_hours: 0,
+        year: new Date().getFullYear(),
+        isDefault: true
+      }));
+    }
+    
+    // Merge existing balances with default policies
+    const existingPolicyNames = balances.map((b: any) => b.policy_name);
+    const missingPolicies = defaultPolicies.filter(p => 
+      !existingPolicyNames.some((name: string) => name.toLowerCase().includes(p.toLowerCase()))
+    );
+    
+    const result = [...balances];
+    missingPolicies.forEach(policy => {
+      result.push({
+        id: `default-${policy}`,
+        policy_name: policy,
+        balance_hours: 0,
+        accrued_hours: 0,
+        used_hours: 0,
+        year: new Date().getFullYear(),
+        isDefault: true
+      });
+    });
+    
+    return result;
+  }, [balances]);
   const pendingRequests = requests?.filter((r: any) => r.status === 'pending') || [];
   const upcomingRequests = requests?.filter((r: any) => {
     if (r.status !== 'approved') return false;
@@ -5014,46 +5464,77 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
         <div className="grid md:grid-cols-2 gap-4">
           {/* Balance Section - Left */}
           <div className="rounded-lg border bg-gray-50 p-4">
-            <div className="flex items-center justify-between mb-3">
-              <h5 className="font-semibold flex items-center gap-2 text-sm">
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                </svg>
-                Available Balance
-              </h5>
-              <button
-                onClick={handleSync}
-                disabled={syncing}
-                className="px-3 py-1.5 rounded border border-blue-300 text-blue-700 text-sm font-medium hover:bg-blue-50 disabled:opacity-50"
-              >
-                {syncing ? 'Syncing...' : 'Sync'}
-              </button>
+            <div className="mb-4 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded bg-green-100 flex items-center justify-center">
+                  <svg className="w-5 h-5 text-green-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                </div>
+                <h5 className="text-sm font-semibold text-green-900">Available Balance</h5>
+              </div>
             </div>
-          {balances && balances.length > 0 ? (
-            <div className="space-y-3">
-              {balances.map((b: any) => {
+          {displayedBalances && displayedBalances.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {displayedBalances.map((b: any) => {
                 const balanceDays = hoursToDays(b.balance_hours);
                 const isNegative = b.balance_hours < 0;
+                const isSickLeave = b.policy_name.toLowerCase().includes('sick');
+                const isVacation = b.policy_name.toLowerCase().includes('vacation') || b.policy_name.toLowerCase().includes('holiday');
                 return (
-                  <div key={b.id} className="p-3 bg-gray-50 rounded-lg border">
-                    <div className="flex items-center justify-between mb-1">
-                      <div className="font-medium text-sm">{b.policy_name}</div>
-                      <div className={`text-lg font-bold ${isNegative ? 'text-red-600' : 'text-brand-red'}`}>
+                  <div key={b.id} className="p-3 bg-white rounded-lg border border-gray-200 relative">
+                    {/* Edit button in top right corner */}
+                    {hasEditPermission && (
+                      <button
+                        onClick={() => handleOpenAdjust(b)}
+                        className="absolute top-1.5 right-1.5 p-1 rounded hover:bg-gray-100 text-gray-500 hover:text-brand-red transition-colors"
+                        title="Adjust Balance"
+                      >
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                        </svg>
+                      </button>
+                    )}
+                    {/* Icon and Balance */}
+                    <div className="flex items-center justify-center mb-2">
+                      {isSickLeave ? (
+                        <div className="w-8 h-8 rounded bg-red-100 flex items-center justify-center">
+                          <svg className="w-5 h-5 text-red-600" viewBox="0 0 24 24" fill="none">
+                            <path d="M12 8v4m0 4h.01" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                            <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2"/>
+                          </svg>
+                        </div>
+                      ) : isVacation ? (
+                        <div className="w-8 h-8 rounded bg-blue-100 flex items-center justify-center">
+                          <svg className="w-5 h-5 text-blue-600" viewBox="0 0 24 24" fill="none">
+                            <path d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                          </svg>
+                        </div>
+                      ) : (
+                        <div className="w-8 h-8 rounded bg-green-100 flex items-center justify-center">
+                          <svg className="w-5 h-5 text-green-600" viewBox="0 0 24 24" fill="none">
+                            <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2"/>
+                            <path d="M12 8v4l3 3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                          </svg>
+                        </div>
+                      )}
+                    </div>
+                    <div className="text-center">
+                      <div className={`text-sm font-semibold ${isNegative ? 'text-red-600' : isSickLeave ? 'text-red-600' : isVacation ? 'text-blue-600' : 'text-green-600'}`}>
                         {isNegative ? '-' : ''}{balanceDays} Days
                       </div>
-                    </div>
-                    <div className="text-xs text-gray-600">
-                      {b.policy_name} Available
+                      <div className="text-xs font-medium text-gray-700 mt-0.5">
+                        {b.policy_name}
+                      </div>
+                      {b.isDefault && (
+                        <div className="text-[10px] text-orange-600 mt-0.5">(Not yet created)</div>
+                      )}
                     </div>
                   </div>
                 );
               })}
             </div>
-          ) : (
-            <div className="text-sm text-gray-600 py-4 text-center">
-              No balance found. Click "Sync" to load from BambooHR.
-            </div>
-          )}
+          ) : null}
         </div>
         
           {/* Upcoming Time Off - Right */}
@@ -5068,7 +5549,7 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
               {availablePolicies.length > 0 && (
                 <button
                   onClick={() => setShowRequestForm(true)}
-                  className="px-3 py-1.5 rounded border border-blue-300 text-blue-700 text-sm font-medium hover:bg-blue-50"
+                  className="px-2 py-1 rounded border border-blue-300 text-blue-700 text-xs font-medium hover:bg-blue-50"
                 >
                   Request Time Off
                 </button>
@@ -5111,46 +5592,95 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
               </svg>
               History
             </h5>
-            <button
-              onClick={handleSyncHistory}
-              disabled={syncingHistory}
-              className="px-3 py-1.5 rounded border border-blue-300 text-blue-700 text-sm font-medium hover:bg-blue-50 disabled:opacity-50"
-            >
-              {syncingHistory ? 'Syncing...' : 'Sync History'}
-            </button>
           </div>
-        {history && history.length > 0 ? (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b">
-                  <th className="text-left py-2 px-2 font-semibold">Date</th>
-                  <th className="text-left py-2 px-2 font-semibold">Description</th>
-                  <th className="text-right py-2 px-2 font-semibold">Used Days (-)</th>
-                  <th className="text-right py-2 px-2 font-semibold">Earned Days (+)</th>
-                  <th className="text-right py-2 px-2 font-semibold">Balance</th>
-                </tr>
-              </thead>
-              <tbody>
-                {history.map((h: any) => (
-                  <tr key={h.id} className="border-b">
-                    <td className="py-2 px-2">{new Date(h.transaction_date).toLocaleDateString(undefined, { timeZone: 'UTC' })}</td>
-                    <td className="py-2 px-2 whitespace-pre-line">{h.description || 'Time off transaction'}</td>
-                    <td className="py-2 px-2 text-right">
-                      {h.used_days ? (h.used_days < 0 ? parseFloat(h.used_days).toFixed(2) : `-${parseFloat(h.used_days).toFixed(2)}`) : '—'}
-                    </td>
-                    <td className="py-2 px-2 text-right">
-                      {h.earned_days ? `+${parseFloat(h.earned_days).toFixed(2)}` : '—'}
-                    </td>
-                    <td className="py-2 px-2 text-right">
-                      {parseFloat(h.balance_after).toFixed(2)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : historyRequests.length > 0 ? (
+        {history && history.length > 0 ? (() => {
+          // Group history by policy
+          const groupedHistory = history.reduce((acc: any, h: any) => {
+            if (!acc[h.policy_name]) {
+              acc[h.policy_name] = [];
+            }
+            acc[h.policy_name].push(h);
+            return acc;
+          }, {});
+          
+          // Check if entry is a manual adjustment
+          const isManualAdjustment = (desc: string) => {
+            return desc && desc.includes('Adjusted by');
+          };
+          
+          return (
+            <div className="space-y-4">
+              {Object.entries(groupedHistory).map(([policyName, entries]: [string, any]) => (
+                <div key={policyName} className="border rounded-lg overflow-hidden">
+                  <div className="bg-gray-50 px-4 py-2 border-b">
+                    <h6 className="font-semibold text-sm text-gray-900">{policyName}</h6>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b bg-gray-50">
+                          <th className="text-left py-2 px-3 font-semibold text-xs">Date</th>
+                          <th className="text-left py-2 px-3 font-semibold text-xs">Description</th>
+                          <th className="text-right py-2 px-3 font-semibold text-xs">Used Days (-)</th>
+                          <th className="text-right py-2 px-3 font-semibold text-xs">Earned Days (+)</th>
+                          <th className="text-right py-2 px-3 font-semibold text-xs">Balance</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {entries.map((h: any) => {
+                          const isAdjustment = isManualAdjustment(h.description || '');
+                          return (
+                            <tr key={h.id} className={`border-b ${isAdjustment ? 'bg-blue-50' : ''}`}>
+                              <td className="py-2 px-3">
+                                {new Date(h.transaction_date).toLocaleDateString(undefined, { 
+                                  year: 'numeric',
+                                  month: 'short',
+                                  day: 'numeric',
+                                  timeZone: 'UTC' 
+                                })}
+                              </td>
+                              <td className="py-2 px-3">
+                                <div className="flex items-center gap-2">
+                                  {isAdjustment && (
+                                    <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
+                                      <svg className="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                                        <path d="M11 3a1 1 0 100 2h2.586l-6.293 6.293a1 1 0 101.414 1.414L15 6.414V9a1 1 0 102 0V4a1 1 0 00-1-1h-5z" />
+                                        <path d="M5 5a2 2 0 00-2 2v8a2 2 0 002 2h8a2 2 0 002-2v-3a1 1 0 10-2 0v3H5V7h3a1 1 0 000-2H5z" />
+                                      </svg>
+                                      Adjustment
+                                    </span>
+                                  )}
+                                  <span className="whitespace-pre-line text-xs">{h.description || 'Time off transaction'}</span>
+                                </div>
+                              </td>
+                              <td className="py-2 px-3 text-right">
+                                {h.used_days ? (
+                                  <span className="text-red-600 font-medium">
+                                    {h.used_days < 0 ? parseFloat(h.used_days).toFixed(2) : `-${parseFloat(h.used_days).toFixed(2)}`}
+                                  </span>
+                                ) : '—'}
+                              </td>
+                              <td className="py-2 px-3 text-right">
+                                {h.earned_days ? (
+                                  <span className="text-green-600 font-medium">
+                                    +{parseFloat(h.earned_days).toFixed(2)}
+                                  </span>
+                                ) : '—'}
+                              </td>
+                              <td className="py-2 px-3 text-right font-semibold">
+                                {parseFloat(h.balance_after).toFixed(2)} days
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              ))}
+            </div>
+          );
+        })() : historyRequests.length > 0 ? (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
@@ -5198,7 +5728,7 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
             <div className="text-lg font-semibold mb-4">Request Time Off</div>
             <div className="space-y-3">
               <div>
-                <label className="text-xs text-gray-600">Policy</label>
+                <label className="text-xs text-gray-600">Policy*</label>
                 <select
                   className="w-full border rounded px-3 py-2"
                   value={policyName}
@@ -5209,10 +5739,31 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
                     <option key={p} value={p}>{p}</option>
                   ))}
                 </select>
+                {policyName && balances && (() => {
+                  const selectedBalance = balances.find((b: any) => b.policy_name === policyName);
+                  const isSickLeave = policyName.toLowerCase().includes('sick');
+                  if (selectedBalance) {
+                    const availableDays = hoursToDays(selectedBalance.balance_hours);
+                    return (
+                      <div className={`mt-1 text-xs ${parseFloat(availableDays) >= 0 ? 'text-gray-600' : 'text-orange-600'}`}>
+                        Available balance: {availableDays} days
+                        {isSickLeave && (
+                          <div className="mt-1 p-2 bg-blue-50 border border-blue-200 rounded text-blue-800">
+                            <svg className="w-4 h-4 inline mr-1" fill="currentColor" viewBox="0 0 20 20">
+                              <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                            </svg>
+                            Sick leave requests are allowed even without sufficient balance.
+                          </div>
+                        )}
+                      </div>
+                    );
+                  }
+                  return null;
+                })()}
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="text-xs text-gray-600">Start Date</label>
+                  <label className="text-xs text-gray-600">Start Date*</label>
                   <input
                     type="date"
                     className="w-full border rounded px-3 py-2"
@@ -5221,7 +5772,7 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
                   />
                 </div>
                 <div>
-                  <label className="text-xs text-gray-600">End Date</label>
+                  <label className="text-xs text-gray-600">End Date*</label>
                   <input
                     type="date"
                     className="w-full border rounded px-3 py-2"
@@ -5230,6 +5781,31 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
                   />
                 </div>
               </div>
+              {startDate && endDate && policyName && (() => {
+                const days = Math.ceil((new Date(endDate).getTime() - new Date(startDate).getTime()) / (1000 * 60 * 60 * 24)) + 1;
+                const selectedBalance = balances?.find((b: any) => b.policy_name === policyName);
+                const isSickLeave = policyName.toLowerCase().includes('sick');
+                const availableDays = selectedBalance ? parseFloat(hoursToDays(selectedBalance.balance_hours)) : 0;
+                const hasEnoughBalance = isSickLeave || availableDays >= days;
+                return (
+                  <div className={`p-3 rounded-lg border ${hasEnoughBalance ? 'bg-green-50 border-green-200' : 'bg-yellow-50 border-yellow-200'}`}>
+                    <div className="text-sm font-medium text-gray-700">
+                      Request Summary
+                    </div>
+                    <div className="text-xs text-gray-600 mt-1">
+                      You are requesting <strong>{days} days</strong> of {policyName}
+                    </div>
+                    <div className="text-xs text-gray-600">
+                      Available balance: <strong>{availableDays.toFixed(1)} days</strong>
+                    </div>
+                    {!hasEnoughBalance && !isSickLeave && (
+                      <div className="text-xs text-red-600 mt-1 font-medium">
+                        Insufficient balance. You need {days} days but only have {availableDays.toFixed(1)} days available.
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
               <div>
                 <label className="text-xs text-gray-600">Hours (auto-calculated)</label>
                 <input
@@ -5241,13 +5817,15 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
                 />
               </div>
               <div>
-                <label className="text-xs text-gray-600">Notes (optional)</label>
+                <label className="text-xs text-gray-600">
+                  {policyName?.toLowerCase().includes('sick') ? 'Reason/Justification*' : 'Notes (optional)'}
+                </label>
                 <textarea
                   className="w-full border rounded px-3 py-2"
                   rows={3}
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
-                  placeholder="Reason for time off..."
+                  placeholder={policyName?.toLowerCase().includes('sick') ? 'Please provide a reason for your sick leave request...' : 'Reason for time off...'}
                 />
               </div>
             </div>
@@ -5271,6 +5849,166 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
                 className="px-3 py-2 rounded bg-brand-red text-white disabled:opacity-50"
               >
                 {submitting ? 'Submitting...' : 'Submit Request'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {showAdjustModal && adjustingBalance && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={() => setShowAdjustModal(false)}>
+          <div className="bg-white rounded-xl w-full max-w-lg p-6" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-xl font-semibold text-brand-red">
+                {adjustingBalance.policy_name ? `Adjust ${adjustingBalance.policy_name} Balance` : 'Adjust Time Off Balance'}
+              </h3>
+              <button
+                onClick={() => {
+                  setShowAdjustModal(false);
+                  setAdjustingBalance(null);
+                  setSelectedPolicyName('');
+                }}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            
+            {/* Adjustment Form */}
+            <div className="space-y-4">
+              {/* Policy Selection - always show if multiple balances exist, or if no policy selected */}
+              {((displayedBalances && displayedBalances.length > 1) || !adjustingBalance.policy_name) && (
+                <div>
+                  <label className="text-sm font-medium text-gray-700 mb-1 block">Policy*</label>
+                  <select
+                    value={selectedPolicyName || adjustingBalance.policy_name || ''}
+                    onChange={(e) => {
+                      setSelectedPolicyName(e.target.value);
+                      // Update adjustingBalance with selected policy
+                      const selectedBalance = displayedBalances?.find((b: any) => b.policy_name === e.target.value);
+                      if (selectedBalance) {
+                        setAdjustingBalance(selectedBalance);
+                      } else {
+                        setAdjustingBalance({ policy_name: e.target.value, balance_hours: undefined });
+                      }
+                    }}
+                    className="w-full border rounded px-3 py-2"
+                  >
+                    <option value="">Select policy...</option>
+                    {displayedBalances && displayedBalances.length > 0 ? (
+                      displayedBalances.map((b: any) => (
+                        <option key={b.id} value={b.policy_name}>{b.policy_name}</option>
+                      ))
+                    ) : (
+                      <>
+                        <option value="Vacation">Vacation</option>
+                        <option value="Sick Leave">Sick Leave</option>
+                        <option value="Personal Days">Personal Days</option>
+                        <option value="Holiday">Holiday</option>
+                      </>
+                    )}
+                  </select>
+                </div>
+              )}
+              
+              <div>
+                <label className="text-sm font-medium text-gray-700 mb-1 block">Amount*</label>
+                <div className="flex gap-2">
+                  <select
+                    value={adjustmentType}
+                    onChange={(e) => setAdjustmentType(e.target.value as 'add' | 'subtract')}
+                    className="border rounded px-3 py-2 text-sm"
+                  >
+                    <option value="add">Add</option>
+                    <option value="subtract">Subtract</option>
+                  </select>
+                  <input
+                    type="number"
+                    step="0.5"
+                    min="0.5"
+                    value={adjustmentDays}
+                    onChange={(e) => setAdjustmentDays(e.target.value)}
+                    className="flex-1 border rounded px-3 py-2"
+                    placeholder="0"
+                  />
+                  <span className="px-3 py-2 text-sm text-gray-600">days</span>
+                </div>
+              </div>
+              
+              <div>
+                <label className="text-sm font-medium text-gray-700 mb-1 block">Effective Date*</label>
+                <input
+                  type="date"
+                  value={effectiveDate}
+                  onChange={(e) => setEffectiveDate(e.target.value)}
+                  className="w-full border rounded px-3 py-2"
+                />
+              </div>
+              
+              <div>
+                <label className="text-sm font-medium text-gray-700 mb-1 block">Note*</label>
+                <textarea
+                  value={adjustmentNote}
+                  onChange={(e) => setAdjustmentNote(e.target.value)}
+                  className="w-full border rounded px-3 py-2"
+                  rows={3}
+                  placeholder="Reason for adjustment..."
+                />
+              </div>
+              
+              {/* Summary */}
+              {adjustingBalance.policy_name && (
+                <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
+                  <div className="space-y-2 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-gray-700">Current {adjustingBalance.policy_name} Balance:</span>
+                      <span className="font-semibold">
+                        {adjustingBalance.balance_hours !== undefined 
+                          ? hoursToDays(adjustingBalance.balance_hours) 
+                          : '0'} days
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-700">
+                        {adjustmentType === 'add' ? 'Added' : 'Subtracted'}:
+                      </span>
+                      <span className={`font-semibold ${adjustmentType === 'add' ? 'text-green-600' : 'text-red-600'}`}>
+                        {adjustmentDays ? (adjustmentType === 'add' ? '+' : '-') + adjustmentDays : '0'} days
+                      </span>
+                    </div>
+                    <div className="flex justify-between pt-2 border-t border-blue-300">
+                      <span className="font-semibold text-gray-900">New {adjustingBalance.policy_name} Balance:</span>
+                      <span className="font-bold text-brand-red">
+                        {adjustmentDays
+                          ? (parseFloat(adjustingBalance.balance_hours !== undefined ? hoursToDays(adjustingBalance.balance_hours) : '0') + 
+                             (adjustmentType === 'add' ? parseFloat(adjustmentDays) : -parseFloat(adjustmentDays))).toFixed(1)
+                          : (adjustingBalance.balance_hours !== undefined ? hoursToDays(adjustingBalance.balance_hours) : '0')} days
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+            
+            <div className="mt-6 flex justify-end gap-2">
+              <button
+                onClick={() => {
+                  setShowAdjustModal(false);
+                  setAdjustingBalance(null);
+                  setSelectedPolicyName('');
+                }}
+                className="px-4 py-2 rounded border text-sm hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleAdjust}
+                disabled={adjusting || !adjustmentDays || !effectiveDate || !adjustmentNote.trim() || (!selectedPolicyName && !adjustingBalance?.policy_name)}
+                className="px-4 py-2 rounded bg-brand-red text-white text-sm disabled:opacity-50 hover:bg-red-700"
+              >
+                {adjusting ? 'Saving...' : 'Save'}
               </button>
             </div>
           </div>

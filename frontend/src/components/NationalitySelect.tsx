@@ -121,7 +121,7 @@ export default function NationalitySelect({
         onKeyDown={handleKeyDown}
         placeholder={placeholder}
         disabled={disabled}
-        className="w-full rounded-lg border px-3 py-2"
+        className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
         autoComplete="off"
       />
       {isOpen && (
@@ -131,15 +131,15 @@ export default function NationalitySelect({
               <div
                 key={nationality}
                 onClick={() => handleSelect(nationality)}
-                className={`px-3 py-2 cursor-pointer hover:bg-gray-100 ${
-                  nationality === value ? 'bg-blue-50 font-medium' : ''
+                className={`px-2.5 py-1.5 text-xs cursor-pointer hover:bg-gray-100 ${
+                  nationality === value ? 'bg-blue-50 font-medium' : 'text-gray-900'
                 }`}
               >
                 {nationality}
               </div>
             ))
           ) : (
-            <div className="px-3 py-2 text-gray-500 text-sm">No nationalities found</div>
+            <div className="px-2.5 py-1.5 text-xs text-gray-500">No nationalities found</div>
           )}
         </div>
       )}

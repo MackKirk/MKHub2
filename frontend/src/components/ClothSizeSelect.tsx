@@ -198,7 +198,7 @@ export default function ClothSizeSelect({
           type="button"
           onClick={() => !disabled && setShowDropdown(!showDropdown)}
           disabled={disabled}
-          className="w-full rounded-lg border px-3 py-2 text-left bg-white flex items-center justify-between disabled:opacity-50 disabled:cursor-not-allowed"
+          className={`w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400 text-left flex items-center justify-between disabled:opacity-50 disabled:cursor-not-allowed ${className}`}
         >
           <span className={value ? 'text-gray-900' : 'text-gray-500'}>{selectedLabel}</span>
           <svg 
@@ -218,8 +218,8 @@ export default function ClothSizeSelect({
               return (
                 <div
                   key={size}
-                  className={`px-3 py-2 cursor-pointer hover:bg-gray-100 flex items-center justify-between ${
-                    size === value ? 'bg-blue-50 font-medium' : ''
+                  className={`px-2.5 py-1.5 text-xs cursor-pointer hover:bg-gray-100 flex items-center justify-between ${
+                    size === value ? 'bg-blue-50 font-medium' : 'text-gray-900'
                   }`}
                   onClick={() => handleSelectSize(size)}
                 >
@@ -232,7 +232,7 @@ export default function ClothSizeSelect({
                       className="text-red-600 hover:text-red-800 disabled:opacity-50 disabled:cursor-not-allowed p-1"
                       title="Delete size"
                     >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                       </svg>
                     </button>
@@ -242,7 +242,7 @@ export default function ClothSizeSelect({
             })}
             {allowCustom && (
               <div
-                className="px-3 py-2 cursor-pointer hover:bg-gray-100 border-t text-blue-600 font-medium"
+                className="px-2.5 py-1.5 text-xs cursor-pointer hover:bg-gray-100 border-t text-blue-600 font-medium"
                 onClick={() => handleSelectSize('__custom__')}
               >
                 + Add custom size...
