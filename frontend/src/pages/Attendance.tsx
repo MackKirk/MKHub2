@@ -918,31 +918,41 @@ export default function Attendance() {
   };
 
   return (
-    <div>
-      <div className="bg-slate-200/50 rounded-[12px] border border-slate-200 flex items-center justify-between py-4 px-6 mb-6">
-        <div>
-          <div className="text-xl font-bold text-gray-900 tracking-tight mb-0.5">Attendance</div>
-          <div className="text-sm text-gray-500 font-medium">Manage all clock-in/out records</div>
+    <div className="space-y-4">
+      {/* Header Card */}
+      <div className="rounded-xl border bg-white p-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded bg-indigo-100 flex items-center justify-center">
+              <svg className="w-5 h-5 text-indigo-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+            <div>
+              <h5 className="text-sm font-semibold text-indigo-900">Attendance</h5>
+              <p className="text-xs text-gray-600 mt-0.5">Manage all clock-in/out records</p>
+            </div>
+          </div>
+          {canEditAttendance && (
+            <button
+              onClick={() => handleOpenModal()}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg bg-brand-red text-white font-medium transition-colors hover:bg-[#aa1212]"
+            >
+              <span className="text-sm leading-none">+</span>
+              New Attendance
+            </button>
+          )}
         </div>
-        {canEditAttendance && (
-          <button
-            onClick={() => handleOpenModal()}
-            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[#bc1414] text-white text-sm font-medium transition-all duration-200 hover:bg-[#aa1212] hover:shadow-md active:translate-y-[1px] active:shadow-sm"
-          >
-            <span className="text-base leading-none">+</span>
-            New Attendance
-          </button>
-        )}
       </div>
 
       {/* Filters */}
-      <div className="mb-4 rounded-xl border bg-white p-4 grid grid-cols-4 gap-4">
+      <div className="rounded-xl border bg-white p-4 grid grid-cols-4 gap-4">
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Worker</label>
+          <label className="block text-xs font-medium text-gray-600 mb-1.5">Worker</label>
           <select
             value={filters.worker_id}
             onChange={(e) => setFilters({ ...filters, worker_id: e.target.value })}
-            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+            className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
           >
             <option value="">All Workers</option>
             {(Array.isArray(users) ? users : []).map((u) => (
@@ -953,29 +963,29 @@ export default function Attendance() {
           </select>
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Start Date</label>
+          <label className="block text-xs font-medium text-gray-600 mb-1.5">Start Date</label>
           <input
             type="date"
             value={filters.start_date}
             onChange={(e) => setFilters({ ...filters, start_date: e.target.value })}
-            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+            className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
           />
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">End Date</label>
+          <label className="block text-xs font-medium text-gray-600 mb-1.5">End Date</label>
           <input
             type="date"
             value={filters.end_date}
             onChange={(e) => setFilters({ ...filters, end_date: e.target.value })}
-            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+            className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
           />
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
+          <label className="block text-xs font-medium text-gray-600 mb-1.5">Status</label>
           <select
             value={filters.status}
             onChange={(e) => setFilters({ ...filters, status: e.target.value })}
-            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+            className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
           >
             <option value="">All Statuses</option>
             <option value="approved">Approved</option>
@@ -987,21 +997,21 @@ export default function Attendance() {
 
       {/* Error message */}
       {error && (
-        <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-4 text-red-800">
+        <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-800">
           Error loading attendance records: {String(error)}
         </div>
       )}
 
       {/* Bulk Actions */}
       {canEditAttendance && selectedEvents.size > 0 && (
-        <div className="mb-4 rounded-xl border bg-blue-50 p-4 flex items-center justify-between">
-          <div className="text-sm font-medium text-blue-900">
+        <div className="rounded-xl border bg-blue-50 p-3 flex items-center justify-between">
+          <div className="text-xs font-medium text-blue-900">
             {selectedEvents.size} event(s) selected
           </div>
           <button
             onClick={handleDeleteSelected}
             disabled={deletingSelected}
-            className="px-4 py-2 bg-red-600 text-white rounded-lg font-semibold hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="px-3 py-1.5 text-xs bg-red-600 text-white rounded-lg font-medium hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {deletingSelected ? 'Deleting...' : 'Delete All Selected'}
           </button>
@@ -1010,27 +1020,27 @@ export default function Attendance() {
 
       {/* Table */}
       <div className="rounded-xl border bg-white overflow-hidden">
-        <table className="w-full text-sm">
+        <table className="w-full">
           <thead className="bg-gray-50">
             <tr>
               {canEditAttendance && (
-                <th className="p-3 text-left w-12">
+                <th className="p-2.5 text-left w-12">
                   <input
                     type="checkbox"
                     checked={attendanceEvents.length > 0 && selectedEvents.size === attendanceEvents.length}
                     onChange={handleSelectAll}
-                    className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                    className="w-3.5 h-3.5 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
                   />
                 </th>
               )}
-              <th className="p-3 text-left">Worker</th>
-              <th className="p-3 text-left">Clock In</th>
-              <th className="p-3 text-left">Clock Out</th>
-              <th className="p-3 text-left">Job/Project</th>
-              <th className="p-3 text-left">Hours</th>
-              <th className="p-3 text-left">Break</th>
-              <th className="p-3 text-left">Status</th>
-              <th className="p-3 text-left">Actions</th>
+              <th className="p-2.5 text-left text-xs font-medium text-gray-600">Worker</th>
+              <th className="p-2.5 text-left text-xs font-medium text-gray-600">Clock In</th>
+              <th className="p-2.5 text-left text-xs font-medium text-gray-600">Clock Out</th>
+              <th className="p-2.5 text-left text-xs font-medium text-gray-600">Job/Project</th>
+              <th className="p-2.5 text-left text-xs font-medium text-gray-600">Hours</th>
+              <th className="p-2.5 text-left text-xs font-medium text-gray-600">Break</th>
+              <th className="p-2.5 text-left text-xs font-medium text-gray-600">Status</th>
+              <th className="p-2.5 text-left text-xs font-medium text-gray-600">Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -1042,13 +1052,13 @@ export default function Attendance() {
               </tr>
             ) : error ? (
               <tr>
-                <td colSpan={colCount} className="p-4 text-center text-red-600">
+                <td colSpan={colCount} className="p-4 text-center text-xs text-red-600">
                   Error loading data. Please check console for details.
                 </td>
               </tr>
             ) : attendanceEvents.length === 0 ? (
               <tr>
-                <td colSpan={colCount} className="p-4 text-center text-gray-500">
+                <td colSpan={colCount} className="p-4 text-center text-xs text-gray-500">
                   No attendance records found
                 </td>
               </tr>
@@ -1056,23 +1066,23 @@ export default function Attendance() {
               attendanceEvents.map((event) => (
                 <tr key={event.event_id} className="border-t hover:bg-gray-50">
                   {canEditAttendance && (
-                    <td className="p-3">
+                    <td className="p-2.5">
                       <input
                         type="checkbox"
                         checked={selectedEvents.has(event.event_id)}
                         onChange={() => handleToggleSelect(event.event_id)}
-                        className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                        className="w-3.5 h-3.5 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
                       />
                     </td>
                   )}
-                  <td className="p-3">{event.worker_name}</td>
-                  <td className="p-3">
-                    {event.is_hours_worked ? '-' : (event.clock_in_time ? formatDateTime(event.clock_in_time) : '--')}
+                  <td className="p-2.5 text-xs">{event.worker_name}</td>
+                  <td className="p-2.5 text-xs">
+                    {event.is_hours_worked ? '—' : (event.clock_in_time ? formatDateTime(event.clock_in_time) : '—')}
                   </td>
-                  <td className="p-3">
-                    {event.is_hours_worked ? '-' : (event.clock_out_time ? formatDateTime(event.clock_out_time) : '--')}
+                  <td className="p-2.5 text-xs">
+                    {event.is_hours_worked ? '—' : (event.clock_out_time ? formatDateTime(event.clock_out_time) : '—')}
                   </td>
-                  <td className="p-3">
+                  <td className="p-2.5 text-xs">
                     {event.shift_id
                       ? (event.project_name || event.job_name || 'No Project')
                       : (event.job_name ||
@@ -1081,11 +1091,11 @@ export default function Attendance() {
                            ? jobOptions.find((j) => j.id === event.job_type)?.name || 'Unknown'
                            : 'No Project'))}
                   </td>
-                  <td className="p-3">{formatHours(event.hours_worked)}</td>
-                  <td className="p-3">{formatBreak(event.break_minutes)}</td>
-                  <td className="p-3">
+                  <td className="p-2.5 text-xs">{formatHours(event.hours_worked)}</td>
+                  <td className="p-2.5 text-xs">{formatBreak(event.break_minutes)}</td>
+                  <td className="p-2.5">
                     <span
-                      className={`px-2 py-1 rounded text-xs font-medium ${
+                      className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${
                         event.clock_in_status === 'approved' &&
                         (!event.clock_out_status || event.clock_out_status === 'approved')
                           ? 'bg-green-100 text-green-800'
@@ -1104,20 +1114,20 @@ export default function Attendance() {
                         : 'Rejected'}
                     </span>
                   </td>
-                  <td className="p-3">
+                  <td className="p-2.5">
                     <div className="flex items-center gap-2">
                       {canEditAttendance && (
                         <>
                           <button
                             onClick={() => handleOpenModal(event)}
-                            className="text-blue-600 hover:text-blue-800 text-sm"
+                            className="px-2 py-1 text-[10px] text-blue-600 hover:text-blue-800 font-medium hover:bg-blue-50 rounded transition-colors"
                           >
                             Edit
                           </button>
                           <button
                             onClick={() => handleDeleteEvent(event)}
                             disabled={deletingId === event.event_id}
-                            className="text-red-600 hover:text-red-800 text-sm disabled:opacity-50"
+                            className="px-2 py-1 text-[10px] text-red-600 hover:text-red-800 font-medium hover:bg-red-50 rounded transition-colors disabled:opacity-50"
                           >
                             {deletingId === event.event_id ? 'Deleting...' : 'Delete'}
                           </button>
@@ -1128,7 +1138,7 @@ export default function Attendance() {
                           className="text-yellow-600" 
                           title={event.shift_deleted_by ? `The shift related to this attendance was deleted by ${event.shift_deleted_by}${event.shift_deleted_at ? ` on ${new Date(event.shift_deleted_at).toLocaleDateString()}` : ''}` : 'The shift related to this attendance was deleted'}
                         >
-                          <svg className="w-4 h-4 inline-block" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <svg className="w-3 h-3 inline-block" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                           </svg>
                         </span>
@@ -1145,19 +1155,50 @@ export default function Attendance() {
       {/* Modal */}
       {showModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 max-w-lg w-full mx-4 max-h-[90vh] overflow-y-auto">
-            <h2 className="text-xl font-bold mb-4">
-              {editingEvent ? 'Edit Attendance Event' : 'New Attendance Event'}
-            </h2>
-            <div className="space-y-4">
+          <div className="bg-white rounded-lg p-4 max-w-lg w-full mx-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-bold">
+                {editingEvent ? 'Edit Attendance Event' : 'New Attendance Event'}
+              </h2>
+              <button
+                onClick={() => {
+                  setShowModal(false);
+                  resetForm();
+                }}
+                className="text-xl font-bold text-gray-400 hover:text-gray-600 w-6 h-6 flex items-center justify-center"
+              >
+                ×
+              </button>
+            </div>
+            <div className="space-y-3">
               {editingEvent ? (
                 // When editing, show simple select (single worker)
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Worker *</label>
+                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Worker *</label>
                   <select
                     value={formData.worker_id}
                     onChange={(e) => setFormData({ ...formData, worker_id: e.target.value })}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2"
+                    className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
+                    required
+                  >
+                    <option value="">Select a worker...</option>
+                    {(Array.isArray(users) ? users : []).map((u) => (
+                      <option key={u.id} value={u.id}>
+                        {u.name || u.username}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ) : (
+            <div className="space-y-3">
+              {editingEvent ? (
+                // When editing, show simple select (single worker)
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Worker *</label>
+                  <select
+                    value={formData.worker_id}
+                    onChange={(e) => setFormData({ ...formData, worker_id: e.target.value })}
+                    className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
                     required
                   >
                     <option value="">Select a worker...</option>
@@ -1171,21 +1212,21 @@ export default function Attendance() {
               ) : (
                 // When creating, show multi-select with search
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label className="block text-xs font-medium text-gray-600 mb-1.5">
                     Workers * {(Array.isArray(selectedWorkers) ? selectedWorkers.length : 0) > 0 && `(${Array.isArray(selectedWorkers) ? selectedWorkers.length : 0} selected)`}
                   </label>
                   <div className="relative" ref={workerDropdownRef}>
                     <button
                       type="button"
                       onClick={() => setWorkerDropdownOpen(!workerDropdownOpen)}
-                      className="w-full border rounded px-3 py-2 text-left bg-white flex items-center justify-between"
+                      className="w-full border rounded-lg border-gray-300 bg-white px-2.5 py-1.5 text-xs text-left flex items-center justify-between"
                     >
-                      <span className="text-sm text-gray-600">
+                      <span className="text-xs text-gray-600">
                         {(Array.isArray(selectedWorkers) ? selectedWorkers.length : 0) === 0
                           ? 'Select workers...'
                           : `${Array.isArray(selectedWorkers) ? selectedWorkers.length : 0} worker${(Array.isArray(selectedWorkers) ? selectedWorkers.length : 0) > 1 ? 's' : ''} selected`}
                       </span>
-                      <span className="text-gray-400">{workerDropdownOpen ? '▲' : '▼'}</span>
+                      <span className="text-gray-400 text-xs">{workerDropdownOpen ? '▲' : '▼'}</span>
                     </button>
                     {workerDropdownOpen && (
                       <div 
@@ -1198,7 +1239,7 @@ export default function Attendance() {
                             placeholder="Search workers..."
                             value={workerSearch}
                             onChange={(e) => setWorkerSearch(e.target.value)}
-                            className="w-full border rounded px-2 py-1 text-sm"
+                            className="w-full border rounded-lg border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900"
                             onMouseDown={(e) => e.stopPropagation()}
                           />
                           <div className="flex items-center gap-2">
@@ -1216,7 +1257,7 @@ export default function Attendance() {
                                   return Array.from(newSet);
                                 });
                               }}
-                              className="text-xs px-2 py-1 rounded border hover:bg-gray-50"
+                              className="text-[10px] px-2 py-1 rounded border hover:bg-gray-50"
                             >
                               Select All
                             </button>
@@ -1228,7 +1269,7 @@ export default function Attendance() {
                                 e.stopPropagation();
                                 setSelectedWorkers([]);
                               }}
-                              className="text-xs px-2 py-1 rounded border hover:bg-gray-50"
+                              className="text-[10px] px-2 py-1 rounded border hover:bg-gray-50"
                             >
                               Clear All
                             </button>
@@ -1239,21 +1280,21 @@ export default function Attendance() {
                             filteredEmployees.map((u: any) => (
                               <label
                                 key={u.id}
-                                className="flex items-center gap-2 p-2 hover:bg-gray-50 cursor-pointer rounded"
+                                className="flex items-center gap-2 p-1.5 hover:bg-gray-50 cursor-pointer rounded"
                                 onMouseDown={(e) => e.stopPropagation()}
                               >
                                 <input
                                   type="checkbox"
                                   checked={Array.isArray(selectedWorkers) && selectedWorkers.includes(u.id)}
                                   onChange={() => toggleWorker(u.id)}
-                                  className="rounded"
+                                  className="w-3.5 h-3.5 rounded border-gray-300"
                                   onMouseDown={(e) => e.stopPropagation()}
                                 />
-                                <span className="text-sm">{u.name || u.username}</span>
+                                <span className="text-xs">{u.name || u.username}</span>
                               </label>
                             ))
                           ) : (
-                            <div className="p-2 text-sm text-gray-600">No workers found</div>
+                            <div className="p-2 text-xs text-gray-600">No workers found</div>
                           )}
                         </div>
                       </div>
@@ -1266,13 +1307,13 @@ export default function Attendance() {
                         return (
                           <span
                             key={workerId}
-                            className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-800 rounded text-sm"
+                            className="inline-flex items-center gap-1 px-2 py-0.5 bg-blue-100 text-blue-800 rounded text-xs"
                           >
                             {worker?.name || worker?.username || workerId}
                             <button
                               type="button"
                               onClick={() => toggleWorker(workerId)}
-                              className="text-blue-600 hover:text-blue-800"
+                              className="text-blue-600 hover:text-blue-800 text-sm"
                             >
                               ×
                             </button>
@@ -1285,11 +1326,11 @@ export default function Attendance() {
               )}
               {/* Job field - always show */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Job *</label>
+                <label className="block text-xs font-medium text-gray-600 mb-1.5">Job *</label>
                 <select
                   value={formData.job_type}
                   onChange={(e) => setFormData({ ...formData, job_type: e.target.value })}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2"
+                  className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
                   required
                 >
                   {jobOptions.map((job) => (
@@ -1300,10 +1341,10 @@ export default function Attendance() {
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-xs font-medium text-gray-600 mb-1.5">
                   Entry Type
                 </label>
-                <div className="inline-flex rounded-lg border border-gray-300 bg-gray-50 overflow-hidden text-sm">
+                <div className="inline-flex rounded-lg border border-gray-300 bg-gray-50 overflow-hidden text-xs">
                   <button
                     type="button"
                     onClick={() => {
@@ -1316,7 +1357,7 @@ export default function Attendance() {
                         };
                       });
                     }}
-                    className={`px-3 py-1.5 ${
+                    className={`px-2.5 py-1.5 ${
                       formData.entry_mode === 'time'
                         ? 'bg-white text-gray-900'
                         : 'text-gray-600 hover:bg-gray-100'
@@ -1353,7 +1394,7 @@ export default function Attendance() {
                         };
                       });
                     }}
-                    className={`px-3 py-1.5 border-l border-gray-300 ${
+                    className={`px-2.5 py-1.5 border-l border-gray-300 ${
                       formData.entry_mode === 'hours'
                         ? 'bg-white text-gray-900'
                         : 'text-gray-600 hover:bg-gray-100'
@@ -1362,14 +1403,14 @@ export default function Attendance() {
                     Hours Worked
                   </button>
                 </div>
-                <p className="mt-1 text-xs text-gray-500">
+                <p className="mt-1 text-[10px] text-gray-500">
                   {formData.entry_mode === 'time'
                     ? 'Enter exact clock-in and clock-out times.'
                     : 'Enter start time and total hours; clock-out will be calculated automatically.'}
                 </p>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-xs font-medium text-gray-600 mb-1.5">
                   {formData.entry_mode === 'time'
                     ? 'Clock In Time * (Local)'
                     : 'Work Date *'}
@@ -1381,7 +1422,7 @@ export default function Attendance() {
                     onChange={(e) =>
                       setFormData({ ...formData, clock_in_time: e.target.value })
                     }
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2"
+                    className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
                     required
                   />
                 ) : (
@@ -1395,7 +1436,7 @@ export default function Attendance() {
                         clock_in_time: date ? `${date}T00:00` : '',
                       }));
                     }}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2"
+                    className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
                     required
                   />
                 )}
@@ -1403,7 +1444,7 @@ export default function Attendance() {
               {formData.entry_mode === 'time' && (
                 <>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label className="block text-xs font-medium text-gray-600 mb-1.5">
                       {editingEvent
                         ? 'Clock Out Time (Local) - Optional'
                         : 'Clock Out Time * (Local)'}
@@ -1414,29 +1455,29 @@ export default function Attendance() {
                       onChange={(e) =>
                         setFormData({ ...formData, clock_out_time: e.target.value })
                       }
-                      className="w-full rounded-lg border border-gray-300 px-3 py-2"
+                      className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
                       required={!editingEvent}
                     />
                   </div>
                   {/* Manual Break Time (always available in clock in/out mode) */}
                   <div>
-                    <label className="flex items-center gap-2 mb-2">
+                    <label className="flex items-center gap-2 mb-1.5">
                       <input
                         type="checkbox"
                         checked={insertBreakTime}
                         onChange={(e) => setInsertBreakTime(e.target.checked)}
-                        className="w-4 h-4 rounded border-gray-300 text-brand-red focus:ring-brand-red"
+                        className="w-3.5 h-3.5 rounded border-gray-300 text-brand-red focus:ring-brand-red"
                       />
-                      <span className="text-sm font-medium text-gray-700">Insert Break Time</span>
+                      <span className="text-xs font-medium text-gray-700">Insert Break Time</span>
                     </label>
                     {insertBreakTime && (
-                      <div className="ml-6 space-y-2">
+                      <div className="ml-4 space-y-1.5">
                         <div className="flex gap-2 items-center">
-                          <label className="text-xs text-gray-600 w-12">Hours:</label>
+                          <label className="text-[10px] text-gray-600 w-12">Hours:</label>
                           <select
                             value={breakHours}
                             onChange={(e) => setBreakHours(e.target.value)}
-                            className="flex-1 border rounded px-3 py-2"
+                            className="flex-1 border rounded-lg border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900"
                           >
                             {Array.from({ length: 3 }, (_, i) => (
                               <option key={i} value={String(i)}>
@@ -1444,11 +1485,11 @@ export default function Attendance() {
                               </option>
                             ))}
                           </select>
-                          <label className="text-xs text-gray-600 w-12 ml-2">Minutes:</label>
+                          <label className="text-[10px] text-gray-600 w-12 ml-2">Minutes:</label>
                           <select
                             value={breakMinutes}
                             onChange={(e) => setBreakMinutes(e.target.value)}
-                            className="flex-1 border rounded px-3 py-2"
+                            className="flex-1 border rounded-lg border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900"
                           >
                             {Array.from({ length: 12 }, (_, i) => {
                               const m = i * 5;
@@ -1468,7 +1509,7 @@ export default function Attendance() {
               {formData.entry_mode === 'hours' && (
                 <>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label className="block text-xs font-medium text-gray-600 mb-1.5">
                       Hours Worked *
                     </label>
                     <input
@@ -1479,30 +1520,30 @@ export default function Attendance() {
                       onChange={(e) =>
                         setFormData({ ...formData, hours_worked: e.target.value })
                       }
-                      className="w-full rounded-lg border border-gray-300 px-3 py-2"
+                      className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
                       placeholder="e.g. 8"
                       required
                     />
                   </div>
                   {/* Manual Break Time (for hours worked mode) */}
                   <div>
-                    <label className="flex items-center gap-2 mb-2">
+                    <label className="flex items-center gap-2 mb-1.5">
                       <input
                         type="checkbox"
                         checked={insertBreakTime}
                         onChange={(e) => setInsertBreakTime(e.target.checked)}
-                        className="w-4 h-4 rounded border-gray-300 text-brand-red focus:ring-brand-red"
+                        className="w-3.5 h-3.5 rounded border-gray-300 text-brand-red focus:ring-brand-red"
                       />
-                      <span className="text-sm font-medium text-gray-700">Insert Break Time</span>
+                      <span className="text-xs font-medium text-gray-700">Insert Break Time</span>
                     </label>
                     {insertBreakTime && (
-                      <div className="ml-6 space-y-2">
+                      <div className="ml-4 space-y-1.5">
                         <div className="flex gap-2 items-center">
-                          <label className="text-xs text-gray-600 w-12">Hours:</label>
+                          <label className="text-[10px] text-gray-600 w-12">Hours:</label>
                           <select
                             value={breakHours}
                             onChange={(e) => setBreakHours(e.target.value)}
-                            className="flex-1 border rounded px-3 py-2"
+                            className="flex-1 border rounded-lg border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900"
                           >
                             {Array.from({ length: 3 }, (_, i) => (
                               <option key={i} value={String(i)}>
@@ -1510,11 +1551,11 @@ export default function Attendance() {
                               </option>
                             ))}
                           </select>
-                          <label className="text-xs text-gray-600 w-12 ml-2">Minutes:</label>
+                          <label className="text-[10px] text-gray-600 w-12 ml-2">Minutes:</label>
                           <select
                             value={breakMinutes}
                             onChange={(e) => setBreakMinutes(e.target.value)}
-                            className="flex-1 border rounded px-3 py-2"
+                            className="flex-1 border rounded-lg border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900"
                           >
                             {Array.from({ length: 12 }, (_, i) => {
                               const m = i * 5;
@@ -1533,11 +1574,11 @@ export default function Attendance() {
               )}
               {editingEvent && (
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Status *</label>
+                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Status *</label>
                   <select
                     value={formData.status}
                     onChange={(e) => setFormData({ ...formData, status: e.target.value })}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2"
+                    className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
                     required
                   >
                     <option value="approved">Approved</option>
@@ -1547,20 +1588,20 @@ export default function Attendance() {
                 </div>
               )}
             </div>
-            <div className="mt-6 flex justify-end gap-3">
+            <div className="mt-4 flex justify-end gap-2">
               <button
                 onClick={() => {
                   setShowModal(false);
                   resetForm();
                 }}
-                className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
+                className="px-3 py-1.5 text-xs border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
               >
                 Cancel
               </button>
               <button
                 onClick={handleSubmit}
                 disabled={isSubmitDisabled}
-                className="px-4 py-2 bg-[#d11616] text-white rounded-lg hover:bg-[#b01414] disabled:opacity-50 disabled:cursor-not-allowed"
+                className="px-3 py-1.5 text-xs bg-brand-red text-white rounded-lg hover:bg-[#b01414] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
                 {editingEvent ? 'Update' : 'Create'}
               </button>

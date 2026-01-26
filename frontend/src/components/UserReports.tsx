@@ -155,195 +155,208 @@ export default function UserReports({ userId, canEdit = true }: { userId: string
   };
 
   return (
-    <div className="space-y-4">
-      {/* Header with filters */}
-      <div className="flex items-center justify-between gap-4">
-        <div className="flex-1">
+    <div className="space-y-6 pb-24">
+      {/* Reports Section */}
+      <div className="rounded-xl border bg-white p-4">
+        {/* Header */}
+        <div className="mb-4 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded bg-red-100 flex items-center justify-center">
+              <svg className="w-5 h-5 text-red-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+            </div>
+            <h5 className="text-sm font-semibold text-red-900">Reports</h5>
+          </div>
+          {canEdit && (
+            <button
+              onClick={() => setShowCreateModal(true)}
+              className="px-2 py-1 text-xs bg-brand-red text-white rounded-lg font-medium hover:bg-red-700 transition-colors"
+            >
+              + Add Report
+            </button>
+          )}
+        </div>
+
+        {/* Search */}
+        <div className="mb-4">
           <input
             type="text"
             placeholder="Search reports..."
-            className="w-full max-w-md border rounded-lg px-4 py-2"
+            className="w-full max-w-md rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
           />
         </div>
-        {canEdit && (
-          <button
-            onClick={() => setShowCreateModal(true)}
-            className="px-4 py-2 rounded-lg bg-brand-red text-white hover:bg-red-700 font-medium"
-          >
-            + Add Report
-          </button>
-        )}
-      </div>
 
-      {/* Filters */}
-      <div className="grid grid-cols-12 gap-4">
-        <div className="col-span-2">
-          <label className="block text-sm font-medium mb-1">Type</label>
-          <select
-            className="w-full border rounded px-3 py-2"
-            value={filterType}
-            onChange={(e) => setFilterType(e.target.value)}
-          >
-            <option value="">All Types</option>
-            <option value="Fine">Fine</option>
-            <option value="Warning">Warning</option>
-            <option value="Suspension">Suspension</option>
-            <option value="Behavior Note">Behavior Note</option>
-            <option value="Other">Other</option>
-          </select>
+        {/* Filters */}
+        <div className="mb-4 grid grid-cols-12 gap-4">
+          <div className="col-span-2">
+            <label className="block text-xs font-medium text-gray-600 mb-1.5">Type</label>
+            <select
+              className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
+              value={filterType}
+              onChange={(e) => setFilterType(e.target.value)}
+            >
+              <option value="">All Types</option>
+              <option value="Fine">Fine</option>
+              <option value="Warning">Warning</option>
+              <option value="Suspension">Suspension</option>
+              <option value="Behavior Note">Behavior Note</option>
+              <option value="Other">Other</option>
+            </select>
+          </div>
+          
+          <div className="col-span-2">
+            <label className="block text-xs font-medium text-gray-600 mb-1.5">Status</label>
+            <select
+              className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
+              value={filterStatus}
+              onChange={(e) => setFilterStatus(e.target.value)}
+            >
+              <option value="">All Status</option>
+              <option value="Open">Open</option>
+              <option value="Under Review">Under Review</option>
+              <option value="Closed">Closed</option>
+            </select>
+          </div>
+          
+          <div className="col-span-2">
+            <label className="block text-xs font-medium text-gray-600 mb-1.5">Severity</label>
+            <select
+              className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
+              value={filterSeverity}
+              onChange={(e) => setFilterSeverity(e.target.value)}
+            >
+              <option value="">All Severities</option>
+              <option value="Low">Low</option>
+              <option value="Medium">Medium</option>
+              <option value="High">High</option>
+            </select>
+          </div>
+          
+          <div className="col-span-2">
+            <label className="block text-xs font-medium text-gray-600 mb-1.5">From Date</label>
+            <input
+              type="date"
+              className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
+              value={filterDateFrom}
+              onChange={(e) => setFilterDateFrom(e.target.value)}
+            />
+          </div>
+          
+          <div className="col-span-2">
+            <label className="block text-xs font-medium text-gray-600 mb-1.5">To Date</label>
+            <input
+              type="date"
+              className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
+              value={filterDateTo}
+              onChange={(e) => setFilterDateTo(e.target.value)}
+            />
+          </div>
+          
+          <div className="col-span-2 flex items-end">
+            <button
+              onClick={clearFilters}
+              className="w-full px-2 py-1 text-xs rounded-lg bg-gray-200 hover:bg-gray-300 text-gray-700 font-medium transition-colors"
+            >
+              Clear Filters
+            </button>
+          </div>
         </div>
-        
-        <div className="col-span-2">
-          <label className="block text-sm font-medium mb-1">Status</label>
-          <select
-            className="w-full border rounded px-3 py-2"
-            value={filterStatus}
-            onChange={(e) => setFilterStatus(e.target.value)}
-          >
-            <option value="">All Status</option>
-            <option value="Open">Open</option>
-            <option value="Under Review">Under Review</option>
-            <option value="Closed">Closed</option>
-          </select>
-        </div>
-        
-        <div className="col-span-2">
-          <label className="block text-sm font-medium mb-1">Severity</label>
-          <select
-            className="w-full border rounded px-3 py-2"
-            value={filterSeverity}
-            onChange={(e) => setFilterSeverity(e.target.value)}
-          >
-            <option value="">All Severities</option>
-            <option value="Low">Low</option>
-            <option value="Medium">Medium</option>
-            <option value="High">High</option>
-          </select>
-        </div>
-        
-        <div className="col-span-2">
-          <label className="block text-sm font-medium mb-1">From Date</label>
-          <input
-            type="date"
-            className="w-full border rounded px-3 py-2"
-            value={filterDateFrom}
-            onChange={(e) => setFilterDateFrom(e.target.value)}
-          />
-        </div>
-        
-        <div className="col-span-2">
-          <label className="block text-sm font-medium mb-1">To Date</label>
-          <input
-            type="date"
-            className="w-full border rounded px-3 py-2"
-            value={filterDateTo}
-            onChange={(e) => setFilterDateTo(e.target.value)}
-          />
-        </div>
-        
-        <div className="col-span-2 flex items-end">
-          <button
-            onClick={clearFilters}
-            className="w-full px-4 py-2 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700"
-          >
-            Clear Filters
-          </button>
-        </div>
-      </div>
 
-      {/* Reports Table */}
-      <div className="rounded-xl border bg-white overflow-hidden">
-        <table className="w-full text-sm">
-          <thead className="bg-gray-50">
-            <tr>
-              <th className="p-3 text-left font-semibold text-gray-700">Date</th>
-              <th className="p-3 text-left font-semibold text-gray-700">Type</th>
-              <th className="p-3 text-left font-semibold text-gray-700">Title</th>
-              <th className="p-3 text-left font-semibold text-gray-700">Severity</th>
-              <th className="p-3 text-left font-semibold text-gray-700">Status</th>
-              <th className="p-3 text-left font-semibold text-gray-700">Last Updated</th>
-              <th className="p-3 text-left font-semibold text-gray-700">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {!reports ? (
+        {/* Reports Table */}
+        <div className="rounded-xl border overflow-hidden">
+          <table className="w-full">
+            <thead className="bg-gray-50">
               <tr>
-                <td colSpan={7} className="p-4 text-center text-gray-500">
-                  <div className="h-6 bg-gray-100 animate-pulse rounded" />
-                </td>
+                <th className="p-2.5 text-left text-xs font-medium text-gray-600">Date</th>
+                <th className="p-2.5 text-left text-xs font-medium text-gray-600">Type</th>
+                <th className="p-2.5 text-left text-xs font-medium text-gray-600">Title</th>
+                <th className="p-2.5 text-left text-xs font-medium text-gray-600">Severity</th>
+                <th className="p-2.5 text-left text-xs font-medium text-gray-600">Status</th>
+                <th className="p-2.5 text-left text-xs font-medium text-gray-600">Last Updated</th>
+                <th className="p-2.5 text-left text-xs font-medium text-gray-600">Actions</th>
               </tr>
-            ) : filteredReports.length === 0 ? (
-              <tr>
-                <td colSpan={7} className="p-4 text-center text-gray-500">
-                  {reports.length === 0 ? 'No reports found' : 'No reports match the filters'}
-                </td>
-              </tr>
-            ) : (
-              filteredReports.map((report) => (
-                <tr key={report.id} className="border-t border-gray-200 hover:bg-gray-50 transition-colors">
-                  <td className="p-3 text-gray-900">{formatDate(report.occurrence_date)}</td>
-                  <td className="p-3 text-gray-900">{report.report_type}</td>
-                  <td className="p-3 font-medium text-gray-900">{report.title}</td>
-                  <td className="p-3">
-                    <span
-                      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                        report.severity === 'High'
-                          ? 'bg-red-100 text-red-800'
-                          : report.severity === 'Medium'
-                          ? 'bg-yellow-100 text-yellow-800'
-                          : 'bg-green-100 text-green-800'
-                      }`}
-                    >
-                      {report.severity}
-                    </span>
-                  </td>
-                  <td className="p-3">
-                    <span
-                      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                        report.status === 'Closed'
-                          ? 'bg-gray-100 text-gray-800'
-                          : report.status === 'Under Review'
-                          ? 'bg-blue-100 text-blue-800'
-                          : 'bg-orange-100 text-orange-800'
-                      }`}
-                    >
-                      {report.status}
-                    </span>
-                  </td>
-                  <td className="p-3 text-gray-600">{formatDate(report.updated_at || report.created_at)}</td>
-                  <td className="p-3">
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => setShowReportDetail(report.id)}
-                        className="px-3 py-1.5 text-xs font-medium rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 transition-colors"
-                      >
-                        View
-                      </button>
-                      {canEdit && (
-                        <button
-                          onClick={async () => {
-                            try {
-                              const reportDetail = await api<ReportDetail>('GET', `/employees/${userId}/reports/${report.id}`);
-                              setEditingReport(reportDetail);
-                              setShowCreateModal(true);
-                            } catch (e: any) {
-                              toast.error('Failed to load report details');
-                            }
-                          }}
-                          className="px-3 py-1.5 text-xs font-medium rounded-lg bg-blue-100 hover:bg-blue-200 text-blue-700 transition-colors"
-                        >
-                          Edit
-                        </button>
-                      )}
-                    </div>
+            </thead>
+            <tbody>
+              {!reports ? (
+                <tr>
+                  <td colSpan={7} className="p-4 text-center text-xs text-gray-500">
+                    <div className="h-6 bg-gray-100 animate-pulse rounded" />
                   </td>
                 </tr>
-              ))
-            )}
-          </tbody>
-        </table>
+              ) : filteredReports.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="p-4 text-center text-xs text-gray-500">
+                    {reports.length === 0 ? 'No reports found' : 'No reports match the filters'}
+                  </td>
+                </tr>
+              ) : (
+                filteredReports.map((report) => (
+                  <tr key={report.id} className="border-t border-gray-200 hover:bg-gray-50 transition-colors">
+                    <td className="p-2.5 text-xs text-gray-900">{formatDate(report.occurrence_date)}</td>
+                    <td className="p-2.5 text-xs text-gray-900">{report.report_type}</td>
+                    <td className="p-2.5 text-xs font-semibold text-gray-900">{report.title}</td>
+                    <td className="p-2.5">
+                      <span
+                        className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium ${
+                          report.severity === 'High'
+                            ? 'bg-red-100 text-red-800'
+                            : report.severity === 'Medium'
+                            ? 'bg-yellow-100 text-yellow-800'
+                            : 'bg-green-100 text-green-800'
+                        }`}
+                      >
+                        {report.severity}
+                      </span>
+                    </td>
+                    <td className="p-2.5">
+                      <span
+                        className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium ${
+                          report.status === 'Closed'
+                            ? 'bg-gray-100 text-gray-800'
+                            : report.status === 'Under Review'
+                            ? 'bg-blue-100 text-blue-800'
+                            : 'bg-orange-100 text-orange-800'
+                        }`}
+                      >
+                        {report.status}
+                      </span>
+                    </td>
+                    <td className="p-2.5 text-xs text-gray-600">{formatDate(report.updated_at || report.created_at)}</td>
+                    <td className="p-2.5">
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          onClick={() => setShowReportDetail(report.id)}
+                          className="px-2 py-1 text-[10px] font-medium rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 transition-colors"
+                        >
+                          View
+                        </button>
+                        {canEdit && (
+                          <button
+                            onClick={async () => {
+                              try {
+                                const reportDetail = await api<ReportDetail>('GET', `/employees/${userId}/reports/${report.id}`);
+                                setEditingReport(reportDetail);
+                                setShowCreateModal(true);
+                              } catch (e: any) {
+                                toast.error('Failed to load report details');
+                              }
+                            }}
+                            className="px-2 py-1 text-[10px] font-medium rounded-lg bg-blue-100 hover:bg-blue-200 text-blue-700 transition-colors"
+                          >
+                            Edit
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {/* Create/Edit Report Modal */}
@@ -634,18 +647,18 @@ function CreateReportModal({ userId, report, onClose }: { userId: string; report
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 overflow-y-auto">
       <div className="w-[700px] max-w-[95vw] bg-white rounded-xl shadow-lg overflow-visible my-8 relative flex flex-col max-h-[90vh]">
-        <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] text-white p-6 rounded-t-xl flex items-center justify-between">
-          <div className="text-2xl font-extrabold">{report ? 'Edit Report' : 'Create Report'}</div>
-          <button onClick={onClose} className="text-white/80 hover:text-white text-2xl font-bold w-8 h-8 flex items-center justify-center rounded hover:bg-white/10">
+        <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] text-white p-4 rounded-t-xl flex items-center justify-between">
+          <div className="text-lg font-extrabold">{report ? 'Edit Report' : 'Create Report'}</div>
+          <button onClick={onClose} className="text-white/80 hover:text-white text-xl font-bold w-6 h-6 flex items-center justify-center rounded hover:bg-white/10">
             ×
           </button>
         </div>
-        <div className="flex-1 overflow-y-auto overflow-x-visible p-6 space-y-4">
+        <div className="flex-1 overflow-y-auto overflow-x-visible p-4 space-y-4">
           <div>
-            <label className="block text-sm font-medium mb-1">Title *</label>
+            <label className="block text-xs font-medium text-gray-600 mb-1.5">Title *</label>
             <input
               type="text"
-              className="w-full border rounded px-3 py-2"
+              className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder="Short title for the report"
@@ -653,9 +666,9 @@ function CreateReportModal({ userId, report, onClose }: { userId: string; report
           </div>
 
           <div>
-            <label className="block text-sm font-medium mb-1">Report Type *</label>
+            <label className="block text-xs font-medium text-gray-600 mb-1.5">Report Type *</label>
             <select
-              className="w-full border rounded px-3 py-2"
+              className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
               value={reportType}
               onChange={(e) => setReportType(e.target.value)}
             >
@@ -670,22 +683,22 @@ function CreateReportModal({ userId, report, onClose }: { userId: string; report
           {/* Fine-specific fields - moved right after Report Type */}
           {reportType === 'Fine' && (
             <div className="space-y-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
-              <h4 className="font-medium text-gray-900">Fine Details</h4>
+              <h4 className="text-xs font-semibold text-gray-900">Fine Details</h4>
               <div>
-                <label className="block text-sm font-medium mb-1">Vehicle</label>
+                <label className="block text-xs font-medium text-gray-600 mb-1.5">Vehicle</label>
                 <input
                   type="text"
-                  className="w-full border rounded px-3 py-2"
+                  className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
                   value={vehicle}
                   onChange={(e) => setVehicle(e.target.value)}
                   placeholder="Vehicle information"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1">Ticket Number</label>
+                <label className="block text-xs font-medium text-gray-600 mb-1.5">Ticket Number</label>
                 <input
                   type="text"
-                  className="w-full border rounded px-3 py-2"
+                  className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
                   value={ticketNumber}
                   onChange={(e) => setTicketNumber(e.target.value)}
                   placeholder="Ticket number"
@@ -693,22 +706,22 @@ function CreateReportModal({ userId, report, onClose }: { userId: string; report
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium mb-1">Fine Amount</label>
+                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Fine Amount</label>
                   <input
                     type="number"
                     step="0.01"
                     min="0"
-                    className="w-full border rounded px-3 py-2"
+                    className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
                     value={fineAmount}
                     onChange={(e) => setFineAmount(e.target.value)}
                     placeholder="0.00"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1">Due Date</label>
+                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Due Date</label>
                   <input
                     type="date"
-                    className="w-full border rounded px-3 py-2"
+                    className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
                     value={dueDate}
                     onChange={(e) => setDueDate(e.target.value)}
                   />
@@ -720,22 +733,22 @@ function CreateReportModal({ userId, report, onClose }: { userId: string; report
           {/* Suspension-specific fields - moved right after Report Type */}
           {reportType === 'Suspension' && (
             <div className="space-y-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
-              <h4 className="font-medium text-gray-900">Suspension Period</h4>
+              <h4 className="text-xs font-semibold text-gray-900">Suspension Period</h4>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium mb-1">Start Date</label>
+                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Start Date</label>
                   <input
                     type="date"
-                    className="w-full border rounded px-3 py-2"
+                    className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
                     value={suspensionStartDate}
                     onChange={(e) => setSuspensionStartDate(e.target.value)}
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1">End Date</label>
+                  <label className="block text-xs font-medium text-gray-600 mb-1.5">End Date</label>
                   <input
                     type="date"
-                    className="w-full border rounded px-3 py-2"
+                    className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
                     value={suspensionEndDate}
                     onChange={(e) => setSuspensionEndDate(e.target.value)}
                   />
@@ -782,9 +795,9 @@ function CreateReportModal({ userId, report, onClose }: { userId: string; report
           )}
 
           <div>
-            <label className="block text-sm font-medium mb-1">Description</label>
+            <label className="block text-xs font-medium text-gray-600 mb-1.5">Description</label>
             <textarea
-              className="w-full border rounded px-3 py-2"
+              className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
               rows={4}
               value={description}
               onChange={(e) => setDescription(e.target.value)}
@@ -793,10 +806,10 @@ function CreateReportModal({ userId, report, onClose }: { userId: string; report
           </div>
 
           <div>
-            <label className="block text-sm font-medium mb-1">Occurrence Date *</label>
+            <label className="block text-xs font-medium text-gray-600 mb-1.5">Occurrence Date *</label>
             <input
               type="date"
-              className="w-full border rounded px-3 py-2"
+              className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
               value={occurrenceDate}
               onChange={(e) => setOccurrenceDate(e.target.value)}
             />
@@ -804,9 +817,9 @@ function CreateReportModal({ userId, report, onClose }: { userId: string; report
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium mb-1">Severity</label>
+              <label className="block text-xs font-medium text-gray-600 mb-1.5">Severity</label>
               <select
-                className="w-full border rounded px-3 py-2"
+                className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
                 value={severity}
                 onChange={(e) => setSeverity(e.target.value)}
               >
@@ -816,9 +829,9 @@ function CreateReportModal({ userId, report, onClose }: { userId: string; report
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1">Status</label>
+              <label className="block text-xs font-medium text-gray-600 mb-1.5">Status</label>
               <select
-                className="w-full border rounded px-3 py-2"
+                className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
                 value={status}
                 onChange={(e) => setStatus(e.target.value)}
               >
@@ -831,7 +844,7 @@ function CreateReportModal({ userId, report, onClose }: { userId: string; report
 
           {/* Related Project/Department - for all types */}
           <div className="relative z-[100]">
-            <label className="block text-sm font-medium mb-1">Related Project/Department</label>
+            <label className="block text-xs font-medium text-gray-600 mb-1.5">Related Project/Department</label>
             <div className="relative">
               <button
                 ref={dropdownButtonRef}
@@ -957,7 +970,7 @@ function CreateReportModal({ userId, report, onClose }: { userId: string; report
 
           {/* Attachments */}
           <div>
-            <label className="block text-sm font-medium mb-1">Attachments</label>
+            <label className="block text-xs font-medium text-gray-600 mb-1.5">Attachments</label>
             <input
               ref={fileInputRef}
               type="file"
@@ -969,7 +982,7 @@ function CreateReportModal({ userId, report, onClose }: { userId: string; report
               type="button"
               onClick={() => fileInputRef.current?.click()}
               disabled={uploading}
-              className="px-4 py-2 border rounded hover:bg-gray-50 disabled:opacity-50"
+              className="px-2 py-1 text-xs border rounded-lg hover:bg-gray-50 disabled:opacity-50"
             >
               {uploading ? 'Uploading...' : '+ Add File'}
             </button>
@@ -991,10 +1004,10 @@ function CreateReportModal({ userId, report, onClose }: { userId: string; report
             )}
           </div>
         </div>
-        <div className="px-6 py-4 border-t bg-gray-50 flex items-center justify-end gap-2">
+        <div className="px-4 py-3 border-t bg-gray-50 flex items-center justify-end gap-2">
           <button
             onClick={onClose}
-            className="px-4 py-2 rounded bg-gray-200 hover:bg-gray-300"
+            className="px-3 py-1.5 text-xs rounded bg-gray-200 hover:bg-gray-300"
             disabled={saving}
           >
             Cancel
@@ -1002,7 +1015,7 @@ function CreateReportModal({ userId, report, onClose }: { userId: string; report
           <button
             onClick={handleSubmit}
             disabled={saving}
-            className="px-4 py-2 rounded bg-brand-red text-white hover:bg-red-700 disabled:opacity-50"
+            className="px-3 py-1.5 text-xs rounded bg-brand-red text-white hover:bg-red-700 disabled:opacity-50"
           >
             {saving ? (report ? 'Updating...' : 'Creating...') : (report ? 'Update Report' : 'Create Report')}
           </button>
@@ -1273,33 +1286,33 @@ function ReportDetailView({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 overflow-y-auto">
       <div className="w-[900px] max-w-[95vw] bg-white rounded-xl shadow-lg overflow-visible flex flex-col my-8 max-h-[90vh]">
-        <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] text-white p-6 rounded-t-xl flex items-center justify-between">
+        <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] text-white p-4 rounded-t-xl flex items-center justify-between">
           <div className="flex-1">
             {editing ? (
               <input
                 type="text"
-                className="w-full border rounded-lg px-3 py-2 font-semibold text-gray-900"
+                className="w-full border rounded-lg px-2.5 py-1.5 text-xs font-semibold text-gray-900"
                 value={editTitle}
                 onChange={(e) => setEditTitle(e.target.value)}
                 placeholder="Report title"
               />
             ) : (
-              <div className="text-2xl font-extrabold">{report.report_type}: {report.title}</div>
+              <div className="text-lg font-extrabold">{report.report_type}: {report.title}</div>
             )}
           </div>
-          <button onClick={onClose} className="text-white/80 hover:text-white text-2xl font-bold w-8 h-8 flex items-center justify-center rounded hover:bg-white/10">
+          <button onClick={onClose} className="text-white/80 hover:text-white text-xl font-bold w-6 h-6 flex items-center justify-center rounded hover:bg-white/10">
             ×
           </button>
         </div>
-        <div className="flex-1 overflow-y-auto overflow-x-visible p-6 space-y-6">
+        <div className="flex-1 overflow-y-auto overflow-x-visible p-4 space-y-6">
           {/* Basic Info */}
           <div className="grid md:grid-cols-2 gap-4">
             <div>
-              <div className="text-sm text-gray-600">Status</div>
+              <div className="text-xs font-medium text-gray-600 mb-1.5">Status</div>
               <div className="mt-1">
                 {editing ? (
                   <select
-                    className="w-full border rounded px-3 py-2"
+                    className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
                     value={editStatus}
                     onChange={(e) => setEditStatus(e.target.value)}
                   >
@@ -1309,7 +1322,7 @@ function ReportDetailView({
                   </select>
                 ) : (
                   <span
-                    className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                    className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium ${
                       report.status === 'Closed'
                         ? 'bg-gray-100 text-gray-800'
                         : report.status === 'Under Review'
@@ -1323,11 +1336,11 @@ function ReportDetailView({
               </div>
             </div>
             <div>
-              <div className="text-sm text-gray-600">Severity</div>
+              <div className="text-xs font-medium text-gray-600 mb-1.5">Severity</div>
               <div className="mt-1">
                 {editing ? (
                   <select
-                    className="w-full border rounded px-3 py-2"
+                    className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
                     value={editSeverity}
                     onChange={(e) => setEditSeverity(e.target.value)}
                   >
@@ -1337,7 +1350,7 @@ function ReportDetailView({
                   </select>
                 ) : (
                   <span
-                    className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                    className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium ${
                       report.severity === 'High'
                         ? 'bg-red-100 text-red-800'
                         : report.severity === 'Medium'
@@ -1351,31 +1364,31 @@ function ReportDetailView({
               </div>
             </div>
             <div>
-              <div className="text-sm text-gray-600">Occurrence Date</div>
-              <div>{formatDate(report.occurrence_date)}</div>
+              <div className="text-xs font-medium text-gray-600 mb-1.5">Occurrence Date</div>
+              <div className="text-sm font-semibold text-gray-900">{formatDate(report.occurrence_date)}</div>
             </div>
             <div>
-              <div className="text-sm text-gray-600">Reported By</div>
-              <div>{report.reported_by?.username || '-'}</div>
+              <div className="text-xs font-medium text-gray-600 mb-1.5">Reported By</div>
+              <div className="text-sm font-semibold text-gray-900">{report.reported_by?.username || '—'}</div>
             </div>
             <div>
-              <div className="text-sm text-gray-600">Last Updated</div>
-              <div>{formatDate(report.updated_at || report.created_at)}</div>
+              <div className="text-xs font-medium text-gray-600 mb-1.5">Last Updated</div>
+              <div className="text-sm font-semibold text-gray-900">{formatDate(report.updated_at || report.created_at)}</div>
             </div>
           </div>
 
           {/* Description */}
           <div>
-            <div className="text-sm font-medium mb-2">Description</div>
+            <div className="text-xs font-semibold text-gray-900 mb-2">Description</div>
             {editing ? (
               <textarea
-                className="w-full border rounded px-3 py-2"
+                className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
                 rows={4}
                 value={editDescription}
                 onChange={(e) => setEditDescription(e.target.value)}
               />
             ) : (
-              <div className="text-gray-700 whitespace-pre-wrap">{report.description || '-'}</div>
+              <div className="text-xs text-gray-700 whitespace-pre-wrap">{report.description || '—'}</div>
             )}
           </div>
 
@@ -1767,18 +1780,18 @@ function ReportDetailView({
             </div>
           </div>
         </div>
-        <div className="px-6 py-4 border-t bg-gray-50 flex items-center justify-end gap-2">
+        <div className="px-4 py-3 border-t bg-gray-50 flex items-center justify-end gap-2">
           {editing ? (
             <>
               <button
                 onClick={() => setEditing(false)}
-                className="px-4 py-2 rounded bg-gray-200 hover:bg-gray-300"
+                className="px-3 py-1.5 text-xs rounded bg-gray-200 hover:bg-gray-300"
               >
                 Cancel
               </button>
               <button
                 onClick={handleSave}
-                className="px-4 py-2 rounded bg-brand-red text-white hover:bg-red-700"
+                className="px-3 py-1.5 text-xs rounded bg-brand-red text-white hover:bg-red-700"
               >
                 Save Changes
               </button>
@@ -1793,7 +1806,7 @@ function ReportDetailView({
                       setShowEditModal(true);
                     }
                   }}
-                  className="px-4 py-2 rounded bg-brand-red text-white hover:bg-red-700"
+                  className="px-3 py-1.5 text-xs rounded bg-brand-red text-white hover:bg-red-700"
                 >
                   Edit
                 </button>

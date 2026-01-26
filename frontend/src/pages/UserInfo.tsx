@@ -90,7 +90,7 @@ function SyncBambooHRButton({ userId, onSuccess }: { userId: string; onSuccess?:
     <button
       onClick={handleSync}
       disabled={syncing}
-      className="px-4 py-2 rounded-lg bg-white/20 hover:bg-white/30 text-white border border-white/30 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+      className="px-3 py-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 border border-gray-300 text-xs font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transition-colors"
       title="Sync user data from BambooHR"
     >
       {syncing ? (
@@ -180,8 +180,8 @@ function ProjectFilesCategoriesModal({
               className="mt-1 w-4 h-4 rounded border-gray-300 text-brand-red focus:ring-brand-red"
             />
             <div className="min-w-0">
-              <div className="font-medium text-sm">Allow all categories</div>
-              <div className="text-xs text-gray-500">If enabled, this user can access all file categories.</div>
+              <div className="text-xs font-medium text-gray-900">Allow all categories</div>
+              <div className="text-[10px] text-gray-500">If enabled, this user can access all file categories.</div>
             </div>
           </label>
 
@@ -648,20 +648,28 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
         }}
       />
       <div className="rounded-xl border bg-white p-4">
-        <div className="mb-4">
-          <h3 className="text-lg font-semibold mb-1">User Permissions</h3>
-          <p className="text-sm text-gray-600">
-            {canEdit 
-              ? "Manage granular permissions for this user. Permissions from roles are combined with these overrides. Permissions marked with [WIP] are not yet implemented in the system."
-              : "View permissions assigned to this user. You have view-only access and cannot modify permissions."
-            }
-          </p>
+        {/* Header */}
+        <div className="mb-4 flex items-center gap-2">
+          <div className="w-8 h-8 rounded bg-amber-100 flex items-center justify-center">
+            <svg className="w-5 h-5 text-amber-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+            </svg>
+          </div>
+          <div className="flex-1">
+            <h5 className="text-sm font-semibold text-amber-900">User Permissions</h5>
+            <p className="text-xs text-gray-600 mt-0.5">
+              {canEdit 
+                ? "Manage granular permissions for this user. Permissions from roles are combined with these overrides. Permissions marked with [WIP] are not yet implemented in the system."
+                : "View permissions assigned to this user. You have view-only access and cannot modify permissions."
+              }
+            </p>
+          </div>
         </div>
 
         {/* Admin Access Section */}
-        <div className="mb-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+        <div className="mb-6 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
           {canEdit ? (
-            <label className="inline-flex items-start gap-3 cursor-pointer">
+            <label className="inline-flex items-start gap-2 cursor-pointer">
               <input 
                 id="admin-checkbox"
                 type="checkbox" 
@@ -670,42 +678,42 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
                 onChange={e=>{ 
                   setIsAdminLocal(e.target.checked);
                 }} 
-                className="mt-1 w-4 h-4 rounded border-gray-300 text-brand-red focus:ring-brand-red disabled:opacity-50 disabled:cursor-not-allowed"
+                className="mt-0.5 w-3.5 h-3.5 rounded border-gray-300 text-brand-red focus:ring-brand-red disabled:opacity-50 disabled:cursor-not-allowed"
               />
             <div className="flex-1">
-              <div className="font-semibold text-yellow-900 flex items-center gap-2">
+              <div className="text-xs font-semibold text-yellow-900 flex items-center gap-2">
                 Administrator Access
-                <span className="text-xs px-1.5 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300">
+                <span className="text-[10px] px-1 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300">
                   System Role
                 </span>
               </div>
-              <div className="text-xs text-yellow-800 mt-1">
+              <div className="text-[10px] text-yellow-800 mt-1">
                 ⚠️ <strong>Warning:</strong> This user will have access to all areas of the system and will be able to delete sensitive information. Only grant this to trusted users.
               </div>
               {isAdminLocal && (
-                <div className="text-xs text-yellow-700 mt-2 font-medium">
+                <div className="text-[10px] text-yellow-700 mt-2 font-medium">
                   ⚠️ When admin is enabled, all permission checks are bypassed. Individual permissions below are ignored.
                 </div>
               )}
             </div>
           </label>
           ) : (
-            <div className="inline-flex items-start gap-3">
+            <div className="inline-flex items-start gap-2">
               <input 
                 id="admin-checkbox"
                 type="checkbox" 
                 checked={isAdminLocal}
                 disabled
-                className="mt-1 w-4 h-4 rounded border-gray-300 text-brand-red opacity-50"
+                className="mt-0.5 w-3.5 h-3.5 rounded border-gray-300 text-brand-red opacity-50"
               />
               <div className="flex-1">
-                <div className="font-semibold text-yellow-900 flex items-center gap-2">
+                <div className="text-xs font-semibold text-yellow-900 flex items-center gap-2">
                   Administrator Access
-                  <span className="text-xs px-1.5 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300">
+                  <span className="text-[10px] px-1 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300">
                     System Role
                   </span>
                 </div>
-                <div className="text-xs text-yellow-800 mt-1">
+                <div className="text-[10px] text-yellow-800 mt-1">
                   Status: {isAdminLocal ? 'Enabled' : 'Disabled'}
                 </div>
               </div>
@@ -833,12 +841,12 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
                 <div key={cat.category.id} className="border rounded-lg overflow-hidden">
                   {/* Category Header with Arrow */}
                   <div 
-                    className="p-4 cursor-pointer hover:bg-gray-50 transition-colors flex items-center gap-3"
+                    className="p-3 cursor-pointer hover:bg-gray-50 transition-colors flex items-center gap-2"
                     onClick={toggleExpand}
                   >
-                    <div className="flex-shrink-0 w-5 h-5 flex items-center justify-center">
+                    <div className="flex-shrink-0 w-4 h-4 flex items-center justify-center">
                       <svg 
-                        className={`w-4 h-4 text-gray-600 transition-transform ${isExpanded ? 'rotate-90' : ''}`}
+                        className={`w-3 h-3 text-gray-600 transition-transform ${isExpanded ? 'rotate-90' : ''}`}
                         fill="none" 
                         stroke="currentColor" 
                         viewBox="0 0 24 24"
@@ -847,9 +855,9 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
                       </svg>
                     </div>
                     <div className="flex-1">
-                      <h4 className="font-semibold text-base">{cat.category.label}</h4>
+                      <h4 className="text-xs font-semibold text-gray-900">{cat.category.label}</h4>
                       {cat.category.description && (
-                        <p className="text-xs text-gray-500 mt-1">{cat.category.description}</p>
+                        <p className="text-[10px] text-gray-500 mt-0.5">{cat.category.description}</p>
                       )}
                     </div>
                   </div>
@@ -876,13 +884,13 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
                           });
                           
                           return (
-                            <div key={area} className="border rounded-lg p-3 bg-gray-50">
-                              <div className="text-sm font-semibold text-gray-700 mb-3">{areaLabel}</div>
-                              <div className="grid md:grid-cols-2 gap-3">
+                            <div key={area} className="border rounded-lg p-2.5 bg-gray-50">
+                              <div className="text-xs font-semibold text-gray-700 mb-2">{areaLabel}</div>
+                              <div className="grid md:grid-cols-2 gap-2.5">
                                 {/* View Permissions Column */}
                                 {viewPerms.length > 0 && (
-                                  <div className="space-y-2">
-                                    <div className="text-xs font-semibold text-gray-600 mb-2 uppercase tracking-wide">View</div>
+                                  <div className="space-y-1.5">
+                                    <div className="text-[10px] font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">View</div>
                                     {viewPerms.map((perm: any) => {
                                       const isViewPermission = perm.key.startsWith('hr:users:view:');
                                       const canEnable = canEdit && (!isViewPermission || canEnableEditPermission(perm.key, permissions));
@@ -890,26 +898,26 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
                                       return (
                                       <label
                                         key={perm.id}
-                                        className={`flex items-start gap-2 p-2 rounded bg-white ${canEnable ? 'hover:bg-gray-50 cursor-pointer' : 'cursor-default'} ${isSubPermission ? 'ml-6' : ''}`}
+                                        className={`flex items-start gap-1.5 p-1.5 rounded bg-white ${canEnable ? 'hover:bg-gray-50 cursor-pointer' : 'cursor-default'} ${isSubPermission ? 'ml-4' : ''}`}
                                       >
                                         <input
                                           type="checkbox"
                                           checked={permissions[perm.key] || false}
                                           onChange={() => canEnable && handleToggle(perm.key)}
                                           disabled={!canEnable}
-                                          className="mt-1 w-4 h-4 rounded border-gray-300 text-brand-red focus:ring-brand-red flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                                          className="mt-0.5 w-3.5 h-3.5 rounded border-gray-300 text-brand-red focus:ring-brand-red flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
                                         />
                                         <div className="flex-1 min-w-0">
-                                          <div className="font-medium text-sm flex items-center gap-2">
+                                          <div className="text-xs font-medium text-gray-900 flex items-center gap-1.5">
                                             <span className="truncate">{perm.label}</span>
                                             {!IMPLEMENTED_PERMISSIONS.has(perm.key) && (
-                                              <span className="text-xs px-1.5 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300 flex-shrink-0">
+                                              <span className="text-[10px] px-1 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300 flex-shrink-0">
                                                 [WIP]
                                               </span>
                                             )}
                                           </div>
                                           {perm.description && (
-                                            <div className="text-xs text-gray-500 mt-0.5 line-clamp-1">{perm.description}</div>
+                                            <div className="text-[10px] text-gray-500 mt-0.5 line-clamp-1">{perm.description}</div>
                                           )}
                                         </div>
                                       </label>
@@ -919,34 +927,34 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
                                 )}
                                 {/* Edit Permissions Column */}
                                 {editPerms.length > 0 && (
-                                  <div className="space-y-2">
-                                    <div className="text-xs font-semibold text-gray-600 mb-2 uppercase tracking-wide">Edit</div>
+                                  <div className="space-y-1.5">
+                                    <div className="text-[10px] font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Edit</div>
                                     {editPerms.map((perm: any) => {
                                       const isEditPermission = perm.key.startsWith('hr:users:edit:') || perm.key === 'hr:users:write';
                                       const canEnable = canEdit && (!isEditPermission || canEnableEditPermission(perm.key, permissions));
                                       return (
                                         <label
                                           key={perm.id}
-                                          className={`flex items-start gap-2 p-2 rounded bg-white ${canEnable ? 'hover:bg-gray-50 cursor-pointer' : 'cursor-default'}`}
+                                          className={`flex items-start gap-1.5 p-1.5 rounded bg-white ${canEnable ? 'hover:bg-gray-50 cursor-pointer' : 'cursor-default'}`}
                                         >
                                           <input
                                             type="checkbox"
                                             checked={permissions[perm.key] || false}
                                             onChange={() => canEnable && handleToggle(perm.key)}
                                             disabled={!canEnable}
-                                            className="mt-1 w-4 h-4 rounded border-gray-300 text-brand-red focus:ring-brand-red flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                                            className="mt-0.5 w-3.5 h-3.5 rounded border-gray-300 text-brand-red focus:ring-brand-red flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
                                           />
                                           <div className="flex-1 min-w-0">
-                                            <div className="font-medium text-sm flex items-center gap-2">
+                                            <div className="text-xs font-medium text-gray-900 flex items-center gap-1.5">
                                               <span className="truncate">{perm.label}</span>
                                               {!IMPLEMENTED_PERMISSIONS.has(perm.key) && (
-                                                <span className="text-xs px-1.5 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300 flex-shrink-0">
+                                                <span className="text-[10px] px-1 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300 flex-shrink-0">
                                                   [WIP]
                                                 </span>
                                               )}
                                             </div>
                                             {perm.description && (
-                                              <div className="text-xs text-gray-500 mt-0.5 line-clamp-1">{perm.description}</div>
+                                              <div className="text-[10px] text-gray-500 mt-0.5 line-clamp-1">{perm.description}</div>
                                             )}
                                           </div>
                                         </label>
@@ -970,35 +978,35 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
                             const editPerms = areaPerms.filter((p: any) => p.key.includes(':write'));
                             
                             return (
-                              <div className="border rounded-lg p-3 bg-gray-50">
-                                <div className="text-sm font-semibold text-gray-700 mb-3">Customers</div>
-                                <div className="grid md:grid-cols-2 gap-3">
+                              <div className="border rounded-lg p-2.5 bg-gray-50">
+                                <div className="text-xs font-semibold text-gray-700 mb-2">Customers</div>
+                                <div className="grid md:grid-cols-2 gap-2.5">
                                   {viewPerms.length > 0 && (
-                                    <div className="space-y-2">
-                                      <div className="text-xs font-semibold text-gray-600 mb-2 uppercase tracking-wide">View</div>
+                                    <div className="space-y-1.5">
+                                      <div className="text-[10px] font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">View</div>
                                       {viewPerms.map((perm: any) => (
                                         <label
                                           key={perm.id}
-                                          className="flex items-start gap-2 p-2 rounded bg-white hover:bg-gray-50 cursor-pointer"
+                                          className="flex items-start gap-1.5 p-1.5 rounded bg-white hover:bg-gray-50 cursor-pointer"
                                         >
                                           <input
                                             type="checkbox"
                                             checked={permissions[perm.key] || false}
                                             onChange={() => canEdit && handleToggle(perm.key)}
                                             disabled={!canEdit}
-                                            className="mt-1 w-4 h-4 rounded border-gray-300 text-brand-red focus:ring-brand-red flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                                            className="mt-0.5 w-3.5 h-3.5 rounded border-gray-300 text-brand-red focus:ring-brand-red flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
                                           />
                                           <div className="flex-1 min-w-0">
-                                            <div className="font-medium text-sm flex items-center gap-2">
+                                            <div className="text-xs font-medium text-gray-900 flex items-center gap-1.5">
                                               <span className="truncate">{perm.label}</span>
                                               {!IMPLEMENTED_PERMISSIONS.has(perm.key) && (
-                                                <span className="text-xs px-1.5 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300 flex-shrink-0">
+                                                <span className="text-[10px] px-1 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300 flex-shrink-0">
                                                   [WIP]
                                                 </span>
                                               )}
                                             </div>
                                             {perm.description && (
-                                              <div className="text-xs text-gray-500 mt-0.5 line-clamp-1">{perm.description}</div>
+                                              <div className="text-[10px] text-gray-500 mt-0.5 line-clamp-1">{perm.description}</div>
                                             )}
                                           </div>
                                         </label>
@@ -1006,33 +1014,33 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
                                     </div>
                                   )}
                                   {editPerms.length > 0 && (
-                                    <div className="space-y-2">
-                                      <div className="text-xs font-semibold text-gray-600 mb-2 uppercase tracking-wide">Edit</div>
+                                    <div className="space-y-1.5">
+                                      <div className="text-[10px] font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Edit</div>
                                       {editPerms.map((perm: any) => {
                                         const canEnable = canEdit && canEnableEditPermission(perm.key, permissions);
                                         return (
                                         <label
                                           key={perm.id}
-                                          className={`flex items-start gap-2 p-2 rounded bg-white ${canEnable ? 'hover:bg-gray-50 cursor-pointer' : 'cursor-default'}`}
+                                          className={`flex items-start gap-1.5 p-1.5 rounded bg-white ${canEnable ? 'hover:bg-gray-50 cursor-pointer' : 'cursor-default'}`}
                                         >
                                           <input
                                             type="checkbox"
                                             checked={permissions[perm.key] || false}
                                             onChange={() => canEnable && handleToggle(perm.key)}
                                             disabled={!canEnable}
-                                            className="mt-1 w-4 h-4 rounded border-gray-300 text-brand-red focus:ring-brand-red flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                                            className="mt-0.5 w-3.5 h-3.5 rounded border-gray-300 text-brand-red focus:ring-brand-red flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
                                           />
                                           <div className="flex-1 min-w-0">
-                                            <div className="font-medium text-sm flex items-center gap-2">
+                                            <div className="text-xs font-medium text-gray-900 flex items-center gap-1.5">
                                               <span className="truncate">{perm.label}</span>
                                               {!IMPLEMENTED_PERMISSIONS.has(perm.key) && (
-                                                <span className="text-xs px-1.5 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300 flex-shrink-0">
+                                                <span className="text-[10px] px-1 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300 flex-shrink-0">
                                                   [WIP]
                                                 </span>
                                               )}
                                             </div>
                                             {perm.description && (
-                                              <div className="text-xs text-gray-500 mt-0.5 line-clamp-1">{perm.description}</div>
+                                              <div className="text-[10px] text-gray-500 mt-0.5 line-clamp-1">{perm.description}</div>
                                             )}
                                           </div>
                                         </label>
@@ -1057,36 +1065,36 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
                           const editPerms = areaPerms.filter((p: any) => p.key.includes(':write'));
                           
                           return (
-                            <div key={area} className="border rounded-lg p-3 bg-gray-50">
-                              <div className="text-sm font-semibold text-gray-700 mb-3">{areaLabel}</div>
-                              <div className="grid md:grid-cols-2 gap-3">
+                            <div key={area} className="border rounded-lg p-2.5 bg-gray-50">
+                              <div className="text-xs font-semibold text-gray-700 mb-2">{areaLabel}</div>
+                              <div className="grid md:grid-cols-2 gap-2.5">
                                 {/* View Permissions Column */}
                                 {viewPerms.length > 0 && (
-                                  <div className="space-y-2">
-                                    <div className="text-xs font-semibold text-gray-600 mb-2 uppercase tracking-wide">View</div>
+                                  <div className="space-y-1.5">
+                                    <div className="text-[10px] font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">View</div>
                                     {viewPerms.map((perm: any) => (
                                       <label
                                         key={perm.id}
-                                        className="flex items-start gap-2 p-2 rounded bg-white hover:bg-gray-50 cursor-pointer"
+                                        className="flex items-start gap-1.5 p-1.5 rounded bg-white hover:bg-gray-50 cursor-pointer"
                                       >
                                         <input
                                           type="checkbox"
                                           checked={permissions[perm.key] || false}
                                           onChange={() => canEdit && handleToggle(perm.key)}
                                           disabled={!canEdit}
-                                          className="mt-1 w-4 h-4 rounded border-gray-300 text-brand-red focus:ring-brand-red flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                                          className="mt-0.5 w-3.5 h-3.5 rounded border-gray-300 text-brand-red focus:ring-brand-red flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
                                         />
                                         <div className="flex-1 min-w-0">
-                                          <div className="font-medium text-sm flex items-center gap-2">
+                                          <div className="text-xs font-medium text-gray-900 flex items-center gap-1.5">
                                             <span className="truncate">{perm.label}</span>
                                             {!IMPLEMENTED_PERMISSIONS.has(perm.key) && (
-                                              <span className="text-xs px-1.5 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300 flex-shrink-0">
+                                              <span className="text-[10px] px-1 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300 flex-shrink-0">
                                                 [WIP]
                                               </span>
                                             )}
                                           </div>
                                           {perm.description && (
-                                            <div className="text-xs text-gray-500 mt-0.5 line-clamp-1">{perm.description}</div>
+                                            <div className="text-[10px] text-gray-500 mt-0.5 line-clamp-1">{perm.description}</div>
                                           )}
                                         </div>
                                       </label>
@@ -1095,31 +1103,31 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
                                 )}
                                 {/* Edit Permissions Column */}
                                 {editPerms.length > 0 && (
-                                  <div className="space-y-2">
-                                    <div className="text-xs font-semibold text-gray-600 mb-2 uppercase tracking-wide">Edit</div>
+                                  <div className="space-y-1.5">
+                                    <div className="text-[10px] font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Edit</div>
                                     {editPerms.map((perm: any) => (
                                       <label
                                         key={perm.id}
-                                        className="flex items-start gap-2 p-2 rounded bg-white hover:bg-gray-50 cursor-pointer"
+                                        className="flex items-start gap-1.5 p-1.5 rounded bg-white hover:bg-gray-50 cursor-pointer"
                                       >
                                         <input
                                           type="checkbox"
                                           checked={permissions[perm.key] || false}
                                           onChange={() => canEdit && handleToggle(perm.key)}
                                           disabled={!canEdit}
-                                          className="mt-1 w-4 h-4 rounded border-gray-300 text-brand-red focus:ring-brand-red flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                                          className="mt-0.5 w-3.5 h-3.5 rounded border-gray-300 text-brand-red focus:ring-brand-red flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
                                         />
                                         <div className="flex-1 min-w-0">
-                                          <div className="font-medium text-sm flex items-center gap-2">
+                                          <div className="text-xs font-medium text-gray-900 flex items-center gap-1.5">
                                             <span className="truncate">{perm.label}</span>
                                             {!IMPLEMENTED_PERMISSIONS.has(perm.key) && (
-                                              <span className="text-xs px-1.5 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300 flex-shrink-0">
+                                              <span className="text-[10px] px-1 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300 flex-shrink-0">
                                                 [WIP]
                                               </span>
                                             )}
                                           </div>
                                           {perm.description && (
-                                            <div className="text-xs text-gray-500 mt-0.5 line-clamp-1">{perm.description}</div>
+                                            <div className="text-[10px] text-gray-500 mt-0.5 line-clamp-1">{perm.description}</div>
                                           )}
                                         </div>
                                       </label>
@@ -1143,36 +1151,36 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
                           const editPerms = areaPerms.filter((p: any) => p.key.includes(':write'));
                           
                           return (
-                            <div key={area} className="border rounded-lg p-3 bg-gray-50">
-                              <div className="text-sm font-semibold text-gray-700 mb-3">{areaLabel}</div>
-                              <div className="grid md:grid-cols-2 gap-3">
+                            <div key={area} className="border rounded-lg p-2.5 bg-gray-50">
+                              <div className="text-xs font-semibold text-gray-700 mb-2">{areaLabel}</div>
+                              <div className="grid md:grid-cols-2 gap-2.5">
                                 {/* View Permissions Column */}
                                 {viewPerms.length > 0 && (
-                                  <div className="space-y-2">
-                                    <div className="text-xs font-semibold text-gray-600 mb-2 uppercase tracking-wide">View</div>
+                                  <div className="space-y-1.5">
+                                    <div className="text-[10px] font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">View</div>
                                     {viewPerms.map((perm: any) => (
                                       <label
                                         key={perm.id}
-                                        className="flex items-start gap-2 p-2 rounded bg-white hover:bg-gray-50 cursor-pointer"
+                                        className="flex items-start gap-1.5 p-1.5 rounded bg-white hover:bg-gray-50 cursor-pointer"
                                       >
                                         <input
                                           type="checkbox"
                                           checked={permissions[perm.key] || false}
                                           onChange={() => canEdit && handleToggle(perm.key)}
                                           disabled={!canEdit}
-                                          className="mt-1 w-4 h-4 rounded border-gray-300 text-brand-red focus:ring-brand-red flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                                          className="mt-0.5 w-3.5 h-3.5 rounded border-gray-300 text-brand-red focus:ring-brand-red flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
                                         />
                                         <div className="flex-1 min-w-0">
-                                          <div className="font-medium text-sm flex items-center gap-2">
+                                          <div className="text-xs font-medium text-gray-900 flex items-center gap-1.5">
                                             <span className="truncate">{perm.label}</span>
                                             {!IMPLEMENTED_PERMISSIONS.has(perm.key) && (
-                                              <span className="text-xs px-1.5 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300 flex-shrink-0">
+                                              <span className="text-[10px] px-1 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300 flex-shrink-0">
                                                 [WIP]
                                               </span>
                                             )}
                                           </div>
                                           {perm.description && (
-                                            <div className="text-xs text-gray-500 mt-0.5 line-clamp-1">{perm.description}</div>
+                                            <div className="text-[10px] text-gray-500 mt-0.5 line-clamp-1">{perm.description}</div>
                                           )}
                                         </div>
                                       </label>
@@ -1181,31 +1189,31 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
                                 )}
                                 {/* Edit Permissions Column */}
                                 {editPerms.length > 0 && (
-                                  <div className="space-y-2">
-                                    <div className="text-xs font-semibold text-gray-600 mb-2 uppercase tracking-wide">Edit</div>
+                                  <div className="space-y-1.5">
+                                    <div className="text-[10px] font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Edit</div>
                                     {editPerms.map((perm: any) => (
                                       <label
                                         key={perm.id}
-                                        className="flex items-start gap-2 p-2 rounded bg-white hover:bg-gray-50 cursor-pointer"
+                                        className="flex items-start gap-1.5 p-1.5 rounded bg-white hover:bg-gray-50 cursor-pointer"
                                       >
                                         <input
                                           type="checkbox"
                                           checked={permissions[perm.key] || false}
                                           onChange={() => canEdit && handleToggle(perm.key)}
                                           disabled={!canEdit}
-                                          className="mt-1 w-4 h-4 rounded border-gray-300 text-brand-red focus:ring-brand-red flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                                          className="mt-0.5 w-3.5 h-3.5 rounded border-gray-300 text-brand-red focus:ring-brand-red flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
                                         />
                                         <div className="flex-1 min-w-0">
-                                          <div className="font-medium text-sm flex items-center gap-2">
+                                          <div className="text-xs font-medium text-gray-900 flex items-center gap-1.5">
                                             <span className="truncate">{perm.label}</span>
                                             {!IMPLEMENTED_PERMISSIONS.has(perm.key) && (
-                                              <span className="text-xs px-1.5 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300 flex-shrink-0">
+                                              <span className="text-[10px] px-1 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300 flex-shrink-0">
                                                 [WIP]
                                               </span>
                                             )}
                                           </div>
                                           {perm.description && (
-                                            <div className="text-xs text-gray-500 mt-0.5 line-clamp-1">{perm.description}</div>
+                                            <div className="text-[10px] text-gray-500 mt-0.5 line-clamp-1">{perm.description}</div>
                                           )}
                                         </div>
                                       </label>
@@ -1244,35 +1252,35 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
                           );
                           
                           return (
-                            <div className="border rounded-lg p-3 bg-gray-50">
-                              <div className="text-sm font-semibold text-gray-700 mb-3">Projects & Opportunities</div>
-                              <div className="grid md:grid-cols-2 gap-3">
+                            <div className="border rounded-lg p-2.5 bg-gray-50">
+                              <div className="text-xs font-semibold text-gray-700 mb-2">Projects & Opportunities</div>
+                              <div className="grid md:grid-cols-2 gap-2.5">
                                 {/* View Permissions Column */}
-                                <div className="space-y-2">
-                                  <div className="text-xs font-semibold text-gray-600 mb-2 uppercase tracking-wide">View</div>
+                                <div className="space-y-1.5">
+                                  <div className="text-[10px] font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">View</div>
                                   {/* Main View Projects & Opportunities permission */}
                                   {mainViewPerm && (
                                     <label
-                                      className="flex items-start gap-2 p-2 rounded bg-white hover:bg-gray-50 cursor-pointer"
+                                      className="flex items-start gap-1.5 p-1.5 rounded bg-white hover:bg-gray-50 cursor-pointer"
                                     >
                                       <input
                                         type="checkbox"
                                         checked={permissions[mainViewPerm.key] || false}
                                         onChange={() => canEdit && handleToggle(mainViewPerm.key)}
                                         disabled={!canEdit}
-                                        className="mt-1 w-4 h-4 rounded border-gray-300 text-brand-red focus:ring-brand-red flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                                        className="mt-0.5 w-3.5 h-3.5 rounded border-gray-300 text-brand-red focus:ring-brand-red flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
                                       />
                                       <div className="flex-1 min-w-0">
-                                        <div className="font-medium text-sm flex items-center gap-2">
+                                        <div className="text-xs font-medium text-gray-900 flex items-center gap-1.5">
                                           <span className="truncate">{mainViewPerm.label}</span>
                                           {!IMPLEMENTED_PERMISSIONS.has(mainViewPerm.key) && (
-                                            <span className="text-xs px-1.5 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300 flex-shrink-0">
+                                            <span className="text-[10px] px-1 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300 flex-shrink-0">
                                               [WIP]
                                             </span>
                                           )}
                                         </div>
                                         {mainViewPerm.description && (
-                                          <div className="text-xs text-gray-500 mt-0.5 line-clamp-1">{mainViewPerm.description}</div>
+                                          <div className="text-[10px] text-gray-500 mt-0.5 line-clamp-1">{mainViewPerm.description}</div>
                                         )}
                                       </div>
                                     </label>
@@ -1283,20 +1291,20 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
                                     return (
                                     <label
                                       key={perm.id}
-                                      className={`flex items-start gap-2 p-2 rounded bg-white ${canEnable ? 'hover:bg-gray-50 cursor-pointer' : 'cursor-default'} ml-6`}
+                                      className={`flex items-start gap-1.5 p-1.5 rounded bg-white ${canEnable ? 'hover:bg-gray-50 cursor-pointer' : 'cursor-default'} ml-4`}
                                     >
                                       <input
                                         type="checkbox"
                                         checked={permissions[perm.key] || false}
                                         onChange={() => canEnable && handleToggle(perm.key)}
                                         disabled={!canEnable}
-                                        className="mt-1 w-4 h-4 rounded border-gray-300 text-brand-red focus:ring-brand-red flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                                        className="mt-0.5 w-3.5 h-3.5 rounded border-gray-300 text-brand-red focus:ring-brand-red flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
                                       />
                                       <div className="flex-1 min-w-0">
-                                        <div className="font-medium text-sm flex items-center gap-2">
+                                        <div className="text-xs font-medium text-gray-900 flex items-center gap-1.5">
                                           <span className="truncate">{perm.label}</span>
                                           {!IMPLEMENTED_PERMISSIONS.has(perm.key) && (
-                                            <span className="text-xs px-1.5 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300 flex-shrink-0">
+                                            <span className="text-[10px] px-1 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300 flex-shrink-0">
                                               [WIP]
                                             </span>
                                           )}
@@ -1308,11 +1316,11 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
                                                 e.stopPropagation();
                                                 openProjectFilesCategoriesModal('read');
                                               }}
-                                              className="ml-auto w-7 h-7 rounded hover:bg-gray-100 grid place-items-center text-gray-500 hover:text-gray-800"
+                                              className="ml-auto w-5 h-5 rounded hover:bg-gray-100 grid place-items-center text-gray-500 hover:text-gray-800"
                                               title="Configure allowed file categories"
                                               aria-label="Configure allowed file categories"
                                             >
-                                              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                                              <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor">
                                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
                                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                                               </svg>
@@ -1320,7 +1328,7 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
                                           )}
                                         </div>
                                         {perm.description && (
-                                          <div className="text-xs text-gray-500 mt-0.5 line-clamp-1">{perm.description}</div>
+                                          <div className="text-[10px] text-gray-500 mt-0.5 line-clamp-1">{perm.description}</div>
                                         )}
                                       </div>
                                     </label>
@@ -1329,33 +1337,33 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
                                 </div>
                                 
                                 {/* Edit Permissions Column */}
-                                <div className="space-y-2">
-                                  <div className="text-xs font-semibold text-gray-600 mb-2 uppercase tracking-wide">Edit</div>
+                                <div className="space-y-1.5">
+                                  <div className="text-[10px] font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Edit</div>
                                   {/* Main Edit Projects & Opportunities permission */}
                                   {mainEditPerm && (() => {
                                     const canEnable = canEdit && canEnableEditPermission(mainEditPerm.key, permissions);
                                     return (
                                     <label
-                                      className={`flex items-start gap-2 p-2 rounded bg-white ${canEnable ? 'hover:bg-gray-50 cursor-pointer' : 'cursor-default'}`}
+                                      className={`flex items-start gap-1.5 p-1.5 rounded bg-white ${canEnable ? 'hover:bg-gray-50 cursor-pointer' : 'cursor-default'}`}
                                     >
                                       <input
                                         type="checkbox"
                                         checked={permissions[mainEditPerm.key] || false}
                                         onChange={() => canEnable && handleToggle(mainEditPerm.key)}
                                         disabled={!canEnable}
-                                        className="mt-1 w-4 h-4 rounded border-gray-300 text-brand-red focus:ring-brand-red flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                                        className="mt-0.5 w-3.5 h-3.5 rounded border-gray-300 text-brand-red focus:ring-brand-red flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
                                       />
                                       <div className="flex-1 min-w-0">
-                                        <div className="font-medium text-sm flex items-center gap-2">
+                                        <div className="text-xs font-medium text-gray-900 flex items-center gap-1.5">
                                           <span className="truncate">{mainEditPerm.label}</span>
                                           {!IMPLEMENTED_PERMISSIONS.has(mainEditPerm.key) && (
-                                            <span className="text-xs px-1.5 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300 flex-shrink-0">
+                                            <span className="text-[10px] px-1 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300 flex-shrink-0">
                                               [WIP]
                                             </span>
                                           )}
                                         </div>
                                         {mainEditPerm.description && (
-                                          <div className="text-xs text-gray-500 mt-0.5 line-clamp-1">{mainEditPerm.description}</div>
+                                          <div className="text-[10px] text-gray-500 mt-0.5 line-clamp-1">{mainEditPerm.description}</div>
                                         )}
                                       </div>
                                     </label>
@@ -1367,20 +1375,20 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
                                     return (
                                     <label
                                       key={perm.id}
-                                      className={`flex items-start gap-2 p-2 rounded bg-white ${canEnable ? 'hover:bg-gray-50 cursor-pointer' : 'cursor-default'} ml-6`}
+                                      className={`flex items-start gap-1.5 p-1.5 rounded bg-white ${canEnable ? 'hover:bg-gray-50 cursor-pointer' : 'cursor-default'} ml-4`}
                                     >
                                       <input
                                         type="checkbox"
                                         checked={permissions[perm.key] || false}
                                         onChange={() => canEnable && handleToggle(perm.key)}
                                         disabled={!canEnable}
-                                        className="mt-1 w-4 h-4 rounded border-gray-300 text-brand-red focus:ring-brand-red flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                                        className="mt-0.5 w-3.5 h-3.5 rounded border-gray-300 text-brand-red focus:ring-brand-red flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
                                       />
                                       <div className="flex-1 min-w-0">
-                                        <div className="font-medium text-sm flex items-center gap-2">
+                                        <div className="text-xs font-medium text-gray-900 flex items-center gap-1.5">
                                           <span className="truncate">{perm.label}</span>
                                           {!IMPLEMENTED_PERMISSIONS.has(perm.key) && (
-                                            <span className="text-xs px-1.5 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300 flex-shrink-0">
+                                            <span className="text-[10px] px-1 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300 flex-shrink-0">
                                               [WIP]
                                             </span>
                                           )}
@@ -1392,11 +1400,11 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
                                                 e.stopPropagation();
                                                 openProjectFilesCategoriesModal('write');
                                               }}
-                                              className="ml-auto w-7 h-7 rounded hover:bg-gray-100 grid place-items-center text-gray-500 hover:text-gray-800"
+                                              className="ml-auto w-5 h-5 rounded hover:bg-gray-100 grid place-items-center text-gray-500 hover:text-gray-800"
                                               title="Configure allowed file categories"
                                               aria-label="Configure allowed file categories"
                                             >
-                                              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                                              <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor">
                                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
                                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                                               </svg>
@@ -1404,7 +1412,7 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
                                           )}
                                         </div>
                                         {perm.description && (
-                                          <div className="text-xs text-gray-500 mt-0.5 line-clamp-1">{perm.description}</div>
+                                          <div className="text-[10px] text-gray-500 mt-0.5 line-clamp-1">{perm.description}</div>
                                         )}
                                       </div>
                                     </label>
@@ -1443,35 +1451,35 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
                           );
                           
                           return (
-                            <div className="border rounded-lg p-3 bg-gray-50">
-                              <div className="text-sm font-semibold text-gray-700 mb-3">Projects & Opportunities</div>
-                              <div className="grid md:grid-cols-2 gap-3">
+                            <div className="border rounded-lg p-2.5 bg-gray-50">
+                              <div className="text-xs font-semibold text-gray-700 mb-2">Projects & Opportunities</div>
+                              <div className="grid md:grid-cols-2 gap-2.5">
                                 {/* View Permissions Column */}
-                                <div className="space-y-2">
-                                  <div className="text-xs font-semibold text-gray-600 mb-2 uppercase tracking-wide">View</div>
+                                <div className="space-y-1.5">
+                                  <div className="text-[10px] font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">View</div>
                                   {/* Main View Projects & Opportunities permission */}
                                   {mainViewPerm && (
                                     <label
-                                      className="flex items-start gap-2 p-2 rounded bg-white hover:bg-gray-50 cursor-pointer"
+                                      className="flex items-start gap-1.5 p-1.5 rounded bg-white hover:bg-gray-50 cursor-pointer"
                                     >
                                       <input
                                         type="checkbox"
                                         checked={permissions[mainViewPerm.key] || false}
                                         onChange={() => canEdit && handleToggle(mainViewPerm.key)}
                                         disabled={!canEdit}
-                                        className="mt-1 w-4 h-4 rounded border-gray-300 text-brand-red focus:ring-brand-red flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                                        className="mt-0.5 w-3.5 h-3.5 rounded border-gray-300 text-brand-red focus:ring-brand-red flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
                                       />
                                       <div className="flex-1 min-w-0">
-                                        <div className="font-medium text-sm flex items-center gap-2">
+                                        <div className="text-xs font-medium text-gray-900 flex items-center gap-1.5">
                                           <span className="truncate">{mainViewPerm.label}</span>
                                           {!IMPLEMENTED_PERMISSIONS.has(mainViewPerm.key) && (
-                                            <span className="text-xs px-1.5 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300 flex-shrink-0">
+                                            <span className="text-[10px] px-1 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300 flex-shrink-0">
                                               [WIP]
                                             </span>
                                           )}
                                         </div>
                                         {mainViewPerm.description && (
-                                          <div className="text-xs text-gray-500 mt-0.5 line-clamp-1">{mainViewPerm.description}</div>
+                                          <div className="text-[10px] text-gray-500 mt-0.5 line-clamp-1">{mainViewPerm.description}</div>
                                         )}
                                       </div>
                                     </label>
@@ -1482,26 +1490,26 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
                                     return (
                                     <label
                                       key={perm.id}
-                                      className={`flex items-start gap-2 p-2 rounded bg-white ${canEnable ? 'hover:bg-gray-50 cursor-pointer' : 'cursor-default'} ml-6`}
+                                      className={`flex items-start gap-1.5 p-1.5 rounded bg-white ${canEnable ? 'hover:bg-gray-50 cursor-pointer' : 'cursor-default'} ml-4`}
                                     >
                                       <input
                                         type="checkbox"
                                         checked={permissions[perm.key] || false}
                                         onChange={() => canEnable && handleToggle(perm.key)}
                                         disabled={!canEnable}
-                                        className="mt-1 w-4 h-4 rounded border-gray-300 text-brand-red focus:ring-brand-red flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                                        className="mt-0.5 w-3.5 h-3.5 rounded border-gray-300 text-brand-red focus:ring-brand-red flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
                                       />
                                       <div className="flex-1 min-w-0">
-                                        <div className="font-medium text-sm flex items-center gap-2">
+                                        <div className="text-xs font-medium text-gray-900 flex items-center gap-1.5">
                                           <span className="truncate">{perm.label}</span>
                                           {!IMPLEMENTED_PERMISSIONS.has(perm.key) && (
-                                            <span className="text-xs px-1.5 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300 flex-shrink-0">
+                                            <span className="text-[10px] px-1 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300 flex-shrink-0">
                                               [WIP]
                                             </span>
                                           )}
                                         </div>
                                         {perm.description && (
-                                          <div className="text-xs text-gray-500 mt-0.5 line-clamp-1">{perm.description}</div>
+                                          <div className="text-[10px] text-gray-500 mt-0.5 line-clamp-1">{perm.description}</div>
                                         )}
                                       </div>
                                     </label>
@@ -1510,33 +1518,33 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
                                 </div>
                                 
                                 {/* Edit Permissions Column */}
-                                <div className="space-y-2">
-                                  <div className="text-xs font-semibold text-gray-600 mb-2 uppercase tracking-wide">Edit</div>
+                                <div className="space-y-1.5">
+                                  <div className="text-[10px] font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Edit</div>
                                   {/* Main Edit Projects & Opportunities permission */}
                                   {mainEditPerm && (() => {
                                     const canEnable = canEdit && canEnableEditPermission(mainEditPerm.key, permissions);
                                     return (
                                     <label
-                                      className={`flex items-start gap-2 p-2 rounded bg-white ${canEnable ? 'hover:bg-gray-50 cursor-pointer' : 'cursor-default'}`}
+                                      className={`flex items-start gap-1.5 p-1.5 rounded bg-white ${canEnable ? 'hover:bg-gray-50 cursor-pointer' : 'cursor-default'}`}
                                     >
                                       <input
                                         type="checkbox"
                                         checked={permissions[mainEditPerm.key] || false}
                                         onChange={() => canEnable && handleToggle(mainEditPerm.key)}
                                         disabled={!canEnable}
-                                        className="mt-1 w-4 h-4 rounded border-gray-300 text-brand-red focus:ring-brand-red flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                                        className="mt-0.5 w-3.5 h-3.5 rounded border-gray-300 text-brand-red focus:ring-brand-red flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
                                       />
                                       <div className="flex-1 min-w-0">
-                                        <div className="font-medium text-sm flex items-center gap-2">
+                                        <div className="text-xs font-medium text-gray-900 flex items-center gap-1.5">
                                           <span className="truncate">{mainEditPerm.label}</span>
                                           {!IMPLEMENTED_PERMISSIONS.has(mainEditPerm.key) && (
-                                            <span className="text-xs px-1.5 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300 flex-shrink-0">
+                                            <span className="text-[10px] px-1 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300 flex-shrink-0">
                                               [WIP]
                                             </span>
                                           )}
                                         </div>
                                         {mainEditPerm.description && (
-                                          <div className="text-xs text-gray-500 mt-0.5 line-clamp-1">{mainEditPerm.description}</div>
+                                          <div className="text-[10px] text-gray-500 mt-0.5 line-clamp-1">{mainEditPerm.description}</div>
                                         )}
                                       </div>
                                     </label>
@@ -1548,26 +1556,26 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
                                     return (
                                     <label
                                       key={perm.id}
-                                      className={`flex items-start gap-2 p-2 rounded bg-white ${canEnable ? 'hover:bg-gray-50 cursor-pointer' : 'cursor-default'} ml-6`}
+                                      className={`flex items-start gap-1.5 p-1.5 rounded bg-white ${canEnable ? 'hover:bg-gray-50 cursor-pointer' : 'cursor-default'} ml-4`}
                                     >
                                       <input
                                         type="checkbox"
                                         checked={permissions[perm.key] || false}
                                         onChange={() => canEnable && handleToggle(perm.key)}
                                         disabled={!canEnable}
-                                        className="mt-1 w-4 h-4 rounded border-gray-300 text-brand-red focus:ring-brand-red flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                                        className="mt-0.5 w-3.5 h-3.5 rounded border-gray-300 text-brand-red focus:ring-brand-red flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
                                       />
                                       <div className="flex-1 min-w-0">
-                                        <div className="font-medium text-sm flex items-center gap-2">
+                                        <div className="text-xs font-medium text-gray-900 flex items-center gap-1.5">
                                           <span className="truncate">{perm.label}</span>
                                           {!IMPLEMENTED_PERMISSIONS.has(perm.key) && (
-                                            <span className="text-xs px-1.5 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300 flex-shrink-0">
+                                            <span className="text-[10px] px-1 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300 flex-shrink-0">
                                               [WIP]
                                             </span>
                                           )}
                                         </div>
                                         {perm.description && (
-                                          <div className="text-xs text-gray-500 mt-0.5 line-clamp-1">{perm.description}</div>
+                                          <div className="text-[10px] text-gray-500 mt-0.5 line-clamp-1">{perm.description}</div>
                                         )}
                                       </div>
                                     </label>
@@ -1590,35 +1598,35 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
                             const editPerms = areaPerms.filter((p: any) => p.key.includes(':write'));
                             
                             return (
-                              <div className="border rounded-lg p-3 bg-gray-50">
-                                <div className="text-sm font-semibold text-gray-700 mb-3">Customers</div>
-                                <div className="grid md:grid-cols-2 gap-3">
+                              <div className="border rounded-lg p-2.5 bg-gray-50">
+                                <div className="text-xs font-semibold text-gray-700 mb-2">Customers</div>
+                                <div className="grid md:grid-cols-2 gap-2.5">
                                   {viewPerms.length > 0 && (
-                                    <div className="space-y-2">
-                                      <div className="text-xs font-semibold text-gray-600 mb-2 uppercase tracking-wide">View</div>
+                                    <div className="space-y-1.5">
+                                      <div className="text-[10px] font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">View</div>
                                       {viewPerms.map((perm: any) => (
                                         <label
                                           key={perm.id}
-                                          className="flex items-start gap-2 p-2 rounded bg-white hover:bg-gray-50 cursor-pointer"
+                                          className="flex items-start gap-1.5 p-1.5 rounded bg-white hover:bg-gray-50 cursor-pointer"
                                         >
                                           <input
                                             type="checkbox"
                                             checked={permissions[perm.key] || false}
                                             onChange={() => canEdit && handleToggle(perm.key)}
                                             disabled={!canEdit}
-                                            className="mt-1 w-4 h-4 rounded border-gray-300 text-brand-red focus:ring-brand-red flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                                            className="mt-0.5 w-3.5 h-3.5 rounded border-gray-300 text-brand-red focus:ring-brand-red flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
                                           />
                                           <div className="flex-1 min-w-0">
-                                            <div className="font-medium text-sm flex items-center gap-2">
+                                            <div className="text-xs font-medium text-gray-900 flex items-center gap-1.5">
                                               <span className="truncate">{perm.label}</span>
                                               {!IMPLEMENTED_PERMISSIONS.has(perm.key) && (
-                                                <span className="text-xs px-1.5 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300 flex-shrink-0">
+                                                <span className="text-[10px] px-1 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300 flex-shrink-0">
                                                   [WIP]
                                                 </span>
                                               )}
                                             </div>
                                             {perm.description && (
-                                              <div className="text-xs text-gray-500 mt-0.5 line-clamp-1">{perm.description}</div>
+                                              <div className="text-[10px] text-gray-500 mt-0.5 line-clamp-1">{perm.description}</div>
                                             )}
                                           </div>
                                         </label>
@@ -1626,33 +1634,33 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
                                     </div>
                                   )}
                                   {editPerms.length > 0 && (
-                                    <div className="space-y-2">
-                                      <div className="text-xs font-semibold text-gray-600 mb-2 uppercase tracking-wide">Edit</div>
+                                    <div className="space-y-1.5">
+                                      <div className="text-[10px] font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Edit</div>
                                       {editPerms.map((perm: any) => {
                                         const canEnable = canEdit && canEnableEditPermission(perm.key, permissions);
                                         return (
                                         <label
                                           key={perm.id}
-                                          className={`flex items-start gap-2 p-2 rounded bg-white ${canEnable ? 'hover:bg-gray-50 cursor-pointer' : 'cursor-default'}`}
+                                          className={`flex items-start gap-1.5 p-1.5 rounded bg-white ${canEnable ? 'hover:bg-gray-50 cursor-pointer' : 'cursor-default'}`}
                                         >
                                           <input
                                             type="checkbox"
                                             checked={permissions[perm.key] || false}
                                             onChange={() => canEnable && handleToggle(perm.key)}
                                             disabled={!canEnable}
-                                            className="mt-1 w-4 h-4 rounded border-gray-300 text-brand-red focus:ring-brand-red flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                                            className="mt-0.5 w-3.5 h-3.5 rounded border-gray-300 text-brand-red focus:ring-brand-red flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
                                           />
                                           <div className="flex-1 min-w-0">
-                                            <div className="font-medium text-sm flex items-center gap-2">
+                                            <div className="text-xs font-medium text-gray-900 flex items-center gap-1.5">
                                               <span className="truncate">{perm.label}</span>
                                               {!IMPLEMENTED_PERMISSIONS.has(perm.key) && (
-                                                <span className="text-xs px-1.5 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300 flex-shrink-0">
+                                                <span className="text-[10px] px-1 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300 flex-shrink-0">
                                                   [WIP]
                                                 </span>
                                               )}
                                             </div>
                                             {perm.description && (
-                                              <div className="text-xs text-gray-500 mt-0.5 line-clamp-1">{perm.description}</div>
+                                              <div className="text-[10px] text-gray-500 mt-0.5 line-clamp-1">{perm.description}</div>
                                             )}
                                           </div>
                                         </label>
@@ -1677,36 +1685,36 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
                           const editPerms = areaPerms.filter((p: any) => p.key.includes(':write'));
                           
                           return (
-                            <div key={area} className="border rounded-lg p-3 bg-gray-50">
-                              <div className="text-sm font-semibold text-gray-700 mb-3">{areaLabel}</div>
-                              <div className="grid md:grid-cols-2 gap-3">
+                            <div key={area} className="border rounded-lg p-2.5 bg-gray-50">
+                              <div className="text-xs font-semibold text-gray-700 mb-2">{areaLabel}</div>
+                              <div className="grid md:grid-cols-2 gap-2.5">
                                 {/* View Permissions Column */}
                                 {viewPerms.length > 0 && (
-                                  <div className="space-y-2">
-                                    <div className="text-xs font-semibold text-gray-600 mb-2 uppercase tracking-wide">View</div>
+                                  <div className="space-y-1.5">
+                                    <div className="text-[10px] font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">View</div>
                                     {viewPerms.map((perm: any) => (
                                       <label
                                         key={perm.id}
-                                        className="flex items-start gap-2 p-2 rounded bg-white hover:bg-gray-50 cursor-pointer"
+                                        className="flex items-start gap-1.5 p-1.5 rounded bg-white hover:bg-gray-50 cursor-pointer"
                                       >
                                         <input
                                           type="checkbox"
                                           checked={permissions[perm.key] || false}
                                           onChange={() => canEdit && handleToggle(perm.key)}
                                           disabled={!canEdit}
-                                          className="mt-1 w-4 h-4 rounded border-gray-300 text-brand-red focus:ring-brand-red flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                                          className="mt-0.5 w-3.5 h-3.5 rounded border-gray-300 text-brand-red focus:ring-brand-red flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
                                         />
                                         <div className="flex-1 min-w-0">
-                                          <div className="font-medium text-sm flex items-center gap-2">
+                                          <div className="text-xs font-medium text-gray-900 flex items-center gap-1.5">
                                             <span className="truncate">{perm.label}</span>
                                             {!IMPLEMENTED_PERMISSIONS.has(perm.key) && (
-                                              <span className="text-xs px-1.5 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300 flex-shrink-0">
+                                              <span className="text-[10px] px-1 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300 flex-shrink-0">
                                                 [WIP]
                                               </span>
                                             )}
                                           </div>
                                           {perm.description && (
-                                            <div className="text-xs text-gray-500 mt-0.5 line-clamp-1">{perm.description}</div>
+                                            <div className="text-[10px] text-gray-500 mt-0.5 line-clamp-1">{perm.description}</div>
                                           )}
                                         </div>
                                       </label>
@@ -1715,31 +1723,31 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
                                 )}
                                 {/* Edit Permissions Column */}
                                 {editPerms.length > 0 && (
-                                  <div className="space-y-2">
-                                    <div className="text-xs font-semibold text-gray-600 mb-2 uppercase tracking-wide">Edit</div>
+                                  <div className="space-y-1.5">
+                                    <div className="text-[10px] font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Edit</div>
                                     {editPerms.map((perm: any) => (
                                       <label
                                         key={perm.id}
-                                        className="flex items-start gap-2 p-2 rounded bg-white hover:bg-gray-50 cursor-pointer"
+                                        className="flex items-start gap-1.5 p-1.5 rounded bg-white hover:bg-gray-50 cursor-pointer"
                                       >
                                         <input
                                           type="checkbox"
                                           checked={permissions[perm.key] || false}
                                           onChange={() => canEdit && handleToggle(perm.key)}
                                           disabled={!canEdit}
-                                          className="mt-1 w-4 h-4 rounded border-gray-300 text-brand-red focus:ring-brand-red flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                                          className="mt-0.5 w-3.5 h-3.5 rounded border-gray-300 text-brand-red focus:ring-brand-red flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
                                         />
                                         <div className="flex-1 min-w-0">
-                                          <div className="font-medium text-sm flex items-center gap-2">
+                                          <div className="text-xs font-medium text-gray-900 flex items-center gap-1.5">
                                             <span className="truncate">{perm.label}</span>
                                             {!IMPLEMENTED_PERMISSIONS.has(perm.key) && (
-                                              <span className="text-xs px-1.5 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300 flex-shrink-0">
+                                              <span className="text-[10px] px-1 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300 flex-shrink-0">
                                                 [WIP]
                                               </span>
                                             )}
                                           </div>
                                           {perm.description && (
-                                            <div className="text-xs text-gray-500 mt-0.5 line-clamp-1">{perm.description}</div>
+                                            <div className="text-[10px] text-gray-500 mt-0.5 line-clamp-1">{perm.description}</div>
                                           )}
                                         </div>
                                       </label>
@@ -1763,36 +1771,36 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
                           const editPerms = areaPerms.filter((p: any) => p.key.includes(':write'));
                           
                           return (
-                            <div key={area} className="border rounded-lg p-3 bg-gray-50">
-                              <div className="text-sm font-semibold text-gray-700 mb-3">{areaLabel}</div>
-                              <div className="grid md:grid-cols-2 gap-3">
+                            <div key={area} className="border rounded-lg p-2.5 bg-gray-50">
+                              <div className="text-xs font-semibold text-gray-700 mb-2">{areaLabel}</div>
+                              <div className="grid md:grid-cols-2 gap-2.5">
                                 {/* View Permissions Column */}
                                 {viewPerms.length > 0 && (
-                                  <div className="space-y-2">
-                                    <div className="text-xs font-semibold text-gray-600 mb-2 uppercase tracking-wide">View</div>
+                                  <div className="space-y-1.5">
+                                    <div className="text-[10px] font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">View</div>
                                     {viewPerms.map((perm: any) => (
                                       <label
                                         key={perm.id}
-                                        className={`flex items-start gap-2 p-2 rounded bg-white ${canEdit ? 'hover:bg-gray-50 cursor-pointer' : 'cursor-default'}`}
+                                        className={`flex items-start gap-1.5 p-1.5 rounded bg-white ${canEdit ? 'hover:bg-gray-50 cursor-pointer' : 'cursor-default'}`}
                                       >
                                         <input
                                           type="checkbox"
                                           checked={permissions[perm.key] || false}
                                           onChange={() => canEdit && handleToggle(perm.key)}
                                           disabled={!canEdit}
-                                          className="mt-1 w-4 h-4 rounded border-gray-300 text-brand-red focus:ring-brand-red flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                                          className="mt-0.5 w-3.5 h-3.5 rounded border-gray-300 text-brand-red focus:ring-brand-red flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
                                         />
                                         <div className="flex-1 min-w-0">
-                                          <div className="font-medium text-sm flex items-center gap-2">
+                                          <div className="text-xs font-medium text-gray-900 flex items-center gap-1.5">
                                             <span className="truncate">{perm.label}</span>
                                             {!IMPLEMENTED_PERMISSIONS.has(perm.key) && (
-                                              <span className="text-xs px-1.5 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300 flex-shrink-0">
+                                              <span className="text-[10px] px-1 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300 flex-shrink-0">
                                                 [WIP]
                                               </span>
                                             )}
                                           </div>
                                           {perm.description && (
-                                            <div className="text-xs text-gray-500 mt-0.5 line-clamp-1">{perm.description}</div>
+                                            <div className="text-[10px] text-gray-500 mt-0.5 line-clamp-1">{perm.description}</div>
                                           )}
                                         </div>
                                       </label>
@@ -1801,33 +1809,33 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
                                 )}
                                 {/* Edit Permissions Column */}
                                 {editPerms.length > 0 && (
-                                  <div className="space-y-2">
-                                    <div className="text-xs font-semibold text-gray-600 mb-2 uppercase tracking-wide">Edit</div>
+                                  <div className="space-y-1.5">
+                                    <div className="text-[10px] font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Edit</div>
                                     {editPerms.map((perm: any) => {
                                       const canEnableEdit = canEdit && canEnableEditPermission(perm.key, permissions);
                                       return (
                                       <label
                                         key={perm.id}
-                                        className={`flex items-start gap-2 p-2 rounded bg-white ${canEnableEdit ? 'hover:bg-gray-50 cursor-pointer' : 'cursor-default'}`}
+                                        className={`flex items-start gap-1.5 p-1.5 rounded bg-white ${canEnableEdit ? 'hover:bg-gray-50 cursor-pointer' : 'cursor-default'}`}
                                       >
                                         <input
                                           type="checkbox"
                                           checked={permissions[perm.key] || false}
                                           onChange={() => canEnableEdit && handleToggle(perm.key)}
                                           disabled={!canEnableEdit}
-                                          className="mt-1 w-4 h-4 rounded border-gray-300 text-brand-red focus:ring-brand-red flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                                          className="mt-0.5 w-3.5 h-3.5 rounded border-gray-300 text-brand-red focus:ring-brand-red flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
                                         />
                                         <div className="flex-1 min-w-0">
-                                          <div className="font-medium text-sm flex items-center gap-2">
+                                          <div className="text-xs font-medium text-gray-900 flex items-center gap-1.5">
                                             <span className="truncate">{perm.label}</span>
                                             {!IMPLEMENTED_PERMISSIONS.has(perm.key) && (
-                                              <span className="text-xs px-1.5 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300 flex-shrink-0">
+                                              <span className="text-[10px] px-1 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300 flex-shrink-0">
                                                 [WIP]
                                               </span>
                                             )}
                                           </div>
                                           {perm.description && (
-                                            <div className="text-xs text-gray-500 mt-0.5 line-clamp-1">{perm.description}</div>
+                                            <div className="text-[10px] text-gray-500 mt-0.5 line-clamp-1">{perm.description}</div>
                                           )}
                                         </div>
                                       </label>
@@ -1842,33 +1850,33 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
                       </div>
                     ) : (
                       /* Default layout for other categories */
-                      <div className="space-y-2">
+                      <div className="space-y-1.5">
                         {subPermissions.map((perm: any) => {
                           const isEditPermission = perm.key.startsWith('hr:users:edit:') || perm.key === 'hr:users:write';
                           const canEnable = canEdit && (!isEditPermission || canEnableEditPermission(perm.key, permissions));
                           return (
                           <label
                             key={perm.id}
-                            className={`flex items-start gap-3 p-2 rounded ${canEnable ? 'hover:bg-gray-50 cursor-pointer' : 'cursor-default'}`}
+                            className={`flex items-start gap-1.5 p-1.5 rounded ${canEnable ? 'hover:bg-gray-50 cursor-pointer' : 'cursor-default'}`}
                           >
                             <input
                               type="checkbox"
                               checked={permissions[perm.key] || false}
                               onChange={() => canEnable && handleToggle(perm.key)}
                               disabled={!canEnable}
-                              className="mt-1 w-4 h-4 rounded border-gray-300 text-brand-red focus:ring-brand-red disabled:opacity-50 disabled:cursor-not-allowed"
+                              className="mt-0.5 w-3.5 h-3.5 rounded border-gray-300 text-brand-red focus:ring-brand-red disabled:opacity-50 disabled:cursor-not-allowed"
                             />
                             <div className="flex-1">
-                              <div className="font-medium text-sm flex items-center gap-2">
+                              <div className="text-xs font-medium text-gray-900 flex items-center gap-1.5">
                                 {perm.label}
                                 {!IMPLEMENTED_PERMISSIONS.has(perm.key) && (
-                                  <span className="text-xs px-1.5 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300">
+                                  <span className="text-[10px] px-1 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300">
                                     [WIP]
                                   </span>
                                 )}
                               </div>
                               {perm.description && (
-                                <div className="text-xs text-gray-500 mt-0.5">{perm.description}</div>
+                                <div className="text-[10px] text-gray-500 mt-0.5">{perm.description}</div>
                               )}
                             </div>
                           </label>
@@ -1887,7 +1895,7 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
         </div>
         
         {!canEdit && (
-          <div className="mt-6 p-4 bg-gray-50 border border-gray-200 rounded-lg text-center text-sm text-gray-600">
+          <div className="mt-6 p-3 bg-gray-50 border border-gray-200 rounded-lg text-center text-xs text-gray-600">
             You have view-only access. You need edit permissions to modify user permissions.
           </div>
         )}
@@ -2320,53 +2328,105 @@ export default function UserInfo(){
           <div className="text-sm font-semibold text-gray-700">{todayLabel}</div>
         </div>
       </div>
-      <div className="rounded-xl border shadow-hero bg-white">
-        <div className="rounded-t-xl p-5 text-white relative overflow-hidden" style={{ backgroundImage: `url(${heroResolvedUrl||'/ui/assets/login/background.jpg'})`, backgroundSize: 'cover', backgroundPosition: 'center' }}>
-          <div className="absolute inset-0 bg-gradient-to-br from-gray-500/50 to-gray-800/60" />
-          <div className="relative z-10">
-            <div className="flex gap-4 items-stretch min-h-[210px]">
-              <div className="w-[220px]">
-                <img className="w-full h-full object-cover rounded-xl border-2 border-brand-red" src={p.profile_photo_file_id? `/files/${p.profile_photo_file_id}/thumbnail?w=240`:'/ui/assets/placeholders/user.png'} />
-              </div>
-              <div className="flex-1 flex flex-col justify-start">
-                <div className="text-3xl font-extrabold">{p.first_name||u?.username} {p.last_name||''}</div>
-                <div className="text-sm opacity-90 mt-1">{p.job_title||u?.email||''}{u?.divisions && u.divisions.length > 0 ? ` — ${u.divisions.map((d: any) => d.label).join(', ')}` : (p.division ? ` — ${p.division}` : '')}</div>
-                <div className="grid md:grid-cols-3 gap-2 text-xs mt-3">
-                  <div><span className="opacity-80">Username:</span> <span className="font-semibold">{u?.username||'—'}</span></div>
-                  <div><span className="opacity-80">Phone:</span> <span className="font-semibold">{p.phone||'—'}</span></div>
-                  <div><span className="opacity-80">Personal email:</span> <span className="font-semibold">{u?.email||u?.email_personal||'—'}</span></div>
-                  <div><span className="opacity-80">Work email:</span> <span className="font-semibold">{p.work_email||'—'}</span></div>
-                  <div><span className="opacity-80">Status:</span> <span className="font-semibold">{u?.is_active? 'Active':'Terminated'}</span></div>
-                  <div><span className="opacity-80">Hire date:</span> <span className="font-semibold">{p.hire_date? String(p.hire_date).slice(0,10):'—'}{p.hire_date? ` (${tenure(p.hire_date)})`:''}</span></div>
-                  <div><span className="opacity-80">Supervisor:</span> <span className="font-semibold">{supervisorName||'—'}</span></div>
-                  <div><span className="opacity-80">Age:</span> <span className="font-semibold">{calcAge(p.date_of_birth)||'—'}</span></div>
-                </div>
-                <div className="mt-auto flex gap-2">
-                  {([
-                    ...(canViewGeneral || canSelfEdit ? ['personal','job','docs'] : []),
-                    ...(canViewTimesheet || canSelfEdit ? ['timesheet'] : []),
-                    ...(canViewLoans ? ['loans'] : []),
-                    ...(canViewReports ? ['reports'] : []),
-                    ...(canViewPermissions ? ['permissions'] : [])
-                  ] as const).map((k)=> (
-                    <button
-                      key={k}
-                      onClick={()=>handleTabChange(k as any)}
-                      className={`px-4 py-2 rounded-lg border ${tab===k? 'bg-black/30 border-white/30 text-white' : 'bg-white text-black'}`}
-                    >
-                      {String(k).replace(/^./,s=>s.toUpperCase())}
-                    </button>
-                  ))}
+      <div className="space-y-4">
+        {/* Employee Info Card */}
+        <div className="rounded-xl border bg-white p-4">
+          <div className="flex gap-4 items-center">
+            {/* Profile Photo */}
+            <div className="flex-shrink-0">
+              <img 
+                className="w-32 h-32 object-cover rounded-xl border-2 border-gray-200" 
+                src={p.profile_photo_file_id? `/files/${p.profile_photo_file_id}/thumbnail?w=320`:'/ui/assets/placeholders/user.png'} 
+                alt={`${p.first_name||u?.username} ${p.last_name||''}`}
+              />
+            </div>
+            
+            {/* Employee Details */}
+            <div className="flex-1 min-w-0">
+              <div className="mb-3">
+                <h1 className="text-lg font-bold text-gray-900">{p.first_name||u?.username} {p.last_name||''}</h1>
+                <div className="text-xs text-gray-600 mt-0.5">
+                  {p.job_title||'—'}{u?.divisions && u.divisions.length > 0 ? ` • ${u.divisions.map((d: any) => d.label).join(', ')}` : (p.division ? ` • ${p.division}` : '')}
                 </div>
               </div>
-              <div className="flex gap-2">
-                {canEdit && (
-                  <SyncBambooHRButton userId={String(userId)} onSuccess={() => { window.location.reload(); }} />
-                )}
+              
+              {/* Info Grid */}
+              <div className="grid md:grid-cols-3 gap-x-4 gap-y-2">
+                <div>
+                  <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Username</span>
+                  <div className="text-xs font-semibold text-gray-900 mt-0.5">{u?.username||'—'}</div>
+                </div>
+                <div>
+                  <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Phone</span>
+                  <div className="text-xs font-semibold text-gray-900 mt-0.5">{p.phone||'—'}</div>
+                </div>
+                <div>
+                  <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Personal Email</span>
+                  <div className="text-xs font-semibold text-gray-900 mt-0.5">{u?.email||u?.email_personal||'—'}</div>
+                </div>
+                <div>
+                  <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Work Email</span>
+                  <div className="text-xs font-semibold text-gray-900 mt-0.5">{p.work_email||'—'}</div>
+                </div>
+                <div>
+                  <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Status</span>
+                  <div className="text-xs font-semibold text-gray-900 mt-0.5">
+                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium ${
+                      u?.is_active 
+                        ? 'bg-green-100 text-green-800' 
+                        : 'bg-red-100 text-red-800'
+                    }`}>
+                      {u?.is_active? 'Active':'Terminated'}
+                    </span>
+                  </div>
+                </div>
+                <div>
+                  <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Hire Date</span>
+                  <div className="text-xs font-semibold text-gray-900 mt-0.5">
+                    {p.hire_date? String(p.hire_date).slice(0,10):'—'}{p.hire_date? ` (${tenure(p.hire_date)})`:''}
+                  </div>
+                </div>
+                <div>
+                  <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Supervisor</span>
+                  <div className="text-xs font-semibold text-gray-900 mt-0.5">{supervisorName||'—'}</div>
+                </div>
+                <div>
+                  <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Age</span>
+                  <div className="text-xs font-semibold text-gray-900 mt-0.5">{calcAge(p.date_of_birth)||'—'}</div>
+                </div>
               </div>
             </div>
           </div>
         </div>
+        
+        {/* Navigation Tabs */}
+        <div className="rounded-xl border bg-white p-3">
+          <div className="flex flex-wrap gap-2">
+            {([
+              ...(canViewGeneral || canSelfEdit ? ['personal','job','docs'] : []),
+              ...(canViewTimesheet || canSelfEdit ? ['timesheet'] : []),
+              ...(canViewLoans ? ['loans'] : []),
+              ...(canViewReports ? ['reports'] : []),
+              ...(canViewPermissions ? ['permissions'] : [])
+            ] as const).map((k)=> (
+              <button
+                key={k}
+                onClick={()=>handleTabChange(k as any)}
+                className={`px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors ${
+                  tab===k
+                    ? 'bg-brand-red text-white border-brand-red' 
+                    : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50 hover:border-gray-400'
+                }`}
+              >
+                {String(k).replace(/^./,s=>s.toUpperCase())}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+      
+      {/* Main Content Card */}
+      <div className="rounded-xl border bg-white">
         <div className="p-5">
           {isLoading? <div className="h-24 animate-pulse bg-gray-100 rounded"/> : (
             <>
@@ -2505,10 +2565,27 @@ export default function UserInfo(){
       {(tab === 'permissions' && canEditPermissions) && (
         <div className="fixed bottom-0 left-0 right-0 z-40">
           <div className="max-w-[1200px] mx-auto px-4">
-            <div className="mb-3 rounded-xl border bg-white shadow-hero p-3 flex items-center gap-3">
-              <div className={`text-sm ${permissionsDirty? 'text-amber-700':'text-green-700'}`}>{permissionsDirty? 'You have unsaved changes':'All changes saved'}</div>
-              <button onClick={async () => { await permissionsRef.current?.save(); }} disabled={!permissionsDirty} className={`ml-auto px-4 py-2 rounded text-white ${permissionsDirty? 'bg-gradient-to-r from-brand-red to-[#ee2b2b]':'bg-gray-400 cursor-not-allowed'}`}>Save</button>
+            <div className="mb-3 rounded-xl border bg-white shadow-hero p-2.5 flex items-center gap-3">
+              <div className={`text-xs ${permissionsDirty? 'text-amber-700':'text-green-700'}`}>{permissionsDirty? 'You have unsaved changes':'All changes saved'}</div>
+              <button onClick={async () => { await permissionsRef.current?.save(); }} disabled={!permissionsDirty} className={`ml-auto px-3 py-1.5 text-xs rounded text-white ${permissionsDirty? 'bg-gradient-to-r from-brand-red to-[#ee2b2b]':'bg-gray-400 cursor-not-allowed'}`}>Save</button>
             </div>
+          </div>
+        </div>
+      )}
+      
+      {/* BambooHR Actions - Moved to bottom */}
+      {canEdit && (
+        <div className="rounded-xl border bg-white p-3 mt-6">
+          <div className="flex items-center gap-2 mb-2">
+            <div className="w-6 h-6 rounded bg-gray-100 flex items-center justify-center">
+              <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+            </div>
+            <h5 className="text-xs font-semibold text-gray-900">BambooHR Integration</h5>
+          </div>
+          <div className="flex gap-2">
+            <SyncBambooHRButton userId={String(userId)} onSuccess={() => { window.location.reload(); }} />
           </div>
         </div>
       )}
@@ -2951,7 +3028,7 @@ function EducationSection({ userId, canEdit }:{ userId:string, canEdit:boolean }
           {!showAdd ? (
             <button onClick={()=>setShowAdd(true)} className="px-3 py-2 rounded bg-brand-red text-white">Add education</button>
           ) : (
-            <div className="grid md:grid-cols-2 gap-3">
+                                <div className="grid md:grid-cols-2 gap-2.5">
               <div>
                 <div className="text-xs text-gray-600">Institution</div>
                 <input className="w-full rounded-lg border px-3 py-2" value={inst} onChange={e=>setInst(e.target.value)} />
@@ -3823,261 +3900,274 @@ function TimesheetBlock({ userId, canEdit = true }:{ userId:string, canEdit?: bo
     : !formData.hours_worked || parseFloat(formData.hours_worked || '0') <= 0;
 
   return (
-    <div className="pb-24">
-      {/* Eligible for Break checkbox */}
-      <div className="mb-4 rounded-xl border bg-white p-4 flex items-center justify-between">
-        <div className="flex items-center gap-2">
+    <div className="space-y-6 pb-24">
+      {/* Timesheet Section */}
+      <div className="rounded-xl border bg-white p-4">
+        {/* Header */}
+        <div className="mb-4 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded bg-indigo-100 flex items-center justify-center">
+              <svg className="w-5 h-5 text-indigo-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+            <h5 className="text-sm font-semibold text-indigo-900">Timesheet</h5>
+          </div>
+          {canEdit && (
+            <button
+              onClick={() => handleOpenModal()}
+              className="px-2 py-1 text-xs bg-[#d11616] text-white rounded-lg font-medium hover:bg-[#b01414] transition-colors"
+            >
+              + New Attendance
+            </button>
+          )}
+        </div>
+
+        {/* Eligible for Break checkbox */}
+        <div className="mb-4 flex items-center gap-2">
           <input
             type="checkbox"
             id="eligible-for-break"
             checked={isEligibleForBreak}
             onChange={(e) => canEdit && toggleEligibleForBreak(e.target.checked)}
             disabled={!canEdit}
-            className="w-4 h-4 text-brand-red border-gray-300 rounded focus:ring-brand-red disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-3.5 h-3.5 text-brand-red border-gray-300 rounded focus:ring-brand-red disabled:opacity-50 disabled:cursor-not-allowed"
           />
-          <label htmlFor="eligible-for-break" className={`text-sm text-gray-700 ${canEdit ? 'cursor-pointer' : 'cursor-default'}`}>
+          <label htmlFor="eligible-for-break" className={`text-xs font-medium text-gray-700 ${canEdit ? 'cursor-pointer' : 'cursor-default'}`}>
             Eligible for Break
           </label>
-          <span className="text-xs text-gray-500">(Break will be deducted for shifts of 5 hours or more)</span>
+          <span className="text-[10px] text-gray-500">(Break will be deducted for shifts of 5 hours or more)</span>
         </div>
-        {canEdit && (
-          <button
-            onClick={() => handleOpenModal()}
-            className="px-4 py-2 bg-[#d11616] text-white rounded-lg font-semibold hover:bg-[#b01414] transition-colors"
-          >
-            + New Attendance
-          </button>
-        )}
-      </div>
 
-      {/* Filters */}
-      <div className="mb-4 rounded-xl border bg-white p-4 grid grid-cols-4 gap-4">
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Start Date</label>
-          <input
-            type="date"
-            value={filters.start_date}
-            onChange={(e) => setFilters({ ...filters, start_date: e.target.value })}
-            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-          />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">End Date</label>
-          <input
-            type="date"
-            value={filters.end_date}
-            onChange={(e) => setFilters({ ...filters, end_date: e.target.value })}
-            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-          />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Project/Job</label>
-          <select
-            value={filters.project_id}
-            onChange={(e) => setFilters({ ...filters, project_id: e.target.value })}
-            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-          >
-            <option value="">All Projects/Jobs</option>
-            <optgroup label="Jobs">
-              {PREDEFINED_JOBS.map((job) => (
-                <option key={`job_${job.id}`} value={`job_${job.id}`}>
-                  {job.code ? `${job.code} - ` : ''}{job.name}
-                </option>
-              ))}
-            </optgroup>
-            <optgroup label="Projects">
-              {(Array.isArray(projects) ? projects : []).map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.code ? `${p.code} - ` : ''}{p.name}
-                </option>
-              ))}
-            </optgroup>
-          </select>
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
-          <select
-            value={filters.status}
-            onChange={(e) => setFilters({ ...filters, status: e.target.value })}
-            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-          >
-            <option value="">All Statuses</option>
-            <option value="approved">Approved</option>
-            <option value="pending">Pending</option>
-            <option value="rejected">Rejected</option>
-          </select>
-        </div>
-      </div>
-
-      {/* Error message */}
-      {error && (
-        <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-4 text-red-800">
-          Error loading attendance records: {String(error)}
-        </div>
-      )}
-
-      {/* Bulk Actions */}
-      {canEdit && selectedEvents.size > 0 && (
-        <div className="mb-4 rounded-xl border bg-blue-50 p-4 flex items-center justify-between">
-          <div className="text-sm font-medium text-blue-900">
-            {selectedEvents.size} event(s) selected
+        {/* Filters */}
+        <div className="mb-4 grid grid-cols-4 gap-4">
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1.5">Start Date</label>
+            <input
+              type="date"
+              value={filters.start_date}
+              onChange={(e) => setFilters({ ...filters, start_date: e.target.value })}
+              className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
+            />
           </div>
-          <button
-            onClick={handleDeleteSelected}
-            disabled={deletingSelected}
-            className="px-4 py-2 bg-red-600 text-white rounded-lg font-semibold hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {deletingSelected ? 'Deleting...' : 'Delete All Selected'}
-          </button>
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1.5">End Date</label>
+            <input
+              type="date"
+              value={filters.end_date}
+              onChange={(e) => setFilters({ ...filters, end_date: e.target.value })}
+              className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1.5">Project/Job</label>
+            <select
+              value={filters.project_id}
+              onChange={(e) => setFilters({ ...filters, project_id: e.target.value })}
+              className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
+            >
+              <option value="">All Projects/Jobs</option>
+              <optgroup label="Jobs">
+                {PREDEFINED_JOBS.map((job) => (
+                  <option key={`job_${job.id}`} value={`job_${job.id}`}>
+                    {job.code ? `${job.code} - ` : ''}{job.name}
+                  </option>
+                ))}
+              </optgroup>
+              <optgroup label="Projects">
+                {(Array.isArray(projects) ? projects : []).map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.code ? `${p.code} - ` : ''}{p.name}
+                  </option>
+                ))}
+              </optgroup>
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1.5">Status</label>
+            <select
+              value={filters.status}
+              onChange={(e) => setFilters({ ...filters, status: e.target.value })}
+              className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
+            >
+              <option value="">All Statuses</option>
+              <option value="approved">Approved</option>
+              <option value="pending">Pending</option>
+              <option value="rejected">Rejected</option>
+            </select>
+          </div>
         </div>
-      )}
 
-      {/* Table */}
-      <div className="rounded-xl border bg-white overflow-hidden">
-        <table className="w-full text-sm">
-          <thead className="bg-gray-50">
-            <tr>
-              <th className="p-3 text-left w-12">
-                {canEdit && (
-                  <input
-                    type="checkbox"
-                    checked={attendanceEvents.length > 0 && selectedEvents.size === attendanceEvents.length}
-                    onChange={handleSelectAll}
-                    className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-                  />
-                )}
-              </th>
-              <th className="p-3 text-left">Clock In</th>
-              <th className="p-3 text-left">Clock Out</th>
-              <th className="p-3 text-left">Job/Project</th>
-              <th className="p-3 text-left">Hours</th>
-              <th className="p-3 text-left">Break</th>
-              <th className="p-3 text-left">Status</th>
-              <th className="p-3 text-left">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {isLoading ? (
+        {/* Error message */}
+        {error && (
+          <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-800">
+            Error loading attendance records: {String(error)}
+          </div>
+        )}
+
+        {/* Bulk Actions */}
+        {canEdit && selectedEvents.size > 0 && (
+          <div className="mb-4 rounded-xl border bg-blue-50 p-3 flex items-center justify-between">
+            <div className="text-xs font-medium text-blue-900">
+              {selectedEvents.size} event(s) selected
+            </div>
+            <button
+              onClick={handleDeleteSelected}
+              disabled={deletingSelected}
+              className="px-2 py-1 text-xs bg-red-600 text-white rounded-lg font-medium hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {deletingSelected ? 'Deleting...' : 'Delete All Selected'}
+            </button>
+          </div>
+        )}
+
+        {/* Table */}
+        <div className="rounded-xl border overflow-hidden">
+          <table className="w-full">
+            <thead className="bg-gray-50">
               <tr>
-                <td colSpan={8} className="p-4">
-                  <div className="h-6 bg-gray-100 animate-pulse rounded" />
-                </td>
+                <th className="p-2.5 text-left w-12">
+                  {canEdit && (
+                    <input
+                      type="checkbox"
+                      checked={attendanceEvents.length > 0 && selectedEvents.size === attendanceEvents.length}
+                      onChange={handleSelectAll}
+                      className="w-3.5 h-3.5 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                    />
+                  )}
+                </th>
+                <th className="p-2.5 text-left text-xs font-medium text-gray-600">Clock In</th>
+                <th className="p-2.5 text-left text-xs font-medium text-gray-600">Clock Out</th>
+                <th className="p-2.5 text-left text-xs font-medium text-gray-600">Job/Project</th>
+                <th className="p-2.5 text-left text-xs font-medium text-gray-600">Hours</th>
+                <th className="p-2.5 text-left text-xs font-medium text-gray-600">Break</th>
+                <th className="p-2.5 text-left text-xs font-medium text-gray-600">Status</th>
+                <th className="p-2.5 text-left text-xs font-medium text-gray-600">Actions</th>
               </tr>
-            ) : error ? (
-              <tr>
-                <td colSpan={8} className="p-4 text-center text-red-600">
-                  Error loading data. Please check console for details.
-                </td>
-              </tr>
-            ) : attendanceEvents.length === 0 ? (
-              <tr>
-                <td colSpan={8} className="p-4 text-center text-gray-500">
-                  No attendance records found
-                </td>
-              </tr>
-            ) : (
-              attendanceEvents.map((event) => (
-                <tr key={event.event_id} className="border-t hover:bg-gray-50">
-                  <td className="p-3">
-                    {canEdit && (
-                      <input
-                        type="checkbox"
-                        checked={selectedEvents.has(event.event_id)}
-                        onChange={() => handleToggleSelect(event.event_id)}
-                        className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-                      />
-                    )}
-                  </td>
-                  <td className="p-3">
-                    {event.is_hours_worked ? '-' : (event.clock_in_time ? formatDateTime(event.clock_in_time) : '--')}
-                  </td>
-                  <td className="p-3">
-                    {event.is_hours_worked ? '-' : (event.clock_out_time ? formatDateTime(event.clock_out_time) : '--')}
-                  </td>
-                  <td className="p-3">
-                    {event.job_name ||
-                      event.project_name ||
-                      (event.job_type
-                        ? jobOptions.find((j) => j.id === event.job_type)?.name || 'Unknown'
-                        : 'No Project')}
-                  </td>
-                  <td className="p-3">{formatHours(event.hours_worked)}</td>
-                  <td className="p-3">{formatBreak(event.break_minutes)}</td>
-                  <td className="p-3">
-                    <span
-                      className={`px-2 py-1 rounded text-xs font-medium ${
-                        event.clock_in_status === 'approved' &&
-                        (!event.clock_out_status || event.clock_out_status === 'approved')
-                          ? 'bg-green-100 text-green-800'
-                          : event.clock_in_status === 'pending' ||
-                            event.clock_out_status === 'pending'
-                          ? 'bg-yellow-100 text-yellow-800'
-                          : 'bg-red-100 text-red-800'
-                      }`}
-                    >
-                      {event.clock_in_status === 'approved' &&
-                      (!event.clock_out_status || event.clock_out_status === 'approved')
-                        ? 'Approved'
-                        : event.clock_in_status === 'pending' ||
-                          event.clock_out_status === 'pending'
-                        ? 'Pending'
-                        : 'Rejected'}
-                    </span>
-                  </td>
-                  <td className="p-3">
-                    <div className="flex items-center gap-2">
-                      {canEdit ? (
-                        <>
-                          <button
-                            onClick={() => handleOpenModal(event)}
-                            className="text-blue-600 hover:text-blue-800 text-sm"
-                          >
-                            Edit
-                          </button>
-                          <button
-                            onClick={() => handleDeleteEvent(event)}
-                            disabled={deletingId === event.event_id}
-                            className="text-red-600 hover:text-red-800 text-sm disabled:opacity-50"
-                          >
-                            {deletingId === event.event_id ? 'Deleting...' : 'Delete'}
-                          </button>
-                        </>
-                      ) : (
-                        <span className="text-xs text-gray-500">View only</span>
-                      )}
-                      {event.shift_deleted && (
-                        <span 
-                          className="text-yellow-600" 
-                          title={event.shift_deleted_by ? `The shift related to this attendance was deleted by ${event.shift_deleted_by}${event.shift_deleted_at ? ` on ${new Date(event.shift_deleted_at).toLocaleDateString()}` : ''}` : 'The shift related to this attendance was deleted'}
-                        >
-                          <svg className="w-4 h-4 inline-block" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                          </svg>
-                        </span>
-                      )}
-                    </div>
+            </thead>
+            <tbody>
+              {isLoading ? (
+                <tr>
+                  <td colSpan={8} className="p-4">
+                    <div className="h-6 bg-gray-100 animate-pulse rounded" />
                   </td>
                 </tr>
-              ))
-            )}
-          </tbody>
-        </table>
+              ) : error ? (
+                <tr>
+                  <td colSpan={8} className="p-4 text-center text-xs text-red-600">
+                    Error loading data. Please check console for details.
+                  </td>
+                </tr>
+              ) : attendanceEvents.length === 0 ? (
+                <tr>
+                  <td colSpan={8} className="p-4 text-center text-xs text-gray-500">
+                    No attendance records found
+                  </td>
+                </tr>
+              ) : (
+                attendanceEvents.map((event) => (
+                  <tr key={event.event_id} className="border-t border-gray-200 hover:bg-gray-50">
+                    <td className="p-2.5">
+                      {canEdit && (
+                        <input
+                          type="checkbox"
+                          checked={selectedEvents.has(event.event_id)}
+                          onChange={() => handleToggleSelect(event.event_id)}
+                          className="w-3.5 h-3.5 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                        />
+                      )}
+                    </td>
+                    <td className="p-2.5 text-xs text-gray-900">
+                      {event.is_hours_worked ? '—' : (event.clock_in_time ? formatDateTime(event.clock_in_time) : '—')}
+                    </td>
+                    <td className="p-2.5 text-xs text-gray-900">
+                      {event.is_hours_worked ? '—' : (event.clock_out_time ? formatDateTime(event.clock_out_time) : '—')}
+                    </td>
+                    <td className="p-2.5 text-xs text-gray-900">
+                      {event.job_name ||
+                        event.project_name ||
+                        (event.job_type
+                          ? jobOptions.find((j) => j.id === event.job_type)?.name || 'Unknown'
+                          : 'No Project')}
+                    </td>
+                    <td className="p-2.5 text-xs text-gray-900">{formatHours(event.hours_worked)}</td>
+                    <td className="p-2.5 text-xs text-gray-900">{formatBreak(event.break_minutes)}</td>
+                    <td className="p-2.5">
+                      <span
+                        className={`px-2 py-0.5 rounded text-[10px] font-medium ${
+                          event.clock_in_status === 'approved' &&
+                          (!event.clock_out_status || event.clock_out_status === 'approved')
+                            ? 'bg-green-100 text-green-800'
+                            : event.clock_in_status === 'pending' ||
+                              event.clock_out_status === 'pending'
+                            ? 'bg-yellow-100 text-yellow-800'
+                            : 'bg-red-100 text-red-800'
+                        }`}
+                      >
+                        {event.clock_in_status === 'approved' &&
+                        (!event.clock_out_status || event.clock_out_status === 'approved')
+                          ? 'Approved'
+                          : event.clock_in_status === 'pending' ||
+                            event.clock_out_status === 'pending'
+                          ? 'Pending'
+                          : 'Rejected'}
+                      </span>
+                    </td>
+                    <td className="p-2.5">
+                      <div className="flex items-center gap-1.5">
+                        {canEdit ? (
+                          <>
+                            <button
+                              onClick={() => handleOpenModal(event)}
+                              className="text-blue-600 hover:text-blue-800 text-[10px]"
+                            >
+                              Edit
+                            </button>
+                            <button
+                              onClick={() => handleDeleteEvent(event)}
+                              disabled={deletingId === event.event_id}
+                              className="text-red-600 hover:text-red-800 text-[10px] disabled:opacity-50"
+                            >
+                              {deletingId === event.event_id ? 'Deleting...' : 'Delete'}
+                            </button>
+                          </>
+                        ) : (
+                          <span className="text-[10px] text-gray-500">View only</span>
+                        )}
+                        {event.shift_deleted && (
+                          <span 
+                            className="text-yellow-600" 
+                            title={event.shift_deleted_by ? `The shift related to this attendance was deleted by ${event.shift_deleted_by}${event.shift_deleted_at ? ` on ${new Date(event.shift_deleted_at).toLocaleDateString()}` : ''}` : 'The shift related to this attendance was deleted'}
+                          >
+                            <svg className="w-3 h-3 inline-block" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                            </svg>
+                          </span>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {/* Modal - same as Attendance.tsx */}
       {showModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 max-w-lg w-full mx-4 max-h-[90vh] overflow-y-auto">
-            <h2 className="text-xl font-bold mb-4">
+          <div className="bg-white rounded-lg p-4 max-w-lg w-full mx-4 max-h-[90vh] overflow-y-auto">
+            <h2 className="text-lg font-bold mb-4">
               {editingEvent ? 'Edit Attendance Event' : 'New Attendance Event'}
             </h2>
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Job *</label>
+                <label className="block text-xs font-medium text-gray-600 mb-1.5">Job *</label>
                 <select
                   value={formData.job_type}
                   onChange={(e) => setFormData({ ...formData, job_type: e.target.value })}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2"
+                  className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
                   required
                 >
                   {jobOptions.map((job) => (
@@ -4088,10 +4178,10 @@ function TimesheetBlock({ userId, canEdit = true }:{ userId:string, canEdit?: bo
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-xs font-medium text-gray-600 mb-1.5">
                   Entry Type
                 </label>
-                <div className="inline-flex rounded-lg border border-gray-300 bg-gray-50 overflow-hidden text-sm">
+                <div className="inline-flex rounded-lg border border-gray-300 bg-gray-50 overflow-hidden text-xs">
                   <button
                     type="button"
                     onClick={() => {
@@ -4101,7 +4191,7 @@ function TimesheetBlock({ userId, canEdit = true }:{ userId:string, canEdit?: bo
                         hours_worked: '',
                       }));
                     }}
-                    className={`px-3 py-1.5 ${
+                    className={`px-2.5 py-1.5 ${
                       formData.entry_mode === 'time'
                         ? 'bg-white text-gray-900'
                         : 'text-gray-600 hover:bg-gray-100'
@@ -4133,7 +4223,7 @@ function TimesheetBlock({ userId, canEdit = true }:{ userId:string, canEdit?: bo
                         };
                       });
                     }}
-                    className={`px-3 py-1.5 border-l border-gray-300 ${
+                    className={`px-2.5 py-1.5 border-l border-gray-300 ${
                       formData.entry_mode === 'hours'
                         ? 'bg-white text-gray-900'
                         : 'text-gray-600 hover:bg-gray-100'
@@ -4142,14 +4232,14 @@ function TimesheetBlock({ userId, canEdit = true }:{ userId:string, canEdit?: bo
                     Hours Worked
                   </button>
                 </div>
-                <p className="mt-1 text-xs text-gray-500">
+                <p className="mt-1 text-[10px] text-gray-500">
                   {formData.entry_mode === 'time'
                     ? 'Enter exact clock-in and clock-out times.'
                     : 'Enter start time and total hours; clock-out will be calculated automatically.'}
                 </p>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-xs font-medium text-gray-600 mb-1.5">
                   {formData.entry_mode === 'time'
                     ? 'Clock In Time * (Local)'
                     : 'Work Date *'}
@@ -4161,7 +4251,7 @@ function TimesheetBlock({ userId, canEdit = true }:{ userId:string, canEdit?: bo
                     onChange={(e) =>
                       setFormData({ ...formData, clock_in_time: e.target.value })
                     }
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2"
+                    className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
                     required
                   />
                 ) : (
@@ -4175,7 +4265,7 @@ function TimesheetBlock({ userId, canEdit = true }:{ userId:string, canEdit?: bo
                         clock_in_time: date ? `${date}T00:00` : '',
                       }));
                     }}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2"
+                    className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
                     required
                   />
                 )}
@@ -4183,7 +4273,7 @@ function TimesheetBlock({ userId, canEdit = true }:{ userId:string, canEdit?: bo
               {formData.entry_mode === 'time' && (
                 <>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label className="block text-xs font-medium text-gray-600 mb-1.5">
                       {editingEvent
                         ? 'Clock Out Time (Local) - Optional'
                         : 'Clock Out Time * (Local)'}
@@ -4194,7 +4284,7 @@ function TimesheetBlock({ userId, canEdit = true }:{ userId:string, canEdit?: bo
                       onChange={(e) =>
                         setFormData({ ...formData, clock_out_time: e.target.value })
                       }
-                      className="w-full rounded-lg border border-gray-300 px-3 py-2"
+                      className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
                       required={!editingEvent}
                     />
                   </div>
@@ -4205,18 +4295,18 @@ function TimesheetBlock({ userId, canEdit = true }:{ userId:string, canEdit?: bo
                         type="checkbox"
                         checked={insertBreakTime}
                         onChange={(e) => setInsertBreakTime(e.target.checked)}
-                        className="w-4 h-4 rounded border-gray-300 text-brand-red focus:ring-brand-red"
+                        className="w-3.5 h-3.5 rounded border-gray-300 text-brand-red focus:ring-brand-red"
                       />
-                      <span className="text-sm font-medium text-gray-700">Insert Break Time</span>
+                      <span className="text-xs font-medium text-gray-700">Insert Break Time</span>
                     </label>
                     {insertBreakTime && (
                       <div className="ml-6 space-y-2">
                         <div className="flex gap-2 items-center">
-                          <label className="text-xs text-gray-600 w-12">Hours:</label>
+                          <label className="text-[10px] text-gray-600 w-12">Hours:</label>
                           <select
                             value={breakHours}
                             onChange={(e) => setBreakHours(e.target.value)}
-                            className="flex-1 border rounded px-3 py-2"
+                            className="flex-1 border rounded px-2.5 py-1.5 text-xs"
                           >
                             {Array.from({ length: 3 }, (_, i) => (
                               <option key={i} value={String(i)}>
@@ -4224,11 +4314,11 @@ function TimesheetBlock({ userId, canEdit = true }:{ userId:string, canEdit?: bo
                               </option>
                             ))}
                           </select>
-                          <label className="text-xs text-gray-600 w-12 ml-2">Minutes:</label>
+                          <label className="text-[10px] text-gray-600 w-12 ml-2">Minutes:</label>
                           <select
                             value={breakMinutes}
                             onChange={(e) => setBreakMinutes(e.target.value)}
-                            className="flex-1 border rounded px-3 py-2"
+                            className="flex-1 border rounded px-2.5 py-1.5 text-xs"
                           >
                             {Array.from({ length: 12 }, (_, i) => {
                               const m = i * 5;
@@ -4248,7 +4338,7 @@ function TimesheetBlock({ userId, canEdit = true }:{ userId:string, canEdit?: bo
               {formData.entry_mode === 'hours' && (
                 <>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label className="block text-xs font-medium text-gray-600 mb-1.5">
                       Hours Worked *
                     </label>
                     <input
@@ -4259,7 +4349,7 @@ function TimesheetBlock({ userId, canEdit = true }:{ userId:string, canEdit?: bo
                       onChange={(e) =>
                         setFormData({ ...formData, hours_worked: e.target.value })
                       }
-                      className="w-full rounded-lg border border-gray-300 px-3 py-2"
+                      className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
                       placeholder="e.g. 8"
                       required
                     />
@@ -4271,18 +4361,18 @@ function TimesheetBlock({ userId, canEdit = true }:{ userId:string, canEdit?: bo
                         type="checkbox"
                         checked={insertBreakTime}
                         onChange={(e) => setInsertBreakTime(e.target.checked)}
-                        className="w-4 h-4 rounded border-gray-300 text-brand-red focus:ring-brand-red"
+                        className="w-3.5 h-3.5 rounded border-gray-300 text-brand-red focus:ring-brand-red"
                       />
-                      <span className="text-sm font-medium text-gray-700">Insert Break Time</span>
+                      <span className="text-xs font-medium text-gray-700">Insert Break Time</span>
                     </label>
                     {insertBreakTime && (
                       <div className="ml-6 space-y-2">
                         <div className="flex gap-2 items-center">
-                          <label className="text-xs text-gray-600 w-12">Hours:</label>
+                          <label className="text-[10px] text-gray-600 w-12">Hours:</label>
                           <select
                             value={breakHours}
                             onChange={(e) => setBreakHours(e.target.value)}
-                            className="flex-1 border rounded px-3 py-2"
+                            className="flex-1 border rounded px-2.5 py-1.5 text-xs"
                           >
                             {Array.from({ length: 3 }, (_, i) => (
                               <option key={i} value={String(i)}>
@@ -4290,11 +4380,11 @@ function TimesheetBlock({ userId, canEdit = true }:{ userId:string, canEdit?: bo
                               </option>
                             ))}
                           </select>
-                          <label className="text-xs text-gray-600 w-12 ml-2">Minutes:</label>
+                          <label className="text-[10px] text-gray-600 w-12 ml-2">Minutes:</label>
                           <select
                             value={breakMinutes}
                             onChange={(e) => setBreakMinutes(e.target.value)}
-                            className="flex-1 border rounded px-3 py-2"
+                            className="flex-1 border rounded px-2.5 py-1.5 text-xs"
                           >
                             {Array.from({ length: 12 }, (_, i) => {
                               const m = i * 5;
@@ -4313,11 +4403,11 @@ function TimesheetBlock({ userId, canEdit = true }:{ userId:string, canEdit?: bo
               )}
               {editingEvent && (
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Status *</label>
+                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Status *</label>
                   <select
                     value={formData.status}
                     onChange={(e) => setFormData({ ...formData, status: e.target.value })}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2"
+                    className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
                     required
                   >
                     <option value="approved">Approved</option>
@@ -4327,20 +4417,20 @@ function TimesheetBlock({ userId, canEdit = true }:{ userId:string, canEdit?: bo
                 </div>
               )}
             </div>
-            <div className="mt-6 flex justify-end gap-3">
+            <div className="mt-6 flex justify-end gap-2">
               <button
                 onClick={() => {
                   setShowModal(false);
                   resetForm();
                 }}
-                className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
+                className="px-3 py-1.5 text-xs border border-gray-300 rounded-lg hover:bg-gray-50"
               >
                 Cancel
               </button>
               <button
                 onClick={handleSubmit}
                 disabled={isSubmitDisabled}
-                className="px-4 py-2 bg-[#d11616] text-white rounded-lg hover:bg-[#b01414] disabled:opacity-50 disabled:cursor-not-allowed"
+                className="px-3 py-1.5 text-xs bg-[#d11616] text-white rounded-lg hover:bg-[#b01414] disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {editingEvent ? 'Update' : 'Create'}
               </button>
@@ -4565,7 +4655,7 @@ function SalaryHistorySection({ userId, canEdit, settings }:{ userId:string, can
           <div className="bg-white rounded-xl w-full max-w-lg p-4">
             <div className="text-lg font-semibold mb-4">New salary entry</div>
             <div className="space-y-3">
-              <div className="grid md:grid-cols-2 gap-3">
+                                <div className="grid md:grid-cols-2 gap-2.5">
                 <div>
                   <div className="text-xs text-gray-600">Effective date *</div>
                   <input type="date" className="w-full rounded-lg border px-3 py-2" value={effectiveDate} onChange={e=>setEffectiveDate(e.target.value)} />
