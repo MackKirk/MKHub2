@@ -2070,6 +2070,7 @@ export default function UserInfo(){
     }
   }, [hasVisas, p.work_eligibility_status, userId, canEdit, canEditGeneral, isEditingPersonal, queryClient]);
   const [isEditingJob, setIsEditingJob] = useState(false);
+  const [isEmployeeCardMinimized, setIsEmployeeCardMinimized] = useState(false);
   const permissionsRef = useRef<UserPermissionsRef>(null);
   const { data:usersOptions } = useQuery({ queryKey:['users-options'], queryFn: ()=> api<any[]>('GET','/auth/users/options') });
   const { data: supervisorProfile } = useQuery({
@@ -2307,96 +2308,145 @@ export default function UserInfo(){
 
   return (
     <div>
-      <div className="bg-slate-200/50 rounded-[12px] border border-slate-200 flex items-center justify-between py-4 px-6 mb-6">
-        <div className="flex items-center gap-4 flex-1">
-          <button
-            onClick={() => navigate('/users')}
-            className="p-2 rounded-lg hover:bg-gray-200 transition-colors flex items-center justify-center"
-            title="Back to Users"
-          >
-            <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-            </svg>
-          </button>
-          <div>
-            <div className="text-xl font-bold text-gray-900 tracking-tight mb-0.5">User Information</div>
-            <div className="text-sm text-gray-500 font-medium">Personal details, employment, and documents.</div>
+      <div className="rounded-xl border bg-white p-4 mb-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3 flex-1">
+            <button
+              onClick={() => navigate('/users')}
+              className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors flex items-center justify-center"
+              title="Back to Users"
+            >
+              <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+              </svg>
+            </button>
+            <div className="w-8 h-8 rounded bg-blue-100 flex items-center justify-center">
+              <svg className="w-5 h-5 text-blue-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+              </svg>
+            </div>
+            <div>
+              <h5 className="text-sm font-semibold text-blue-900">User Information</h5>
+              <p className="text-xs text-gray-600 mt-0.5">Personal details, employment, and documents.</p>
+            </div>
           </div>
-        </div>
-        <div className="text-right">
-          <div className="text-xs text-gray-400 mb-1.5 font-medium uppercase tracking-wide">Today</div>
-          <div className="text-sm font-semibold text-gray-700">{todayLabel}</div>
+          <div className="text-right">
+            <div className="text-[10px] text-gray-400 mb-1 font-medium uppercase tracking-wide">Today</div>
+            <div className="text-xs font-semibold text-gray-700">{todayLabel}</div>
+          </div>
         </div>
       </div>
       <div className="space-y-4">
         {/* Employee Info Card */}
-        <div className="rounded-xl border bg-white p-4">
-          <div className="flex gap-4 items-center">
-            {/* Profile Photo */}
-            <div className="flex-shrink-0">
+        <div className="rounded-xl border bg-white p-3 relative">
+          {isEmployeeCardMinimized ? (
+            /* Minimized View */
+            <div className="flex gap-2 items-center pr-8">
               <img 
-                className="w-32 h-32 object-cover rounded-xl border-2 border-gray-200" 
-                src={p.profile_photo_file_id? `/files/${p.profile_photo_file_id}/thumbnail?w=320`:'/ui/assets/placeholders/user.png'} 
+                className="w-10 h-10 object-cover rounded-lg border border-gray-200" 
+                src={p.profile_photo_file_id? `/files/${p.profile_photo_file_id}/thumbnail?w=80`:'/ui/assets/placeholders/user.png'} 
                 alt={`${p.first_name||u?.username} ${p.last_name||''}`}
               />
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-bold text-gray-900 truncate">
+                      {p.first_name||u?.username} {p.last_name||''}{u?.username ? ` (${u.username})` : ''}
+                    </div>
+                    <div className="text-[10px] text-gray-600 truncate mt-0.5">
+                      {p.job_title||'—'}{u?.divisions && u.divisions.length > 0 ? ` • ${u.divisions.map((d: any) => d.label).join(', ')}` : (p.division ? ` • ${p.division}` : '')}
+                    </div>
+                  </div>
+                  <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium flex-shrink-0 ${
+                    u?.is_active 
+                      ? 'bg-green-100 text-green-800' 
+                      : 'bg-red-100 text-red-800'
+                  }`}>
+                    {u?.is_active? 'Active':'Terminated'}
+                  </span>
+                </div>
+              </div>
             </div>
-            
-            {/* Employee Details */}
-            <div className="flex-1 min-w-0">
-              <div className="mb-3">
-                <h1 className="text-lg font-bold text-gray-900">{p.first_name||u?.username} {p.last_name||''}</h1>
-                <div className="text-xs text-gray-600 mt-0.5">
-                  {p.job_title||'—'}{u?.divisions && u.divisions.length > 0 ? ` • ${u.divisions.map((d: any) => d.label).join(', ')}` : (p.division ? ` • ${p.division}` : '')}
+          ) : (
+            /* Expanded View */
+            <div className="flex gap-3 items-start">
+              {/* Profile Photo */}
+              <div className="flex-shrink-0 flex flex-col items-center">
+                <img 
+                  className="w-24 h-24 object-cover rounded-xl border-2 border-gray-200" 
+                  src={p.profile_photo_file_id? `/files/${p.profile_photo_file_id}/thumbnail?w=240`:'/ui/assets/placeholders/user.png'} 
+                  alt={`${p.first_name||u?.username} ${p.last_name||''}`}
+                />
+                <div className="mt-2">
+                  <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium ${
+                    u?.is_active 
+                      ? 'bg-green-100 text-green-800' 
+                      : 'bg-red-100 text-red-800'
+                  }`}>
+                    {u?.is_active? 'Active':'Terminated'}
+                  </span>
                 </div>
               </div>
               
-              {/* Info Grid */}
-              <div className="grid md:grid-cols-3 gap-x-4 gap-y-2">
-                <div>
-                  <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Username</span>
-                  <div className="text-xs font-semibold text-gray-900 mt-0.5">{u?.username||'—'}</div>
-                </div>
-                <div>
-                  <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Phone</span>
-                  <div className="text-xs font-semibold text-gray-900 mt-0.5">{p.phone||'—'}</div>
-                </div>
-                <div>
-                  <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Personal Email</span>
-                  <div className="text-xs font-semibold text-gray-900 mt-0.5">{u?.email||u?.email_personal||'—'}</div>
-                </div>
-                <div>
-                  <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Work Email</span>
-                  <div className="text-xs font-semibold text-gray-900 mt-0.5">{p.work_email||'—'}</div>
-                </div>
-                <div>
-                  <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Status</span>
-                  <div className="text-xs font-semibold text-gray-900 mt-0.5">
-                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium ${
-                      u?.is_active 
-                        ? 'bg-green-100 text-green-800' 
-                        : 'bg-red-100 text-red-800'
-                    }`}>
-                      {u?.is_active? 'Active':'Terminated'}
-                    </span>
+              {/* Employee Details */}
+              <div className="flex-1 min-w-0">
+                <div className="mb-2">
+                  <h1 className="text-sm font-bold text-gray-900">
+                    {p.first_name||u?.username} {p.last_name||''}{u?.username ? ` (${u.username})` : ''}
+                  </h1>
+                  <div className="text-xs text-gray-600 mt-0.5">
+                    {p.job_title||'—'}{u?.divisions && u.divisions.length > 0 ? ` • ${u.divisions.map((d: any) => d.label).join(', ')}` : (p.division ? ` • ${p.division}` : '')}
                   </div>
                 </div>
-                <div>
-                  <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Hire Date</span>
-                  <div className="text-xs font-semibold text-gray-900 mt-0.5">
-                    {p.hire_date? String(p.hire_date).slice(0,10):'—'}{p.hire_date? ` (${tenure(p.hire_date)})`:''}
+                
+                {/* Info Grid */}
+                <div className="grid md:grid-cols-3 gap-x-3 gap-y-1.5">
+                  <div>
+                    <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Phone</span>
+                    <div className="text-xs font-semibold text-gray-900 mt-0.5">{p.phone||'—'}</div>
                   </div>
-                </div>
-                <div>
-                  <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Supervisor</span>
-                  <div className="text-xs font-semibold text-gray-900 mt-0.5">{supervisorName||'—'}</div>
-                </div>
-                <div>
-                  <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Age</span>
-                  <div className="text-xs font-semibold text-gray-900 mt-0.5">{calcAge(p.date_of_birth)||'—'}</div>
+                  <div>
+                    <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Personal Email</span>
+                    <div className="text-xs font-semibold text-gray-900 mt-0.5">{u?.email||u?.email_personal||'—'}</div>
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Work Email</span>
+                    <div className="text-xs font-semibold text-gray-900 mt-0.5">{p.work_email||'—'}</div>
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Hire Date</span>
+                    <div className="text-xs font-semibold text-gray-900 mt-0.5">
+                      {p.hire_date? String(p.hire_date).slice(0,10):'—'}{p.hire_date? ` (${tenure(p.hire_date)})`:''}
+                    </div>
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Supervisor</span>
+                    <div className="text-xs font-semibold text-gray-900 mt-0.5">{supervisorName||'—'}</div>
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Age</span>
+                    <div className="text-xs font-semibold text-gray-900 mt-0.5">{calcAge(p.date_of_birth)||'—'}</div>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
+          )}
+          
+          {/* Minimize/Expand Button */}
+          <button
+            onClick={() => setIsEmployeeCardMinimized(!isEmployeeCardMinimized)}
+            className="absolute bottom-2 right-2 p-1 rounded hover:bg-gray-100 transition-colors text-gray-500 hover:text-gray-700"
+            title={isEmployeeCardMinimized ? 'Expand' : 'Minimize'}
+          >
+            <svg 
+              className={`w-3 h-3 transition-transform ${isEmployeeCardMinimized ? '' : 'rotate-180'}`}
+              fill="none" 
+              stroke="currentColor" 
+              viewBox="0 0 24 24"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
         </div>
         
         {/* Navigation Tabs */}

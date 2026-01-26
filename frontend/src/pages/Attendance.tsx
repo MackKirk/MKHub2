@@ -1190,26 +1190,6 @@ export default function Attendance() {
                   </select>
                 </div>
               ) : (
-            <div className="space-y-3">
-              {editingEvent ? (
-                // When editing, show simple select (single worker)
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Worker *</label>
-                  <select
-                    value={formData.worker_id}
-                    onChange={(e) => setFormData({ ...formData, worker_id: e.target.value })}
-                    className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
-                    required
-                  >
-                    <option value="">Select a worker...</option>
-                    {(Array.isArray(users) ? users : []).map((u) => (
-                      <option key={u.id} value={u.id}>
-                        {u.name || u.username}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              ) : (
                 // When creating, show multi-select with search
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-1.5">
