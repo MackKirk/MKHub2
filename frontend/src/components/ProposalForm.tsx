@@ -1145,11 +1145,27 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
   // drag helpers
   const [draggingSection, setDraggingSection] = useState<number|null>(null);
   const [dragOverSection, setDragOverSection] = useState<number|null>(null);
-  const [dragInsertPosition, setDragInsertPosition] = useState<'above'|'below'|null>(null); // Track where to insert
+  const [dragInsertPosition, setDragInsertPosition] = useState<'above'|'below'|'end'|null>(null); // Track where to insert
+  const [dragOverEnd, setDragOverEnd] = useState<boolean>(false); // Track if dragging over the end area
+  
+  // Helper function to calculate where placeholder should appear
+  const getPlaceholderPosition = (idx: number): 'above'|'below'|null => {
+    if (disabled || draggingSection === null || dragOverSection === null || dragInsertPosition === null) return null;
+    if (draggingSection === idx) return null; // Don't show placeholder for the section being dragged
+    
+    // Simple approach: show placeholder directly where we're dragging over
+    if (dragOverSection === idx) {
+      return dragInsertPosition;
+    }
+    
+    return null;
+  };
+  
   const onSectionDragStart = (idx:number)=> setDraggingSection(idx);
   const onSectionDragOver = (idx:number, e: React.DragEvent)=> {
     if (draggingSection === null || draggingSection === idx) return;
     setDragOverSection(idx);
+    setDragOverEnd(false);
     // Determine if inserting above or below based on mouse position
     const rect = e.currentTarget.getBoundingClientRect();
     const mouseY = e.clientY;
@@ -1157,10 +1173,35 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
     setDragInsertPosition(mouseY < sectionMiddle ? 'above' : 'below');
   };
   const onSectionDrop = ()=>{
-    if (draggingSection===null || dragOverSection===null || draggingSection===dragOverSection) { 
+    if (draggingSection===null) { 
       setDraggingSection(null); 
       setDragOverSection(null);
       setDragInsertPosition(null);
+      setDragOverEnd(false);
+      return; 
+    }
+    
+    // Handle drop at the end
+    if (dragOverEnd && dragInsertPosition === 'end') {
+      setSections(arr=>{
+        const next = [...arr];
+        const [moved] = next.splice(draggingSection,1);
+        next.push(moved);
+        return next;
+      });
+      setDraggingSection(null);
+      setDragOverSection(null);
+      setDragInsertPosition(null);
+      setDragOverEnd(false);
+      return;
+    }
+    
+    // Handle drop between sections
+    if (dragOverSection===null || draggingSection===dragOverSection) { 
+      setDraggingSection(null); 
+      setDragOverSection(null);
+      setDragInsertPosition(null);
+      setDragOverEnd(false);
       return; 
     }
     setSections(arr=>{
@@ -1181,6 +1222,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
     setDraggingSection(null);
     setDragOverSection(null);
     setDragInsertPosition(null);
+    setDragOverEnd(false);
   };
 
   const onImageDragStart = (secIdx:number, imgIdx:number)=> setSectionPicker({ secId: String(secIdx), index: imgIdx });
@@ -1381,19 +1423,32 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
           {sectionsExpanded.sections && (
           <div className="p-4">
           <div className="space-y-3">
-            {sections.map((s:any, idx:number)=> (
+            {sections.map((s:any, idx:number)=> {
+              const placeholderPos = getPlaceholderPosition(idx);
+              const isDragging = draggingSection === idx;
+              
+              return (
               <div key={s.id||idx} className="relative">
-                {/* Insertion line indicator - shown above the section when dragging */}
-                {!disabled && dragOverSection === idx && dragInsertPosition === 'above' && draggingSection !== null && draggingSection !== idx && (
-                  <div className="absolute -top-2 left-0 right-0 h-0.5 bg-slate-400 rounded-full z-10 shadow-lg" style={{boxShadow: '0 0 8px rgba(148, 163, 184, 0.6)'}}></div>
+                {/* Placeholder above - Trello style empty space */}
+                {placeholderPos === 'above' && (
+                  <div className="mb-3 animate-fadeIn">
+                    <div className="border-2 border-dashed border-blue-400 rounded-lg bg-gradient-to-br from-blue-50/40 to-blue-100/30 h-20 flex items-center justify-center transition-all duration-300 shadow-md backdrop-blur-sm">
+                      <div className="flex items-center gap-2 text-blue-600">
+                        <svg className="w-5 h-5 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                        </svg>
+                        <span className="text-sm font-semibold">Drop section here</span>
+                      </div>
+                    </div>
+                  </div>
                 )}
+                
+                {/* Section content - hidden if being dragged */}
                 <div
-                   className={`border rounded p-3 transition-all ${
-                     draggingSection === idx ? 'opacity-50 scale-95' : ''
-                   } ${
-                     dragOverSection === idx && !disabled && draggingSection !== idx 
-                       ? 'ring-2 ring-slate-400 ring-opacity-50 bg-slate-100/50' 
-                       : ''
+                   className={`border rounded p-3 transition-all duration-300 ${
+                     isDragging 
+                       ? 'opacity-50 scale-95' 
+                       : 'hover:shadow-sm'
                    }`}
                    onDragOver={!disabled ? (e)=>{ e.preventDefault(); onSectionDragOver(idx, e); } : undefined}
                    onDragLeave={!disabled ? (e)=>{
@@ -1426,6 +1481,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                             setDraggingSection(null);
                             setDragOverSection(null);
                             setDragInsertPosition(null);
+                            setDragOverEnd(false);
                           }
                         }}>
                         <svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
@@ -1554,14 +1610,55 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                   </div>
                 )}
               </div>
-                {/* Insertion line indicator - shown below the section when dragging */}
-                {!disabled && dragOverSection === idx && dragInsertPosition === 'below' && draggingSection !== null && draggingSection !== idx && (
-                  <div className="absolute -bottom-2 left-0 right-0 h-0.5 bg-slate-400 rounded-full z-10 shadow-lg" style={{boxShadow: '0 0 8px rgba(148, 163, 184, 0.6)'}}></div>
+                {/* Placeholder below - Trello style empty space */}
+                {placeholderPos === 'below' && (
+                  <div className="mt-3 animate-fadeIn">
+                    <div className="border-2 border-dashed border-blue-400 rounded-lg bg-gradient-to-br from-blue-50/40 to-blue-100/30 h-20 flex items-center justify-center transition-all duration-300 shadow-md backdrop-blur-sm">
+                      <div className="flex items-center gap-2 text-blue-600">
+                        <svg className="w-5 h-5 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                        </svg>
+                        <span className="text-sm font-semibold">Drop section here</span>
+                      </div>
+                    </div>
+                  </div>
                 )}
-            </div>
-            ))}
+              </div>
+              );
+            })}
+            {/* Drop zone placeholder at the end of the list */}
+            {!disabled && draggingSection !== null && sections.length > 0 && dragOverEnd && dragInsertPosition === 'end' && (
+              <div className="mt-3 animate-fadeIn">
+                <div className="border-2 border-dashed border-blue-400 rounded-lg bg-gradient-to-br from-blue-50/40 to-blue-100/30 h-20 flex items-center justify-center transition-all duration-300 shadow-md backdrop-blur-sm">
+                  <div className="flex items-center gap-2 text-blue-600">
+                    <svg className="w-5 h-5 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                    </svg>
+                    <span className="text-sm font-semibold">Drop section here</span>
+                  </div>
+                </div>
+              </div>
+            )}
             {!disabled && (
-              <div className="flex items-center gap-2">
+              <div 
+                className="flex items-center gap-2"
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  setDragOverEnd(true);
+                  setDragOverSection(null);
+                  setDragInsertPosition('end');
+                }}
+                onDragLeave={(e) => {
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  const x = e.clientX;
+                  const y = e.clientY;
+                  if (x < rect.left || x > rect.right || y < rect.top || y > rect.bottom) {
+                    setDragOverEnd(false);
+                    setDragInsertPosition(null);
+                  }
+                }}
+                onDrop={onSectionDrop}
+              >
                 <button className="px-3 py-1.5 rounded bg-gray-100 text-base" onClick={()=> setSections(arr=> [...arr, { id: 'sec_'+Math.random().toString(36).slice(2), type:'text', title:'', text:'' }])}>+ Text Section</button>
                 <button className="px-3 py-1.5 rounded bg-gray-100 text-base" onClick={()=> setSections(arr=> [...arr, { id: 'sec_'+Math.random().toString(36).slice(2), type:'images', title:'', images: [] }])}>+ Images Section</button>
               </div>

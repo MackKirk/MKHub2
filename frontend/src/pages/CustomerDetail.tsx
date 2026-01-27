@@ -1,12 +1,13 @@
 import { useParams, Link, useLocation, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
-import { useEffect, useMemo, useState, ReactNode } from 'react';
+import { useEffect, useMemo, useState, ReactNode, useRef } from 'react';
 import toast from 'react-hot-toast';
 import ImagePicker from '@/components/ImagePicker';
 import ImageEditor from '@/components/ImageEditor';
 import { useConfirm } from '@/components/ConfirmProvider';
 import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard';
+import LoadingOverlay from '@/components/LoadingOverlay';
 
 type Client = { id:string, name?:string, display_name?:string, code?:string, city?:string, province?:string, postal_code?:string, country?:string, address_line1?:string, address_line2?:string, created_at?:string };
 type Site = { id:string, site_name?:string, site_address_line1?:string, site_city?:string, site_province?:string, site_country?:string };
@@ -14,12 +15,391 @@ type ClientFile = { id:string, file_object_id:string, is_image?:boolean, content
 type Project = { id:string, code?:string, name?:string, slug?:string, created_at?:string, date_start?:string, date_end?:string };
 type Contact = { id:string, name?:string, email?:string, phone?:string, is_primary?:boolean };
 
+// Hook for count-up animation
+function useCountUp(end: number, duration: number = 600, enabled: boolean = true): number {
+  const [count, setCount] = useState(0);
+  const startTimeRef = useRef<number | null>(null);
+  const animationFrameRef = useRef<number | null>(null);
+  const prevEndRef = useRef(end);
+
+  useEffect(() => {
+    if (!enabled || end === 0) {
+      setCount(end);
+      return;
+    }
+
+    // Reset if target changed
+    if (prevEndRef.current !== end) {
+      setCount(0);
+      prevEndRef.current = end;
+    }
+
+    const animate = (currentTime: number) => {
+      if (startTimeRef.current === null) {
+        startTimeRef.current = currentTime;
+      }
+
+      const elapsed = currentTime - startTimeRef.current;
+      const progress = Math.min(elapsed / duration, 1);
+      
+      // Easing function (ease-out)
+      const eased = 1 - Math.pow(1 - progress, 3);
+      const currentCount = Math.floor(end * eased);
+      
+      setCount(currentCount);
+
+      if (progress < 1) {
+        animationFrameRef.current = requestAnimationFrame(animate);
+      } else {
+        setCount(end);
+      }
+    };
+
+    animationFrameRef.current = requestAnimationFrame(animate);
+
+    return () => {
+      if (animationFrameRef.current !== null) {
+        cancelAnimationFrame(animationFrameRef.current);
+      }
+      startTimeRef.current = null;
+    };
+  }, [end, duration, enabled]);
+
+  return count;
+}
+
+// CountUp component for displaying animated numbers
+function CountUp({ value, duration = 600, enabled = true }: { value: number; duration?: number; enabled?: boolean }) {
+  const count = useCountUp(value, duration, enabled);
+  return <>{count}</>;
+}
+
+// Date Range Modal Component
+type DateRangeModalProps = {
+  open: boolean;
+  onClose: () => void;
+  onConfirm: (startDate: string, endDate: string) => void;
+  initialStartDate?: string;
+  initialEndDate?: string;
+};
+
+function DateRangeModal({ open, onClose, onConfirm, initialStartDate = '', initialEndDate = '' }: DateRangeModalProps) {
+  const [startDate, setStartDate] = useState(initialStartDate);
+  const [endDate, setEndDate] = useState(initialEndDate);
+
+  useEffect(() => {
+    if (open) {
+      setStartDate(initialStartDate);
+      setEndDate(initialEndDate);
+    }
+  }, [open, initialStartDate, initialEndDate]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+      if (e.key === 'Enter' && startDate && endDate) {
+        onConfirm(startDate, endDate);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open, startDate, endDate, onClose, onConfirm]);
+
+  if (!open) return null;
+
+  const handleConfirm = () => {
+    if (startDate && endDate) {
+      onConfirm(startDate, endDate);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
+      <div className="w-[400px] max-w-[95vw] bg-white rounded-lg shadow-lg overflow-hidden" onClick={(e) => e.stopPropagation()}>
+        <div className="px-4 py-3 border-b font-semibold">Custom Date Range</div>
+        <div className="p-4 space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Start Date</label>
+            <input
+              type="date"
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+              className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">End Date</label>
+            <input
+              type="date"
+              value={endDate}
+              onChange={(e) => setEndDate(e.target.value)}
+              className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
+            />
+          </div>
+        </div>
+        <div className="p-3 flex items-center justify-end gap-2 border-t">
+          <button 
+            className="px-4 py-2 rounded bg-gray-100 hover:bg-gray-200 text-gray-800" 
+            onClick={onClose}
+          >
+            Cancel
+          </button>
+          <button 
+            className="px-4 py-2 rounded bg-[#7f1010] hover:bg-[#a31414] text-white disabled:opacity-50 disabled:cursor-not-allowed" 
+            onClick={handleConfirm}
+            disabled={!startDate || !endDate}
+          >
+            Apply
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+type DateFilterType = 'all' | 'last_year' | 'last_6_months' | 'last_3_months' | 'last_month' | 'custom';
+
+// Helper function to format date for display
+function formatDateForDisplay(dateString: string): string {
+  if (!dateString) return '';
+  try {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  } catch {
+    return dateString;
+  }
+}
+
+// Helper function to calculate date range from filter
+function calculateDateRange(dateFilter: DateFilterType, customDateStart: string, customDateEnd: string) {
+  if (dateFilter === 'all') {
+    return { date_from: undefined, date_to: undefined };
+  }
+  if (dateFilter === 'custom') {
+    return {
+      date_from: customDateStart || undefined,
+      date_to: customDateEnd || undefined,
+    };
+  }
+  const now = new Date();
+  const dateTo = now.toISOString().split('T')[0];
+  let dateFrom: string;
+  switch (dateFilter) {
+    case 'last_year':
+      dateFrom = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate()).toISOString().split('T')[0];
+      break;
+    case 'last_6_months':
+      dateFrom = new Date(now.getTime() - 180 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+      break;
+    case 'last_3_months':
+      dateFrom = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+      break;
+    case 'last_month':
+      dateFrom = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+      break;
+    default:
+      return { date_from: undefined, date_to: undefined };
+  }
+  return { date_from: dateFrom, date_to: dateTo };
+}
+
+// Helper function to format currency in CAD
+function formatCurrency(value: number): string {
+  return new Intl.NumberFormat('en-CA', {
+    style: 'currency',
+    currency: 'CAD',
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(value);
+}
+
+// Value resolver - tries multiple paths to find entity value
+function resolveEntityValue(entityOrDetails: any): number | null {
+  const paths = [
+    entityOrDetails?.final_total_with_gst,
+    entityOrDetails?.details?.final_total_with_gst,
+    entityOrDetails?.pricing?.final_total_with_gst,
+    entityOrDetails?.proposal?.final_total_with_gst,
+    entityOrDetails?.value,
+    entityOrDetails?.total_value,
+    entityOrDetails?.service_value,
+  ];
+  
+  for (const val of paths) {
+    if (val != null) {
+      const num = typeof val === 'string' ? parseFloat(val) : val;
+      if (!isNaN(num) && isFinite(num)) {
+        return num;
+      }
+    }
+  }
+  return null;
+}
+
+// Proposal totals in this codebase are derived from `data.additional_costs` (and/or stored in `total`).
+// This matches the "Final Total (with GST)" shown in Proposal pricing and the "Costs Summary → Total".
+function calculateProposalTotalFromAdditionalCosts(proposalData: any): number {
+  if (!proposalData) return 0;
+  const data = proposalData?.data || proposalData || {};
+  const additionalCosts = Array.isArray(data.additional_costs) ? data.additional_costs : [];
+  if (additionalCosts.length === 0) return 0;
+
+  const pstRate = Number(data.pst_rate) || 7.0;
+  const gstRate = Number(data.gst_rate) || 5.0;
+
+  const totalDirectCosts = additionalCosts.reduce((sum: number, item: any) => {
+    const value = Number(item?.value || 0);
+    const quantity = Number(item?.quantity || 1);
+    return sum + value * quantity;
+  }, 0);
+
+  const totalForPst = additionalCosts
+    .filter((item: any) => item?.pst === true)
+    .reduce((sum: number, item: any) => {
+      const value = Number(item?.value || 0);
+      const quantity = Number(item?.quantity || 1);
+      return sum + value * quantity;
+    }, 0);
+
+  const pst = totalForPst * (pstRate / 100);
+  const subtotal = totalDirectCosts + pst;
+
+  const totalForGst = additionalCosts
+    .filter((item: any) => item?.gst === true)
+    .reduce((sum: number, item: any) => {
+      const value = Number(item?.value || 0);
+      const quantity = Number(item?.quantity || 1);
+      return sum + value * quantity;
+    }, 0);
+
+  const gst = totalForGst * (gstRate / 100);
+  return subtotal + gst;
+}
+
+// Resolve project value from Costs Summary > Overview > Total
+function resolveProjectValue(projectOrDetails: any): number | null {
+  // Primary path: costs_summary.overview.total
+  // Try both direct access and via details
+  const paths = [
+    // Primary: costs_summary.overview.total (as specified by user)
+    projectOrDetails?.costs_summary?.overview?.total,
+    projectOrDetails?.details?.costs_summary?.overview?.total,
+    // Alternative structures
+    projectOrDetails?.overview?.costs_summary?.total,
+    projectOrDetails?.details?.overview?.costs_summary?.total,
+    projectOrDetails?.costs_summary?.total,
+    projectOrDetails?.details?.costs_summary?.total,
+    projectOrDetails?.overview?.total,
+    projectOrDetails?.total,
+    // Fallback fields
+    projectOrDetails?.service_value,
+    projectOrDetails?.details?.service_value,
+    projectOrDetails?.cost_actual,
+    projectOrDetails?.details?.cost_actual,
+    projectOrDetails?.cost_estimated,
+    projectOrDetails?.details?.cost_estimated,
+    // General resolver as last resort
+    resolveEntityValue(projectOrDetails),
+  ];
+  
+  for (const val of paths) {
+    if (val != null && val !== '') {
+      const num = typeof val === 'string' ? parseFloat(val) : val;
+      if (!isNaN(num) && isFinite(num) && num > 0) {
+        return num;
+      }
+    }
+  }
+  return null;
+}
+
+// Resolve opportunity value from Proposal > Pricing > Final Total (with GST)
+function resolveOpportunityValue(opportunityOrDetails: any): number | null {
+  // Primary path: proposal.pricing.final_total_with_gst (as specified by user)
+  const paths = [
+    // Primary: proposal.pricing.final_total_with_gst (as specified by user)
+    opportunityOrDetails?.proposal?.pricing?.final_total_with_gst,
+    opportunityOrDetails?.details?.proposal?.pricing?.final_total_with_gst,
+    // Alternative structures
+    opportunityOrDetails?.pricing?.final_total_with_gst,
+    opportunityOrDetails?.details?.pricing?.final_total_with_gst,
+    opportunityOrDetails?.proposal?.final_total_with_gst,
+    opportunityOrDetails?.details?.proposal?.final_total_with_gst,
+    opportunityOrDetails?.final_total_with_gst,
+    opportunityOrDetails?.details?.final_total_with_gst,
+    // Fallback fields
+    opportunityOrDetails?.service_value,
+    opportunityOrDetails?.details?.service_value,
+    opportunityOrDetails?.value,
+    opportunityOrDetails?.details?.value,
+    opportunityOrDetails?.total_value,
+    opportunityOrDetails?.details?.total_value,
+    // General resolver as last resort
+    resolveEntityValue(opportunityOrDetails),
+  ];
+  
+  for (const val of paths) {
+    if (val != null && val !== '') {
+      const num = typeof val === 'string' ? parseFloat(val) : val;
+      if (!isNaN(num) && isFinite(num) && num > 0) {
+        return num;
+      }
+    }
+  }
+  return null;
+}
+
+// Apply date range filter to items
+function applyDateRange<T extends { created_at?: string; status_changed_at?: string; date_start?: string; date_end?: string }>(
+  items: T[],
+  date_from?: string,
+  date_to?: string
+): T[] {
+  if (!date_from && !date_to) return items;
+  
+  return items.filter(item => {
+    const dateStr = item.status_changed_at || item.date_start || item.created_at || item.date_end;
+    if (!dateStr) return true; // Include items without dates if no filter
+    
+    const itemDate = new Date(dateStr).toISOString().split('T')[0];
+    if (date_from && itemDate < date_from) return false;
+    if (date_to && itemDate > date_to) return false;
+    return true;
+  });
+}
+
+// Helper functions for donut chart
+const polarToCartesian = (centerX: number, centerY: number, radius: number, angleInDegrees: number) => {
+  const angleInRadians = (angleInDegrees - 90) * Math.PI / 180.0;
+  return {
+    x: centerX + (radius * Math.cos(angleInRadians)),
+    y: centerY + (radius * Math.sin(angleInRadians))
+  };
+};
+
+const createDonutSlice = (startAngle: number, endAngle: number, innerRadius: number, outerRadius: number, centerX: number, centerY: number): string => {
+  const startInner = polarToCartesian(centerX, centerY, innerRadius, endAngle);
+  const endInner = polarToCartesian(centerX, centerY, innerRadius, startAngle);
+  const startOuter = polarToCartesian(centerX, centerY, outerRadius, endAngle);
+  const endOuter = polarToCartesian(centerX, centerY, outerRadius, startAngle);
+  const largeArcFlag = endAngle - startAngle <= 180 ? '0' : '1';
+  return [
+    `M ${startInner.x} ${startInner.y}`,
+    `L ${startOuter.x} ${startOuter.y}`,
+    `A ${outerRadius} ${outerRadius} 0 ${largeArcFlag} 0 ${endOuter.x} ${endOuter.y}`,
+    `L ${endInner.x} ${endInner.y}`,
+    `A ${innerRadius} ${innerRadius} 0 ${largeArcFlag} 1 ${startInner.x} ${startInner.y}`,
+    'Z'
+  ].join(' ');
+};
+
 export default function CustomerDetail(){
   const location = useLocation();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { id } = useParams();
-  const [tab, setTab] = useState<'overview'|'general'|'files'|'contacts'|'sites'|'projects'|'opportunities'|'quotes'>('overview');
+  const [tab, setTab] = useState<'overview'|'general'|'files'|'contacts'|'sites'|'projects'|'opportunities'>('overview');
   const [newProjectOpen, setNewProjectOpen] = useState(false);
   const [newProjectName, setNewProjectName] = useState('');
   const { data:client, isLoading } = useQuery({ queryKey:['client', id], queryFn: ()=>api<Client>('GET', `/clients/${id}`) });
@@ -30,7 +410,6 @@ export default function CustomerDetail(){
   const hasProjectsRead = isAdmin || permissions.has('business:projects:read');
   const hasFilesRead = isAdmin || permissions.has('business:projects:files:read');
   const hasFilesWrite = isAdmin || permissions.has('business:projects:files:write');
-  const hasQuotationsRead = isAdmin || permissions.has('sales:quotations:read');
   const hasEditPermission = isAdmin || permissions.has('business:customers:write');
   const { data:sites } = useQuery({ queryKey:['clientSites', id], queryFn: ()=>api<Site[]>('GET', `/clients/${id}/sites`) });
   const { data:files, refetch: refetchFiles } = useQuery({ queryKey:['clientFiles', id], queryFn: ()=>api<ClientFile[]>('GET', `/clients/${id}/files`) });
@@ -98,11 +477,751 @@ export default function CustomerDetail(){
   const leadSources = (settings?.lead_sources||[]) as any[];
   const { data:projects } = useQuery({ queryKey:['clientProjects', id], queryFn: ()=>api<Project[]>('GET', `/projects?client=${encodeURIComponent(String(id||''))}&is_bidding=false`), enabled: hasProjectsRead });
   const { data:opportunities } = useQuery({ queryKey:['clientOpportunities', id], queryFn: ()=>api<Project[]>('GET', `/projects?client=${encodeURIComponent(String(id||''))}&is_bidding=true`), enabled: hasProjectsRead });
-  const { data:quotes } = useQuery({ queryKey:['clientQuotes', id], queryFn: ()=>api<any[]>('GET', `/quotes?client_id=${encodeURIComponent(String(id||''))}`), enabled: hasQuotationsRead });
   const { data:contacts } = useQuery({ queryKey:['clientContacts', id], queryFn: ()=>api<Contact[]>('GET', `/clients/${id}/contacts`) });
   
+  // Dashboard states (must be declared before useMemo that uses them)
+  const [globalDateFilter, setGlobalDateFilter] = useState<DateFilterType>('all');
+  const [globalDateCustomStart, setGlobalDateCustomStart] = useState<string>('');
+  const [globalDateCustomEnd, setGlobalDateCustomEnd] = useState<string>('');
+  const [globalDateModalOpen, setGlobalDateModalOpen] = useState(false);
+  const [globalDisplayMode, setGlobalDisplayMode] = useState<'quantity' | 'value'>('quantity');
+  const [hasAnimated, setHasAnimated] = useState(false);
+  
+  // Calculate date range for dashboard
+  const globalDateRange = useMemo(() => 
+    calculateDateRange(globalDateFilter, globalDateCustomStart, globalDateCustomEnd),
+    [globalDateFilter, globalDateCustomStart, globalDateCustomEnd]
+  );
+  
+  // Fetch project/opportunity details for values (limit to 50 most recent for performance)
+  const projectsToFetch = useMemo(() => (projects || []).slice(0, 50), [projects]);
+  const opportunitiesToFetch = useMemo(() => (opportunities || []).slice(0, 50), [opportunities]);
+  
+  // Fetch details for projects
+  const projectDetailsQueries = useQuery({
+    queryKey: ['projectDetails', projectsToFetch.map(p => p.id)],
+    queryFn: async () => {
+      const details = await Promise.all(
+        projectsToFetch.map(p => 
+          api<any>('GET', `/projects/${p.id}`).catch(() => null)
+        )
+      );
+      return details.filter(Boolean);
+    },
+    enabled: hasProjectsRead && projectsToFetch.length > 0,
+    staleTime: 120_000,
+  });
+  
+  // Fetch details for opportunities
+  const opportunityDetailsQueries = useQuery({
+    queryKey: ['opportunityDetails', opportunitiesToFetch.map(o => o.id)],
+    queryFn: async () => {
+      const details = await Promise.all(
+        opportunitiesToFetch.map(o => 
+          api<any>('GET', `/projects/${o.id}`).catch(() => null)
+        )
+      );
+      return details.filter(Boolean);
+    },
+    enabled: hasProjectsRead && opportunitiesToFetch.length > 0,
+    staleTime: 120_000,
+  });
+  
+  // Combine base data with details
+  // Note: "Costs Summary → Total" and Proposal pricing totals are derived from /proposals, not /projects/:id.
+  const projectsWithDetails = useMemo(() => {
+    const detailsMap = new Map((projectDetailsQueries.data || []).map((d: any) => [d.id, d]));
+    return (projects || []).map(p => {
+      const fullDetails = detailsMap.get(p.id);
+      // Merge the full details into the project object so costs_summary is accessible directly
+      return {
+        ...p,
+        ...fullDetails, // Spread full details to make costs_summary accessible at root level
+        details: fullDetails, // Also keep in details for backward compatibility
+      };
+    });
+  }, [projects, projectDetailsQueries.data]);
+  
+  const opportunitiesWithDetails = useMemo(() => {
+    const detailsMap = new Map((opportunityDetailsQueries.data || []).map((d: any) => [d.id, d]));
+    return (opportunities || []).map(o => {
+      const fullDetails = detailsMap.get(o.id);
+      // Merge the full details into the opportunity object so proposal is accessible directly
+      return {
+        ...o,
+        ...fullDetails, // Spread full details to make proposal accessible at root level
+        details: fullDetails, // Also keep in details for backward compatibility
+      };
+    });
+  }, [opportunities, opportunityDetailsQueries.data]);
+  
+  // Apply date filter
+  const filteredProjects = useMemo(() => 
+    applyDateRange(projectsWithDetails, globalDateRange.date_from, globalDateRange.date_to),
+    [projectsWithDetails, globalDateRange]
+  );
+  
+  const filteredOpportunities = useMemo(() => 
+    applyDateRange(opportunitiesWithDetails, globalDateRange.date_from, globalDateRange.date_to),
+    [opportunitiesWithDetails, globalDateRange]
+  );
+
+  // For Revenue & Pipeline chart values we need proposal totals:
+  // - Projects: "Costs Summary → Total" (sum of original proposal + change orders) - ALL statuses
+  // - Opportunities: "Final Total (with GST)" (proposal pricing total) - ALL statuses
+  // Include finished projects and open opportunities for KPIs, plus up to 50 most recent
+  const chartProjects = useMemo(() => {
+    const finished = filteredProjects.filter(p => {
+      const status = (p.details?.status_label || p.status_label || '').toLowerCase();
+      return status === 'finished';
+    });
+    const others = filteredProjects.filter(p => {
+      const status = (p.details?.status_label || p.status_label || '').toLowerCase();
+      return status !== 'finished';
+    }).slice(0, 50 - finished.length);
+    const combined = [...finished, ...others];
+    return combined.length > 50 ? combined.slice(0, 50) : combined;
+  }, [filteredProjects]);
+
+  const chartOpportunities = useMemo(() => {
+    const open = filteredOpportunities.filter(o => {
+      const status = (o.details?.status_label || o.status_label || '').toLowerCase();
+      return status === 'prospecting' || status === 'sent to customer';
+    });
+    const others = filteredOpportunities.filter(o => {
+      const status = (o.details?.status_label || o.status_label || '').toLowerCase();
+      return !(status === 'prospecting' || status === 'sent to customer');
+    }).slice(0, 50 - open.length);
+    const combined = [...open, ...others];
+    return combined.length > 50 ? combined.slice(0, 50) : combined;
+  }, [filteredOpportunities]);
+
+  const projectCostsSummaryTotalsQuery = useQuery({
+    queryKey: ['project-costs-summary-totals', chartProjects.map(p => p.id)],
+    queryFn: async () => {
+      const results = await Promise.all(
+        chartProjects.map(async (p) => {
+          const proposals = await api<any[]>('GET', `/proposals?project_id=${encodeURIComponent(String(p.id))}`).catch(() => []);
+          if (!Array.isArray(proposals) || proposals.length === 0) {
+            return { id: p.id, total: 0 };
+          }
+
+          // Sum totals across original + change orders (Costs Summary behavior)
+          const totals = await Promise.all(
+            proposals.map(async (pr) => {
+              if (typeof pr?.total === 'number' && isFinite(pr.total) && pr.total > 0) return pr.total;
+              const computedFromList = calculateProposalTotalFromAdditionalCosts(pr);
+              if (computedFromList > 0) return computedFromList;
+              const full = await api<any>('GET', `/proposals/${encodeURIComponent(String(pr.id))}`).catch(() => pr);
+              if (typeof full?.total === 'number' && isFinite(full.total) && full.total > 0) return full.total;
+              const computed = calculateProposalTotalFromAdditionalCosts(full);
+              return computed > 0 ? computed : 0;
+            })
+          );
+
+          const sum = totals.reduce((acc, v) => acc + (Number(v) || 0), 0);
+          return { id: p.id, total: sum };
+        })
+      );
+      return results;
+    },
+    enabled: hasProjectsRead && chartProjects.length > 0,
+    staleTime: 120_000,
+  });
+
+  const opportunityProposalTotalsQuery = useQuery({
+    queryKey: ['opportunity-proposal-totals', chartOpportunities.map(o => o.id)],
+    queryFn: async () => {
+      const results = await Promise.all(
+        chartOpportunities.map(async (o) => {
+          const proposals = await api<any[]>('GET', `/proposals?project_id=${encodeURIComponent(String(o.id))}`).catch(() => []);
+          if (!Array.isArray(proposals) || proposals.length === 0) {
+            return { id: o.id, total: 0 };
+          }
+
+          const originals = proposals.filter((p: any) => p && p.is_change_order !== true);
+          const candidates = originals.length > 0 ? originals : proposals;
+          const picked = candidates
+            .slice()
+            .sort((a: any, b: any) => new Date(b?.created_at || 0).getTime() - new Date(a?.created_at || 0).getTime())[0];
+
+          if (!picked) return { id: o.id, total: 0 };
+
+          if (typeof picked?.total === 'number' && isFinite(picked.total) && picked.total > 0) {
+            return { id: o.id, total: picked.total };
+          }
+
+          const computedFromList = calculateProposalTotalFromAdditionalCosts(picked);
+          if (computedFromList > 0) return { id: o.id, total: computedFromList };
+
+          const full = await api<any>('GET', `/proposals/${encodeURIComponent(String(picked.id))}`).catch(() => picked);
+          if (typeof full?.total === 'number' && isFinite(full.total) && full.total > 0) {
+            return { id: o.id, total: full.total };
+          }
+          const computed = calculateProposalTotalFromAdditionalCosts(full);
+          return { id: o.id, total: computed > 0 ? computed : 0 };
+        })
+      );
+      return results;
+    },
+    enabled: hasProjectsRead && chartOpportunities.length > 0,
+    staleTime: 120_000,
+  });
+
+  const projectCostsSummaryTotalsMap = useMemo(() => {
+    return new Map((projectCostsSummaryTotalsQuery.data || []).map((r: any) => [r.id, r.total]));
+  }, [projectCostsSummaryTotalsQuery.data]);
+
+  const opportunityProposalTotalsMap = useMemo(() => {
+    return new Map((opportunityProposalTotalsQuery.data || []).map((r: any) => [r.id, r.total]));
+  }, [opportunityProposalTotalsQuery.data]);
+  
+  // Track animation
+  useEffect(() => {
+    if (projectsWithDetails.length > 0 || opportunitiesWithDetails.length > 0) {
+      const timer = setTimeout(() => setHasAnimated(true), 50);
+      return () => clearTimeout(timer);
+    }
+  }, [projectsWithDetails.length, opportunitiesWithDetails.length]);
+  
+  // Calculate KPIs — 6 metrics, each with count + value (Quantity/Value toggle)
+  const kpis = useMemo(() => {
+    const finishedProjects = filteredProjects.filter(p => {
+      const status = (p.details?.status_label || p.status_label || '').toLowerCase();
+      return status === 'finished';
+    });
+    const activeProjects = filteredProjects.filter(p => {
+      const status = (p.details?.status_label || p.status_label || '').toLowerCase();
+      return status === 'in progress';
+    });
+    const onHoldProjects = filteredProjects.filter(p => {
+      const status = (p.details?.status_label || p.status_label || '').toLowerCase();
+      return status === 'on hold';
+    });
+    const prospectingOpps = filteredOpportunities.filter(o => {
+      const status = (o.details?.status_label || o.status_label || '').toLowerCase();
+      return status === 'prospecting';
+    });
+    const sentOpps = filteredOpportunities.filter(o => {
+      const status = (o.details?.status_label || o.status_label || '').toLowerCase();
+      return status === 'sent to customer';
+    });
+    const openOpportunities = [...prospectingOpps, ...sentOpps];
+
+    const sumProjectValue = (list: typeof filteredProjects) =>
+      list.reduce((sum, p) => sum + Number(projectCostsSummaryTotalsMap.get(p.id) || 0), 0);
+    const sumOppValue = (list: typeof filteredOpportunities) =>
+      list.reduce((sum, o) => sum + Number(opportunityProposalTotalsMap.get(o.id) || 0), 0);
+
+    return {
+      closed: { count: finishedProjects.length, value: sumProjectValue(finishedProjects) },
+      pipeline: { count: openOpportunities.length, value: sumOppValue(openOpportunities) },
+      sent: { count: sentOpps.length, value: sumOppValue(sentOpps) },
+      prospecting: { count: prospectingOpps.length, value: sumOppValue(prospectingOpps) },
+      inProgress: { count: activeProjects.length, value: sumProjectValue(activeProjects) },
+      onHold: { count: onHoldProjects.length, value: sumProjectValue(onHoldProjects) },
+    };
+  }, [filteredProjects, filteredOpportunities, projectCostsSummaryTotalsMap, opportunityProposalTotalsMap]);
+  
+  // Calculate status breakdowns
+  const oppStatusBreakdown = useMemo(() => {
+    const breakdown: Record<string, { count: number; value: number }> = {};
+    filteredOpportunities.forEach(opp => {
+      const status = (opp.details?.status_label || opp.status_label || 'Unknown').trim();
+      if (!breakdown[status]) {
+        breakdown[status] = { count: 0, value: 0 };
+      }
+      breakdown[status].count++;
+      // Use proposal totals map instead of resolveEntityValue
+      const val = Number(opportunityProposalTotalsMap.get(opp.id) || 0);
+      if (val > 0) breakdown[status].value += val;
+    });
+    return breakdown;
+  }, [filteredOpportunities, opportunityProposalTotalsMap]);
+  
+  const projStatusBreakdown = useMemo(() => {
+    const breakdown: Record<string, { count: number; value: number }> = {};
+    filteredProjects.forEach(proj => {
+      const status = (proj.details?.status_label || proj.status_label || 'Unknown').trim();
+      if (!breakdown[status]) {
+        breakdown[status] = { count: 0, value: 0 };
+      }
+      breakdown[status].count++;
+      // Use proposal totals map instead of resolveEntityValue
+      const val = Number(projectCostsSummaryTotalsMap.get(proj.id) || 0);
+      if (val > 0) breakdown[status].value += val;
+    });
+    return breakdown;
+  }, [filteredProjects, projectCostsSummaryTotalsMap]);
+  
+  // Calculate insights
+  const insights = useMemo(() => {
+    // Converted Projects: lifetime metric (not filtered by date range)
+    // Count all projects with status "In Progress", "On Hold", or "Finished"
+    const convertedProjects = (projects || []).filter(p => {
+      const status = (p.status_label || '').trim().toLowerCase();
+      return status === 'in progress' || status === 'on hold' || status === 'finished';
+    }).length;
+    
+    // Largest Deal: use the same source as charts (projectCostsSummaryTotalsMap)
+    const projectValues = (projects || []).map(p => {
+      return Number(projectCostsSummaryTotalsMap.get(p.id) || 0);
+    }).filter(v => v > 0);
+    const largestDeal = projectValues.length > 0 ? Math.max(...projectValues) : 0;
+    
+    const allDates = [
+      ...filteredProjects.map(p => p.created_at || p.details?.created_at),
+      ...filteredOpportunities.map(o => o.created_at || o.details?.created_at),
+    ].filter(Boolean) as string[];
+    const lastActivity = allDates.length > 0 
+      ? new Date(Math.max(...allDates.map(d => new Date(d).getTime())))
+      : null;
+    
+    const openOppsWithDates = filteredOpportunities.filter(o => {
+      const status = (o.details?.status_label || o.status_label || '').toLowerCase();
+      return status === 'prospecting' || status === 'sent to customer';
+    });
+    const avgPipelineAge = openOppsWithDates.length > 0
+      ? openOppsWithDates.reduce((sum, o) => {
+          const created = o.created_at || o.details?.created_at;
+          if (!created) return sum;
+          const days = Math.floor((Date.now() - new Date(created).getTime()) / (1000 * 60 * 60 * 24));
+          return sum + days;
+        }, 0) / openOppsWithDates.length
+      : 0;
+    
+    const totalProjects = filteredProjects.length;
+    const holdRate = totalProjects > 0 ? (kpis.onHold.count / totalProjects) * 100 : 0;
+    
+    return {
+      convertedProjects,
+      largestDeal,
+      lastActivity,
+      avgPipelineAge: Math.round(avgPipelineAge),
+      holdRate,
+    };
+  }, [projects, filteredProjects, filteredOpportunities, kpis.onHold.count, projectCostsSummaryTotalsMap]);
+  
+  // Generate recent activity
+  const recentActivity = useMemo(() => {
+    const events: Array<{ type: string; label: string; date: string; id: string }> = [];
+    
+    filteredProjects.forEach(p => {
+      const created = p.created_at || p.details?.created_at;
+      if (created) {
+        events.push({
+          type: 'project_created',
+          label: `Project "${p.name || p.code || 'Untitled'}" created`,
+          date: created,
+          id: p.id,
+        });
+      }
+      const status = (p.details?.status_label || p.status_label || '').toLowerCase();
+      const statusChanged = p.details?.status_changed_at;
+      if (status === 'finished' && statusChanged) {
+        events.push({
+          type: 'project_finished',
+          label: `Project "${p.name || p.code || 'Untitled'}" finished`,
+          date: statusChanged,
+          id: p.id,
+        });
+      }
+    });
+    
+    filteredOpportunities.forEach(o => {
+      const created = o.created_at || o.details?.created_at;
+      if (created) {
+        events.push({
+          type: 'opportunity_created',
+          label: `Opportunity "${o.name || o.code || 'Untitled'}" created`,
+          date: created,
+          id: o.id,
+        });
+      }
+      const status = (o.details?.status_label || o.status_label || '').toLowerCase();
+      const statusChanged = o.details?.status_changed_at;
+      if (status === 'sent to customer' && statusChanged) {
+        events.push({
+          type: 'opportunity_sent',
+          label: `Opportunity "${o.name || o.code || 'Untitled'}" sent to customer`,
+          date: statusChanged,
+          id: o.id,
+        });
+      } else if (status === 'refused' && statusChanged) {
+        events.push({
+          type: 'opportunity_refused',
+          label: `Opportunity "${o.name || o.code || 'Untitled'}" refused`,
+          date: statusChanged,
+          id: o.id,
+        });
+      }
+    });
+    
+    return events
+      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+      .slice(0, 8);
+  }, [filteredProjects, filteredOpportunities]);
+  
+  // Calculate value over time (monthly/quarterly series) with status breakdown
+  const valueOverTime = useMemo(() => {
+    const mode = globalDisplayMode;
+    const periods: Record<string, { 
+      closed: number; 
+      pipeline: number;
+      closedByStatus: Record<string, number>;
+      pipelineByStatus: Record<string, number>;
+      closedCount?: number;  // For quantity mode
+      pipelineCount?: number; // For quantity mode
+    }> = {};
+    const now = new Date();
+    const startDate = globalDateRange.date_from ? new Date(globalDateRange.date_from) : new Date(now.getFullYear(), now.getMonth() - 11, 1);
+    const endDate = globalDateRange.date_to ? new Date(globalDateRange.date_to) : now;
+    
+    // Determine if we should use quarters (if range > 14 months)
+    const monthsDiff = (endDate.getFullYear() - startDate.getFullYear()) * 12 + (endDate.getMonth() - startDate.getMonth());
+    const useQuarters = monthsDiff > 14;
+    
+    // Initialize periods
+    const current = new Date(startDate);
+    while (current <= endDate) {
+      let key: string;
+      if (useQuarters) {
+        const quarter = Math.floor(current.getMonth() / 3) + 1;
+        key = `Q${quarter} ${current.getFullYear()}`;
+        // Move to next quarter
+        current.setMonth(Math.floor(current.getMonth() / 3) * 3 + 3);
+      } else {
+        key = `${current.getFullYear()}-${String(current.getMonth() + 1).padStart(2, '0')}`;
+        current.setMonth(current.getMonth() + 1);
+      }
+      if (!periods[key]) {
+        periods[key] = { closed: 0, pipeline: 0, closedByStatus: {}, pipelineByStatus: {}, closedCount: 0, pipelineCount: 0 };
+      }
+    }
+    
+    // Aggregate based on mode
+    if (mode === 'value') {
+      // Aggregate Closed Value (ALL projects) - date: finished_at → end_date → created_at
+      // Value source: Costs Summary → Total (derived from proposals)
+      filteredProjects.forEach(p => {
+        const status = (p.details?.status_label || p.status_label || '').trim();
+        if (!status) return;
+
+        // For finished projects, use finished_at/end_date; for others, use created_at
+        let projectDate: string | undefined;
+        if (status.toLowerCase() === 'finished') {
+          projectDate = p.details?.finished_at || p.details?.date_end || p.date_end || p.created_at || p.details?.created_at;
+        } else {
+          projectDate = p.created_at || p.details?.created_at;
+        }
+        if (!projectDate) return;
+
+        const date = new Date(projectDate);
+        const dateOnly = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+        const startDateOnly = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate());
+        const endDateOnly = new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate());
+        if (dateOnly < startDateOnly || dateOnly > endDateOnly) return;
+
+        let key: string;
+        if (useQuarters) {
+          const quarter = Math.floor(date.getMonth() / 3) + 1;
+          key = `Q${quarter} ${date.getFullYear()}`;
+        } else {
+          key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+        }
+        if (!periods[key]) return;
+
+        const total = Number(projectCostsSummaryTotalsMap.get(p.id) || 0);
+        if (total > 0) {
+          periods[key].closed += total;
+          if (!periods[key].closedByStatus[status]) {
+            periods[key].closedByStatus[status] = 0;
+          }
+          periods[key].closedByStatus[status] += total;
+        }
+      });
+
+      // Aggregate Pipeline Value (ALL opportunities) - date: created_at
+      // Value source: Proposal Pricing "Final Total (with GST)" (derived from proposals)
+      filteredOpportunities.forEach(o => {
+        const status = (o.details?.status_label || o.status_label || '').trim();
+        if (!status) return;
+
+        const created = o.created_at || o.details?.created_at;
+        if (!created) return;
+
+        const date = new Date(created);
+        const dateOnly = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+        const startDateOnly = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate());
+        const endDateOnly = new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate());
+        if (dateOnly < startDateOnly || dateOnly > endDateOnly) return;
+
+        let key: string;
+        if (useQuarters) {
+          const quarter = Math.floor(date.getMonth() / 3) + 1;
+          key = `Q${quarter} ${date.getFullYear()}`;
+        } else {
+          key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+        }
+        if (!periods[key]) return;
+
+        const total = Number(opportunityProposalTotalsMap.get(o.id) || 0);
+        if (total > 0) {
+          periods[key].pipeline += total;
+          if (!periods[key].pipelineByStatus[status]) {
+            periods[key].pipelineByStatus[status] = 0;
+          }
+          periods[key].pipelineByStatus[status] += total;
+        }
+      });
+    } else {
+      // Quantity mode: count projects and opportunities
+      filteredProjects.forEach(p => {
+        const status = (p.details?.status_label || p.status_label || '').trim();
+        if (!status) return;
+
+        // For finished projects, use finished_at/end_date; for others, use created_at
+        let projectDate: string | undefined;
+        if (status.toLowerCase() === 'finished') {
+          projectDate = p.details?.finished_at || p.details?.date_end || p.date_end || p.created_at || p.details?.created_at;
+        } else {
+          projectDate = p.created_at || p.details?.created_at;
+        }
+        if (!projectDate) return;
+
+        const date = new Date(projectDate);
+        const dateOnly = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+        const startDateOnly = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate());
+        const endDateOnly = new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate());
+        if (dateOnly < startDateOnly || dateOnly > endDateOnly) return;
+
+        let key: string;
+        if (useQuarters) {
+          const quarter = Math.floor(date.getMonth() / 3) + 1;
+          key = `Q${quarter} ${date.getFullYear()}`;
+        } else {
+          key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+        }
+        if (!periods[key]) return;
+
+        periods[key].closedCount = (periods[key].closedCount || 0) + 1;
+        // Track by status for tooltip
+        if (status) {
+          if (!periods[key].closedByStatus[status]) {
+            periods[key].closedByStatus[status] = 0;
+          }
+          periods[key].closedByStatus[status] += 1;
+        }
+      });
+
+      filteredOpportunities.forEach(o => {
+        const status = (o.details?.status_label || o.status_label || '').trim();
+        if (!status) return;
+
+        const created = o.created_at || o.details?.created_at;
+        if (!created) return;
+
+        const date = new Date(created);
+        const dateOnly = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+        const startDateOnly = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate());
+        const endDateOnly = new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate());
+        if (dateOnly < startDateOnly || dateOnly > endDateOnly) return;
+
+        let key: string;
+        if (useQuarters) {
+          const quarter = Math.floor(date.getMonth() / 3) + 1;
+          key = `Q${quarter} ${date.getFullYear()}`;
+        } else {
+          key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+        }
+        if (!periods[key]) return;
+
+        periods[key].pipelineCount = (periods[key].pipelineCount || 0) + 1;
+        // Track by status for tooltip
+        if (status) {
+          if (!periods[key].pipelineByStatus[status]) {
+            periods[key].pipelineByStatus[status] = 0;
+          }
+          periods[key].pipelineByStatus[status] += 1;
+        }
+      });
+    }
+    
+    
+    const entries = Object.entries(periods)
+      .sort(([a], [b]) => {
+        // Sort by year and month/quarter
+        const aMatch = a.match(/(\d{4})/);
+        const bMatch = b.match(/(\d{4})/);
+        if (!aMatch || !bMatch) return a.localeCompare(b);
+        const aYear = parseInt(aMatch[1]);
+        const bYear = parseInt(bMatch[1]);
+        if (aYear !== bYear) return aYear - bYear;
+        // If same year, compare by quarter/month
+        const aQ = a.match(/Q(\d)/);
+        const bQ = b.match(/Q(\d)/);
+        if (aQ && bQ) return parseInt(aQ[1]) - parseInt(bQ[1]);
+        const aMonth = a.match(/-(\d{2})/);
+        const bMonth = b.match(/-(\d{2})/);
+        if (aMonth && bMonth) return parseInt(aMonth[1]) - parseInt(bMonth[1]);
+        return a.localeCompare(b);
+      });
+    
+    return entries;
+  }, [filteredProjects, filteredOpportunities, globalDateRange, projectCostsSummaryTotalsMap, opportunityProposalTotalsMap, globalDisplayMode]);
+  
+  
+  // Build funnel metrics (event-based with conversion tracking)
+  const buildFunnelMetrics = useMemo(() => {
+    const mode = globalDisplayMode;
+    const dateFrom = globalDateRange.date_from;
+    const dateTo = globalDateRange.date_to;
+    
+    // Helper to check if date is in range
+    const isInRange = (dateStr?: string): boolean => {
+      if (!dateStr) return false;
+      if (!dateFrom && !dateTo) return true;
+      const itemDate = new Date(dateStr).toISOString().split('T')[0];
+      if (dateFrom && itemDate < dateFrom) return false;
+      if (dateTo && itemDate > dateTo) return false;
+      return true;
+    };
+    
+    // Prospecting: opportunities created in range (all opportunities created, regardless of current status)
+    const prospectingOpps = filteredOpportunities.filter(o => {
+      const created = o.created_at || o.details?.created_at;
+      return isInRange(created);
+    });
+    
+    // Sent to Customer: opportunities that reached this status in range
+    const sentOpps = filteredOpportunities.filter(o => {
+      const status = (o.details?.status_label || o.status_label || '').toLowerCase();
+      if (status !== 'sent to customer') return false;
+      // Prefer sent_at/status_changed_at, fallback to updated_at, then created_at
+      const sentDate = o.details?.sent_at || o.details?.status_changed_at || o.details?.updated_at || o.created_at || o.details?.created_at;
+      return isInRange(sentDate);
+    });
+    
+    // Refused: opportunities refused in range
+    const refusedOpps = filteredOpportunities.filter(o => {
+      const status = (o.details?.status_label || o.status_label || '').toLowerCase();
+      if (status !== 'refused') return false;
+      const refusedDate = o.details?.refused_at || o.details?.status_changed_at || o.details?.updated_at || o.created_at || o.details?.created_at;
+      return isInRange(refusedDate);
+    });
+    
+    // Converted/Won: projects with status In Progress, On Hold, or Finished in range
+    const convertedProjects = filteredProjects.filter(p => {
+      const status = (p.details?.status_label || p.status_label || '').trim().toLowerCase();
+      const isWonStatus = status === 'in progress' || status === 'on hold' || status === 'finished';
+      if (!isWonStatus) return false;
+      // Use created_at or status_changed_at to check if in range
+      const dateToCheck = p.details?.status_changed_at || p.created_at || p.details?.created_at;
+      return isInRange(dateToCheck);
+    });
+    
+    // Conversion tracking is always available since we use project status
+    const hasConversionTracking = true;
+    
+    // Calculate metrics based on mode
+    let prospectingValue: number;
+    let sentValue: number;
+    let refusedValue: number;
+    let convertedValue: number;
+    
+    if (mode === 'quantity') {
+      prospectingValue = prospectingOpps.length;
+      sentValue = sentOpps.length;
+      refusedValue = refusedOpps.length;
+      convertedValue = convertedProjects.length;
+    } else {
+      // Value mode: use proposal totals maps
+      prospectingValue = prospectingOpps.reduce((sum, o) => {
+        const val = Number(opportunityProposalTotalsMap.get(o.id) || 0);
+        return sum + val;
+      }, 0);
+      sentValue = sentOpps.reduce((sum, o) => {
+        const val = Number(opportunityProposalTotalsMap.get(o.id) || 0);
+        return sum + val;
+      }, 0);
+      refusedValue = refusedOpps.reduce((sum, o) => {
+        const val = Number(opportunityProposalTotalsMap.get(o.id) || 0);
+        return sum + val;
+      }, 0);
+      convertedValue = convertedProjects.reduce((sum, p) => {
+        const val = Number(projectCostsSummaryTotalsMap.get(p.id) || 0);
+        return sum + val;
+      }, 0);
+    }
+    
+    // Calculate percentages (relative to previous stage)
+    const sentPct = prospectingValue > 0 ? (sentValue / prospectingValue) * 100 : null;
+    // Refused can come from either Prospecting or Sent, prefer Sent if available
+    const refusedPct = sentValue > 0 ? (refusedValue / sentValue) * 100 : (prospectingValue > 0 ? (refusedValue / prospectingValue) * 100 : null);
+    // Converted comes from Sent stage
+    const convertedPct = sentValue > 0 ? (convertedValue / sentValue) * 100 : null;
+    
+    return {
+      prospecting: prospectingValue,
+      sent: sentValue,
+      refused: refusedValue,
+      converted: convertedValue,
+      sentPct,
+      refusedPct,
+      convertedPct,
+      hasConversionTracking,
+    };
+  }, [filteredOpportunities, filteredProjects, globalDisplayMode, globalDateRange, opportunityProposalTotalsMap, projectCostsSummaryTotalsMap]);
+  
+  // Build project donut data (respects global mode)
+  const buildProjectDonutData = useMemo(() => {
+    const mode = globalDisplayMode;
+    const statusCounts: Record<string, { count: number; value: number }> = {};
+    
+    filteredProjects.forEach(p => {
+      const statusRaw = (p.details?.status_label || p.status_label || '').trim();
+      if (!statusRaw) return;
+      
+      // Normalize status to lowercase for comparison, but keep original for display
+      const statusLower = statusRaw.toLowerCase();
+      const statusDisplay = statusRaw; // Keep original case for display
+      
+      // Map normalized status to display name
+      const statusMap: Record<string, string> = {
+        'in progress': 'In Progress',
+        'on hold': 'On Hold',
+        'finished': 'Finished',
+      };
+      const displayStatus = statusMap[statusLower] || statusDisplay;
+      
+      if (!statusCounts[displayStatus]) {
+        statusCounts[displayStatus] = { count: 0, value: 0 };
+      }
+      statusCounts[displayStatus].count++;
+      // Use proposal totals map instead of resolveEntityValue
+      const val = Number(projectCostsSummaryTotalsMap.get(p.id) || 0);
+      if (val > 0) statusCounts[displayStatus].value += val;
+    });
+    
+    // Only include official statuses
+    const officialStatuses = ['In Progress', 'On Hold', 'Finished'];
+    const result: Array<{ status: string; count: number; value: number }> = [];
+    officialStatuses.forEach(s => {
+      if (statusCounts[s]) {
+        result.push({ status: s, count: statusCounts[s].count, value: statusCounts[s].value });
+      }
+    });
+    
+    return result.sort((a, b) => {
+      if (mode === 'value') {
+        return b.value - a.value;
+      }
+      return b.count - a.count;
+    });
+  }, [filteredProjects, globalDisplayMode, projectCostsSummaryTotalsMap]);
+  
   // Determine available tabs based on permissions
-  // Order: Overview → General → Contacts → Files → Sites → Opportunities → Projects → Quotes
+  // Order: Overview → General → Contacts → Files → Sites → Opportunities → Projects
   const availableTabs = useMemo(() => {
     const tabs: string[] = [];
     
@@ -126,13 +1245,8 @@ export default function CustomerDetail(){
       tabs.push('sites', 'opportunities', 'projects');
     }
     
-    // Quotes (requires View Quotations)
-    if (hasQuotationsRead) {
-      tabs.push('quotes');
-    }
-    
     return tabs;
-  }, [hasCustomersRead, hasProjectsRead, hasFilesRead, hasQuotationsRead]);
+  }, [hasCustomersRead, hasProjectsRead, hasFilesRead]);
   
   // Redirect to first available tab if current tab is not available
   useEffect(() => {
@@ -295,9 +1409,24 @@ export default function CustomerDetail(){
                 )}
               </div>
               <div className="mt-auto flex gap-2">
-                {availableTabs.map(k=> (
-                  <button key={k} onClick={()=>setTab(k as typeof tab)} className={`px-4 py-2 rounded-lg border ${tab===k?'bg-black/30 border-white/30 text-white':'bg-white text-black'}`}>{k[0].toUpperCase()+k.slice(1)}</button>
-                ))}
+                {availableTabs.map(k=> {
+                  let count: number | undefined;
+                  if (k === 'projects') count = projects?.length;
+                  else if (k === 'opportunities') count = opportunities?.length;
+                  else if (k === 'sites') count = sites?.length;
+                  else if (k === 'contacts') count = contacts?.length;
+                  else if (k === 'files') count = files?.length;
+                  return (
+                    <button key={k} onClick={()=>setTab(k as typeof tab)} className={`px-4 py-2 rounded-lg border ${tab===k?'bg-black/30 border-white/30 text-white':'bg-white text-black'} flex items-center gap-2`}>
+                      <span>{k[0].toUpperCase()+k.slice(1)}</span>
+                      {count !== undefined && count > 0 && (
+                        <span className={`text-xs px-1.5 py-0.5 rounded-full ${tab===k?'bg-white/20 text-white':'bg-gray-100 text-gray-600'}`}>
+                          {count}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
               </div>
             </div>
           </div>
@@ -306,61 +1435,689 @@ export default function CustomerDetail(){
           {isLoading? <div className="h-24 animate-pulse bg-gray-100 rounded"/> : (
             <>
               {tab==='overview' && (
-                <div className="space-y-6">
-                  <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
-                    <div className="rounded-xl border bg-white p-4">
-                      <h4 className="font-semibold mb-2">Client</h4>
-                      <div className="text-sm text-gray-700">{c.display_name||c.name}</div>
-                      <div className="text-sm text-gray-500">{[c.address_line1, c.city, c.province, c.country].filter(Boolean).join(', ')}</div>
-                    </div>
-                    <div className="rounded-xl border bg-white p-4">
-                      <h4 className="font-semibold mb-2">Primary Contact</h4>
-                      <div className="text-sm text-gray-700">{primaryContact?.name||'-'}</div>
-                      <div className="text-sm text-gray-500">{primaryContact?.email||''} {primaryContact?.phone? `· ${primaryContact.phone}`:''}</div>
-                    </div>
-                    <div className="rounded-xl border bg-white p-4">
-                      <h4 className="font-semibold mb-2">Overview</h4>
-                      <div className="text-sm text-gray-700">Sites: {sites?.length||0}</div>
-                      <div className="text-sm text-gray-700">Projects: {projects?.length||0}</div>
-                    </div>
-                  </div>
-                  <div>
-                    <div className="flex items-center justify-between mb-2"><h3 className="font-semibold">Recent Projects</h3>{hasProjectsRead && <button onClick={()=>setTab('projects')} className="text-sm px-3 py-1.5 rounded bg-brand-red text-white">View all</button>}</div>
-                    <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
-                      {(projects||[]).slice(0,4).map(p=> {
-                        const pfiles = (files||[]).filter(f=> String((f as any).project_id||'')===String(p.id));
-                        const cover = pfiles.find(f=> String(f.category||'')==='project-cover-derived') || pfiles.find(f=> (f.is_image===true) || String(f.content_type||'').startsWith('image/'));
-                        const src = cover? `/files/${cover.file_object_id}/thumbnail?w=400` : '/ui/assets/login/logo-light.svg';
-                        return (
-                          <ProjectMiniCard key={p.id} project={p as any} coverSrc={src} clientName={c.display_name||c.name||''} />
-                        );
-                      })}
-                      {(!(projects||[]).length) && <div className="text-sm text-gray-600">No projects</div>}
-                    </div>
-                  </div>
-                  <div>
-                    <div className="flex items-center justify-between mb-2"><h3 className="font-semibold">Recent Sites</h3>{hasProjectsRead && <button onClick={()=>setTab('sites')} className="text-sm px-3 py-1.5 rounded bg-brand-red text-white">View all</button>}</div>
-                    <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
-                      {(sites||[]).slice(0,4).map(s=>{
-                        const filesForSite = (fileBySite[s.id||'']||[]);
-                        const cover = filesForSite.find(f=> String(f.category||'')==='site-cover-derived') || filesForSite.find(f=> (f.is_image===true) || String(f.content_type||'').startsWith('image/'));
-                        const src = cover? `/files/${cover.file_object_id}/thumbnail?w=600` : '/ui/assets/login/logo-light.svg';
-                        return (
-                          <Link to={`/customers/${encodeURIComponent(String(id||''))}/sites/${encodeURIComponent(String(s.id||''))}`} state={{ backgroundLocation: location }} key={String(s.id)} className="group rounded-xl border overflow-hidden bg-white block">
-                            <div className="aspect-square w-full bg-gray-100">
-                              <img className="w-full h-full object-cover" src={src} />
+                <LoadingOverlay
+                  isLoading={
+                    projectDetailsQueries.isLoading ||
+                    opportunityDetailsQueries.isLoading ||
+                    projectCostsSummaryTotalsQuery.isLoading ||
+                    opportunityProposalTotalsQuery.isLoading
+                  }
+                  text="Loading dashboard data..."
+                >
+                  <div className="space-y-6">
+                    {/* Overview Controls Bar */}
+                    <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-3 flex items-center justify-end">
+                      <div className="flex items-center gap-2">
+                        <select
+                          value={globalDateFilter}
+                          onChange={(e) => {
+                            const value = e.target.value as DateFilterType;
+                            setGlobalDateFilter(value);
+                            if (value === 'custom') {
+                              setGlobalDateModalOpen(true);
+                            }
+                          }}
+                          className="border border-gray-300 rounded px-2 py-1.5 text-xs"
+                        >
+                          <option value="all">All time</option>
+                          <option value="last_year">Last 12 months</option>
+                          <option value="last_6_months">Last 6 months</option>
+                          <option value="last_3_months">Last 3 months</option>
+                          <option value="last_month">Last month</option>
+                          <option value="custom">Custom</option>
+                        </select>
+                        {globalDateFilter === 'custom' && globalDateCustomStart && globalDateCustomEnd && (
+                          <div className="relative group">
+                            <button
+                              onClick={() => setGlobalDateModalOpen(true)}
+                              className="text-gray-500 hover:text-[#7f1010] transition-colors p-1"
+                              title={`${formatDateForDisplay(globalDateCustomStart)} - ${formatDateForDisplay(globalDateCustomEnd)}`}
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                              </svg>
+                            </button>
+                            <div className="absolute right-0 bottom-full mb-2 px-2 py-1.5 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10 whitespace-nowrap">
+                              {formatDateForDisplay(globalDateCustomStart)} - {formatDateForDisplay(globalDateCustomEnd)}
+                              <div className="absolute -bottom-1 right-3 w-2 h-2 bg-gray-900 rotate-45"></div>
                             </div>
-                            <div className="p-2">
-                              <div className="font-semibold text-sm group-hover:underline truncate">{s.site_name||'Site'}</div>
-                              <div className="text-xs text-gray-600 truncate">{s.site_address_line1||''}</div>
-                            </div>
-                          </Link>
-                        );
-                      })}
-                      {(!(sites||[]).length) && <div className="text-sm text-gray-600">No sites</div>}
+                          </div>
+                        )}
+                        <select
+                          value={globalDisplayMode}
+                          onChange={(e) => setGlobalDisplayMode(e.target.value as 'quantity' | 'value')}
+                          className="border border-gray-300 rounded px-2 py-1.5 text-xs"
+                        >
+                          <option value="quantity">Quantity</option>
+                          <option value="value">Value</option>
+                        </select>
+                      </div>
                     </div>
+
+                    {/* KPI Cards — 6 metrics, Quantity/Value toggle */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      <div className="rounded-lg border border-gray-200 bg-white shadow-sm p-4 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:shadow-md">
+                        <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Closed</div>
+                        <div className="text-2xl font-bold text-gray-900">
+                          {globalDisplayMode === 'value' ? formatCurrency(kpis.closed.value) : <CountUp value={kpis.closed.count} enabled={hasAnimated} />}
+                        </div>
+                        <div className="text-xs text-gray-500 mt-1">{globalDisplayMode === 'value' ? 'Closed value' : 'Finished projects'}</div>
+                      </div>
+                      <div className="rounded-lg border border-gray-200 bg-white shadow-sm p-4 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:shadow-md">
+                        <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Pipeline</div>
+                        <div className="text-2xl font-bold text-gray-900">
+                          {globalDisplayMode === 'value' ? formatCurrency(kpis.pipeline.value) : <CountUp value={kpis.pipeline.count} enabled={hasAnimated} />}
+                        </div>
+                        <div className="text-xs text-gray-500 mt-1">{globalDisplayMode === 'value' ? 'Pipeline value' : 'Open opportunities'}</div>
+                      </div>
+                      <div className="rounded-lg border border-gray-200 bg-white shadow-sm p-4 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:shadow-md">
+                        <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Sent</div>
+                        <div className="text-2xl font-bold text-gray-900">
+                          {globalDisplayMode === 'value' ? formatCurrency(kpis.sent.value) : <CountUp value={kpis.sent.count} enabled={hasAnimated} />}
+                        </div>
+                        <div className="text-xs text-gray-500 mt-1">{globalDisplayMode === 'value' ? 'Sent to Customer value' : 'Sent to Customer'}</div>
+                      </div>
+                      <div className="rounded-lg border border-gray-200 bg-white shadow-sm p-4 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:shadow-md">
+                        <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Prospecting</div>
+                        <div className="text-2xl font-bold text-gray-900">
+                          {globalDisplayMode === 'value' ? formatCurrency(kpis.prospecting.value) : <CountUp value={kpis.prospecting.count} enabled={hasAnimated} />}
+                        </div>
+                        <div className="text-xs text-gray-500 mt-1">{globalDisplayMode === 'value' ? 'Prospecting value' : 'Prospecting'}</div>
+                      </div>
+                      <div className="rounded-lg border border-gray-200 bg-white shadow-sm p-4 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:shadow-md">
+                        <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">In Progress</div>
+                        <div className="text-2xl font-bold text-gray-900">
+                          {globalDisplayMode === 'value' ? formatCurrency(kpis.inProgress.value) : <CountUp value={kpis.inProgress.count} enabled={hasAnimated} />}
+                        </div>
+                        <div className="text-xs text-gray-500 mt-1">{globalDisplayMode === 'value' ? 'In progress value' : 'In progress projects'}</div>
+                      </div>
+                      <div className="rounded-lg border border-gray-200 bg-white shadow-sm p-4 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:shadow-md">
+                        <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">On Hold</div>
+                        <div className="text-2xl font-bold text-gray-900">
+                          {globalDisplayMode === 'value' ? formatCurrency(kpis.onHold.value) : <CountUp value={kpis.onHold.count} enabled={hasAnimated} />}
+                        </div>
+                        <div className="text-xs text-gray-500 mt-1">{globalDisplayMode === 'value' ? 'On hold value' : 'On hold projects'}</div>
+                      </div>
+                    </div>
+
+                    {/* Charts Row 1 */}
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                      {/* Opportunities by Status */}
+                      <div className="rounded-lg border border-gray-200 bg-white shadow-sm p-4 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:shadow-md">
+                        <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-3">Opportunities by Status</div>
+                        <div className="space-y-2">
+                          {Object.entries(oppStatusBreakdown).length > 0 ? (
+                            (() => {
+                              const entries = Object.entries(oppStatusBreakdown);
+                              const maxValue = globalDisplayMode === 'value'
+                                ? Math.max(...entries.map(([, data]) => data.value), 1)
+                                : Math.max(...entries.map(([, data]) => data.count), 1);
+                              const sorted = entries.sort(([, a], [, b]) => 
+                                globalDisplayMode === 'value' ? b.value - a.value : b.count - a.count
+                              );
+                              return sorted.map(([status, data]) => {
+                                const value = globalDisplayMode === 'value' ? data.value : data.count;
+                                const percentage = maxValue > 0 ? (value / maxValue) * 100 : 0;
+                                return (
+                                  <div key={status} className="flex items-center gap-2">
+                                    <span className="text-xs text-gray-500 truncate w-32">{status}</span>
+                                    <div className="flex-1 bg-gray-100 rounded-full h-3 min-w-0 relative">
+                                      <div
+                                        className="bg-gradient-to-r from-[#7f1010] to-[#d11616] rounded-full h-3 transition-all duration-500 ease-out"
+                                        style={{ width: `${percentage}%` }}
+                                      />
+                                    </div>
+                                    <span className="text-xs font-bold text-gray-900 whitespace-nowrap">
+                                      {globalDisplayMode === 'value' ? formatCurrency(value) : <CountUp value={value} enabled={hasAnimated} />}
+                                    </span>
+                                  </div>
+                                );
+                              });
+                            })()
+                          ) : (
+                            <div className="text-xs text-gray-400">No status data</div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Projects by Status */}
+                      <div className="rounded-lg border border-gray-200 bg-white shadow-sm p-4 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:shadow-md">
+                        <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-3">Projects by Status</div>
+                        <div className="space-y-2">
+                          {Object.entries(projStatusBreakdown).length > 0 ? (
+                            (() => {
+                              const entries = Object.entries(projStatusBreakdown);
+                              const maxValue = globalDisplayMode === 'value'
+                                ? Math.max(...entries.map(([, data]) => data.value), 1)
+                                : Math.max(...entries.map(([, data]) => data.count), 1);
+                              const sorted = entries.sort(([, a], [, b]) => 
+                                globalDisplayMode === 'value' ? b.value - a.value : b.count - a.count
+                              );
+                              return sorted.map(([status, data]) => {
+                                const value = globalDisplayMode === 'value' ? data.value : data.count;
+                                const percentage = maxValue > 0 ? (value / maxValue) * 100 : 0;
+                                return (
+                                  <div key={status} className="flex items-center gap-2">
+                                    <span className="text-xs text-gray-500 truncate w-32">{status}</span>
+                                    <div className="flex-1 bg-gray-100 rounded-full h-3 min-w-0 relative">
+                                      <div
+                                        className="bg-gradient-to-r from-[#0b1739] to-[#1d4ed8] rounded-full h-3 transition-all duration-500 ease-out"
+                                        style={{ width: `${percentage}%` }}
+                                      />
+                                    </div>
+                                    <span className="text-xs font-bold text-gray-900 whitespace-nowrap">
+                                      {globalDisplayMode === 'value' ? formatCurrency(value) : <CountUp value={value} enabled={hasAnimated} />}
+                                    </span>
+                                  </div>
+                                );
+                              });
+                            })()
+                          ) : (
+                            <div className="text-xs text-gray-400">No status data</div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Charts Row 2 */}
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                      {/* Revenue & Pipeline Over Time - Line Chart */}
+                      <div className="rounded-lg border border-gray-200 bg-white shadow-sm p-4 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:shadow-md">
+                        <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-3">
+                          {globalDisplayMode === 'value' 
+                            ? 'Revenue & Pipeline Over Time' 
+                            : 'Projects & Opportunities Over Time'}
+                        </div>
+                        {(() => {
+                          const mode = globalDisplayMode;
+                          const totalClosed = valueOverTime.reduce((sum, [, d]) => 
+                            sum + (mode === 'value' ? d.closed : (d.closedCount || 0)), 0
+                          );
+                          const totalPipeline = valueOverTime.reduce((sum, [, d]) => 
+                            sum + (mode === 'value' ? d.pipeline : (d.pipelineCount || 0)), 0
+                          );
+                          if (totalClosed === 0 && totalPipeline === 0) {
+                            return (
+                              <div className="h-[200px] flex items-center justify-center">
+                                <div className="text-xs text-gray-400 text-center">
+                                  <div>No {mode === 'value' ? 'financial' : 'activity'} in this period</div>
+                                </div>
+                              </div>
+                            );
+                          }
+                          
+                          const maxValue = Math.max(...valueOverTime.map(([, d]) => 
+                            Math.max(
+                              mode === 'value' ? d.closed : (d.closedCount || 0),
+                              mode === 'value' ? d.pipeline : (d.pipelineCount || 0)
+                            )
+                          ), 1);
+                          const chartWidth = 600;
+                          const chartHeight = 200;
+                          const padding = { top: 20, right: 40, bottom: 50, left: 60 };
+                          const plotWidth = chartWidth - padding.left - padding.right;
+                          const plotHeight = chartHeight - padding.top - padding.bottom;
+                          const pointCount = valueOverTime.length;
+                          
+                          // Generate line paths
+                          const closedPoints: Array<{ x: number; y: number; value: number; period: string; closedByStatus: Record<string, number> }> = [];
+                          const pipelinePoints: Array<{ x: number; y: number; value: number; period: string; pipelineByStatus: Record<string, number> }> = [];
+                          
+                          valueOverTime.forEach(([period, data], idx) => {
+                            const x = pointCount > 1 
+                              ? padding.left + (idx / (pointCount - 1)) * plotWidth
+                              : padding.left + plotWidth / 2;
+                            const closedValue = mode === 'value' ? data.closed : (data.closedCount || 0);
+                            const pipelineValue = mode === 'value' ? data.pipeline : (data.pipelineCount || 0);
+                            const closedY = padding.top + plotHeight - (closedValue / maxValue) * plotHeight;
+                            const pipelineY = padding.top + plotHeight - (pipelineValue / maxValue) * plotHeight;
+                            closedPoints.push({ 
+                              x, 
+                              y: closedY, 
+                              value: closedValue, 
+                              period,
+                              closedByStatus: data.closedByStatus || {}
+                            });
+                            pipelinePoints.push({ 
+                              x, 
+                              y: pipelineY, 
+                              value: pipelineValue, 
+                              period,
+                              pipelineByStatus: data.pipelineByStatus || {}
+                            });
+                          });
+                          
+                          const closedPath = closedPoints.length > 0 
+                            ? `M ${closedPoints.map(p => `${p.x},${p.y}`).join(' L ')}`
+                            : '';
+                          const pipelinePath = pipelinePoints.length > 0
+                            ? `M ${pipelinePoints.map(p => `${p.x},${p.y}`).join(' L ')}`
+                            : '';
+                          
+                          // Format labels
+                          const formatLabel = (period: string): string => {
+                            if (period.includes('Q')) {
+                              return period;
+                            }
+                            const match = period.match(/(\d{4})-(\d{2})/);
+                            if (match) {
+                              const [, year, month] = match;
+                              const date = new Date(parseInt(year), parseInt(month) - 1);
+                              return date.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
+                            }
+                            return period;
+                          };
+                          
+                          return (
+                            <div className="relative">
+                              <svg width="100%" height={chartHeight} viewBox={`0 0 ${chartWidth} ${chartHeight}`} preserveAspectRatio="xMidYMid meet" className="overflow-visible">
+                                {/* Grid lines (very light) */}
+                                {[0, 0.25, 0.5, 0.75, 1].map((ratio, i) => (
+                                  <line
+                                    key={i}
+                                    x1={padding.left}
+                                    y1={padding.top + ratio * plotHeight}
+                                    x2={padding.left + plotWidth}
+                                    y2={padding.top + ratio * plotHeight}
+                                    stroke="#f3f4f6"
+                                    strokeWidth="1"
+                                  />
+                                ))}
+                                
+                                {/* Y-axis labels */}
+                                {[0, 0.5, 1].map((ratio, i) => {
+                                  const value = maxValue * (1 - ratio);
+                                  return (
+                                    <text
+                                      key={i}
+                                      x={padding.left - 8}
+                                      y={padding.top + ratio * plotHeight + 4}
+                                      textAnchor="end"
+                                      className="text-[10px] fill-gray-500"
+                                    >
+                                      {mode === 'value' ? formatCurrency(value) : Math.round(value)}
+                                    </text>
+                                  );
+                                })}
+                                
+                                {/* Lines */}
+                                {closedPath && (
+                                  <path
+                                    d={closedPath}
+                                    fill="none"
+                                    stroke="#0b1739"
+                                    strokeWidth="2.5"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                  />
+                                )}
+                                {pipelinePath && (
+                                  <path
+                                    d={pipelinePath}
+                                    fill="none"
+                                    stroke="#7f1010"
+                                    strokeWidth="2.5"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                  />
+                                )}
+                                
+                                {/* Dots with tooltip areas */}
+                                {closedPoints.map((point, idx) => {
+                                  const statusEntries = Object.entries(point.closedByStatus || {})
+                                    .filter(([_, val]) => Number(val) > 0)
+                                    .sort(([_, a], [__, b]) => Number(b) - Number(a));
+                                  const hasBreakdown = statusEntries.length > 0;
+                                  const label = mode === 'value' ? 'Closed' : 'Projects';
+                                  const displayValue = mode === 'value' ? formatCurrency(point.value) : point.value;
+                                  let tooltipText = `${formatLabel(point.period)} - ${label}: ${displayValue}`;
+                                  if (hasBreakdown) {
+                                    tooltipText += '\n' + statusEntries.map(([status, val]) => {
+                                      const displayVal = mode === 'value' ? formatCurrency(Number(val)) : Number(val);
+                                      return `${status}: ${displayVal}`;
+                                    }).join('\n');
+                                  }
+                                  return (
+                                    <g key={`closed-${idx}`} className="group">
+                                      <circle
+                                        cx={point.x}
+                                        cy={point.y}
+                                        r="4"
+                                        fill="#0b1739"
+                                        className="hover:r-5 transition-all cursor-pointer"
+                                      />
+                                      <title>{tooltipText}</title>
+                                    </g>
+                                  );
+                                })}
+                                {pipelinePoints.map((point, idx) => {
+                                  const statusEntries = Object.entries(point.pipelineByStatus || {})
+                                    .filter(([_, val]) => Number(val) > 0)
+                                    .sort(([_, a], [__, b]) => Number(b) - Number(a));
+                                  const hasBreakdown = statusEntries.length > 0;
+                                  const label = mode === 'value' ? 'Pipeline' : 'Opportunities';
+                                  const displayValue = mode === 'value' ? formatCurrency(point.value) : point.value;
+                                  let tooltipText = `${formatLabel(point.period)} - ${label}: ${displayValue}`;
+                                  if (hasBreakdown) {
+                                    tooltipText += '\n' + statusEntries.map(([status, val]) => {
+                                      const displayVal = mode === 'value' ? formatCurrency(Number(val)) : Number(val);
+                                      return `${status}: ${displayVal}`;
+                                    }).join('\n');
+                                  }
+                                  return (
+                                    <g key={`pipeline-${idx}`} className="group">
+                                      <circle
+                                        cx={point.x}
+                                        cy={point.y}
+                                        r="4"
+                                        fill="#7f1010"
+                                        className="hover:r-5 transition-all cursor-pointer"
+                                      />
+                                      <title>{tooltipText}</title>
+                                    </g>
+                                  );
+                                })}
+                                
+                                {/* X-axis labels */}
+                                {valueOverTime.map(([period], idx) => {
+                                  const x = pointCount > 1
+                                    ? padding.left + (idx / (pointCount - 1)) * plotWidth
+                                    : padding.left + plotWidth / 2;
+                                  return (
+                                    <text
+                                      key={idx}
+                                      x={x}
+                                      y={chartHeight - padding.bottom + 20}
+                                      textAnchor="middle"
+                                      className="text-[9px] fill-gray-600"
+                                    >
+                                      {formatLabel(period)}
+                                    </text>
+                                  );
+                                })}
+                              </svg>
+                              
+                              {/* Legend */}
+                              <div className="flex items-center gap-4 justify-center mt-3">
+                                <div className="flex items-center gap-1.5">
+                                  <div className="w-3 h-0.5 bg-[#0b1739]"></div>
+                                  <span className="text-xs text-gray-600">
+                                    {mode === 'value' ? 'Closed' : 'Projects'}
+                                  </span>
+                                </div>
+                                <div className="flex items-center gap-1.5">
+                                  <div className="w-3 h-0.5 bg-[#7f1010]"></div>
+                                  <span className="text-xs text-gray-600">
+                                    {mode === 'value' ? 'Pipeline' : 'Opportunities'}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })()}
+                      </div>
+
+                      {/* Customer Sales Funnel */}
+                      <div className="rounded-lg border border-gray-200 bg-white shadow-sm p-4 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:shadow-md">
+                        <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-3">Customer Sales Funnel</div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          {/* Left: Donut Chart - Projects by Status */}
+                          <div className="flex flex-col">
+                            <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2 text-center">Projects by Status</div>
+                            {buildProjectDonutData.length > 0 ? (
+                              (() => {
+                                const total = globalDisplayMode === 'value'
+                                  ? buildProjectDonutData.reduce((sum, item) => sum + item.value, 0)
+                                  : buildProjectDonutData.reduce((sum, item) => sum + item.count, 0);
+                                const colors = ['#0b1739', '#1d4ed8', '#0284c7'];
+                                const radius = 40;
+                                const innerRadius = 25;
+                                const centerX = 60;
+                                const centerY = 60;
+                                
+                                let currentAngle = 0;
+                                const slices = buildProjectDonutData.map((item, idx) => {
+                                  const metric = globalDisplayMode === 'value' ? item.value : item.count;
+                                  const percentage = total > 0 ? (metric / total) * 100 : 0;
+                                  const angle = (percentage / 100) * 360;
+                                  const startAngle = currentAngle;
+                                  const endAngle = currentAngle + angle;
+                                  currentAngle = endAngle;
+                                  return {
+                                    ...item,
+                                    metric,
+                                    percentage,
+                                    startAngle,
+                                    endAngle,
+                                    color: colors[idx % colors.length],
+                                  };
+                                });
+                                
+                                return (
+                                  <div className="w-full">
+                                    <svg width="120" height="120" viewBox="0 0 120 120" className="mx-auto">
+                                      {slices.map((slice, idx) => (
+                                        <path
+                                          key={slice.status}
+                                          d={createDonutSlice(slice.startAngle, slice.endAngle, innerRadius, radius, centerX, centerY)}
+                                          fill={slice.color}
+                                          className="hover:opacity-80 transition-opacity"
+                                          style={{
+                                            opacity: hasAnimated ? 1 : 0,
+                                            transition: `opacity 400ms ease-out ${hasAnimated ? idx * 80 + 'ms' : '0ms'}`
+                                          }}
+                                        />
+                                      ))}
+                                    </svg>
+                                    <div className="mt-3 space-y-1 text-center">
+                                      {slices.map(slice => (
+                                        <div key={slice.status} className="flex items-center justify-center gap-2 text-xs">
+                                          <div className="w-2 h-2 rounded-full" style={{ backgroundColor: slice.color }}></div>
+                                          <span className="text-gray-600">{slice.status}:</span>
+                                          <span className="font-semibold text-gray-900">
+                                            {globalDisplayMode === 'value' ? formatCurrency(slice.metric) : slice.metric}
+                                            {' '}({slice.percentage.toFixed(0)}%)
+                                          </span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                );
+                              })()
+                            ) : (
+                              <div className="h-[120px] flex items-center justify-center">
+                                <div className="text-xs text-gray-400">No projects in this period</div>
+                              </div>
+                            )}
+                          </div>
+                          
+                          {/* Right: Sales Funnel (Event-based) */}
+                          <div className="space-y-3">
+                            {(() => {
+                              const funnel = buildFunnelMetrics;
+                              const maxValue = Math.max(funnel.prospecting, funnel.sent, funnel.refused, funnel.converted, 1);
+                              const hasActivity = funnel.prospecting > 0 || funnel.sent > 0 || funnel.refused > 0 || funnel.converted > 0;
+                              
+                              if (!hasActivity) {
+                                return (
+                                  <div className="h-[200px] flex items-center justify-center">
+                                    <div className="text-xs text-gray-400 text-center">No funnel activity in this period</div>
+                                  </div>
+                                );
+                              }
+                              
+                              return (
+                                <div className="space-y-3">
+                                  {/* Prospecting */}
+                                  <div className="space-y-1">
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-xs text-gray-600 w-28">Prospecting</span>
+                                      <div className="flex-1 bg-gray-100 rounded-full h-2 min-w-0 relative">
+                                        <div
+                                          className="bg-gradient-to-r from-[#7f1010] to-[#d11616] rounded-full h-2 transition-all duration-500 ease-out"
+                                          style={{ width: `${(funnel.prospecting / maxValue) * 100}%` }}
+                                        />
+                                      </div>
+                                      <span className="text-xs font-semibold text-gray-900 whitespace-nowrap min-w-[80px] text-right">
+                                        {globalDisplayMode === 'value' ? formatCurrency(funnel.prospecting) : <CountUp value={funnel.prospecting} enabled={hasAnimated} />}
+                                      </span>
+                                    </div>
+                                  </div>
+                                  
+                                  {/* Sent to Customer */}
+                                  <div className="space-y-1">
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-xs text-gray-600 w-28">Sent to Customer</span>
+                                      <div className="flex-1 bg-gray-100 rounded-full h-2 min-w-0 relative">
+                                        <div
+                                          className="bg-gradient-to-r from-[#7f1010] to-[#d11616] rounded-full h-2 transition-all duration-500 ease-out"
+                                          style={{ width: `${(funnel.sent / maxValue) * 100}%` }}
+                                        />
+                                      </div>
+                                      <span className="text-xs font-semibold text-gray-900 whitespace-nowrap min-w-[80px] text-right">
+                                        {globalDisplayMode === 'value' ? formatCurrency(funnel.sent) : <CountUp value={funnel.sent} enabled={hasAnimated} />}
+                                        {funnel.sentPct !== null ? (
+                                          <span className="text-gray-500 ml-1">({funnel.sentPct.toFixed(0)}%)</span>
+                                        ) : null}
+                                      </span>
+                                    </div>
+                                  </div>
+                                  
+                                  {/* Refused */}
+                                  <div className="space-y-1">
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-xs text-gray-600 w-28">Refused</span>
+                                      <div className="flex-1 bg-gray-100 rounded-full h-2 min-w-0 relative">
+                                        <div
+                                          className="bg-gradient-to-r from-[#7f1010] to-[#d11616] rounded-full h-2 transition-all duration-500 ease-out"
+                                          style={{ width: `${(funnel.refused / maxValue) * 100}%` }}
+                                        />
+                                      </div>
+                                      <span className="text-xs font-semibold text-gray-900 whitespace-nowrap min-w-[80px] text-right">
+                                        {globalDisplayMode === 'value' ? formatCurrency(funnel.refused) : <CountUp value={funnel.refused} enabled={hasAnimated} />}
+                                        {funnel.refusedPct !== null ? (
+                                          <span className="text-gray-500 ml-1">({funnel.refusedPct.toFixed(0)}%)</span>
+                                        ) : null}
+                                      </span>
+                                    </div>
+                                  </div>
+                                  
+                                  {/* Converted / Won */}
+                                  <div className="space-y-1 border-t pt-2">
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-xs text-gray-600 w-28">Converted / Won</span>
+                                      <div className="flex-1 bg-gray-100 rounded-full h-2 min-w-0 relative">
+                                        <div
+                                          className="bg-gradient-to-r from-[#0b1739] to-[#1d4ed8] rounded-full h-2 transition-all duration-500 ease-out"
+                                          style={{ width: `${(funnel.converted / maxValue) * 100}%` }}
+                                        />
+                                      </div>
+                                      <span className="text-xs font-semibold text-gray-900 whitespace-nowrap min-w-[80px] text-right">
+                                        {globalDisplayMode === 'value' ? formatCurrency(funnel.converted) : <CountUp value={funnel.converted} enabled={hasAnimated} />}
+                                        {funnel.convertedPct !== null ? (
+                                          <span className="text-gray-500 ml-1">({funnel.convertedPct.toFixed(0)}%)</span>
+                                        ) : null}
+                                      </span>
+                                    </div>
+                                  </div>
+                                  
+                                  {/* Health Flags */}
+                                  <div className="border-t pt-3">
+                                    {funnel.refusedPct !== null && funnel.refusedPct > 40 ? (
+                                      <div className="bg-amber-50 border border-amber-200 rounded p-2">
+                                        <div className="text-xs font-semibold text-amber-800">Warning</div>
+                                        <div className="text-xs text-amber-700">Refusal rate: {funnel.refusedPct.toFixed(1)}%</div>
+                                      </div>
+                                    ) : (
+                                      <div className="bg-green-50 border border-green-200 rounded p-2">
+                                        <div className="text-xs font-semibold text-green-800">Healthy pipeline</div>
+                                        <div className="text-xs text-green-700">No issues detected</div>
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              );
+                            })()}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Insights and Activity Row */}
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                      {/* Customer Insights */}
+                      <div className="rounded-lg border border-gray-200 bg-white shadow-sm p-4 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:shadow-md">
+                        <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-3">Customer Insights</div>
+                        <div className="space-y-3">
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm text-gray-600">Converted Projects</span>
+                            <span className="text-sm font-semibold text-gray-900">{insights.convertedProjects}</span>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm text-gray-600">Largest Deal</span>
+                            <span className="text-sm font-semibold text-gray-900">{insights.largestDeal > 0 ? formatCurrency(insights.largestDeal) : '—'}</span>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm text-gray-600">Last Activity</span>
+                            <span className="text-sm font-semibold text-gray-900">
+                              {insights.lastActivity ? formatDateForDisplay(insights.lastActivity.toISOString()) : '—'}
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm text-gray-600">Avg Pipeline Age</span>
+                            <span className="text-sm font-semibold text-gray-900">{insights.avgPipelineAge > 0 ? `${insights.avgPipelineAge} days` : '—'}</span>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm text-gray-600">Project Hold Rate</span>
+                            <span className="text-sm font-semibold text-gray-900">{insights.holdRate.toFixed(1)}%</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Recent Activity */}
+                      <div className="rounded-lg border border-gray-200 bg-white shadow-sm p-4 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:shadow-md">
+                        <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-3">Recent Activity</div>
+                        <div className="space-y-2 max-h-[300px] overflow-y-auto">
+                          {recentActivity.length > 0 ? (
+                            recentActivity.map((event, idx) => (
+                              <div key={`${event.id}-${idx}`} className="text-xs text-gray-700 py-1 border-b border-gray-100 last:border-0">
+                                <div className="font-medium">{event.label}</div>
+                                <div className="text-gray-500">{formatDateForDisplay(event.date)}</div>
+                              </div>
+                            ))
+                          ) : (
+                            <div className="text-xs text-gray-400">No recent activity</div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Empty States with CTAs */}
+                    {filteredProjects.length === 0 && filteredOpportunities.length === 0 && (
+                      <div className="rounded-lg border border-gray-200 bg-white p-6 text-center">
+                        <div className="text-gray-500 mb-3">No projects or opportunities found</div>
+                        {hasEditPermission && (
+                          <div className="flex gap-2 justify-center">
+                            <Link
+                              to={`/projects/new?client_id=${encodeURIComponent(String(id||''))}&is_bidding=false`}
+                              state={{ backgroundLocation: location }}
+                              className="px-4 py-2 bg-[#7f1010] text-white rounded-lg hover:bg-[#a31414] transition-colors text-sm"
+                            >
+                              Create Project
+                            </Link>
+                            <Link
+                              to={`/projects/new?client_id=${encodeURIComponent(String(id||''))}&is_bidding=true`}
+                              state={{ backgroundLocation: location }}
+                              className="px-4 py-2 bg-[#7f1010] text-white rounded-lg hover:bg-[#a31414] transition-colors text-sm"
+                            >
+                              Create Opportunity
+                            </Link>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
-                </div>
+                </LoadingOverlay>
               )}
               {tab==='general' && (
                 <div className="space-y-8 pb-24">
@@ -790,72 +2547,6 @@ export default function CustomerDetail(){
                   </div>
                 </div>
               )}
-              {tab==='quotes' && (
-                <div>
-                  <div className="mb-3 flex items-center justify-between">
-                    <h3 className="font-semibold">Quotes</h3>
-                    {(isAdmin || permissions.has('sales:quotations:write')) && (
-                      <button 
-                        onClick={async()=>{
-                          try{
-                            const nextCode:any = await api('GET', `/quotes/next-code?client_id=${encodeURIComponent(String(id||''))}`);
-                            const code = nextCode?.order_number || '';
-                            const payload:any = { 
-                              client_id: id, 
-                              code,
-                              order_number: code,
-                              cover_title: 'Quotation', // Set default document type
-                              title: 'Quotation',
-                            };
-                            const quote:any = await api('POST','/quotes', payload);
-                            if (!quote?.id) {
-                              toast.error('Failed to create quotation: No ID returned');
-                              return;
-                            }
-                            // Invalidate queries to refresh the list before navigating
-                            queryClient.invalidateQueries({ queryKey: ['clientQuotes', id] });
-                            queryClient.invalidateQueries({ queryKey: ['quotes'] });
-                            toast.success('Quotation created');
-                            // Small delay to ensure toast is visible, then navigate
-                            setTimeout(() => {
-                              navigate(`/quotes/${encodeURIComponent(String(quote.id))}`, { state: { fromCustomer: true } });
-                            }, 100);
-                          }catch(e:any){
-                            console.error('Failed to create quotation:', e);
-                            toast.error(e?.response?.data?.detail || 'Failed to create quotation');
-                          }
-                        }}
-                        className="px-4 py-2 rounded bg-brand-red text-white text-sm font-semibold"
-                      >
-                        + New Quote
-                      </button>
-                    )}
-                  </div>
-                  <div className="rounded-xl border bg-white divide-y">
-                    {(quotes||[]).map(q=> {
-                      // Get document type from data.cover_title or title, default to 'Quotation'
-                      const documentType = (q.document_type || q.data?.cover_title || q.title || 'Quotation');
-                      // Get cover image for quote - same logic as QuoteDetail.tsx General Information
-                      // Search for quote-cover-derived category first, then fallback to any image
-                      const img = (files||[]).find(f=> String(f.category||'')==='quote-cover-derived');
-                      const src = img? `/files/${img.file_object_id}/thumbnail?w=192` : '/ui/assets/login/logo-light.svg';
-                      return (
-                        <Link key={q.id} to={`/quotes/${encodeURIComponent(String(q.id))}`} state={{ fromCustomer: true }} className="p-4 flex items-center justify-between hover:bg-gray-50 cursor-pointer">
-                          <div className="flex items-center gap-4 min-w-0 flex-1">
-                            <img src={src} className="w-24 h-24 rounded-lg border object-cover"/>
-                            <div className="min-w-0 flex-1">
-                              <div className="font-medium text-base truncate">{documentType}</div>
-                              <div className="text-sm text-gray-600 truncate mt-1">{q.code || q.order_number || '—'}</div>
-                            </div>
-                          </div>
-                          <div className="text-sm text-gray-500">{(q.created_at||'').slice(0,10)}</div>
-                        </Link>
-                      );
-                    })}
-                    {(!quotes||!quotes.length) && <div className="p-4 text-sm text-gray-600">No quotes</div>}
-                  </div>
-                </div>
-              )}
             </>
           )}
         </div>
@@ -898,6 +2589,22 @@ export default function CustomerDetail(){
           finally{ setProjectPicker(null); }
         }} />
       )}
+      <DateRangeModal
+        open={globalDateModalOpen}
+        onClose={() => {
+          setGlobalDateModalOpen(false);
+          if (!globalDateCustomStart || !globalDateCustomEnd) {
+            setGlobalDateFilter('all');
+          }
+        }}
+        onConfirm={(startDate, endDate) => {
+          setGlobalDateCustomStart(startDate);
+          setGlobalDateCustomEnd(endDate);
+          setGlobalDateModalOpen(false);
+        }}
+        initialStartDate={globalDateCustomStart}
+        initialEndDate={globalDateCustomEnd}
+      />
     </div>
   );
 }

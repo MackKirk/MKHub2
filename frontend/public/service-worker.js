@@ -72,8 +72,8 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(
       fetch(request)
         .then((response) => {
-          // Cache successful HTML responses (except /install)
-          if (response.ok && url.pathname !== '/install') {
+          // Cache successful HTML responses (except /install) - only GET requests
+          if (response.ok && url.pathname !== '/install' && request.method === 'GET') {
             const responseClone = response.clone();
             caches.open(STATIC_CACHE_NAME).then((cache) => {
               cache.put(request, responseClone);
@@ -110,9 +110,9 @@ self.addEventListener('fetch', (event) => {
           // Return from cache
           return cachedResponse;
         }
-        // Fetch from network and cache
+        // Fetch from network and cache - only GET requests
         return fetch(request).then((response) => {
-          if (response.ok) {
+          if (response.ok && request.method === 'GET') {
             const responseClone = response.clone();
             caches.open(STATIC_CACHE_NAME).then((cache) => {
               cache.put(request, responseClone);
@@ -133,11 +133,12 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Default: network first, fallback to cache
+  // Default: network first, fallback to cache - only GET requests
   event.respondWith(
     fetch(request)
       .then((response) => {
-        if (response.ok) {
+        // Only cache GET requests (Cache API doesn't support POST/PATCH/PUT/DELETE)
+        if (response.ok && request.method === 'GET') {
           const responseClone = response.clone();
           caches.open(STATIC_CACHE_NAME).then((cache) => {
             cache.put(request, responseClone);
@@ -146,7 +147,15 @@ self.addEventListener('fetch', (event) => {
         return response;
       })
       .catch(() => {
-        return caches.match(request);
+        // Only try to get from cache if it's a GET request
+        if (request.method === 'GET') {
+          return caches.match(request);
+        }
+        // For non-GET requests, return error response
+        return new Response('Method not supported offline', {
+          status: 503,
+          statusText: 'Service Unavailable'
+        });
       })
   );
 });
